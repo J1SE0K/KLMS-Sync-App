@@ -1,0 +1,18 @@
+{
+  "assignments": {
+    "https://klms.kaist.ac.kr/mod/assign/view.php?id=EXAMPLE": "completed",
+    "https://klms.kaist.ac.kr/mod/quiz/view.php?id=EXAMPLE": "ignored"
+  },
+  "exams": {
+    "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=EXAMPLE&bwid=EXAMPLE::중간고사": {
+      "status": "approved",
+      "due": "2026년 4월 16일(목요일) 오후 2:30 - 오후 3:30",
+      "timing_precision": "time-range",
+      "sync_start": "2026-04-16T14:30:00+09:00",
+      "sync_due": "2026-04-16T15:30:00+09:00"
+    },
+    "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=EXAMPLE&bwid=EXAMPLE::시험": {
+      "status": "ignored"
+    }
+  }
+}
