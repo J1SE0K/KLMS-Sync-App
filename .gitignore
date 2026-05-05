@@ -1,0 +1,48 @@
+.DS_Store
+
+# Local configuration and personal overrides
+config.env
+manual_assignment_overrides.json
+kaikey_state.json
+*.local
+
+# MFA/cookie/session artifacts
+qr-screenshot*
+kaikey_qr*
+*.cookies
+cookies*.txt
+session*.json
+
+# KLMS/user data
+runtime/
+course_files/
+course_transcripts/
+course_videos/
+
+# Generated launchd files with local absolute paths
+launchd/*.plist
+
+# Python/cache/build outputs
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node/package outputs
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Swift/Xcode local build/cache outputs
+.build/
+DerivedData/
+*.dSYM/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo

@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+from typing import Any
+import unicodedata
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest-json", required=True)
+    parser.add_argument("--root", required=True)
+    parser.add_argument("--dry-run", action="store_true")
+    return parser
+
+
+def canonical_relative_path(value: str) -> str:
+    return unicodedata.normalize("NFC", value).casefold()
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    manifest_path = Path(args.manifest_json)
+    root = Path(args.root).resolve()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, list):
+        raise SystemExit(f"Manifest must be a JSON array: {manifest_path}")
+
+    tracked_paths = {
+        canonical_relative_path(Path(str(item["relative_path"])).as_posix())
+        for item in manifest
+        if isinstance(item, dict) and item.get("relative_path")
+    }
+
+    deleted_files: list[str] = []
+    actual_files_before = 0
+
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        relative_path = path.relative_to(root).as_posix()
+        if relative_path == "README.md":
+            continue
+        actual_files_before += 1
+        if canonical_relative_path(relative_path) in tracked_paths:
+            continue
+        deleted_files.append(relative_path)
+        if not args.dry_run:
+            path.unlink()
+
+    deleted_dirs: list[str] = []
+    if not args.dry_run:
+        for directory in sorted((path for path in root.rglob("*") if path.is_dir()), reverse=True):
+            try:
+                directory.relative_to(root)
+            except ValueError:
+                continue
+            if directory == root:
+                continue
+            if any(directory.iterdir()):
+                continue
+            deleted_dirs.append(directory.relative_to(root).as_posix())
+            directory.rmdir()
+
+    actual_files_after = sum(
+        1
+        for path in root.rglob("*")
+        if path.is_file() and path.relative_to(root).as_posix() != "README.md"
+    )
+
+    payload: dict[str, Any] = {
+        "manifest_path": str(manifest_path.resolve()),
+        "root": str(root),
+        "tracked_files": len(tracked_paths),
+        "actual_files_before": actual_files_before,
+        "actual_files_after": actual_files_after,
+        "deleted_files": deleted_files,
+        "deleted_file_count": len(deleted_files),
+        "deleted_dirs": deleted_dirs,
+        "deleted_dir_count": len(deleted_dirs),
+        "dry_run": args.dry_run,
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
