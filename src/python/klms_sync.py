@@ -1678,7 +1678,10 @@ def extract_notice_body_text(page: dict[str, Any], soup: BeautifulSoup) -> str:
     if module_name_from_url(requested_url) == "courseboard" and (
         "/article.php" in requested_url or "bwid=" in requested_url
     ):
-        article_body = text_of_first(soup.select(".courseboard .content, .courseboard .no-overflow"))
+        article_body = text_of_first(
+            soup.select(".courseboard .content, .courseboard .no-overflow"),
+            separator="\n",
+        )
         formatted = format_notice_body_text(article_body)
         if formatted:
             return formatted
@@ -1739,7 +1742,13 @@ def clean_notice_body_source_text(text: str) -> str:
         return ""
 
     cleaned = raw
-    cleaned = re.sub(r"\s*•\s*", "\n\n• ", cleaned)
+    cleaned = re.sub(r"\s*[•⦁]\s*", "\n\n• ", cleaned)
+    cleaned = re.sub(
+        r"\s+(?=(?:Date(?:\s*&\s*Time)?|Time|Location|Place|Venue|Room|Range|Coverage|Exam\s*Range)\s*:)",
+        "\n\n",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
     cleaned = re.sub(r"\s+(?=##\s+)", "\n\n", cleaned)
     cleaned = re.sub(
         r"\s+(?=(?:Hello\b|Dear\b|Thank you\b|감사합니다\b|문의\b|클레임은\b|Nano Quiz Link\b|Link:\b|수업 안내\b|수업 전 준비사항\b|업로드:\b|제출 마감:\b))",
@@ -1752,7 +1761,12 @@ def clean_notice_body_source_text(text: str) -> str:
         cleaned,
     )
     cleaned = re.sub(r"\s+(?=(?:[1-9]|1\d|20)\.\s+[A-Z가-힣])", "\n\n", cleaned)
-    cleaned = re.sub(r"\s+(?=(?:-\s|\(\d+\)\s+))", "\n\n", cleaned)
+    cleaned = re.sub(
+        r"(?i)(Time:\s*[^\n]+)\n{2,}-\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)",
+        r"\1 - \2",
+        cleaned,
+    )
+    cleaned = re.sub(r"\s+(?=(?:-\s+(?!\d{1,2}:\d{2}\b)|\(\d+\)\s+))", "\n\n", cleaned)
     cleaned = re.sub(r"\s+(?=-{20,})", "\n\n", cleaned)
     cleaned = re.sub(r"(https?://\S+)", r"\n\n\1", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
@@ -1764,14 +1778,16 @@ def is_notice_structural_line(line: str) -> bool:
     if not normalized:
         return False
 
-    if re.match(r"^(?:•\s+|[-*]\s+|(?:[1-9]|1\d|20)[.)]\s+|\(\d+\)\s+)", normalized):
+    if re.match(r"^(?:[•⦁]\s+|[-*]\s+|(?:[1-9]|1\d|20)[.)]\s+|\(\d+\)\s+)", normalized):
         return True
 
     labels = [
+        "Coverage",
         "Date",
         "Deadline",
         "Details",
         "Due",
+        "Exam Range",
         "Instructor",
         "Link",
         "Location",
@@ -1780,11 +1796,13 @@ def is_notice_structural_line(line: str) -> bool:
         "Office hour",
         "Office Hours",
         "Question",
+        "Range",
         "Room",
         "Submission",
         "TA",
         "Time",
         "Topic",
+        "Venue",
         "Zoom",
         "기한",
         "내용",
@@ -4288,10 +4306,10 @@ def month_name_to_number(month_name: str) -> int | None:
     return months.get(month_name.strip().lower().rstrip("."))
 
 
-def text_of_first(nodes: list[Any]) -> str:
+def text_of_first(nodes: list[Any], separator: str = " ") -> str:
     if not nodes:
         return ""
-    return nodes[0].get_text(" ", strip=True)
+    return nodes[0].get_text(separator, strip=True)
 
 
 def link_context_text(link: Any) -> str:
