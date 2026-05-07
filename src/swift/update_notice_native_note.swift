@@ -285,6 +285,11 @@ func displayParagraphs(_ notice: NoticeDigestEntry) -> [String] {
     let bodyText = String(notice.bodyText ?? "")
         .replacingOccurrences(of: "\r\n", with: "\n")
         .replacingOccurrences(of: "\r", with: "\n")
+        .replacingOccurrences(
+            of: #"(?i)(Time:\s*[^\n]+)\n{2,}-\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)"#,
+            with: "$1 - $2",
+            options: .regularExpression
+        )
         .replacingOccurrences(of: #"\s+(?=##\s+)"#, with: "\n\n", options: .regularExpression)
         .replacingOccurrences(
             of: #"\s+(?=(?:[1-9]|1\d|20)\.\s+[A-Z가-힣])"#,
@@ -293,6 +298,16 @@ func displayParagraphs(_ notice: NoticeDigestEntry) -> [String] {
         )
         .replacingOccurrences(
             of: #"(?<!## )\s+(?=(?:Requirements|Best regards|Thank you|감사합니다|문의|클레임은|Original date|Original due date|New date|New due date|VPN 접속 링크|VPN 메뉴얼|KiteBoard 링크|Nano Quiz Link|Link:)\b)"#,
+            with: "\n\n",
+            options: .regularExpression
+        )
+        .replacingOccurrences(
+            of: #"\s+(?=(?:Date(?:\s*&\s*Time)?|Time|Location|Place|Venue|Room|Range|Coverage|Exam\s*Range)\s*:)"#,
+            with: "\n\n",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        .replacingOccurrences(
+            of: #"\s+(?=[•⦁]\s*)"#,
             with: "\n\n",
             options: .regularExpression
         )
