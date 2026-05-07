@@ -167,7 +167,7 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 
 시험 일정은 KLMS 대시보드에 직접 안 보여도, 각 과목의 `Notice 게시판`, `Course Material`, 강의계획서 링크를 추가로 확인해서 후보를 찾는다. `Notice` 게시판은 제목에 시험 키워드가 없어도 새 글/수정 글 본문을 다시 읽어서, 본문에만 적힌 시험 일정도 후보로 잡는다. 새 후보는 바로 `시험` 캘린더에 넣지 않고 확인 대기 상태로 남기며, 승인된 항목만 `시험 일정` 섹션과 `시험` 캘린더에 반영한다. KLMS에서 날짜만 확인되는 경우에는 시간 미상으로 표시된다.
 일반 sync는 게시판/폴더의 HTML 페이지만 추가 확인하고, `pluginfile` 같은 첨부 문서 URL 자체는 따라가지 않는다. 첨부파일 다운로드는 파일 정리 단계에서만 일어난다.
-`NOTICE_SUMMARY_ENABLED=1`이면 `sync_klms_notice.sh` 또는 `sync_klms_all.sh` 실행 시 `Notice` 게시판의 새 글/수정 글만 article 단위로 다시 읽어 `runtime/cache/notice_digest.json`, `runtime/cache/notice_summary_state.json`을 갱신한다. 최소 탐색 기본값에서는 공지 정리 단계가 `Notice` 게시판 경로만 우선 다시 보고, 자료실/리소스 경로는 공지 sync에서 기본적으로 따라가지 않는다. 각 과목 `Notice` 게시판은 페이지네이션까지 따라가며 누적 추적하고, `NOTICE_NOTE_NAME`과 `NOTICE_ARCHIVE_NOTE_NAME` 두 메모를 네이티브 제목/머리말/체크리스트 형식으로 갱신한다. Notes 렌더 단계는 now best-effort로 처리되어 digest/state 갱신이 성공한 뒤 Notes 자동화만 실패해도 전체 notice sync를 실패로 돌리지 않고, warning은 `runtime/cache/notice_note_render_warning.txt`에 남긴다. stage별 소요 시간은 `runtime/cache/{core,notice}/stage_timings.json`에서 볼 수 있다.
+`NOTICE_SUMMARY_ENABLED=1`이면 `sync_klms_notice.sh` 또는 `sync_klms_all.sh` 실행 시 `Notice` 게시판의 새 글/수정 글만 article 단위로 다시 읽어 `runtime/cache/notice_digest.json`, `runtime/cache/notice_summary_state.json`을 갱신한다. 최소 탐색 기본값에서는 공지 정리 단계가 `Notice` 게시판 경로만 우선 다시 보고, 자료실/리소스 경로는 공지 sync에서 기본적으로 따라가지 않는다. 각 과목 `Notice` 게시판은 페이지네이션까지 따라가며 누적 추적하고, `NOTICE_NOTE_NAME`과 `NOTICE_ARCHIVE_NOTE_NAME` 두 메모를 네이티브 제목/머리말/체크리스트 형식으로 갱신한다. Notes 체크 상태 캡처나 렌더 단계가 실패하면 전체 notice sync도 실패로 끝나며, 자세한 원인은 `runtime/cache/notice_note_render_warning.txt`에 남긴다. stage별 소요 시간은 `runtime/cache/{core,notice}/stage_timings.json`에서 볼 수 있다.
 
 - 메인 메모 `KLMS 공지`는 `중요 공지 -> 새로운 공지 -> 읽지 않은 공지` 순서로 보인다.
 - 보관 메모 `KLMS 확인한 공지`에는 `읽음`이면서 `중요`가 아닌 공지만 모아둔다.
@@ -185,6 +185,7 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 - 네이티브 공지 메모 renderer는 Swift binary를 tmp build cache에 재사용한다. 공지 변화가 없어도 `읽음`/`중요` 체크 상태는 매번 Notes UI에서 캡처하고, 직전 render state의 `content_hash`와 새 render plan이 같을 때만 Notes 전체 재렌더를 건너뛴다.
 - `KLMS 확인한 공지`는 머리줄에서 변동 시각을 빼서, 실제 archive 내용이 안 바뀌면 대부분의 sync에서 다시 쓰지 않는다. 다만 체크 상태 캡처는 계속 수행한다.
 - 공지 메모는 render 뒤 note 전체 validator를 돌려 stray checklist나 잘못된 문단 오염을 전수 검사한다. 양식 이상이 감지되면 보수적인 경로로 다시 렌더한다.
+- 메인 공지가 많을 때는 Notes 메뉴 자동화가 과도하게 오래 걸리지 않도록 개별 제목/메타데이터 스타일링을 생략하고, 본문/체크리스트 정확성을 우선한다.
 
 ## Reminders 동작 방식
 
@@ -281,6 +282,7 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 - 필요하면 `LOGIN_PROMPT_OPEN_SAFARI=1`로 바꿔 로그인 안내 때 Safari 로그인 페이지를 자동으로 열 수 있다.
 - 같은 로그인 만료 상태에서 창과 알림이 계속 쌓이지 않도록 `LOGIN_PROMPT_COOLDOWN_SECONDS` 동안은 재알림을 억제한다.
 - 로그인 오류가 나면 다음 15분 주기에서 다시 빨리 재시도해서, 사용자가 OTP 승인을 마친 뒤 오래 기다리지 않게 했다.
+- 공지의 `읽음` 상태는 `KLMS 공지` 메모에서 사용자가 직접 `읽음` 체크리스트를 체크했을 때만 저장한다. stable 공지라는 이유로 자동 읽음 처리하지 않고, 캡처에 실패하면 기존 체크 상태를 보호하기 위해 메모 렌더링을 건너뛴다.
 - 별도 watcher가 Safari의 KLMS 관련 탭을 짧게 감시하고, 로그인 완료로 보이면 즉시 `KLMS 동기화(core)`를 다시 시도한다.
 - 그 외 실패는 일반 동기화 실패 알림으로 구분해서 띄운다.
 - LaunchAgent는 `Documents` 폴더 보호를 피하기 위해 자동 실행용 파일을 `~/Library/Application Support/KLMSNotesSync`로 복사해서 사용한다.
