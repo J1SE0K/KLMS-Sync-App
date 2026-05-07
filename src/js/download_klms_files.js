@@ -46,6 +46,7 @@ function run(argv) {
   let topLevelStep = "ensure-output-root";
   const results = [];
   const claimedAuxiliaryPaths = new Set();
+  const claimedRelativePaths = new Set();
 
   try {
     ensureDir(outputRoot);
@@ -91,6 +92,25 @@ function run(argv) {
         removeDirectoryArtifactIfExists(trackedArchivePath);
 
         if (!forceDownload && destinationPath && isRegularFile(destinationPath)) {
+          const existingSourcePath = destinationPath;
+          step = "claim-existing-path";
+          let trackedPaths = claimTrackedPath(
+            activeFilename,
+            manifestRelativePath,
+            relativeDir,
+            outputRoot,
+            downloadArchiveRoot,
+            claimedRelativePaths
+          );
+          activeFilename = trackedPaths.activeFilename;
+          relativePath = trackedPaths.relativePath;
+          destinationPath = trackedPaths.destinationPath;
+          trackedArchivePath = trackedPaths.trackedArchivePath;
+          ensureDir(directoryName(destinationPath));
+          ensureDir(directoryName(trackedArchivePath));
+          if (!samePath(existingSourcePath, destinationPath) && !isRegularFile(destinationPath)) {
+            copyFile(existingSourcePath, destinationPath);
+          }
           if (trackedArchivePath && !isRegularFile(trackedArchivePath)) {
             step = "mirror-existing-to-archive";
             copyFile(destinationPath, trackedArchivePath);
@@ -150,8 +170,27 @@ function run(argv) {
         }
 
         if (!forceDownload && trackedArchivePath && isRegularFile(trackedArchivePath)) {
+          const archiveSourcePath = trackedArchivePath;
+          step = "claim-archive-path";
+          let trackedPaths = claimTrackedPath(
+            activeFilename,
+            manifestRelativePath,
+            relativeDir,
+            outputRoot,
+            downloadArchiveRoot,
+            claimedRelativePaths
+          );
+          activeFilename = trackedPaths.activeFilename;
+          relativePath = trackedPaths.relativePath;
+          destinationPath = trackedPaths.destinationPath;
+          trackedArchivePath = trackedPaths.trackedArchivePath;
+          ensureDir(directoryName(destinationPath));
+          ensureDir(directoryName(trackedArchivePath));
           step = "restore-from-archive";
-          copyFile(trackedArchivePath, destinationPath);
+          copyFile(archiveSourcePath, destinationPath);
+          if (!samePath(archiveSourcePath, trackedArchivePath) && !isRegularFile(trackedArchivePath)) {
+            copyFile(archiveSourcePath, trackedArchivePath);
+          }
           step = "apply-klms-timestamp";
           applyKlmsTimestampToPaths([destinationPath, trackedArchivePath], entry);
           updateManifestEntryWithFilename(entry, activeFilename, relativePath, destinationPath);
@@ -214,9 +253,18 @@ function run(argv) {
           if (!activeFilename) {
             throw new Error(`Missing reusable filename for ${entry.url || manifestRelativePath}`);
           }
-          relativePath = buildRelativePath(activeFilename);
-          destinationPath = buildDestinationPath(activeFilename);
-          trackedArchivePath = buildArchivePath(activeFilename);
+          let trackedPaths = claimTrackedPath(
+            activeFilename,
+            manifestRelativePath,
+            relativeDir,
+            outputRoot,
+            downloadArchiveRoot,
+            claimedRelativePaths
+          );
+          activeFilename = trackedPaths.activeFilename;
+          relativePath = trackedPaths.relativePath;
+          destinationPath = trackedPaths.destinationPath;
+          trackedArchivePath = trackedPaths.trackedArchivePath;
 
           removeDirectoryArtifactIfExists(destinationPath);
           removeDirectoryArtifactIfExists(trackedArchivePath);
@@ -466,9 +514,18 @@ function run(argv) {
           }
           activeFilename = manifestFilename;
         }
-        relativePath = buildRelativePath(activeFilename);
-        destinationPath = buildDestinationPath(activeFilename);
-        trackedArchivePath = buildArchivePath(activeFilename);
+        let trackedPaths = claimTrackedPath(
+          activeFilename,
+          manifestRelativePath,
+          relativeDir,
+          outputRoot,
+          downloadArchiveRoot,
+          claimedRelativePaths
+        );
+        activeFilename = trackedPaths.activeFilename;
+        relativePath = trackedPaths.relativePath;
+        destinationPath = trackedPaths.destinationPath;
+        trackedArchivePath = trackedPaths.trackedArchivePath;
 
         step = "copy-file";
         copyFile(downloadedPath, destinationPath);
@@ -707,6 +764,63 @@ function updateManifestEntryWithFilename(entry, filename, relativePath, destinat
   entry.filename = String(filename || "");
   entry.relative_path = String(relativePath || "");
   entry.absolute_path = String(destinationPath || "");
+}
+
+function claimTrackedPath(
+  filename,
+  fallbackRelativePath,
+  relativeDir,
+  outputRoot,
+  downloadArchiveRoot,
+  claimedRelativePaths
+) {
+  const candidateFilename = String(filename || "").trim();
+  const fallback = String(fallbackRelativePath || "").trim();
+  let preferredRelativePath = candidateFilename
+    ? relativeDir ? joinPath(relativeDir, candidateFilename) : candidateFilename
+    : fallback;
+
+  if (
+    preferredRelativePath &&
+    claimedRelativePaths.has(preferredRelativePath) &&
+    fallback &&
+    !claimedRelativePaths.has(fallback)
+  ) {
+    preferredRelativePath = fallback;
+  }
+
+  const relativePath = claimUniqueRelativePath(preferredRelativePath, claimedRelativePaths);
+  const activeFilename = baseName(relativePath) || candidateFilename || baseName(fallback);
+  return {
+    activeFilename,
+    relativePath,
+    destinationPath: relativePath ? joinPath(outputRoot, relativePath) : "",
+    trackedArchivePath: relativePath ? joinPath(downloadArchiveRoot, relativePath) : "",
+  };
+}
+
+function claimUniqueRelativePath(relativePath, claimedRelativePaths) {
+  const preferred = String(relativePath || "").trim();
+  if (!preferred) {
+    return "";
+  }
+  if (!claimedRelativePaths.has(preferred)) {
+    claimedRelativePaths.add(preferred);
+    return preferred;
+  }
+
+  const dir = directoryName(preferred);
+  const name = baseName(preferred);
+  const split = splitFileName(name);
+  for (let counter = 2; counter < 10000; counter += 1) {
+    const candidateName = `${split.stem} (${counter})${split.ext}`;
+    const candidate = dir ? joinPath(dir, candidateName) : candidateName;
+    if (!claimedRelativePaths.has(candidate)) {
+      claimedRelativePaths.add(candidate);
+      return candidate;
+    }
+  }
+  throw new Error(`Could not allocate unique tracked path for ${preferred}`);
 }
 
 function addKlmsTimestampFields(target, entry) {
@@ -1499,9 +1613,9 @@ function buildPdfFromImages(projectRoot, outputPdfPath, imagePaths) {
   if (!imagePaths.length) {
     throw new Error(`No image paths provided for PDF rebuild: ${outputPdfPath}`);
   }
-  const helperPath = joinPath(projectRoot, "build_pdf_from_images.py");
-  if (!fileExists(helperPath)) {
-    throw new Error(`Missing PDF build helper: ${helperPath}`);
+  const helperPath = findPdfBuildHelper(projectRoot);
+  if (!helperPath) {
+    throw new Error(`Missing PDF build helper under: ${projectRoot}`);
   }
   runProcess(
     [
@@ -1510,6 +1624,14 @@ function buildPdfFromImages(projectRoot, outputPdfPath, imagePaths) {
       outputPdfPath,
     ].concat(imagePaths)
   );
+}
+
+function findPdfBuildHelper(projectRoot) {
+  const candidates = [
+    joinPath(projectRoot, "build_pdf_from_images.py"),
+    joinPath(projectRoot, "src/python/build_pdf_from_images.py"),
+  ];
+  return candidates.find((candidate) => fileExists(candidate)) || "";
 }
 
 function resolveExecutable(name, fallbackPath) {
@@ -2160,7 +2282,7 @@ function findProjectRoot(manifestPath, outputRoot) {
     .filter(Boolean);
 
   for (const candidate of candidates) {
-    if (fileExists(joinPath(candidate, "build_pdf_from_images.py"))) {
+    if (findPdfBuildHelper(candidate)) {
       return candidate;
     }
   }

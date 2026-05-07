@@ -681,7 +681,29 @@ def build_activity_lookup(pages: list[ParsedPage]) -> dict[str, dict[str, str]]:
                     "course": course,
                     "title": normalize_whitespace(link.get_text(" ", strip=True)),
                 }
+    register_course_page_ids(lookup, pages)
     return lookup
+
+
+def register_course_page_ids(
+    lookup: dict[str, dict[str, str]], pages: list[ParsedPage]
+) -> None:
+    for parsed_page in pages:
+        if "/course/view.php" not in parsed_page.source_url:
+            continue
+        course = infer_course_name(parsed_page.payload, parsed_page.soup)
+        if not course:
+            continue
+        identifier = query_id(parsed_page.source_url)
+        if not identifier:
+            continue
+
+        existing = lookup.get(identifier, {})
+        title = normalize_whitespace(existing.get("title", "")) if existing else ""
+        lookup[identifier] = {
+            "course": course,
+            "title": title or "course-home",
+        }
 
 
 def determine_course_name(
@@ -720,7 +742,7 @@ def infer_course_name(page: dict[str, Any], soup: BeautifulSoup) -> str:
     course_links = soup.select("a[href*='/course/view.php?id=']")
     for link in course_links[:5]:
         course_name = normalize_course_name(link.get_text(" ", strip=True))
-        if course_name:
+        if course_name and course_name.lower() not in GENERIC_COURSE_NAMES:
             return course_name
 
     return ""
@@ -831,6 +853,11 @@ def render_markdown(manifest: list[dict[str, Any]]) -> str:
 
 def normalize_course_name(name: str) -> str:
     value = normalize_whitespace(name)
+    value = re.sub(
+        r"\s*\([A-Z]{1,8}[A-Z0-9._() -]*_20\d{2}_\d[A-Z0-9._() -]*\)\s*$",
+        "",
+        value,
+    ).strip()
     if not value or any(keyword in value for keyword in IGNORED_COURSE_NAMES):
         return ""
     return value

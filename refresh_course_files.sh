@@ -137,6 +137,10 @@ FILE_FETCH_ALWAYS_PATTERNS=(
   "/mod/courseboard/view\\.php"
   "/index\\.php\\?id="
 )
+FILE_SEED_INDEX_ALWAYS_PATTERNS=(
+  "/mod/assign/index\\.php"
+  "/mod/resource/index\\.php"
+)
 if is_truthy "$FILE_MINIMAL_EXPLORATION_ENABLED"; then
   FILE_FETCH_ALWAYS_PATTERNS=("/mod/courseboard/view\\.php")
 fi
@@ -283,7 +287,7 @@ EOF
 	      fallback_added=1
 	    fi
 	  done
-	  if (( fallback_added )); then
+	  if (( fallback_added )) && [[ "$context" != "files-seed-pages" ]]; then
 	    argv+=("--reuse-fallback-always-fetch")
 	  fi
 
@@ -594,26 +598,17 @@ python3 "$KLMS_PYTHON_DIR/klms_sync.py" list-supplemental-urls \
 COURSE_CHANGED_COUNT="$(summary_changed_count "$FILE_COURSE_FETCH_SUMMARY_JSON")"
 ALL_WEEK_COURSE_CHANGED_COUNT="$(summary_changed_count "$FILE_ALL_WEEK_COURSE_FETCH_SUMMARY_JSON")"
 FILE_SEED_EFFECTIVE_STALE_SECONDS="$FILE_SEED_STALE_SECONDS"
-if [[ -s "$FILE_SEED_PAGES_JSON" && "$COURSE_CHANGED_COUNT" == "0" && "$ALL_WEEK_COURSE_CHANGED_COUNT" == "0" ]]; then
-  FILE_SEED_EFFECTIVE_STALE_SECONDS=0
-  log_files_timing "seed stale check skipped reason=course-pages-unchanged"
-fi
 
 FILE_SEED_FETCH_ALWAYS_PATTERNS=("${FILE_FETCH_ALWAYS_PATTERNS[@]}")
 FILE_NESTED_FETCH_ALWAYS_PATTERNS=("${FILE_FETCH_ALWAYS_PATTERNS[@]}")
 FILE_NESTED2_FETCH_ALWAYS_PATTERNS=("${FILE_FETCH_ALWAYS_PATTERNS[@]}")
 if is_truthy "$FILE_MINIMAL_EXPLORATION_ENABLED" && is_truthy "$FILE_PRIMARY_BOARD_ALWAYS_FETCH_ONLY"; then
-  FILE_SEED_FETCH_ALWAYS_PATTERNS=("${(@f)$(build_exact_courseboard_patterns "$FILE_PRIMARY_SUPPLEMENTAL_URLS_TXT")}")
+  FILE_SEED_FETCH_ALWAYS_PATTERNS=(
+    "${(@f)$(build_exact_courseboard_patterns "$FILE_PRIMARY_SUPPLEMENTAL_URLS_TXT")}"
+    "${FILE_SEED_INDEX_ALWAYS_PATTERNS[@]}"
+  )
   FILE_NESTED_FETCH_ALWAYS_PATTERNS=()
   FILE_NESTED2_FETCH_ALWAYS_PATTERNS=()
-fi
-if [[ "$COURSE_CHANGED_COUNT" == "0" && "$ALL_WEEK_COURSE_CHANGED_COUNT" == "0" ]] \
-  && shared_pages_fresh "$SHARED_SUPPLEMENTAL_PRIMARY_PAGES_JSON"; then
-  FILE_SEED_FETCH_ALWAYS_PATTERNS=()
-  log_files_timing "seed always-fetch skipped reason=shared-supplemental-primary-fresh"
-elif [[ "$COURSE_CHANGED_COUNT" == "0" && "$ALL_WEEK_COURSE_CHANGED_COUNT" == "0" ]]; then
-  shared_primary_mtime="$(/usr/bin/stat -f %m "$SHARED_SUPPLEMENTAL_PRIMARY_PAGES_JSON" 2>/dev/null || print 0)"
-  log_files_timing "seed always-fetch retained reason=shared-supplemental-primary-not-fresh run_started=${KLMS_RUN_STARTED_EPOCH:-missing} shared_primary_mtime=$shared_primary_mtime"
 fi
 
 python3 "$KLMS_PYTHON_DIR/klms_sync.py" list-file-seed-urls --course-pages-json "$ALL_WEEK_COURSE_PAGES_JSON" > "$FILE_SEED_URLS_TXT"
@@ -666,10 +661,6 @@ if [[ -z "$FILE_NESTED_DYNAMIC_QUICK_LIMIT" || "$FILE_NESTED_DYNAMIC_QUICK_LIMIT
 fi
 SEED_CHANGED_COUNT="$(summary_changed_count "$FILE_SEED_FETCH_SUMMARY_JSON")"
 FILE_NESTED_EFFECTIVE_STALE_SECONDS="$FILE_NESTED_STALE_SECONDS"
-if [[ -s "$FILE_NESTED_PAGES_JSON" && "$SEED_CHANGED_COUNT" == "0" ]]; then
-  FILE_NESTED_EFFECTIVE_STALE_SECONDS=0
-  log_files_timing "nested stale check skipped reason=seed-pages-unchanged"
-fi
 run_fetch_backend \
   "files-nested-pages" \
   "$FILE_NESTED_PAGES_JSON" \
@@ -720,10 +711,6 @@ if [[ -z "$FILE_NESTED2_DYNAMIC_QUICK_LIMIT" || "$FILE_NESTED2_DYNAMIC_QUICK_LIM
 fi
 NESTED_CHANGED_COUNT="$(summary_changed_count "$FILE_NESTED_FETCH_SUMMARY_JSON")"
 FILE_NESTED2_EFFECTIVE_STALE_SECONDS="$FILE_NESTED2_STALE_SECONDS"
-if [[ -s "$FILE_NESTED2_PAGES_JSON" && "$NESTED_CHANGED_COUNT" == "0" ]]; then
-  FILE_NESTED2_EFFECTIVE_STALE_SECONDS=0
-  log_files_timing "nested round2 stale check skipped reason=nested-pages-unchanged"
-fi
 run_fetch_backend \
   "files-nested-round2-pages" \
   "$FILE_NESTED2_PAGES_JSON" \

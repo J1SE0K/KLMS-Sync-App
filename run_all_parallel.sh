@@ -1,6 +1,7 @@
 #!/bin/zsh
 
 set -euo pipefail
+unsetopt bg_nice
 
 COMMON_SH="$(cd "$(dirname "$0")" && pwd)/src/sh/klms_common.sh"
 source "$COMMON_SH"

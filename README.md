@@ -117,7 +117,18 @@ cd klms-notes-sync
 기본값은 `SYNC_MINIMAL_EXPLORATION_ENABLED=1`, `FILE_MINIMAL_EXPLORATION_ENABLED=1`이고, 이 상태에서는 background probe를 거의 하지 않고 `새 URL`, `stale URL`, 꼭 다시 확인해야 하는 일부 URL만 Safari로 다시 읽는다. 추가로 `FETCH_AUTO_FULL_MIN_COVERAGE=0.2`, `FETCH_AUTO_REQUIRE_LAST_FULL=0`, `FETCH_AUTO_FULL_ON_TTL_EXPIRE=0` 기본값을 써서, 캐시가 조금만 있어도 `auto`가 쉽게 `full`로 되돌아가지 않게 맞춰 두었다. 넓은 재탐색이 필요하면 `full`을 수동으로 돌리는 쪽이 기본 전략이다.
 세 entrypoint는 실행 전에 공통 로그인 preflight를 거친다. 먼저 Safari의 현재 KLMS 탭을 빠르게 확인해서 로그인 페이지가 이미 떠 있으면 즉시 실패하고, 그게 아니면 이전 dashboard 캐시를 버린 뒤 새 dashboard fetch로 최종 확인한다. 직접 실행하는 entrypoint에서 로그인 실패가 감지되면 기본값으로 Safari의 기존 KLMS/portal 탭을 로그인 URL로 돌리고, 해당 탭이 없을 때만 새 탭을 만든다. 필요 없으면 `KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE=0`으로 끌 수 있다. 로그인 성공 상태는 다음 실행을 통과시키는 캐시로 쓰지 않는다. `run_all.sh`, `run_all_full.sh`, `run_all_parallel.sh`의 하위 작업만 같은 실행에서 방금 확인한 dashboard를 넘겨받아 다시 검사한다. 이 fast-fail은 `KLMS_LOGIN_FAST_TAB_CHECK_ENABLED=1`로 켜진다.
 
-`KAIKEY_AUTO_LOGIN_ENABLED=1`이면 로그인 실패 시 Kaikey의 KAIST push authenticator 프로토콜을 로컬 CLI로 실행해서 Safari SSO 페이지를 자동 진행한다. 확장 프로그램을 로드하지 않고, 등록된 기기키로 `auth/check`를 확인한 뒤 Safari 2FA 화면에 실제로 표시된 2자리 숫자와 서버 challenge에서 파생한 숫자가 같을 때만 `auth` 승인을 보낸다. 처음 한 번은 KAIST 2FA 등록 페이지의 QR 스크린샷으로 로컬 기기를 등록해야 한다.
+`KAIKEY_LOGIN_ASSIST_ENABLED=1`이면 터미널에서 직접 실행할 때 로그인 실패 시 Safari SSO 페이지를 자동으로 진행한다. `KAIKEY_AUTO_APPROVE_ENABLED=0`이면 2FA 화면에 표시된 값을 터미널에 `KAIST 인증 번호: NN` 형태로 보여주고, 휴대폰 인증 화면에서 같은 번호를 선택할 때까지 기다린다. `KAIKEY_AUTO_APPROVE_ENABLED=1`이면 등록된 기기키로 `auth/check`를 확인한 뒤 Safari 2FA 화면에 실제로 표시된 2자리 숫자와 서버 challenge에서 파생한 숫자가 같을 때만 `auth` 승인을 보낸다.
+
+수동 승인만 쓸 때는 아래 설정을 둔다.
+
+```sh
+KAIKEY_LOGIN_ASSIST_ENABLED="1"
+KAIKEY_AUTO_LOGIN_ENABLED="0"
+KAIKEY_AUTO_APPROVE_ENABLED="0"
+KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS="300"
+```
+
+이 설정에서는 LaunchAgent 같은 비대화 자동 동기화가 로그인 보조를 실행하지 않고 기존 로그인 알림 경로로 빠진다. SSO 로그인 ID는 `KLMS_SSO_LOGIN_ID` 또는 `KAIST_SSO_LOGIN_ID`로 지정할 수 있다. 이 값이 없으면 기존 Kaikey state 파일의 identity를 재사용한다. Mac 자동 승인을 쓰려면 처음 한 번은 KAIST 2FA 등록 페이지의 QR 스크린샷으로 로컬 기기를 등록해야 한다.
 
 ```sh
 cd klms-notes-sync
@@ -135,7 +146,7 @@ node ./src/js/kaikey_cli.mjs status
 KAIST MFA가 등록 기기 1개만 허용하는 경우에는 휴대폰 PASSNI와 Mac Kaikey를 동시에 등록 기기로 유지할 수 없다. 이때는 아래 둘 중 하나를 선택해야 한다.
 
 1. `Mac 자동 인증기 우선`: Mac을 유일한 등록 기기로 두고 KLMS 자동 동기화를 완전 자동화한다. iPhone에서 KAIST 로그인이 필요할 때는 iOS Shortcuts의 `Run Script over SSH`로 Mac의 승인 명령만 실행한다.
-2. `휴대폰 PASSNI 우선`: 휴대폰 PASSNI를 유일한 등록 기기로 유지한다. 이 경우 Mac의 Kaikey 자동 승인은 쓰지 않고, KLMS 동기화는 Safari 세션 재사용과 로그인 만료 알림까지만 담당한다.
+2. `휴대폰 PASSNI 우선`: 휴대폰 PASSNI를 유일한 등록 기기로 유지한다. 이 경우 `KAIKEY_LOGIN_ASSIST_ENABLED=1`, `KAIKEY_AUTO_APPROVE_ENABLED=0`으로 두고, 직접 동기화할 때 Safari SSO 2자리 번호를 터미널에서 확인한 뒤 휴대폰에서 승인한다.
 
 첫 번째 방식을 고르면 iPhone 로그인 화면에 표시된 2자리 숫자를 Shortcut에서 입력받아 아래 명령으로 넘긴다.
 
@@ -232,7 +243,7 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 - `~/Downloads/KLMS Files`의 추적 파일을 전부 정리하고 `course_files` 정리본만 남기고 싶으면 `FILE_KEEP_FRESH_DOWNLOADS=0`을 설정한다.
 - `FILE_REFRESH_MODE=quick` 또는 `auto`를 쓰면 seed/nested HTML 수집도 증분 캐시를 사용한다.
 - 기본값인 `FILE_MINIMAL_EXPLORATION_ENABLED=1`에서는 `FILE_*_QUICK_LIMIT`와 background probe가 거의 `0`으로 잡혀서, 새로 발견된 URL이나 stale URL이 아니면 Safari 재탐색을 최대한 줄인다.
-- 추가로 `FILE_PRIMARY_BOARD_ALWAYS_FETCH_ONLY=1` 기본값에서는 seed 단계의 always-fetch 대상을 전체 `courseboard/view.php`가 아니라 primary 게시판 1페이지 URL들로만 좁힌다. nested page2/page3는 기본적으로 stale/new일 때만 다시 읽는다.
+- 추가로 `FILE_PRIMARY_BOARD_ALWAYS_FETCH_ONLY=1` 기본값에서는 seed 단계의 always-fetch 대상을 primary 게시판 1페이지와 `assign/resource` index 페이지로 좁힌다. nested page2/page3는 기본적으로 stale/new일 때만 다시 읽는다.
 - linked HTML index는 source page fingerprint를 같이 저장해서, fetch summary가 비어 있거나 넓게 잡혀도 HTML 본문이 안 바뀐 source page는 다시 파싱하지 않는다.
 - nested HTML은 새로 발견된 URL을 우선 다시 읽고, 필요하면 `FILE_NESTED_BACKGROUND_QUICK_LIMIT`, `FILE_NESTED2_BACKGROUND_QUICK_LIMIT`를 올려 기존 URL background probe를 다시 늘릴 수 있다.
 - 로그인 만료로 dashboard가 SSO 페이지를 돌려주면 file refresh는 바로 중단된다.
@@ -266,7 +277,7 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 - 리마인더 알림 확인은 매번 실행하고, 실제 KLMS 재수집/동기화는 아래 조건을 모두 만족할 때만 수행한다.
 - 마지막 실제 시도 후 `6시간` 이상 지났을 것 (`SYNC_INTERVAL_SECONDS=21600`)
 - 사용자가 최소 `10분` 이상 입력이 없을 것 (`MIN_IDLE_SECONDS=600`)
-- 로그인 세션이 풀리면 macOS 알림으로 `KLMS 다시 로그인` 요청을 띄우고, 사용자가 직접 Safari에서 로그인과 OTP 승인을 진행하게 둔다.
+- 로그인 세션이 풀리면 macOS 알림으로 `KLMS 다시 로그인` 요청을 띄우고, 사용자가 직접 Safari에서 로그인과 OTP 승인을 진행하게 둔다. `KAIKEY_AUTO_APPROVE_ENABLED=0`인 경우 LaunchAgent는 터미널에 보이지 않는 로그인 보조를 실행하지 않는다.
 - 필요하면 `LOGIN_PROMPT_OPEN_SAFARI=1`로 바꿔 로그인 안내 때 Safari 로그인 페이지를 자동으로 열 수 있다.
 - 같은 로그인 만료 상태에서 창과 알림이 계속 쌓이지 않도록 `LOGIN_PROMPT_COOLDOWN_SECONDS` 동안은 재알림을 억제한다.
 - 로그인 오류가 나면 다음 15분 주기에서 다시 빨리 재시도해서, 사용자가 OTP 승인을 마친 뒤 오래 기다리지 않게 했다.
