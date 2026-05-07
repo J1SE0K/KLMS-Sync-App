@@ -37,9 +37,22 @@ klms_init_context() {
   KLMS_SWIFT_DIR="$KLMS_SRC_DIR/swift"
   CONFIG_PATH="${config_path:-$SCRIPT_DIR/config.env}"
 
+  local env_sync_mode_set="${+SYNC_MODE}"
+  local env_sync_mode="${SYNC_MODE:-}"
+  local env_file_refresh_mode_set="${+FILE_REFRESH_MODE}"
+  local env_file_refresh_mode="${FILE_REFRESH_MODE:-}"
+  local env_file_force_download_set="${+FILE_FORCE_DOWNLOAD}"
+  local env_file_force_download="${FILE_FORCE_DOWNLOAD:-}"
+  local env_file_keep_fresh_downloads_set="${+FILE_KEEP_FRESH_DOWNLOADS}"
+  local env_file_keep_fresh_downloads="${FILE_KEEP_FRESH_DOWNLOADS:-}"
+
   if [[ -f "$CONFIG_PATH" ]]; then
     source "$CONFIG_PATH"
   fi
+  (( env_sync_mode_set )) && SYNC_MODE="$env_sync_mode"
+  (( env_file_refresh_mode_set )) && FILE_REFRESH_MODE="$env_file_refresh_mode"
+  (( env_file_force_download_set )) && FILE_FORCE_DOWNLOAD="$env_file_force_download"
+  (( env_file_keep_fresh_downloads_set )) && FILE_KEEP_FRESH_DOWNLOADS="$env_file_keep_fresh_downloads"
 
   runtime_namespace="${KLMS_RUNTIME_NAMESPACE:-$(klms_default_runtime_namespace "$entry_path")}"
 
@@ -254,16 +267,20 @@ klms_open_login_page_if_enabled() {
 }
 
 klms_try_kaikey_auto_login() {
-  [[ "${KAIKEY_AUTO_LOGIN_ENABLED:-0}" == "1" ]] || return 1
+  local login_assist_enabled="${KAIKEY_LOGIN_ASSIST_ENABLED:-${KAIKEY_AUTO_LOGIN_ENABLED:-0}}"
+  [[ "$login_assist_enabled" == "1" ]] || return 1
   [[ -f "$SCRIPT_DIR/kaikey_auto_login.sh" ]] || return 1
-
-  local output
-  output="$(/bin/zsh "$SCRIPT_DIR/kaikey_auto_login.sh" "$CONFIG_PATH" 2>&1)" || {
-    [[ -n "$output" ]] && print -r -- "Kaikey 자동 로그인 실패: $output" >&2
+  if [[ "${KAIKEY_AUTO_APPROVE_ENABLED:-1}" != "1" && "${KAIKEY_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}" != "1" && ! -t 1 ]]; then
     return 1
-  }
-  print -r -- "Kaikey 자동 로그인 완료: $output" >&2
-  return 0
+  fi
+
+  if /bin/zsh "$SCRIPT_DIR/kaikey_auto_login.sh" "$CONFIG_PATH"; then
+    print -r -- "KLMS 로그인 보조 완료" >&2
+    return 0
+  else
+    print -r -- "KLMS 로그인 보조 실패" >&2
+    return 1
+  fi
 }
 
 klms_fast_tab_login_state() {

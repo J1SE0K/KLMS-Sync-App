@@ -1260,7 +1260,6 @@ function runStandaloneNoticeSummary(
       staleSeconds: paths.supplementalStaleSeconds,
       alwaysFetchPatterns: paths.supplementalAlwaysFetchPatterns,
       fallbackPagePaths: paths.supplementalPrimaryFallbackPagePaths || [],
-      reuseFallbackAlwaysFetch: true,
     });
     assertNoLoginPages(
       "공지 정리를 위해 공지 게시판을 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",

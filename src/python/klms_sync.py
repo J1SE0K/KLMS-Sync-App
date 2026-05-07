@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
 from klms_transport import page_fingerprint
@@ -2014,7 +2014,7 @@ def collect_linked_html_urls(
             continue
         soup = BeautifulSoup(html, "html.parser")
         for link in iter_main_content_links(soup):
-            url = canonicalize_crawl_url(link.get("href", ""))
+            url = canonicalize_crawl_url(resolve_page_link_url(current_url, link.get("href", "")))
             if not url or url == current_url:
                 continue
             if "/course/view.php?id=" in url.lower():
@@ -4388,6 +4388,13 @@ def normalize_url(url: str) -> str:
     if url.startswith("/"):
         return f"https://klms.kaist.ac.kr{url}"
     return url
+
+
+def resolve_page_link_url(base_url: str, href: str) -> str:
+    normalized = normalize_url(href)
+    if normalized.startswith("http://") or normalized.startswith("https://"):
+        return normalized
+    return normalize_url(urljoin(base_url, href))
 
 
 def url_query_id(url: str) -> str:
