@@ -100,6 +100,10 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
             support,
         )
         self.assertIn("새 글/수정 글은 새로운 공지에", support)
+        self.assertIn(
+            '\\"읽음\\"만 체크한 공지는 다음 동기화 때 이 메모에 표시됩니다.',
+            support,
+        )
 
     def test_notice_render_assigns_readability_font_hierarchy(self) -> None:
         support = (
@@ -162,18 +166,14 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn("(?=#{1,6}\\s+)", renderer)
         self.assertIn('"  위치: \\(displayPath)"', renderer)
 
-    def test_notice_header_includes_check_guidance(self) -> None:
+    def test_notice_header_does_not_dump_all_check_guidance(self) -> None:
         renderer = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("func appendNoticeGuidanceBlock", renderer)
-        self.assertIn('appendLine("체크 안내"', renderer)
-        self.assertIn("appendLine(noticeReadGuidanceLine", renderer)
-        self.assertIn("appendLine(noticeImportantGuidanceLine", renderer)
-        self.assertIn("appendLine(noticeFreshGuidanceLine", renderer)
-        self.assertIn("appendNoticeGuidanceBlock(includeFreshGuidance: true)", renderer)
-        self.assertIn("appendNoticeGuidanceBlock(includeFreshGuidance: false)", renderer)
+        self.assertNotIn("func appendNoticeGuidanceBlock", renderer)
+        self.assertNotIn('appendLine("체크 안내"', renderer)
+        self.assertNotIn("appendNoticeGuidanceBlock(includeFreshGuidance:", renderer)
 
     def test_notice_style_version_is_shared_between_swift_and_js(self) -> None:
         support = (
