@@ -15,6 +15,7 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("downloadLogFilenameReuseAllowed", text)
         self.assertIn("filenameCompatibleWithExpected", text)
         self.assertIn("freshDownloadFilenameMatchesExpected", text)
+        self.assertIn('expectedFamily === "presentation"', text)
         self.assertIn("fetchedPayloadCompatibleWithExpected", text)
         self.assertIn("text/html", text)
         self.assertIn("Downloaded filename does not match expected file type", text)
