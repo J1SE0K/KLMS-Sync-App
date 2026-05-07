@@ -109,7 +109,7 @@ class CourseFileManifestTests(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    def test_file_scan_resolves_relative_resource_links(self) -> None:
+    def test_file_scan_skips_direct_resource_binary_pages(self) -> None:
         page = {
             "requestedUrl": "https://klms.kaist.ac.kr/mod/resource/index.php?id=100001",
             "title": "EX.100_2026_1: 파일",
@@ -124,9 +124,33 @@ class CourseFileManifestTests(unittest.TestCase):
 
         urls = klms_sync.collect_linked_html_urls([page], file_scan_only=True)
 
+        self.assertEqual(urls, [])
+
+    def test_file_seed_keeps_resource_index_and_skips_direct_resource_views(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=100001&section=0",
+            "title": "강좌: Example Course",
+            "html": """
+            <html><body>
+              <div role="main">
+                <a href="https://klms.kaist.ac.kr/mod/resource/index.php?id=100001">강의 자료</a>
+                <ul>
+                  <li class="activity resource modtype_resource">
+                    <div class="activityinstance">
+                      <a href="https://klms.kaist.ac.kr/mod/resource/view.php?id=200001">Week 1 Notes</a>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </body></html>
+            """,
+        }
+
+        urls = klms_sync.collect_file_seed_urls([page])
+
         self.assertEqual(
             urls,
-            ["https://klms.kaist.ac.kr/mod/resource/view.php?id=200001"],
+            ["https://klms.kaist.ac.kr/mod/resource/index.php?id=100001"],
         )
 
 

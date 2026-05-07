@@ -4438,6 +4438,8 @@ def is_same_klms_url(url: str) -> bool:
 
 def is_crawlable_klms_page_url(url: str) -> bool:
     lowered = normalize_url(url).lower()
+    if is_direct_resource_view_url(lowered):
+        return False
     if not is_same_klms_url(lowered) or is_document_url(lowered) or is_assignment_submission_file_url(lowered):
         return False
     if "/course/view.php?id=" in lowered:
@@ -4475,6 +4477,11 @@ def should_follow_supplemental_detail_link(current_url: str, current_module: str
 def is_assignment_submission_file_url(url: str) -> bool:
     lowered = url.lower()
     return "/assignsubmission_" in lowered or "/submission_files/" in lowered
+
+
+def is_direct_resource_view_url(url: str) -> bool:
+    lowered = url.lower()
+    return "/mod/resource/view.php" in lowered
 
 
 def is_document_url(url: str) -> bool:
