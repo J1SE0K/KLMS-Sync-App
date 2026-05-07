@@ -1170,7 +1170,13 @@ function freshDownloadFilenameMatchesExpected(filename, expectedFilename) {
   if (!expected) {
     return true;
   }
-  return isCandidateFilename(actual, expected);
+  if (isCandidateFilename(actual, expected)) {
+    return true;
+  }
+
+  const expectedFamily = extensionFamily(fileExtension(expected));
+  const actualFamily = extensionFamily(fileExtension(actual));
+  return expectedFamily === "presentation" && actualFamily === "presentation";
 }
 
 function retryInlineResourceDownload(
