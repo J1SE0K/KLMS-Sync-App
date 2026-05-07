@@ -2812,6 +2812,12 @@ func syncUserStateFromRenderedNote(
         }
     }
 
+    if let expectedPlaintextHash = previousRenderState.plaintextHash,
+       plaintextHash(for: currentText) != expectedPlaintextHash {
+        debugLog("Skipping capture because rendered note plaintext no longer matches render state: \(noteTitle)")
+        return
+    }
+
     debugLog("current-text-prefix=\(oneLine(String(currentText.prefix(240))))")
     let renderedTitles = previousRenderState.renderedNotices.map { rendered in
         let resolvedRenderedTitle = oneLine(rendered.renderedTitle ?? "")
@@ -2855,12 +2861,14 @@ func syncUserStateFromRenderedNote(
 
         if let readChecked = readEntry?.isChecked {
             debugLog("notice=\(rendered.title) readChecked=\(readChecked)")
-            if readChecked {
+            if displayMode == .primary && readChecked {
                 state.readFingerprint = rendered.fingerprint
                 state.readAt = timestamp
-            } else if state.readFingerprint == rendered.fingerprint {
+            } else if !readChecked && state.readFingerprint == rendered.fingerprint {
                 state.readFingerprint = nil
                 state.readAt = nil
+            } else if displayMode == .archive && readChecked {
+                debugLog("notice=\(rendered.title) ignoring archive read=true capture")
             }
         } else {
             debugLog("notice=\(rendered.title) readChecked=nil")
@@ -3263,52 +3271,6 @@ func buildRenderPlan(
     return PlanBuildResult(plan: plan, currentNoticeIds: currentNoticeIds)
 }
 
-func digestHasFreshNotices(_ digest: NoticeDigest) -> Bool {
-    digest.courses.contains { course in
-        course.notices.contains { notice in
-            let changeState = notice.changeState ?? .stable
-            return changeState == .new || changeState == .updated
-        }
-    }
-}
-
-@discardableResult
-func markStableDigestNoticesRead(
-    digest: NoticeDigest,
-    userState: inout NoticeUserStateFile
-) -> Int {
-    var changedCount = 0
-    for courseDigest in digest.courses {
-        for notice in courseDigest.notices {
-            let changeState = notice.changeState ?? .stable
-            guard changeState == .stable else {
-                continue
-            }
-            let fingerprint = String(notice.fingerprint ?? "")
-            guard !fingerprint.isEmpty else {
-                continue
-            }
-            let noticeId = noticeIdentifier(course: courseDigest.course, notice: notice)
-            var state = userState.notices[noticeId] ?? NoticeInteractionState()
-            state.title = notice.title
-            state.course = courseDigest.course
-            state.url = notice.url
-            state.fingerprint = fingerprint
-            state.updatedAt = digest.generatedAt
-            if state.readFingerprint != fingerprint {
-                state.readFingerprint = fingerprint
-                state.readAt = state.readAt ?? digest.generatedAt
-                changedCount += 1
-            }
-            userState.notices[noticeId] = state
-        }
-    }
-    if changedCount > 0 {
-        userState.updatedAt = digest.generatedAt
-    }
-    return changedCount
-}
-
 func renderBodyLines(
     context: NotesEditorContext,
     noteTitle: String,
@@ -3481,54 +3443,61 @@ func renderNativeNoteOnce(
         boldValidationTargets.append(StyleValidationTarget(label: label, range: range))
     }
 
-    timingLog("style_apply_start note=\(noteTitle)")
-    applyStyle(
-        lineRange(plan.titleLineIndex, fallback: plan.titleRange),
-        menuItems: ["제목", "Title"],
-        fallbackToBold: true
-    )
+    if shouldSkipBulkStyleFormatting(plan: plan) {
+        timingLog(
+            "style_apply_skip note=\(noteTitle) notices=\(plan.renderedNotices.count) "
+                + "lines=\(plan.bodyLines.count)"
+        )
+    } else {
+        timingLog("style_apply_start note=\(noteTitle)")
+        applyStyle(
+            lineRange(plan.titleLineIndex, fallback: plan.titleRange),
+            menuItems: ["제목", "Title"],
+            fallbackToBold: true
+        )
 
-    let summaryRange = lineRange(plan.summaryLineIndex, fallback: plan.summaryRange)
-    applyBold(summaryRange)
-    rememberBoldTarget("summary", summaryRange)
+        let summaryRange = lineRange(plan.summaryLineIndex, fallback: plan.summaryRange)
+        applyBold(summaryRange)
+        rememberBoldTarget("summary", summaryRange)
 
-    for (offset, index) in plan.importantHeadingLineIndexes.enumerated() {
-        let heading = lineRange(index, fallback: plan.importantHeadingRanges[offset])
-        applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+        for (offset, index) in plan.importantHeadingLineIndexes.enumerated() {
+            let heading = lineRange(index, fallback: plan.importantHeadingRanges[offset])
+            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+        }
+
+        for (offset, index) in plan.freshHeadingLineIndexes.enumerated() {
+            let heading = lineRange(index, fallback: plan.freshHeadingRanges[offset])
+            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+        }
+
+        for (offset, index) in plan.unreadHeadingLineIndexes.enumerated() {
+            let heading = lineRange(index, fallback: plan.unreadHeadingRanges[offset])
+            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+        }
+
+        for (offset, index) in plan.courseHeadingLineIndexes.enumerated() {
+            let fallback = plan.courseHeadingRanges[offset]
+            applyStyle(lineRange(index, fallback: fallback), menuItems: ["머리말", "Heading"], fallbackToBold: true)
+        }
+
+        for notice in plan.renderedNotices {
+            let titleRange = lineRange(notice.sectionLineIndex, fallback: notice.sectionRange)
+            applyStyle(titleRange, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
+        }
+
+        for (offset, index) in plan.noticeMetaLineIndexes.enumerated() {
+            let meta = lineRange(index, fallback: plan.noticeMetaRanges[offset])
+            applyBold(meta)
+            rememberBoldTarget("notice metadata \(offset + 1)", meta)
+        }
+
+        for (offset, index) in plan.attachmentHeadingLineIndexes.enumerated() {
+            let attachmentHeading = lineRange(index, fallback: plan.attachmentHeadingRanges[offset])
+            applyBold(attachmentHeading)
+            rememberBoldTarget("attachment heading \(offset + 1)", attachmentHeading)
+        }
+        timingLog("style_apply_finish note=\(noteTitle) bold_targets=\(boldValidationTargets.count)")
     }
-
-    for (offset, index) in plan.freshHeadingLineIndexes.enumerated() {
-        let heading = lineRange(index, fallback: plan.freshHeadingRanges[offset])
-        applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
-    }
-
-    for (offset, index) in plan.unreadHeadingLineIndexes.enumerated() {
-        let heading = lineRange(index, fallback: plan.unreadHeadingRanges[offset])
-        applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
-    }
-
-    for (offset, index) in plan.courseHeadingLineIndexes.enumerated() {
-        let fallback = plan.courseHeadingRanges[offset]
-        applyStyle(lineRange(index, fallback: fallback), menuItems: ["머리말", "Heading"], fallbackToBold: true)
-    }
-
-    for notice in plan.renderedNotices {
-        let titleRange = lineRange(notice.sectionLineIndex, fallback: notice.sectionRange)
-        applyStyle(titleRange, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
-    }
-
-    for (offset, index) in plan.noticeMetaLineIndexes.enumerated() {
-        let meta = lineRange(index, fallback: plan.noticeMetaRanges[offset])
-        applyBold(meta)
-        rememberBoldTarget("notice metadata \(offset + 1)", meta)
-    }
-
-    for (offset, index) in plan.attachmentHeadingLineIndexes.enumerated() {
-        let attachmentHeading = lineRange(index, fallback: plan.attachmentHeadingRanges[offset])
-        applyBold(attachmentHeading)
-        rememberBoldTarget("attachment heading \(offset + 1)", attachmentHeading)
-    }
-    timingLog("style_apply_finish note=\(noteTitle) bold_targets=\(boldValidationTargets.count)")
 
     var currentText = loadCaptureText(
         textArea: context.textArea,
@@ -3726,6 +3695,13 @@ func renderPlaintext(for plan: RenderPlan) -> String {
     plan.bodyLines.map(\.text).joined(separator: "\n")
 }
 
+func shouldSkipBulkStyleFormatting(plan: RenderPlan) -> Bool {
+    let thresholdText =
+        ProcessInfo.processInfo.environment["NOTICE_NATIVE_BULK_STYLE_NOTICE_THRESHOLD"] ?? "40"
+    let threshold = Int(thresholdText) ?? 40
+    return threshold > 0 && plan.renderedNotices.count >= threshold
+}
+
 func normalizedPlaintextForHash(_ text: String) -> String {
     canonicalText(text)
         .replacingOccurrences(of: "\r\n", with: "\n")
@@ -3846,42 +3822,31 @@ enum NoticeNativeNoteMain {
         )
         let primaryNoteID = arguments.noteID ?? previousRenderState?.noteID
         let archiveNoteID = arguments.archiveNoteID ?? previousArchiveRenderState?.noteID
-        let stableAutoreadCount = markStableDigestNoticesRead(
-            digest: digest,
-            userState: &userState
-        )
-        let skipStableOnlyCapture =
-            !digestHasFreshNotices(digest)
-            && ProcessInfo.processInfo.environment["NOTICE_CAPTURE_STABLE_WITH_UI"] != "1"
 
         if arguments.mode != "render" {
-            if skipStableOnlyCapture {
-                timingLog("skip native capture stable_only=1 autoread=\(stableAutoreadCount)")
-            } else {
-                if arguments.target != "archive" {
-                    captureRenderedNoticeState(
-                        noteTitle: arguments.noteTitle,
-                        noteID: primaryNoteID,
-                        displayMode: .primary,
-                        previousRenderState: previousRenderState,
-                        userState: &userState,
-                        timestamp: digest.generatedAt,
-                        skipActivation: arguments.skipNoteActivation,
-                        notesPID: arguments.notesPID
-                    )
-                }
-                if arguments.target != "primary" {
-                    captureRenderedNoticeState(
-                        noteTitle: arguments.archiveNoteTitle,
-                        noteID: archiveNoteID,
-                        displayMode: .archive,
-                        previousRenderState: previousArchiveRenderState,
-                        userState: &userState,
-                        timestamp: digest.generatedAt,
-                        skipActivation: arguments.skipNoteActivation,
-                        notesPID: arguments.notesPID
-                    )
-                }
+            if arguments.target != "archive" {
+                captureRenderedNoticeState(
+                    noteTitle: arguments.noteTitle,
+                    noteID: primaryNoteID,
+                    displayMode: .primary,
+                    previousRenderState: previousRenderState,
+                    userState: &userState,
+                    timestamp: digest.generatedAt,
+                    skipActivation: arguments.skipNoteActivation,
+                    notesPID: arguments.notesPID
+                )
+            }
+            if arguments.target != "primary" {
+                captureRenderedNoticeState(
+                    noteTitle: arguments.archiveNoteTitle,
+                    noteID: archiveNoteID,
+                    displayMode: .archive,
+                    previousRenderState: previousArchiveRenderState,
+                    userState: &userState,
+                    timestamp: digest.generatedAt,
+                    skipActivation: arguments.skipNoteActivation,
+                    notesPID: arguments.notesPID
+                )
             }
             writeJSON(userState, path: arguments.noticeStatePath)
 
@@ -3901,8 +3866,7 @@ enum NoticeNativeNoteMain {
                 print(
                     "Captured native notice note state: \(capturedNoteTitle) "
                         + "read=\(readCount) important=\(importantCount)"
-                        + " autoread=\(stableAutoreadCount)"
-                        + " ui_capture=\(skipStableOnlyCapture ? 0 : 1)"
+                        + " ui_capture=1"
                 )
                 exit(0)
             }

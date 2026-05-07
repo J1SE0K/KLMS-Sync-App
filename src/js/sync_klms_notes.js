@@ -1478,14 +1478,18 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
         stageTelemetry
       )
   );
-  if ((renderResult.renderWarnings || []).length > 0) {
-    writeText(paths.noticeNoteRenderWarningTxt, renderResult.renderWarnings.join("\n\n"));
+  const renderWarningText = (renderResult.renderWarnings || []).join("\n\n");
+  if (renderWarningText) {
+    writeText(paths.noticeNoteRenderWarningTxt, renderWarningText);
   } else {
     writeText(paths.noticeNoteRenderWarningTxt, "");
   }
   if (stageTelemetry && renderResult.results) {
     stageTelemetry.noticeRenderResults = renderResult.results;
     persistStageTelemetry(stageTelemetry);
+  }
+  if (renderWarningText) {
+    throw new Error(renderWarningText);
   }
   return renderResult;
 }
@@ -1502,31 +1506,6 @@ function updateNoticeNativeNote(
   alwaysCaptureStateEnabled,
   stageTelemetry
 ) {
-  if (stableNoopSkipEnabled !== false && alwaysCaptureStateEnabled === false) {
-    const stableSkip = maybeSkipStableNoticeNativeUpdate(
-      noticeDigestJsonPath,
-      noticeUserStateJsonPath,
-      noticeRenderStateJsonPath,
-      archiveNoticeRenderStateJsonPath
-    );
-    if (stableSkip.skipped) {
-      debugStderr(String(stableSkip.output || "skip native notice notes stable-noop"));
-      return {
-        results: [
-          {
-            target: "stable-noop",
-            status: "skipped",
-            output: stableSkip.output,
-          },
-        ],
-        renderWarnings: [],
-      };
-    }
-    if (stableSkip.reason) {
-      debugStderr(`native notice stable-noop not skipped: ${stableSkip.reason}`);
-    }
-  }
-
   const commonArgs = [
     "--note-title",
     noteName,
@@ -1556,6 +1535,7 @@ function updateNoticeNativeNote(
   ];
   const results = [];
   const renderWarnings = [];
+  let captureSucceeded = false;
 
   try {
     const output = runTelemetryEvent(
@@ -1573,6 +1553,7 @@ function updateNoticeNativeNote(
       status: "ok",
       output: String(output || "").trim(),
     });
+    captureSucceeded = true;
   } catch (error) {
     const message = `Native notice note render warning (capture): ${String(error)}`;
     results.push({
@@ -1582,6 +1563,16 @@ function updateNoticeNativeNote(
     });
     renderWarnings.push(message);
     debugStderr(message);
+  }
+
+  if (!captureSucceeded) {
+    results.push({
+      target: "render",
+      status: "skipped",
+      reason: "capture-failed-preserve-user-state",
+    });
+    debugStderr("native notice render skipped: capture failed, preserving existing checklist state");
+    return { results, renderWarnings };
   }
 
   if (stableNoopSkipEnabled !== false) {
@@ -1659,10 +1650,6 @@ function maybeSkipStableNoticeNativeUpdate(
   }
 
   const userState = loadNoticeUserState(noticeUserStateJsonPath, digest);
-  const autoreadCount = markStableDigestNoticesReadInUserState(digest, userState);
-  if (autoreadCount > 0) {
-    writeText(noticeUserStateJsonPath, `${JSON.stringify(userState, null, 2)}\n`);
-  }
 
   const primaryRenderState = JSON.parse(readText(noticeRenderStateJsonPath));
   const archiveRenderState = JSON.parse(readText(archiveNoticeRenderStateJsonPath));
@@ -1678,8 +1665,7 @@ function maybeSkipStableNoticeNativeUpdate(
     skipped: true,
     output:
       `Skipped native notice notes: stable_noop=1 notice_count=${expected.total} ` +
-      `primary=${expected.primary.length} archived=${expected.archive.length} ` +
-      `autoread=${autoreadCount}`,
+      `primary=${expected.primary.length} archived=${expected.archive.length}`,
   };
 }
 
@@ -1703,40 +1689,6 @@ function noticeDigestHasFreshNotices(digest) {
       return changeState === "new" || changeState === "updated";
     })
   );
-}
-
-function markStableDigestNoticesReadInUserState(digest, userState) {
-  let changedCount = 0;
-  (digest.courses || []).forEach((course) => {
-    const courseName = String(course.course || "");
-    (course.notices || []).forEach((notice) => {
-      const changeState = String(notice.change_state || "stable");
-      if (changeState !== "stable") {
-        return;
-      }
-      const fingerprint = String(notice.fingerprint || "");
-      if (!fingerprint) {
-        return;
-      }
-      const noticeId = noticeIdentifierForDigestNotice(courseName, notice);
-      const state = userState.notices[noticeId] || {};
-      state.title = notice.title;
-      state.course = courseName;
-      state.url = notice.url;
-      state.fingerprint = fingerprint;
-      state.updated_at = digest.generated_at;
-      if (state.read_fingerprint !== fingerprint) {
-        state.read_fingerprint = fingerprint;
-        state.read_at = state.read_at || digest.generated_at;
-        changedCount += 1;
-      }
-      userState.notices[noticeId] = state;
-    });
-  });
-  if (changedCount > 0) {
-    userState.updated_at = digest.generated_at;
-  }
-  return changedCount;
 }
 
 function expectedNoticeNativeRenderState(digest, userState) {

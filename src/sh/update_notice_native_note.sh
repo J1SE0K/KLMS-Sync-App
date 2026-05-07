@@ -8,7 +8,7 @@ BUILD_DIR="/tmp/klms-notice-native-note-build"
 BIN_PATH="$BUILD_DIR/update_notice_native_note"
 MAX_ATTEMPTS="${NOTICE_NATIVE_NOTE_MAX_ATTEMPTS:-3}"
 RETRY_DELAY_SECONDS="${NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS:-1}"
-TIMEOUT_SECONDS="${NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS:-180}"
+TIMEOUT_SECONDS="${NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS:-420}"
 TIMEOUT_GRACE_SECONDS="${NOTICE_NATIVE_NOTE_TIMEOUT_GRACE_SECONDS:-3}"
 TIMING_LOG="${NOTICE_NATIVE_NOTE_TIMING_LOG:-$SCRIPT_DIR/runtime/cache/notice_native_note_timing.log}"
 DEFAULT_XCODE_SWIFTC="/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
@@ -140,6 +140,19 @@ while true; do
   fi
 
   if (( attempt >= MAX_ATTEMPTS )); then
+    if [[ "$attempt_status" -eq 124 ]]; then
+      printf 'update_notice_native_note failed: attempt %d/%d timed out after %ss\n' \
+        "$attempt" \
+        "$MAX_ATTEMPTS" \
+        "$TIMEOUT_SECONDS" \
+        >&2
+    else
+      printf 'update_notice_native_note failed: attempt %d/%d exited with %d\n' \
+        "$attempt" \
+        "$MAX_ATTEMPTS" \
+        "$attempt_status" \
+        >&2
+    fi
     exit "$attempt_status"
   fi
 
