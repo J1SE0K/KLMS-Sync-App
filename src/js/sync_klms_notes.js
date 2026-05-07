@@ -1583,13 +1583,28 @@ function updateNoticeNativeNote(
       archiveNoticeRenderStateJsonPath
     );
     if (stableSkip.skipped) {
-      debugStderr(String(stableSkip.output || "skip native notice notes stable-noop-after-capture"));
-      results.push({
-        target: "stable-noop-after-capture",
-        status: "skipped",
-        output: stableSkip.output,
-      });
-      return { results, renderWarnings };
+      try {
+        const formatOutputs = [
+          verifyNoticeNativeNoteReadableFormat(archiveNoteName, "archive", scriptDir),
+          verifyNoticeNativeNoteReadableFormat(noteName, "primary", scriptDir),
+        ];
+        const output = [stableSkip.output, ...formatOutputs].filter(Boolean).join("\n");
+        debugStderr(String(output || "skip native notice notes stable-noop-after-capture"));
+        results.push({
+          target: "stable-noop-after-capture",
+          status: "skipped",
+          output,
+        });
+        return { results, renderWarnings };
+      } catch (error) {
+        const reason = `readability-format-check-failed: ${String(error)}`;
+        results.push({
+          target: "stable-noop-after-capture",
+          status: "not-skipped",
+          reason,
+        });
+        debugStderr(`native notice stable-noop after capture not skipped: ${reason}`);
+      }
     }
     if (stableSkip.reason) {
       debugStderr(`native notice stable-noop after capture not skipped: ${stableSkip.reason}`);
@@ -1643,22 +1658,40 @@ function appleScriptStringLiteral(value) {
     .replace(/"/g, '\\"')}"`;
 }
 
-function noteBodyHTMLViaAppleScript(noteName, scriptDir) {
+function noteReadableBoldTagCountViaAppleScript(noteName, scriptDir) {
   const script = [
+    "on countOccurrences(sourceText, needle)",
+    "  set previousDelimiters to AppleScript's text item delimiters",
+    "  set AppleScript's text item delimiters to needle",
+    "  set itemCount to count of text items of sourceText",
+    "  set AppleScript's text item delimiters to previousDelimiters",
+    "  return itemCount - 1",
+    "end countOccurrences",
+    "",
+    "set htmlText to \"\"",
     'tell application "Notes"',
     "  try",
-    `    return body of note ${appleScriptStringLiteral(noteName)}`,
+    `    set htmlText to body of note ${appleScriptStringLiteral(noteName)}`,
     "  on error",
-    '    return ""',
+    "    set htmlText to \"\"",
     "  end try",
     "end tell",
+    "set boldCount to countOccurrences(htmlText, \"<b\")",
+    "set boldCount to boldCount + countOccurrences(htmlText, \"<strong\")",
+    "set boldCount to boldCount + countOccurrences(htmlText, \"<h1\")",
+    "set boldCount to boldCount + countOccurrences(htmlText, \"<h2\")",
+    "set boldCount to boldCount + countOccurrences(htmlText, \"<h3\")",
+    "set boldCount to boldCount + countOccurrences(htmlText, \"<h4\")",
+    "set boldCount to boldCount + countOccurrences(htmlText, \"<h5\")",
+    "set boldCount to boldCount + countOccurrences(htmlText, \"<h6\")",
+    "return boldCount as text",
   ].join("\n");
-  return runCommand(["/usr/bin/osascript", "-e", script], scriptDir);
+  const output = runCommand(["/usr/bin/osascript", "-e", script], scriptDir);
+  return Number(String(output || "").trim() || "0");
 }
 
 function verifyNoticeNativeNoteReadableFormat(noteName, targetKey, scriptDir) {
-  const html = noteBodyHTMLViaAppleScript(noteName, scriptDir);
-  const boldTagCount = (String(html || "").match(/<(b|strong)\b|<h[1-6]\b|font-weight\s*:\s*(bold|[6-9]00)/gi) || []).length;
+  const boldTagCount = noteReadableBoldTagCountViaAppleScript(noteName, scriptDir);
   const minimumBoldTags = targetKey === "primary" ? 20 : 2;
   if (boldTagCount < minimumBoldTags) {
     throw new Error(

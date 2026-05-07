@@ -1021,20 +1021,41 @@ func runProcessResult(_ launchPath: String, _ arguments: [String]) -> ProcessOut
     process.executableURL = URL(fileURLWithPath: launchPath)
     process.arguments = arguments
 
-    let stdoutPipe = Pipe()
-    let stderrPipe = Pipe()
-    process.standardOutput = stdoutPipe
-    process.standardError = stderrPipe
+    let outputDirectory = FileManager.default.temporaryDirectory
+    let outputID = UUID().uuidString
+    let stdoutURL = outputDirectory.appendingPathComponent("klms-notice-\(outputID)-stdout.txt")
+    let stderrURL = outputDirectory.appendingPathComponent("klms-notice-\(outputID)-stderr.txt")
+    _ = FileManager.default.createFile(atPath: stdoutURL.path, contents: nil)
+    _ = FileManager.default.createFile(atPath: stderrURL.path, contents: nil)
+
+    guard let stdoutHandle = try? FileHandle(forWritingTo: stdoutURL),
+          let stderrHandle = try? FileHandle(forWritingTo: stderrURL)
+    else {
+        fail("Failed to create temporary process output files.")
+    }
+    defer {
+        try? FileManager.default.removeItem(at: stdoutURL)
+        try? FileManager.default.removeItem(at: stderrURL)
+    }
+
+    process.standardOutput = stdoutHandle
+    process.standardError = stderrHandle
 
     do {
         try process.run()
         process.waitUntilExit()
     } catch {
+        stdoutHandle.closeFile()
+        stderrHandle.closeFile()
         fail("Failed to launch \(launchPath): \(error)")
     }
 
-    let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    stdoutHandle.closeFile()
+    stderrHandle.closeFile()
+    let stdoutData = (try? Data(contentsOf: stdoutURL)) ?? Data()
+    let stderrData = (try? Data(contentsOf: stderrURL)) ?? Data()
+    let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
+    let stderr = String(data: stderrData, encoding: .utf8) ?? ""
     let elapsed = DispatchTime.now().uptimeNanoseconds - started.uptimeNanoseconds
     timingLog("process_finish \(timingLabel) status=\(process.terminationStatus) duration_ms=\(elapsed / 1_000_000)")
 
@@ -1239,65 +1260,6 @@ try {
             return nil
         }
         return try? JSONDecoder().decode(NoteSnapshot.self, from: data)
-    }
-}
-
-func noteBodyHTML(noteID: String) -> String? {
-    timed("noteBodyHTML") {
-        let noteLiteral = jsStringLiteral(noteID)
-        let script = """
-const noteId = \(noteLiteral);
-const notes = Application("/System/Applications/Notes.app");
-try {
-  const note = notes.notes.byId(noteId);
-  if (String(note.id() || "") === noteId) {
-    console.log(String(note.body() || ""));
-  }
-} catch (error) {
-}
-"""
-
-        let output = runProcessOutput("/usr/bin/osascript", ["-l", "JavaScript", "-e", script])
-        return output.isEmpty ? nil : output
-    }
-}
-
-func noteBodyHTML(noteTitle: String) -> String? {
-    timed("noteBodyHTML title=\(noteTitle)") {
-        let noteLiteral = jsStringLiteral(noteTitle)
-        let script = """
-function noteModifiedAt(note) {
-  try {
-    const raw = note.modificationDate();
-    const time = new Date(raw).getTime();
-    return Number.isFinite(time) ? time : 0;
-  } catch (error) {
-    return 0;
-  }
-}
-
-const noteName = \(noteLiteral);
-const normalizedNoteName = String(noteName || "").normalize("NFC");
-const notes = Application("/System/Applications/Notes.app");
-const matches = [];
-const allNotes = notes.notes();
-for (let i = 0; i < allNotes.length; i += 1) {
-  try {
-    if (String(allNotes[i].name() || "").normalize("NFC") === normalizedNoteName) {
-      matches.push({ note: allNotes[i], modifiedAt: noteModifiedAt(allNotes[i]) });
-    }
-  } catch (error) {}
-}
-matches.sort((left, right) => right.modifiedAt - left.modifiedAt);
-if (matches.length > 0) {
-  try {
-    console.log(String(matches[0].note.body() || ""));
-  } catch (error) {}
-}
-"""
-
-        let output = runProcessOutput("/usr/bin/osascript", ["-l", "JavaScript", "-e", script])
-        return output.isEmpty ? nil : output
     }
 }
 
@@ -3955,13 +3917,6 @@ func renderContentHash(for plan: RenderPlan) -> String {
 
 func renderPlaintext(for plan: RenderPlan) -> String {
     plan.bodyLines.map(\.text).joined(separator: "\n")
-}
-
-func shouldSkipBulkStyleFormatting(plan: RenderPlan) -> Bool {
-    let thresholdText =
-        ProcessInfo.processInfo.environment["NOTICE_NATIVE_BULK_STYLE_NOTICE_THRESHOLD"] ?? "40"
-    let threshold = Int(thresholdText) ?? 40
-    return threshold > 0 && plan.renderedNotices.count >= threshold
 }
 
 func normalizedPlaintextForHash(_ text: String) -> String {

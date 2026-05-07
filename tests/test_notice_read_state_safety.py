@@ -42,13 +42,42 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn("displayMode == .archive && readChecked", text)
         self.assertIn("plaintextHash(for: currentText) != expectedPlaintextHash", text)
 
-    def test_large_notice_render_skips_expensive_style_pass(self) -> None:
+    def test_large_notice_render_uses_rich_paste_without_ui_style_pass(self) -> None:
         text = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("NOTICE_NATIVE_BULK_STYLE_NOTICE_THRESHOLD", text)
-        self.assertIn("style_apply_skip", text)
+        self.assertIn("rich_paste", text)
+        self.assertIn("html: html, attributedText: attributed", text)
+        self.assertIn("readability_validation_targets_finish", text)
+
+    def test_swift_process_capture_does_not_pipe_large_outputs(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+        run_process = text[
+            text.index("func runProcessResult") : text.index(
+                "func runProcessOutput", text.index("func runProcessResult")
+            )
+        ]
+
+        self.assertIn("FileManager.default.temporaryDirectory", run_process)
+        self.assertIn("FileHandle(forWritingTo:", run_process)
+        self.assertNotIn("Pipe()", run_process)
+        self.assertNotIn("readDataToEndOfFile", run_process)
+
+    def test_stable_noop_verifies_notice_readability_format(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+
+        stable_noop_index = text.index("stable-noop-after-capture")
+        verify_index = text.index("verifyNoticeNativeNoteReadableFormat")
+        self.assertLess(verify_index, stable_noop_index)
+        self.assertIn("readability-format-check-failed", text)
+        self.assertIn("Native notice note readability format missing", text)
+        self.assertIn("noteReadableBoldTagCountViaAppleScript", text)
+        self.assertNotIn("return body of note", text)
 
 
 if __name__ == "__main__":
