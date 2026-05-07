@@ -27,6 +27,7 @@ from klms_transport import (
 
 DEFAULT_CACHE_STATE = {"version": 1, "contexts": {}}
 DEFAULT_SAFARI_FETCH_LOCK = Path("/tmp/klms-safari-fetch.lock")
+DEFAULT_MAX_PREVIOUS_BYTES = 256 * 1024 * 1024
 
 
 def project_root() -> Path:
@@ -35,6 +36,28 @@ def project_root() -> Path:
 
 def page_has_usable_html(page: dict[str, Any]) -> bool:
     return bool(str(page.get("html") or "").strip())
+
+
+def load_previous_pages(
+    path: Path,
+    discard_previous: bool,
+    max_previous_bytes: int,
+) -> tuple[list[dict[str, Any]], bool]:
+    if discard_previous:
+        return [], path.exists()
+    if not path.exists():
+        return [], False
+    if max_previous_bytes >= 0:
+        try:
+            if path.stat().st_size > max_previous_bytes:
+                return [], True
+        except OSError:
+            return [], True
+
+    payload = load_json(path, [])
+    if not isinstance(payload, list):
+        return [], False
+    return [page for page in payload if isinstance(page, dict)], False
 
 
 def main() -> int:
@@ -65,7 +88,11 @@ def main() -> int:
         },
     )
 
-    previous_pages = [] if args.discard_previous else (load_json(out_path, []) if out_path.exists() else [])
+    previous_pages, previous_pages_discarded = load_previous_pages(
+        out_path,
+        discard_previous=bool(args.discard_previous),
+        max_previous_bytes=args.max_previous_bytes,
+    )
     previous_lookup = {
         page_requested_url(page): page
         for page in previous_pages
@@ -187,6 +214,8 @@ def main() -> int:
         "changed_urls": len(changed_url_list),
         "out_path": str(out_path),
         "cache_state_path": str(cache_state_path),
+        "previous_page_count": len(previous_pages),
+        "previous_pages_discarded": previous_pages_discarded,
     }
     if args.summary_out:
         summary_payload = dict(summary)
@@ -222,6 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reuse-fallback-always-fetch", action="store_true")
     parser.add_argument("--allow-login-pages", action="store_true")
     parser.add_argument("--discard-previous", action="store_true")
+    parser.add_argument("--max-previous-bytes", type=int, default=DEFAULT_MAX_PREVIOUS_BYTES)
     parser.add_argument("urls", nargs="*")
     return parser
 
