@@ -36,6 +36,24 @@ class CourseItemParsingTests(unittest.TestCase):
 
         self.assertEqual(items, [])
 
+    def test_exact_ignored_dashboard_course_name_is_not_collected(self) -> None:
+        dashboard = klms_sync.DashboardParseResult(
+            status="ok",
+            items=[
+                klms_sync.DashboardItem(
+                    url="https://klms.kaist.ac.kr/mod/assign/view.php?id=1228234",
+                    title="Homework 8",
+                    course="데이터과학을 위한 선형대수학",
+                    schedule="~2026.05.11",
+                    item_type="assign",
+                )
+            ],
+        )
+
+        items = klms_sync.collect_candidate_items(dashboard, [])
+
+        self.assertEqual(items, [])
+
     def test_lecture_upload_notice_is_not_tracked_as_assignment(self) -> None:
         html = """
         <html><body>

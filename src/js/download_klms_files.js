@@ -88,6 +88,7 @@ function run(argv) {
         const destinationDir = relativeDir ? joinPath(outputRoot, relativeDir) : outputRoot;
         const archiveDir = relativeDir ? joinPath(downloadArchiveRoot, relativeDir) : downloadArchiveRoot;
         let activeFilename = recordedFilenameForEntry(entry, recordedFilenameIndex) || manifestFilename;
+        activeFilename = canonicalFilenameForDownloadedName(activeFilename, manifestFilename, entry);
 
         step = "join-path";
         let relativePath = activeFilename ? buildRelativePath(activeFilename) : manifestRelativePath;
@@ -548,6 +549,7 @@ function run(argv) {
           }
           activeFilename = manifestFilename;
         }
+        activeFilename = canonicalFilenameForDownloadedName(activeFilename, manifestFilename, entry);
         let trackedPaths = claimTrackedPath(
           activeFilename,
           manifestRelativePath,
@@ -1081,7 +1083,7 @@ function buildRecordedFilenameIndex(downloadLog) {
     const filename = String(
       result.filename || baseName(result.downloads_path || "") || baseName(result.destination_path || "")
     ).trim();
-    if (isTransientDownloadName(filename)) {
+    if (isTransientDownloadName(filename) || isServerTemporaryFilename(filename)) {
       return;
     }
     if (key && filename && !index[key]) {
@@ -2388,7 +2390,7 @@ function buildReusableFileIndex(downloadLog) {
     if (!downloadLogFilenameReuseAllowed(result, ambiguousFilenames)) {
       return;
     }
-    if (isTransientDownloadName(result.filename || "")) {
+    if (isTransientDownloadName(result.filename || "") || isServerTemporaryFilename(result.filename || "")) {
       return;
     }
     const keys = [reusableFileKey(result.url, result.filename), reusableUrlKey(result.url)].filter(
@@ -2405,7 +2407,10 @@ function buildReusableFileIndex(downloadLog) {
       if (!isRegularFile(normalizedPath)) {
         return;
       }
-      if (isTransientDownloadName(baseName(normalizedPath))) {
+      if (
+        isTransientDownloadName(baseName(normalizedPath)) ||
+        isServerTemporaryFilename(baseName(normalizedPath))
+      ) {
         return;
       }
       keys.forEach((key) => {
@@ -2462,7 +2467,7 @@ function ambiguousRecordedFilenames(results) {
     const filename = String(
       result && (result.filename || baseName(result.downloads_path || "") || baseName(result.destination_path || ""))
     ).trim();
-    if (!filename || isTransientDownloadName(filename)) {
+    if (!filename || isTransientDownloadName(filename) || isServerTemporaryFilename(filename)) {
       return;
     }
     const owner = `${String(result.course || "")}\n${String(result.source_url || "")}`;
@@ -2485,7 +2490,7 @@ function downloadLogFilenameReuseAllowed(result, ambiguousFilenames) {
   const filename = String(
     result && (result.filename || baseName(result.downloads_path || "") || baseName(result.destination_path || ""))
   ).trim();
-  if (!filename || isTransientDownloadName(filename)) {
+  if (!filename || isTransientDownloadName(filename) || isServerTemporaryFilename(filename)) {
     return false;
   }
   if (String(result && result.manifest_filename || "").trim() === filename) {
@@ -2537,6 +2542,58 @@ function isTransientDownloadName(name) {
     text === ".tmp.drivedownload" ||
     text.startsWith(".tmp.")
   );
+}
+
+function isServerTemporaryFilename(name) {
+  const text = baseName(String(name || "").trim()).toLowerCase();
+  if (!text) {
+    return false;
+  }
+  const parts = splitFileName(text);
+  return Boolean(parts.ext && parts.stem.endsWith("_temp"));
+}
+
+function canonicalFilenameForDownloadedName(downloadedFilename, expectedFilename, entry) {
+  const actual = String(downloadedFilename || "").trim();
+  const expected = canonicalExpectedFilenameForTemporaryDownload(
+    String(expectedFilename || "").trim(),
+    actual,
+    entry
+  );
+  if (!actual || !expected || !isServerTemporaryFilename(actual)) {
+    return actual;
+  }
+
+  const actualParts = splitFileName(actual);
+  const expectedParts = splitFileName(expected);
+  const actualFamily = extensionFamily(actualParts.ext);
+  const expectedFamily = extensionFamily(expectedParts.ext);
+  if (actualFamily && expectedFamily && actualFamily === expectedFamily) {
+    return `${expectedParts.stem}${actualParts.ext || expectedParts.ext}`;
+  }
+  return expected;
+}
+
+function canonicalExpectedFilenameForTemporaryDownload(expectedFilename, downloadedFilename, entry) {
+  const expected = String(expectedFilename || "").trim();
+  if (!isServerTemporaryFilename(expected)) {
+    return expected;
+  }
+
+  const actualParts = splitFileName(String(downloadedFilename || "").trim());
+  const expectedParts = splitFileName(expected);
+  for (const value of [entry && entry.link_text, entry && entry.activity_title]) {
+    const title = sanitizeDownloadFilename(value || "");
+    if (!title || isServerTemporaryFilename(title)) {
+      continue;
+    }
+    const titleParts = splitFileName(title);
+    if (titleParts.ext) {
+      return title;
+    }
+    return `${title}${actualParts.ext || expectedParts.ext}`;
+  }
+  return expected;
 }
 
 function sanitizeFileComponent(value) {

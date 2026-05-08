@@ -35,6 +35,7 @@ FILE_KEEP_FRESH_DOWNLOADS="${FILE_KEEP_FRESH_DOWNLOADS:-1}"
 FILE_DRY_RUN="${KLMS_DRY_RUN:-0}"
 FILE_PRUNE_BACKUP_ENABLED="${FILE_PRUNE_BACKUP_ENABLED:-1}"
 FILE_PRUNE_BACKUP_KEEP="${FILE_PRUNE_BACKUP_KEEP:-20}"
+FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS="${FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS:-${SYNC_INTERVAL_SECONDS:-21600}}"
 FILE_WEEKLY_FOLDERS_ENABLED_RAW="${FILE_WEEKLY_FOLDERS_ENABLED:-1}"
 case "${FILE_WEEKLY_FOLDERS_ENABLED_RAW:l}" in
   1|true|yes|on)
@@ -284,7 +285,7 @@ run_fetch_backend() {
   local fetch_status=0
 
   started_epoch="$(date +%s)"
-  log_files_timing "fetch start context=$context mode=$mode quick_limit=$quick_limit stale_seconds=$stale_seconds"
+  log_files_timing "fetch start context=$context mode=$mode quick_limit=$quick_limit stale_seconds=$stale_seconds always_min_s=$FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS"
 
   if [[ ! -s "$url_file" ]]; then
     printf '[]\n' > "$out_json"
@@ -317,6 +318,7 @@ EOF
     "--auto-full-min-coverage=$FETCH_AUTO_FULL_MIN_COVERAGE"
     "--auto-full-require-last-full=$FETCH_AUTO_REQUIRE_LAST_FULL"
     "--auto-full-on-ttl-expire=$FETCH_AUTO_FULL_ON_TTL_EXPIRE"
+    "--always-fetch-min-interval-seconds=$FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS"
   )
 	  [[ -n "$summary_json" ]] && argv+=("--summary-out=$summary_json")
 	  local fallback_pages=()

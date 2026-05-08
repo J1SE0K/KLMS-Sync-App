@@ -6,7 +6,7 @@ const MARKER = "[[KLMS 자동 동기화]]";
 const REMINDER_MARKER_PREFIX = "KLMS_SYNC_ITEM_ID:";
 const LEGACY_REMINDER_MARKER_PREFIXES = ["KLMS_ASSIGN_ID:"];
 const REMINDER_MARKER_PREFIXES = [REMINDER_MARKER_PREFIX].concat(LEGACY_REMINDER_MARKER_PREFIXES);
-const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-08-guided-notice-layout-v3";
+const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-09-guided-notice-layout-v8-primary-last";
 let DEBUG_STDERR_ENABLED = false;
 let ACTIVE_STAGE_TELEMETRY = null;
 let COMMAND_TIMING_ENABLED = true;
@@ -217,6 +217,14 @@ function run(argv) {
           "SYNC_SUPPLEMENTAL_QUICK_LIMIT",
           minimalExplorationEnabled ? 0 : 2
         )
+      )
+    );
+    const supplementalDetailPinnedQuickLimit = Math.max(
+      0,
+      resolveIntegerConfig(
+        config,
+        "SYNC_SUPPLEMENTAL_DETAIL_PINNED_QUICK_LIMIT",
+        minimalExplorationEnabled ? 0 : 2
       )
     );
     const supplementalDetailStaleSeconds = Math.max(
@@ -713,9 +721,12 @@ function run(argv) {
 
     beginStage(steps, stageTelemetry, "supplemental-detail-list");
     debugStderr("before supplemental-detail-list");
-    const previousSupplementalDetailUrls = parseNonEmptyLines(
-      fileExists(supplementalDetailUrlsTxt) ? readText(supplementalDetailUrlsTxt) : ""
-    );
+    const previousSupplementalDetailUrls = uniqueStrings([
+      ...parseNonEmptyLines(
+        fileExists(supplementalDetailUrlsTxt) ? readText(supplementalDetailUrlsTxt) : ""
+      ),
+      ...cachedPageRequestedUrls(supplementalDetailPagesJson),
+    ]);
     const supplementalDetailUrlsOutput = runCommand(
       [
         "/usr/bin/env",
@@ -757,7 +768,8 @@ function run(argv) {
     ).length;
     const dynamicSupplementalDetailQuickLimit = Math.max(
       supplementalDetailQuickLimit,
-      newSupplementalDetailCount + Math.min(2, pinnedSupplementalDetailCount)
+      newSupplementalDetailCount +
+        Math.min(supplementalDetailPinnedQuickLimit, pinnedSupplementalDetailCount)
     );
     writeText(supplementalDetailUrlsTxt, prioritizedSupplementalDetailUrls.join("\n"));
 
@@ -1244,6 +1256,21 @@ function prioritizeSupplementalDetailUrls(urls, previousUrls, pinnedUrls) {
   pinnedSet.forEach(append);
   (urls || []).forEach(append);
   return ordered;
+}
+
+function cachedPageRequestedUrls(path) {
+  if (!path || !fileExists(path)) {
+    return [];
+  }
+  try {
+    return uniqueStrings(
+      loadPagesJson(path).map((page) =>
+        String((page && (page.requestedUrl || page.url)) || "").trim()
+      )
+    );
+  } catch (error) {
+    return [];
+  }
 }
 
 function uniqueStrings(values) {
@@ -2061,11 +2088,17 @@ function noticeDigestHasFreshNotices(digest) {
 }
 
 function expectedNoticeNativeRenderState(digest, userState) {
-  const primary = [];
+  const primaryImportant = [];
+  const primaryFresh = [];
+  const primaryUnread = [];
   const archive = [];
   let total = 0;
   (digest.courses || []).forEach((course) => {
     const courseName = String(course.course || "");
+    const importantCourse = [];
+    const freshCourse = [];
+    const unreadCourse = [];
+    const archiveCourse = [];
     (course.notices || []).forEach((notice) => {
       total += 1;
       const noticeId = noticeIdentifierForDigestNotice(courseName, notice);
@@ -2073,18 +2106,31 @@ function expectedNoticeNativeRenderState(digest, userState) {
       const state = userState.notices[noticeId] || {};
       const isImportant = state.important === true;
       const isRead = Boolean(fingerprint) && state.read_fingerprint === fingerprint;
+      const changeState = String(notice.change_state || "stable");
+      const isFresh = changeState === "new" || changeState === "updated";
       const rendered = {
         notice_id: noticeId,
         fingerprint,
       };
-      if (isImportant || !isRead) {
-        primary.push(rendered);
+      if (isImportant) {
+        importantCourse.push(rendered);
+      } else if (!isRead) {
+        if (isFresh) {
+          freshCourse.push(rendered);
+        } else {
+          unreadCourse.push(rendered);
+        }
       }
       if (isRead && !isImportant) {
-        archive.push(rendered);
+        archiveCourse.push(rendered);
       }
     });
+    primaryImportant.push(...importantCourse);
+    primaryFresh.push(...freshCourse);
+    primaryUnread.push(...unreadCourse);
+    archive.push(...archiveCourse);
   });
+  const primary = [...primaryImportant, ...primaryFresh, ...primaryUnread];
   return { primary, archive, total };
 }
 

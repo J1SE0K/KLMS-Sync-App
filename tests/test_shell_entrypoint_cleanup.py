@@ -31,6 +31,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
             "verify_sync_state.sh",
             "doctor.sh",
             "sync_report.sh",
+            "process_klms_assignments.sh",
             "kaikey_auto_login.sh",
             "kaikey_setup.sh",
             "kaikey_approve_number.sh",
@@ -89,6 +90,8 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("--backup-manifest", text)
         self.assertIn("--dry-run", text)
         self.assertIn("--preserve-destinations", text)
+        self.assertIn("FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS", text)
+        self.assertIn("--always-fetch-min-interval-seconds=$FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS", text)
         self.assertIn("build_files_stage_timings.py", text)
         self.assertIn("klms_cleanup_runtime_tmp_if_enabled", text)
 
@@ -109,6 +112,13 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('find "$INSTALL_DIR/bin" -type f -name', text)
         self.assertIn('cp "$SCRIPT_DIR/doctor.sh" "$INSTALL_DIR/"', text)
         self.assertIn('cp "$SCRIPT_DIR/sync_report.sh" "$INSTALL_DIR/"', text)
+        self.assertIn('cp "$SCRIPT_DIR/process_klms_assignments.sh" "$INSTALL_DIR/"', text)
+
+    def test_assignment_processor_is_not_part_of_core_sync(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8")
+
+        self.assertNotIn("process_klms_assignments", text)
+        self.assertNotIn("assignment-processor", text)
 
     def test_verify_sync_state_uses_swift_calendar_counts(self) -> None:
         text = (PROJECT_DIR / "bin" / "verify_sync_state.sh").read_text(encoding="utf-8")
