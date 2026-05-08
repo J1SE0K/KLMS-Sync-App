@@ -39,6 +39,7 @@ cp examples/config.env.example config.env
 | `./verify_sync_state.sh` | 공지, 파일, 캘린더 상태 검증 |
 | `./doctor.sh` | 실행 환경, 권한, cache/file 상태 점검 |
 | `./sync_report.sh` | 마지막 실행 결과와 병목 요약 |
+| `./process_klms_assignments.sh` | 최신 동기화 상태로 로컬 과제 브리프/체크리스트 생성 |
 | `./install_launch_agent.sh` | 자동 실행용 LaunchAgent 설치 |
 | `./kaikey_setup.sh` | Kaikey 기기키 등록 |
 | `./kaikey_auto_login.sh` | Safari SSO 로그인 보조 |
@@ -61,6 +62,28 @@ cp examples/config.env.example config.env
 ```
 
 상세 구조와 설치본 배치는 [repository-layout.md](./docs/repository-layout.md)에 정리한다.
+
+## 과제 작업 브리프
+
+이 기능은 자동 동기화에 포함되지 않는다. 사용자가 직접 실행할 때만 최신 `runtime/state/state.json`을 읽어서 `runtime/assignment_work/` 아래에 과제별 작업 파일을 만든다.
+
+```sh
+./process_klms_assignments.sh
+```
+
+번호 목록에서 과제를 고르려면 아래처럼 실행한다.
+
+```sh
+./process_klms_assignments.sh --select
+```
+
+각 과제 폴더에는 `assignment.json`, `brief.md`, `checklist.md`, `draft_template.md`, `codex_prompt.md`, `codex_result.json`, `status.json`이 생긴다. `ASSIGNMENT_GENERATION_PROVIDER=codex`이면 로컬 Codex CLI를 호출하고, 실패하거나 `deterministic`으로 설정하면 규칙 기반 템플릿으로 폴백한다.
+
+이 기능은 작성 보조용이다. KLMS 제출 페이지를 열거나, 제출물을 자동 완성하거나, 퀴즈/시험 답안을 풀이하지 않는다. 특정 과제만 다시 만들려면 아래처럼 실행한다.
+
+```sh
+./process_klms_assignments.sh --assignment-url="https://klms.kaist.ac.kr/..." --force
+```
 
 ## 상세 문서
 

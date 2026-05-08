@@ -281,7 +281,7 @@ struct ResolvedRenderedNotice {
 let defaultNoteTitle = "KLMS 공지"
 let defaultArchiveNoteTitle = "KLMS 확인한 공지"
 let nativeNoticeRenderStateVersion = 2
-let nativeNoticeRenderStyleVersion = "2026-05-08-guided-notice-layout-v3"
+let nativeNoticeRenderStyleVersion = "2026-05-09-guided-notice-layout-v8-primary-last"
 let readChecklistLabel = "읽음"
 let importantChecklistLabel = "중요"
 let noticeReadGuidanceLine = "\"읽음\"만 체크한 공지는 다음 동기화 때 KLMS 확인한 공지에 표시됩니다."
@@ -297,9 +297,13 @@ let checklistMenuTitles = ["체크리스트", "Checklist"]
 let noticeDebugEnabled = ProcessInfo.processInfo.environment["NOTICE_DEBUG_CAPTURE"] == "1"
 let automationDebugEnabled = ProcessInfo.processInfo.environment["NOTICE_DEBUG_AUTOMATION"] == "1"
 let noticeTimingEnabled = ProcessInfo.processInfo.environment["NOTICE_TIMING"] == "1"
-let collapseNoticeSectionsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_SECTIONS"] == "1"
+let collapseNoticeSectionsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_SECTIONS"] != "0"
+let collapseNoticeItemsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_NOTICE_ITEMS"] == "1"
 let uiStyleMenuFormattingEnabled =
     ProcessInfo.processInfo.environment["NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT"] == "1"
+    && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT"] != "1"
+let uiCollapsibleGroupStyleFormattingEnabled =
+    (uiStyleMenuFormattingEnabled || collapseNoticeSectionsEnabled || collapseNoticeItemsEnabled)
     && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT"] != "1"
 let batchChecklistFormattingEnabled =
     ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT"] != "1"
@@ -308,6 +312,7 @@ let pasteSettleUsec: useconds_t = 70_000
 let initialEditorClearDelay: TimeInterval = 0.12
 let initialEditorFocusDelay: TimeInterval = 0.04
 let finalChecklistDisableDelay: TimeInterval = 0.12
+let noticeCollapseStyleSettleDelay: TimeInterval = 0.45
 let noticeBodyFontSize: CGFloat = 14
 let noticeMetaFontSize: CGFloat = 12
 let noticeSummaryFontSize: CGFloat = 14

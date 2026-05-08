@@ -408,6 +408,16 @@ func lineRange(
     return LineRange(location: start, length: endExclusive - start)
 }
 
+func clampedLineRange(_ range: LineRange, textLength: Int) -> LineRange? {
+    guard textLength >= 0 else {
+        return nil
+    }
+    let start = min(max(0, range.location), textLength)
+    let rawEnd = range.location + range.length
+    let end = min(max(start, rawEnd), textLength)
+    return LineRange(location: start, length: end - start)
+}
+
 func containsLineStart(
     searchRange: LineRange,
     lineRange: LineRange
@@ -618,14 +628,38 @@ func setAttr(_ element: AXUIElement, _ name: String, _ value: CFTypeRef) {
     }
 }
 
+let axTraversalNodeLimit = 6000
+
+func axElementKey(_ element: AXUIElement) -> String {
+    let pid = elementPID(element) ?? 0
+    return "\(pid):\(CFHash(element))"
+}
+
 func findFirst(_ element: AXUIElement, role targetRole: String) -> AXUIElement? {
+    var visited = Set<String>()
+    return findFirst(element, role: targetRole, visited: &visited)
+}
+
+func findFirst(
+    _ element: AXUIElement,
+    role targetRole: String,
+    visited: inout Set<String>
+) -> AXUIElement? {
+    guard visited.count < axTraversalNodeLimit else {
+        return nil
+    }
+    let key = axElementKey(element)
+    guard visited.insert(key).inserted else {
+        return nil
+    }
+
     let role: String = attr(element, kAXRoleAttribute) ?? ""
     if role == targetRole {
         return element
     }
     let children: [AXUIElement] = attr(element, kAXChildrenAttribute) ?? []
     for child in children {
-        if let found = findFirst(child, role: targetRole) {
+        if let found = findFirst(child, role: targetRole, visited: &visited) {
             return found
         }
     }
@@ -633,13 +667,30 @@ func findFirst(_ element: AXUIElement, role targetRole: String) -> AXUIElement? 
 }
 
 func findFirst(_ element: AXUIElement, where predicate: (AXUIElement) -> Bool) -> AXUIElement? {
+    var visited = Set<String>()
+    return findFirst(element, where: predicate, visited: &visited)
+}
+
+func findFirst(
+    _ element: AXUIElement,
+    where predicate: (AXUIElement) -> Bool,
+    visited: inout Set<String>
+) -> AXUIElement? {
+    guard visited.count < axTraversalNodeLimit else {
+        return nil
+    }
+    let key = axElementKey(element)
+    guard visited.insert(key).inserted else {
+        return nil
+    }
+
     if predicate(element) {
         return element
     }
 
     let children: [AXUIElement] = attr(element, kAXChildrenAttribute) ?? []
     for child in children {
-        if let found = findFirst(child, where: predicate) {
+        if let found = findFirst(child, where: predicate, visited: &visited) {
             return found
         }
     }
@@ -647,17 +698,34 @@ func findFirst(_ element: AXUIElement, where predicate: (AXUIElement) -> Bool) -
 }
 
 func collectElements(_ element: AXUIElement, where predicate: (AXUIElement) -> Bool) -> [AXUIElement] {
+    var visited = Set<String>()
     var matches: [AXUIElement] = []
+    collectElements(element, where: predicate, visited: &visited, matches: &matches)
+    return matches
+}
+
+func collectElements(
+    _ element: AXUIElement,
+    where predicate: (AXUIElement) -> Bool,
+    visited: inout Set<String>,
+    matches: inout [AXUIElement]
+) {
+    guard visited.count < axTraversalNodeLimit else {
+        return
+    }
+    let key = axElementKey(element)
+    guard visited.insert(key).inserted else {
+        return
+    }
+
     if predicate(element) {
         matches.append(element)
     }
 
     let children: [AXUIElement] = attr(element, kAXChildrenAttribute) ?? []
     for child in children {
-        matches.append(contentsOf: collectElements(child, where: predicate))
+        collectElements(child, where: predicate, visited: &visited, matches: &matches)
     }
-
-    return matches
 }
 
 func checklistToolbarButton(in element: AXUIElement) -> AXUIElement? {
@@ -671,6 +739,19 @@ func checklistToolbarButton(in element: AXUIElement) -> AXUIElement? {
 }
 
 func findMenuItem(named target: String, in element: AXUIElement) -> AXUIElement? {
+    var visited = Set<String>()
+    return findMenuItem(named: target, in: element, visited: &visited)
+}
+
+func findMenuItem(named target: String, in element: AXUIElement, visited: inout Set<String>) -> AXUIElement? {
+    guard visited.count < axTraversalNodeLimit else {
+        return nil
+    }
+    let key = axElementKey(element)
+    guard visited.insert(key).inserted else {
+        return nil
+    }
+
     if let title: String = attr(element, kAXTitleAttribute), title == target {
         let role: String = attr(element, kAXRoleAttribute) ?? ""
         if role == kAXMenuItemRole as String {
@@ -680,7 +761,7 @@ func findMenuItem(named target: String, in element: AXUIElement) -> AXUIElement?
 
     let children: [AXUIElement] = attr(element, kAXChildrenAttribute) ?? []
     for child in children {
-        if let found = findMenuItem(named: target, in: child) {
+        if let found = findMenuItem(named: target, in: child, visited: &visited) {
             return found
         }
     }
@@ -688,6 +769,19 @@ func findMenuItem(named target: String, in element: AXUIElement) -> AXUIElement?
 }
 
 func findMenuItem(containing target: String, in element: AXUIElement) -> AXUIElement? {
+    var visited = Set<String>()
+    return findMenuItem(containing: target, in: element, visited: &visited)
+}
+
+func findMenuItem(containing target: String, in element: AXUIElement, visited: inout Set<String>) -> AXUIElement? {
+    guard visited.count < axTraversalNodeLimit else {
+        return nil
+    }
+    let key = axElementKey(element)
+    guard visited.insert(key).inserted else {
+        return nil
+    }
+
     if let title: String = attr(element, kAXTitleAttribute), title.contains(target) {
         let role: String = attr(element, kAXRoleAttribute) ?? ""
         if role == kAXMenuItemRole as String {
@@ -697,7 +791,7 @@ func findMenuItem(containing target: String, in element: AXUIElement) -> AXUIEle
 
     let children: [AXUIElement] = attr(element, kAXChildrenAttribute) ?? []
     for child in children {
-        if let found = findMenuItem(containing: target, in: child) {
+        if let found = findMenuItem(containing: target, in: child, visited: &visited) {
             return found
         }
     }
@@ -775,7 +869,7 @@ func pressMenu(_ app: AXUIElement, _ titles: [String]) {
 
 @discardableResult
 func selectRange(_ textArea: AXUIElement, location: Int, length: Int) -> Bool {
-    guard length > 0 else {
+    guard location >= 0, length > 0 else {
         return false
     }
     var range = CFRange(location: location, length: length)
@@ -1461,7 +1555,7 @@ func candidateTextAreas(in window: AXUIElement, focusedElement: AXUIElement?) ->
         guard let element else {
             return
         }
-        let key = "\(Unmanaged.passUnretained(element).toOpaque())"
+        let key = axElementKey(element)
         guard seen.insert(key).inserted else {
             return
         }
@@ -2125,26 +2219,31 @@ func capturedChecklistLines(
     currentText: String,
     searchRange: LineRange? = nil
 ) -> [CapturedChecklistLine] {
-    let fullRange = LineRange(location: 0, length: nsLength(currentText))
-    guard let attributedText = attributedString(for: textArea, range: fullRange) else {
-        return []
+    let textLength = nsLength(currentText)
+    let clampedSearchRange = searchRange.flatMap {
+        clampedLineRange($0, textLength: textLength)
     }
 
     return lineEntries(in: currentText).compactMap { entry in
-        if let searchRange, !containsLineStart(searchRange: searchRange, lineRange: entry.range) {
+        if let clampedSearchRange,
+           !containsLineStart(searchRange: clampedSearchRange, lineRange: entry.range) {
             return nil
         }
         let label = lineLabel(entry.text)
-        guard !label.isEmpty else {
+        guard checklistLineMatchesLabel(label, expectedLabel: readChecklistLabel)
+            || checklistLineMatchesLabel(label, expectedLabel: importantChecklistLabel) else {
             return nil
         }
-        guard let prefix = checklistPrefix(attributedText: attributedText, range: entry.range),
-              let isChecked = checklistState(from: prefix) else {
+        guard let captured = checklistInfo(
+            textArea: textArea,
+            currentText: currentText,
+            range: entry.range
+        ) else {
             return nil
         }
         return CapturedChecklistLine(
-            label: label,
-            isChecked: isChecked,
+            label: captured.label,
+            isChecked: captured.info.isChecked,
             range: entry.range
         )
     }
@@ -2215,6 +2314,21 @@ func loadCaptureText(
     }
 
     return lastText
+}
+
+func captureTextContainsExpectedNotices(
+    _ currentText: String,
+    expectedTitles: [String]
+) -> Bool {
+    let normalizedTitles = expectedTitles
+        .map(oneLine)
+        .filter { !$0.isEmpty }
+    let normalizedText = oneLine(currentText)
+    guard !normalizedTitles.isEmpty,
+          normalizedText.contains(readChecklistLabel) || normalizedText.contains(importantChecklistLabel) else {
+        return false
+    }
+    return normalizedTitles.allSatisfy { normalizedText.contains($0) }
 }
 
 func resolveRenderedNoticeRanges(
@@ -3069,11 +3183,27 @@ func syncUserStateFromRenderedNote(
         Thread.sleep(forTimeInterval: 0.35)
         debugLog("expand-all complete")
 
+        let expandedText: String = attr(snapshotContext.textArea, kAXValueAttribute) ?? ""
+        if captureTextContainsExpectedNotices(
+            expandedText,
+            expectedTitles: previousRenderState.renderedNotices.map(\.title)
+        ) {
+            debugLog("expand-all captured all rendered notices; skipping per-notice expansion")
+            return expandedText
+        }
+
+        let expandedTextLength = nsLength(expandedText)
         for rendered in previousRenderState.renderedNotices.reversed() {
+            guard let sectionRange = clampedLineRange(
+                rendered.sectionRange,
+                textLength: expandedTextLength
+            ), sectionRange.length > 0 else {
+                continue
+            }
             guard selectRange(
                 snapshotContext.textArea,
-                location: rendered.sectionRange.location,
-                length: rendered.sectionRange.length
+                location: sectionRange.location,
+                length: sectionRange.length
             ) else {
                 continue
             }
@@ -3106,12 +3236,6 @@ func syncUserStateFromRenderedNote(
         }
     }
 
-    if let expectedPlaintextHash = previousRenderState.plaintextHash,
-       plaintextHash(for: currentText) != expectedPlaintextHash {
-        debugLog("Skipping capture because rendered note plaintext no longer matches render state: \(noteTitle)")
-        return
-    }
-
     debugLog("current-text-prefix=\(oneLine(String(currentText.prefix(240))))")
     let renderedTitles = previousRenderState.renderedNotices.map { rendered in
         let resolvedRenderedTitle = oneLine(rendered.renderedTitle ?? "")
@@ -3121,6 +3245,21 @@ func syncUserStateFromRenderedNote(
         currentText: currentText,
         titles: renderedTitles
     )
+    if let expectedPlaintextHash = previousRenderState.plaintextHash,
+       plaintextHash(for: currentText) != expectedPlaintextHash {
+        let resolvedTitleCount = titleRanges.compactMap { $0 }.count
+        guard !renderedTitles.isEmpty, resolvedTitleCount == renderedTitles.count else {
+            debugLog(
+                "Skipping capture because rendered note plaintext no longer matches render state: "
+                    + "\(noteTitle) resolved_titles=\(resolvedTitleCount)/\(renderedTitles.count)"
+            )
+            return
+        }
+        debugLog(
+            "Proceeding capture despite plaintext drift: "
+                + "\(noteTitle) resolved_titles=\(resolvedTitleCount)/\(renderedTitles.count)"
+        )
+    }
     let textLength = nsLength(currentText)
 
     for (index, rendered) in previousRenderState.renderedNotices.enumerated() {
@@ -3942,7 +4081,7 @@ func renderNativeNoteOnce(
 
     rememberReadabilityFormattingTargets()
 
-    if uiStyleMenuFormattingEnabled {
+    if uiCollapsibleGroupStyleFormattingEnabled {
         timingLog("style_apply_start note=\(noteTitle)")
         applyStyle(
             lineRange(plan.titleLineIndex, fallback: plan.titleRange),
@@ -3973,9 +4112,11 @@ func renderNativeNoteOnce(
             applyStyle(lineRange(index, fallback: fallback), menuItems: ["머리말", "Heading"], fallbackToBold: true)
         }
 
-        for notice in plan.renderedNotices {
-            let titleRange = lineRange(notice.sectionLineIndex, fallback: notice.sectionRange)
-            applyStyle(titleRange, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
+        if uiStyleMenuFormattingEnabled || collapseNoticeSectionsEnabled || collapseNoticeItemsEnabled {
+            for notice in plan.renderedNotices {
+                let titleRange = lineRange(notice.sectionLineIndex, fallback: notice.sectionRange)
+                applyStyle(titleRange, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
+            }
         }
 
         for (offset, index) in plan.noticeMetaLineIndexes.enumerated() {
@@ -4086,30 +4227,49 @@ func renderNativeNoteOnce(
 
     var collapsedSections = 0
     if collapseNoticeSectionsEnabled {
-        let noticeCollapseRanges = plan.renderedNotices.map {
-            lineRange($0.sectionLineIndex, fallback: $0.sectionRange)
-        }
-        for range in noticeCollapseRanges.reversed() {
-            guard selectRange(context.textArea, location: range.location, length: range.length) else {
-                continue
+        Thread.sleep(forTimeInterval: noticeCollapseStyleSettleDelay)
+
+        func collapseHeading(_ range: LineRange, label: String) {
+            let selectionRange = paragraphSelectionRange(in: currentText, lineRange: range)
+            for attempt in 0..<4 {
+                guard selectRangeForFormatting(
+                    context: context,
+                    range: selectionRange,
+                    noteTitle: noteTitle,
+                    noteID: noteID
+                ) else {
+                    timingLog(
+                        "collapse_heading_retry note=\(noteTitle) label=\(label) "
+                            + "attempt=\(attempt + 1) reason=select-failed"
+                    )
+                    if attempt < 3 {
+                        Thread.sleep(forTimeInterval: 0.16)
+                    }
+                    continue
+                }
+                activateApplication(pid: elementPID(context.app))
+                if pressMenuIfAvailable(context.app, ["섹션 접기", "Collapse Section"]) {
+                    collapsedSections += 1
+                    timingLog("collapse_heading_ok note=\(noteTitle) label=\(label)")
+                    Thread.sleep(forTimeInterval: 0.06)
+                    return
+                }
+                timingLog(
+                    "collapse_heading_retry note=\(noteTitle) label=\(label) "
+                        + "attempt=\(attempt + 1) reason=menu-missing"
+                )
+                if attempt < 3 {
+                    Thread.sleep(forTimeInterval: 0.18)
+                }
             }
-            if pressMenuIfAvailable(context.app, ["섹션 접기", "Collapse Section"]) {
-                collapsedSections += 1
-            }
-            Thread.sleep(forTimeInterval: 0.06)
+            timingLog("collapse_heading_skip note=\(noteTitle) label=\(label) reason=retry-exhausted")
         }
 
         let courseCollapseRanges = plan.courseHeadingLineIndexes.enumerated().map { offset, index in
             lineRange(index, fallback: plan.courseHeadingRanges[offset])
         }
-        for range in courseCollapseRanges.reversed() {
-            guard selectRange(context.textArea, location: range.location, length: range.length) else {
-                continue
-            }
-            if pressMenuIfAvailable(context.app, ["섹션 접기", "Collapse Section"]) {
-                collapsedSections += 1
-            }
-            Thread.sleep(forTimeInterval: 0.06)
+        for (offset, range) in courseCollapseRanges.enumerated().reversed() {
+            collapseHeading(range, label: "course-\(offset + 1)")
         }
 
         let sectionCollapseRanges =
@@ -4122,14 +4282,17 @@ func renderNativeNoteOnce(
             + plan.unreadHeadingLineIndexes.enumerated().map { offset, index in
                 lineRange(index, fallback: plan.unreadHeadingRanges[offset])
             }
-        for range in sectionCollapseRanges.reversed() {
-            guard selectRange(context.textArea, location: range.location, length: range.length) else {
-                continue
+        for (offset, range) in sectionCollapseRanges.enumerated().reversed() {
+            collapseHeading(range, label: "section-\(offset + 1)")
+        }
+
+        if collapseNoticeItemsEnabled {
+            let noticeCollapseRanges = plan.renderedNotices.map {
+                lineRange($0.sectionLineIndex, fallback: $0.sectionRange)
             }
-            if pressMenuIfAvailable(context.app, ["섹션 접기", "Collapse Section"]) {
-                collapsedSections += 1
+            for (offset, range) in noticeCollapseRanges.enumerated().reversed() {
+                collapseHeading(range, label: "notice-\(offset + 1)")
             }
-            Thread.sleep(forTimeInterval: 0.06)
         }
     }
 

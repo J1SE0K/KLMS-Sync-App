@@ -4,13 +4,16 @@ function run(argv) {
   const options = parseOptions(argv);
   const targetUrl = options.url || "https://klms.kaist.ac.kr/my/";
   const displayName = options["display-name"] || "";
+  const maxSeconds = Math.max(0, Number(options["max-seconds"] || "0"));
+  const pollMs = Math.max(75, Math.min(1000, Number(options["poll-ms"] || "150")));
   if (!displayName) {
     return JSON.stringify({ status: "error", error: "missing-display-name" });
   }
 
   const safari = Application("/Applications/Safari.app");
-  safari.launch();
-  delay(0.5);
+  if (!safeBoolean(() => safari.running())) {
+    safari.launch();
+  }
 
   const windowRef = resolveWindow(safari);
   if (!windowRef) {
@@ -22,12 +25,39 @@ function run(argv) {
     return JSON.stringify({ status: "error", error: "no-safari-tab" });
   }
 
+  if (maxSeconds > 0) {
+    return JSON.stringify(advanceUntilTerminal(tab, targetUrl, displayName, maxSeconds, pollMs));
+  }
+  return JSON.stringify(advanceOneStep(tab, targetUrl, displayName));
+}
+
+function advanceUntilTerminal(tab, targetUrl, displayName, maxSeconds, pollMs) {
+  const deadline = Date.now() + maxSeconds * 1000;
+  let lastPayload = { status: "waiting" };
+
+  while (Date.now() < deadline) {
+    const payload = advanceOneStep(tab, targetUrl, displayName);
+    lastPayload = payload;
+    if (isTerminalStatus(payload.status)) {
+      return payload;
+    }
+    delay(pollMs / 1000);
+  }
+
+  lastPayload.timeout = true;
+  return lastPayload;
+}
+
+function isTerminalStatus(status) {
+  return status === "authenticated" || status === "twofactor_digits" || status === "error";
+}
+
+function advanceOneStep(tab, targetUrl, displayName) {
   let url = safeString(() => tab.url());
   if (!looksLikeKaistAuthUrl(url)) {
     tab.url = targetUrl;
-    delay(0.8);
     url = safeString(() => tab.url());
-    return JSON.stringify({ status: "navigated", url });
+    return { status: "navigated", url };
   }
 
   const urlLower = url.toLowerCase();
@@ -38,7 +68,7 @@ function run(argv) {
     !urlLower.includes("/login/") &&
     !urlLower.includes("ssologin.php")
   ) {
-    return JSON.stringify({ status: "authenticated", url, title });
+    return { status: "authenticated", url, title };
   }
 
   if (urlLower.includes("klms.kaist.ac.kr/login/ssologin.php")) {
@@ -46,17 +76,21 @@ function run(argv) {
 (() => {
   const link = document.querySelector("div.login > a");
   if (!link) return JSON.stringify({ ok: false, reason: "missing-link" });
+  if (document.body && document.body.dataset.klmsLoginAssistSsoClicked === "1") {
+    return JSON.stringify({ ok: false, reason: "sso-click-already-submitted" });
+  }
+  if (document.body) document.body.dataset.klmsLoginAssistSsoClicked = "1";
   link.click();
   return JSON.stringify({ ok: true });
 })();
 `);
     const payload = parseJson(result);
-    return JSON.stringify({
+    return {
       status: payload.ok ? "klms_redirect_clicked" : "waiting",
       reason: payload.reason || "",
       url,
       title
-    });
+    };
   }
 
   if (urlLower.includes("sso.kaist.ac.kr/auth/kaist/user/login/view")) {
@@ -65,12 +99,16 @@ function run(argv) {
   const displayName = ${JSON.stringify(displayName)};
   const input = document.querySelector("#login_id_mfa");
   if (!input) return JSON.stringify({ ok: false, reason: "missing-input" });
+  if (document.body && document.body.dataset.klmsLoginAssistMfaSubmitted === "1") {
+    return JSON.stringify({ ok: false, reason: "login-already-submitted" });
+  }
   const proto = Object.getPrototypeOf(input);
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
   if (setter) setter.call(input, displayName);
   else input.value = displayName;
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
+  if (document.body) document.body.dataset.klmsLoginAssistMfaSubmitted = "1";
   if (typeof window.loginProcMfa === "function") {
     window.loginProcMfa();
     return JSON.stringify({ ok: true, method: "loginProcMfa" });
@@ -84,13 +122,13 @@ function run(argv) {
 })();
 `);
     const payload = parseJson(result);
-    return JSON.stringify({
+    return {
       status: payload.ok ? "login_submitted" : "waiting",
       reason: payload.reason || "",
       method: payload.method || "",
       url,
       title
-    });
+    };
   }
 
   if (urlLower.includes("sso.kaist.ac.kr/auth/twofactor/mfa/login2factor")) {
@@ -116,16 +154,16 @@ function run(argv) {
 })();
 `);
     const payload = parseJson(result);
-    return JSON.stringify({
+    return {
       status: payload.ok ? "twofactor_digits" : "waiting",
       digits: payload.digits || "",
       reason: payload.reason || "",
       url,
       title
-    });
+    };
   }
 
-  return JSON.stringify({ status: "waiting", url, title });
+  return { status: "waiting", url, title };
 }
 
 function parseOptions(argv) {
@@ -153,7 +191,7 @@ function resolveWindow(safari) {
   }
   if (windows.length > 0) return windows[0];
   safari.make({ new: "document" });
-  delay(0.5);
+  delay(0.2);
   return safeValue(() => safari.windows()[0]);
 }
 
@@ -192,6 +230,14 @@ function safeValue(getter) {
     return getter();
   } catch (_error) {
     return null;
+  }
+}
+
+function safeBoolean(getter) {
+  try {
+    return Boolean(getter());
+  } catch (_error) {
+    return false;
   }
 }
 

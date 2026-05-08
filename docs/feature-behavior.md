@@ -28,7 +28,9 @@
 - 빈 상태에서는 해당 메모와 관련된 안내만 짧게 표시한다.
 - 굵기와 글자 크기는 HTML/RTF rich paste를 우선 사용한다.
 - 느린 Notes Format 메뉴 반복 적용은 기본적으로 끈다.
-- `NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT=1`이면 native 제목/머리말 메뉴 스타일을 강제로 다시 적용한다.
+- 공지 메모는 기본적으로 공지 분류/과목명/공지 제목을 실제 Notes heading 계층으로 만들고, 공지 분류와 과목명을 접는다. `NOTICE_COLLAPSE_SECTIONS=0`이면 접기를 끈다.
+- `NOTICE_COLLAPSE_NOTICE_ITEMS=1`이면 공지 개별 제목도 접는다.
+- `NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT=1`이면 native 제목/머리말 메뉴 스타일을 공지 개별 제목까지 강제로 다시 적용한다.
 - 형식 적용 후 굵게가 빠진 줄만 확인해서 보강한다.
 - 체크리스트는 공지별 `읽음`/`중요` 두 줄을 batch 변환한다. `NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT=1`이면 기존 개별 변환으로 되돌린다.
 - render 뒤 note 전체 validator를 돌려 stray checklist나 문단 오염을 검사한다.

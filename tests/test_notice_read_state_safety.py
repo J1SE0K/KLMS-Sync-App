@@ -1,4 +1,6 @@
 import re
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -33,6 +35,43 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
 
         self.assertIn("capture-failed-preserve-user-state", text)
         self.assertIn("throw new Error(renderWarningText)", text)
+
+    def test_notice_accessibility_tree_searches_are_cycle_guarded(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("let axTraversalNodeLimit", text)
+        self.assertIn("func axElementKey(_ element: AXUIElement) -> String", text)
+        self.assertIn("guard visited.insert(key).inserted", text)
+        self.assertIn("findFirst(child, where: predicate, visited: &visited)", text)
+        self.assertIn("collectElements(child, where: predicate, visited: &visited, matches: &matches)", text)
+        self.assertIn("findMenuItem(named: target, in: child, visited: &visited)", text)
+
+    def test_notice_capture_reads_only_checklist_lines_by_exact_range(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+        capture = text[
+            text.index("func capturedChecklistLines") : text.index(
+                "func captureChecklistValue", text.index("func capturedChecklistLines")
+            )
+        ]
+
+        self.assertIn("clampedLineRange", capture)
+        self.assertIn("checklistLineMatchesLabel(label, expectedLabel: readChecklistLabel)", capture)
+        self.assertIn("checklistLineMatchesLabel(label, expectedLabel: importantChecklistLabel)", capture)
+        self.assertIn("range: entry.range", capture)
+        self.assertNotIn("range: fullRange", capture)
+
+    def test_notice_capture_allows_plaintext_drift_when_all_titles_resolve(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("resolvedTitleCount == renderedTitles.count", text)
+        self.assertIn("Proceeding capture despite plaintext drift", text)
+        self.assertIn("resolved_titles=\\(resolvedTitleCount)/\\(renderedTitles.count)", text)
 
     def test_archive_capture_cannot_create_read_state(self) -> None:
         text = (
@@ -175,6 +214,57 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertNotIn('appendLine("체크 안내"', renderer)
         self.assertNotIn("appendNoticeGuidanceBlock(includeFreshGuidance:", renderer)
 
+    def test_notice_category_and_course_headings_are_collapsible_groups(self) -> None:
+        renderer = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+        support = (
+            PROJECT_DIR / "src" / "swift" / "notice_native_note_support.swift"
+        ).read_text(encoding="utf-8")
+        config = (PROJECT_DIR / "examples" / "config.env.example").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('environment["NOTICE_COLLAPSE_SECTIONS"] != "0"', support)
+        self.assertIn("collapseNoticeItemsEnabled", support)
+        self.assertIn("uiCollapsibleGroupStyleFormattingEnabled", support)
+        self.assertIn("noticeCollapseStyleSettleDelay", support)
+        self.assertIn("uiCollapsibleGroupStyleFormattingEnabled", renderer)
+        self.assertIn('menuItems: ["제목", "Title"]', renderer)
+        self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
+        self.assertIn(
+            "if uiStyleMenuFormattingEnabled || collapseNoticeSectionsEnabled || collapseNoticeItemsEnabled",
+            renderer,
+        )
+        self.assertIn("collapse_heading_retry", renderer)
+        self.assertIn("collapseHeading(range, label: \"course-\\(offset + 1)\")", renderer)
+        self.assertIn("collapseHeading(range, label: \"section-\\(offset + 1)\")", renderer)
+        self.assertIn("NOTICE_COLLAPSE_SECTIONS=\"1\"", config)
+        self.assertIn("NOTICE_COLLAPSE_NOTICE_ITEMS=\"0\"", config)
+
+        course_index = renderer.index("let courseCollapseRanges")
+        section_index = renderer.index("let sectionCollapseRanges")
+        notice_index = renderer.index("if collapseNoticeItemsEnabled")
+        self.assertLess(course_index, section_index)
+        self.assertLess(section_index, notice_index)
+
+    def test_archive_notice_note_renders_before_primary(self) -> None:
+        renderer = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertLess(
+            js.index('{ key: "archive", args: ["--render-only", "--archive-only"] }'),
+            js.index('{ key: "primary", args: ["--render-only", "--primary-only"] }'),
+        )
+        self.assertLess(
+            renderer.index("let archivedCollapsedSections = arguments.target == \"primary\""),
+            renderer.index("let collapsedSections = arguments.target == \"archive\""),
+        )
+
     def test_notice_style_version_is_shared_between_swift_and_js(self) -> None:
         support = (
             PROJECT_DIR / "src" / "swift" / "notice_native_note_support.swift"
@@ -224,6 +314,105 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn("noticeRenderStyleVersion", text)
         self.assertIn("style_version", text)
         self.assertNotIn("return body of note", text)
+
+    def test_notice_capture_short_circuits_after_expand_all_when_complete(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("func captureTextContainsExpectedNotices", text)
+        self.assertIn("normalizedTitles.allSatisfy", text)
+        self.assertIn("skipping per-notice expansion", text)
+        self.assertLess(
+            text.index("captureTextContainsExpectedNotices("),
+            text.index("for rendered in previousRenderState.renderedNotices.reversed()"),
+        )
+
+    def test_supplemental_detail_quick_limit_respects_cached_pages(self) -> None:
+        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+        config = (PROJECT_DIR / "examples" / "config.env.example").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("function cachedPageRequestedUrls", js)
+        self.assertIn("...cachedPageRequestedUrls(supplementalDetailPagesJson)", js)
+        self.assertIn("SYNC_SUPPLEMENTAL_DETAIL_PINNED_QUICK_LIMIT", js)
+        self.assertIn("supplementalDetailPinnedQuickLimit", js)
+        self.assertIn('SYNC_SUPPLEMENTAL_DETAIL_PINNED_QUICK_LIMIT="0"', config)
+
+    def test_stable_noop_expected_state_uses_native_notice_order(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed")
+
+        script = r"""
+const fs = require("fs");
+const path = "src/js/sync_klms_notes.js";
+const source = fs.readFileSync(path, "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+eval([
+  extractFunction("expectedNoticeNativeRenderState"),
+  extractFunction("noticeIdentifierForDigestNotice"),
+  extractFunction("oneLineText"),
+].join("\n"));
+
+const digest = {
+  courses: [
+    {
+      course: "Course A",
+      notices: [
+        { url: "stable-1", fingerprint: "fp-stable", change_state: "stable" },
+        { url: "important-1", fingerprint: "fp-important", change_state: "stable" },
+        { url: "fresh-1", fingerprint: "fp-fresh", change_state: "new" },
+        { url: "read-1", fingerprint: "fp-read", change_state: "stable" },
+      ],
+    },
+  ],
+};
+const userState = {
+  notices: {
+    "important-1": { important: true },
+    "read-1": { read_fingerprint: "fp-read" },
+  },
+};
+
+const expected = expectedNoticeNativeRenderState(digest, userState);
+console.log(JSON.stringify({
+  primary: expected.primary.map((notice) => notice.notice_id),
+  archive: expected.archive.map((notice) => notice.notice_id),
+}));
+"""
+        result = subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(
+            result.stdout.strip(),
+            '{"primary":["important-1","fresh-1","stable-1"],"archive":["read-1"]}',
+        )
 
 
 if __name__ == "__main__":
