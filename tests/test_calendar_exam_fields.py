@@ -77,13 +77,45 @@ class CalendarExamFieldTests(unittest.TestCase):
             "source_title": "Midterm notice",
             "location": "E3-5 Room 210",
             "coverage": "Week 1-7",
+            "coverage_summary": "Week 1-7",
         }
 
         serialized = klms_sync.serialize_sync_item(item)
 
         self.assertEqual(serialized["location"], "E3-5 Room 210")
         self.assertEqual(serialized["coverage"], "Week 1-7")
+        self.assertEqual(serialized["coverage_summary"], "Week 1-7")
         self.assertEqual(serialized["time_source"], "notice")
+
+    def test_short_exam_coverage_summary_stays_inline(self) -> None:
+        summary = klms_sync.summarize_exam_coverage_for_calendar(
+            "Week 1-7 lectures / WA 1-2 / PA 1-2"
+        )
+
+        self.assertEqual(summary, "Week 1-7 lectures / WA 1-2 / PA 1-2")
+
+    def test_long_exam_coverage_summary_is_structured(self) -> None:
+        summary = klms_sync.summarize_exam_coverage_for_calendar(
+            "Lectures: Week 1-7; Assignments: WA 1-2, PA 1-2; "
+            "Readings: CLRS 15.2-15.5; Excluding: Week 8 이후"
+        )
+
+        self.assertEqual(
+            summary,
+            "\n".join(
+                [
+                    "- 강의: Week 1-7",
+                    "- 과제: WA 1-2, PA 1-2",
+                    "- 읽기자료: CLRS 15.2-15.5",
+                    "- 제외: Week 8 이후",
+                ]
+            ),
+        )
+
+    def test_ambiguous_exam_coverage_requires_source_check(self) -> None:
+        summary = klms_sync.summarize_exam_coverage_for_calendar("추후 공지 예정")
+
+        self.assertEqual(summary, "확인 필요 - 원문 참고")
 
     def test_calendar_notes_do_not_repeat_location_line(self) -> None:
         for relative_path in (
@@ -93,6 +125,15 @@ class CalendarExamFieldTests(unittest.TestCase):
         ):
             source = (PROJECT_DIR / relative_path).read_text(encoding="utf-8")
             self.assertNotIn("위치:", source)
+
+    def test_calendar_sources_use_coverage_summary(self) -> None:
+        for relative_path in (
+            "src/swift/sync_klms_calendar_suite.swift",
+            "src/swift/sync_klms_calendar.swift",
+            "src/js/sync_klms_calendar_jxa.js",
+        ):
+            source = (PROJECT_DIR / relative_path).read_text(encoding="utf-8")
+            self.assertIn("coverage_summary", source)
 
 
 if __name__ == "__main__":

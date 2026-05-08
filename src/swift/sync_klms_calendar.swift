@@ -34,6 +34,7 @@ struct SyncItem: Decodable {
     let sourceTitle: String?
     let location: String?
     let coverage: String?
+    let coverageSummary: String?
 
     enum CodingKeys: String, CodingKey {
         case url
@@ -50,6 +51,7 @@ struct SyncItem: Decodable {
         case sourceTitle = "source_title"
         case location
         case coverage
+        case coverageSummary = "coverage_summary"
     }
 }
 
@@ -250,8 +252,8 @@ func buildDesiredEvents(items: [SyncItem]) -> [DesiredEvent] {
         let sourceLine = (item.sourceTitle ?? "").isEmpty ? "" : "\n출처: \(item.sourceTitle!)"
         let timingLine = calendarNotice ? calendarTimingLine(for: item) : ""
         let location = item.category == "exam" ? resolvedExamLocation(for: item) : ""
-        let coverage = item.category == "exam" ? resolvedExamCoverage(for: item) : ""
-        let coverageLine = coverage.isEmpty ? "" : "\n시험 범위: \(coverage)"
+        let coverage = item.category == "exam" ? resolvedExamCoverageSummary(for: item) : ""
+        let coverageLine = calendarCoverageLine(coverage)
         let notes = """
 \(currentSyncMarkerPrefix)\(identifier)
 종류: \(kindLabel)
@@ -438,6 +440,41 @@ func resolvedExamCoverage(for item: SyncItem) -> String {
     return extractExamCoverage(from: item.instructions)
 }
 
+func resolvedExamCoverageSummary(for item: SyncItem) -> String {
+    if let coverageSummary = item.coverageSummary {
+        let normalized = normalizeMultilineField(coverageSummary)
+        if !normalized.isEmpty {
+            return normalized
+        }
+    }
+    let coverage = resolvedExamCoverage(for: item)
+    if coverage.isEmpty {
+        return ""
+    }
+    if coverageNeedsManualCheck(coverage) {
+        return "확인 필요 - 원문 참고"
+    }
+    return coverage.count <= 140 ? coverage : "확인 필요 - 원문 참고"
+}
+
+func calendarCoverageLine(_ coverage: String) -> String {
+    let normalized = normalizeMultilineField(coverage)
+    if normalized.isEmpty {
+        return ""
+    }
+    if normalized.contains("\n") || normalized.hasPrefix("- ") {
+        return "\n시험 범위:\n\(normalized)"
+    }
+    return "\n시험 범위: \(normalized)"
+}
+
+func coverageNeedsManualCheck(_ text: String) -> Bool {
+    normalizeSpaces(text).range(
+        of: #"\b(?:tba|tbd|to be announced|will be announced|to be determined)\b|추후\s*공지|별도\s*공지|공지\s*예정|미정|확인\s*필요"#,
+        options: [.regularExpression, .caseInsensitive]
+    ) != nil
+}
+
 func firstCapture(in text: String, patterns: [String]) -> String {
     let nsText = text as NSString
     let range = NSRange(location: 0, length: nsText.length)
@@ -460,6 +497,13 @@ func cleanupExtractedField(_ text: String) -> String {
 func normalizeSpaces(_ text: String) -> String {
     text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func normalizeMultilineField(_ text: String) -> String {
+    text.components(separatedBy: .newlines)
+        .map { normalizeSpaces($0) }
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n")
 }
 
 func parseDueDate(_ text: String) -> Date? {
