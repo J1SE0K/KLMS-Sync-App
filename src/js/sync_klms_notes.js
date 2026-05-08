@@ -240,6 +240,14 @@ function run(argv) {
       "SYNC_SUPPLEMENTAL_DETAIL_INCLUDE_NON_RELEVANT_PRIMARY",
       minimalExplorationEnabled ? false : true
     );
+    const alwaysFetchMinIntervalSeconds = Math.max(
+      0,
+      resolveIntegerConfig(
+        config,
+        "SYNC_ALWAYS_FETCH_MIN_INTERVAL_SECONDS",
+        minimalExplorationEnabled ? 1800 : 0
+      )
+    );
     const supplementalAlwaysFetchPatterns = minimalExplorationEnabled
       ? ["/mod/courseboard/view\\.php"]
       : ["/mod/courseboard/view\\.php", "/index\\.php\\?id="];
@@ -263,6 +271,7 @@ function run(argv) {
       autoFullMinCoverage: fetchAutoFullMinCoverage,
       autoFullRequireLastFull: fetchAutoRequireLastFull,
       autoFullOnTtlExpire: fetchAutoFullOnTtlExpire,
+      alwaysFetchMinIntervalSeconds,
     };
     stageTelemetry.outputPath = stageTimingJson;
     stageTelemetry.scope = scope;
@@ -310,16 +319,16 @@ function run(argv) {
     const noticeDigestJson = `${cacheDir}/notice_digest.json`;
     const noticeDigestErrorTxt = `${cacheDir}/notice_digest_error.txt`;
     const noticeNoteRenderWarningTxt = `${cacheDir}/notice_note_render_warning.txt`;
-	    const noticeNoteName = config.NOTICE_NOTE_NAME || "KLMS 공지";
-	    const noticeArchiveNoteName = config.NOTICE_ARCHIVE_NOTE_NAME || "KLMS 확인한 공지";
-	    const sharedCoursePagesJson =
-	      envValue("KLMS_SHARED_COURSE_PAGES_JSON") || `${cacheDir}/core/course_pages.json`;
-	    const sharedAllWeekCoursePagesJson =
-	      envValue("KLMS_SHARED_ALL_WEEK_COURSE_PAGES_JSON") ||
-	      `${cacheDir}/core/all_week_course_pages.json`;
-	    const sharedSupplementalPrimaryPagesJson =
-	      envValue("KLMS_SHARED_SUPPLEMENTAL_PRIMARY_PAGES_JSON") ||
-	      `${cacheDir}/core/supplemental_primary_pages.json`;
+    const noticeNoteName = config.NOTICE_NOTE_NAME || "KLMS 공지";
+    const noticeArchiveNoteName = config.NOTICE_ARCHIVE_NOTE_NAME || "KLMS 확인한 공지";
+    const sharedCoursePagesJson =
+      envValue("KLMS_SHARED_COURSE_PAGES_JSON") || `${cacheDir}/core/course_pages.json`;
+    const sharedAllWeekCoursePagesJson =
+      envValue("KLMS_SHARED_ALL_WEEK_COURSE_PAGES_JSON") ||
+      `${cacheDir}/core/all_week_course_pages.json`;
+    const sharedSupplementalPrimaryPagesJson =
+      envValue("KLMS_SHARED_SUPPLEMENTAL_PRIMARY_PAGES_JSON") ||
+      `${cacheDir}/core/supplemental_primary_pages.json`;
     const overridesJson =
       config.OVERRIDES_JSON_PATH || `${scriptDir}/manual_assignment_overrides.json`;
     const outputHtml = `${cacheDir}/generated_section.html`;
@@ -361,17 +370,17 @@ function run(argv) {
       noticeNativeStableNoopSkipEnabled,
       noticeNativeAlwaysCaptureStateEnabled,
       syncFullTtlSeconds,
-	      coursePageStaleSeconds,
-	      allWeekCoursePageStaleSeconds,
-	      courseFallbackPagePaths: freshExistingFilesSince(
-	        [sharedCoursePagesJson],
-	        sharedRunStartedEpoch
-	      ),
-	      allWeekCourseFallbackPagePaths: freshExistingFilesSince(
-	        [sharedAllWeekCoursePagesJson],
-	        sharedRunStartedEpoch
-	      ),
-	      supplementalQuickLimit,
+      coursePageStaleSeconds,
+      allWeekCoursePageStaleSeconds,
+      courseFallbackPagePaths: freshExistingFilesSince(
+        [sharedCoursePagesJson],
+        sharedRunStartedEpoch
+      ),
+      allWeekCourseFallbackPagePaths: freshExistingFilesSince(
+        [sharedAllWeekCoursePagesJson],
+        sharedRunStartedEpoch
+      ),
+      supplementalQuickLimit,
       supplementalStaleSeconds,
       supplementalAlwaysFetchPatterns,
       supplementalPrimaryFallbackPagePaths: freshExistingFilesSince(
@@ -1230,12 +1239,12 @@ function runStandaloneNoticeSummary(
       ? fetchPages(courseUrls, waitSeconds, scriptDir, {
           ...baseFetchOptions,
           context: "notice-course-pages",
-	          staleSeconds: paths.coursePageStaleSeconds,
-	          outputPath: paths.coursePagesJson,
-	          summaryPath: paths.courseFetchSummaryJson,
-	          fallbackPagePaths: paths.courseFallbackPagePaths || [],
-	          reuseFallbackAlwaysFetch: true,
-	        })
+          staleSeconds: paths.coursePageStaleSeconds,
+          outputPath: paths.coursePagesJson,
+          summaryPath: paths.courseFetchSummaryJson,
+          fallbackPagePaths: paths.courseFallbackPagePaths || [],
+          reuseFallbackAlwaysFetch: true,
+        })
       : [];
   assertNoLoginPages(
     "공지 정리를 위해 과목 페이지를 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
@@ -1251,12 +1260,12 @@ function runStandaloneNoticeSummary(
       ? fetchPages(allWeekCourseUrls, waitSeconds, scriptDir, {
           ...baseFetchOptions,
           context: "notice-all-week-course-pages",
-	          staleSeconds: paths.allWeekCoursePageStaleSeconds,
-	          outputPath: paths.allWeekCoursePagesJson,
-	          summaryPath: paths.allWeekCourseFetchSummaryJson,
-	          fallbackPagePaths: paths.allWeekCourseFallbackPagePaths || [],
-	          reuseFallbackAlwaysFetch: true,
-	        })
+          staleSeconds: paths.allWeekCoursePageStaleSeconds,
+          outputPath: paths.allWeekCoursePagesJson,
+          summaryPath: paths.allWeekCourseFetchSummaryJson,
+          fallbackPagePaths: paths.allWeekCourseFallbackPagePaths || [],
+          reuseFallbackAlwaysFetch: true,
+        })
       : [];
   assertNoLoginPages(
     "공지 정리를 위해 과목 주간 페이지를 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
@@ -2000,6 +2009,7 @@ function fetchPages(urls, waitSeconds, scriptDir, options) {
     `--quick-limit=${(options && options.quickLimit) || "0"}`,
     `--probe-order=${(options && options.probeOrder) || "index"}`,
     `--stale-seconds=${(options && options.staleSeconds) || "21600"}`,
+    `--always-fetch-min-interval-seconds=${(options && options.alwaysFetchMinIntervalSeconds) || "0"}`,
     `--full-ttl-seconds=${(options && options.fullTtlSeconds) || "259200"}`,
     `--auto-full-min-coverage=${safeValue(() =>
       options.autoFullMinCoverage != null ? options.autoFullMinCoverage : "0.5"
@@ -2030,6 +2040,7 @@ function fetchPages(urls, waitSeconds, scriptDir, options) {
   );
 
   runCommand(command, scriptDir);
+  removeFileIfExists(urlFilePath);
   recordFetchSummaryTelemetry(options && options.summaryPath, context);
   return JSON.parse(readText(outputPath));
 }
@@ -2055,8 +2066,10 @@ function recordFetchSummaryTelemetry(summaryPath, context) {
     requested_mode: String(summary.requested_mode || ""),
     effective_mode: String(summary.effective_mode || ""),
     total_urls: Number(summary.total_urls || 0),
+    selected_urls: Number(summary.selected_urls || 0),
     fetched_urls: Number(summary.fetched_urls || 0),
     reused_urls: Number(summary.reused_urls || 0),
+    missing_urls: Number(summary.missing_urls || 0),
     changed_urls: Number(summary.changed_urls || 0),
     output_path: String(summary.out_path || ""),
   });
@@ -3235,6 +3248,21 @@ function ensureDir(path) {
 
 function fileExists(path) {
   return Boolean($.NSFileManager.defaultManager.fileExistsAtPath($(path).stringByStandardizingPath));
+}
+
+function removeFileIfExists(path) {
+  if (!path || !fileExists(path)) {
+    return;
+  }
+  const error = Ref();
+  const ok = $.NSFileManager.defaultManager.removeItemAtPathError(
+    $(path).stringByStandardizingPath,
+    error
+  );
+  if (!ok) {
+    const message = error[0] ? ObjC.unwrap(error[0].localizedDescription) : "unknown error";
+    throw new Error(`Failed to remove ${path}: ${message}`);
+  }
 }
 
 function envValue(key) {

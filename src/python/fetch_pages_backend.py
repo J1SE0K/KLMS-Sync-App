@@ -130,6 +130,7 @@ def main() -> int:
         mode=effective_mode,
         quick_limit=args.quick_limit,
         stale_seconds=args.stale_seconds,
+        always_fetch_min_interval_seconds=args.always_fetch_min_interval_seconds,
         always_fetch_patterns=args.always_fetch_pattern or [],
         fallback_url_set=fallback_url_set if args.reuse_fallback_always_fetch else set(),
         probe_order=args.probe_order,
@@ -188,18 +189,20 @@ def main() -> int:
     }
     final_pages = [ordered_lookup[url] for url in urls if url in ordered_lookup]
 
+    fetched_url_list = dedupe_preserving_order(fetched_url_list)
+    changed_url_list = dedupe_preserving_order(changed_url_list)
     update_context_state(
         context_state=context_state,
         pages=final_pages,
         backend=backend,
         effective_mode=effective_mode,
+        fetched_urls=set(fetched_url_list),
     )
     write_json(out_path, final_pages)
     write_json(cache_state_path, state)
 
-    fetched_url_list = dedupe_preserving_order(fetched_url_list)
-    changed_url_list = dedupe_preserving_order(changed_url_list)
     reused_url_list = [url for url in urls if url in ordered_lookup and url not in set(fetched_url_list)]
+    missing_final_urls = [url for url in urls if url not in ordered_lookup]
     summary = {
         "context": context_key,
         "backend": backend,
@@ -209,8 +212,10 @@ def main() -> int:
         "finished_at": now_utc_iso(),
         "duration_ms": int((time.time() - run_started_epoch) * 1000),
         "total_urls": len(urls),
+        "selected_urls": len(urls_to_fetch),
         "fetched_urls": fetched_total,
         "reused_urls": len(reused_url_list),
+        "missing_urls": len(missing_final_urls),
         "changed_urls": len(changed_url_list),
         "out_path": str(out_path),
         "cache_state_path": str(cache_state_path),
@@ -221,6 +226,8 @@ def main() -> int:
         summary_payload = dict(summary)
         summary_payload["fetched_url_list"] = fetched_url_list
         summary_payload["reused_url_list"] = reused_url_list
+        summary_payload["selected_url_list"] = urls_to_fetch
+        summary_payload["missing_url_list"] = missing_final_urls
         summary_payload["changed_url_list"] = changed_url_list
         write_json(Path(args.summary_out).expanduser().resolve(), summary_payload)
     print(json.dumps(summary, ensure_ascii=False))
@@ -242,6 +249,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--quick-limit", type=int, default=0)
     parser.add_argument("--probe-order", choices=["index", "oldest"], default="index")
     parser.add_argument("--stale-seconds", type=int, default=6 * 3600)
+    parser.add_argument("--always-fetch-min-interval-seconds", type=int, default=0)
     parser.add_argument("--full-ttl-seconds", type=int, default=72 * 3600)
     parser.add_argument("--auto-full-min-coverage", type=float, default=0.5)
     parser.add_argument("--auto-full-require-last-full", type=int, choices=[0, 1], default=1)
@@ -309,6 +317,7 @@ def choose_urls_to_fetch(
     mode: str,
     quick_limit: int,
     stale_seconds: int,
+    always_fetch_min_interval_seconds: int,
     always_fetch_patterns: list[str],
     fallback_url_set: set[str],
     probe_order: str,
@@ -331,7 +340,11 @@ def choose_urls_to_fetch(
         if url in fallback_url_set and previous_page is not None and not looks_like_login_page_payload(previous_page):
             continue
 
-        if any(pattern.search(url) for pattern in compiled_patterns):
+        if any(pattern.search(url) for pattern in compiled_patterns) and should_run_always_fetch_probe(
+            metadata,
+            now,
+            always_fetch_min_interval_seconds,
+        ):
             selected.add(url)
             continue
 
@@ -361,6 +374,20 @@ def choose_urls_to_fetch(
             selected.add(url)
 
     return [url for url in urls if url in selected]
+
+
+def should_run_always_fetch_probe(
+    metadata: dict[str, Any],
+    now: Any,
+    min_interval_seconds: int,
+) -> bool:
+    interval = max(0, int(min_interval_seconds or 0))
+    if interval <= 0:
+        return True
+    fetched_at = parse_iso_datetime(str(metadata.get("last_fetched_at") or ""))
+    if fetched_at is None or now is None:
+        return True
+    return (now - fetched_at).total_seconds() >= interval
 
 
 def probe_priority(metadata: dict[str, Any]) -> float:
@@ -673,9 +700,11 @@ def update_context_state(
     pages: list[dict[str, Any]],
     backend: str,
     effective_mode: str,
+    fetched_urls: set[str] | None = None,
 ) -> None:
     fetched_at = now_utc_iso()
     url_state = context_state.setdefault("urls", {})
+    fetched_urls = fetched_urls or set()
     for page in pages:
         requested_url = page_requested_url(page)
         if not requested_url:
@@ -684,17 +713,20 @@ def update_context_state(
         title = str(page.get("title") or "")
         fingerprint = page_fingerprint(page)
         previous_entry = url_state.get(requested_url, {})
+        was_fetched = requested_url in fetched_urls or not previous_entry
+        previous_last_fetched_at = str(previous_entry.get("last_fetched_at") or "")
+        previous_last_changed_at = str(previous_entry.get("last_changed_at") or "")
         url_state[requested_url] = {
             "fingerprint": fingerprint,
             "title": title,
             "html_length": len(html),
-            "last_fetched_at": fetched_at,
+            "last_fetched_at": fetched_at if was_fetched else previous_last_fetched_at,
             "last_changed_at": (
                 fetched_at
-                if previous_entry.get("fingerprint") != fingerprint
-                else str(previous_entry.get("last_changed_at") or "")
+                if was_fetched and previous_entry.get("fingerprint") != fingerprint
+                else previous_last_changed_at
             ),
-            "backend": backend,
+            "backend": backend if was_fetched else str(previous_entry.get("backend") or backend),
             "login_page": looks_like_login_page_payload(page),
         }
 
