@@ -10,6 +10,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from klms_sync import analyze_login_status
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
@@ -40,6 +42,20 @@ def load_json(path: Path, default: Any) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return default
+
+
+def dashboard_login_cache_check(dashboard: Any) -> dict[str, str]:
+    if not isinstance(dashboard, list) or not dashboard:
+        return check("klms-login-cache", "warn", "dashboard cache missing")
+
+    status = analyze_login_status(dashboard)
+    if status.get("status") == "ok":
+        title = str(status.get("title") or "").strip()
+        detail = f"dashboard cache present title={title}" if title else "dashboard cache present"
+        return check("klms-login-cache", "ok", detail)
+
+    detail = str(status.get("message") or status.get("error") or "dashboard cache looks login-like")
+    return check("klms-login-cache", "warn", detail)
 
 
 def build_result(script_dir: Path, config: Path, cache_dir: Path, state_json: Path) -> dict[str, Any]:
@@ -77,12 +93,7 @@ def build_result(script_dir: Path, config: Path, cache_dir: Path, state_json: Pa
     checks.append(check("downloads-mirror", "ok" if downloads_root.exists() else "warn", str(downloads_root)))
     checks.append(check("state-json", "ok" if state_json.exists() else "warn", str(state_json)))
     dashboard = load_json(cache_dir / "dashboard.json", [])
-    if isinstance(dashboard, list) and dashboard:
-        dashboard_text = json.dumps(dashboard[0], ensure_ascii=False).casefold()
-        login_like = any(token in dashboard_text for token in ("login", "로그인", "sso"))
-        checks.append(check("klms-login-cache", "warn" if login_like else "ok", "dashboard cache looks login-like" if login_like else "dashboard cache present"))
-    else:
-        checks.append(check("klms-login-cache", "warn", "dashboard cache missing"))
+    checks.append(dashboard_login_cache_check(dashboard))
     for scope in ("core", "notice", "files"):
         timing = cache_dir / scope / "stage_timings.json"
         checks.append(check(f"stage-timing:{scope}", "ok" if timing.exists() else "warn", str(timing)))
