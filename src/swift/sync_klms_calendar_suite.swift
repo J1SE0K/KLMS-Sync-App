@@ -28,9 +28,12 @@ struct SyncItem: Decodable {
     let instructions: String
     let category: String?
     let timingPrecision: String?
+    let timeSource: String?
     let syncStart: String?
     let syncDue: String?
     let sourceTitle: String?
+    let location: String?
+    let coverage: String?
 
     enum CodingKeys: String, CodingKey {
         case url
@@ -41,9 +44,12 @@ struct SyncItem: Decodable {
         case instructions
         case category
         case timingPrecision = "timing_precision"
+        case timeSource = "time_source"
         case syncStart = "sync_start"
         case syncDue = "sync_due"
         case sourceTitle = "source_title"
+        case location
+        case coverage
     }
 }
 
@@ -274,20 +280,16 @@ func buildDesiredStandardEvents(items: [SyncItem]) -> [DesiredStandardEvent] {
         let kindLabel = eventKindLabel(for: item)
         let scheduleLabel = calendarNotice ? "일정" : "마감"
         let sourceLine = (item.sourceTitle ?? "").isEmpty ? "" : "\n출처: \(item.sourceTitle!)"
-        let timingLine =
-            calendarNotice && item.timingPrecision == "date"
-            ? "\n시간: KLMS에서 날짜만 확인됨"
-            : ""
+        let timingLine = calendarNotice ? calendarTimingLine(for: item) : ""
         let location = item.category == "exam" ? resolvedExamLocation(for: item) : ""
-        let coverage = item.category == "exam" ? extractExamCoverage(from: item.instructions) : ""
-        let coverageLine = coverage.isEmpty ? "" : "시험 범위: \(coverage)\n"
+        let coverage = item.category == "exam" ? resolvedExamCoverage(for: item) : ""
+        let coverageLine = coverage.isEmpty ? "" : "\n시험 범위: \(coverage)"
         let notes = """
 \(currentSyncMarkerPrefix)\(identifier)
 종류: \(kindLabel)
 과목: \(item.course)
 \(kindLabel): \(item.title)
-\(scheduleLabel): \(item.due)\(timingLine)\(sourceLine)
-\(coverageLine)위치: \(location)
+\(scheduleLabel): \(item.due)\(timingLine)\(sourceLine)\(coverageLine)
 제출 상태: \(item.submission)
 메모: \(item.instructions)
 링크: \(item.url)
@@ -388,6 +390,16 @@ func calendarTitlePrefix(for item: SyncItem) -> String {
     return "[KLMS]"
 }
 
+func calendarTimingLine(for item: SyncItem) -> String {
+    if item.timeSource == "class_time" {
+        return "\n시간: 공지에 시간이 없어 수업 시간으로 반영됨"
+    }
+    if item.timingPrecision == "date" {
+        return "\n시간: KLMS에서 날짜만 확인됨"
+    }
+    return ""
+}
+
 func extractExamLocation(from text: String) -> String {
     firstCapture(
         in: normalizeSpaces(text),
@@ -399,6 +411,9 @@ func extractExamLocation(from text: String) -> String {
 }
 
 func resolvedExamLocation(for item: SyncItem) -> String {
+    if let location = item.location, !normalizeSpaces(location).isEmpty {
+        return normalizeSpaces(location)
+    }
     let explicitLocation = extractExamLocation(from: item.instructions)
     if !explicitLocation.isEmpty {
         return explicitLocation
@@ -421,6 +436,13 @@ func extractExamCoverage(from text: String) -> String {
             #"\b(?:Coverage|Range|Exam\s*Range)\s*:\s*(.+?)(?=\s*(?:[•⦁]|Time|Date\s*&\s*Time|Location|Place|Venue|Room|시험\s*일시|시험\s*장소|$))"#,
         ]
     )
+}
+
+func resolvedExamCoverage(for item: SyncItem) -> String {
+    if let coverage = item.coverage, !normalizeSpaces(coverage).isEmpty {
+        return normalizeSpaces(coverage)
+    }
+    return extractExamCoverage(from: item.instructions)
 }
 
 func firstCapture(in text: String, patterns: [String]) -> String {

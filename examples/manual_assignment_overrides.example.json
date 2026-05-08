@@ -14,5 +14,15 @@
     "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=EXAMPLE&bwid=EXAMPLE::시험": {
       "status": "ignored"
     }
+  },
+  "class_times": {
+    "Example Course": [
+      {
+        "weekday": "수요일",
+        "start": "10:30",
+        "end": "12:00"
+      }
+    ],
+    "Another Course": "화/목 14:30-16:00"
   }
 }

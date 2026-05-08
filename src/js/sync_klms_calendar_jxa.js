@@ -156,16 +156,15 @@ function buildDesiredEvent(item, durationMinutes) {
   const identifier = itemIdentifier(item);
   const kindLabel = eventKindLabel(item);
   const sourceLine = item.source_title ? `\n출처: ${item.source_title}` : "";
-  const timingLine = item.timing_precision === "date" ? "\n시간: KLMS에서 날짜만 확인됨" : "";
+  const timingLine = calendarTimingLine(item);
   const location = item.category === "exam" ? resolveExamLocation(item) : "";
-  const coverage = item.category === "exam" ? extractExamCoverage(item.instructions || "") : "";
-  const coverageLine = coverage ? `시험 범위: ${coverage}\n` : "";
+  const coverage = item.category === "exam" ? resolveExamCoverage(item) : "";
+  const coverageLine = coverage ? `\n시험 범위: ${coverage}` : "";
   const description = `${CURRENT_MARKER_PREFIX}${identifier}
 종류: ${kindLabel}
 과목: ${item.course || ""}
 ${kindLabel}: ${item.title || ""}
-일정: ${item.due || ""}${timingLine}${sourceLine}
-${coverageLine}위치: ${location || ""}
+일정: ${item.due || ""}${timingLine}${sourceLine}${coverageLine}
 제출 상태: ${item.submission || ""}
 메모: ${item.instructions || ""}
 링크: ${item.url || ""}
@@ -185,6 +184,16 @@ ${coverageLine}위치: ${location || ""}
   };
 }
 
+function calendarTimingLine(item) {
+  if (item.time_source === "class_time") {
+    return "\n시간: 공지에 시간이 없어 수업 시간으로 반영됨";
+  }
+  if (item.timing_precision === "date") {
+    return "\n시간: KLMS에서 날짜만 확인됨";
+  }
+  return "";
+}
+
 function extractExamLocation(text) {
   const compact = normalizeWhitespace(text);
   return firstCapture(compact, [
@@ -194,6 +203,11 @@ function extractExamLocation(text) {
 }
 
 function resolveExamLocation(item) {
+  const structuredLocation = normalizeWhitespace(item.location || "");
+  if (structuredLocation) {
+    return structuredLocation;
+  }
+
   const explicitLocation = extractExamLocation(item.instructions || "");
   if (explicitLocation) {
     return explicitLocation;
@@ -212,6 +226,14 @@ function extractExamCoverage(text) {
     /(?:시험\s*)?범위\s*[:：]\s*(.+?)(?=\s*(?:Date\s*&\s*Time|Location|Place|Venue|Room|Coverage|Range|Time|시험\s*일시|시험\s*장소|$))/i,
     /\b(?:Coverage|Range|Exam\s*Range)\s*:\s*(.+?)(?=\s*(?:[•⦁]|Time|Date\s*&\s*Time|Location|Place|Venue|Room|시험\s*일시|시험\s*장소|$))/i,
   ]);
+}
+
+function resolveExamCoverage(item) {
+  const structuredCoverage = normalizeWhitespace(item.coverage || "");
+  if (structuredCoverage) {
+    return structuredCoverage;
+  }
+  return extractExamCoverage(item.instructions || "");
 }
 
 function firstCapture(text, patterns) {
