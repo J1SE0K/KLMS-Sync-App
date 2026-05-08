@@ -26,6 +26,22 @@ PRIMARY_BOARD_KEYWORDS = ("notice", "공지", "announcement")
 EXAM_KEYWORDS = ("midterm", "final", "exam", "시험", "중간", "기말")
 HELP_DESK_KEYWORDS = ("help desk", "helpdesk", "헬프데스크")
 EXAM_TITLE_KEYWORDS = ("midterm", "final", "exam", "중간", "기말", "시험")
+CLASS_TIME_KEYWORDS = (
+    "수업시간",
+    "수업 시간",
+    "강의시간",
+    "강의 시간",
+    "강의일시",
+    "강의 일시",
+    "class time",
+    "lecture time",
+    "meeting time",
+)
+WEEKDAY_TOKEN_PATTERN = (
+    r"월(?:요일)?|화(?:요일)?|수(?:요일)?|목(?:요일)?|금(?:요일)?|토(?:요일)?|일(?:요일)?|"
+    r"Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Thur(?:sday)?|"
+    r"Fri(?:day)?|Sat(?:urday)?|Sun(?:day)?"
+)
 EXAM_FALSE_POSITIVE_SOURCE_KEYWORDS = (
     "nano quiz",
     "quiz",
@@ -403,9 +419,11 @@ def cmd_build_note(args: argparse.Namespace) -> None:
     override_document = load_override_document(Path(args.overrides_json)) if args.overrides_json else {
         "assignments": {},
         "exams": {},
+        "class_times": {},
     }
     overrides = override_document["assignments"]
     exam_overrides = override_document["exams"]
+    class_time_overrides = override_document.get("class_times", {})
     previous_state = load_optional_json(Path(args.state_json))
     notice_digest = (
         load_optional_json(Path(args.notice_digest_json)) if args.notice_digest_json else {}
@@ -449,15 +467,22 @@ def cmd_build_note(args: argparse.Namespace) -> None:
         supplemental_sources = supplemental_detail_pages + supplemental_pages
         notice_digest_pages = build_notice_digest_candidate_pages(notice_digest)
         course_lookup = build_activity_course_lookup(course_pages)
+        class_time_lookup = merge_class_time_lookups(
+            build_course_class_time_lookup(course_pages + supplemental_sources + notice_digest_pages),
+            class_time_overrides,
+        )
         resolved_exam_items = apply_exam_overrides(
-            extract_exam_items(
-                supplemental_sources,
-                course_lookup,
+            apply_exam_class_time_fallback(
+                extract_exam_items(
+                    supplemental_sources,
+                    course_lookup,
+                ),
+                class_time_lookup,
             ),
             exam_overrides,
         )
         resolved_direct_exam_items = apply_exam_overrides(
-            direct_exam_items,
+            apply_exam_class_time_fallback(direct_exam_items, class_time_lookup),
             exam_overrides,
             default_status="approved",
         )
@@ -572,7 +597,7 @@ def build_notice_digest_candidate_pages(notice_digest: dict[str, Any]) -> list[d
 
 def load_override_document(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return {"assignments": {}, "exams": {}}
+        return {"assignments": {}, "exams": {}, "class_times": {}}
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(payload, dict):
@@ -580,13 +605,15 @@ def load_override_document(path: Path) -> dict[str, Any]:
             return {
                 "assignments": normalize_assignment_overrides(payload.get("assignments")),
                 "exams": normalize_exam_overrides(payload.get("exams")),
+                "class_times": normalize_class_time_overrides(payload.get("class_times")),
             }
         return {
             "assignments": normalize_assignment_overrides(payload),
             "exams": {},
+            "class_times": {},
         }
 
-    return {"assignments": {}, "exams": {}}
+    return {"assignments": {}, "exams": {}, "class_times": {}}
 
 
 def normalize_assignment_overrides(payload: Any) -> dict[str, str]:
@@ -611,7 +638,16 @@ def normalize_exam_overrides(payload: Any) -> dict[str, dict[str, str]]:
             continue
 
         item: dict[str, str] = {}
-        for field in ("due", "timing_precision", "sync_start", "sync_due", "instructions_append", "status"):
+        for field in (
+            "due",
+            "timing_precision",
+            "sync_start",
+            "sync_due",
+            "instructions_append",
+            "status",
+            "location",
+            "coverage",
+        ):
             value = raw_value.get(field)
             if value is None:
                 continue
@@ -623,6 +659,71 @@ def normalize_exam_overrides(payload: Any) -> dict[str, dict[str, str]]:
             normalized[key] = item
 
     return normalized
+
+
+def normalize_class_time_overrides(payload: Any) -> dict[str, list["ClassTimeRange"]]:
+    if not isinstance(payload, dict):
+        return {}
+
+    normalized: dict[str, list[ClassTimeRange]] = {}
+    for raw_course, raw_value in payload.items():
+        course = normalize_whitespace(str(raw_course))
+        if not course:
+            continue
+
+        ranges = class_time_ranges_from_override_value(raw_value)
+        if ranges:
+            normalized[course] = ranges
+
+    return normalized
+
+
+def class_time_ranges_from_override_value(value: Any) -> list["ClassTimeRange"]:
+    if isinstance(value, str):
+        return parse_weekly_class_time_ranges(value, source="override", require_keyword=False)
+
+    if isinstance(value, dict):
+        parsed = class_time_range_from_mapping(value)
+        return parsed
+
+    if isinstance(value, list):
+        ranges: list[ClassTimeRange] = []
+        for entry in value:
+            if isinstance(entry, str):
+                ranges.extend(parse_weekly_class_time_ranges(entry, source="override", require_keyword=False))
+            elif isinstance(entry, dict):
+                ranges.extend(class_time_range_from_mapping(entry))
+        return dedupe_class_time_ranges(ranges)
+
+    return []
+
+
+def class_time_range_from_mapping(payload: dict[str, Any]) -> list["ClassTimeRange"]:
+    raw_weekday = payload.get("weekday") or payload.get("day") or payload.get("days")
+    raw_start = payload.get("start") or payload.get("start_time")
+    raw_end = payload.get("end") or payload.get("end_time")
+    if raw_weekday is None or raw_start is None or raw_end is None:
+        return []
+
+    weekdays = parse_weekday_tokens(str(raw_weekday))
+    start_clock = parse_standalone_class_clock(str(raw_start))
+    end_clock = parse_standalone_class_clock(str(raw_end))
+    if not weekdays or not start_clock or not end_clock:
+        return []
+
+    start_hour, start_minute = start_clock
+    end_hour, end_minute = end_clock
+    return [
+        ClassTimeRange(
+            weekday=weekday,
+            start_hour=start_hour,
+            start_minute=start_minute,
+            end_hour=end_hour,
+            end_minute=end_minute,
+            source="override",
+        )
+        for weekday in weekdays
+    ]
 
 
 def write_text(path: Path, content: str) -> None:
@@ -682,6 +783,16 @@ class DateSnippet:
     timing_precision: str
     start: int
     end: int
+
+
+@dataclass(frozen=True)
+class ClassTimeRange:
+    weekday: int
+    start_hour: int
+    start_minute: int
+    end_hour: int
+    end_minute: int
+    source: str = "page"
 
 
 def collect_candidate_items(
@@ -2420,6 +2531,239 @@ def extract_course_name(page: dict[str, Any], soup: BeautifulSoup) -> str:
     return ""
 
 
+def build_course_class_time_lookup(pages: list[dict[str, Any]]) -> dict[str, list[ClassTimeRange]]:
+    lookup: dict[str, list[ClassTimeRange]] = {}
+    for page in pages:
+        if looks_like_login_page(page):
+            continue
+
+        soup = BeautifulSoup(page.get("html", ""), "html.parser")
+        course = (
+            normalize_whitespace(str(page.get("course", "")))
+            or extract_course_name(page, soup)
+        )
+        if not course or should_ignore_course_name(course) or should_ignore_course_url(page_requested_url(page)):
+            continue
+
+        page_text = extract_page_text(page, soup)
+        ranges = parse_weekly_class_time_ranges(page_text, source="page", require_keyword=True)
+        if ranges:
+            merge_class_time_ranges_for_course(lookup, course, ranges)
+
+    return lookup
+
+
+def merge_class_time_lookups(
+    *lookups: dict[str, list[ClassTimeRange]]
+) -> dict[str, list[ClassTimeRange]]:
+    merged: dict[str, list[ClassTimeRange]] = {}
+    for lookup in lookups:
+        for course, ranges in lookup.items():
+            merge_class_time_ranges_for_course(merged, course, ranges)
+    return merged
+
+
+def merge_class_time_ranges_for_course(
+    lookup: dict[str, list[ClassTimeRange]], course: str, ranges: list[ClassTimeRange]
+) -> None:
+    key = normalize_course_key(course)
+    existing = lookup.setdefault(key, [])
+    seen = {
+        (
+            item.weekday,
+            item.start_hour,
+            item.start_minute,
+            item.end_hour,
+            item.end_minute,
+        )
+        for item in existing
+    }
+    for item in ranges:
+        item_key = (
+            item.weekday,
+            item.start_hour,
+            item.start_minute,
+            item.end_hour,
+            item.end_minute,
+        )
+        if item_key in seen:
+            continue
+        existing.append(item)
+        seen.add(item_key)
+
+
+def normalize_course_key(course: str) -> str:
+    return normalize_whitespace(course).casefold()
+
+
+def parse_weekly_class_time_ranges(
+    text: str, *, source: str, require_keyword: bool
+) -> list[ClassTimeRange]:
+    compact = normalize_whitespace(text)
+    if not compact:
+        return []
+
+    windows = class_time_candidate_windows(compact) if require_keyword else [compact]
+    ranges: list[ClassTimeRange] = []
+    for window in windows:
+        ranges.extend(parse_weekly_class_time_ranges_from_window(window, source=source))
+    return dedupe_class_time_ranges(ranges)
+
+
+def class_time_candidate_windows(text: str) -> list[str]:
+    windows: list[str] = []
+    for keyword in CLASS_TIME_KEYWORDS:
+        for match in re.finditer(re.escape(keyword), text, re.IGNORECASE):
+            start = max(0, match.start() - 80)
+            end = min(len(text), match.end() + 240)
+            windows.append(text[start:end])
+    return windows
+
+
+def parse_weekly_class_time_ranges_from_window(text: str, *, source: str) -> list[ClassTimeRange]:
+    day_token = WEEKDAY_TOKEN_PATTERN
+    pattern = re.compile(
+        rf"(?P<days>{day_token}(?:\s*(?:/|,|&|and|및|와|과)\s*{day_token})*)"
+        rf"[^\d]{{0,50}}"
+        rf"(?P<start_prefix>오전|오후|AM|PM)?\s*"
+        rf"(?P<start_hour>\d{{1,2}})(?:(?::|h)\s*(?P<start_minute>\d{{2}}))?"
+        rf"\s*(?P<start_suffix>AM|PM|오전|오후)?\s*"
+        rf"(?:부터|~|-|to|–|—)\s*"
+        rf"(?P<end_prefix>오전|오후|AM|PM)?\s*"
+        rf"(?P<end_hour>\d{{1,2}})(?:(?::|h)\s*(?P<end_minute>\d{{2}}))?"
+        rf"\s*(?P<end_suffix>AM|PM|오전|오후)?",
+        re.IGNORECASE,
+    )
+
+    ranges: list[ClassTimeRange] = []
+    for match in pattern.finditer(text):
+        weekdays = parse_weekday_tokens(match.group("days"))
+        start_hour, start_minute = parse_class_clock_groups(
+            match.group("start_hour"),
+            match.group("start_minute"),
+            match.group("start_prefix"),
+            match.group("start_suffix"),
+            text,
+        )
+        end_hour, end_minute = parse_class_clock_groups(
+            match.group("end_hour"),
+            match.group("end_minute"),
+            match.group("end_prefix"),
+            match.group("end_suffix"),
+            text,
+        )
+        if not weekdays or not valid_clock(start_hour, start_minute) or not valid_clock(end_hour, end_minute):
+            continue
+
+        for weekday in weekdays:
+            ranges.append(
+                ClassTimeRange(
+                    weekday=weekday,
+                    start_hour=start_hour,
+                    start_minute=start_minute,
+                    end_hour=end_hour,
+                    end_minute=end_minute,
+                    source=source,
+                )
+            )
+
+    return ranges
+
+
+def parse_weekday_tokens(text: str) -> list[int]:
+    weekdays: list[int] = []
+    seen: set[int] = set()
+    for match in re.finditer(WEEKDAY_TOKEN_PATTERN, text, re.IGNORECASE):
+        weekday = weekday_token_to_index(match.group(0))
+        if weekday is None or weekday in seen:
+            continue
+        weekdays.append(weekday)
+        seen.add(weekday)
+    return weekdays
+
+
+def weekday_token_to_index(token: str) -> int | None:
+    normalized = normalize_whitespace(token).casefold()
+    if normalized.startswith("월") or normalized.startswith("mon"):
+        return 0
+    if normalized.startswith("화") or normalized.startswith("tue"):
+        return 1
+    if normalized.startswith("수") or normalized.startswith("wed"):
+        return 2
+    if normalized.startswith("목") or normalized.startswith("thu"):
+        return 3
+    if normalized.startswith("금") or normalized.startswith("fri"):
+        return 4
+    if normalized.startswith("토") or normalized.startswith("sat"):
+        return 5
+    if normalized.startswith("일") or normalized.startswith("sun"):
+        return 6
+    return None
+
+
+def parse_class_clock_groups(
+    hour_text: str | None,
+    minute_text: str | None,
+    prefix: str | None,
+    suffix: str | None,
+    context: str,
+) -> tuple[int, int]:
+    hour = int(hour_text or "0")
+    minute = int(minute_text or "0")
+    meridiem = normalize_whitespace(prefix or suffix or "").casefold()
+    if meridiem in {"pm", "오후"}:
+        hour = hour % 12 + 12
+    elif meridiem in {"am", "오전"}:
+        hour = hour % 12
+    elif "afternoon" in context.casefold() and hour < 12:
+        hour += 12
+    return hour, minute
+
+
+def parse_standalone_class_clock(text: str) -> tuple[int, int] | None:
+    pattern = re.compile(
+        r"^(?P<prefix>오전|오후|AM|PM)?\s*"
+        r"(?P<hour>\d{1,2})(?:(?::|h)\s*(?P<minute>\d{2}))?"
+        r"\s*(?P<suffix>AM|PM|오전|오후)?$",
+        re.IGNORECASE,
+    )
+    match = pattern.match(normalize_whitespace(text))
+    if not match:
+        return None
+    hour, minute = parse_class_clock_groups(
+        match.group("hour"),
+        match.group("minute"),
+        match.group("prefix"),
+        match.group("suffix"),
+        text,
+    )
+    if not valid_clock(hour, minute):
+        return None
+    return hour, minute
+
+
+def valid_clock(hour: int, minute: int) -> bool:
+    return 0 <= hour <= 23 and 0 <= minute <= 59
+
+
+def dedupe_class_time_ranges(ranges: list[ClassTimeRange]) -> list[ClassTimeRange]:
+    deduped: list[ClassTimeRange] = []
+    seen: set[tuple[int, int, int, int, int]] = set()
+    for item in ranges:
+        key = (
+            item.weekday,
+            item.start_hour,
+            item.start_minute,
+            item.end_hour,
+            item.end_minute,
+        )
+        if key in seen:
+            continue
+        deduped.append(item)
+        seen.add(key)
+    return deduped
+
+
 def should_track_course_item(url: str, title: str, schedule: str) -> bool:
     module = module_name_from_url(url)
     if module in {"assign", "quiz"}:
@@ -2570,6 +2914,7 @@ def merge_assignment(item: DashboardItem, detail: dict[str, Any] | None) -> dict
         "submission": submission,
         "instructions": instructions,
         "timing_precision": infer_timing_precision(due),
+        "time_source": "notice" if infer_timing_precision(due) != "date" else "date_only",
         "sort_due": sort_due,
         "sync_due": sort_due.isoformat() if sort_due else "",
         "source_title": "",
@@ -2614,6 +2959,10 @@ def assignment_to_exam_item(assignment: dict[str, Any]) -> dict[str, Any]:
     )
     exam_item["source_title"] = assignment.get("title", "")
     exam_item["submission"] = ""
+    exam_item["location"] = resolve_exam_location_from_text(
+        str(assignment.get("instructions", "")), str(assignment.get("url", ""))
+    )
+    exam_item["coverage"] = extract_exam_coverage(str(assignment.get("instructions", "")))
     exam_item["approval_status"] = "approved"
     return exam_item
 
@@ -2733,6 +3082,7 @@ def extract_assignment_candidate_items(
                 "submission": "",
                 "instructions": summarize_instructions(chunk),
                 "timing_precision": assignment_schedule["timing_precision"],
+                "time_source": assignment_schedule.get("time_source", ""),
                 "sort_due": assignment_schedule["sort_due"],
                 "sync_due": assignment_schedule["sync_due"],
                 "source_title": source_title,
@@ -2812,6 +3162,7 @@ def extract_exam_items(pages: list[dict[str, Any]], course_lookup: dict[str, str
                 key = (course, title, exam_schedule["sync_due"])
                 if key in items_by_key:
                     continue
+                instructions = summarize_instructions(chunk, 1200)
 
                 items_by_key[key] = {
                     "url": page.get("requestedUrl") or page.get("url") or "",
@@ -2821,8 +3172,11 @@ def extract_exam_items(pages: list[dict[str, Any]], course_lookup: dict[str, str
                     "title": title,
                     "due": exam_schedule["due"],
                     "submission": "",
-                    "instructions": summarize_instructions(chunk, 1200),
+                    "instructions": instructions,
+                    "location": resolve_exam_location_from_text(chunk, requested_url),
+                    "coverage": extract_exam_coverage(chunk),
                     "timing_precision": exam_schedule["timing_precision"],
+                    "time_source": exam_schedule.get("time_source", ""),
                     "sort_due": exam_schedule["sort_due"],
                     "sync_start": exam_schedule.get("sync_start", ""),
                     "sync_due": exam_schedule["sync_due"],
@@ -2907,6 +3261,7 @@ def extract_help_desk_items(
                     "submission": "",
                     "instructions": summarize_instructions(chunk),
                     "timing_precision": help_desk_schedule["timing_precision"],
+                    "time_source": help_desk_schedule.get("time_source", ""),
                     "sort_due": help_desk_schedule["sort_due"],
                     "sync_start": help_desk_schedule.get("sync_start", ""),
                     "sync_due": help_desk_schedule["sync_due"],
@@ -2951,12 +3306,26 @@ def apply_exam_overrides(
         elif sync_start and sync_due:
             updated["timing_precision"] = "time-range"
 
+        if sync_start and sync_due:
+            updated["time_source"] = "override"
+
+        if override.get("location"):
+            updated["location"] = override["location"]
+        if override.get("coverage"):
+            updated["coverage"] = override["coverage"]
+
         instructions_append = normalize_whitespace(override.get("instructions_append", ""))
         if instructions_append:
             instructions = normalize_whitespace(updated.get("instructions", ""))
             if instructions_append not in instructions:
                 updated["instructions"] = (
                     f"{instructions}\n{instructions_append}" if instructions else instructions_append
+                )
+            if not updated.get("coverage"):
+                updated["coverage"] = extract_exam_coverage(str(updated.get("instructions", "")))
+            if not updated.get("location"):
+                updated["location"] = resolve_exam_location_from_text(
+                    str(updated.get("instructions", "")), str(updated.get("url", ""))
                 )
 
         updated_items.append(updated)
@@ -3401,6 +3770,7 @@ def resolve_help_desk_schedule(chunk: str, date_match: DateSnippet) -> dict[str,
     schedule = {
         "due": date_match.text,
         "timing_precision": date_match.timing_precision,
+        "time_source": "notice" if date_match.timing_precision != "date" else "date_only",
         "sort_due": date_match.sort_due,
         "sync_due": date_match.sort_due.isoformat(),
     }
@@ -3412,6 +3782,7 @@ def resolve_help_desk_schedule(chunk: str, date_match: DateSnippet) -> dict[str,
     start_at, end_at = time_range
     schedule["due"] = format_schedule_range(start_at, end_at)
     schedule["timing_precision"] = "time-range"
+    schedule["time_source"] = "notice"
     schedule["sort_due"] = end_at
     schedule["sync_start"] = start_at.isoformat()
     schedule["sync_due"] = end_at.isoformat()
@@ -3422,6 +3793,7 @@ def resolve_assignment_candidate_schedule(date_match: DateSnippet) -> dict[str, 
     return {
         "due": date_match.text,
         "timing_precision": date_match.timing_precision,
+        "time_source": "notice" if date_match.timing_precision != "date" else "date_only",
         "sort_due": date_match.sort_due,
         "sync_due": date_match.sort_due.isoformat(),
     }
@@ -3431,6 +3803,7 @@ def resolve_exam_schedule(chunk: str, date_match: DateSnippet) -> dict[str, Any]
     schedule = {
         "due": date_match.text,
         "timing_precision": date_match.timing_precision,
+        "time_source": "notice" if date_match.timing_precision != "date" else "date_only",
         "sort_due": date_match.sort_due,
         "sync_due": date_match.sort_due.isoformat(),
     }
@@ -3442,10 +3815,92 @@ def resolve_exam_schedule(chunk: str, date_match: DateSnippet) -> dict[str, Any]
     start_at, end_at = time_range
     schedule["due"] = format_schedule_range(start_at, end_at)
     schedule["timing_precision"] = "time-range"
+    schedule["time_source"] = "notice"
     schedule["sort_due"] = end_at
     schedule["sync_start"] = start_at.isoformat()
     schedule["sync_due"] = end_at.isoformat()
     return schedule
+
+
+def apply_exam_class_time_fallback(
+    items: list[dict[str, Any]], class_time_lookup: dict[str, list[ClassTimeRange]]
+) -> list[dict[str, Any]]:
+    if not class_time_lookup:
+        return items
+
+    updated_items: list[dict[str, Any]] = []
+    for item in items:
+        if not exam_item_needs_class_time_fallback(item):
+            updated_items.append(item)
+            continue
+
+        sort_due = item.get("sort_due")
+        if not isinstance(sort_due, datetime):
+            updated_items.append(item)
+            continue
+
+        class_time = resolve_class_time_for_exam(item.get("course", ""), sort_due, class_time_lookup)
+        if not class_time:
+            updated_items.append(item)
+            continue
+
+        start_at, end_at = build_exam_range_from_class_time(sort_due, class_time)
+        updated = dict(item)
+        updated["due"] = format_schedule_range(start_at, end_at)
+        updated["timing_precision"] = "class-time"
+        updated["time_source"] = "class_time"
+        updated["sort_due"] = end_at
+        updated["sync_start"] = start_at.isoformat()
+        updated["sync_due"] = end_at.isoformat()
+        updated_items.append(updated)
+
+    return updated_items
+
+
+def exam_item_needs_class_time_fallback(item: dict[str, Any]) -> bool:
+    if item.get("sync_start"):
+        return False
+    if item.get("timing_precision") == "date":
+        return True
+    sort_due = item.get("sort_due")
+    if not isinstance(sort_due, datetime):
+        return False
+    return sort_due.hour == 0 and sort_due.minute == 0 and str(item.get("category")) == "exam"
+
+
+def resolve_class_time_for_exam(
+    course: str, exam_date: datetime, class_time_lookup: dict[str, list[ClassTimeRange]]
+) -> ClassTimeRange | None:
+    ranges = class_time_lookup.get(normalize_course_key(course), [])
+    for class_time in ranges:
+        if class_time.weekday == exam_date.astimezone(SEOUL).weekday():
+            return class_time
+    return None
+
+
+def build_exam_range_from_class_time(
+    exam_date: datetime, class_time: ClassTimeRange
+) -> tuple[datetime, datetime]:
+    local_date = exam_date.astimezone(SEOUL)
+    start_at = datetime(
+        local_date.year,
+        local_date.month,
+        local_date.day,
+        class_time.start_hour,
+        class_time.start_minute,
+        tzinfo=SEOUL,
+    )
+    end_at = datetime(
+        local_date.year,
+        local_date.month,
+        local_date.day,
+        class_time.end_hour,
+        class_time.end_minute,
+        tzinfo=SEOUL,
+    )
+    if end_at <= start_at:
+        end_at += timedelta(hours=12)
+    return start_at, end_at
 
 
 def find_time_range_after_date(chunk: str, date_match: DateSnippet) -> tuple[datetime, datetime] | None:
@@ -3791,9 +4246,12 @@ def serialize_sync_item(item: dict[str, Any]) -> dict[str, Any]:
         "submission": item.get("submission", ""),
         "instructions": item["instructions"],
         "timing_precision": item.get("timing_precision", ""),
+        "time_source": item.get("time_source", ""),
         "sync_start": item.get("sync_start", ""),
         "sync_due": item.get("sync_due", ""),
         "source_title": item.get("source_title", ""),
+        "location": item.get("location", ""),
+        "coverage": item.get("coverage", ""),
         "auto_completed": bool(item.get("auto_completed")),
     }
 
@@ -3824,14 +4282,23 @@ def append_exam_scope_location_lines(lines: list[str], item: dict[str, Any]) -> 
 
 
 def exam_coverage_for_item(item: dict[str, Any]) -> str:
+    structured = normalize_whitespace(str(item.get("coverage") or ""))
+    if structured:
+        return structured
     return extract_exam_coverage(str(item.get("instructions") or ""))
 
 
 def exam_location_for_item(item: dict[str, Any]) -> str:
-    explicit_location = extract_exam_location(str(item.get("instructions") or ""))
+    structured = normalize_whitespace(str(item.get("location") or ""))
+    if structured:
+        return structured
+    return resolve_exam_location_from_text(str(item.get("instructions") or ""), str(item.get("url") or ""))
+
+
+def resolve_exam_location_from_text(text: str, url: str) -> str:
+    explicit_location = extract_exam_location(text)
     if explicit_location:
         return explicit_location
-    url = str(item.get("url") or "")
     if is_online_klms_exam_url(url):
         return url
     return ""

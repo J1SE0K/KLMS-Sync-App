@@ -165,7 +165,7 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 수집 중에는 기존 KLMS Safari 창을 재사용하고, 같은 창 안의 임시 탭만 열어 페이지를 읽은 뒤 닫는다. URL마다 새 창을 만들고 닫지 않는다.
 일반 sync의 course/all-week 페이지는 `SYNC_COURSE_PAGE_STALE_SECONDS`, `SYNC_ALL_WEEK_COURSE_PAGE_STALE_SECONDS` 동안 캐시를 재사용한다. supplemental crawl은 `Notice/자료/강의계획` 계열 primary와 `Q&A/Board` 계열 secondary로 나뉘며, secondary는 `SYNC_SECONDARY_SUPPLEMENTAL_QUICK_LIMIT`, `SYNC_SECONDARY_SUPPLEMENTAL_STALE_SECONDS`로 느리게 probe 한다. supplemental detail은 이전 run의 detail URL과 현재 active 시험/헬프데스크 source article을 기준으로 우선순위를 다시 정렬한 뒤, `SYNC_SUPPLEMENTAL_DETAIL_QUICK_LIMIT`, `SYNC_SUPPLEMENTAL_DETAIL_STALE_SECONDS`로 별도 조절한다. 최소 탐색 기본값에서는 이 quick limit들이 `0`에 가깝게 잡혀서 불필요한 background probe를 줄이고, `SYNC_SUPPLEMENTAL_DETAIL_INCLUDE_NON_RELEVANT_PRIMARY=0`으로 primary 공지게시판의 비관련 article detail 재수집도 기본적으로 막는다. 파일 정리 단계는 `FILE_COURSE_PAGE_STALE_SECONDS`, `FILE_ALL_WEEK_COURSE_PAGE_STALE_SECONDS`로 같은 방식을 쓴다.
 
-시험 일정은 KLMS 대시보드에 직접 안 보여도, 각 과목의 `Notice 게시판`, `Course Material`, 강의계획서 링크를 추가로 확인해서 후보를 찾는다. `Notice` 게시판은 제목에 시험 키워드가 없어도 새 글/수정 글 본문을 다시 읽어서, 본문에만 적힌 시험 일정도 후보로 잡는다. 새 후보는 바로 `시험` 캘린더에 넣지 않고 확인 대기 상태로 남기며, 승인된 항목만 `시험 일정` 섹션과 `시험` 캘린더에 반영한다. KLMS에서 날짜만 확인되는 경우에는 시간 미상으로 표시된다.
+시험 일정은 KLMS 대시보드에 직접 안 보여도, 각 과목의 `Notice 게시판`, `Course Material`, 강의계획서 링크를 추가로 확인해서 후보를 찾는다. `Notice` 게시판은 제목에 시험 키워드가 없어도 새 글/수정 글 본문을 다시 읽어서, 본문에만 적힌 시험 일정도 후보로 잡는다. 새 후보는 바로 `시험` 캘린더에 넣지 않고 확인 대기 상태로 남기며, 승인된 항목만 `시험 일정` 섹션과 `시험` 캘린더에 반영한다. KLMS에서 날짜만 확인되고 과목별 수업 시간이 확인되면 시험 시간을 수업 시간으로 잡고, 수업 시간도 없으면 시간 미상으로 표시된다.
 일반 sync는 게시판/폴더의 HTML 페이지만 추가 확인하고, `pluginfile` 같은 첨부 문서 URL 자체는 따라가지 않는다. 첨부파일 다운로드는 파일 정리 단계에서만 일어난다.
 `NOTICE_SUMMARY_ENABLED=1`이면 `sync_klms_notice.sh` 또는 `sync_klms_all.sh` 실행 시 `Notice` 게시판의 새 글/수정 글만 article 단위로 다시 읽어 `runtime/cache/notice_digest.json`, `runtime/cache/notice_summary_state.json`을 갱신한다. 최소 탐색 기본값에서는 공지 정리 단계가 `Notice` 게시판 경로만 우선 다시 보고, 자료실/리소스 경로는 공지 sync에서 기본적으로 따라가지 않는다. 각 과목 `Notice` 게시판은 페이지네이션까지 따라가며 누적 추적하고, `NOTICE_NOTE_NAME`과 `NOTICE_ARCHIVE_NOTE_NAME` 두 메모를 네이티브 제목/머리말/체크리스트 형식으로 갱신한다. Notes 체크 상태 캡처나 렌더 단계가 실패하면 전체 notice sync도 실패로 끝나며, 자세한 원인은 `runtime/cache/notice_note_render_warning.txt`에 남긴다. stage별 소요 시간은 `runtime/cache/{core,notice}/stage_timings.json`에서 볼 수 있다.
 
@@ -221,7 +221,8 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 - `COMPLETED_REMINDER_RETENTION_DAYS`는 기본값 `0`이며, 과제 외의 완료 리마인더를 따로 보존하고 싶을 때만 쓴다.
 - KLMS에 제출 완료가 안 찍히는 예외 과제는 `manual_assignment_overrides.json`의 `assignments` 아래에 과제 URL을 키로 넣고 값을 `completed`로 두면 수동으로 숨길 수 있다. 파일 형식은 [examples/manual_assignment_overrides.example.json](./examples/manual_assignment_overrides.example.json)을 참고한다.
 - 완전히 무시만 하고 싶으면 같은 파일에서 값을 `ignored`로 두면 된다.
-- 같은 파일의 `exams` 아래에는 시험 공지 URL이나 `URL::시험명` 키로 수동 시험 시간 override를 넣을 수 있다. `status: approved`를 둔 항목만 실제 시험 일정으로 반영되고, `sync_start`, `sync_due`, `due`를 함께 넣으면 캘린더도 명시된 시작/종료 시각으로 생성된다.
+- 같은 파일의 `exams` 아래에는 시험 공지 URL이나 `URL::시험명` 키로 수동 시험 시간 override를 넣을 수 있다. `status: approved`를 둔 항목만 실제 시험 일정으로 반영되고, `sync_start`, `sync_due`, `due`를 함께 넣으면 캘린더도 명시된 시작/종료 시각으로 생성된다. `location`, `coverage`를 넣으면 캘린더 장소와 시험 범위도 명시값을 우선 사용한다.
+- 같은 파일의 `class_times` 아래에는 과목별 기본 수업 시간을 넣을 수 있다. 예: `"전기 전자공학특강": [{"weekday": "수요일", "start": "10:30", "end": "12:00"}]`. 시험 공지에 날짜만 있고 명시 시간이 없으면 해당 날짜의 요일과 맞는 수업 시간을 캘린더 시작/종료 시각으로 사용한다.
 - LaunchAgent 설치본과 작업 폴더가 다른 경로를 써도 같은 override 파일을 보게 하려면 `config.env`의 `OVERRIDES_JSON_PATH`를 절대 경로로 지정하면 된다.
 
 ## 다운로드 정리 안전장치
@@ -271,6 +272,7 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 - 과거 시험/헬프데스크를 얼마나 오래 추적할지는 `CALENDAR_LOOKBACK_DAYS`로 조절한다. 기본값은 `365`일이다.
 - `KLMS 동기화`는 필요한 캘린더들을 개별 Swift 프로세스로 여러 번 띄우지 않고, 통합 calendar pass 한 번으로 처리한다.
 - `Nano Quiz` 같은 일반 퀴즈는 시험 캘린더로 보내지 않는다. 승인된 시험 일정만 시험 캘린더에 들어간다.
+- 시험 일정의 장소는 Calendar 이벤트의 `location` 필드로 넣고, 메모에는 과목/일정/범위/원문/링크만 남겨 장소와 메모가 섞이지 않게 한다.
 - 각 일정은 처음 확인한 시점부터 마감 시각까지 이어지는 이벤트로 잡힌다.
 - `2026.03.17~2026.03.21`처럼 기간만 있는 항목은 마지막 날 `23:59` 마감으로 해석해 캘린더에 넣는다.
 - 캘린더 정리만 필요할 때는 `swift ./src/swift/sync_klms_calendar.swift --clear "시험"`처럼 관리 대상 일정만 비우거나 `--delete-calendar`로 캘린더 자체를 삭제할 수 있다.
