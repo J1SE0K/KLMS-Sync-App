@@ -117,5 +117,14 @@ if cutoff_epoch is not None:
             path.unlink()
             deleted_files += 1
 
+for path in sorted(tmp_dir.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+    if not path.exists() or not path.is_dir():
+        continue
+    try:
+        path.rmdir()
+        deleted_dirs += 1
+    except OSError:
+        pass
+
 print(f"cleanup_runtime_tmp deleted_files={deleted_files} deleted_dirs={deleted_dirs}")
 PY
