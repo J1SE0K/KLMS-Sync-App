@@ -158,8 +158,8 @@ function buildDesiredEvent(item, durationMinutes) {
   const sourceLine = item.source_title ? `\n출처: ${item.source_title}` : "";
   const timingLine = calendarTimingLine(item);
   const location = item.category === "exam" ? resolveExamLocation(item) : "";
-  const coverage = item.category === "exam" ? resolveExamCoverage(item) : "";
-  const coverageLine = coverage ? `\n시험 범위: ${coverage}` : "";
+  const coverage = item.category === "exam" ? resolveExamCoverageSummary(item) : "";
+  const coverageLine = calendarCoverageLine(coverage);
   const description = `${CURRENT_MARKER_PREFIX}${identifier}
 종류: ${kindLabel}
 과목: ${item.course || ""}
@@ -236,6 +236,39 @@ function resolveExamCoverage(item) {
   return extractExamCoverage(item.instructions || "");
 }
 
+function resolveExamCoverageSummary(item) {
+  const structuredSummary = normalizeMultilineField(item.coverage_summary || "");
+  if (structuredSummary) {
+    return structuredSummary;
+  }
+
+  const coverage = resolveExamCoverage(item);
+  if (!coverage) {
+    return "";
+  }
+  if (coverageNeedsManualCheck(coverage)) {
+    return "확인 필요 - 원문 참고";
+  }
+  return coverage.length <= 140 ? coverage : "확인 필요 - 원문 참고";
+}
+
+function calendarCoverageLine(coverage) {
+  const normalized = normalizeMultilineField(coverage || "");
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.includes("\n") || normalized.startsWith("- ")) {
+    return `\n시험 범위:\n${normalized}`;
+  }
+  return `\n시험 범위: ${normalized}`;
+}
+
+function coverageNeedsManualCheck(text) {
+  return /\b(?:tba|tbd|to be announced|will be announced|to be determined)\b|추후\s*공지|별도\s*공지|공지\s*예정|미정|확인\s*필요/i.test(
+    normalizeWhitespace(text)
+  );
+}
+
 function firstCapture(text, patterns) {
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -254,6 +287,14 @@ function cleanupExtractedField(text) {
 
 function normalizeWhitespace(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeMultilineField(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean)
+    .join("\n");
 }
 
 function parseItemDueDate(item) {

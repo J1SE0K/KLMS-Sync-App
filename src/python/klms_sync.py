@@ -647,6 +647,7 @@ def normalize_exam_overrides(payload: Any) -> dict[str, dict[str, str]]:
             "status",
             "location",
             "coverage",
+            "coverage_summary",
         ):
             value = raw_value.get(field)
             if value is None:
@@ -2962,7 +2963,9 @@ def assignment_to_exam_item(assignment: dict[str, Any]) -> dict[str, Any]:
     exam_item["location"] = resolve_exam_location_from_text(
         str(assignment.get("instructions", "")), str(assignment.get("url", ""))
     )
-    exam_item["coverage"] = extract_exam_coverage(str(assignment.get("instructions", "")))
+    coverage = extract_exam_coverage(str(assignment.get("instructions", "")))
+    exam_item["coverage"] = coverage
+    exam_item["coverage_summary"] = summarize_exam_coverage_for_calendar(coverage)
     exam_item["approval_status"] = "approved"
     return exam_item
 
@@ -3162,7 +3165,8 @@ def extract_exam_items(pages: list[dict[str, Any]], course_lookup: dict[str, str
                 key = (course, title, exam_schedule["sync_due"])
                 if key in items_by_key:
                     continue
-                instructions = summarize_instructions(chunk, 1200)
+                instructions = normalize_whitespace(chunk)
+                coverage = extract_exam_coverage(chunk)
 
                 items_by_key[key] = {
                     "url": page.get("requestedUrl") or page.get("url") or "",
@@ -3174,7 +3178,8 @@ def extract_exam_items(pages: list[dict[str, Any]], course_lookup: dict[str, str
                     "submission": "",
                     "instructions": instructions,
                     "location": resolve_exam_location_from_text(chunk, requested_url),
-                    "coverage": extract_exam_coverage(chunk),
+                    "coverage": coverage,
+                    "coverage_summary": summarize_exam_coverage_for_calendar(coverage),
                     "timing_precision": exam_schedule["timing_precision"],
                     "time_source": exam_schedule.get("time_source", ""),
                     "sort_due": exam_schedule["sort_due"],
@@ -3313,6 +3318,8 @@ def apply_exam_overrides(
             updated["location"] = override["location"]
         if override.get("coverage"):
             updated["coverage"] = override["coverage"]
+        if override.get("coverage_summary"):
+            updated["coverage_summary"] = override["coverage_summary"]
 
         instructions_append = normalize_whitespace(override.get("instructions_append", ""))
         if instructions_append:
@@ -3323,6 +3330,10 @@ def apply_exam_overrides(
                 )
             if not updated.get("coverage"):
                 updated["coverage"] = extract_exam_coverage(str(updated.get("instructions", "")))
+            if not updated.get("coverage_summary"):
+                updated["coverage_summary"] = summarize_exam_coverage_for_calendar(
+                    str(updated.get("coverage", ""))
+                )
             if not updated.get("location"):
                 updated["location"] = resolve_exam_location_from_text(
                     str(updated.get("instructions", "")), str(updated.get("url", ""))
@@ -4252,6 +4263,7 @@ def serialize_sync_item(item: dict[str, Any]) -> dict[str, Any]:
         "source_title": item.get("source_title", ""),
         "location": item.get("location", ""),
         "coverage": item.get("coverage", ""),
+        "coverage_summary": exam_coverage_summary_for_item(item),
         "auto_completed": bool(item.get("auto_completed")),
     }
 
@@ -4272,10 +4284,10 @@ def build_error_payload(message: str | None, previous_state: dict[str, Any]) -> 
 
 
 def append_exam_scope_location_lines(lines: list[str], item: dict[str, Any]) -> None:
-    coverage = exam_coverage_for_item(item)
+    coverage = exam_coverage_summary_for_item(item)
     location = exam_location_for_item(item)
     if coverage:
-        lines.append(div(f"시험 범위: {escape(coverage)}"))
+        lines.extend(format_exam_coverage_html_lines(coverage))
     if location:
         location_html = exam_location_display_html(item, location)
         lines.append(div(f"위치: {location_html}"))
@@ -4286,6 +4298,22 @@ def exam_coverage_for_item(item: dict[str, Any]) -> str:
     if structured:
         return structured
     return extract_exam_coverage(str(item.get("instructions") or ""))
+
+
+def exam_coverage_summary_for_item(item: dict[str, Any]) -> str:
+    structured = normalize_multiline_field(str(item.get("coverage_summary") or ""))
+    if structured:
+        return structured
+    return summarize_exam_coverage_for_calendar(exam_coverage_for_item(item))
+
+
+def format_exam_coverage_html_lines(coverage: str) -> list[str]:
+    lines = [line for line in normalize_multiline_field(coverage).splitlines() if line]
+    if not lines:
+        return []
+    if len(lines) == 1 and not lines[0].startswith("- "):
+        return [div(f"시험 범위: {escape(lines[0])}")]
+    return [div("시험 범위:")] + [div(escape(line)) for line in lines[:4]]
 
 
 def exam_location_for_item(item: dict[str, Any]) -> str:
@@ -4333,6 +4361,131 @@ def extract_exam_coverage(text: str) -> str:
     )
 
 
+def summarize_exam_coverage_for_calendar(text: str, *, max_lines: int = 4) -> str:
+    coverage = cleanup_exam_field(text)
+    if not coverage:
+        return ""
+    if exam_coverage_needs_manual_check(coverage):
+        return "확인 필요 - 원문 참고"
+
+    sections = categorize_exam_coverage(coverage)
+    if should_keep_exam_coverage_one_line(coverage, sections):
+        return coverage
+    if not sections:
+        return coverage if len(coverage) <= 140 else "확인 필요 - 원문 참고"
+
+    lines: list[str] = []
+    for label in ("강의", "과제", "읽기자료", "제외", "기타"):
+        values = sections.get(label, [])
+        if not values:
+            continue
+        lines.append(f"- {label}: {', '.join(values)}")
+        if len(lines) >= max_lines:
+            break
+
+    return "\n".join(lines) if lines else "확인 필요 - 원문 참고"
+
+
+def should_keep_exam_coverage_one_line(coverage: str, sections: dict[str, list[str]]) -> bool:
+    if len(coverage) > 96:
+        return False
+    if "\n" in coverage:
+        return False
+    if len(sections) >= 3:
+        return False
+    return True
+
+
+def exam_coverage_needs_manual_check(text: str) -> bool:
+    lowered = normalize_whitespace(text).lower()
+    return bool(
+        re.search(
+            r"\b(?:tba|tbd|to be announced|will be announced|to be determined)\b|"
+            r"추후\s*공지|별도\s*공지|공지\s*예정|미정|확인\s*필요",
+            lowered,
+            re.IGNORECASE,
+        )
+    )
+
+
+def categorize_exam_coverage(text: str) -> dict[str, list[str]]:
+    sections: dict[str, list[str]] = {}
+    for segment in split_exam_coverage_segments(text):
+        label, value = classify_exam_coverage_segment(segment)
+        if not value:
+            continue
+        values = sections.setdefault(label, [])
+        if value not in values:
+            values.append(value)
+    return sections
+
+
+def split_exam_coverage_segments(text: str) -> list[str]:
+    compact = cleanup_exam_field(text)
+    if not compact:
+        return []
+    compact = re.sub(r"\s*[•⦁]\s*", "; ", compact)
+    compact = re.sub(r"\s+/\s+", "; ", compact)
+    parts = re.split(r"\s*;\s*|\n+", compact)
+    return [cleanup_exam_field(part) for part in parts if cleanup_exam_field(part)]
+
+
+def classify_exam_coverage_segment(segment: str) -> tuple[str, str]:
+    raw = cleanup_exam_field(segment)
+    explicit_label = explicit_exam_coverage_label(raw)
+    value = strip_exam_coverage_label(raw)
+    lowered = value.lower()
+    if not value:
+        return "기타", ""
+
+    if explicit_label:
+        return explicit_label, value
+    if re.search(r"\b(?:excluding|excluded|exclude|except|not included)\b|제외|범위\s*외|이후", lowered):
+        return "제외", value
+    if re.search(r"\b(?:wa|pa|hw|homework|assignment|assignments|problem\s*set|ps)\s*\d", lowered) or "과제" in value:
+        return "과제", value
+    if re.search(r"\b(?:reading|readings|textbook|chapter|chapters|clrs|section|sections)\b", lowered) or re.search(
+        r"읽기|교재|읽기자료", value
+    ):
+        return "읽기자료", value
+    if re.search(r"\b(?:week|weeks|lecture|lectures|slides?)\b", lowered) or re.search(
+        r"강의|수업|주차", value
+    ):
+        return "강의", value
+    return "기타", value
+
+
+def explicit_exam_coverage_label(text: str) -> str:
+    label_match = re.match(
+        r"^(강의|수업|주차|lecture(?:s)?|week(?:s)?|과제|assignment(?:s)?|homework|"
+        r"읽기자료|읽기|reading(?:s)?|textbook|교재|제외|excluding|exclude|except)\s*[:：]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not label_match:
+        return ""
+    label = label_match.group(1).lower()
+    if label in {"강의", "수업", "주차", "lecture", "lectures", "week", "weeks"}:
+        return "강의"
+    if label in {"과제", "assignment", "assignments", "homework"}:
+        return "과제"
+    if label in {"읽기자료", "읽기", "reading", "readings", "textbook", "교재"}:
+        return "읽기자료"
+    return "제외"
+
+
+def strip_exam_coverage_label(text: str) -> str:
+    return cleanup_exam_field(
+        re.sub(
+            r"^(?:강의|수업|주차|lecture(?:s)?|week(?:s)?|과제|assignment(?:s)?|homework|"
+            r"읽기자료|읽기|reading(?:s)?|textbook|교재|제외|excluding|exclude|except)\s*[:：]\s*",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 def first_exam_field_capture(text: str, patterns: list[str]) -> str:
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
@@ -4343,6 +4496,14 @@ def first_exam_field_capture(text: str, patterns: list[str]) -> str:
 
 def cleanup_exam_field(text: str) -> str:
     return normalize_whitespace(text).rstrip(" .;,")
+
+
+def normalize_multiline_field(text: str) -> str:
+    return "\n".join(
+        line
+        for line in (normalize_whitespace(part) for part in str(text or "").splitlines())
+        if line
+    ).strip()
 
 
 def is_online_klms_exam_url(url: str) -> bool:

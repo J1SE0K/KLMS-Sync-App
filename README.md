@@ -223,7 +223,7 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 - `COMPLETED_REMINDER_RETENTION_DAYS`는 기본값 `0`이며, 과제 외의 완료 리마인더를 따로 보존하고 싶을 때만 쓴다.
 - KLMS에 제출 완료가 안 찍히는 예외 과제는 `manual_assignment_overrides.json`의 `assignments` 아래에 과제 URL을 키로 넣고 값을 `completed`로 두면 수동으로 숨길 수 있다. 파일 형식은 [examples/manual_assignment_overrides.example.json](./examples/manual_assignment_overrides.example.json)을 참고한다.
 - 완전히 무시만 하고 싶으면 같은 파일에서 값을 `ignored`로 두면 된다.
-- 같은 파일의 `exams` 아래에는 시험 공지 URL이나 `URL::시험명` 키로 수동 시험 시간 override를 넣을 수 있다. `status: approved`를 둔 항목만 실제 시험 일정으로 반영되고, `sync_start`, `sync_due`, `due`를 함께 넣으면 캘린더도 명시된 시작/종료 시각으로 생성된다. `location`, `coverage`를 넣으면 캘린더 장소와 시험 범위도 명시값을 우선 사용한다.
+- 같은 파일의 `exams` 아래에는 시험 공지 URL이나 `URL::시험명` 키로 수동 시험 시간 override를 넣을 수 있다. `status: approved`를 둔 항목만 실제 시험 일정으로 반영되고, `sync_start`, `sync_due`, `due`를 함께 넣으면 캘린더도 명시된 시작/종료 시각으로 생성된다. `location`, `coverage`를 넣으면 캘린더 장소와 시험 범위 원문을 명시값으로 사용하고, `coverage_summary`를 넣으면 캘린더 메모의 짧은 시험 범위 표시를 직접 지정한다.
 - 같은 파일의 `class_times` 아래에는 과목별 기본 수업 시간을 넣을 수 있다. 예: `"전기 전자공학특강": [{"weekday": "수요일", "start": "10:30", "end": "12:00"}]`. 시험 공지에 날짜만 있고 명시 시간이 없으면 해당 날짜의 요일과 맞는 수업 시간을 캘린더 시작/종료 시각으로 사용한다.
 - LaunchAgent 설치본과 작업 폴더가 다른 경로를 써도 같은 override 파일을 보게 하려면 `config.env`의 `OVERRIDES_JSON_PATH`를 절대 경로로 지정하면 된다.
 
@@ -274,7 +274,7 @@ Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이
 - 과거 시험/헬프데스크를 얼마나 오래 추적할지는 `CALENDAR_LOOKBACK_DAYS`로 조절한다. 기본값은 `365`일이다.
 - `KLMS 동기화`는 필요한 캘린더들을 개별 Swift 프로세스로 여러 번 띄우지 않고, 통합 calendar pass 한 번으로 처리한다.
 - `Nano Quiz` 같은 일반 퀴즈는 시험 캘린더로 보내지 않는다. 승인된 시험 일정만 시험 캘린더에 들어간다.
-- 시험 일정의 장소는 Calendar 이벤트의 `location` 필드로 넣고, 메모에는 과목/일정/범위/원문/링크만 남겨 장소와 메모가 섞이지 않게 한다.
+- 시험 일정의 장소는 Calendar 이벤트의 `location` 필드로 넣고, 시험 범위는 `coverage_summary`로 1-4줄만 Calendar 메모에 넣는다. 범위가 애매하면 `시험 범위: 확인 필요 - 원문 참고`로 표시하고, 원문은 `메모:` 아래에 남겨 장소/범위/원문이 섞이지 않게 한다.
 - 각 일정은 처음 확인한 시점부터 마감 시각까지 이어지는 이벤트로 잡힌다.
 - `2026.03.17~2026.03.21`처럼 기간만 있는 항목은 마지막 날 `23:59` 마감으로 해석해 캘린더에 넣는다.
 - 캘린더 정리만 필요할 때는 `swift ./src/swift/sync_klms_calendar.swift --clear "시험"`처럼 관리 대상 일정만 비우거나 `--delete-calendar`로 캘린더 자체를 삭제할 수 있다.
