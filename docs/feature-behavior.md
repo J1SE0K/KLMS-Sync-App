@@ -37,7 +37,7 @@
 
 ## 파일 정리
 
-`refresh_course_files.sh`는 첨부파일 manifest를 만든 뒤 `course_files`와 `~/Downloads/KLMS Files`를 같은 manifest 기준으로 맞춘다.
+`refresh_course_files.sh`는 첨부파일 manifest를 만든 뒤 정리본은 `course_files`에 유지하고, `~/Downloads/KLMS Files`에는 이번 실행에서 새로 확보한 파일만 남긴다.
 
 기본 구조:
 
@@ -63,11 +63,12 @@ Example Course/resources/Week 1 Notes.pdf
 - 같은 bucket 안에서 파일명이 겹치면 `filename (2).pdf`처럼 suffix를 붙인다.
 - 게시판 글의 본문 인라인 이미지/미디어는 제외하고, 실제 첨부파일 목록의 문서/압축파일/스프레드시트 등을 manifest에 넣는다.
 - 새 파일은 먼저 `~/Downloads/KLMS Files` 아래에 확보하고, 과목별 정리본에는 별도 복사본을 만든다.
-- 현재 정리본, Downloads mirror, 이전 다운로드 로그가 가리키는 예전 경로를 먼저 재사용한다.
+- 현재 정리본, Downloads inbox, 이전 다운로드 로그가 가리키는 예전 경로를 먼저 재사용한다.
 - 세 위치에 없을 때만 Safari를 열어 실제 다운로드를 시도한다.
-- 실행이 끝나면 `course_files`와 `~/Downloads/KLMS Files` 모두 manifest 기준으로 prune한다.
+- 실행이 끝나면 `course_files`는 manifest 기준으로 prune하고, `~/Downloads/KLMS Files`는 fresh-download만 남긴 뒤 나머지 추적 파일을 지운다.
+- `FILE_PRESERVE_DOWNLOAD_ARCHIVE=1`이면 이전 동작처럼 `~/Downloads/KLMS Files`를 전체 manifest mirror로 보존한다.
 - prune 전 삭제 후보는 `runtime/cache/prune_backups/`에 JSON으로 남긴다.
-- archive prune 결과는 `runtime/cache/course_file_archive_prune_result.json`에 남긴다.
+- archive prune/cleanup 결과는 `runtime/cache/course_file_archive_prune_result.json`, `runtime/cache/course_file_cleanup_result.json`에 남긴다.
 - manifest가 비정상적으로 줄어든 상태에서는 바로 prune하지 않고 full rebuild를 한 번 재시도한다.
 - 기존 파일이 있어도 전부 다시 받으려면 `FILE_FORCE_DOWNLOAD=1`을 설정한다.
 

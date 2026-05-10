@@ -90,7 +90,8 @@ def build_result(script_dir: Path, config: Path, cache_dir: Path, state_json: Pa
         checks.append(check("file-manifest", "warn", "manifest missing or empty"))
 
     downloads_root = Path.home() / "Downloads" / "KLMS Files"
-    checks.append(check("downloads-mirror", "ok" if downloads_root.exists() else "warn", str(downloads_root)))
+    detail = str(downloads_root) if downloads_root.exists() else f"{downloads_root} (created when new files exist)"
+    checks.append(check("downloads-inbox", "ok", detail))
     checks.append(check("state-json", "ok" if state_json.exists() else "warn", str(state_json)))
     dashboard = load_json(cache_dir / "dashboard.json", [])
     checks.append(dashboard_login_cache_check(dashboard))

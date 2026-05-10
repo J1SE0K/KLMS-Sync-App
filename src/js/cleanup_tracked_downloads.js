@@ -194,15 +194,18 @@ function isFreshDownloadEntry(entry) {
   if (!entry || typeof entry !== "object") {
     return false;
   }
-  if (String(entry.local_downloaded_basis || "") === "fresh-download") {
-    return true;
-  }
-  return !(
+  if (
     entry.backed_up ||
     entry.skipped_existing ||
     entry.restored_from_archive ||
     entry.reused_logged_file
-  );
+  ) {
+    return false;
+  }
+  if (String(entry.local_downloaded_basis || "") === "fresh-download") {
+    return true;
+  }
+  return true;
 }
 
 function validateFilename(filename) {

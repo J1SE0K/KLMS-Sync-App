@@ -17,7 +17,7 @@ cp examples/config.env.example config.env
 | --- | --- |
 | `./sync_klms_core.sh` | dashboard/course/detail 수집 후 Reminders, Calendar, 과제 메모 갱신 |
 | `./sync_klms_notice.sh` | Notice 게시판 수집 후 native Notes 공지 메모 렌더 |
-| `./refresh_course_files.sh` | 파일 manifest 생성, 다운로드, `course_files`/Downloads mirror prune |
+| `./refresh_course_files.sh` | 파일 manifest 생성, 다운로드, `course_files` prune, Downloads 신규 파일 inbox 정리 |
 | `./run_all.sh` | `core -> notice` 직렬 실행 |
 | `./run_all_full.sh` | `core -> notice -> files` 직렬 실행 |
 | `./run_all_parallel.sh` | 로그인 preflight 뒤 `core`, `notice`, `files` 병렬 실행 |
