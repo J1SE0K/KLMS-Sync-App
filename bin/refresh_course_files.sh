@@ -32,6 +32,7 @@ FILE_NESTED2_STALE_SECONDS="${FILE_NESTED2_STALE_SECONDS:-86400}"
 FILE_NESTED_BACKGROUND_QUICK_LIMIT_RAW="${FILE_NESTED_BACKGROUND_QUICK_LIMIT:-}"
 FILE_NESTED2_BACKGROUND_QUICK_LIMIT_RAW="${FILE_NESTED2_BACKGROUND_QUICK_LIMIT:-}"
 FILE_KEEP_FRESH_DOWNLOADS="${FILE_KEEP_FRESH_DOWNLOADS:-1}"
+FILE_PRESERVE_DOWNLOAD_ARCHIVE="${FILE_PRESERVE_DOWNLOAD_ARCHIVE:-0}"
 FILE_DRY_RUN="${KLMS_DRY_RUN:-0}"
 FILE_PRUNE_BACKUP_ENABLED="${FILE_PRUNE_BACKUP_ENABLED:-1}"
 FILE_PRUNE_BACKUP_KEEP="${FILE_PRUNE_BACKUP_KEEP:-20}"
@@ -1024,14 +1025,18 @@ cleanup_args=(
   JavaScript
   "$KLMS_JS_DIR/cleanup_tracked_downloads.js"
   "--manifest=$DOWNLOAD_LOG_JSON"
-  "--preserve-destinations"
 )
+case "${FILE_PRESERVE_DOWNLOAD_ARCHIVE:l}" in
+  1|true|yes|on)
+    cleanup_args+=("--preserve-destinations")
+    ;;
+esac
 case "${FILE_KEEP_FRESH_DOWNLOADS:l}" in
   1|true|yes|on)
     cleanup_args+=("--keep-fresh-downloads")
     ;;
 esac
-log_files_timing "cleanup start keep_fresh=$FILE_KEEP_FRESH_DOWNLOADS dry_run=$FILE_DRY_RUN"
+log_files_timing "cleanup start keep_fresh=$FILE_KEEP_FRESH_DOWNLOADS preserve_archive=$FILE_PRESERVE_DOWNLOAD_ARCHIVE dry_run=$FILE_DRY_RUN"
 cleanup_started_epoch="$(date +%s)"
 if is_truthy "$FILE_DRY_RUN"; then
   printf '{"dry_run": true, "actions": []}\n' > "$CLEANUP_RESULT_JSON"

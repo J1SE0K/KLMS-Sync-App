@@ -90,6 +90,8 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("--backup-manifest", text)
         self.assertIn("--dry-run", text)
         self.assertIn("--preserve-destinations", text)
+        self.assertIn("FILE_PRESERVE_DOWNLOAD_ARCHIVE", text)
+        self.assertIn("preserve_archive=$FILE_PRESERVE_DOWNLOAD_ARCHIVE", text)
         self.assertIn("FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS", text)
         self.assertIn("--always-fetch-min-interval-seconds=$FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS", text)
         self.assertIn("build_files_stage_timings.py", text)
@@ -103,6 +105,15 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("--preserve-destinations", text)
         self.assertIn("preserveDestinations", text)
         self.assertIn('action: fileExists(destinationPath) ? "preserved" : "already-missing"', text)
+
+    def test_cleanup_tracked_downloads_does_not_keep_historical_fresh_files(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "cleanup_tracked_downloads.js").read_text(
+            encoding="utf-8"
+        )
+
+        skipped_index = text.index("entry.skipped_existing")
+        fresh_basis_index = text.index('String(entry.local_downloaded_basis || "") === "fresh-download"')
+        self.assertLess(skipped_index, fresh_basis_index)
 
     def test_launch_agent_install_copies_bin_implementations(self) -> None:
         text = (PROJECT_DIR / "install_launch_agent.sh").read_text(encoding="utf-8")
