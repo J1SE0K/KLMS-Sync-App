@@ -90,9 +90,14 @@ klms_init_context() {
   KLMS_LOGIN_STATUS_PATH="${KLMS_LOGIN_STATUS_PATH:-${KLMS_LOGIN_STATUS_CACHE_PATH:-$CACHE_DIR/login_status.json}}"
   KLMS_LOGIN_STATUS_CACHE_PATH="$KLMS_LOGIN_STATUS_PATH"
   KLMS_LOGIN_FAST_TAB_CHECK_ENABLED="${KLMS_LOGIN_FAST_TAB_CHECK_ENABLED:-1}"
+  KLMS_LOGIN_STATUS_REUSE_SECONDS="${KLMS_LOGIN_STATUS_REUSE_SECONDS:-900}"
   KLMS_LOGIN_URL="${KLMS_LOGIN_URL:-$KLMS_DASHBOARD_URL}"
   KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE="${KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE:-1}"
+  KLMS_LOGIN_ASSIST_ENABLED="${KLMS_LOGIN_ASSIST_ENABLED:-${KAIKEY_LOGIN_ASSIST_ENABLED:-${KAIKEY_AUTO_LOGIN_ENABLED:-0}}}"
+  KLMS_LOGIN_ASSIST_EARLY_ENABLED="${KLMS_LOGIN_ASSIST_EARLY_ENABLED:-1}"
+  KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="${KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-${KAIKEY_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}}"
   KAIKEY_AUTO_LOGIN_ENABLED="${KAIKEY_AUTO_LOGIN_ENABLED:-0}"
+  KAIKEY_AUTO_APPROVE_ENABLED="${KAIKEY_AUTO_APPROVE_ENABLED:-0}"
   KAIKEY_STATE_PATH="${KAIKEY_STATE_PATH:-$HOME/Library/Application Support/KLMSNotesSync/kaikey_state.json}"
   lock_name="${KLMS_SYNC_LOCK_NAME:-$runtime_namespace}"
   KLMS_SHARED_SYNC_LOCK_DIR="${KLMS_SHARED_SYNC_LOCK_DIR:-$KLMS_SHARED_SYNC_LOCK_ROOT/${lock_name}.lock}"
@@ -256,6 +261,33 @@ klms_clear_login_status() {
   rm -f "$KLMS_LOGIN_STATUS_PATH"
 }
 
+klms_recent_login_status_ok() {
+  local reuse_seconds="${KLMS_LOGIN_STATUS_REUSE_SECONDS:-0}"
+  [[ "$reuse_seconds" == <-> ]] || return 1
+  (( reuse_seconds > 0 )) || return 1
+  [[ -s "$KLMS_LOGIN_STATUS_PATH" ]] || return 1
+  [[ -s "$CACHE_DIR/dashboard.json" ]] || return 1
+
+  python3 - "$KLMS_LOGIN_STATUS_PATH" "$reuse_seconds" <<'PY'
+import json
+import sys
+import time
+from pathlib import Path
+
+path = Path(sys.argv[1])
+reuse_seconds = int(sys.argv[2])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+
+checked_at = int(float(payload.get("checked_at_epoch") or 0))
+if payload.get("logged_in") is True and checked_at > 0 and time.time() - checked_at <= reuse_seconds:
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 klms_open_login_page_if_enabled() {
   [[ "${KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE:-1}" == "1" ]] || return 0
 
@@ -291,11 +323,14 @@ klms_open_login_page_if_enabled() {
     "$KLMS_LOGIN_URL" >/dev/null 2>&1 || true
 }
 
-klms_try_kaikey_auto_login() {
-  local login_assist_enabled="${KAIKEY_LOGIN_ASSIST_ENABLED:-${KAIKEY_AUTO_LOGIN_ENABLED:-0}}"
-  [[ "$login_assist_enabled" == "1" ]] || return 1
+klms_login_assist_enabled() {
+  [[ "${KLMS_LOGIN_ASSIST_ENABLED:-${KAIKEY_LOGIN_ASSIST_ENABLED:-${KAIKEY_AUTO_LOGIN_ENABLED:-0}}}" == "1" ]]
+}
+
+klms_try_login_assist() {
+  klms_login_assist_enabled || return 1
   [[ -f "$SCRIPT_DIR/kaikey_auto_login.sh" ]] || return 1
-  if [[ "${KAIKEY_AUTO_APPROVE_ENABLED:-1}" != "1" && "${KAIKEY_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}" != "1" && ! -t 1 ]]; then
+  if [[ "${KAIKEY_AUTO_APPROVE_ENABLED:-0}" != "1" && "${KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-${KAIKEY_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}}" != "1" && ! -t 1 ]]; then
     return 1
   fi
 
@@ -306,6 +341,10 @@ klms_try_kaikey_auto_login() {
     print -r -- "KLMS 로그인 보조 실패" >&2
     return 1
   fi
+}
+
+klms_try_kaikey_auto_login() {
+  klms_try_login_assist
 }
 
 klms_fast_tab_login_state() {
@@ -364,7 +403,7 @@ klms_check_login_pages() {
   local report_failure="${3:-1}"
   local status_json login_result message
 
-  status_json="$(cd "$SCRIPT_DIR" && /usr/bin/env python3 "$KLMS_PYTHON_DIR/klms_sync.py" check-login-status --pages-json "$pages_json")"
+  status_json="$(cd "$SCRIPT_DIR" && /usr/bin/env python3 -m klms_sync_v2.cli check-login-status --pages-json "$pages_json")"
   login_result="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("status","error"))' <<< "$status_json")"
 
   if [[ "$login_result" == "ok" ]]; then
@@ -396,11 +435,20 @@ klms_require_login() {
   fast_tab_state="$(klms_fast_tab_login_state)"
   if [[ "$fast_tab_state" == "login_required" ]]; then
     klms_clear_login_status
-    if ! klms_try_kaikey_auto_login; then
+    if ! klms_try_login_assist; then
       klms_open_login_page_if_enabled
       print -r -- "KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘." >&2
       return 1
     fi
+  fi
+
+  if [[ "$fast_tab_state" != "login_required" ]] && klms_recent_login_status_ok; then
+    KLMS_LOGIN_PREFETCH_READY=1
+    return 0
+  fi
+
+  if [[ "$fast_tab_state" == "unknown" && "${KLMS_LOGIN_ASSIST_EARLY_ENABLED:-1}" == "1" ]]; then
+    klms_try_login_assist || true
   fi
 
   local url_file="$TMP_DIR/klms_login_preflight_urls.txt"
@@ -424,7 +472,7 @@ klms_require_login() {
   )
 
   if ! klms_check_login_pages "$pages_json" "KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘." 0; then
-    if klms_try_kaikey_auto_login; then
+    if klms_try_login_assist; then
       (
         cd "$SCRIPT_DIR"
         /usr/bin/env python3 "$KLMS_PYTHON_DIR/fetch_pages_backend.py" \

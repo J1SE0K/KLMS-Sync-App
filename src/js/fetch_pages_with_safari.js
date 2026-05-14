@@ -20,6 +20,7 @@ function run(argv) {
   const stablePolls = stablePollsArg ? Number(stablePollsArg.replace("--stable-polls=", "")) : 2;
   const outPath = outArg ? outArg.replace("--out=", "") : "";
   const strategy = strategyArg ? strategyArg.replace("--strategy=", "") : "auto";
+  const backgroundWindowEnabled = envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1");
   const inlineUrls = argv.filter(
     (arg) =>
       !arg.startsWith("--wait=") &&
@@ -50,13 +51,22 @@ function run(argv) {
   }
 
   const safari = Application("/Applications/Safari.app");
+  const safariWasRunning = safeValue(() => safari.running()) === true;
+  const frontmostApp = frontmostApplicationName();
   safari.launch();
-  delay(1);
+  if (!safariWasRunning) {
+    delay(1);
+  }
+  restoreFrontmostApplication(frontmostApp);
 
   const results = [];
-  const windowRef = resolveFetchWindow(safari);
+  const windowRef = resolveFetchWindow(safari, backgroundWindowEnabled);
   if (!windowRef) {
     throw new Error("Failed to resolve a Safari window for page fetch.");
+  }
+  if (backgroundWindowEnabled) {
+    prepareBackgroundWindow(windowRef);
+    restoreFrontmostApplication(frontmostApp);
   }
   const tab = resolveFetchTab(windowRef);
   if (!tab) {
@@ -302,35 +312,42 @@ function readTab(tab) {
   };
 }
 
-function resolveFetchWindow(safari) {
-  const reusableWindow = findReusableKlmsWindow(safari);
+function resolveFetchWindow(safari, backgroundWindowEnabled) {
+  const reusableWindow = findReusableKlmsWindow(safari, backgroundWindowEnabled);
   if (reusableWindow) {
     return reusableWindow;
   }
-  return openFetchWindow(safari);
+  return openFetchWindow(safari, backgroundWindowEnabled);
 }
 
-function findReusableKlmsWindow(safari) {
-  return (
-    safeList(() => safari.windows()).find((windowRef) => {
-      const tab = safeValue(() => windowRef.currentTab());
-      const url = safeString(() => tab.url()).toLowerCase();
-      return url.includes("klms.kaist.ac.kr");
-    }) || null
-  );
+function findReusableKlmsWindow(safari, backgroundWindowEnabled) {
+  const klmsWindows = safeList(() => safari.windows()).filter((windowRef) => {
+    const tab = safeValue(() => windowRef.currentTab());
+    const url = safeString(() => tab.url()).toLowerCase();
+    return url.includes("klms.kaist.ac.kr");
+  });
+  if (backgroundWindowEnabled) {
+    return klmsWindows.find((windowRef) => isBackgroundWindow(windowRef)) || null;
+  }
+  return klmsWindows[0] || null;
 }
 
-function openFetchWindow(safari) {
+function openFetchWindow(safari, backgroundWindowEnabled) {
+  const frontmostApp = frontmostApplicationName();
   const previousWindowIds = new Set(listWindowIds(safari));
   safari.make({ new: "document" });
   delay(0.5);
 
   const windows = safeList(() => safari.windows());
-  return (
+  const windowRef =
     windows.find((windowRef) => !previousWindowIds.has(safeNumber(() => windowRef.id(), -1))) ||
     safeValue(() => safari.windows()[0]) ||
-    null
-  );
+    null;
+  if (windowRef && backgroundWindowEnabled) {
+    prepareBackgroundWindow(windowRef);
+    restoreFrontmostApplication(frontmostApp);
+  }
+  return windowRef;
 }
 
 function resolveFetchTab(windowRef) {
@@ -341,11 +358,38 @@ function navigateFetchTab(windowRef, tab, targetUrl) {
   try {
     const frontmostApp = frontmostApplicationName();
     tab.url = targetUrl;
+    if (envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1")) {
+      prepareBackgroundWindow(windowRef);
+    }
     restoreFrontmostApplication(frontmostApp);
     waitForTabUrl(tab, targetUrl, 8);
+    if (envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1")) {
+      prepareBackgroundWindow(windowRef);
+      restoreFrontmostApplication(frontmostApp);
+    }
   } catch (error) {
     throw new Error(`Failed to navigate Safari fetch tab to ${targetUrl}: ${error}`);
   }
+}
+
+function prepareBackgroundWindow(windowRef) {
+  if (!windowRef) {
+    return;
+  }
+  try {
+    windowRef.miniaturized = true;
+  } catch (_error) {
+    // Safari automation can still run if minimizing is unavailable.
+  }
+}
+
+function isBackgroundWindow(windowRef) {
+  const miniaturized = safeValue(() => windowRef.miniaturized());
+  if (miniaturized === true) {
+    return true;
+  }
+  const visible = safeValue(() => windowRef.visible());
+  return visible === false;
 }
 
 function frontmostApplicationName() {
@@ -413,6 +457,20 @@ function safeNumber(getter, fallback) {
 function safeList(getter) {
   const value = safeValue(getter);
   return Array.isArray(value) ? value : [];
+}
+
+function envValue(name) {
+  try {
+    const value = $.NSProcessInfo.processInfo.environment.objectForKey(name);
+    return value ? String(ObjC.unwrap(value)) : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function envFlag(name, defaultValue) {
+  const raw = envValue(name) || String(defaultValue || "");
+  return !["0", "false", "no", "off"].includes(raw.trim().toLowerCase());
 }
 
 function writeText(path, text) {

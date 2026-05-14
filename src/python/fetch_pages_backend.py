@@ -113,6 +113,94 @@ def main() -> int:
             backend=backend,
         )
 
+    complete_reuse_seconds = max(0, int(args.complete_reuse_seconds or 0))
+    if complete_reuse_seconds > 0:
+        reusable_pages = complete_recent_cached_pages(
+            urls=urls,
+            previous_lookup=previous_lookup,
+            context_state=context_state,
+            max_age_seconds=complete_reuse_seconds,
+        )
+        if reusable_pages is not None:
+            reused_existing_out_file = reusable_pages_match_existing_output(
+                urls=urls,
+                reusable_pages=reusable_pages,
+                previous_pages=previous_pages,
+            )
+            if not reused_existing_out_file:
+                write_json(out_path, reusable_pages)
+            summary = {
+                "context": context_key,
+                "backend": backend,
+                "requested_mode": args.mode,
+                "effective_mode": "skipped",
+                "skip_reason": "complete-cache-fresh",
+                "out_reused_without_write": reused_existing_out_file,
+                "started_at": run_started_at,
+                "finished_at": now_utc_iso(),
+                "duration_ms": int((time.time() - run_started_epoch) * 1000),
+                "total_urls": len(urls),
+                "selected_urls": 0,
+                "fetched_urls": 0,
+                "reused_urls": len(reusable_pages),
+                "missing_urls": 0,
+                "changed_urls": 0,
+                "out_path": str(out_path),
+                "cache_state_path": str(cache_state_path),
+                "previous_page_count": len(previous_pages),
+                "previous_pages_discarded": previous_pages_discarded,
+            }
+            if args.summary_out:
+                summary_payload = dict(summary)
+                summary_payload["fetched_url_list"] = []
+                summary_payload["reused_url_list"] = urls
+                summary_payload["selected_url_list"] = []
+                summary_payload["missing_url_list"] = []
+                summary_payload["changed_url_list"] = []
+                write_json(Path(args.summary_out).expanduser().resolve(), summary_payload)
+            print(json.dumps(summary, ensure_ascii=False))
+            return 0
+
+        recent_empty_fetch = recent_empty_fetch_summary(
+            summary_path=Path(args.summary_out).expanduser().resolve() if args.summary_out else None,
+            urls=urls,
+            max_age_seconds=complete_reuse_seconds,
+        )
+        if recent_empty_fetch is not None:
+            reusable_pages = [previous_lookup[url] for url in urls if url in previous_lookup]
+            missing_final_urls = [url for url in urls if url not in previous_lookup]
+            write_json(out_path, reusable_pages)
+            summary = {
+                "context": context_key,
+                "backend": backend,
+                "requested_mode": args.mode,
+                "effective_mode": "skipped",
+                "skip_reason": "recent-empty-fetch",
+                "started_at": run_started_at,
+                "finished_at": now_utc_iso(),
+                "duration_ms": int((time.time() - run_started_epoch) * 1000),
+                "total_urls": len(urls),
+                "selected_urls": 0,
+                "fetched_urls": 0,
+                "reused_urls": len(reusable_pages),
+                "missing_urls": len(missing_final_urls),
+                "changed_urls": 0,
+                "out_path": str(out_path),
+                "cache_state_path": str(cache_state_path),
+                "previous_page_count": len(previous_pages),
+                "previous_pages_discarded": previous_pages_discarded,
+            }
+            if args.summary_out:
+                summary_payload = dict(summary)
+                summary_payload["fetched_url_list"] = []
+                summary_payload["reused_url_list"] = [page_requested_url(page) for page in reusable_pages]
+                summary_payload["selected_url_list"] = []
+                summary_payload["missing_url_list"] = missing_final_urls
+                summary_payload["changed_url_list"] = []
+                write_json(Path(args.summary_out).expanduser().resolve(), summary_payload)
+            print(json.dumps(summary, ensure_ascii=False))
+            return 0
+
     effective_mode = resolve_mode(
         requested_mode=args.mode,
         urls=urls,
@@ -257,6 +345,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--always-fetch-pattern", action="append")
     parser.add_argument("--fallback-pages-json", action="append")
     parser.add_argument("--reuse-fallback-always-fetch", action="store_true")
+    parser.add_argument("--complete-reuse-seconds", type=int, default=0)
     parser.add_argument("--allow-login-pages", action="store_true")
     parser.add_argument("--discard-previous", action="store_true")
     parser.add_argument("--max-previous-bytes", type=int, default=DEFAULT_MAX_PREVIOUS_BYTES)
@@ -388,6 +477,77 @@ def should_run_always_fetch_probe(
     if fetched_at is None or now is None:
         return True
     return (now - fetched_at).total_seconds() >= interval
+
+
+def complete_recent_cached_pages(
+    urls: list[str],
+    previous_lookup: dict[str, dict[str, Any]],
+    context_state: dict[str, Any],
+    max_age_seconds: int,
+) -> list[dict[str, Any]] | None:
+    last_run_at = parse_iso_datetime(str(context_state.get("last_run_at") or ""))
+    now = parse_iso_datetime(now_utc_iso())
+    if last_run_at is None or now is None:
+        return None
+    if (now - last_run_at).total_seconds() > max(0, max_age_seconds):
+        return None
+
+    pages: list[dict[str, Any]] = []
+    for url in urls:
+        page = previous_lookup.get(url)
+        if page is None or looks_like_login_page_payload(page):
+            return None
+        pages.append(page)
+    return pages
+
+
+def reusable_pages_match_existing_output(
+    urls: list[str],
+    reusable_pages: list[dict[str, Any]],
+    previous_pages: list[dict[str, Any]],
+) -> bool:
+    if len(urls) != len(reusable_pages) or len(urls) != len(previous_pages):
+        return False
+    for url, reusable_page, previous_page in zip(urls, reusable_pages, previous_pages):
+        if page_requested_url(previous_page) != url:
+            return False
+        if reusable_page is not previous_page:
+            return False
+    return True
+
+
+def recent_empty_fetch_summary(
+    summary_path: Path | None,
+    urls: list[str],
+    max_age_seconds: int,
+) -> dict[str, Any] | None:
+    if summary_path is None or not summary_path.exists():
+        return None
+    summary = load_json(summary_path, {})
+    if not isinstance(summary, dict):
+        return None
+    if int(summary.get("fetched_urls") or 0) != 0:
+        return None
+    if int(summary.get("missing_urls") or 0) <= 0:
+        return None
+    if int(summary.get("total_urls") or -1) != len(urls):
+        return None
+
+    previous_urls = [
+        str(url)
+        for url in summary.get("selected_url_list") or summary.get("missing_url_list") or []
+        if str(url)
+    ]
+    if previous_urls and set(previous_urls) - set(urls):
+        return None
+
+    finished_at = parse_iso_datetime(str(summary.get("finished_at") or ""))
+    now = parse_iso_datetime(now_utc_iso())
+    if finished_at is None or now is None:
+        return None
+    if (now - finished_at).total_seconds() > max(0, max_age_seconds):
+        return None
+    return summary
 
 
 def probe_priority(metadata: dict[str, Any]) -> float:
@@ -643,7 +803,7 @@ def fetch_pages_with_safari(
     ordered_urls = dedupe_preserving_order(urls)
     resolved_pages: dict[str, dict[str, Any]] = {}
     remaining_urls = list(ordered_urls)
-    batch_size = max(1, int(os.environ.get("KLMS_FETCH_SAFARI_BATCH_SIZE") or "40"))
+    batch_size = max(1, int(os.environ.get("KLMS_FETCH_SAFARI_BATCH_SIZE") or "20"))
     retry_plan = [
         (wait_seconds, min_wait_seconds, stable_polls),
         (max(wait_seconds + 2.0, min_wait_seconds + 2.0), min_wait_seconds, max(stable_polls, 2)),

@@ -281,7 +281,7 @@ struct ResolvedRenderedNotice {
 let defaultNoteTitle = "KLMS 공지"
 let defaultArchiveNoteTitle = "KLMS 확인한 공지"
 let nativeNoticeRenderStateVersion = 2
-let nativeNoticeRenderStyleVersion = "2026-05-09-guided-notice-layout-v8-primary-last"
+let nativeNoticeRenderStyleVersion = "2026-05-14-collapse-top-level-only"
 let readChecklistLabel = "읽음"
 let importantChecklistLabel = "중요"
 let noticeReadGuidanceLine = "\"읽음\"만 체크한 공지는 다음 동기화 때 KLMS 확인한 공지에 표시됩니다."
@@ -298,15 +298,28 @@ let noticeDebugEnabled = ProcessInfo.processInfo.environment["NOTICE_DEBUG_CAPTU
 let automationDebugEnabled = ProcessInfo.processInfo.environment["NOTICE_DEBUG_AUTOMATION"] == "1"
 let noticeTimingEnabled = ProcessInfo.processInfo.environment["NOTICE_TIMING"] == "1"
 let collapseNoticeSectionsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_SECTIONS"] != "0"
+let collapseNoticeCoursesEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_COURSES"] == "1"
 let collapseNoticeItemsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_NOTICE_ITEMS"] == "1"
+let styleNoticeItemsAsHeadingsEnabled =
+    ProcessInfo.processInfo.environment["NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS"] != "0"
 let uiStyleMenuFormattingEnabled =
     ProcessInfo.processInfo.environment["NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT"] == "1"
     && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT"] != "1"
 let uiCollapsibleGroupStyleFormattingEnabled =
-    (uiStyleMenuFormattingEnabled || collapseNoticeSectionsEnabled || collapseNoticeItemsEnabled)
+    (
+        uiStyleMenuFormattingEnabled
+        || collapseNoticeSectionsEnabled
+        || collapseNoticeCoursesEnabled
+        || collapseNoticeItemsEnabled
+        || styleNoticeItemsAsHeadingsEnabled
+    )
     && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT"] != "1"
 let batchChecklistFormattingEnabled =
-    ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT"] != "1"
+    ProcessInfo.processInfo.environment["NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT"] == "1"
+    && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT"] != "1"
+let fastBatchChecklistFormattingEnabled =
+    batchChecklistFormattingEnabled
+    && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT"] != "1"
 let pasteboardSettleUsec: useconds_t = 35_000
 let pasteSettleUsec: useconds_t = 70_000
 let initialEditorClearDelay: TimeInterval = 0.12

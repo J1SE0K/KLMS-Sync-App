@@ -1,23 +1,32 @@
 #!/usr/bin/osascript -l JavaScript
 
+ObjC.import("Foundation");
+
 function run(argv) {
   const options = parseOptions(argv);
   const targetUrl = options.url || "https://klms.kaist.ac.kr/my/";
   const displayName = options["display-name"] || "";
   const maxSeconds = Math.max(0, Number(options["max-seconds"] || "0"));
   const pollMs = Math.max(75, Math.min(1000, Number(options["poll-ms"] || "150")));
+  const backgroundWindowEnabled = safariBackgroundWindowEnabled();
   if (!displayName) {
     return JSON.stringify({ status: "error", error: "missing-display-name" });
   }
 
   const safari = Application("/Applications/Safari.app");
+  const frontmostApp = frontmostApplicationName();
   if (!safeBoolean(() => safari.running())) {
     safari.launch();
   }
+  restoreFrontmostApplication(frontmostApp);
 
-  const windowRef = resolveWindow(safari);
+  const windowRef = resolveWindow(safari, backgroundWindowEnabled);
   if (!windowRef) {
     return JSON.stringify({ status: "error", error: "no-safari-window" });
+  }
+  if (backgroundWindowEnabled) {
+    prepareBackgroundWindow(windowRef);
+    restoreFrontmostApplication(frontmostApp);
   }
 
   const tab = resolveTab(windowRef);
@@ -26,17 +35,20 @@ function run(argv) {
   }
 
   if (maxSeconds > 0) {
-    return JSON.stringify(advanceUntilTerminal(tab, targetUrl, displayName, maxSeconds, pollMs));
+    return JSON.stringify(advanceUntilTerminal(windowRef, tab, targetUrl, displayName, maxSeconds, pollMs, options));
   }
-  return JSON.stringify(advanceOneStep(tab, targetUrl, displayName));
+  return JSON.stringify(advanceOneStep(windowRef, tab, targetUrl, displayName, options));
 }
 
-function advanceUntilTerminal(tab, targetUrl, displayName, maxSeconds, pollMs) {
+function advanceUntilTerminal(windowRef, tab, targetUrl, displayName, maxSeconds, pollMs, options) {
   const deadline = Date.now() + maxSeconds * 1000;
   let lastPayload = { status: "waiting" };
 
   while (Date.now() < deadline) {
-    const payload = advanceOneStep(tab, targetUrl, displayName);
+    const payload = advanceOneStep(windowRef, tab, targetUrl, displayName, options);
+    if (safariBackgroundWindowEnabled()) {
+      prepareBackgroundWindow(windowRef);
+    }
     lastPayload = payload;
     if (isTerminalStatus(payload.status)) {
       return payload;
@@ -52,10 +64,13 @@ function isTerminalStatus(status) {
   return status === "authenticated" || status === "twofactor_digits" || status === "error";
 }
 
-function advanceOneStep(tab, targetUrl, displayName) {
+function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
   let url = safeString(() => tab.url());
   if (!looksLikeKaistAuthUrl(url)) {
     tab.url = targetUrl;
+    if (safariBackgroundWindowEnabled()) {
+      prepareBackgroundWindow(windowRef);
+    }
     url = safeString(() => tab.url());
     return { status: "navigated", url };
   }
@@ -73,13 +88,15 @@ function advanceOneStep(tab, targetUrl, displayName) {
   if (urlLower.includes("klms.kaist.ac.kr/login/ssologin.php")) {
     const result = runPageScript(tab, `
 (() => {
-  const link = document.querySelector("div.login > a");
-  if (!link) return JSON.stringify({ ok: false, reason: "missing-link" });
-  if (document.body && document.body.dataset.klmsLoginAssistSsoClicked === "1") {
-    return JSON.stringify({ ok: false, reason: "sso-click-already-submitted" });
+  const links = Array.from(document.querySelectorAll("a[href]"));
+  const link =
+    links.find((anchor) =>
+      String(anchor.href || "").includes("sso.kaist.ac.kr/auth/kaist/user/login/view")
+    ) || document.querySelector("div.login > a[href]");
+  if (!link || !link.href || String(link.href).endsWith("#")) {
+    return JSON.stringify({ ok: false, reason: "missing-link" });
   }
-  if (document.body) document.body.dataset.klmsLoginAssistSsoClicked = "1";
-  link.click();
+  window.location.assign(link.href);
   return JSON.stringify({ ok: true });
 })();
 `);
@@ -129,6 +146,19 @@ function advanceOneStep(tab, targetUrl, displayName) {
   }
 
   if (urlLower.includes("sso.kaist.ac.kr/auth/twofactor/mfa/login2factor")) {
+    if (String(options["refresh-twofactor"] || "") === "1") {
+      tab.url = targetUrl;
+      if (safariBackgroundWindowEnabled()) {
+        prepareBackgroundWindow(windowRef);
+      }
+      return {
+        status: "twofactor_refreshed",
+        reason: "",
+        method: "restart-login",
+        url
+      };
+    }
+
     const result = runPageScript(tab, `
 (() => {
   const wrap = document.querySelector(".auth_number .nember_wrap");
@@ -182,17 +212,23 @@ function parseOptions(argv) {
   return options;
 }
 
-function resolveWindow(safari) {
+function resolveWindow(safari, backgroundWindowEnabled) {
   const windows = safeList(() => safari.windows());
   for (let i = 0; i < windows.length; i += 1) {
     const tab = safeValue(() => windows[i].currentTab());
     const url = safeString(() => tab.url());
-    if (looksLikeKaistAuthUrl(url)) return windows[i];
+    if (looksLikeKaistAuthUrl(url) && (!backgroundWindowEnabled || isBackgroundWindow(windows[i]))) {
+      return windows[i];
+    }
   }
-  if (windows.length > 0) return windows[0];
+  if (!backgroundWindowEnabled && windows.length > 0) return windows[0];
   safari.make({ new: "document" });
   delay(0.2);
-  return safeValue(() => safari.windows()[0]);
+  const windowRef = safeValue(() => safari.windows()[0]);
+  if (backgroundWindowEnabled) {
+    prepareBackgroundWindow(windowRef);
+  }
+  return windowRef;
 }
 
 function resolveTab(windowRef) {
@@ -248,4 +284,63 @@ function safeList(getter) {
   } catch (_error) {
     return [];
   }
+}
+
+function prepareBackgroundWindow(windowRef) {
+  if (!windowRef) {
+    return;
+  }
+  try {
+    windowRef.miniaturized = true;
+  } catch (_error) {
+    // Login assist can still scrape the page if minimizing is unavailable.
+  }
+}
+
+function isBackgroundWindow(windowRef) {
+  const miniaturized = safeValue(() => windowRef.miniaturized());
+  if (miniaturized === true) {
+    return true;
+  }
+  const visible = safeValue(() => windowRef.visible());
+  return visible === false;
+}
+
+function frontmostApplicationName() {
+  try {
+    const systemEvents = Application("System Events");
+    const frontProcesses = systemEvents.applicationProcesses.whose({ frontmost: true })();
+    return frontProcesses.length ? String(frontProcesses[0].name()) : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function restoreFrontmostApplication(appName) {
+  if (!appName || appName === "Safari") {
+    return;
+  }
+  try {
+    Application(appName).activate();
+  } catch (_error) {
+    // Leave focus as-is if macOS refuses to restore the previous app.
+  }
+}
+
+function safariBackgroundWindowEnabled() {
+  return envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1");
+}
+
+function envValue(name) {
+  try {
+    const value = $.NSProcessInfo.processInfo.environment.objectForKey(name);
+    return value ? String(ObjC.unwrap(value)) : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function envFlag(name, defaultValue) {
+  const raw = envValue(name) || String(defaultValue || "");
+  return !["0", "false", "no", "off"].includes(raw.trim().toLowerCase());
 }

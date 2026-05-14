@@ -6,7 +6,7 @@ const MARKER = "[[KLMS 자동 동기화]]";
 const REMINDER_MARKER_PREFIX = "KLMS_SYNC_ITEM_ID:";
 const LEGACY_REMINDER_MARKER_PREFIXES = ["KLMS_ASSIGN_ID:"];
 const REMINDER_MARKER_PREFIXES = [REMINDER_MARKER_PREFIX].concat(LEGACY_REMINDER_MARKER_PREFIXES);
-const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-09-guided-notice-layout-v8-primary-last";
+const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-14-collapse-top-level-only";
 let DEBUG_STDERR_ENABLED = false;
 let ACTIVE_STAGE_TELEMETRY = null;
 let COMMAND_TIMING_ENABLED = true;
@@ -80,7 +80,6 @@ function run(argv) {
       Math.round(Number(config.SYNC_COMMAND_TIMING_MIN_DURATION_MS || "0"))
     );
     debugStderr(`sync start scope=${scope}`);
-    const notesEnabled = config.NOTES_SYNC_ENABLED === "1";
     const examCalendarEnabled = config.EXAM_CALENDAR_SYNC_ENABLED !== "0";
     const helpDeskCalendarEnabled = config.HELP_DESK_CALENDAR_SYNC_ENABLED === "1";
     const remindersEnabled = config.REMINDERS_SYNC_ENABLED === "1";
@@ -94,6 +93,11 @@ function run(argv) {
       config,
       "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE",
       true
+    );
+    const noticeNativeDeferStateOnlyRenderEnabled = readEnabledConfig(
+      config,
+      "NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER",
+      false
     );
     const skipUnchangedSideEffects = readEnabledConfig(
       config,
@@ -122,10 +126,6 @@ function run(argv) {
       Number(config.COMPLETED_REMINDER_RETENTION_DAYS || "0")
     );
     beginStage(steps, stageTelemetry, "config");
-    if (notesEnabled && !config.NOTE_NAME) {
-      throw new Error(`NOTE_NAME must be set in ${configPath}`);
-    }
-
     const dashboardUrl = config.KLMS_DASHBOARD_URL || "https://klms.kaist.ac.kr/my/";
     const waitSeconds = Number(config.SAFARI_WAIT_SECONDS || "6");
 
@@ -133,6 +133,7 @@ function run(argv) {
     const cacheDir = `${runtimeDir}/cache`;
     const stateDir = `${runtimeDir}/state`;
     const tmpDir = `${runtimeDir}/tmp`;
+    const pythonPath = buildPythonPath(scriptDir, runtimeDir);
     const runtimeNamespace = scope === "notice" ? "notice" : "core";
     const workCacheDir = `${cacheDir}/${runtimeNamespace}`;
     const workTmpDir = `${tmpDir}/${runtimeNamespace}`;
@@ -171,6 +172,10 @@ function run(argv) {
     );
     const fetchMinWaitSeconds = Math.max(0, Number(config.FETCH_MIN_WAIT_SECONDS || "1.5"));
     const fetchStablePolls = Math.max(1, Math.round(Number(config.FETCH_STABLE_POLLS || "2")));
+    const fetchCompleteReuseSeconds = Math.max(
+      0,
+      Math.round(Number(config.FETCH_COMPLETE_REUSE_SECONDS || "3600"))
+    );
     const syncFullTtlSeconds = Math.max(
       3600,
       Math.round(Number(config.SYNC_FULL_TTL_SECONDS || "259200"))
@@ -206,6 +211,14 @@ function run(argv) {
     const supplementalStaleSeconds = Math.max(
       0,
       Math.round(Number(config.SYNC_SUPPLEMENTAL_STALE_SECONDS || "43200"))
+    );
+    const noticeSharedFallbackMaxAgeSeconds = Math.max(
+      0,
+      resolveIntegerConfig(
+        config,
+        "NOTICE_SHARED_FALLBACK_MAX_AGE_SECONDS",
+        Math.max(coursePageStaleSeconds, allWeekCoursePageStaleSeconds, supplementalStaleSeconds)
+      )
     );
     const supplementalDetailQuickLimit = Math.max(
       0,
@@ -289,6 +302,7 @@ function run(argv) {
       autoFullRequireLastFull: fetchAutoRequireLastFull,
       autoFullOnTtlExpire: fetchAutoFullOnTtlExpire,
       alwaysFetchMinIntervalSeconds,
+      completeReuseSeconds: fetchCompleteReuseSeconds,
     };
     stageTelemetry.outputPath = stageTimingJson;
     stageTelemetry.scope = scope;
@@ -353,6 +367,7 @@ function run(argv) {
     const outputState = `${stateDir}/next_state.json`;
     const outputStatus = `${cacheDir}/status.json`;
     const stateJson = `${stateDir}/state.json`;
+    let noticeSummaryAlreadySynced = false;
     const noticePaths = {
       dashboardUrl,
       dashboardJson,
@@ -393,23 +408,28 @@ function run(argv) {
       noticeArchiveNoteName,
       noticeNativeStableNoopSkipEnabled,
       noticeNativeAlwaysCaptureStateEnabled,
+      noticeNativeDeferStateOnlyRenderEnabled,
+      noticeNativeEnvironment: nativeNoticeEnvironment(config),
       syncFullTtlSeconds,
       coursePageStaleSeconds,
       allWeekCoursePageStaleSeconds,
-      courseFallbackPagePaths: freshExistingFilesSince(
+      courseFallbackPagePaths: freshExistingFilesSinceOrWithin(
         [sharedCoursePagesJson],
-        sharedRunStartedEpoch
+        sharedRunStartedEpoch,
+        noticeSharedFallbackMaxAgeSeconds
       ),
-      allWeekCourseFallbackPagePaths: freshExistingFilesSince(
+      allWeekCourseFallbackPagePaths: freshExistingFilesSinceOrWithin(
         [sharedAllWeekCoursePagesJson],
-        sharedRunStartedEpoch
+        sharedRunStartedEpoch,
+        noticeSharedFallbackMaxAgeSeconds
       ),
       supplementalQuickLimit,
       supplementalStaleSeconds,
       supplementalAlwaysFetchPatterns,
-      supplementalPrimaryFallbackPagePaths: freshExistingFilesSince(
+      supplementalPrimaryFallbackPagePaths: freshExistingFilesSinceOrWithin(
         [sharedSupplementalPrimaryPagesJson],
-        sharedRunStartedEpoch
+        sharedRunStartedEpoch,
+        noticeSharedFallbackMaxAgeSeconds
       ),
       noticeBoardPaginationAlwaysFetchPatterns,
       stageTimingJson,
@@ -496,8 +516,10 @@ function run(argv) {
     const courseUrlsOutput = runCommand(
       [
         "/usr/bin/env",
+        `PYTHONPATH=${pythonPath}`,
         "python3",
-        `${scriptDir}/src/python/klms_sync.py`,
+        "-m",
+        "klms_sync_v2.cli",
         "list-course-urls",
         "--dashboard-json",
         dashboardJson,
@@ -548,8 +570,10 @@ function run(argv) {
     const supplementalPrimaryUrlsFromCourseOutput = runCommand(
       [
         "/usr/bin/env",
+        `PYTHONPATH=${pythonPath}`,
         "python3",
-        `${scriptDir}/src/python/klms_sync.py`,
+        "-m",
+        "klms_sync_v2.cli",
         "list-supplemental-urls",
         "--course-pages-json",
         coursePagesJson,
@@ -568,8 +592,10 @@ function run(argv) {
       allWeekSupplementalPrimaryUrlsOutput = runCommand(
         [
           "/usr/bin/env",
+          `PYTHONPATH=${pythonPath}`,
           "python3",
-          `${scriptDir}/src/python/klms_sync.py`,
+          "-m",
+          "klms_sync_v2.cli",
           "list-supplemental-urls",
           "--course-pages-json",
           allWeekCoursePagesJson,
@@ -611,8 +637,10 @@ function run(argv) {
     const supplementalSecondaryUrlsFromCourseOutput = runCommand(
       [
         "/usr/bin/env",
+        `PYTHONPATH=${pythonPath}`,
         "python3",
-        `${scriptDir}/src/python/klms_sync.py`,
+        "-m",
+        "klms_sync_v2.cli",
         "list-supplemental-urls",
         "--course-pages-json",
         coursePagesJson,
@@ -631,8 +659,10 @@ function run(argv) {
       allWeekSupplementalSecondaryUrlsOutput = runCommand(
         [
           "/usr/bin/env",
+          `PYTHONPATH=${pythonPath}`,
           "python3",
-          `${scriptDir}/src/python/klms_sync.py`,
+          "-m",
+          "klms_sync_v2.cli",
           "list-supplemental-urls",
           "--course-pages-json",
           allWeekCoursePagesJson,
@@ -685,8 +715,10 @@ function run(argv) {
     const detailUrlsOutput = runCommand(
       [
         "/usr/bin/env",
+        `PYTHONPATH=${pythonPath}`,
         "python3",
-        `${scriptDir}/src/python/klms_sync.py`,
+        "-m",
+        "klms_sync_v2.cli",
         "list-detail-urls",
         "--dashboard-json",
         dashboardJson,
@@ -730,8 +762,10 @@ function run(argv) {
     const supplementalDetailUrlsOutput = runCommand(
       [
         "/usr/bin/env",
+        `PYTHONPATH=${pythonPath}`,
         "python3",
-        `${scriptDir}/src/python/klms_sync.py`,
+        "-m",
+        "klms_sync_v2.cli",
         "list-supplemental-detail-urls",
         "--supplemental-pages-json",
         supplementalPagesJson,
@@ -818,13 +852,30 @@ function run(argv) {
     }
     debugStderr("after supplemental-detail-fetch");
 
+    if (noticeSummaryEnabled && scope !== "notice" && !fileExists(noticeDigestJson)) {
+      beginStage(steps, stageTelemetry, "notice-summary-prebuild");
+      debugStderr("before notice-summary-prebuild");
+      try {
+        syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, noticePaths, stageTelemetry);
+        noticeSummaryAlreadySynced = true;
+        writeText(noticeDigestErrorTxt, "");
+      } catch (noticeError) {
+        writeText(noticeDigestErrorTxt, String(noticeError));
+        writeText(noticeNoteRenderWarningTxt, "");
+        throw noticeError;
+      }
+      debugStderr("after notice-summary-prebuild");
+    }
+
     beginStage(steps, stageTelemetry, "build-note");
     debugStderr("before build-note");
     runCommand(
       [
         "/usr/bin/env",
+        `PYTHONPATH=${pythonPath}`,
         "python3",
-        `${scriptDir}/src/python/klms_sync.py`,
+        "-m",
+        "klms_sync_v2.cli",
         "build-note",
         "--dashboard-json",
         dashboardJson,
@@ -887,9 +938,20 @@ function run(argv) {
         const remindersListName = config.REMINDERS_LIST_NAME || "KLMS 과제";
         const remindersIssueListName =
           config.REMINDERS_ISSUE_LIST_NAME || "KLMS 확인 필요";
-        const remindersDesiredHash = stableHash(
-          readText(outputState) +
-            `|${remindersListName}|${remindersIssueListName}|${reminderStageAlertsEnabled}|${reminderDeviceAlertsEnabled}|${reminderAlertListName}`
+        const reminderOptions = {
+          deviceAlertsEnabled: reminderDeviceAlertsEnabled,
+          deviceAlertMode: reminderDeviceAlertMode,
+          stageAlertsEnabled: reminderStageAlertsEnabled,
+          cleanDisabledStageAlerts,
+          recreateStageAlertList,
+          alertListName: reminderAlertListName,
+        };
+        const remindersDesiredHash = buildRemindersDesiredHash(
+          outputState,
+          remindersListName,
+          remindersIssueListName,
+          completedReminderRetentionDays,
+          reminderOptions
         );
         const previousRemindersDesiredHash = fileExists(remindersDesiredHashTxt)
           ? readText(remindersDesiredHashTxt).trim()
@@ -905,14 +967,7 @@ function run(argv) {
             remindersListName,
             remindersIssueListName,
             completedReminderRetentionDays,
-            {
-              deviceAlertsEnabled: reminderDeviceAlertsEnabled,
-              deviceAlertMode: reminderDeviceAlertMode,
-              stageAlertsEnabled: reminderStageAlertsEnabled,
-              cleanDisabledStageAlerts,
-              recreateStageAlertList,
-              alertListName: reminderAlertListName,
-            }
+            reminderOptions
           );
           writeText(remindersDesiredHashTxt, `${remindersDesiredHash}\n`);
           debugStderr("after reminders-sync");
@@ -923,15 +978,6 @@ function run(argv) {
       beginStage(steps, stageTelemetry, "reminders-sync-dry-run");
       debugStderr("dry-run skip reminders-sync");
     }
-    if (status.status === "ok" && notesEnabled && !dryRun) {
-      beginStage(steps, stageTelemetry, "note-update");
-      updateNoteSection(config.NOTE_NAME, outputHtml);
-    }
-    if (status.status === "ok" && notesEnabled && dryRun) {
-      beginStage(steps, stageTelemetry, "note-update-dry-run");
-      debugStderr("dry-run skip note-update");
-    }
-
     if (status.status === "ok" && !dryRun) {
       beginStage(steps, stageTelemetry, "move-state");
       moveFile(outputState, stateJson);
@@ -949,7 +995,6 @@ function run(argv) {
         skipped_side_effects: [
           ...(examCalendarEnabled || helpDeskCalendarEnabled ? ["calendar-sync"] : []),
           ...(remindersEnabled ? ["reminders-sync"] : []),
-          ...(notesEnabled ? ["note-update"] : []),
           "state-commit",
         ],
         state_counts: {
@@ -959,7 +1004,7 @@ function run(argv) {
         },
       });
     }
-    if (status.status === "ok" && noticeSummaryEnabled && scope === "all") {
+    if (status.status === "ok" && noticeSummaryEnabled && scope === "all" && !noticeSummaryAlreadySynced) {
       beginStage(steps, stageTelemetry, "notice-summary");
       try {
         syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, noticePaths, stageTelemetry);
@@ -1340,6 +1385,7 @@ function runStandaloneNoticeSummary(
   usePrefetchedDashboard,
   stageTelemetry
 ) {
+  const pythonPath = buildPythonPath(scriptDir, `${scriptDir}/runtime`);
   beginStage(steps, stageTelemetry, "notice-dashboard-fetch");
   const dashboardPages =
     usePrefetchedDashboard && fileExists(paths.dashboardJson)
@@ -1360,8 +1406,10 @@ function runStandaloneNoticeSummary(
   const courseUrlsOutput = runCommand(
     [
       "/usr/bin/env",
+      `PYTHONPATH=${pythonPath}`,
       "python3",
-      `${scriptDir}/src/python/klms_sync.py`,
+      "-m",
+      "klms_sync_v2.cli",
       "list-course-urls",
       "--dashboard-json",
       paths.dashboardJson,
@@ -1414,8 +1462,10 @@ function runStandaloneNoticeSummary(
   const supplementalPrimaryUrlsFromCourseOutput = runCommand(
     [
       "/usr/bin/env",
+      `PYTHONPATH=${pythonPath}`,
       "python3",
-      `${scriptDir}/src/python/klms_sync.py`,
+      "-m",
+      "klms_sync_v2.cli",
       "list-supplemental-urls",
       "--course-pages-json",
       paths.coursePagesJson,
@@ -1433,8 +1483,10 @@ function runStandaloneNoticeSummary(
     allWeekSupplementalPrimaryUrlsOutput = runCommand(
       [
         "/usr/bin/env",
+        `PYTHONPATH=${pythonPath}`,
         "python3",
-        `${scriptDir}/src/python/klms_sync.py`,
+        "-m",
+        "klms_sync_v2.cli",
         "list-supplemental-urls",
         "--course-pages-json",
         paths.allWeekCoursePagesJson,
@@ -1463,6 +1515,7 @@ function runStandaloneNoticeSummary(
       staleSeconds: paths.supplementalStaleSeconds,
       alwaysFetchPatterns: paths.supplementalAlwaysFetchPatterns,
       fallbackPagePaths: paths.supplementalPrimaryFallbackPagePaths || [],
+      reuseFallbackAlwaysFetch: true,
     });
     assertNoLoginPages(
       "공지 정리를 위해 공지 게시판을 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
@@ -1476,8 +1529,10 @@ function runStandaloneNoticeSummary(
   const noticeBoardPageUrlsOutput = runCommand(
     [
       "/usr/bin/env",
+      `PYTHONPATH=${pythonPath}`,
       "python3",
-      `${scriptDir}/src/python/klms_sync.py`,
+      "-m",
+      "klms_sync_v2.cli",
       "list-notice-board-page-urls",
       "--supplemental-primary-pages-json",
       paths.supplementalPrimaryPagesJson,
@@ -1553,6 +1608,7 @@ function runStandaloneNoticeSummary(
 }
 
 function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stageTelemetry) {
+  const pythonPath = buildPythonPath(scriptDir, `${scriptDir}/runtime`);
   const previousNoticeSummaryExists = fileExists(paths.noticeSummaryStateJson);
   const noticeArticleUrlsOutput = runTelemetryEvent(
     stageTelemetry,
@@ -1562,8 +1618,10 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
       runCommand(
         [
           "/usr/bin/env",
+          `PYTHONPATH=${pythonPath}`,
           "python3",
-          `${scriptDir}/src/python/klms_sync.py`,
+          "-m",
+          "klms_sync_v2.cli",
           "list-notice-article-urls",
           "--supplemental-primary-pages-json",
           paths.supplementalPrimaryPagesJson,
@@ -1637,8 +1695,10 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
       runCommand(
         [
           "/usr/bin/env",
+          `PYTHONPATH=${pythonPath}`,
           "python3",
-          `${scriptDir}/src/python/klms_sync.py`,
+          "-m",
+          "klms_sync_v2.cli",
           "build-notice-digest",
           "--notice-board-state-json",
           noticeBoardStateForDigest,
@@ -1691,6 +1751,8 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
         paths.noticeArchiveNoteRenderStateJson,
         paths.noticeNativeStableNoopSkipEnabled,
         paths.noticeNativeAlwaysCaptureStateEnabled,
+        paths.noticeNativeDeferStateOnlyRenderEnabled,
+        paths.noticeNativeEnvironment || [],
         stageTelemetry
       )
   );
@@ -1739,6 +1801,27 @@ function classifyNoticeRenderError(text) {
   return { status: "error", code, user_message: userMessage, raw_first_line: firstLine };
 }
 
+function nativeNoticeEnvironment(config) {
+  const keys = [
+    "NOTICE_COLLAPSE_SECTIONS",
+    "NOTICE_COLLAPSE_COURSES",
+    "NOTICE_COLLAPSE_NOTICE_ITEMS",
+    "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS",
+    "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT",
+    "NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT",
+    "NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT",
+    "NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT",
+    "NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT",
+    "NOTICE_NATIVE_INLINE_HTML_STYLE_VERIFY",
+    "NOTICE_DEBUG_CAPTURE",
+    "NOTICE_DEBUG_AUTOMATION",
+    "NOTICE_TIMING",
+  ];
+  return keys
+    .filter((key) => Object.prototype.hasOwnProperty.call(config, key))
+    .map((key) => `${key}=${config[key]}`);
+}
+
 function updateNoticeNativeNote(
   scriptDir,
   noteName,
@@ -1749,6 +1832,8 @@ function updateNoticeNativeNote(
   archiveNoticeRenderStateJsonPath,
   stableNoopSkipEnabled,
   alwaysCaptureStateEnabled,
+  deferStateOnlyRenderEnabled,
+  nativeEnvironment,
   stageTelemetry
 ) {
   const commonArgs = [
@@ -1765,15 +1850,18 @@ function updateNoticeNativeNote(
     noticeDigestJsonPath,
   ];
   const captureArgs = ["--capture-only", ...commonArgs];
-  const captureCommand =
-    alwaysCaptureStateEnabled === false
-      ? [`${scriptDir}/src/sh/update_notice_native_note.sh`, ...captureArgs]
-      : [
-          "/usr/bin/env",
-          "NOTICE_CAPTURE_STABLE_WITH_UI=1",
-          `${scriptDir}/src/sh/update_notice_native_note.sh`,
-          ...captureArgs,
-        ];
+  const nativeEnv = Array.isArray(nativeEnvironment) ? nativeEnvironment : [];
+  const nativeCommand = (args, extraEnv) => [
+    "/usr/bin/env",
+    ...nativeEnv,
+    ...(extraEnv || []),
+    `${scriptDir}/src/sh/update_notice_native_note.sh`,
+    ...args,
+  ];
+  const captureCommand = nativeCommand(
+    captureArgs,
+    alwaysCaptureStateEnabled === false ? [] : ["NOTICE_CAPTURE_STABLE_WITH_UI=1"]
+  );
   const targets = [
     { key: "archive", args: ["--render-only", "--archive-only"] },
     { key: "primary", args: ["--render-only", "--primary-only"] },
@@ -1820,14 +1908,19 @@ function updateNoticeNativeNote(
     return { results, renderWarnings };
   }
 
+  let stableComparison = null;
   if (stableNoopSkipEnabled !== false) {
-    const stableSkip = maybeSkipStableNoticeNativeUpdate(
+    stableComparison = noticeNativeRenderComparison(
       noticeDigestJsonPath,
       noticeUserStateJsonPath,
       noticeRenderStateJsonPath,
       archiveNoticeRenderStateJsonPath
     );
-    if (stableSkip.skipped) {
+    if (
+      stableComparison.canCompare &&
+      stableComparison.primary.matches &&
+      stableComparison.archive.matches
+    ) {
       try {
         const formatOutputs = [
           verifyNoticeNativeNoteReadableFormat(
@@ -1843,7 +1936,11 @@ function updateNoticeNativeNote(
             noticeRenderStateJsonPath
           ),
         ];
-        const output = [stableSkip.output, ...formatOutputs].filter(Boolean).join("\n");
+        const output = [
+          `Skipped native notice notes: stable_noop=1 notice_count=${stableComparison.expected.total} ` +
+            `primary=${stableComparison.expected.primary.length} archived=${stableComparison.expected.archive.length}`,
+          ...formatOutputs,
+        ].filter(Boolean).join("\n");
         debugStderr(String(output || "skip native notice notes stable-noop-after-capture"));
         results.push({
           target: "stable-noop-after-capture",
@@ -1861,24 +1958,109 @@ function updateNoticeNativeNote(
         debugStderr(`native notice stable-noop after capture not skipped: ${reason}`);
       }
     }
-    if (stableSkip.reason) {
-      debugStderr(`native notice stable-noop after capture not skipped: ${stableSkip.reason}`);
+    if (!stableComparison.canCompare && stableComparison.reason) {
+      debugStderr(`native notice stable-noop after capture not skipped: ${stableComparison.reason}`);
+    } else if (stableComparison.canCompare) {
+      const differingTargets = ["archive", "primary"].filter(
+        (key) => !stableComparison[key].matches
+      );
+      if (differingTargets.length > 0) {
+        debugStderr(
+          `native notice stable-noop after capture partially differs: ${differingTargets.join(",")}`
+        );
+      }
+    }
+  }
+
+  if (
+    deferStateOnlyRenderEnabled !== false &&
+    stableComparison &&
+    stableComparison.canCompare &&
+    stableComparison.stateOnlyDiff
+  ) {
+    const differingTargets = ["archive", "primary"].filter(
+      (key) => !stableComparison[key].matches
+    );
+    try {
+      const formatOutputs = [
+        verifyNoticeNativeNoteReadableFormat(
+          archiveNoteName,
+          "archive",
+          scriptDir,
+          archiveNoticeRenderStateJsonPath
+        ),
+        verifyNoticeNativeNoteReadableFormat(
+          noteName,
+          "primary",
+          scriptDir,
+          noticeRenderStateJsonPath
+        ),
+      ];
+      const output = [
+        `Deferred native notice notes: state_only=1 differing=${differingTargets.join(",")} ` +
+          `notice_count=${stableComparison.expected.total} ` +
+          `primary=${stableComparison.expected.primary.length} archived=${stableComparison.expected.archive.length}`,
+        ...formatOutputs,
+      ].filter(Boolean).join("\n");
+      debugStderr(output);
+      results.push({
+        target: "state-only-render-deferred",
+        status: "skipped",
+        output,
+      });
+      return { results, renderWarnings };
+    } catch (error) {
+      const reason = `readability-format-check-failed: ${String(error)}`;
+      results.push({
+        target: "state-only-render-deferred",
+        status: "not-skipped",
+        reason,
+      });
+      debugStderr(`native notice state-only render not deferred: ${reason}`);
     }
   }
 
   targets.forEach((target) => {
     try {
+      const targetComparison =
+        stableNoopSkipEnabled !== false &&
+        stableComparison &&
+        stableComparison.canCompare
+          ? stableComparison[target.key]
+          : null;
+      if (targetComparison && targetComparison.matches) {
+        try {
+          const formatOutput = verifyNoticeNativeNoteReadableFormat(
+            target.key === "archive" ? archiveNoteName : noteName,
+            target.key,
+            scriptDir,
+            target.key === "archive" ? archiveNoticeRenderStateJsonPath : noticeRenderStateJsonPath
+          );
+          const output =
+            `Skipped native notice note: target=${target.key} stable_noop=1 ` +
+            `notices=${targetComparison.expectedLength}\n${formatOutput}`;
+          debugStderr(output);
+          results.push({
+            target: `${target.key}-stable-noop`,
+            status: "skipped",
+            output,
+          });
+          return;
+        } catch (error) {
+          debugStderr(
+            `native notice target stable-noop not skipped: target=${target.key} ` +
+              `reason=readability-format-check-failed: ${String(error)}`
+          );
+        }
+      }
+
       const output = runTelemetryEvent(
         stageTelemetry,
         "native-notice-note",
         target.key,
         () =>
           runCommand(
-            [
-              `${scriptDir}/src/sh/update_notice_native_note.sh`,
-              ...target.args,
-              ...commonArgs,
-            ],
+            nativeCommand([...target.args, ...commonArgs], []),
             scriptDir
           )
       );
@@ -2034,15 +2216,44 @@ function maybeSkipStableNoticeNativeUpdate(
   noticeRenderStateJsonPath,
   archiveNoticeRenderStateJsonPath
 ) {
+  const comparison = noticeNativeRenderComparison(
+    noticeDigestJsonPath,
+    noticeUserStateJsonPath,
+    noticeRenderStateJsonPath,
+    archiveNoticeRenderStateJsonPath
+  );
+  if (!comparison.canCompare) {
+    return { skipped: false, reason: comparison.reason };
+  }
+  if (!comparison.primary.matches) {
+    return { skipped: false, reason: "primary-render-state-differs" };
+  }
+  if (!comparison.archive.matches) {
+    return { skipped: false, reason: "archive-render-state-differs" };
+  }
+  return {
+    skipped: true,
+    output:
+      `Skipped native notice notes: stable_noop=1 notice_count=${comparison.expected.total} ` +
+      `primary=${comparison.expected.primary.length} archived=${comparison.expected.archive.length}`,
+  };
+}
+
+function noticeNativeRenderComparison(
+  noticeDigestJsonPath,
+  noticeUserStateJsonPath,
+  noticeRenderStateJsonPath,
+  archiveNoticeRenderStateJsonPath
+) {
   const digest = JSON.parse(readText(noticeDigestJsonPath));
   if (noticeDigestHasFreshNotices(digest)) {
-    return { skipped: false, reason: "digest-has-fresh-notices" };
+    return { canCompare: false, reason: "digest-has-fresh-notices" };
   }
   if (Number(digest.new_count || 0) > 0 || Number(digest.updated_count || 0) > 0) {
-    return { skipped: false, reason: "digest-counts-fresh" };
+    return { canCompare: false, reason: "digest-counts-fresh" };
   }
   if (!fileExists(noticeRenderStateJsonPath) || !fileExists(archiveNoticeRenderStateJsonPath)) {
-    return { skipped: false, reason: "render-state-missing" };
+    return { canCompare: false, reason: "render-state-missing" };
   }
 
   const userState = loadNoticeUserState(noticeUserStateJsonPath, digest);
@@ -2050,18 +2261,20 @@ function maybeSkipStableNoticeNativeUpdate(
   const primaryRenderState = JSON.parse(readText(noticeRenderStateJsonPath));
   const archiveRenderState = JSON.parse(readText(archiveNoticeRenderStateJsonPath));
   const expected = expectedNoticeNativeRenderState(digest, userState);
-  if (!renderStateMatchesExpected(primaryRenderState, expected.primary)) {
-    return { skipped: false, reason: "primary-render-state-differs" };
-  }
-  if (!renderStateMatchesExpected(archiveRenderState, expected.archive)) {
-    return { skipped: false, reason: "archive-render-state-differs" };
-  }
-
+  const primary = compareRenderStateToExpected(primaryRenderState, expected.primary);
+  const archive = compareRenderStateToExpected(archiveRenderState, expected.archive);
+  const stateOnlyDiff =
+    (!primary.matches || !archive.matches) &&
+    primary.styleVersionMatches &&
+    archive.styleVersionMatches &&
+    noticeRenderVisibleKeys(primaryRenderState, archiveRenderState).join("\n") ===
+      expectedNoticeVisibleKeys(expected).join("\n");
   return {
-    skipped: true,
-    output:
-      `Skipped native notice notes: stable_noop=1 notice_count=${expected.total} ` +
-      `primary=${expected.primary.length} archived=${expected.archive.length}`,
+    canCompare: true,
+    expected,
+    stateOnlyDiff,
+    primary,
+    archive,
   };
 }
 
@@ -2135,24 +2348,85 @@ function expectedNoticeNativeRenderState(digest, userState) {
 }
 
 function renderStateMatchesExpected(renderState, expected) {
+  return compareRenderStateToExpected(renderState, expected).matches;
+}
+
+function compareRenderStateToExpected(renderState, expected) {
+  const expectedLength = Array.isArray(expected) ? expected.length : 0;
   if (String(renderState && renderState.style_version || "") !== NATIVE_NOTICE_RENDER_STYLE_VERSION) {
-    return false;
+    return {
+      matches: false,
+      reason: "style-version-differs",
+      expectedLength,
+      styleVersionMatches: false,
+    };
   }
   const rendered = (renderState && renderState.rendered_notices) || [];
   if (!Array.isArray(rendered) || rendered.length !== expected.length) {
-    return false;
+    return {
+      matches: false,
+      reason: "notice-count-differs",
+      expectedLength,
+      styleVersionMatches: true,
+    };
   }
   for (let index = 0; index < expected.length; index += 1) {
     const actual = rendered[index] || {};
     const desired = expected[index] || {};
     if (String(actual.notice_id || "") !== String(desired.notice_id || "")) {
-      return false;
+      return {
+        matches: false,
+        reason: "notice-order-differs",
+        expectedLength,
+        styleVersionMatches: true,
+      };
     }
     if (String(actual.fingerprint || "") !== String(desired.fingerprint || "")) {
-      return false;
+      return {
+        matches: false,
+        reason: "notice-fingerprint-differs",
+        expectedLength,
+        styleVersionMatches: true,
+      };
     }
   }
-  return true;
+  return {
+    matches: true,
+    reason: "",
+    expectedLength,
+    styleVersionMatches: true,
+  };
+}
+
+function noticeRenderVisibleKeys(primaryRenderState, archiveRenderState) {
+  return [
+    ...renderStateNoticeKeys(primaryRenderState),
+    ...renderStateNoticeKeys(archiveRenderState),
+  ].sort();
+}
+
+function expectedNoticeVisibleKeys(expected) {
+  return [
+    ...expectedNoticeKeys(expected.primary),
+    ...expectedNoticeKeys(expected.archive),
+  ].sort();
+}
+
+function renderStateNoticeKeys(renderState) {
+  const rendered = (renderState && renderState.rendered_notices) || [];
+  if (!Array.isArray(rendered)) {
+    return [];
+  }
+  return expectedNoticeKeys(rendered);
+}
+
+function expectedNoticeKeys(notices) {
+  if (!Array.isArray(notices)) {
+    return [];
+  }
+  return notices.map((notice) =>
+    `${String(notice && notice.notice_id || "")}\u0000${String(notice && notice.fingerprint || "")}`
+  );
 }
 
 function noticeIdentifierForDigestNotice(courseName, notice) {
@@ -2209,6 +2483,7 @@ function fetchPages(urls, waitSeconds, scriptDir, options) {
     `--probe-order=${(options && options.probeOrder) || "index"}`,
     `--stale-seconds=${(options && options.staleSeconds) || "21600"}`,
     `--always-fetch-min-interval-seconds=${(options && options.alwaysFetchMinIntervalSeconds) || "0"}`,
+    `--complete-reuse-seconds=${(options && options.completeReuseSeconds) || "0"}`,
     `--full-ttl-seconds=${(options && options.fullTtlSeconds) || "259200"}`,
     `--auto-full-min-coverage=${safeValue(() =>
       options.autoFullMinCoverage != null ? options.autoFullMinCoverage : "0.5"
@@ -2403,20 +2678,6 @@ function sameDate(lhs, rhs) {
   return Math.abs(lhs.getTime() - rhs.getTime()) < 1000;
 }
 
-function updateNoteSection(noteName, sectionHtmlPath) {
-  const notes = Application("/System/Applications/Notes.app");
-  const sectionHtml = readText(sectionHtmlPath);
-  const note = getOrCreateNote(notes, noteName, sectionHtml);
-  const currentBody = String(note.body() || "");
-  const updatedBody = shouldReplaceWholeNote(noteName, sectionHtml)
-    ? buildInitialNoteBody(noteName, sectionHtml)
-    : replaceExistingSection(currentBody, sectionHtml);
-
-  if (updatedBody !== currentBody) {
-    note.body = updatedBody;
-  }
-}
-
 function syncRemindersFromState(
   stateJsonPath,
   listName,
@@ -2476,6 +2737,38 @@ function syncRemindersFromState(
     alertSummary = syncReminderList(remindersApp, reminderSnapshot, alertListName, [], 0);
   }
   return `${activeSummary} ${issueSummary} ${alertSummary}`;
+}
+
+function buildRemindersDesiredHash(
+  stateJsonPath,
+  listName,
+  issueListName,
+  completedReminderRetentionDays,
+  reminderOptions
+) {
+  const state = JSON.parse(readText(stateJsonPath));
+  if (state.status !== "ok" || !state.content || state.content.kind !== "success") {
+    return stableHash(readText(stateJsonPath));
+  }
+
+  const options = reminderOptions || {};
+  const desired = buildDesiredReminders(normalizeSyncEntries(state.content), options);
+  return stableHash(
+    JSON.stringify({
+      listName,
+      issueListName,
+      completedReminderRetentionDays,
+      options: {
+        deviceAlertsEnabled: Boolean(options.deviceAlertsEnabled),
+        deviceAlertMode: options.deviceAlertMode || "adaptive",
+        stageAlertsEnabled: Boolean(options.stageAlertsEnabled),
+        cleanDisabledStageAlerts: Boolean(options.cleanDisabledStageAlerts),
+        recreateStageAlertList: options.recreateStageAlertList !== false,
+        alertListName: options.alertListName || "KLMS 알림",
+      },
+      desired,
+    })
+  );
 }
 
 function importCompletedRemindersToOverrides(stateJsonPath, overridesJsonPath, listNames) {
@@ -3340,109 +3633,6 @@ function extractIdentifierFromText(text) {
   return "";
 }
 
-function findNotesByName(notesApp, noteName) {
-  const allNotes = notesApp.notes();
-  const matches = [];
-  for (let i = 0; i < allNotes.length; i += 1) {
-    try {
-      if (String(allNotes[i].name() || "") === noteName) {
-        matches.push(allNotes[i]);
-      }
-    } catch (error) {
-      // Skip unreadable notes.
-    }
-  }
-  return matches;
-}
-
-function getOrCreateNote(notesApp, noteName, sectionHtml) {
-  const matches = findNotesByName(notesApp, noteName);
-
-  if (matches.length > 1) {
-    throw new Error(`Multiple notes found for '${noteName}'.`);
-  }
-  if (matches.length === 1) {
-    return matches[0];
-  }
-
-  const targetFolder = resolveTargetFolder(notesApp);
-  const initialBody = buildInitialNoteBody(noteName, sectionHtml);
-  return notesApp.make({
-    new: "note",
-    at: targetFolder,
-    withProperties: { body: initialBody },
-  });
-}
-
-function resolveTargetFolder(notesApp) {
-  const folders = notesApp.folders();
-  for (let i = 0; i < folders.length; i += 1) {
-    try {
-      if (String(folders[i].name() || "") === "Notes") {
-        return folders[i];
-      }
-    } catch (error) {
-      // Try the next folder.
-    }
-  }
-  if (folders.length > 0) {
-    return folders[0];
-  }
-  throw new Error("Could not find a Notes folder to create the KLMS note in.");
-}
-
-function buildInitialNoteBody(noteName, sectionHtml) {
-  return `<div><b>${escapeHtml(noteName)}</b></div><div><br></div>${sectionHtml}`;
-}
-
-function shouldReplaceWholeNote(noteName, sectionHtml) {
-  return noteName === "KLMS 과제 업데이트";
-}
-
-function replaceExistingSection(currentBody, sectionHtml) {
-  const markerIndex = currentBody.indexOf(MARKER);
-  if (markerIndex < 0) {
-    return replaceFirstList(currentBody, sectionHtml);
-  }
-
-  const startIndex = findSectionStart(currentBody, markerIndex);
-  return `${currentBody.slice(0, startIndex)}${sectionHtml}`;
-}
-
-function replaceFirstList(currentBody, sectionHtml) {
-  const listStart = currentBody.indexOf("<ul>");
-  if (listStart < 0) {
-    if (!currentBody.trim()) {
-      return sectionHtml;
-    }
-    return `${trimTrailingWhitespace(currentBody)}<div><br></div>${sectionHtml}`;
-  }
-
-  const listEnd = currentBody.indexOf("</ul>", listStart);
-  if (listEnd < 0) {
-    return currentBody;
-  }
-
-  return `${currentBody.slice(0, listStart)}${sectionHtml}${currentBody.slice(listEnd + 5)}`;
-}
-
-function findSectionStart(bodyHtml, markerIndex) {
-  const divIndex = bodyHtml.lastIndexOf("<div", markerIndex);
-  return divIndex >= 0 ? divIndex : markerIndex;
-}
-
-function trimTrailingWhitespace(text) {
-  return text.replace(/\s+$/, "");
-}
-
-function escapeHtml(text) {
-  return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 function parseEnvFile(path) {
   const content = readText(path);
   const config = {};
@@ -3513,6 +3703,15 @@ function envValue(key) {
   return value ? ObjC.unwrap(value) : "";
 }
 
+function buildPythonPath(scriptDir, runtimeDir) {
+  const parts = [
+    `${scriptDir}/src/python`,
+    `${runtimeDir}/python-packages`,
+    envValue("PYTHONPATH"),
+  ].filter((part) => String(part || "").trim());
+  return parts.join(":");
+}
+
 function fileModificationEpoch(path) {
   if (!fileExists(path)) {
     return 0;
@@ -3538,6 +3737,25 @@ function freshExistingFilesSince(paths, startedEpoch) {
     return [];
   }
   return (paths || []).filter((path) => fileExists(path) && fileModificationEpoch(path) >= threshold);
+}
+
+function freshExistingFilesSinceOrWithin(paths, startedEpoch, maxAgeSeconds) {
+  const sameRunPaths = freshExistingFilesSince(paths, startedEpoch);
+  if (sameRunPaths.length > 0) {
+    return sameRunPaths;
+  }
+  const maxAge = Number(maxAgeSeconds || 0);
+  if (!Number.isFinite(maxAge) || maxAge <= 0) {
+    return [];
+  }
+  const nowEpoch = Date.now() / 1000;
+  return (paths || []).filter((path) => {
+    if (!fileExists(path)) {
+      return false;
+    }
+    const modifiedEpoch = fileModificationEpoch(path);
+    return modifiedEpoch > 0 && nowEpoch - modifiedEpoch <= maxAge;
+  });
 }
 
 function parentDirectory(path) {

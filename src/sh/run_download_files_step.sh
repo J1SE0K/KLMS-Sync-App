@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ "$#" -lt 9 ]]; then
-  print -r -- "usage: run_download_files_step.sh script manifest output-root download-log archive-root result-json timeout max-attempts retry-delay [force]" >&2
+  print -r -- "usage: run_download_files_step.sh script manifest output-root download-log archive-root result-json timeout max-attempts retry-delay [force] [preserve-archive] [new-files-root] [quarantine-root]" >&2
   exit 64
 fi
 
@@ -16,6 +16,9 @@ TIMEOUT_SECONDS="$7"
 MAX_ATTEMPTS="$8"
 RETRY_DELAY_SECONDS="$9"
 FORCE_DOWNLOAD="${10:-0}"
+PRESERVE_DOWNLOAD_ARCHIVE="${11:-0}"
+NEW_FILES_ROOT="${12:-}"
+QUARANTINE_ROOT="${13:-}"
 
 download_args=(
   /usr/bin/osascript
@@ -32,9 +35,23 @@ download_args=(
   "--retry-delay-seconds=$RETRY_DELAY_SECONDS"
 )
 
+if [[ -n "$NEW_FILES_ROOT" ]]; then
+  download_args+=("--new-files-root=$NEW_FILES_ROOT")
+fi
+
+if [[ -n "$QUARANTINE_ROOT" ]]; then
+  download_args+=("--quarantine-root=$QUARANTINE_ROOT")
+fi
+
 case "${FORCE_DOWNLOAD:l}" in
   1|true|yes|on)
     download_args+=("--force-download")
+    ;;
+esac
+
+case "${PRESERVE_DOWNLOAD_ARCHIVE:l}" in
+  1|true|yes|on)
+    download_args+=("--preserve-download-archive")
     ;;
 esac
 

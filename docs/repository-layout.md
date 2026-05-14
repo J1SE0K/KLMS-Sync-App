@@ -49,7 +49,6 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 | `runtime/` | cache, state, logs, tmp, telemetry |
 | `course_files/` | 과목별 파일 정리본 |
 | `course_transcripts/`, `course_videos/` | 강의 자료 수집 산출물 |
-| `~/Downloads/KLMS Files` | 이번 실행에서 새로 추가된 다운로드 inbox |
 | `~/Library/Application Support/KLMSNotesSync` | LaunchAgent 설치본, 인증 state, 자동 실행 runtime |
 
 `runtime/cache/*/stage_timings.json`에는 stage별 소요 시간과 병목 후보가 남는다. `verify_sync_state.sh`는 canonical cache/state와 Apple Calendar를 함께 확인한다.

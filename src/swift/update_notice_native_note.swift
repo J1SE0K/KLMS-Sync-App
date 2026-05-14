@@ -484,7 +484,7 @@ func renderChunks(from lines: [RenderLine]) -> [RenderChunk] {
     var currentIsChecklist = first.isChecklist
 
     for line in lines.dropFirst() {
-        if line.isChecklist == currentIsChecklist && !currentIsChecklist {
+        if line.isChecklist == currentIsChecklist {
             currentLines.append(line.text)
             continue
         }
@@ -626,6 +626,11 @@ func setAttr(_ element: AXUIElement, _ name: String, _ value: CFTypeRef) {
     if error != .success {
         fail("Failed to set accessibility attribute \(name): \(error.rawValue)")
     }
+}
+
+@discardableResult
+func trySetAttr(_ element: AXUIElement, _ name: String, _ value: CFTypeRef) -> Bool {
+    AXUIElementSetAttributeValue(element, name as CFString, value) == .success
 }
 
 let axTraversalNodeLimit = 6000
@@ -868,6 +873,19 @@ func pressMenu(_ app: AXUIElement, _ titles: [String]) {
 }
 
 @discardableResult
+func pressMenuIfAvailable(_ context: NotesEditorContext, _ titles: [String]) -> Bool {
+    _ = focusNotesEditor(context)
+    return pressMenuIfAvailable(context.app, titles)
+}
+
+func pressMenu(_ context: NotesEditorContext, _ titles: [String]) {
+    guard focusNotesEditor(context) else {
+        fail("Could not focus the target Notes editor before pressing menu: \(titles.joined(separator: ", "))")
+    }
+    pressMenu(context.app, titles)
+}
+
+@discardableResult
 func selectRange(_ textArea: AXUIElement, location: Int, length: Int) -> Bool {
     guard location >= 0, length > 0 else {
         return false
@@ -933,7 +951,7 @@ func selectRangeForFormatting(
 
     for attempt in 0..<retries {
         if attempt == 0 {
-            _ = AXUIElementSetAttributeValue(context.textArea, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            _ = focusNotesEditor(context)
         } else {
             ensureTypingTargetReady(context: context, noteTitle: noteTitle, noteID: noteID)
         }
@@ -989,7 +1007,10 @@ func htmlStyle(for line: RenderLine) -> String {
     return "font-size:\(cssFontSize(line.fontSize))pt;font-weight:\(fontWeight);line-height:1.42;"
 }
 
-func paste(_ app: AXUIElement, text: String, html: String? = nil, attributedText: NSAttributedString? = nil) {
+func paste(context: NotesEditorContext, text: String, html: String? = nil, attributedText: NSAttributedString? = nil) {
+    guard focusNotesEditor(context) else {
+        fail("Could not focus the target Notes editor before paste.")
+    }
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
     pasteboard.setString(text, forType: .string)
@@ -1004,15 +1025,12 @@ func paste(_ app: AXUIElement, text: String, html: String? = nil, attributedText
         pasteboard.setData(rtf, forType: .rtf)
     }
     usleep(pasteboardSettleUsec)
-    pressMenu(app, ["붙여넣기", "Paste"])
+    pressMenu(context, ["붙여넣기", "Paste"])
     usleep(pasteSettleUsec)
 }
 
 func sendReturnKey(context: NotesEditorContext) {
-    if let notesPID = runningNotesPID() {
-        activateApplication(pid: notesPID)
-    }
-    _ = AXUIElementSetAttributeValue(context.textArea, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    _ = focusNotesEditor(context)
     _ = ensureEditableCaret(context.textArea)
     let initialText: String = attr(context.textArea, kAXValueAttribute) ?? ""
     let initialLineCount = lineEntries(in: initialText).count
@@ -1098,6 +1116,7 @@ func waitForChecklistMode(
 }
 
 func setChecklistMode(_ context: NotesEditorContext, enabled: Bool) {
+    _ = focusNotesEditor(context)
     if var button = resolvedChecklistButton(for: context) {
         if waitForChecklistMode(button, enabled: enabled, retries: 1) {
             return
@@ -1105,6 +1124,7 @@ func setChecklistMode(_ context: NotesEditorContext, enabled: Bool) {
 
         var lastError = AXError.success
         for attempt in 0..<3 {
+            _ = focusNotesEditor(context)
             lastError = AXUIElementPerformAction(button, kAXPressAction as CFString)
             if lastError == .success && waitForChecklistMode(button, enabled: enabled) {
                 return
@@ -1125,7 +1145,7 @@ func setChecklistMode(_ context: NotesEditorContext, enabled: Bool) {
     }
 
     for _ in 0..<3 {
-        guard pressMenuIfAvailable(context.app, checklistMenuTitles) else {
+        guard pressMenuIfAvailable(context, checklistMenuTitles) else {
             break
         }
         usleep(pasteSettleUsec)
@@ -1276,7 +1296,9 @@ tell application "System Events"
     set frontmost to true
     repeat with w in windows
       try
-        set ta to text area 1 of scroll area 3 of splitter group 1 of w
+        set textAreas to text areas of entire contents of w
+        if (count of textAreas) is 0 then error "no text area"
+        set ta to item 1 of textAreas
         set value of attribute "AXFocused" of ta to true
         return "true"
       end try
@@ -1604,6 +1626,48 @@ end tell
     _ = runAppleScriptIfSuccessful(script)
 }
 
+func notesEditorIsFocused(_ context: NotesEditorContext, requireFocusedElement: Bool = false) -> Bool {
+    let systemWide = AXUIElementCreateSystemWide()
+    let notesPID = elementPID(context.app)
+    if let focusedApp: AXUIElement = attr(systemWide, kAXFocusedApplicationAttribute),
+       let focusedPID = elementPID(focusedApp),
+       let notesPID,
+       focusedPID != notesPID {
+        return false
+    }
+
+    let textAreaFocused: Bool = attr(context.textArea, kAXFocusedAttribute) ?? false
+    if let focusedElement: AXUIElement = attr(systemWide, kAXFocusedUIElementAttribute) {
+        if isDescendantAXElement(focusedElement, of: context.textArea) {
+            return true
+        }
+        return !requireFocusedElement && textAreaFocused
+    }
+    return textAreaFocused
+}
+
+@discardableResult
+func focusNotesEditor(_ context: NotesEditorContext, requireFocusedElement: Bool = false) -> Bool {
+    let notesPID = elementPID(context.app)
+    activateApplication(pid: notesPID)
+    _ = AXUIElementPerformAction(context.window, kAXRaiseAction as CFString)
+    _ = trySetAttr(context.app, kAXFocusedWindowAttribute as String, context.window)
+    _ = trySetAttr(context.window, kAXMainAttribute as String, kCFBooleanTrue)
+    _ = trySetAttr(context.window, kAXFocusedAttribute as String, kCFBooleanTrue)
+    _ = trySetAttr(context.textArea, kAXFocusedAttribute as String, kCFBooleanTrue)
+    usleep(40_000)
+    if notesEditorIsFocused(context, requireFocusedElement: requireFocusedElement) {
+        return true
+    }
+
+    _ = focusNotesEditorViaSystemEvents()
+    _ = trySetAttr(context.app, kAXFocusedWindowAttribute as String, context.window)
+    _ = trySetAttr(context.window, kAXFocusedAttribute as String, kCFBooleanTrue)
+    _ = trySetAttr(context.textArea, kAXFocusedAttribute as String, kCFBooleanTrue)
+    usleep(55_000)
+    return notesEditorIsFocused(context, requireFocusedElement: requireFocusedElement)
+}
+
 func runningNotesPID() -> pid_t? {
     NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.Notes")
         .first?
@@ -1695,14 +1759,14 @@ func ensureTypingTargetReady(
         return
     }
 
-    activateApplication(pid: notesPID)
+    _ = focusNotesEditor(context)
     Thread.sleep(forTimeInterval: 0.02)
 
     if let focusedApp: AXUIElement = attr(systemWide, kAXFocusedApplicationAttribute),
        let focusedPID = elementPID(focusedApp),
        let notesPID,
        focusedPID != notesPID {
-        _ = focusNotesEditorViaSystemEvents()
+        _ = focusNotesEditor(context)
         Thread.sleep(forTimeInterval: 0.03)
     }
 
@@ -1718,9 +1782,7 @@ func ensureTypingTargetReady(
 
     var caretReady = false
     for attempt in 0..<6 {
-        activateApplication(pid: notesPID)
-        _ = focusNotesEditorViaSystemEvents()
-        _ = AXUIElementSetAttributeValue(context.textArea, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        _ = focusNotesEditor(context)
         if ensureEditableCaret(context.textArea) {
             caretReady = true
             break
@@ -1740,7 +1802,7 @@ func ensureTypingTargetReady(
 
     if let focusedElement: AXUIElement = attr(systemWide, kAXFocusedUIElementAttribute),
        !isDescendantAXElement(focusedElement, of: context.textArea) {
-        _ = focusNotesEditorViaSystemEvents()
+        _ = focusNotesEditor(context)
         Thread.sleep(forTimeInterval: 0.03)
     }
 
@@ -1804,45 +1866,6 @@ console.log(matches.map(item => item.id).join("\\n"));
     }
 }
 
-func createNote(noteTitle: String) {
-    automationDebugLog("createNote(\(noteTitle))")
-    let noteLiteral = jsStringLiteral(noteTitle)
-    let script = """
-function escapeHtml(text) {
-  return String(text)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function resolveTargetFolder(notesApp) {
-  const folders = notesApp.folders();
-  for (let i = 0; i < folders.length; i += 1) {
-    try {
-      if (String(folders[i].name() || "") === "Notes") {
-        return folders[i];
-      }
-    } catch (error) {}
-  }
-  if (folders.length > 0) {
-    return folders[0];
-  }
-  throw new Error("Could not find a Notes folder.");
-}
-
-const noteName = \(noteLiteral);
-const notes = Application("/System/Applications/Notes.app");
-notes.make({
-  new: "note",
-  at: resolveTargetFolder(notes),
-  withProperties: { body: `<div>${escapeHtml(noteName)}</div>` },
-});
-"""
-
-    runProcess("/usr/bin/osascript", ["-l", "JavaScript", "-e", script])
-}
-
 func showNote(noteID: String) {
     automationDebugLog("showNote(\(noteID))")
     let noteLiteral = jsStringLiteral(noteID)
@@ -1854,6 +1877,9 @@ try {
   if (String(note.id() || "") === noteId) {
     notes.activate();
     note.show();
+    try {
+      notes.selection = [note];
+    } catch (selectionError) {}
     console.log("true");
   } else {
     console.log("false");
@@ -1894,26 +1920,6 @@ func ensureExistingNoteVisible(noteTitle: String, noteID: String? = nil) -> Bool
     return selected
 }
 
-func deleteNote(noteID: String) {
-    automationDebugLog("deleteNote(\(noteID))")
-    let noteLiteral = jsStringLiteral(noteID)
-    let script = """
-const noteId = \(noteLiteral);
-const notes = Application("/System/Applications/Notes.app");
-try {
-  const note = notes.notes.byId(noteId);
-  if (String(note.id() || "") === noteId) {
-    note.delete();
-  }
-} catch (error) {
-}
-"""
-
-    _ = timed("deleteNote") {
-        runProcessOutput("/usr/bin/osascript", ["-l", "JavaScript", "-e", script])
-    }
-}
-
 func ensureNoteVisible(noteTitle: String, noteID: String? = nil) {
     automationDebugLog("ensureNoteVisible(\(noteTitle))")
     if ensureExistingNoteVisible(noteTitle: noteTitle, noteID: noteID) {
@@ -1924,46 +1930,19 @@ func ensureNoteVisible(noteTitle: String, noteID: String? = nil) {
         return
     }
 
-    var ids = noteIDs(matching: noteTitle)
-    if ids.isEmpty {
-        createNote(noteTitle: noteTitle)
-        Thread.sleep(forTimeInterval: 0.4)
-        ids = noteIDs(matching: noteTitle)
+    let ids = noteIDs(matching: noteTitle)
+    guard let existingID = ids.first else {
+        fail("Could not locate existing note: \(noteTitle). Refusing to create a new Notes note.")
     }
 
-    guard let keepID = ids.first else {
-        fail("Could not create or locate note: \(noteTitle)")
-    }
-
-    for duplicateID in ids.dropFirst() {
-        deleteNote(noteID: duplicateID)
-        Thread.sleep(forTimeInterval: 0.15)
-    }
-
-    showNote(noteID: keepID)
+    showNote(noteID: existingID)
     activateApplication(pid: runningNotesPID())
     Thread.sleep(forTimeInterval: 0.35)
-    guard waitForVisibleNoteByAnchors(noteTitle: noteTitle, noteID: keepID) else {
+    guard waitForVisibleNoteByAnchors(noteTitle: noteTitle, noteID: existingID) else {
         fail("Could not confirm Notes selection for note: \(noteTitle)")
     }
     _ = focusNotesEditorViaSystemEvents()
     Thread.sleep(forTimeInterval: 0.15)
-}
-
-func cleanupDuplicateNotes(noteTitle: String) {
-    automationDebugLog("cleanupDuplicateNotes(\(noteTitle))")
-    var ids = noteIDs(matching: noteTitle)
-    for _ in 0..<5 {
-        guard let keepID = ids.first, ids.count > 1 else {
-            break
-        }
-        for duplicateID in ids.dropFirst() where duplicateID != keepID {
-            deleteNote(noteID: duplicateID)
-            Thread.sleep(forTimeInterval: 0.15)
-        }
-        Thread.sleep(forTimeInterval: 0.2)
-        ids = noteIDs(matching: noteTitle)
-    }
 }
 
 func attemptResolveNotesEditorContext(
@@ -2214,10 +2193,36 @@ func checklistInfo(
     return captured.info
 }
 
+func checklistInfo(
+    attributedText: NSAttributedString,
+    currentText: String,
+    range: LineRange,
+    expectedLabel: String
+) -> ChecklistInfo? {
+    let label = lineLabel(substring(currentText, range: range) ?? "")
+    guard checklistLineMatchesLabel(label, expectedLabel: expectedLabel),
+          range.location >= 0,
+          range.location < attributedText.length else {
+        return nil
+    }
+
+    let attributes = attributedText.attributes(at: range.location, effectiveRange: nil)
+    guard let prefix = prefixText(from: attributes, key: NSAttributedString.Key("AXListItemPrefix")),
+          let isChecked = checklistState(from: prefix) else {
+        return nil
+    }
+
+    return ChecklistInfo(
+        isChecked: isChecked,
+        attachment: attachmentElement(from: attributes, key: NSAttributedString.Key("AXAttachment"))
+    )
+}
+
 func capturedChecklistLines(
     textArea: AXUIElement,
     currentText: String,
-    searchRange: LineRange? = nil
+    searchRange: LineRange? = nil,
+    attributedText: NSAttributedString? = nil
 ) -> [CapturedChecklistLine] {
     let textLength = nsLength(currentText)
     let clampedSearchRange = searchRange.flatMap {
@@ -2233,6 +2238,21 @@ func capturedChecklistLines(
         guard checklistLineMatchesLabel(label, expectedLabel: readChecklistLabel)
             || checklistLineMatchesLabel(label, expectedLabel: importantChecklistLabel) else {
             return nil
+        }
+        if let attributedText {
+            guard let info = checklistInfo(
+                attributedText: attributedText,
+                currentText: currentText,
+                range: entry.range,
+                expectedLabel: label
+            ) else {
+                return nil
+            }
+            return CapturedChecklistLine(
+                label: label,
+                isChecked: info.isChecked,
+                range: entry.range
+            )
         }
         guard let captured = checklistInfo(
             textArea: textArea,
@@ -2264,18 +2284,12 @@ func captureChecklistValue(
     range: LineRange,
     expectedLabel: String
 ) -> Bool? {
-    let label = lineLabel(substring(currentText, range: range) ?? "")
-    guard checklistLineMatchesLabel(label, expectedLabel: expectedLabel),
-          range.location >= 0,
-          range.location < attributedText.length else {
-        return nil
-    }
-
-    let attributes = attributedText.attributes(at: range.location, effectiveRange: nil)
-    guard let prefix = prefixText(from: attributes, key: NSAttributedString.Key("AXListItemPrefix")) else {
-        return nil
-    }
-    return checklistState(from: prefix)
+    checklistInfo(
+        attributedText: attributedText,
+        currentText: currentText,
+        range: range,
+        expectedLabel: expectedLabel
+    )?.isChecked
 }
 
 func checklistPrefix(
@@ -2822,19 +2836,17 @@ func findChecklistRangeNearTitle(
 
 @discardableResult
 func setChecklistState(
-    app: AXUIElement,
-    textArea: AXUIElement,
+    context: NotesEditorContext,
     range: LineRange,
     expectedLabel: String,
     checked: Bool
 ) -> Bool {
     for _ in 0..<12 {
-        activateApplication(pid: elementPID(app))
+        _ = focusNotesEditor(context)
         usleep(30_000)
-        _ = AXUIElementSetAttributeValue(textArea, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-        let currentText: String = attr(textArea, kAXValueAttribute) ?? ""
+        let currentText: String = attr(context.textArea, kAXValueAttribute) ?? ""
         guard let current = checklistInfo(
-            textArea: textArea,
+            textArea: context.textArea,
             currentText: currentText,
             range: range,
             expectedLabel: expectedLabel
@@ -2852,8 +2864,8 @@ func setChecklistState(
             continue
         }
 
-        _ = selectRange(textArea, location: range.location, length: range.length)
-        _ = ensureEditableCaret(textArea)
+        _ = selectRange(context.textArea, location: range.location, length: range.length)
+        _ = ensureEditableCaret(context.textArea)
         let error = AXUIElementPerformAction(attachment, kAXPressAction as CFString)
         guard error == .success else {
             Thread.sleep(forTimeInterval: 0.12)
@@ -2861,9 +2873,9 @@ func setChecklistState(
         }
         Thread.sleep(forTimeInterval: 0.16)
     }
-    let refreshedText: String = attr(textArea, kAXValueAttribute) ?? ""
+    let refreshedText: String = attr(context.textArea, kAXValueAttribute) ?? ""
     return checklistInfo(
-        textArea: textArea,
+        textArea: context.textArea,
         currentText: refreshedText,
         range: range,
         expectedLabel: expectedLabel
@@ -2872,14 +2884,13 @@ func setChecklistState(
 
 @discardableResult
 func markChecklistChecked(
-    app: AXUIElement,
-    textArea: AXUIElement,
+    context: NotesEditorContext,
     range: LineRange,
     expectedLabel: String
 ) -> Bool {
-    let currentText: String = attr(textArea, kAXValueAttribute) ?? ""
+    let currentText: String = attr(context.textArea, kAXValueAttribute) ?? ""
     guard let current = checklistInfo(
-        textArea: textArea,
+        textArea: context.textArea,
         currentText: currentText,
         range: range,
         expectedLabel: expectedLabel
@@ -2891,10 +2902,8 @@ func markChecklistChecked(
         return true
     }
 
-    _ = app
     return setChecklistState(
-        app: app,
-        textArea: textArea,
+        context: context,
         range: range,
         expectedLabel: expectedLabel,
         checked: true
@@ -2903,15 +2912,12 @@ func markChecklistChecked(
 
 @discardableResult
 func markChecklistUnchecked(
-    app: AXUIElement,
-    textArea: AXUIElement,
+    context: NotesEditorContext,
     range: LineRange,
     expectedLabel: String
 ) -> Bool {
-    _ = app
     return setChecklistState(
-        app: app,
-        textArea: textArea,
+        context: context,
         range: range,
         expectedLabel: expectedLabel,
         checked: false
@@ -2920,92 +2926,134 @@ func markChecklistUnchecked(
 
 @discardableResult
 func ensureChecklistState(
-    app: AXUIElement,
-    textArea: AXUIElement,
+    context: NotesEditorContext,
     range: LineRange,
     expectedLabel: String,
     checked: Bool
 ) -> Bool {
     if checked {
         return markChecklistChecked(
-            app: app,
-            textArea: textArea,
+            context: context,
             range: range,
             expectedLabel: expectedLabel
         )
     }
 
     return markChecklistUnchecked(
-        app: app,
-        textArea: textArea,
+        context: context,
         range: range,
         expectedLabel: expectedLabel
     )
 }
 
 func ensureChecklistStates(
-    app: AXUIElement,
-    textArea: AXUIElement,
+    context: NotesEditorContext,
     resolvedNotices: [ResolvedRenderedNotice]
 ) {
-    for _ in 0..<2 {
+    let textArea = context.textArea
+    func applyFast(
+        attachment: AXUIElement?,
+        range: LineRange,
+        expectedLabel: String,
+        checked: Bool,
+        useAttachmentFastPath: Bool
+    ) -> Bool {
+        guard useAttachmentFastPath, let attachment else {
+            return ensureChecklistState(
+                context: context,
+                range: range,
+                expectedLabel: expectedLabel,
+                checked: checked
+            )
+        }
+
+        _ = selectRange(textArea, location: range.location, length: range.length)
+        _ = focusNotesEditor(context)
+        let error = AXUIElementPerformAction(attachment, kAXPressAction as CFString)
+        if error == .success {
+            usleep(70_000)
+            return true
+        }
+
+        return ensureChecklistState(
+            context: context,
+            range: range,
+            expectedLabel: expectedLabel,
+            checked: checked
+        )
+    }
+
+    for attempt in 0..<3 {
         let currentText: String = attr(textArea, kAXValueAttribute) ?? ""
         let fullRange = LineRange(location: 0, length: nsLength(currentText))
         let attributedText = attributedString(for: textArea, range: fullRange)
-        var hasMismatch = false
+        var changes: [(range: LineRange, label: String, checked: Bool, attachment: AXUIElement?)] = []
         for resolved in resolvedNotices {
             let desiredReadState = resolved.notice.shouldCheckRead
-            let readState = attributedText.flatMap {
-                captureChecklistValue(
+            let readInfo = attributedText.flatMap {
+                checklistInfo(
                     attributedText: $0,
                     currentText: currentText,
                     range: resolved.readRange,
                     expectedLabel: readChecklistLabel
                 )
             }
-            if readState != desiredReadState {
-                hasMismatch = true
-                _ = ensureChecklistState(
-                    app: app,
-                    textArea: textArea,
-                    range: resolved.readRange,
-                    expectedLabel: readChecklistLabel,
-                    checked: desiredReadState
+            if readInfo?.isChecked != desiredReadState {
+                changes.append(
+                    (
+                        range: resolved.readRange,
+                        label: readChecklistLabel,
+                        checked: desiredReadState,
+                        attachment: readInfo?.attachment
+                    )
                 )
             }
 
             let desiredImportantState = resolved.notice.shouldCheckImportant
-            let importantState = attributedText.flatMap {
-                captureChecklistValue(
+            let importantInfo = attributedText.flatMap {
+                checklistInfo(
                     attributedText: $0,
                     currentText: currentText,
                     range: resolved.importantRange,
                     expectedLabel: importantChecklistLabel
                 )
             }
-            if importantState != desiredImportantState {
-                hasMismatch = true
-                _ = ensureChecklistState(
-                    app: app,
-                    textArea: textArea,
-                    range: resolved.importantRange,
-                    expectedLabel: importantChecklistLabel,
-                    checked: desiredImportantState
+            if importantInfo?.isChecked != desiredImportantState {
+                changes.append(
+                    (
+                        range: resolved.importantRange,
+                        label: importantChecklistLabel,
+                        checked: desiredImportantState,
+                        attachment: importantInfo?.attachment
+                    )
                 )
             }
         }
-        if !hasMismatch {
+        if changes.isEmpty {
             return
         }
-        Thread.sleep(forTimeInterval: 0.18)
+
+        _ = focusNotesEditor(context)
+        for change in changes {
+            _ = applyFast(
+                attachment: change.attachment,
+                range: change.range,
+                expectedLabel: change.label,
+                checked: change.checked,
+                useAttachmentFastPath: attempt == 0
+            )
+        }
+        Thread.sleep(forTimeInterval: 0.08)
     }
 }
 
 func ensureCheckedItemsStayInPlace(
-    app: AXUIElement,
-    textArea: AXUIElement,
+    context: NotesEditorContext,
     resolvedNotices: [ResolvedRenderedNotice]
 ) {
+    let app = context.app
+    let textArea = context.textArea
+    _ = focusNotesEditor(context)
     guard let firstChecklistRange =
         resolvedNotices.first.map({ $0.readRange.length > 0 ? $0.readRange : $0.importantRange }),
         selectRange(textArea, location: firstChecklistRange.location, length: firstChecklistRange.length) else {
@@ -3017,7 +3065,7 @@ func ensureCheckedItemsStayInPlace(
         return
     }
 
-    _ = pressMenuIfAvailable(app, moveCheckedTitles)
+    _ = pressMenuIfAvailable(context, moveCheckedTitles)
     Thread.sleep(forTimeInterval: 0.08)
 }
 
@@ -3062,7 +3110,7 @@ func applyChecklistFormatting(
         }
 
         if let button = resolvedChecklistButton(for: context) {
-            activateApplication(pid: elementPID(context.app))
+            _ = focusNotesEditor(context)
             let _ = AXUIElementPerformAction(button, kAXPressAction as CFString)
             Thread.sleep(forTimeInterval: 0.08)
             if validationRanges.allSatisfy(lineIsChecklist) {
@@ -3070,8 +3118,7 @@ func applyChecklistFormatting(
             }
         }
 
-        activateApplication(pid: elementPID(context.app))
-        _ = pressMenuIfAvailable(context.app, checklistMenuTitles)
+        _ = pressMenuIfAvailable(context, checklistMenuTitles)
         Thread.sleep(forTimeInterval: 0.08)
         return validationRanges.allSatisfy(lineIsChecklist)
     }
@@ -3086,13 +3133,13 @@ func applyChecklistFormatting(
         ) else {
             return false
         }
-        activateApplication(pid: elementPID(context.app))
+        _ = focusNotesEditor(context)
         if let button = resolvedChecklistButton(for: context),
            AXUIElementPerformAction(button, kAXPressAction as CFString) == .success {
             Thread.sleep(forTimeInterval: 0.045)
             return true
         }
-        let pressed = pressMenuIfAvailable(context.app, checklistMenuTitles)
+        let pressed = pressMenuIfAvailable(context, checklistMenuTitles)
         Thread.sleep(forTimeInterval: 0.06)
         return pressed
     }
@@ -3118,6 +3165,35 @@ func applyChecklistFormatting(
     if batchChecklistFormattingEnabled {
         timingLog("checklist_format_batch_start note=\(noteTitle) pairs=\(resolvedNotices.count)")
         for resolved in resolvedNotices {
+            if fastBatchChecklistFormattingEnabled {
+                guard let pairRange = checklistPairSelectionRange(
+                    readRange: resolved.readRange,
+                    importantRange: resolved.importantRange
+                ) else {
+                    fallbackRanges.append(resolved.readRange)
+                    fallbackRanges.append(resolved.importantRange)
+                    continue
+                }
+                if pressChecklistForSelection(pairRange) {
+                    continue
+                }
+                fallbackRanges.append(resolved.readRange)
+                fallbackRanges.append(resolved.importantRange)
+                continue
+            }
+
+            let pairChecklistStates = [
+                lineIsChecklist(resolved.readRange),
+                lineIsChecklist(resolved.importantRange)
+            ]
+            if pairChecklistStates.allSatisfy({ $0 }) {
+                continue
+            }
+            if pairChecklistStates.contains(true) {
+                fallbackRanges.append(resolved.readRange)
+                fallbackRanges.append(resolved.importantRange)
+                continue
+            }
             guard let pairRange = checklistPairSelectionRange(
                 readRange: resolved.readRange,
                 importantRange: resolved.importantRange
@@ -3177,9 +3253,13 @@ func syncUserStateFromRenderedNote(
     guard let previousRenderState else {
         return
     }
+    guard !previousRenderState.renderedNotices.isEmpty else {
+        debugLog("Skipping capture for empty rendered notice state: \(noteTitle)")
+        return
+    }
 
     func captureSnapshot(using snapshotContext: NotesEditorContext) -> String {
-        _ = pressMenuIfAvailable(snapshotContext.app, ["모든 섹션 펼치기", "Expand All Sections"])
+        _ = pressMenuIfAvailable(snapshotContext, ["모든 섹션 펼치기", "Expand All Sections"])
         Thread.sleep(forTimeInterval: 0.35)
         debugLog("expand-all complete")
 
@@ -3207,7 +3287,7 @@ func syncUserStateFromRenderedNote(
             ) else {
                 continue
             }
-            _ = pressMenuIfAvailable(snapshotContext.app, ["섹션 펼치기", "Expand Section"])
+            _ = pressMenuIfAvailable(snapshotContext, ["섹션 펼치기", "Expand Section"])
             Thread.sleep(forTimeInterval: 0.08)
         }
 
@@ -3261,38 +3341,72 @@ func syncUserStateFromRenderedNote(
         )
     }
     let textLength = nsLength(currentText)
+    let allChecklistLines = capturedChecklistLines(
+        textArea: captureContext.textArea,
+        currentText: currentText,
+        attributedText: attributedString(
+            for: captureContext.textArea,
+            range: LineRange(location: 0, length: textLength)
+        )
+    )
 
-    for (index, rendered) in previousRenderState.renderedNotices.enumerated() {
-        var state = userState.notices[rendered.noticeId] ?? NoticeInteractionState()
-        state.title = rendered.title
-        state.course = rendered.course
-        state.fingerprint = rendered.fingerprint
-        state.updatedAt = timestamp
-
+    let capturedBlocks = previousRenderState.renderedNotices.enumerated().map { index, rendered in
         let titleRange = titleRanges[index]
         let searchRange = noticeBlockSearchRange(
             titleRanges: titleRanges,
             noticeIndex: index,
             textLength: textLength
         )
-        let checklistLines = searchRange.map {
-            capturedChecklistLines(
-                textArea: captureContext.textArea,
-                currentText: currentText,
-                searchRange: $0
-            )
+        let checklistLines = searchRange.map { range in
+            allChecklistLines.filter { containsLineStart(searchRange: range, lineRange: $0.range) }
         } ?? []
         let readEntry = checklistEntry(matching: readChecklistLabel, in: checklistLines)
         let importantEntry = checklistEntry(matching: importantChecklistLabel, in: checklistLines)
-        let checklistSummary = checklistLines
+        return (
+            index: index,
+            rendered: rendered,
+            titleRange: titleRange,
+            checklistLines: checklistLines,
+            readEntry: readEntry,
+            importantEntry: importantEntry
+        )
+    }
+    let importantTrueCount = capturedBlocks.filter { $0.importantEntry?.isChecked == true }.count
+    let previousImportantTrueCount = capturedBlocks.filter {
+        userState.notices[$0.rendered.noticeId]?.important == true
+    }.count
+    let suspiciousImportantThreshold = max(8, capturedBlocks.count / 4)
+    let suspiciousImportantJumpAllowance = max(4, capturedBlocks.count / 10)
+    let suspiciousBulkImportantCapture =
+        capturedBlocks.count >= 8
+        && importantTrueCount >= suspiciousImportantThreshold
+        && importantTrueCount > previousImportantTrueCount + suspiciousImportantJumpAllowance
+    if suspiciousBulkImportantCapture {
+        let modeName = displayMode == .archive ? "archive" : "primary"
+        fail(
+            "capture-failed-preserve-user-state: suspicious bulk \(modeName) important capture "
+                + "\(importantTrueCount)/\(capturedBlocks.count) "
+                + "previous=\(previousImportantTrueCount)"
+        )
+    }
+
+    for block in capturedBlocks {
+        let rendered = block.rendered
+        var state = userState.notices[rendered.noticeId] ?? NoticeInteractionState()
+        state.title = rendered.title
+        state.course = rendered.course
+        state.fingerprint = rendered.fingerprint
+        state.updatedAt = timestamp
+
+        let checklistSummary = block.checklistLines
             .map { "\($0.label)=\($0.isChecked)@\($0.range.location):\($0.range.length)" }
             .joined(separator: ", ")
         debugLog(
-            "notice=\(rendered.title) titleRange=\(String(describing: titleRange)) "
+            "notice=\(rendered.title) titleRange=\(String(describing: block.titleRange)) "
                 + "checklists=\(checklistSummary)"
         )
 
-        if let readChecked = readEntry?.isChecked {
+        if let readChecked = block.readEntry?.isChecked {
             debugLog("notice=\(rendered.title) readChecked=\(readChecked)")
             if displayMode == .primary && readChecked {
                 state.readFingerprint = rendered.fingerprint
@@ -3307,13 +3421,11 @@ func syncUserStateFromRenderedNote(
             debugLog("notice=\(rendered.title) readChecked=nil")
         }
 
-        if let importantChecked = importantEntry?.isChecked {
+        if let importantChecked = block.importantEntry?.isChecked {
             debugLog("notice=\(rendered.title) importantChecked=\(importantChecked)")
-            if displayMode == .primary || importantChecked {
+            if displayMode == .primary || displayMode == .archive {
                 state.important = importantChecked
                 state.importantAt = importantChecked ? timestamp : nil
-            } else {
-                debugLog("notice=\(rendered.title) ignoring archive important=false capture")
             }
         } else {
             debugLog("notice=\(rendered.title) importantChecked=nil")
@@ -3771,7 +3883,7 @@ func renderBodyLines(
             attributed.append(NSAttributedString(string: "\n", attributes: [.font: font]))
         }
     }
-    paste(context.app, text: plaintext, html: html, attributedText: attributed)
+    paste(context: context, text: plaintext, html: html, attributedText: attributed)
     Thread.sleep(forTimeInterval: finalChecklistDisableDelay)
 }
 
@@ -3841,41 +3953,29 @@ func renderNativeNoteOnce(
 
     timingLog("checklist_keep_in_place_start note=\(noteTitle)")
     ensureCheckedItemsStayInPlace(
-        app: context.app,
-        textArea: context.textArea,
+        context: context,
         resolvedNotices: checklistResolvedNotices
     )
     timingLog("checklist_keep_in_place_finish note=\(noteTitle)")
 
     timingLog("checklist_state_apply_start note=\(noteTitle)")
-    for resolved in checklistResolvedNotices {
-        if resolved.notice.shouldCheckRead {
-            _ = markChecklistChecked(
-                app: context.app,
-                textArea: context.textArea,
-                range: resolved.readRange,
-                expectedLabel: readChecklistLabel
-            )
-        }
-        if resolved.notice.shouldCheckImportant {
-            _ = markChecklistChecked(
-                app: context.app,
-                textArea: context.textArea,
-                range: resolved.importantRange,
-                expectedLabel: importantChecklistLabel
-            )
-        }
-    }
-
     ensureChecklistStates(
-        app: context.app,
-        textArea: context.textArea,
+        context: context,
         resolvedNotices: checklistResolvedNotices
     )
     timingLog("checklist_state_apply_finish note=\(noteTitle)")
 
+    let styleBaseText = loadCaptureText(
+        textArea: context.textArea,
+        expectedTitles: plan.renderedNotices.map(\.title)
+    )
+    let styleBaseLineRanges = resolvedPlanLineRanges(
+        currentText: styleBaseText,
+        bodyLines: plan.bodyLines
+    )
+
     func applyStyle(_ range: LineRange, menuItems: [String], fallbackToBold: Bool = false) {
-        let selectionRange = paragraphSelectionRange(in: initialText, lineRange: range)
+        let selectionRange = paragraphSelectionRange(in: styleBaseText, lineRange: range)
         guard selectRangeForFormatting(
             context: context,
             range: selectionRange,
@@ -3884,8 +3984,7 @@ func renderNativeNoteOnce(
         ) else {
             return
         }
-        activateApplication(pid: elementPID(context.app))
-        if !pressMenuIfAvailable(context.app, menuItems), fallbackToBold {
+        if !pressMenuIfAvailable(context, menuItems), fallbackToBold {
             timingLog("style_menu_missing note=\(noteTitle) menu=\(menuItems.joined(separator: "/"))")
         }
         Thread.sleep(forTimeInterval: 0.05)
@@ -3900,15 +3999,14 @@ func renderNativeNoteOnce(
         ) else {
             return
         }
-        activateApplication(pid: elementPID(context.app))
-        if !pressMenuIfAvailable(context.app, ["굵게", "Bold"]) {
+        if !pressMenuIfAvailable(context, ["굵게", "Bold"]) {
             ensureTypingTargetReady(context: context, noteTitle: noteTitle, noteID: noteID)
             sendCommandKey(11, targetPID: elementPID(context.app))
         }
         Thread.sleep(forTimeInterval: 0.06)
     }
 
-    let styledLineRanges = checklistFormattedRanges
+    let styledLineRanges = styleBaseLineRanges
     var boldValidationTargets: [StyleValidationTarget] = []
     var rememberedBoldTargets = Set<String>()
 
@@ -4112,7 +4210,7 @@ func renderNativeNoteOnce(
             applyStyle(lineRange(index, fallback: fallback), menuItems: ["머리말", "Heading"], fallbackToBold: true)
         }
 
-        if uiStyleMenuFormattingEnabled || collapseNoticeSectionsEnabled || collapseNoticeItemsEnabled {
+        if uiStyleMenuFormattingEnabled || styleNoticeItemsAsHeadingsEnabled || collapseNoticeItemsEnabled {
             for notice in plan.renderedNotices {
                 let titleRange = lineRange(notice.sectionLineIndex, fallback: notice.sectionRange)
                 applyStyle(titleRange, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
@@ -4156,8 +4254,7 @@ func renderNativeNoteOnce(
     )
 
     ensureChecklistStates(
-        app: context.app,
-        textArea: context.textArea,
+        context: context,
         resolvedNotices: resolvedNotices
     )
 
@@ -4247,8 +4344,7 @@ func renderNativeNoteOnce(
                     }
                     continue
                 }
-                activateApplication(pid: elementPID(context.app))
-                if pressMenuIfAvailable(context.app, ["섹션 접기", "Collapse Section"]) {
+                if pressMenuIfAvailable(context, ["섹션 접기", "Collapse Section"]) {
                     collapsedSections += 1
                     timingLog("collapse_heading_ok note=\(noteTitle) label=\(label)")
                     Thread.sleep(forTimeInterval: 0.06)
@@ -4265,11 +4361,13 @@ func renderNativeNoteOnce(
             timingLog("collapse_heading_skip note=\(noteTitle) label=\(label) reason=retry-exhausted")
         }
 
-        let courseCollapseRanges = plan.courseHeadingLineIndexes.enumerated().map { offset, index in
-            lineRange(index, fallback: plan.courseHeadingRanges[offset])
-        }
-        for (offset, range) in courseCollapseRanges.enumerated().reversed() {
-            collapseHeading(range, label: "course-\(offset + 1)")
+        if collapseNoticeCoursesEnabled {
+            let courseCollapseRanges = plan.courseHeadingLineIndexes.enumerated().map { offset, index in
+                lineRange(index, fallback: plan.courseHeadingRanges[offset])
+            }
+            for (offset, range) in courseCollapseRanges.enumerated().reversed() {
+                collapseHeading(range, label: "course-\(offset + 1)")
+            }
         }
 
         let sectionCollapseRanges =
@@ -4340,6 +4438,11 @@ func renderNativeNote(
 func renderContentHash(for plan: RenderPlan) -> String {
     var components: [String] = [nativeNoticeRenderStyleVersion]
     components.reserveCapacity(plan.bodyLines.count + plan.renderedNotices.count + 2)
+    components.append("collapse_sections=\(collapseNoticeSectionsEnabled ? "1" : "0")")
+    components.append("collapse_courses=\(collapseNoticeCoursesEnabled ? "1" : "0")")
+    components.append("collapse_notice_items=\(collapseNoticeItemsEnabled ? "1" : "0")")
+    components.append("style_notice_items=\(styleNoticeItemsAsHeadingsEnabled ? "1" : "0")")
+    components.append("ui_style_menu=\(uiStyleMenuFormattingEnabled ? "1" : "0")")
     for line in plan.bodyLines {
         components.append(
             "\(line.isChecklist ? "1" : "0")|\(line.isBold ? "1" : "0")|"
@@ -4450,9 +4553,6 @@ func renderManagedNoticeNote(
             noteID: activeNoteID ?? effectiveNoteID,
             plan: plan
         )
-        if !skipActivation, effectiveNoteID == nil {
-            cleanupDuplicateNotes(noteTitle: noteTitle)
-        }
         let persistedNoteID = existingNoteID(noteTitle: noteTitle, noteID: activeNoteID ?? effectiveNoteID)
         writeJSON(
             renderStateFile(

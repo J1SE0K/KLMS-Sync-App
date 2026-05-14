@@ -7,7 +7,7 @@ function run(argv) {
   const options = parseArgs(argv);
   if (!options.manifestPath || !options.outputRoot) {
     throw new Error(
-      "Usage: download_klms_files.js --manifest=/path/to/manifest.json --output-root=/path [--base-url=https://klms.kaist.ac.kr/my/] [--downloads-dir=/path] [--timeout=60] [--max-file-attempts=3] [--retry-delay-seconds=2] [--download-log=/path/to/log.json] [--download-archive-root=/path] [--force-download]"
+      "Usage: download_klms_files.js --manifest=/path/to/manifest.json --output-root=/path [--base-url=https://klms.kaist.ac.kr/my/] [--downloads-dir=/path] [--timeout=60] [--max-file-attempts=3] [--retry-delay-seconds=2] [--download-log=/path/to/log.json] [--download-archive-root=/path] [--new-files-root=/path] [--quarantine-root=/path] [--force-download]"
     );
   }
 
@@ -27,6 +27,7 @@ function run(argv) {
   const downloadLogPath = standardizePath(
     options.downloadLogPath || joinPath(directoryName(outputRoot), "runtime/cache/course_file_download_log.json")
   );
+  const resultJsonPath = options.resultJsonPath ? standardizePath(options.resultJsonPath) : "";
   const quarantineReportPath = standardizePath(
     options.quarantineReportPath || joinPath(directoryName(downloadLogPath), "course_file_quarantine_report.json")
   );
@@ -35,12 +36,19 @@ function run(argv) {
   );
   const projectRoot = findProjectRoot(manifestPath, outputRoot);
   const forceDownload = normalizeBoolean(options.forceDownload);
+  const preserveDownloadArchive = normalizeBoolean(options.preserveDownloadArchive);
   const manifest = readJson(manifestPath);
   const manifestState = readOptionalJson(manifestStatePath);
   const previousDownloadLog = readOptionalJson(downloadLogPath);
-  const reusableFileIndex = buildReusableFileIndex(previousDownloadLog);
-  const recordedFilenameIndex = buildRecordedFilenameIndex(previousDownloadLog);
-  const localDownloadMetadataIndex = buildLocalDownloadMetadataIndex(previousDownloadLog);
+  const previousDownloadResult = resultJsonPath ? readOptionalJson(resultJsonPath) : null;
+  const previousDownloadHistory = mergeDownloadHistories(previousDownloadLog, previousDownloadResult);
+  const reusableFileIndex = buildReusableFileIndex(previousDownloadHistory);
+  const recordedFilenameIndex = buildRecordedFilenameIndex(previousDownloadHistory);
+  const localDownloadMetadataIndex = buildLocalDownloadMetadataIndex(previousDownloadHistory);
+  const previousDownloadStateIndex = buildPreviousDownloadStateIndex(previousDownloadHistory);
+  const continueOnQuarantine = normalizeBoolean(
+    options.continueOnQuarantine == null ? "1" : options.continueOnQuarantine
+  );
   if (!Array.isArray(manifest)) {
     throw new Error(`Manifest must be a JSON array: ${manifestPath}`);
   }
@@ -57,7 +65,9 @@ function run(argv) {
   try {
     ensureDir(outputRoot);
     ensureDir(backupRoot);
-    ensureDir(downloadArchiveRoot);
+    if (preserveDownloadArchive) {
+      ensureDir(downloadArchiveRoot);
+    }
     ensureDir(newFilesRoot);
     ensureDir(quarantineRoot);
     ensureDir(directoryName(downloadLogPath));
@@ -77,17 +87,22 @@ function run(argv) {
         let backupOriginalPath = "";
         let preservedDownloadPath = "";
         let auxiliaryPaths = [];
+        let existingRefreshDecision = null;
 
         try {
         const manifestRelativePath = String(entry.relative_path || entry.filename || "").trim();
         const relativeDir = directoryName(manifestRelativePath);
         const manifestFilename = String(entry.filename || baseName(manifestRelativePath) || "").trim();
+        const cachedDirectResource = resolveCachedDirectResource(entry, manifestPath);
         const buildRelativePath = (filename) => (relativeDir ? joinPath(relativeDir, filename) : filename);
         const buildDestinationPath = (filename) => joinPath(outputRoot, buildRelativePath(filename));
         const buildArchivePath = (filename) => joinPath(downloadArchiveRoot, buildRelativePath(filename));
         const destinationDir = relativeDir ? joinPath(outputRoot, relativeDir) : outputRoot;
         const archiveDir = relativeDir ? joinPath(downloadArchiveRoot, relativeDir) : downloadArchiveRoot;
-        let activeFilename = recordedFilenameForEntry(entry, recordedFilenameIndex) || manifestFilename;
+        let activeFilename =
+          recordedFilenameForEntry(entry, recordedFilenameIndex) ||
+          cachedDirectResource.filename ||
+          manifestFilename;
         activeFilename = canonicalFilenameForDownloadedName(activeFilename, manifestFilename, entry);
 
         step = "join-path";
@@ -96,7 +111,9 @@ function run(argv) {
         let trackedArchivePath = activeFilename ? buildArchivePath(activeFilename) : "";
         step = "ensure-dir";
         ensureDir(destinationDir);
-        ensureDir(archiveDir);
+        if (preserveDownloadArchive) {
+          ensureDir(archiveDir);
+        }
 
         step = "cleanup-artifacts";
         removeDirectoryArtifactIfExists(destinationPath);
@@ -118,69 +135,88 @@ function run(argv) {
           destinationPath = trackedPaths.destinationPath;
           trackedArchivePath = trackedPaths.trackedArchivePath;
           ensureDir(directoryName(destinationPath));
-          ensureDir(directoryName(trackedArchivePath));
+          if (preserveDownloadArchive) {
+            ensureDir(directoryName(trackedArchivePath));
+          }
           if (!samePath(existingSourcePath, destinationPath) && !isRegularFile(destinationPath)) {
             copyFile(existingSourcePath, destinationPath);
           }
-          if (trackedArchivePath && !isRegularFile(trackedArchivePath)) {
+          if (preserveDownloadArchive && trackedArchivePath && !isRegularFile(trackedArchivePath)) {
             step = "mirror-existing-to-archive";
             copyFile(destinationPath, trackedArchivePath);
           }
-          step = "apply-klms-timestamp";
-          applyKlmsTimestampToPaths([destinationPath, trackedArchivePath], entry);
-          updateManifestEntryWithFilename(entry, activeFilename, relativePath, destinationPath);
-          const localDownloadMetadata = resolveLocalDownloadMetadata(
+          step = "check-existing-refresh";
+          existingRefreshDecision = existingFileRefreshDecision(
             entry,
-            localDownloadMetadataIndex,
-            destinationPath || trackedArchivePath,
-            "existing-file"
+            destinationPath,
+            previousDownloadStateIndex
           );
-          applyLocalDownloadMetadata(entry, localDownloadMetadata);
-          const resultAuxiliaryPaths = claimAuxiliaryPaths(
-            buildLegacyDownloadAuxiliaryPaths(
-              downloadsDir,
-              trackedArchivePath,
-              activeFilename,
-              fileSize(destinationPath)
-            ),
-            claimedAuxiliaryPaths
-          );
-          step = "record-existing-result";
-          const result = {
-            index: index + 1,
-            course: entry.course || "",
-            filename: activeFilename,
-            relative_path: relativePath,
-            manifest_filename: manifestFilename,
-            manifest_relative_path: manifestRelativePath,
-            destination_path: destinationPath,
-            downloads_root: downloadArchiveRoot,
-            downloads_relative_path: relativePath,
-            downloads_filename: trackedArchivePath ? baseName(trackedArchivePath) : "",
-            downloads_path: trackedArchivePath,
-            bytes: fileSize(destinationPath),
-            source_url: entry.source_url || "",
-            url: entry.url || "",
-            skipped_existing: true,
-            auxiliary_paths: resultAuxiliaryPaths,
-          };
-          addKlmsTimestampFields(result, entry);
-          addLocalDownloadMetadataFields(result, localDownloadMetadata);
-          results.push(result);
-          persistDownloadProgress(
-            manifestPath,
-            manifest,
-            manifestStatePath,
-            manifestState,
-            downloadLogPath,
-            outputRoot,
-            results
-          );
-          completed = true;
-          break;
+          if (existingRefreshDecision.refresh) {
+            step = "refresh-existing-file";
+          } else {
+            step = "apply-klms-timestamp";
+            applyKlmsTimestampToPaths([destinationPath, trackedArchivePath], entry);
+            updateManifestEntryWithFilename(entry, activeFilename, relativePath, destinationPath);
+            const localDownloadMetadata = resolveLocalDownloadMetadata(
+              entry,
+              localDownloadMetadataIndex,
+              destinationPath || trackedArchivePath,
+              "existing-file"
+            );
+            applyLocalDownloadMetadata(entry, localDownloadMetadata);
+            const resultAuxiliaryPaths = preserveDownloadArchive
+              ? claimAuxiliaryPaths(
+                  buildLegacyDownloadAuxiliaryPaths(
+                    downloadsDir,
+                    trackedArchivePath,
+                    activeFilename,
+                    fileSize(destinationPath)
+                  ),
+                  claimedAuxiliaryPaths
+                )
+              : [];
+            step = "record-existing-result";
+            const result = {
+              index: index + 1,
+              course: entry.course || "",
+              filename: activeFilename,
+              relative_path: relativePath,
+              manifest_filename: manifestFilename,
+              manifest_relative_path: manifestRelativePath,
+              destination_path: destinationPath,
+              downloads_root: downloadArchiveRoot,
+              downloads_relative_path: preserveDownloadArchive ? relativePath : "",
+              downloads_filename: preserveDownloadArchive && trackedArchivePath ? baseName(trackedArchivePath) : "",
+              downloads_path: preserveDownloadArchive ? trackedArchivePath : "",
+              bytes: fileSize(destinationPath),
+              source_url: entry.source_url || "",
+              url: entry.url || "",
+              skipped_existing: true,
+              auxiliary_paths: resultAuxiliaryPaths,
+            };
+            addKlmsTimestampFields(result, entry);
+            addLocalDownloadMetadataFields(result, localDownloadMetadata);
+            results.push(result);
+            persistDownloadProgress(
+              manifestPath,
+              manifest,
+              manifestStatePath,
+              manifestState,
+              downloadLogPath,
+              outputRoot,
+              results
+            );
+            completed = true;
+            break;
+          }
         }
 
-        if (!forceDownload && trackedArchivePath && isRegularFile(trackedArchivePath)) {
+        if (
+          !existingRefreshDecision &&
+          !forceDownload &&
+          trackedArchivePath &&
+          isRegularFile(trackedArchivePath)
+        ) {
           const archiveSourcePath = trackedArchivePath;
           step = "claim-archive-path";
           let trackedPaths = claimTrackedPath(
@@ -196,10 +232,16 @@ function run(argv) {
           destinationPath = trackedPaths.destinationPath;
           trackedArchivePath = trackedPaths.trackedArchivePath;
           ensureDir(directoryName(destinationPath));
-          ensureDir(directoryName(trackedArchivePath));
+          if (preserveDownloadArchive) {
+            ensureDir(directoryName(trackedArchivePath));
+          }
           step = "restore-from-archive";
           copyFile(archiveSourcePath, destinationPath);
-          if (!samePath(archiveSourcePath, trackedArchivePath) && !isRegularFile(trackedArchivePath)) {
+          if (
+            preserveDownloadArchive &&
+            !samePath(archiveSourcePath, trackedArchivePath) &&
+            !isRegularFile(trackedArchivePath)
+          ) {
             copyFile(archiveSourcePath, trackedArchivePath);
           }
           step = "apply-klms-timestamp";
@@ -255,7 +297,7 @@ function run(argv) {
           break;
         }
 
-        const reusableSourcePath = forceDownload
+        const reusableSourcePath = forceDownload || existingRefreshDecision
           ? ""
           : findReusableSourcePath(reusableFileIndex, entry, destinationPath, trackedArchivePath);
         if (reusableSourcePath) {
@@ -278,11 +320,13 @@ function run(argv) {
           trackedArchivePath = trackedPaths.trackedArchivePath;
 
           removeDirectoryArtifactIfExists(destinationPath);
-          removeDirectoryArtifactIfExists(trackedArchivePath);
+          if (preserveDownloadArchive) {
+            removeDirectoryArtifactIfExists(trackedArchivePath);
+          }
           if (!isRegularFile(destinationPath)) {
             copyFile(reusableSourcePath, destinationPath);
           }
-          if (!isRegularFile(trackedArchivePath)) {
+          if (preserveDownloadArchive && !isRegularFile(trackedArchivePath)) {
             copyFile(reusableSourcePath, trackedArchivePath);
           }
           step = "apply-klms-timestamp";
@@ -295,15 +339,17 @@ function run(argv) {
             "reused-logged-file"
           );
           applyLocalDownloadMetadata(entry, localDownloadMetadata);
-          const resultAuxiliaryPaths = claimAuxiliaryPaths(
-            buildLegacyDownloadAuxiliaryPaths(
-              downloadsDir,
-              trackedArchivePath,
-              activeFilename,
-              fileSize(destinationPath)
-            ),
-            claimedAuxiliaryPaths
-          );
+          const resultAuxiliaryPaths = preserveDownloadArchive
+            ? claimAuxiliaryPaths(
+                buildLegacyDownloadAuxiliaryPaths(
+                  downloadsDir,
+                  trackedArchivePath,
+                  activeFilename,
+                  fileSize(destinationPath)
+                ),
+                claimedAuxiliaryPaths
+              )
+            : [];
           const result = {
             index: index + 1,
             course: entry.course || "",
@@ -313,9 +359,9 @@ function run(argv) {
             manifest_relative_path: manifestRelativePath,
             destination_path: destinationPath,
             downloads_root: downloadArchiveRoot,
-            downloads_relative_path: relativePath,
-            downloads_filename: baseName(trackedArchivePath),
-            downloads_path: trackedArchivePath,
+            downloads_relative_path: preserveDownloadArchive ? relativePath : "",
+            downloads_filename: preserveDownloadArchive ? baseName(trackedArchivePath) : "",
+            downloads_path: preserveDownloadArchive ? trackedArchivePath : "",
             bytes: fileSize(destinationPath),
             source_url: entry.source_url || "",
             url: entry.url || "",
@@ -354,8 +400,11 @@ function run(argv) {
         const beforeEntries = new Set(listDirectory(downloadsDir));
         const beforeEntrySignatures = buildDirectoryEntrySignatures(downloadsDir, beforeEntries);
         const originalUrl = String(entry.url || "");
-        const targetUrl = withForcedDownload(originalUrl);
-        const isResourceViewDownload = String(entry.url || "").includes("/mod/resource/view.php?");
+        const downloadUrl = cachedDirectResource.url || originalUrl;
+        const targetUrl = withForcedDownload(downloadUrl);
+        const isResourceViewDownload =
+          originalUrl.includes("/mod/resource/view.php?") ||
+          String(downloadUrl || "").includes("/mod/resource/view.php?");
         const isMediaPluginDownload =
           /klms\.kaist\.ac\.kr\/pluginfile\.php\/.+\.(mp4|m4v|mov|mp3|m4a|wav)(?:[?#].*)?$/i.test(
             String(entry.url || "")
@@ -371,7 +420,8 @@ function run(argv) {
         step = "launch-safari";
         safari = ensureSafari(safari);
         let downloadedPath = "";
-        const directFetchPage = String(entry.source_url || baseUrl || "").trim() || targetUrl;
+        const directFetchPage =
+          String(entry.source_url || cachedDirectResource.page_url || baseUrl || "").trim() || targetUrl;
         step = "open-download-page";
         downloadWindowRef = openReusableDownloadPage(
           safari,
@@ -392,15 +442,23 @@ function run(argv) {
           if (!downloadedPath) {
             const tab = safeValue(() => fileWindowRef.currentTab());
             if (tab) {
-              navigateTabWithoutFocus(tab, targetUrl);
+              navigateTabWithoutFocus(tab, targetUrl, fileWindowRef);
               delay(0.5);
             }
           }
         }
 
-        const redirectedDirectUrl = resolveDirectFileUrlFromWindow(fileWindowRef);
+        const redirectedDirectUrl = waitForDirectFileUrlFromWindow(
+          fileWindowRef,
+          isResourceViewDownload ? 10 : 2
+        );
         if (!downloadedPath && canDirectFetchKlmsFile(redirectedDirectUrl)) {
           step = "direct-fetch-redirected";
+          const tab = safeValue(() => fileWindowRef.currentTab());
+          if (tab && directFetchPage && currentTabUrl(fileWindowRef) !== directFetchPage) {
+            navigateTabWithoutFocus(tab, directFetchPage, fileWindowRef);
+            waitForWindowUrl(fileWindowRef, directFetchPage, 8);
+          }
           downloadedPath = fetchKlmsFileViaSafari(
             fileWindowRef,
             redirectedDirectUrl,
@@ -408,21 +466,29 @@ function run(argv) {
             index + 1,
             manifestFilename || `attachment-${index + 1}`
           );
+          if (!downloadedPath && tab) {
+            navigateTabWithoutFocus(tab, redirectedDirectUrl, fileWindowRef);
+            delay(0.5);
+          }
         }
 
         const viewerUrlHint = extractSynapViewerUrl(fileWindowRef);
 
         if (!downloadedPath && viewerUrlHint && /\.pdf$/i.test(manifestFilename || "")) {
           step = "recover-synap-viewer-pdf";
-          downloadedPath = recoverSynapViewerPdf(
-            fileWindowRef,
-            manifestFilename,
-            backupRoot,
-            projectRoot,
-            index + 1,
-            perFileTimeoutSeconds,
-            viewerUrlHint
-          );
+          try {
+            downloadedPath = recoverSynapViewerPdf(
+              fileWindowRef,
+              manifestFilename,
+              backupRoot,
+              projectRoot,
+              index + 1,
+              perFileTimeoutSeconds,
+              viewerUrlHint
+            );
+          } catch (_error) {
+            downloadedPath = "";
+          }
         }
 
         if (
@@ -536,8 +602,46 @@ function run(argv) {
             quarantineRoot,
             quarantineRecords
           );
+          const quarantineMessage =
+            `Downloaded filename does not match expected file type: ${activeFilename} expected ${manifestFilename}; quarantined=${quarantineRecord.quarantine_path}; report=${quarantineReportPath}`;
+          if (continueOnQuarantine) {
+            const result = {
+              index: index + 1,
+              course: entry.course || "",
+              filename: activeFilename,
+              relative_path: "",
+              manifest_filename: manifestFilename,
+              manifest_relative_path: manifestRelativePath,
+              destination_path: "",
+              downloads_root: downloadArchiveRoot,
+              downloads_relative_path: "",
+              downloads_filename: "",
+              downloads_path: "",
+              bytes: 0,
+              source_url: entry.source_url || "",
+              url: entry.url || "",
+              forced_download: forceDownload,
+              quarantined: true,
+              failed: true,
+              error: quarantineMessage,
+              quarantine_path: quarantineRecord.quarantine_path,
+              quarantine_relative_path: quarantineRecord.quarantine_relative_path,
+            };
+            results.push(result);
+            persistDownloadProgress(
+              manifestPath,
+              manifest,
+              manifestStatePath,
+              manifestState,
+              downloadLogPath,
+              outputRoot,
+              results
+            );
+            completed = true;
+            break;
+          }
           throw new Error(
-            `Downloaded filename does not match expected file type: ${activeFilename} expected ${manifestFilename}; quarantined=${quarantineRecord.quarantine_path}; report=${quarantineReportPath}`
+            quarantineMessage
           );
         }
         if (isIgnoredDownloadName(activeFilename)) {
@@ -550,23 +654,29 @@ function run(argv) {
           activeFilename = manifestFilename;
         }
         activeFilename = canonicalFilenameForDownloadedName(activeFilename, manifestFilename, entry);
-        let trackedPaths = claimTrackedPath(
-          activeFilename,
-          manifestRelativePath,
-          relativeDir,
-          outputRoot,
-          downloadArchiveRoot,
-          claimedRelativePaths
-        );
-        activeFilename = trackedPaths.activeFilename;
-        relativePath = trackedPaths.relativePath;
-        destinationPath = trackedPaths.destinationPath;
-        trackedArchivePath = trackedPaths.trackedArchivePath;
+        if (!existingRefreshDecision) {
+          let trackedPaths = claimTrackedPath(
+            activeFilename,
+            manifestRelativePath,
+            relativeDir,
+            outputRoot,
+            downloadArchiveRoot,
+            claimedRelativePaths
+          );
+          activeFilename = trackedPaths.activeFilename;
+          relativePath = trackedPaths.relativePath;
+          destinationPath = trackedPaths.destinationPath;
+          trackedArchivePath = trackedPaths.trackedArchivePath;
+        }
 
         step = "copy-file";
         copyFile(downloadedPath, destinationPath);
         step = "preserve-download";
-        preservedDownloadPath = preserveDownloadedCopy(downloadedPath, trackedArchivePath);
+        preservedDownloadPath = preserveOrRemoveDownloadedCopy(
+          downloadedPath,
+          trackedArchivePath,
+          preserveDownloadArchive
+        );
         step = "copy-new-file-inbox";
         const newFilesPath = copyFreshDownloadToInbox(destinationPath, newFilesRoot, relativePath);
         step = "apply-klms-timestamp";
@@ -584,8 +694,8 @@ function run(argv) {
           manifest_relative_path: manifestRelativePath,
           destination_path: destinationPath,
           downloads_root: downloadArchiveRoot,
-          downloads_relative_path: relativePath,
-          downloads_filename: baseName(preservedDownloadPath),
+          downloads_relative_path: preservedDownloadPath ? relativePath : "",
+          downloads_filename: preservedDownloadPath ? baseName(preservedDownloadPath) : "",
           downloads_path: preservedDownloadPath,
           new_files_root: newFilesRoot,
           new_files_relative_path: relativePath,
@@ -597,6 +707,7 @@ function run(argv) {
           auxiliary_paths: claimAuxiliaryPaths(auxiliaryPaths, claimedAuxiliaryPaths),
           forced_download: forceDownload,
         };
+        addExistingRefreshFields(result, existingRefreshDecision);
         addKlmsTimestampFields(result, entry);
         addLocalDownloadMetadataFields(result, localDownloadMetadata);
         results.push(result);
@@ -671,8 +782,7 @@ function run(argv) {
 	    quarantineReportPath,
 	    quarantineCount: quarantineRecords.length,
 	  });
-	  if (options.resultJsonPath) {
-	    const resultJsonPath = standardizePath(options.resultJsonPath);
+	  if (resultJsonPath) {
 	    ensureDir(directoryName(resultJsonPath));
 	    writeJson(resultJsonPath, payload);
 	    return JSON.stringify({
@@ -688,6 +798,10 @@ function parseArgs(argv) {
   argv.forEach((arg) => {
     if (arg === "--force-download") {
       options.forceDownload = "1";
+      return;
+    }
+    if (arg === "--preserve-download-archive") {
+      options.preserveDownloadArchive = "1";
       return;
     }
     if (arg.startsWith("--manifest=")) {
@@ -750,8 +864,16 @@ function parseArgs(argv) {
       options.quarantineReportPath = arg.slice("--quarantine-report=".length);
       return;
     }
+    if (arg.startsWith("--continue-on-quarantine=")) {
+      options.continueOnQuarantine = arg.slice("--continue-on-quarantine=".length);
+      return;
+    }
     if (arg.startsWith("--force-download=")) {
       options.forceDownload = arg.slice("--force-download=".length);
+      return;
+    }
+    if (arg.startsWith("--preserve-download-archive=")) {
+      options.preserveDownloadArchive = arg.slice("--preserve-download-archive=".length);
       return;
     }
     throw new Error(`Unknown argument: ${arg}`);
@@ -768,6 +890,45 @@ function buildDownloadPayload(manifestPath, outputRoot, downloadLogPath, results
     results,
     ...(extra || {}),
   };
+}
+
+function mergeDownloadHistories(primaryHistory, fallbackHistory) {
+  const primaryResults =
+    primaryHistory && typeof primaryHistory === "object" && Array.isArray(primaryHistory.results)
+      ? primaryHistory.results
+      : [];
+  const fallbackResults =
+    fallbackHistory && typeof fallbackHistory === "object" && Array.isArray(fallbackHistory.results)
+      ? fallbackHistory.results
+      : [];
+  if (!fallbackResults.length) {
+    return primaryHistory;
+  }
+  if (!primaryResults.length) {
+    return fallbackHistory;
+  }
+
+  const merged = [];
+  const seen = new Set();
+  const append = (result) => {
+    if (!result || typeof result !== "object") {
+      return;
+    }
+    const key = [
+      stripForcedDownloadFlag(result.url || ""),
+      String(result.filename || result.manifest_filename || "").trim(),
+      standardizeOptionalPath(result.destination_path || result.downloads_path || ""),
+    ].join("\n");
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    merged.push(result);
+  };
+
+  primaryResults.forEach(append);
+  fallbackResults.forEach(append);
+  return Object.assign({}, fallbackHistory || {}, primaryHistory || {}, { results: merged });
 }
 
 function persistDownloadProgress(
@@ -921,6 +1082,102 @@ function buildLocalDownloadMetadataIndex(downloadLog) {
   return index;
 }
 
+function buildPreviousDownloadStateIndex(downloadLog) {
+  const index = {};
+  const results =
+    downloadLog && typeof downloadLog === "object" && Array.isArray(downloadLog.results)
+      ? downloadLog.results
+      : [];
+
+  results.forEach((result) => {
+    if (!result || typeof result !== "object") {
+      return;
+    }
+    const state = {
+      filename: String(result.filename || result.manifest_filename || "").trim(),
+      klms_timestamp_epoch: normalizedKlmsTimestampEpoch(result),
+      bytes: Number(result.bytes) || 0,
+    };
+    const keys = [
+      reusableFileKey(result.url, result.filename),
+      reusableFileKey(result.url, result.manifest_filename),
+      reusableUrlKey(result.url),
+    ].filter(Boolean);
+    keys.forEach((key) => {
+      if (!index[key]) {
+        index[key] = state;
+      }
+    });
+  });
+
+  return index;
+}
+
+function previousDownloadStateForEntry(entry, previousDownloadStateIndex) {
+  const keys = [
+    reusableFileKey(entry && entry.url, entry && entry.filename),
+    reusableUrlKey(entry && entry.url),
+  ].filter(Boolean);
+
+  for (const key of keys) {
+    if (previousDownloadStateIndex && previousDownloadStateIndex[key]) {
+      return previousDownloadStateIndex[key];
+    }
+  }
+  return null;
+}
+
+function existingFileRefreshDecision(entry, destinationPath, previousDownloadStateIndex) {
+  const currentEpoch = normalizedKlmsTimestampEpoch(entry);
+  const previousState = previousDownloadStateForEntry(entry, previousDownloadStateIndex);
+  const previousEpoch = previousState ? normalizedKlmsTimestampEpoch(previousState) : 0;
+  const fileModifiedEpoch = fileDateEpoch(destinationPath, $.NSFileModificationDate);
+  const toleranceSeconds = 1;
+
+  if (currentEpoch > 0 && previousEpoch > 0 && currentEpoch > previousEpoch + toleranceSeconds) {
+    return {
+      refresh: true,
+      reason: "klms-timestamp-newer-than-previous-record",
+      current_klms_timestamp_epoch: currentEpoch,
+      previous_klms_timestamp_epoch: previousEpoch,
+      file_modified_epoch: fileModifiedEpoch || null,
+    };
+  }
+
+  if (currentEpoch > 0 && fileModifiedEpoch > 0 && currentEpoch > fileModifiedEpoch + toleranceSeconds) {
+    return {
+      refresh: true,
+      reason: "klms-timestamp-newer-than-local-file",
+      current_klms_timestamp_epoch: currentEpoch,
+      previous_klms_timestamp_epoch: previousEpoch || null,
+      file_modified_epoch: fileModifiedEpoch,
+    };
+  }
+
+  return {
+    refresh: false,
+    reason: "existing-file-current",
+    current_klms_timestamp_epoch: currentEpoch || null,
+    previous_klms_timestamp_epoch: previousEpoch || null,
+    file_modified_epoch: fileModifiedEpoch || null,
+  };
+}
+
+function addExistingRefreshFields(target, decision) {
+  if (!target || !decision || !decision.refresh) {
+    return;
+  }
+  target.refreshed_existing_file = true;
+  target.existing_refresh_reason = String(decision.reason || "");
+  target.previous_klms_timestamp_epoch = decision.previous_klms_timestamp_epoch || null;
+  target.previous_file_modified_epoch = decision.file_modified_epoch || null;
+}
+
+function normalizedKlmsTimestampEpoch(value) {
+  const epoch = Number(value && value.klms_timestamp_epoch);
+  return Number.isFinite(epoch) && epoch > 0 ? Math.trunc(epoch) : 0;
+}
+
 function resolveLocalDownloadMetadata(entry, localDownloadMetadataIndex, fallbackPath, fallbackBasis) {
   return (
     localDownloadMetadataForEntry(entry, localDownloadMetadataIndex) ||
@@ -1002,6 +1259,9 @@ function fileDateEpoch(path, attributeKey) {
   const dateValue = ObjC.deepUnwrap(attributes.objectForKey(attributeKey));
   if (dateValue && typeof dateValue.timeIntervalSince1970 === "function") {
     return Math.trunc(Number(dateValue.timeIntervalSince1970()));
+  }
+  if (dateValue instanceof Date && Number.isFinite(dateValue.getTime())) {
+    return Math.trunc(dateValue.getTime() / 1000);
   }
   return 0;
 }
@@ -1231,7 +1491,7 @@ function freshDownloadFilenameMatchesExpected(filename, expectedFilename) {
 
   const expectedFamily = extensionFamily(fileExtension(expected));
   const actualFamily = extensionFamily(fileExtension(actual));
-  return expectedFamily === "presentation" && actualFamily === "presentation";
+  return Boolean(expectedFamily && actualFamily && expectedFamily === actualFamily);
 }
 
 function retryInlineResourceDownload(
@@ -1257,7 +1517,7 @@ function retryInlineResourceDownload(
     return "";
   }
 
-  navigateTabWithoutFocus(tab, retryUrl);
+  navigateTabWithoutFocus(tab, retryUrl, windowRef);
   delay(0.5);
   return waitForDownloadedFile(
     downloadsDir,
@@ -1392,6 +1652,14 @@ function extractFilenameFromUrl(url) {
   }
 }
 
+function decodeURIComponentSafe(value) {
+  try {
+    return decodeURIComponent(String(value || ""));
+  } catch (_error) {
+    return String(value || "");
+  }
+}
+
 function sanitizeDownloadFilename(value) {
   return String(value || "")
     .trim()
@@ -1464,13 +1732,19 @@ function fetchBinaryPayloadViaSafari(windowRef, targetUrl) {
     "  try {",
     "    var xhr = new XMLHttpRequest();",
     "    xhr.open('GET', targetUrl, false);",
-    "    xhr.responseType = 'arraybuffer';",
+    "    if (xhr.overrideMimeType) {",
+    "      xhr.overrideMimeType('text/plain; charset=x-user-defined');",
+    "    }",
     "    xhr.send(null);",
     "    var status = xhr.status || 0;",
     "    if (status >= 400) {",
     "      return JSON.stringify({ok:false,status:status,error:'http-'+status});",
     "    }",
-    "    var bytes = new Uint8Array(xhr.response || new ArrayBuffer(0));",
+    "    var responseText = xhr.responseText || '';",
+    "    var bytes = new Uint8Array(responseText.length);",
+    "    for (var byteIndex = 0; byteIndex < responseText.length; byteIndex += 1) {",
+    "      bytes[byteIndex] = responseText.charCodeAt(byteIndex) & 0xff;",
+    "    }",
     "    if (!bytes.length) {",
     "      return JSON.stringify({ok:false,status:status,error:'empty-body'});",
     "    }",
@@ -1522,7 +1796,7 @@ function recoverSynapViewerPdf(
     return "";
   }
 
-  navigateTabWithoutFocus(tab, viewerUrl);
+  navigateTabWithoutFocus(tab, viewerUrl, windowRef);
   delay(0.5);
   const viewerState = waitForSynapViewer(windowRef, timeoutSeconds);
   if (!viewerState.ready || viewerState.pageCount <= 0) {
@@ -1862,25 +2136,32 @@ function splitFileName(name) {
 }
 
 function openReusableDownloadPage(safari, existingWindowRef, targetUrl) {
+  const backgroundWindowEnabled = safariBackgroundWindowEnabled();
   const activeWindow =
     reusableWindowByReference(safari, existingWindowRef) ||
-    findKlmsWindow(safari) ||
-    createSafariWindow(safari, targetUrl);
+    findKlmsWindow(safari, backgroundWindowEnabled) ||
+    createSafariWindow(safari, targetUrl, backgroundWindowEnabled);
+  if (backgroundWindowEnabled) {
+    prepareBackgroundWindow(activeWindow);
+  }
   const tab = safeValue(() => activeWindow.currentTab());
   if (!tab) {
     throw new Error("Reusable Safari download window is missing a current tab");
   }
 
   if (targetUrl) {
-    navigateTabWithoutFocus(tab, targetUrl);
+    navigateTabWithoutFocus(tab, targetUrl, activeWindow);
     waitForWindowUrl(activeWindow, targetUrl, 8);
   }
   return activeWindow;
 }
 
-function navigateTabWithoutFocus(tab, targetUrl) {
+function navigateTabWithoutFocus(tab, targetUrl, windowRef) {
   const frontmostApp = frontmostApplicationName();
   tab.url = targetUrl;
+  if (windowRef && safariBackgroundWindowEnabled()) {
+    prepareBackgroundWindow(windowRef);
+  }
   restoreFrontmostApplication(frontmostApp);
 }
 
@@ -1918,15 +2199,18 @@ function reusableWindowByReference(safari, existingWindowRef) {
   return windowRef;
 }
 
-function findKlmsWindow(safari) {
-  return (
-    safeList(() => safari.windows()).find((windowRef) =>
-      currentTabUrl(windowRef).includes("klms.kaist.ac.kr")
-    ) || null
+function findKlmsWindow(safari, backgroundWindowEnabled) {
+  const klmsWindows = safeList(() => safari.windows()).filter((windowRef) =>
+    currentTabUrl(windowRef).includes("klms.kaist.ac.kr")
   );
+  if (backgroundWindowEnabled) {
+    return klmsWindows.find((windowRef) => isBackgroundWindow(windowRef)) || null;
+  }
+  return klmsWindows[0] || null;
 }
 
-function createSafariWindow(safari, targetUrl) {
+function createSafariWindow(safari, targetUrl, backgroundWindowEnabled) {
+  const frontmostApp = frontmostApplicationName();
   const previousWindowIds = new Set(listWindowIds(safari));
   const openWindowCommand = [
     "/usr/bin/osascript",
@@ -1945,7 +2229,7 @@ function createSafariWindow(safari, targetUrl) {
     "-e",
     "end run",
   ];
-  if (targetUrl) {
+  if (targetUrl && !backgroundWindowEnabled) {
     openWindowCommand.push(String(targetUrl));
   }
   runProcess(openWindowCommand);
@@ -1962,7 +2246,31 @@ function createSafariWindow(safari, targetUrl) {
   if (!activeWindow) {
     throw new Error("Could not create reusable Safari download window");
   }
+  if (backgroundWindowEnabled) {
+    prepareBackgroundWindow(activeWindow);
+    restoreFrontmostApplication(frontmostApp);
+  }
   return activeWindow;
+}
+
+function prepareBackgroundWindow(windowRef) {
+  if (!windowRef) {
+    return;
+  }
+  try {
+    windowRef.miniaturized = true;
+  } catch (_error) {
+    // File fetching still works if Safari refuses to minimize the window.
+  }
+}
+
+function isBackgroundWindow(windowRef) {
+  const miniaturized = safeValue(() => windowRef.miniaturized());
+  if (miniaturized === true) {
+    return true;
+  }
+  const visible = safeValue(() => windowRef.visible());
+  return visible === false;
 }
 
 function waitForWindowUrl(windowRef, targetUrl, timeoutSeconds) {
@@ -2029,6 +2337,78 @@ function resolveDirectFileUrlFromWindow(windowRef) {
   ].join("\n");
   const result = runSafariJavaScript(windowRef, script);
   return result == null ? "" : String(result).trim();
+}
+
+function waitForDirectFileUrlFromWindow(windowRef, timeoutSeconds) {
+  const deadline = Date.now() + Math.max(1, timeoutSeconds) * 1000;
+  let lastUrl = "";
+  while (Date.now() < deadline) {
+    lastUrl = resolveDirectFileUrlFromWindow(windowRef);
+    if (canDirectFetchKlmsFile(lastUrl)) {
+      return lastUrl;
+    }
+    delay(0.5);
+  }
+  return lastUrl;
+}
+
+function resolveCachedDirectResource(entry, manifestPath) {
+  const viewId = extractResourceViewId(entry && entry.url);
+  if (!viewId) {
+    return { url: "", filename: "", page_url: "" };
+  }
+
+  const cacheRoot = directoryName(manifestPath);
+  const pagePaths = [
+    joinPath(cacheRoot, "files/course_pages.json"),
+    joinPath(cacheRoot, "files/all_week_course_pages.json"),
+  ];
+  for (const pagePath of pagePaths) {
+    const pages = readOptionalJson(pagePath);
+    if (!Array.isArray(pages)) {
+      continue;
+    }
+    for (const page of pages) {
+      const html = String(page && page.html || "");
+      const marker = `id="module-${viewId}"`;
+      const markerIndex = html.indexOf(marker);
+      if (markerIndex < 0) {
+        continue;
+      }
+      const nextModuleIndex = html.indexOf('id="module-', markerIndex + marker.length);
+      const segmentEnd =
+        nextModuleIndex > markerIndex ? nextModuleIndex : markerIndex + 2500;
+      const segment = decodeHtmlEntities(html.slice(markerIndex, segmentEnd));
+      const match = segment.match(/downloadFile\('([^']+)'\s*,\s*'([^']+)'\)/);
+      if (!match) {
+        continue;
+      }
+      return {
+        url: String(match[1] || "").trim(),
+        filename: sanitizeDownloadFilename(String(match[2] || "").trim()),
+        page_url: String(page.url || page.requestedUrl || "").trim(),
+      };
+    }
+  }
+  return { url: "", filename: "", page_url: "" };
+}
+
+function extractResourceViewId(url) {
+  const text = String(url || "");
+  const match = text.match(/\/mod\/resource\/view\.php\?[^#]*\bid=(\d+)/);
+  return match ? match[1] : "";
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, number) => String.fromCharCode(parseInt(number, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
 }
 
 function readJson(path) {
@@ -2143,6 +2523,14 @@ function preserveDownloadedCopy(downloadedPath, trackedPath) {
   removeDirectoryArtifactIfExists(trackedPath);
   moveFile(downloadedPath, trackedPath);
   return trackedPath;
+}
+
+function preserveOrRemoveDownloadedCopy(downloadedPath, trackedPath, preserveDownloadArchive) {
+  if (preserveDownloadArchive) {
+    return preserveDownloadedCopy(downloadedPath, trackedPath);
+  }
+  removeFileIfExists(downloadedPath);
+  return "";
 }
 
 function copyFreshDownloadToInbox(sourcePath, newFilesRoot, relativePath) {
@@ -2367,10 +2755,14 @@ function withForcedDownload(url) {
   if (!url) {
     return "";
   }
-  if (/([?&])forcedownload=1(?:&|$)/i.test(url)) {
-    return url;
+  let normalized = String(url);
+  if (/\/mod\/resource\/view\.php\?/i.test(normalized) && !/([?&])redirect=1(?:&|$)/i.test(normalized)) {
+    normalized = normalized.includes("?") ? `${normalized}&redirect=1` : `${normalized}?redirect=1`;
   }
-  return url.includes("?") ? `${url}&forcedownload=1` : `${url}?forcedownload=1`;
+  if (/([?&])forcedownload=1(?:&|$)/i.test(normalized)) {
+    return normalized;
+  }
+  return normalized.includes("?") ? `${normalized}&forcedownload=1` : `${normalized}?forcedownload=1`;
 }
 
 function shellQuote(value) {
@@ -2692,7 +3084,27 @@ function ensureSafari(existingSafari) {
   }
 
   const safari = Application("/Applications/Safari.app");
+  const frontmostApp = frontmostApplicationName();
   safari.launch();
   delay(0.5);
+  restoreFrontmostApplication(frontmostApp);
   return safari;
+}
+
+function safariBackgroundWindowEnabled() {
+  return envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1");
+}
+
+function envValue(name) {
+  try {
+    const value = $.NSProcessInfo.processInfo.environment.objectForKey(name);
+    return value ? String(ObjC.unwrap(value)) : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function envFlag(name, defaultValue) {
+  const raw = envValue(name) || String(defaultValue || "");
+  return !["0", "false", "no", "off"].includes(raw.trim().toLowerCase());
 }
