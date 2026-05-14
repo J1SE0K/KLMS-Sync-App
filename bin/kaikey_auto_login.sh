@@ -16,10 +16,27 @@ KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS="${KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS
 KAIKEY_AUTO_LOGIN_POLL_SECONDS="${KAIKEY_AUTO_LOGIN_POLL_SECONDS:-0.2}"
 KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS="${KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS:-12}"
 KAIKEY_SAFARI_STEP_POLL_MS="${KAIKEY_SAFARI_STEP_POLL_MS:-75}"
+KAIKEY_TWOFACTOR_REFRESH_SECONDS="${KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS:-${KAIKEY_TWOFACTOR_REFRESH_SECONDS:-150}}"
 KAIKEY_APPROVE_ATTEMPTS="${KAIKEY_APPROVE_ATTEMPTS:-5}"
 KAIKEY_APPROVE_INTERVAL_MS="${KAIKEY_APPROVE_INTERVAL_MS:-1500}"
 KAIKEY_POST_APPROVAL_WAIT_SECONDS="${KAIKEY_POST_APPROVAL_WAIT_SECONDS:-2}"
-KAIKEY_AUTO_APPROVE_ENABLED="${KAIKEY_AUTO_APPROVE_ENABLED:-1}"
+KLMS_LOGIN_ASSIST_MODE="${KLMS_LOGIN_ASSIST_MODE:-manual-digits}"
+KLMS_LOGIN_ASSIST_AUTO_APPROVE_ENABLED="${KLMS_LOGIN_ASSIST_AUTO_APPROVE_ENABLED:-0}"
+case "${KLMS_LOGIN_ASSIST_MODE:l}" in
+  manual|manual-digits|digits|phone|phone-approval)
+    KAIKEY_AUTO_APPROVE_ENABLED="0"
+    ;;
+  kaikey|kaikey-auto|auto|auto-approve)
+    KAIKEY_AUTO_APPROVE_ENABLED="1"
+    ;;
+  *)
+    KAIKEY_AUTO_APPROVE_ENABLED="0"
+    ;;
+esac
+if [[ "$KLMS_LOGIN_ASSIST_AUTO_APPROVE_ENABLED" == "1" ]]; then
+  KAIKEY_AUTO_APPROVE_ENABLED="1"
+fi
+KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED="${KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED:-1}"
 KAIKEY_STATE_PATH="${KAIKEY_STATE_PATH:-$HOME/Library/Application Support/KLMSNotesSync/kaikey_state.json}"
 export KAIKEY_STATE_PATH
 
@@ -66,11 +83,24 @@ load_display_name() {
     print -r -- "$KAIST_SSO_LOGIN_ID"
     return 0
   fi
-  if [[ -n "$NODE_BIN" ]] && "$NODE_BIN" "$KLMS_JS_DIR/kaikey_cli.mjs" status >/dev/null 2>&1; then
+  if [[ "$KAIKEY_AUTO_APPROVE_ENABLED" == "1" && -n "$NODE_BIN" ]] \
+    && "$NODE_BIN" "$KLMS_JS_DIR/kaikey_cli.mjs" status >/dev/null 2>&1; then
     "$NODE_BIN" "$KLMS_JS_DIR/kaikey_cli.mjs" identity
     return 0
   fi
   return 1
+}
+
+notify_digits_if_enabled() {
+  local digits="$1"
+  [[ "$KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED" == "1" ]] || return 0
+
+  /usr/bin/osascript \
+    -e 'on run argv' \
+    -e 'set authNumber to item 1 of argv' \
+    -e 'display notification "휴대폰 KAIST 인증 화면에서 " & authNumber & " 를 선택해 주세요." with title "KLMS 인증 번호"' \
+    -e 'end run' \
+    "$digits" >/dev/null 2>&1 || true
 }
 
 DISPLAY_NAME="$(load_display_name)" || {
@@ -97,6 +127,7 @@ else
 fi
 last_status=""
 last_digits=""
+last_digits_epoch=0
 
 while (( $(date +%s) < deadline_epoch )); do
   step_json="$(/usr/bin/osascript -l JavaScript "$KLMS_JS_DIR/kaikey_safari_step.js" \
@@ -121,11 +152,31 @@ while (( $(date +%s) < deadline_epoch )); do
     twofactor_digits)
       digits="$(json_get "$step_json" digits 2>/dev/null || true)"
       if [[ "$digits" == <-> && "${#digits}" == "2" ]]; then
+        now_epoch="$(date +%s)"
         if [[ "$digits" != "$last_digits" ]]; then
           last_digits="$digits"
+          last_digits_epoch="$now_epoch"
           print -r -- "KAIST 인증 번호: $digits"
+          notify_digits_if_enabled "$digits"
           if [[ "$KAIKEY_AUTO_APPROVE_ENABLED" != "1" ]]; then
             print -r -- "휴대폰 인증 화면에서 같은 번호를 선택하면 동기화를 계속 진행해."
+          fi
+        elif [[ "$KAIKEY_AUTO_APPROVE_ENABLED" != "1" ]] \
+          && [[ "$KAIKEY_TWOFACTOR_REFRESH_SECONDS" == <-> ]] \
+          && (( KAIKEY_TWOFACTOR_REFRESH_SECONDS > 0 )) \
+          && (( now_epoch - last_digits_epoch >= KAIKEY_TWOFACTOR_REFRESH_SECONDS )); then
+          refresh_json="$(/usr/bin/osascript -l JavaScript "$KLMS_JS_DIR/kaikey_safari_step.js" \
+            "--url=$KLMS_LOGIN_URL" \
+            "--display-name=$DISPLAY_NAME" \
+            "--refresh-twofactor=1" \
+            "--max-seconds=0" 2>/dev/null || true)"
+          refresh_status="$(json_get "$refresh_json" status 2>/dev/null || true)"
+          if [[ "$refresh_status" == "twofactor_refreshed" ]]; then
+            print -r -- "KAIST 인증 번호를 새로 요청했어."
+            last_digits=""
+            last_digits_epoch="$now_epoch"
+            sleep "$KAIKEY_AUTO_LOGIN_POLL_SECONDS"
+            continue
           fi
         fi
         if [[ "$KAIKEY_AUTO_APPROVE_ENABLED" == "1" ]]; then
@@ -146,7 +197,7 @@ while (( $(date +%s) < deadline_epoch )); do
         fi
       fi
       ;;
-    navigated|klms_redirect_clicked|login_submitted|waiting)
+    navigated|klms_redirect_clicked|login_submitted|twofactor_refreshed|waiting)
       ;;
     error)
       reason="$(json_get "$step_json" error 2>/dev/null || true)"

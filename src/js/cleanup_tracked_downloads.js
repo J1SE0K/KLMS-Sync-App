@@ -33,6 +33,10 @@ function run(argv) {
     const filename = validateFilename(entry && (entry.downloads_filename || entry.filename));
     const destinationPath = resolveTrackedPath(entry, downloadsDir, filename);
     const auxiliaryPaths = resolveAuxiliaryPaths(entry, downloadsDir);
+    if (!destinationPath) {
+      actions.push({ filename, action: "not-tracked" });
+      return;
+    }
     if (seenTargets.has(destinationPath)) {
       throw new Error(`Duplicate tracked path in manifest: ${destinationPath}`);
     }
@@ -242,7 +246,7 @@ function resolveTrackedPath(entry, downloadsDir, fallbackFilename) {
   if (relativePath) {
     return joinPath(downloadsDir, relativePath);
   }
-  return joinPath(downloadsDir, fallbackFilename);
+  return "";
 }
 
 function resolveAuxiliaryPaths(entry, downloadsDir) {

@@ -54,6 +54,38 @@ class CourseItemParsingTests(unittest.TestCase):
 
         self.assertEqual(items, [])
 
+    def test_placeholder_dashboard_course_is_recovered_from_course_page(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1231095"
+        dashboard = klms_sync.DashboardParseResult(
+            status="ok",
+            items=[
+                klms_sync.DashboardItem(
+                    url=url,
+                    title="[11주차] 필드트립, PRD, IA",
+                    course=")",
+                    schedule="~2026.05.14",
+                    item_type="assign",
+                )
+            ],
+        )
+        html = f"""
+        <html><body>
+          <li class="activity assign modtype_assign" id="module-1231095">
+            <div class="activityinstance">
+              <a href="{url}">
+                <span class="instancename">[11주차] 필드트립, PRD, IA</span>
+              </a>
+            </div>
+            <div class="contentafterlink">마감 일시: 2026년 5월 14일 오후 4:00</div>
+          </li>
+        </body></html>
+        """
+
+        items = klms_sync.collect_candidate_items(dashboard, [course_page(html)])
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].course, "Example Course")
+
     def test_lecture_upload_notice_is_not_tracked_as_assignment(self) -> None:
         html = """
         <html><body>

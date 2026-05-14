@@ -62,9 +62,11 @@ has_login_error() {
 }
 
 prompt_login_if_needed() {
+  local sync_output="${1:-}"
   local prompt_now_epoch
   local last_prompt=0
   local timestamp
+  local auth_digits=""
 
   prompt_now_epoch="$(date +%s)"
   if [[ -f "$LOGIN_PROMPT_EPOCH_FILE" ]]; then
@@ -77,7 +79,22 @@ prompt_login_if_needed() {
     return 0
   fi
 
-  /usr/bin/osascript -e 'display notification "Safari에서 KLMS 로그인과 OTP 승인을 진행해 주세요." with title "KLMS 동기화"' >/dev/null 2>&1 || true
+  if [[ "$sync_output" =~ 'KAIST 인증 번호: ([0-9][0-9])' ]]; then
+    auth_digits="${match[1]}"
+  elif [[ "$sync_output" =~ 'digits=([0-9][0-9])' ]]; then
+    auth_digits="${match[1]}"
+  fi
+
+  if [[ -n "$auth_digits" ]]; then
+    /usr/bin/osascript \
+      -e 'on run argv' \
+      -e 'set authNumber to item 1 of argv' \
+      -e 'display notification "휴대폰 KAIST 인증 화면에서 " & authNumber & " 를 선택해 주세요." with title "KLMS 인증 번호"' \
+      -e 'end run' \
+      "$auth_digits" >/dev/null 2>&1 || true
+  else
+    /usr/bin/osascript -e 'display notification "KLMS 로그인 보조를 시작하지 못했어요. Safari의 KLMS 로그인 화면을 확인해 주세요." with title "KLMS 동기화"' >/dev/null 2>&1 || true
+  fi
   if [[ "$LOGIN_PROMPT_OPEN_SAFARI" == "1" ]]; then
     /usr/bin/osascript \
       -e 'on run argv' \
@@ -88,8 +105,8 @@ prompt_login_if_needed() {
   fi
   print -r -- "$prompt_now_epoch" > "$LOGIN_PROMPT_EPOCH_FILE"
   timestamp="$(date '+%Y-%m-%d %H:%M:%S %Z')"
-  printf '[%s] login-prompt notified backend=%s open_safari=%s url=%s\n' \
-    "$timestamp" "safari" "$LOGIN_PROMPT_OPEN_SAFARI" "$KLMS_LOGIN_URL" >> "$LAUNCH_LOG"
+  printf '[%s] login-prompt notified backend=%s open_safari=%s url=%s digits=%s\n' \
+    "$timestamp" "safari" "$LOGIN_PROMPT_OPEN_SAFARI" "$KLMS_LOGIN_URL" "${auth_digits:-none}" >> "$LAUNCH_LOG"
 }
 
 start_login_watch_if_needed() {
@@ -153,7 +170,7 @@ if has_login_error "$sync_output"; then
   # can recover shortly after the user finishes Safari OTP approval.
   print -r -- "0" > "$LAST_ATTEMPT_FILE"
   start_login_watch_if_needed
-  prompt_login_if_needed
+  prompt_login_if_needed "$sync_output"
 else
   /usr/bin/osascript -e 'display notification "KLMS 동기화가 실패했어요. 로그를 확인해 주세요." with title "KLMS 동기화"' >/dev/null 2>&1 || true
 fi

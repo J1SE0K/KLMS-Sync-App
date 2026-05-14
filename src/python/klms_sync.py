@@ -826,7 +826,9 @@ def collect_candidate_items(
     items = [
         item
         for item in dashboard.items
-        if not should_ignore_course_name(item.course) and not should_ignore_course_url(item.url)
+        if not should_ignore_course_name(item.course)
+        and not is_placeholder_course_name(item.course)
+        and not should_ignore_course_url(item.url)
     ]
     seen_urls = {item.url for item in items}
 
@@ -5132,6 +5134,13 @@ def should_ignore_course_name(name: str) -> bool:
     if lowered in EXACT_IGNORED_COURSE_NAMES:
         return True
     return any(keyword.lower() in lowered for keyword in IGNORED_COURSE_NAMES)
+
+
+def is_placeholder_course_name(name: str) -> bool:
+    normalized = normalize_whitespace(name)
+    if not normalized:
+        return False
+    return not bool(re.search(r"[0-9A-Za-z가-힣]", normalized))
 
 
 def should_ignore_course_url(url: str) -> bool:

@@ -64,6 +64,19 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn("range: entry.range", capture)
         self.assertNotIn("range: fullRange", capture)
 
+    def test_notice_capture_uses_full_attributed_text_for_checklist_prefixes(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+        caller = text[
+            text.index("let allChecklistLines = capturedChecklistLines") : text.index(
+                "let capturedBlocks =", text.index("let allChecklistLines = capturedChecklistLines")
+            )
+        ]
+
+        self.assertIn("attributedText: attributedString", caller)
+        self.assertIn("LineRange(location: 0, length: textLength)", caller)
+
     def test_notice_capture_allows_plaintext_drift_when_all_titles_resolve(self) -> None:
         text = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
@@ -81,6 +94,19 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn("displayMode == .primary && readChecked", text)
         self.assertIn("displayMode == .archive && readChecked", text)
         self.assertIn("plaintextHash(for: currentText) != expectedPlaintextHash", text)
+
+    def test_archive_capture_can_create_important_state(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("displayMode == .primary || displayMode == .archive", text)
+        self.assertIn("state.important = importantChecked", text)
+        self.assertIn("suspiciousImportantThreshold", text)
+        self.assertIn("importantTrueCount >= suspiciousImportantThreshold", text)
+        self.assertIn("capture-failed-preserve-user-state: suspicious bulk", text)
+        self.assertNotIn("ignoring archive important=true capture", text)
+        self.assertNotIn("ignoring archive important=false capture", text)
 
     def test_large_notice_render_uses_rich_paste_and_optional_format_menu_styles(self) -> None:
         renderer = (
@@ -112,7 +138,10 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("batchChecklistFormattingEnabled", support)
+        self.assertIn("fastBatchChecklistFormattingEnabled", support)
+        self.assertIn("NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT", support)
         self.assertIn("NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT", support)
+        self.assertIn("NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT", support)
         self.assertIn("styleVersion = \"style_version\"", support)
         self.assertIn("checklistPairSelectionRange", renderer)
         self.assertIn("checklist_format_batch_start", renderer)
@@ -226,27 +255,53 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         )
 
         self.assertIn('environment["NOTICE_COLLAPSE_SECTIONS"] != "0"', support)
+        self.assertIn("collapseNoticeCoursesEnabled", support)
         self.assertIn("collapseNoticeItemsEnabled", support)
+        self.assertIn("styleNoticeItemsAsHeadingsEnabled", support)
         self.assertIn("uiCollapsibleGroupStyleFormattingEnabled", support)
         self.assertIn("noticeCollapseStyleSettleDelay", support)
         self.assertIn("uiCollapsibleGroupStyleFormattingEnabled", renderer)
         self.assertIn('menuItems: ["제목", "Title"]', renderer)
         self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
         self.assertIn(
-            "if uiStyleMenuFormattingEnabled || collapseNoticeSectionsEnabled || collapseNoticeItemsEnabled",
+            "if uiStyleMenuFormattingEnabled || styleNoticeItemsAsHeadingsEnabled || collapseNoticeItemsEnabled",
             renderer,
         )
         self.assertIn("collapse_heading_retry", renderer)
+        self.assertIn("if collapseNoticeCoursesEnabled", renderer)
         self.assertIn("collapseHeading(range, label: \"course-\\(offset + 1)\")", renderer)
         self.assertIn("collapseHeading(range, label: \"section-\\(offset + 1)\")", renderer)
+        self.assertIn("collapse_courses=\\(collapseNoticeCoursesEnabled ? \"1\" : \"0\")", renderer)
+        self.assertIn("collapse_notice_items=\\(collapseNoticeItemsEnabled ? \"1\" : \"0\")", renderer)
+        self.assertIn("style_notice_items=\\(styleNoticeItemsAsHeadingsEnabled ? \"1\" : \"0\")", renderer)
         self.assertIn("NOTICE_COLLAPSE_SECTIONS=\"1\"", config)
+        self.assertIn("NOTICE_COLLAPSE_COURSES=\"0\"", config)
         self.assertIn("NOTICE_COLLAPSE_NOTICE_ITEMS=\"0\"", config)
+        self.assertIn("NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS=\"1\"", config)
+        self.assertIn("NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT=\"1\"", config)
 
         course_index = renderer.index("let courseCollapseRanges")
         section_index = renderer.index("let sectionCollapseRanges")
         notice_index = renderer.index("if collapseNoticeItemsEnabled")
         self.assertLess(course_index, section_index)
         self.assertLess(section_index, notice_index)
+
+    def test_notice_ui_operations_force_target_note_focus(self) -> None:
+        renderer = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("func focusNotesEditor(_ context: NotesEditorContext", renderer)
+        self.assertIn("AXUIElementPerformAction(context.window, kAXRaiseAction", renderer)
+        self.assertIn("trySetAttr(context.app, kAXFocusedWindowAttribute", renderer)
+        self.assertIn("func pressMenuIfAvailable(_ context: NotesEditorContext", renderer)
+        self.assertIn("paste(context: context, text: plaintext, html: html, attributedText: attributed)", renderer)
+        self.assertIn("ensureChecklistStates(\n        context: context,", renderer)
+        self.assertIn("ensureCheckedItemsStayInPlace(\n        context: context,", renderer)
+        self.assertIn("notes.selection = [note]", renderer)
+        self.assertIn("text areas of entire contents of w", renderer)
+        self.assertNotIn("text area 1 of scroll area 3", renderer)
+        self.assertNotIn("paste(context.app, text:", renderer)
 
     def test_archive_notice_note_renders_before_primary(self) -> None:
         renderer = (
@@ -264,6 +319,20 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
             renderer.index("let archivedCollapsedSections = arguments.target == \"primary\""),
             renderer.index("let collapsedSections = arguments.target == \"archive\""),
         )
+
+    def test_notice_native_config_is_passed_to_swift_wrapper(self) -> None:
+        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("function nativeNoticeEnvironment(config)", js)
+        self.assertIn('"NOTICE_COLLAPSE_SECTIONS"', js)
+        self.assertIn('"NOTICE_COLLAPSE_COURSES"', js)
+        self.assertIn('"NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT"', js)
+        self.assertIn('"NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS"', js)
+        self.assertIn('"NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT"', js)
+        self.assertIn("noticeNativeEnvironment", js)
+        self.assertIn("...nativeEnv", js)
 
     def test_notice_style_version_is_shared_between_swift_and_js(self) -> None:
         support = (

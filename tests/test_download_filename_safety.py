@@ -20,6 +20,7 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
                 "sanitizeDownloadFilename",
                 "isTransientDownloadName",
                 "isServerTemporaryFilename",
+                "withForcedDownload",
                 "canonicalExpectedFilenameForTemporaryDownload",
                 "canonicalFilenameForDownloadedName",
             )
@@ -62,18 +63,74 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("downloadLogFilenameReuseAllowed", text)
         self.assertIn("filenameCompatibleWithExpected", text)
         self.assertIn("freshDownloadFilenameMatchesExpected", text)
-        self.assertIn('expectedFamily === "presentation"', text)
+        self.assertIn('return "presentation";', text)
+        self.assertIn("return expectedFamily === actualFamily;", text)
         self.assertIn("fetchedPayloadCompatibleWithExpected", text)
         self.assertIn("text/html", text)
         self.assertIn("Downloaded filename does not match expected file type", text)
         self.assertIn("quarantineDownloadedFile", text)
         self.assertIn("course_file_quarantine_report.json", text)
+        self.assertIn("continueOnQuarantine", text)
+        self.assertIn("quarantined: true", text)
+        self.assertIn("failed: true", text)
         self.assertIn("copyFreshDownloadToInbox", text)
         self.assertIn("KLMS New Files", text)
+        self.assertIn("preserveOrRemoveDownloadedCopy", text)
+        self.assertIn("preserveDownloadArchive", text)
+        self.assertIn("buildPreviousDownloadStateIndex", text)
+        self.assertIn("existingFileRefreshDecision", text)
+        self.assertIn("klms-timestamp-newer-than-previous-record", text)
+        self.assertIn("refreshed_existing_file", text)
+        self.assertIn("dateValue instanceof Date", text)
+        self.assertIn("previousDownloadResult", text)
+        self.assertIn("mergeDownloadHistories", text)
+        self.assertIn("resolveCachedDirectResource", text)
+        self.assertIn("downloadFile\\('([^']+)'\\s*,\\s*'([^']+)'\\)", text)
+        self.assertIn("nextModuleIndex", text)
         self.assertIn("result.course", text)
         self.assertIn("result.source_url", text)
         self.assertIn("isServerTemporaryFilename", text)
         self.assertIn("canonicalFilenameForDownloadedName", text)
+
+    def test_resource_download_url_uses_redirect_before_forcedownload(self) -> None:
+        self.assertEqual(
+            self.run_download_filename_helpers(
+                "withForcedDownload('https://klms.kaist.ac.kr/mod/resource/view.php?id=1220344')"
+            ),
+            "https://klms.kaist.ac.kr/mod/resource/view.php?id=1220344&redirect=1&forcedownload=1",
+        )
+        self.assertEqual(
+            self.run_download_filename_helpers(
+                "withForcedDownload('https://klms.kaist.ac.kr/pluginfile.php/1/mod_resource/content/1/HW1.pdf')"
+            ),
+            "https://klms.kaist.ac.kr/pluginfile.php/1/mod_resource/content/1/HW1.pdf?forcedownload=1",
+        )
+
+    def test_direct_safari_fetch_does_not_skip_inline_pdf_pluginfiles(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "download_klms_files.js").read_text(
+            encoding="utf-8"
+        )
+        direct_fetch = text[
+            text.index("function fetchKlmsFileViaSafari")
+            : text.index("function resolveFetchedFilename")
+        ]
+        binary_fetch = text[
+            text.index("function fetchBinaryPayloadViaSafari")
+            : text.index("function recoverSynapViewerPdf")
+        ]
+
+        self.assertIn("fetchBinaryPayloadViaSafari", direct_fetch)
+        self.assertIn("overrideMimeType('text/plain; charset=x-user-defined')", binary_fetch)
+        self.assertIn("responseText.charCodeAt(byteIndex) & 0xff", binary_fetch)
+        self.assertNotIn("responseType = 'arraybuffer'", binary_fetch)
+        self.assertNotIn("\\.pdf$", direct_fetch)
+        redirected_block = text[
+            text.index("const redirectedDirectUrl")
+            : text.index("const viewerUrlHint")
+        ]
+        self.assertIn("waitForDirectFileUrlFromWindow", redirected_block)
+        self.assertIn("navigateTabWithoutFocus(tab, directFetchPage, fileWindowRef)", redirected_block)
+        self.assertIn("fetchKlmsFileViaSafari", redirected_block)
 
     def test_server_temp_download_name_uses_manifest_stem_and_downloaded_extension(self) -> None:
         payload = self.run_download_filename_helpers(

@@ -16,6 +16,7 @@ FILE_REFRESH_MODE="${FILE_REFRESH_MODE:-auto}"
 FILE_MINIMAL_EXPLORATION_ENABLED="${FILE_MINIMAL_EXPLORATION_ENABLED:-1}"
 FETCH_MIN_WAIT_SECONDS="${FETCH_MIN_WAIT_SECONDS:-1.5}"
 FETCH_STABLE_POLLS="${FETCH_STABLE_POLLS:-2}"
+FETCH_COMPLETE_REUSE_SECONDS="${FETCH_COMPLETE_REUSE_SECONDS:-900}"
 FILE_DOWNLOAD_TIMEOUT_SECONDS="${FILE_DOWNLOAD_TIMEOUT_SECONDS:-180}"
 FILE_MAX_DOWNLOAD_ATTEMPTS="${FILE_MAX_DOWNLOAD_ATTEMPTS:-3}"
 FILE_DOWNLOAD_RETRY_DELAY_SECONDS="${FILE_DOWNLOAD_RETRY_DELAY_SECONDS:-2}"
@@ -25,6 +26,8 @@ FILE_COURSE_PAGE_STALE_SECONDS="${FILE_COURSE_PAGE_STALE_SECONDS:-43200}"
 FILE_ALL_WEEK_COURSE_PAGE_STALE_SECONDS="${FILE_ALL_WEEK_COURSE_PAGE_STALE_SECONDS:-43200}"
 FILE_SEED_QUICK_LIMIT_RAW="${FILE_SEED_QUICK_LIMIT:-}"
 FILE_SEED_STALE_SECONDS="${FILE_SEED_STALE_SECONDS:-43200}"
+FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED="${FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED:-1}"
+FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS="${FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS:-$FILE_FULL_TTL_SECONDS}"
 FILE_NESTED_QUICK_LIMIT_RAW="${FILE_NESTED_QUICK_LIMIT:-}"
 FILE_NESTED_STALE_SECONDS="${FILE_NESTED_STALE_SECONDS:-86400}"
 FILE_NESTED2_QUICK_LIMIT_RAW="${FILE_NESTED2_QUICK_LIMIT:-}"
@@ -92,7 +95,10 @@ FILE_NESTED2_FETCH_SUMMARY_JSON="$WORK_CACHE_DIR/file_nested_round2_fetch_summar
 FILE_COURSE_FETCH_SUMMARY_JSON="$WORK_CACHE_DIR/course_fetch_summary.json"
 FILE_ALL_WEEK_COURSE_FETCH_SUMMARY_JSON="$WORK_CACHE_DIR/all_week_course_fetch_summary.json"
 OUTPUT_ROOT="$SCRIPT_DIR/course_files"
-DOWNLOAD_ARCHIVE_ROOT="$HOME/Downloads/KLMS Files"
+FILE_DOWNLOAD_WORK_ROOT="${FILE_DOWNLOAD_WORK_ROOT:-$TMP_DIR/downloads}"
+DOWNLOAD_ARCHIVE_ROOT="${DOWNLOAD_ARCHIVE_ROOT:-${FILE_DOWNLOAD_ARCHIVE_ROOT:-$FILE_DOWNLOAD_WORK_ROOT/KLMS Files}}"
+NEW_FILES_ROOT="${NEW_FILES_ROOT:-${FILE_NEW_FILES_ROOT:-$FILE_DOWNLOAD_WORK_ROOT/KLMS New Files}}"
+QUARANTINE_ROOT="${QUARANTINE_ROOT:-${FILE_QUARANTINE_ROOT:-$FILE_DOWNLOAD_WORK_ROOT/KLMS Quarantine}}"
 SHARED_COURSE_PAGES_JSON="${KLMS_SHARED_COURSE_PAGES_JSON:-$CACHE_DIR/core/course_pages.json}"
 SHARED_ALL_WEEK_COURSE_PAGES_JSON="${KLMS_SHARED_ALL_WEEK_COURSE_PAGES_JSON:-$CACHE_DIR/core/all_week_course_pages.json}"
 SHARED_SUPPLEMENTAL_PRIMARY_PAGES_JSON="${KLMS_SHARED_SUPPLEMENTAL_PRIMARY_PAGES_JSON:-$CACHE_DIR/core/supplemental_primary_pages.json}"
@@ -320,6 +326,7 @@ EOF
     "--auto-full-require-last-full=$FETCH_AUTO_REQUIRE_LAST_FULL"
     "--auto-full-on-ttl-expire=$FETCH_AUTO_FULL_ON_TTL_EXPIRE"
     "--always-fetch-min-interval-seconds=$FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS"
+    "--complete-reuse-seconds=$FETCH_COMPLETE_REUSE_SECONDS"
   )
 	  [[ -n "$summary_json" ]] && argv+=("--summary-out=$summary_json")
 	  local fallback_pages=()
@@ -385,19 +392,38 @@ except Exception:
 PY
 }
 
+file_content_hash() {
+  local file_path="$1"
+  if [[ ! -s "$file_path" ]]; then
+    print -r -- ""
+    return
+  fi
+  python3 - "$file_path" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+digest = hashlib.sha256(path.read_bytes()).hexdigest()
+print(digest)
+PY
+}
+
 write_existing_download_result_if_complete() {
   local manifest_json="$1"
   local output_root="$2"
   local download_log_json="$3"
   local download_result_json="$4"
   local download_archive_root="$5"
+  local preserve_download_archive="${6:-0}"
 
   python3 - \
     "$manifest_json" \
     "$output_root" \
     "$download_log_json" \
     "$download_result_json" \
-    "$download_archive_root" <<'PY'
+    "$download_archive_root" \
+    "$preserve_download_archive" <<'PY'
 import json
 import shutil
 import sys
@@ -410,6 +436,7 @@ output_root = Path(sys.argv[2])
 download_log_path = Path(sys.argv[3])
 download_result_path = Path(sys.argv[4])
 archive_root = Path(sys.argv[5])
+preserve_archive = str(sys.argv[6]).lower() in {"1", "true", "yes", "on"}
 
 manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else []
 if not isinstance(manifest, list):
@@ -452,6 +479,28 @@ local_keys = [
 def kst_text(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M KST")
 
+def normalized_epoch(value) -> int:
+    try:
+        epoch = int(float(value or 0))
+    except Exception:
+        return 0
+    return epoch if epoch > 0 else 0
+
+def existing_file_needs_refresh(entry: dict, destination_path: Path, previous: dict) -> bool:
+    current_epoch = normalized_epoch(entry.get("klms_timestamp_epoch"))
+    if current_epoch <= 0:
+        return False
+
+    previous_epoch = normalized_epoch(previous.get("klms_timestamp_epoch"))
+    if previous_epoch > 0 and current_epoch > previous_epoch + 1:
+        return True
+
+    try:
+        file_mtime = int(destination_path.stat().st_mtime)
+    except Exception:
+        file_mtime = 0
+    return file_mtime > 0 and current_epoch > file_mtime + 1
+
 results = []
 for index, entry in enumerate(manifest, start=1):
     relative_path = str(entry.get("relative_path") or entry.get("filename") or "").strip()
@@ -463,11 +512,13 @@ for index, entry in enumerate(manifest, start=1):
     archive_path = archive_root / relative_path
     if not destination_path.is_file():
         raise SystemExit(1)
-    archive_path.parent.mkdir(parents=True, exist_ok=True)
-    if not archive_path.is_file():
+    previous = previous_by_url.get(str(entry.get("url") or "")) or previous_by_relative.get(relative_path) or {}
+    if existing_file_needs_refresh(entry, destination_path, previous):
+        raise SystemExit(1)
+    if preserve_archive and not archive_path.is_file():
+        archive_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(destination_path, archive_path)
 
-    previous = previous_by_url.get(str(entry.get("url") or "")) or previous_by_relative.get(relative_path) or {}
     local_epoch = previous.get("local_downloaded_epoch")
     try:
         local_epoch = int(local_epoch)
@@ -483,9 +534,9 @@ for index, entry in enumerate(manifest, start=1):
         "manifest_relative_path": relative_path,
         "destination_path": str(destination_path),
         "downloads_root": str(archive_root),
-        "downloads_relative_path": relative_path,
-        "downloads_filename": archive_path.name,
-        "downloads_path": str(archive_path),
+        "downloads_relative_path": relative_path if preserve_archive else "",
+        "downloads_filename": archive_path.name if preserve_archive else "",
+        "downloads_path": str(archive_path) if preserve_archive else "",
         "bytes": destination_path.stat().st_size,
         "source_url": entry.get("source_url") or "",
         "url": entry.get("url") or "",
@@ -581,7 +632,8 @@ build_linked_html_index() {
 
   local argv=(
     python3
-    "$KLMS_PYTHON_DIR/klms_sync.py"
+    -m
+    klms_sync_v2.cli
     build-linked-html-index
     --pages-json "$pages_json"
     --output-index-json "$output_index_json"
@@ -596,7 +648,7 @@ build_linked_html_index() {
 }
 
 cd "$SCRIPT_DIR"
-log_files_timing "refresh start output_root=$OUTPUT_ROOT mode=$FILE_REFRESH_MODE force_download=$FILE_FORCE_DOWNLOAD weekly_folders=$FILE_WEEKLY_FOLDERS_ENABLED dry_run=$FILE_DRY_RUN"
+log_files_timing "refresh start output_root=$OUTPUT_ROOT download_work_root=$FILE_DOWNLOAD_WORK_ROOT mode=$FILE_REFRESH_MODE force_download=$FILE_FORCE_DOWNLOAD weekly_folders=$FILE_WEEKLY_FOLDERS_ENABLED dry_run=$FILE_DRY_RUN"
 
 PREVIOUS_MANIFEST_COUNT="$(count_manifest_entries "$MANIFEST_JSON")"
 EXISTING_TRACKED_FILE_COUNT="$(count_tracked_output_files "$OUTPUT_ROOT")"
@@ -625,7 +677,7 @@ klms_check_login_pages \
   "$DASHBOARD_JSON" \
   "KLMS login required before file refresh. Open Safari and sign in again."
 
-python3 "$KLMS_PYTHON_DIR/klms_sync.py" list-course-urls --dashboard-json "$DASHBOARD_JSON" > "$COURSE_URLS_TXT"
+python3 -m klms_sync_v2.cli list-course-urls --dashboard-json "$DASHBOARD_JSON" > "$COURSE_URLS_TXT"
 run_fetch_backend \
   "files-course-pages" \
   "$COURSE_PAGES_JSON" \
@@ -650,7 +702,7 @@ run_fetch_backend \
   "$FILE_FULL_TTL_SECONDS" \
   "$FILE_ALL_WEEK_COURSE_FETCH_SUMMARY_JSON"
 
-python3 "$KLMS_PYTHON_DIR/klms_sync.py" list-supplemental-urls \
+python3 -m klms_sync_v2.cli list-supplemental-urls \
   --course-pages-json "$ALL_WEEK_COURSE_PAGES_JSON" \
   --tier=primary \
   > "$FILE_PRIMARY_SUPPLEMENTAL_URLS_TXT"
@@ -658,6 +710,25 @@ python3 "$KLMS_PYTHON_DIR/klms_sync.py" list-supplemental-urls \
 COURSE_CHANGED_COUNT="$(summary_changed_count "$FILE_COURSE_FETCH_SUMMARY_JSON")"
 ALL_WEEK_COURSE_CHANGED_COUNT="$(summary_changed_count "$FILE_ALL_WEEK_COURSE_FETCH_SUMMARY_JSON")"
 FILE_SEED_EFFECTIVE_STALE_SECONDS="$FILE_SEED_STALE_SECONDS"
+PREVIOUS_FILE_SEED_URLS_HASH="$(file_content_hash "$FILE_SEED_URLS_TXT")"
+
+python3 -m klms_sync_v2.cli list-file-seed-urls --course-pages-json "$ALL_WEEK_COURSE_PAGES_JSON" > "$TMP_DIR/file_seed_urls.next"
+NEXT_FILE_SEED_URLS_HASH="$(file_content_hash "$TMP_DIR/file_seed_urls.next")"
+FILE_SEED_URL_LIST_CHANGED=1
+if [[ -n "$PREVIOUS_FILE_SEED_URLS_HASH" && "$PREVIOUS_FILE_SEED_URLS_HASH" == "$NEXT_FILE_SEED_URLS_HASH" ]]; then
+  FILE_SEED_URL_LIST_CHANGED=0
+fi
+mv "$TMP_DIR/file_seed_urls.next" "$FILE_SEED_URLS_TXT"
+
+if is_truthy "$FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED" \
+  && (( FILE_SEED_URL_LIST_CHANGED == 0 )) \
+  && (( PREVIOUS_MANIFEST_COUNT > 0 )) \
+  && (( EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then
+  if (( FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS > FILE_SEED_EFFECTIVE_STALE_SECONDS )); then
+    FILE_SEED_EFFECTIVE_STALE_SECONDS="$FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS"
+  fi
+  log_files_timing "seed timestamp gate active seed_urls_changed=$FILE_SEED_URL_LIST_CHANGED course_changed=$COURSE_CHANGED_COUNT all_week_changed=$ALL_WEEK_COURSE_CHANGED_COUNT previous_manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT seed_stale_seconds=$FILE_SEED_EFFECTIVE_STALE_SECONDS"
+fi
 
 FILE_SEED_FETCH_ALWAYS_PATTERNS=("${FILE_FETCH_ALWAYS_PATTERNS[@]}")
 FILE_NESTED_FETCH_ALWAYS_PATTERNS=("${FILE_FETCH_ALWAYS_PATTERNS[@]}")
@@ -671,7 +742,6 @@ if is_truthy "$FILE_MINIMAL_EXPLORATION_ENABLED" && is_truthy "$FILE_PRIMARY_BOA
   FILE_NESTED2_FETCH_ALWAYS_PATTERNS=()
 fi
 
-python3 "$KLMS_PYTHON_DIR/klms_sync.py" list-file-seed-urls --course-pages-json "$ALL_WEEK_COURSE_PAGES_JSON" > "$FILE_SEED_URLS_TXT"
 run_fetch_backend \
   "files-seed-pages" \
   "$FILE_SEED_PAGES_JSON" \
@@ -887,7 +957,7 @@ python3 "$KLMS_PYTHON_DIR/build_course_file_sync_preview.py" \
   --output-json "$SYNC_PREVIEW_JSON"
 log_files_timing "file preview finish duration_s=$(($(date +%s) - preview_started_epoch))"
 
-python3 - "$QUARANTINE_REPORT_JSON" "$MANIFEST_JSON" "$OUTPUT_ROOT" "$HOME/Downloads/KLMS Quarantine" <<'PY'
+python3 - "$QUARANTINE_REPORT_JSON" "$MANIFEST_JSON" "$OUTPUT_ROOT" "$QUARANTINE_ROOT" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -932,7 +1002,8 @@ elif ! is_truthy "$FILE_FORCE_DOWNLOAD" \
     "$OUTPUT_ROOT" \
     "$DOWNLOAD_LOG_JSON" \
     "$DOWNLOAD_RESULT_JSON" \
-    "$DOWNLOAD_ARCHIVE_ROOT"; then
+    "$DOWNLOAD_ARCHIVE_ROOT" \
+    "$FILE_PRESERVE_DOWNLOAD_ARCHIVE"; then
   log_files_timing "download skipped existing_complete=1 duration_s=$(($(date +%s) - download_started_epoch))"
 else
   /bin/zsh "$KLMS_SH_DIR/run_download_files_step.sh" \
@@ -945,7 +1016,10 @@ else
     "$FILE_DOWNLOAD_TIMEOUT_SECONDS" \
     "$FILE_MAX_DOWNLOAD_ATTEMPTS" \
     "$FILE_DOWNLOAD_RETRY_DELAY_SECONDS" \
-    "$FILE_FORCE_DOWNLOAD"
+    "$FILE_FORCE_DOWNLOAD" \
+    "$FILE_PRESERVE_DOWNLOAD_ARCHIVE" \
+    "$NEW_FILES_ROOT" \
+    "$QUARANTINE_ROOT"
   log_files_timing "download finish duration_s=$(($(date +%s) - download_started_epoch))"
 fi
 
@@ -1055,7 +1129,8 @@ results = download.get("results", [])
 skipped_existing = sum(1 for item in results if item.get("skipped_existing"))
 restored_from_archive = sum(1 for item in results if item.get("restored_from_archive"))
 reused_logged_file = sum(1 for item in results if item.get("reused_logged_file"))
-downloaded_fresh = max(0, len(results) - skipped_existing - restored_from_archive - reused_logged_file)
+failed = sum(1 for item in results if item.get("failed") or item.get("quarantined"))
+downloaded_fresh = max(0, len(results) - skipped_existing - restored_from_archive - reused_logged_file - failed)
 new_files_copied = sum(1 for item in results if item.get("copied_to_new_files_inbox"))
 quarantine_count = int(download.get("quarantineCount", 0) or 0)
 print(
@@ -1066,6 +1141,7 @@ print(
     f"reused_logged_file={reused_logged_file} "
     f"downloaded_fresh={downloaded_fresh} "
     f"new_files_copied={new_files_copied} "
+    f"failed={failed} "
     f"quarantine={quarantine_count}"
 )
 

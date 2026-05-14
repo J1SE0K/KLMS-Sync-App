@@ -11,6 +11,8 @@
 | `KLMS 공지` | 중요 공지, 새로운 공지, 읽지 않은 공지 |
 | `KLMS 확인한 공지` | `읽음`이면서 `중요`가 아닌 공지 |
 
+동기화는 이 두 기존 메모만 사용한다. 메모가 없으면 새 메모를 만들지 않고 실패한다.
+
 정렬과 체크 정책:
 
 - 메인 메모는 `중요 공지 -> 새로운 공지 -> 읽지 않은 공지` 순서로 보인다.
@@ -20,6 +22,7 @@
 - 사용자가 Notes에서 직접 체크한 항목만 다음 sync 때 상태로 저장된다.
 - `읽음`을 체크하면 다음 sync 때 해당 공지는 보관 메모로 이동한다.
 - `중요`를 체크하면 메인 메모의 `중요 공지` 섹션으로 올라간다.
+- `KLMS 확인한 공지`에서 `중요`를 체크해도 다음 sync 때 `KLMS 공지`의 `중요 공지` 섹션으로 이동한다.
 - fingerprint가 바뀐 공지는 다시 미확인으로 돌아온다.
 - 체크 상태 캡처에 실패하면 기존 상태 보호를 위해 공지 메모를 덮어쓰지 않고 sync를 실패시킨다.
 
@@ -28,16 +31,21 @@
 - 빈 상태에서는 해당 메모와 관련된 안내만 짧게 표시한다.
 - 굵기와 글자 크기는 HTML/RTF rich paste를 우선 사용한다.
 - 느린 Notes Format 메뉴 반복 적용은 기본적으로 끈다.
-- 공지 메모는 기본적으로 공지 분류/과목명/공지 제목을 실제 Notes heading 계층으로 만들고, 공지 분류와 과목명을 접는다. `NOTICE_COLLAPSE_SECTIONS=0`이면 접기를 끈다.
-- `NOTICE_COLLAPSE_NOTICE_ITEMS=1`이면 공지 개별 제목도 접는다.
+- 공지 메모는 공지 분류/과목명/공지 제목을 실제 Notes heading 계층으로 만든다. 기본값은 `NOTICE_COLLAPSE_SECTIONS=1`, `NOTICE_COLLAPSE_COURSES=0`, `NOTICE_COLLAPSE_NOTICE_ITEMS=0`, `NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS=1`이다.
+- 렌더가 끝난 상태에서는 최상위 공지 분류만 접혀 있고, 과목명과 개별 공지 제목은 펼쳐져 있다. 과목명까지 자동으로 접으려면 `NOTICE_COLLAPSE_COURSES=1`, 공지 제목까지 자동으로 접으려면 `NOTICE_COLLAPSE_NOTICE_ITEMS=1`을 켠다.
 - `NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT=1`이면 native 제목/머리말 메뉴 스타일을 공지 개별 제목까지 강제로 다시 적용한다.
 - 형식 적용 후 굵게가 빠진 줄만 확인해서 보강한다.
-- 체크리스트는 공지별 `읽음`/`중요` 두 줄을 batch 변환한다. `NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT=1`이면 기존 개별 변환으로 되돌린다.
+- 체크리스트는 공지별 `읽음`/`중요` 두 줄을 fast batch 변환해서 사전 검사 반복을 줄인다. `NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT=1`이면 검사를 더 많이 하는 batch 경로를, `NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT=1`이면 보수적인 개별 변환을 사용한다.
+- 공지 메모는 매 실행마다 먼저 Notes 체크 상태를 캡처한다. 체크 상태가 바뀌었으면 새 KLMS 글이 없어도 즉시 재렌더해서 `읽음`/`중요` 이동을 반영한다.
+- `NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER=1`이면 새/수정 공지가 없는 체크 상태 변경은 먼저 캡처만 하고 전체 Notes 재렌더는 다음 내용 변경 때까지 미루는 opt-in 모드로 바뀐다.
 - render 뒤 note 전체 validator를 돌려 stray checklist나 문단 오염을 검사한다.
+- `FETCH_COMPLETE_REUSE_SECONDS` 안에 같은 URL 세트를 다시 요청하면 Safari fetch를 건너뛰고 완전한 page cache를 재사용한다.
+- `sync_klms_notice.sh` 단독 실행도 `NOTICE_SHARED_FALLBACK_MAX_AGE_SECONDS` 안의 core page cache를 재사용해서 과목/주간 페이지를 중복 fetch하지 않는다.
+- `KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED=1`이면 KLMS 수집/다운로드/로그인 보조용 Safari 창을 최소화해서 전면 작업을 방해하지 않는다.
 
 ## 파일 정리
 
-`refresh_course_files.sh`는 첨부파일 manifest를 만든 뒤 정리본은 `course_files`에 유지하고, `~/Downloads/KLMS Files`에는 이번 실행에서 새로 확보한 파일만 남긴다.
+`refresh_course_files.sh`는 첨부파일 manifest를 만든 뒤 정리본을 `course_files`에 유지한다. 다운로드 staging은 기본적으로 `runtime/tmp/files/downloads` 아래에서만 쓰고 `~/Downloads`에는 KLMS 폴더를 만들지 않는다.
 
 기본 구조:
 
@@ -62,13 +70,14 @@ Example Course/resources/Week 1 Notes.pdf
 - 파일명은 가능하면 KLMS가 실제로 내려준 다운로드 파일명을 그대로 유지한다.
 - 같은 bucket 안에서 파일명이 겹치면 `filename (2).pdf`처럼 suffix를 붙인다.
 - 게시판 글의 본문 인라인 이미지/미디어는 제외하고, 실제 첨부파일 목록의 문서/압축파일/스프레드시트 등을 manifest에 넣는다.
-- 새 파일은 먼저 `~/Downloads/KLMS Files` 아래에 확보하고, 과목별 정리본에는 별도 복사본을 만든다.
-- 현재 정리본, Downloads inbox, 이전 다운로드 로그가 가리키는 예전 경로를 먼저 재사용한다.
+- 새 파일은 먼저 로컬 staging 아래에 확보하고, 과목별 정리본에는 별도 복사본을 만든다.
+- 현재 정리본, staging inbox, 이전 다운로드 로그가 가리키는 예전 경로를 먼저 재사용한다.
 - 세 위치에 없을 때만 Safari를 열어 실제 다운로드를 시도한다.
-- 실행이 끝나면 `course_files`는 manifest 기준으로 prune하고, `~/Downloads/KLMS Files`는 fresh-download만 남긴 뒤 나머지 추적 파일을 지운다.
-- `FILE_PRESERVE_DOWNLOAD_ARCHIVE=1`이면 이전 동작처럼 `~/Downloads/KLMS Files`를 전체 manifest mirror로 보존한다.
+- 파일 seed URL 목록이 unchanged이고 기존 manifest와 `course_files`가 맞으면 seed 상세 페이지는 더 오래 재사용하고, resource/assignment index 같은 timestamp 페이지를 주기적으로 확인해 같은 파일명 교체만 다시 받는다.
+- 실행이 끝나면 `course_files`는 manifest 기준으로 prune하고, staging 다운로드는 기본적으로 제거한다.
+- `FILE_KEEP_FRESH_DOWNLOADS=1`이면 이번 실행에서 새로 받은 파일만 staging에 남긴다.
 - prune 전 삭제 후보는 `runtime/cache/prune_backups/`에 JSON으로 남긴다.
-- archive prune/cleanup 결과는 `runtime/cache/course_file_archive_prune_result.json`, `runtime/cache/course_file_cleanup_result.json`에 남긴다.
+- 임시 다운로드 정리 결과는 `runtime/cache/` 아래 JSON으로 남긴다.
 - manifest가 비정상적으로 줄어든 상태에서는 바로 prune하지 않고 full rebuild를 한 번 재시도한다.
 - 기존 파일이 있어도 전부 다시 받으려면 `FILE_FORCE_DOWNLOAD=1`을 설정한다.
 
@@ -113,14 +122,13 @@ swift ./src/swift/sync_klms_calendar.swift --clear "시험"
 swift ./src/swift/sync_klms_calendar.swift --delete-calendar "시험"
 ```
 
-## Notes 과제 메모
+## Notes 사용 범위
 
-`NOTES_SYNC_ENABLED=1`일 때만 과제 노트를 갱신한다. 기본값은 꺼져 있다.
+Notes는 기존 `KLMS 공지`, `KLMS 확인한 공지` 두 메모에만 사용한다.
 
-- 전용 노트 `KLMS 과제 업데이트`를 사용한다.
-- 기존 노트 내용은 유지하고 맨 위 첫 번째 목록만 KLMS 기준으로 갱신한다.
-- 전용 노트가 없으면 Notes 폴더에 자동 생성한다.
-- `남은 시간`처럼 매 실행마다 바뀌는 값은 제외해서 실제 과제 내용이 바뀔 때만 메모를 갱신한다.
+- 기본 동기화는 과제를 Reminders에만 반영한다.
+- 과제용 Notes 메모는 만들거나 갱신하지 않는다.
+- 공지 메모가 없으면 자동 생성하지 않고 실패한다.
 
 ## 완료와 수동 Override
 
