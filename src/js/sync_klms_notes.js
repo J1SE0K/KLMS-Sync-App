@@ -6,7 +6,7 @@ const MARKER = "[[KLMS 자동 동기화]]";
 const REMINDER_MARKER_PREFIX = "KLMS_SYNC_ITEM_ID:";
 const LEGACY_REMINDER_MARKER_PREFIXES = ["KLMS_ASSIGN_ID:"];
 const REMINDER_MARKER_PREFIXES = [REMINDER_MARKER_PREFIX].concat(LEGACY_REMINDER_MARKER_PREFIXES);
-const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-14-collapse-top-level-only";
+const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-14-archive-course-collapse";
 let DEBUG_STDERR_ENABLED = false;
 let ACTIVE_STAGE_TELEMETRY = null;
 let COMMAND_TIMING_ENABLED = true;
@@ -368,6 +368,7 @@ function run(argv) {
     const outputStatus = `${cacheDir}/status.json`;
     const stateJson = `${stateDir}/state.json`;
     let noticeSummaryAlreadySynced = false;
+    let noticeSummaryPrebuildSnapshot = null;
     const noticePaths = {
       dashboardUrl,
       dashboardJson,
@@ -852,57 +853,84 @@ function run(argv) {
     }
     debugStderr("after supplemental-detail-fetch");
 
-    if (noticeSummaryEnabled && scope !== "notice" && !fileExists(noticeDigestJson)) {
+    if (noticeSummaryEnabled && scope !== "notice") {
       beginStage(steps, stageTelemetry, "notice-summary-prebuild");
       debugStderr("before notice-summary-prebuild");
+      const noticeSnapshot = snapshotFiles([
+        noticeBoardStateJson,
+        noticeBoardStatePendingJson,
+        noticeSummaryStateJson,
+        noticeUserStateJson,
+        noticeNoteRenderStateJson,
+        noticeArchiveNoteRenderStateJson,
+        noticeDigestJson,
+      ]);
       try {
-        syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, noticePaths, stageTelemetry);
-        noticeSummaryAlreadySynced = true;
+        // Build state from the current notice digest so notice-only assignment
+        // announcements are not delayed until the next core sync.
+        syncNoticeSummary(
+          scriptDir,
+          waitSeconds,
+          baseFetchOptions,
+          { ...noticePaths, skipNativeRender: true },
+          stageTelemetry
+        );
+        noticeSummaryPrebuildSnapshot = noticeSnapshot;
+        noticeSummaryAlreadySynced = scope !== "all";
         writeText(noticeDigestErrorTxt, "");
       } catch (noticeError) {
+        restoreFileSnapshot(noticeSnapshot);
+        noticeSummaryPrebuildSnapshot = null;
         writeText(noticeDigestErrorTxt, String(noticeError));
         writeText(noticeNoteRenderWarningTxt, "");
-        throw noticeError;
+        debugStderr(`notice-summary-prebuild warning ignored: ${String(noticeError)}`);
       }
       debugStderr("after notice-summary-prebuild");
     }
 
     beginStage(steps, stageTelemetry, "build-note");
     debugStderr("before build-note");
-    runCommand(
-      [
-        "/usr/bin/env",
-        `PYTHONPATH=${pythonPath}`,
-        "python3",
-        "-m",
-        "klms_sync_v2.cli",
-        "build-note",
-        "--dashboard-json",
-        dashboardJson,
-        "--course-pages-json",
-        coursePagesJson,
-        "--details-json",
-        detailsJson,
-        "--supplemental-pages-json",
-        supplementalPagesJson,
-        "--supplemental-detail-pages-json",
-        supplementalDetailPagesJson,
-        ...(fileExists(noticeDigestJson)
-          ? ["--notice-digest-json", noticeDigestJson]
-          : []),
-        "--overrides-json",
-        overridesJson,
-        "--state-json",
-        stateJson,
-        "--output-html",
-        outputHtml,
-        "--output-state",
-        outputState,
-        "--output-status",
-        outputStatus,
-      ],
-      scriptDir
-    );
+    try {
+      runCommand(
+        [
+          "/usr/bin/env",
+          `PYTHONPATH=${pythonPath}`,
+          "python3",
+          "-m",
+          "klms_sync_v2.cli",
+          "build-note",
+          "--dashboard-json",
+          dashboardJson,
+          "--course-pages-json",
+          coursePagesJson,
+          "--details-json",
+          detailsJson,
+          "--supplemental-pages-json",
+          supplementalPagesJson,
+          "--supplemental-detail-pages-json",
+          supplementalDetailPagesJson,
+          ...(fileExists(noticeDigestJson)
+            ? ["--notice-digest-json", noticeDigestJson]
+            : []),
+          "--overrides-json",
+          overridesJson,
+          "--state-json",
+          stateJson,
+          "--output-html",
+          outputHtml,
+          "--output-state",
+          outputState,
+          "--output-status",
+          outputStatus,
+        ],
+        scriptDir
+      );
+    } finally {
+      if (noticeSummaryPrebuildSnapshot) {
+        restoreFileSnapshot(noticeSummaryPrebuildSnapshot);
+        noticeSummaryPrebuildSnapshot = null;
+      }
+    }
     debugStderr("after build-note");
     if (fileExists(boardArticleStatePendingJson)) {
       moveFile(boardArticleStatePendingJson, boardArticleStateJson);
@@ -1006,10 +1034,20 @@ function run(argv) {
     }
     if (status.status === "ok" && noticeSummaryEnabled && scope === "all" && !noticeSummaryAlreadySynced) {
       beginStage(steps, stageTelemetry, "notice-summary");
+      const noticeSnapshot = snapshotFiles([
+        noticeBoardStateJson,
+        noticeBoardStatePendingJson,
+        noticeSummaryStateJson,
+        noticeUserStateJson,
+        noticeNoteRenderStateJson,
+        noticeArchiveNoteRenderStateJson,
+        noticeDigestJson,
+      ]);
       try {
         syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, noticePaths, stageTelemetry);
         writeText(noticeDigestErrorTxt, "");
       } catch (noticeError) {
+        restoreFileSnapshot(noticeSnapshot);
         writeText(noticeDigestErrorTxt, String(noticeError));
         writeText(noticeNoteRenderWarningTxt, "");
       }
@@ -1728,6 +1766,14 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
     );
   }
 
+  if (paths.skipNativeRender) {
+    writeText(paths.noticeNoteRenderWarningTxt, "");
+    return {
+      results: [{ target: "render", status: "skipped", reason: "prebuild" }],
+      renderWarnings: [],
+    };
+  }
+
   if (paths.dryRun) {
     writeText(paths.noticeNoteRenderWarningTxt, "");
     return {
@@ -1822,6 +1868,10 @@ function nativeNoticeEnvironment(config) {
     .map((key) => `${key}=${config[key]}`);
 }
 
+function noticeTargetRequiresPostCaptureRender(targetKey) {
+  return targetKey === "archive";
+}
+
 function updateNoticeNativeNote(
   scriptDir,
   noteName,
@@ -1866,6 +1916,9 @@ function updateNoticeNativeNote(
     { key: "archive", args: ["--render-only", "--archive-only"] },
     { key: "primary", args: ["--render-only", "--primary-only"] },
   ];
+  const hasPostCaptureRenderTarget = targets.some((target) =>
+    noticeTargetRequiresPostCaptureRender(target.key)
+  );
   const results = [];
   const renderWarnings = [];
   let captureSucceeded = false;
@@ -1919,7 +1972,8 @@ function updateNoticeNativeNote(
     if (
       stableComparison.canCompare &&
       stableComparison.primary.matches &&
-      stableComparison.archive.matches
+      stableComparison.archive.matches &&
+      !hasPostCaptureRenderTarget
     ) {
       try {
         const formatOutputs = [
@@ -1976,7 +2030,8 @@ function updateNoticeNativeNote(
     deferStateOnlyRenderEnabled !== false &&
     stableComparison &&
     stableComparison.canCompare &&
-    stableComparison.stateOnlyDiff
+    stableComparison.stateOnlyDiff &&
+    !hasPostCaptureRenderTarget
   ) {
     const differingTargets = ["archive", "primary"].filter(
       (key) => !stableComparison[key].matches
@@ -2028,7 +2083,8 @@ function updateNoticeNativeNote(
         stableComparison.canCompare
           ? stableComparison[target.key]
           : null;
-      if (targetComparison && targetComparison.matches) {
+      const mustRenderAfterCapture = noticeTargetRequiresPostCaptureRender(target.key);
+      if (targetComparison && targetComparison.matches && !mustRenderAfterCapture) {
         try {
           const formatOutput = verifyNoticeNativeNoteReadableFormat(
             target.key === "archive" ? archiveNoteName : noteName,
@@ -3805,6 +3861,24 @@ function writeText(path, text) {
       `Failed to write ${path}: ${ObjC.unwrap(error[0].localizedDescription)}`
     );
   }
+}
+
+function snapshotFiles(paths) {
+  return paths.map((path) => ({
+    path,
+    exists: fileExists(path),
+    text: fileExists(path) ? readText(path) : "",
+  }));
+}
+
+function restoreFileSnapshot(snapshots) {
+  snapshots.forEach((snapshot) => {
+    if (snapshot.exists) {
+      writeText(snapshot.path, snapshot.text);
+    } else {
+      removeFileIfExists(snapshot.path);
+    }
+  });
 }
 
 function writeDryRunReport(path, payload) {

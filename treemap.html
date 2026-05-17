@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>klms-notes-sync — 코드 트리맵</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'SF Mono', 'Menlo', monospace; background: #0d1117; color: #e6edf3; }
+  h1 { padding: 16px 20px 4px; font-size: 15px; font-weight: 600; color: #8b949e; letter-spacing: 0.04em; }
+  #legend { display: flex; gap: 16px; padding: 8px 20px 12px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #8b949e; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+  #chart { width: 100vw; height: calc(100vh - 80px); }
+  .node rect {
+    stroke: #0d1117;
+    stroke-width: 1.5px;
+    rx: 3;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .node rect:hover { opacity: 0.82; }
+  .node text {
+    font-size: 10px;
+    fill: rgba(255,255,255,0.88);
+    pointer-events: none;
+    dominant-baseline: middle;
+  }
+  .node .filename { font-size: 11px; font-weight: 600; }
+  .node .lines-label { font-size: 9px; fill: rgba(255,255,255,0.55); }
+  .dir-label {
+    font-size: 11px;
+    font-weight: 700;
+    fill: rgba(255,255,255,0.4);
+    pointer-events: none;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  #tooltip {
+    position: fixed;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    max-width: 280px;
+    z-index: 100;
+  }
+  #tooltip .tip-path { color: #8b949e; font-size: 10px; margin-bottom: 4px; }
+  #tooltip .tip-name { color: #e6edf3; font-weight: 700; margin-bottom: 6px; }
+  #tooltip .tip-lines { color: #58a6ff; }
+  #tooltip .tip-type { color: #8b949e; font-size: 10px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<h1>klms-notes-sync / 코드 트리맵 (라인 수 기준)</h1>
+<div id="legend"></div>
+<div id="chart"></div>
+<div id="tooltip"></div>
+
+<script>
+const EXT_COLOR = {
+  py:    '#3b82f6',  // blue
+  js:    '#f59e0b',  // amber
+  sh:    '#10b981',  // emerald
+  swift: '#a78bfa',  // violet
+  md:    '#6b7280',  // gray
+};
+const EXT_LABEL = { py:'Python', js:'JavaScript / JXA', sh:'Shell', swift:'Swift', md:'Markdown' };
+const DIR_COLOR = '#1c2128';
+
+const data = {
+  name: 'klms-notes-sync',
+  children: [
+    {
+      name: 'src/python',
+      children: [
+        { name: 'klms_sync.py',           lines: 5229, ext: 'py' },
+        { name: 'klms_transport.py',       lines:  134, ext: 'py' },
+        { name: 'fetch_pages_backend.py',  lines:  901, ext: 'py' },
+        { name: 'process_klms_assignments.py', lines: 935, ext: 'py' },
+        { name: 'build_course_file_manifest.py', lines: 1157, ext: 'py' },
+        { name: 'build_course_file_sync_preview.py', lines: 269, ext: 'py' },
+        { name: 'build_course_file_dry_run_report.py', lines: 79, ext: 'py' },
+        { name: 'build_files_stage_timings.py', lines: 174, ext: 'py' },
+        { name: 'prune_course_files.py',   lines: 137, ext: 'py' },
+        { name: 'sync_report.py',          lines: 155, ext: 'py' },
+        { name: 'verify_sync_state.py',    lines: 185, ext: 'py' },
+        { name: 'doctor.py',               lines: 129, ext: 'py' },
+        { name: 'build_pdf_from_images.py', lines: 55, ext: 'py' },
+        {
+          name: 'klms_sync_v2',
+          children: [
+            { name: 'pipeline.py',     lines: 109, ext: 'py' },
+            { name: 'models.py',       lines: 158, ext: 'py' },
+            { name: 'cli.py',          lines: 466, ext: 'py' },
+            { name: 'dates.py',        lines: 233, ext: 'py' },
+            { name: 'classifiers.py',  lines: 227, ext: 'py' },
+            { name: 'render.py',       lines:  94, ext: 'py' },
+            { name: 'text.py',         lines:  48, ext: 'py' },
+            { name: 'exam_fields.py',  lines:  44, ext: 'py' },
+            { name: 'overrides.py',    lines:  90, ext: 'py' },
+            { name: 'legacy_bridge.py', lines: 153, ext: 'py' },
+            { name: '__init__.py',     lines:  18, ext: 'py' },
+          ]
+        },
+      ]
+    },
+    {
+      name: 'src/js',
+      children: [
+        { name: 'sync_klms_notes.js',        lines: 4004, ext: 'js' },
+        { name: 'download_klms_files.js',     lines: 3110, ext: 'js' },
+        { name: 'fetch_pages_with_safari.js', lines:  511, ext: 'js' },
+        { name: 'cleanup_tracked_downloads.js', lines: 357, ext: 'js' },
+        { name: 'kaikey_safari_step.js',      lines:  346, ext: 'js' },
+        { name: 'download_klms_media_via_safari.js', lines: 342, ext: 'js' },
+        { name: 'notify_klms_reminders.js',   lines:  300, ext: 'js' },
+        { name: 'export_panopto_transcripts.js', lines: 274, ext: 'js' },
+        { name: 'sync_klms_calendar_jxa.js',  lines:  414, ext: 'js' },
+        { name: 'fetch_active_safari_page.js', lines: 108, ext: 'js' },
+        { name: 'inspect_klms_tabs.js',       lines:   41, ext: 'js' },
+      ]
+    },
+    {
+      name: 'src/swift',
+      children: [
+        { name: 'update_notice_native_note.swift', lines: 4645, ext: 'swift' },
+        { name: 'sync_klms_calendar_suite.swift',  lines:  824, ext: 'swift' },
+        { name: 'sync_klms_calendar.swift',        lines:  811, ext: 'swift' },
+        { name: 'capture_notice_native_state.swift', lines: 644, ext: 'swift' },
+        { name: 'notice_native_note_support.swift', lines: 385, ext: 'swift' },
+        { name: 'verify_calendar_counts.swift',    lines:  119, ext: 'swift' },
+        { name: 'decode_qr_image.swift',           lines:   37, ext: 'swift' },
+      ]
+    },
+    {
+      name: 'src/sh',
+      children: [
+        { name: 'klms_common.sh',              lines: 597, ext: 'sh' },
+        { name: 'update_notice_native_note.sh', lines: 176, ext: 'sh' },
+        { name: 'launch_sync_if_idle.sh',      lines: 176, ext: 'sh' },
+        { name: 'cleanup_runtime_tmp.sh',      lines: 130, ext: 'sh' },
+        { name: 'run_download_files_step.sh',  lines:  58, ext: 'sh' },
+        { name: 'watch_klms_login_recovery.sh', lines:  90, ext: 'sh' },
+      ]
+    },
+    {
+      name: 'bin',
+      children: [
+        { name: 'refresh_course_files.sh',     lines: 1194, ext: 'sh' },
+        { name: 'kaikey_auto_login.sh',        lines:  217, ext: 'sh' },
+        { name: 'sync_klms_all.sh',            lines:  142, ext: 'sh' },
+        { name: 'kaikey_setup.sh',             lines:  100, ext: 'sh' },
+        { name: 'run_all_parallel.sh',         lines:   89, ext: 'sh' },
+        { name: 'kaikey_approve_number.sh',    lines:   69, ext: 'sh' },
+        { name: 'verify_sync_state.sh',        lines:   53, ext: 'sh' },
+        { name: 'klms_v2_build_state.sh',      lines:   27, ext: 'sh' },
+        { name: 'process_klms_assignments.sh', lines:   39, ext: 'sh' },
+        { name: 'doctor.sh',                   lines:   39, ext: 'sh' },
+        { name: 'sync_report.sh',              lines:   37, ext: 'sh' },
+        { name: 'sync_klms_notice.sh',         lines:   11, ext: 'sh' },
+        { name: 'sync_klms_core.sh',           lines:   11, ext: 'sh' },
+        { name: 'run_all_full.sh',             lines:   21, ext: 'sh' },
+        { name: 'run_all.sh',                  lines:   20, ext: 'sh' },
+      ]
+    },
+    {
+      name: 'tests',
+      children: [
+        { name: 'test_notice_read_state_safety.py', lines: 471, ext: 'py' },
+        { name: 'test_v2_core.py',                  lines: 393, ext: 'py' },
+        { name: 'test_course_file_manifest.py',     lines: 268, ext: 'py' },
+        { name: 'test_shell_entrypoint_cleanup.py', lines: 273, ext: 'py' },
+        { name: 'test_process_klms_assignments.py', lines: 254, ext: 'py' },
+        { name: 'test_fetch_pages_backend.py',      lines: 253, ext: 'py' },
+        { name: 'test_course_file_sync_preview.py', lines: 157, ext: 'py' },
+        { name: 'test_notice_body_paragraphs.py',   lines:  64, ext: 'py' },
+        { name: 'test_download_filename_safety.py', lines: 159, ext: 'py' },
+        { name: 'test_login_assist_performance.py', lines:  67, ext: 'py' },
+        { name: 'test_klms_sync_course_items.py',   lines: 136, ext: 'py' },
+        { name: 'test_prune_course_files.py',       lines: 135, ext: 'py' },
+        { name: 'test_calendar_exam_fields.py',     lines: 148, ext: 'py' },
+        { name: 'test_notice_filters.py',           lines:  57, ext: 'py' },
+        { name: 'test_sync_report.py',              lines:  24, ext: 'py' },
+        { name: 'test_build_course_file_dry_run_report.py', lines: 80, ext: 'py' },
+        { name: 'test_build_files_stage_timings.py', lines: 59, ext: 'py' },
+        { name: 'test_doctor.py',                   lines:  45, ext: 'py' },
+      ]
+    },
+    {
+      name: 'legacy',
+      children: [
+        { name: 'download_klms_media_via_safari.js', lines: 342, ext: 'js' },
+        { name: 'download_klms_files_xhr_simple.js', lines: 310, ext: 'js' },
+        { name: 'export_panopto_transcripts.js',     lines: 274, ext: 'js' },
+        { name: 'fetch_active_safari_page.js',       lines: 108, ext: 'js' },
+        { name: 'extract_document_text.swift',       lines: 147, ext: 'swift' },
+        { name: 'README.md',                         lines:  14, ext: 'md' },
+      ]
+    },
+    {
+      name: 'docs',
+      children: [
+        { name: 'feature-behavior.md',      lines: 148, ext: 'md' },
+        { name: 'sync-workflows.md',        lines: 133, ext: 'md' },
+        { name: 'repository-layout.md',     lines:  65, ext: 'md' },
+        { name: 'publication-checklist.md', lines:  55, ext: 'md' },
+        { name: 'README.md',               lines:  10, ext: 'md' },
+      ]
+    },
+    {
+      name: 'root',
+      children: [
+        { name: 'README.md',               lines: 122, ext: 'md' },
+        { name: 'install_launch_agent.sh', lines: 133, ext: 'sh' },
+        { name: 'SECURITY.md',            lines:  35, ext: 'md' },
+        { name: 'THIRD_PARTY_NOTICES.md', lines:  29, ext: 'md' },
+      ]
+    }
+  ]
+};
+
+// Legend
+const legendEl = document.getElementById('legend');
+Object.entries(EXT_LABEL).forEach(([ext, label]) => {
+  legendEl.innerHTML += `<div class="legend-item">
+    <div class="legend-dot" style="background:${EXT_COLOR[ext]}"></div>
+    <span>${label}</span>
+  </div>`;
+});
+
+// Compute value for leaves
+function computeValues(node) {
+  if (node.lines !== undefined) {
+    node.value = node.lines;
+  } else if (node.children) {
+    node.children.forEach(computeValues);
+    node.value = node.children.reduce((s, c) => s + (c.value || 0), 0);
+  }
+}
+computeValues(data);
+
+const chart = document.getElementById('chart');
+const W = window.innerWidth;
+const H = window.innerHeight - 80;
+chart.style.width = W + 'px';
+chart.style.height = H + 'px';
+
+const svg = d3.select('#chart').append('svg')
+  .attr('width', W).attr('height', H);
+
+const root = d3.hierarchy(data)
+  .sum(d => d.lines || 0)
+  .sort((a, b) => b.value - a.value);
+
+d3.treemap()
+  .size([W, H])
+  .paddingOuter(8)
+  .paddingTop(22)
+  .paddingInner(2)
+  .round(true)(root);
+
+const tip = document.getElementById('tooltip');
+
+// Draw groups
+const node = svg.selectAll('g')
+  .data(root.descendants())
+  .join('g')
+  .attr('class', 'node')
+  .attr('transform', d => `translate(${d.x0},${d.y0})`);
+
+// Background rects for all nodes
+node.append('rect')
+  .attr('width', d => Math.max(0, d.x1 - d.x0))
+  .attr('height', d => Math.max(0, d.y1 - d.y0))
+  .attr('fill', d => {
+    if (!d.depth) return 'transparent';
+    if (d.children) return DIR_COLOR;
+    return EXT_COLOR[d.data.ext] || '#4b5563';
+  })
+  .attr('fill-opacity', d => {
+    if (!d.depth) return 0;
+    if (d.children) return 1;
+    // Scale opacity by size for depth effect
+    return 0.72 + Math.min(0.28, d.value / 6000 * 0.28);
+  })
+  .on('mousemove', function(event, d) {
+    if (!d.data.lines) return;
+    const pct = ((d.value / root.value) * 100).toFixed(1);
+    const path = d.ancestors().reverse().slice(1).map(n => n.data.name).join(' / ');
+    tip.innerHTML = `
+      <div class="tip-path">${path.replace(' / ' + d.data.name, '')}</div>
+      <div class="tip-name">${d.data.name}</div>
+      <div class="tip-lines">${d.data.lines.toLocaleString()} lines  <span style="color:#8b949e">(${pct}%)</span></div>
+      <div class="tip-type">${EXT_LABEL[d.data.ext] || d.data.ext}</div>
+    `;
+    tip.style.opacity = 1;
+    tip.style.left = (event.clientX + 14) + 'px';
+    tip.style.top  = (event.clientY - 10) + 'px';
+  })
+  .on('mouseleave', () => { tip.style.opacity = 0; });
+
+// Directory labels
+node.filter(d => d.depth > 0 && d.children)
+  .append('text')
+  .attr('class', 'dir-label')
+  .attr('x', 5).attr('y', 14)
+  .text(d => {
+    const w = d.x1 - d.x0;
+    const name = d.data.name;
+    if (w < 40) return '';
+    return name.length * 7 > w ? name.slice(0, Math.floor(w/7) - 1) + '…' : name;
+  });
+
+// File labels for leaves
+node.filter(d => !d.children && d.depth > 0)
+  .each(function(d) {
+    const w = d.x1 - d.x0;
+    const h = d.y1 - d.y0;
+    if (w < 28 || h < 14) return;
+
+    const g = d3.select(this);
+    const name = d.data.name;
+    const maxChars = Math.floor(w / 6.2);
+
+    if (h >= 28) {
+      g.append('text')
+        .attr('class', 'filename')
+        .attr('x', w / 2)
+        .attr('y', h / 2 - 6)
+        .attr('text-anchor', 'middle')
+        .text(name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name);
+
+      g.append('text')
+        .attr('class', 'lines-label')
+        .attr('x', w / 2)
+        .attr('y', h / 2 + 8)
+        .attr('text-anchor', 'middle')
+        .text(d.data.lines.toLocaleString() + ' lines');
+    } else {
+      g.append('text')
+        .attr('class', 'filename')
+        .attr('x', w / 2)
+        .attr('y', h / 2)
+        .attr('text-anchor', 'middle')
+        .text(name.length > maxChars ? name.slice(0, maxChars - 1) + '…' : name);
+    }
+  });
+
+// Total count
+const total = root.leaves().reduce((s, d) => s + (d.data.lines || 0), 0);
+svg.append('text')
+  .attr('x', W - 12).attr('y', H - 8)
+  .attr('text-anchor', 'end')
+  .attr('fill', '#30363d')
+  .attr('font-size', 10)
+  .text(`총 ${total.toLocaleString()} lines · ${root.leaves().length} files`);
+</script>
+</body>
+</html>

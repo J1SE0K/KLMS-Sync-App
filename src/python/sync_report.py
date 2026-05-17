@@ -24,6 +24,31 @@ def load_json(path: Path, default: Any) -> Any:
         return default
 
 
+def load_state(state_json: Path) -> dict[str, Any]:
+    state = load_json(state_json, {})
+    if isinstance(state, dict) and isinstance(state.get("content"), dict):
+        return state
+
+    next_state = state_json.with_name("next_state.json")
+    fallback = load_json(next_state, {})
+    if isinstance(fallback, dict) and isinstance(fallback.get("content"), dict):
+        return fallback
+    return state if isinstance(state, dict) else {}
+
+
+def load_cache_json(cache_dir: Path, relative_path: str, default: Any) -> Any:
+    primary = cache_dir / relative_path
+    data = load_json(primary, None)
+    if data is not None:
+        return data
+
+    scoped = cache_dir / "files" / relative_path
+    data = load_json(scoped, None)
+    if data is not None:
+        return data
+    return default
+
+
 def stage_summary(cache_dir: Path, scope: str) -> dict[str, Any]:
     path = cache_dir / scope / "stage_timings.json"
     data = load_json(path, {})
@@ -55,12 +80,12 @@ def combined_slowest_stages(*timing_payloads: dict[str, Any]) -> list[dict[str, 
 
 
 def build_report(cache_dir: Path, state_json: Path) -> dict[str, Any]:
-    state = load_json(state_json, {})
+    state = load_state(state_json)
     content = state.get("content", {}) if isinstance(state, dict) else {}
     notice_digest = load_json(cache_dir / "notice_digest.json", {})
-    download = load_json(cache_dir / "course_file_download_result.json", {})
-    prune = load_json(cache_dir / "course_file_prune_result.json", {})
-    archive_prune = load_json(cache_dir / "course_file_archive_prune_result.json", {})
+    download = load_cache_json(cache_dir, "course_file_download_result.json", {})
+    prune = load_cache_json(cache_dir, "course_file_prune_result.json", {})
+    archive_prune = load_cache_json(cache_dir, "course_file_archive_prune_result.json", {})
     core_timing = load_json(cache_dir / "core" / "stage_timings.json", {})
     notice_timing = load_json(cache_dir / "notice" / "stage_timings.json", {})
     files_timing = load_json(cache_dir / "files" / "stage_timings.json", {})
@@ -106,7 +131,10 @@ def print_text(report: dict[str, Any]) -> None:
     print("KLMS sync report")
     for name in ("core", "notice", "files"):
         run = runs[name]
-        print(f"{name}: status={run['status']} completed_at={run['completed_at']} elapsed_ms={run['elapsed_ms']}")
+        print(
+            f"{name}: status={run['status']} completed_at={run['completed_at']} "
+            f"elapsed_s={format_seconds(run['elapsed_ms'])}"
+        )
     print(
         "state: "
         f"assignments={report['state']['assignments']} "
@@ -135,7 +163,26 @@ def print_text(report: dict[str, Any]) -> None:
         f"deleted={report['calendar']['deleted']}"
     )
     for item in report["slowest"]:
-        print(f"slowest={item.get('name', '')} duration_ms={item.get('duration_ms', 0)} status={item.get('status', '')}")
+        print(
+            f"slowest={item.get('name', '')} "
+            f"duration_s={format_seconds(item.get('duration_ms', 0))} "
+            f"status={item.get('status', '')}"
+        )
+
+
+def format_seconds(milliseconds: Any) -> str:
+    try:
+        value = int(milliseconds or 0)
+    except (TypeError, ValueError):
+        value = 0
+    seconds = value / 1000
+    if value % 1000 == 0:
+        return f"{value // 1000}s"
+    if seconds >= 100:
+        return f"{seconds:.0f}s"
+    if seconds >= 10:
+        return f"{seconds:.1f}s"
+    return f"{seconds:.2f}s"
 
 
 def main() -> int:

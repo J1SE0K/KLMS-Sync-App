@@ -28,6 +28,7 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 
 | 경로 | 역할 |
 | --- | --- |
+| `apps/KLMSync/` | SwiftUI macOS 메뉴바 앱, iPhone companion, 공유 앱 모델/테스트 |
 | `bin/` | 루트 wrapper가 호출하는 실제 shell entrypoint |
 | `src/sh/` | 공통 shell helper, launchd worker, runtime cleanup |
 | `src/js/` | Safari/JXA 자동화, Notes/Reminders runner, Kaikey CLI |
@@ -37,6 +38,7 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 | `examples/` | 공개 가능한 설정과 manual override 예시 |
 | `docs/` | 상세 운영 문서와 공개 전 체크리스트 |
 | `legacy/` | 현재 기본 경로가 아닌 호환/디버깅용 스크립트 |
+| `tools/` | 로컬 앱 번들 빌드 같은 개발/배포 보조 스크립트 |
 
 ## Runtime And Private Data
 
@@ -57,6 +59,8 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 ## Installed Copy
 
 `install_launch_agent.sh`는 root wrapper, `bin/`, `src/`, `examples/` 일부와 launchd worker를 `~/Library/Application Support/KLMSNotesSync`로 복사한다. 자동 실행은 Documents 폴더 보호와 작업 디렉터리 변동을 피하기 위해 이 설치본을 기준으로 돈다.
+
+`tools/build_klms_mac_app.sh`는 기본적으로 `~/Applications/KLMS Sync.app`을 만들고 현재 레포의 code payload를 앱 리소스에 주입한다. `DIST_DIR`로 다른 출력 위치를 지정할 수 있지만, `Documents`/iCloud-backed 폴더는 File Provider 메타데이터 때문에 codesign이 실패할 수 있다. 앱 installer도 같은 설치본 위치를 쓰며 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`, `kaikey_state.json`은 덮어쓰지 않는다.
 
 설정을 바꾸거나 entrypoint 구현을 수정한 뒤 자동 실행에도 반영하려면 다시 실행한다.
 

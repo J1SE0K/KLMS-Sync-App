@@ -3810,6 +3810,7 @@ func buildRenderPlan(
     }
 
     let plan = RenderPlan(
+        mode: mode,
         bodyLines: bodyLines,
         titleLineIndex: 0,
         summaryLineIndex: 1,
@@ -3834,6 +3835,23 @@ func buildRenderPlan(
         visibleImportantCount: visibleImportantCount
     )
     return PlanBuildResult(plan: plan, currentNoticeIds: currentNoticeIds)
+}
+
+func noticeDisplayModeName(_ mode: NoticeDisplayMode) -> String {
+    mode == .archive ? "archive" : "primary"
+}
+
+func shouldCollapseNoticeCourses(_ plan: RenderPlan) -> Bool {
+    collapseNoticeCoursesEnabled || plan.mode == .archive
+}
+
+func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool {
+    _ = plan
+    return collapseNoticeItemsEnabled
+}
+
+func shouldApplyCollapsibleGroupStyle(_ plan: RenderPlan) -> Bool {
+    uiCollapsibleGroupStyleFormattingEnabled || plan.mode == .archive
 }
 
 func renderBodyLines(
@@ -3895,6 +3913,9 @@ func renderNativeNoteOnce(
     strategy: RenderStrategy
 ) -> (collapsedSections: Int, issues: [String]) {
     timingLog("render_once_start note=\(noteTitle) strategy=\(strategy)")
+    let effectiveCollapseCoursesEnabled = shouldCollapseNoticeCourses(plan)
+    let effectiveCollapseNoticeItemsEnabled = shouldCollapseNoticeItems(plan)
+    let effectiveCollapsibleGroupStyleFormattingEnabled = shouldApplyCollapsibleGroupStyle(plan)
     timingLog("render_body_start note=\(noteTitle)")
     renderBodyLines(
         context: context,
@@ -4179,7 +4200,7 @@ func renderNativeNoteOnce(
 
     rememberReadabilityFormattingTargets()
 
-    if uiCollapsibleGroupStyleFormattingEnabled {
+    if effectiveCollapsibleGroupStyleFormattingEnabled {
         timingLog("style_apply_start note=\(noteTitle)")
         applyStyle(
             lineRange(plan.titleLineIndex, fallback: plan.titleRange),
@@ -4210,7 +4231,7 @@ func renderNativeNoteOnce(
             applyStyle(lineRange(index, fallback: fallback), menuItems: ["머리말", "Heading"], fallbackToBold: true)
         }
 
-        if uiStyleMenuFormattingEnabled || styleNoticeItemsAsHeadingsEnabled || collapseNoticeItemsEnabled {
+        if uiStyleMenuFormattingEnabled || styleNoticeItemsAsHeadingsEnabled || effectiveCollapseNoticeItemsEnabled {
             for notice in plan.renderedNotices {
                 let titleRange = lineRange(notice.sectionLineIndex, fallback: notice.sectionRange)
                 applyStyle(titleRange, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
@@ -4323,7 +4344,7 @@ func renderNativeNoteOnce(
     }
 
     var collapsedSections = 0
-    if collapseNoticeSectionsEnabled {
+    if collapseNoticeSectionsEnabled || effectiveCollapseCoursesEnabled || effectiveCollapseNoticeItemsEnabled {
         Thread.sleep(forTimeInterval: noticeCollapseStyleSettleDelay)
 
         func collapseHeading(_ range: LineRange, label: String) {
@@ -4361,7 +4382,16 @@ func renderNativeNoteOnce(
             timingLog("collapse_heading_skip note=\(noteTitle) label=\(label) reason=retry-exhausted")
         }
 
-        if collapseNoticeCoursesEnabled {
+        if effectiveCollapseNoticeItemsEnabled {
+            let noticeCollapseRanges = plan.renderedNotices.map {
+                lineRange($0.sectionLineIndex, fallback: $0.sectionRange)
+            }
+            for (offset, range) in noticeCollapseRanges.enumerated().reversed() {
+                collapseHeading(range, label: "notice-\(offset + 1)")
+            }
+        }
+
+        if effectiveCollapseCoursesEnabled {
             let courseCollapseRanges = plan.courseHeadingLineIndexes.enumerated().map { offset, index in
                 lineRange(index, fallback: plan.courseHeadingRanges[offset])
             }
@@ -4370,26 +4400,19 @@ func renderNativeNoteOnce(
             }
         }
 
-        let sectionCollapseRanges =
-            plan.importantHeadingLineIndexes.enumerated().map { offset, index in
-                lineRange(index, fallback: plan.importantHeadingRanges[offset])
-            }
-            + plan.freshHeadingLineIndexes.enumerated().map { offset, index in
-                lineRange(index, fallback: plan.freshHeadingRanges[offset])
-            }
-            + plan.unreadHeadingLineIndexes.enumerated().map { offset, index in
-                lineRange(index, fallback: plan.unreadHeadingRanges[offset])
-            }
-        for (offset, range) in sectionCollapseRanges.enumerated().reversed() {
-            collapseHeading(range, label: "section-\(offset + 1)")
-        }
-
-        if collapseNoticeItemsEnabled {
-            let noticeCollapseRanges = plan.renderedNotices.map {
-                lineRange($0.sectionLineIndex, fallback: $0.sectionRange)
-            }
-            for (offset, range) in noticeCollapseRanges.enumerated().reversed() {
-                collapseHeading(range, label: "notice-\(offset + 1)")
+        if collapseNoticeSectionsEnabled {
+            let sectionCollapseRanges =
+                plan.importantHeadingLineIndexes.enumerated().map { offset, index in
+                    lineRange(index, fallback: plan.importantHeadingRanges[offset])
+                }
+                + plan.freshHeadingLineIndexes.enumerated().map { offset, index in
+                    lineRange(index, fallback: plan.freshHeadingRanges[offset])
+                }
+                + plan.unreadHeadingLineIndexes.enumerated().map { offset, index in
+                    lineRange(index, fallback: plan.unreadHeadingRanges[offset])
+                }
+            for (offset, range) in sectionCollapseRanges.enumerated().reversed() {
+                collapseHeading(range, label: "section-\(offset + 1)")
             }
         }
     }
@@ -4437,10 +4460,11 @@ func renderNativeNote(
 
 func renderContentHash(for plan: RenderPlan) -> String {
     var components: [String] = [nativeNoticeRenderStyleVersion]
-    components.reserveCapacity(plan.bodyLines.count + plan.renderedNotices.count + 2)
+    components.reserveCapacity(plan.bodyLines.count + plan.renderedNotices.count + 6)
+    components.append("display_mode=\(noticeDisplayModeName(plan.mode))")
     components.append("collapse_sections=\(collapseNoticeSectionsEnabled ? "1" : "0")")
-    components.append("collapse_courses=\(collapseNoticeCoursesEnabled ? "1" : "0")")
-    components.append("collapse_notice_items=\(collapseNoticeItemsEnabled ? "1" : "0")")
+    components.append("collapse_courses=\(shouldCollapseNoticeCourses(plan) ? "1" : "0")")
+    components.append("collapse_notice_items=\(shouldCollapseNoticeItems(plan) ? "1" : "0")")
     components.append("style_notice_items=\(styleNoticeItemsAsHeadingsEnabled ? "1" : "0")")
     components.append("ui_style_menu=\(uiStyleMenuFormattingEnabled ? "1" : "0")")
     for line in plan.bodyLines {
@@ -4659,7 +4683,7 @@ enum NoticeNativeNoteMain {
             plan: archiveBuildResult.plan,
             previousRenderState: previousArchiveRenderState,
             renderStatePath: arguments.archiveRenderStatePath,
-            allowNoOpSkip: true,
+            allowNoOpSkip: false,
             skipActivation: arguments.skipNoteActivation,
             notesPID: arguments.notesPID
         )

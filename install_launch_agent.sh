@@ -37,6 +37,7 @@ cp "$SCRIPT_DIR/verify_sync_state.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/doctor.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/sync_report.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/process_klms_assignments.sh" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/klms_v2_build_state.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/config.env" "$INSTALL_DIR/"
 if [[ -f "$SCRIPT_DIR/manual_assignment_overrides.json" ]]; then
   cp "$SCRIPT_DIR/manual_assignment_overrides.json" "$INSTALL_DIR/"
@@ -56,7 +57,8 @@ chmod +x \
   "$INSTALL_DIR/verify_sync_state.sh" \
   "$INSTALL_DIR/doctor.sh" \
   "$INSTALL_DIR/sync_report.sh" \
-  "$INSTALL_DIR/process_klms_assignments.sh"
+  "$INSTALL_DIR/process_klms_assignments.sh" \
+  "$INSTALL_DIR/klms_v2_build_state.sh"
 
 find "$INSTALL_DIR/src/sh" "$INSTALL_DIR/src/js" "$INSTALL_DIR/src/python" -type f \
   \( -name '*.sh' -o -name '*.js' -o -name '*.mjs' -o -name '*.py' \) \

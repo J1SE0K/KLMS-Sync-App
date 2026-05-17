@@ -260,19 +260,26 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn("styleNoticeItemsAsHeadingsEnabled", support)
         self.assertIn("uiCollapsibleGroupStyleFormattingEnabled", support)
         self.assertIn("noticeCollapseStyleSettleDelay", support)
+        self.assertIn("let mode: NoticeDisplayMode", support)
         self.assertIn("uiCollapsibleGroupStyleFormattingEnabled", renderer)
+        self.assertIn("func shouldCollapseNoticeCourses(_ plan: RenderPlan) -> Bool", renderer)
+        self.assertIn("func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool", renderer)
+        self.assertIn("collapseNoticeCoursesEnabled || plan.mode == .archive", renderer)
+        self.assertIn("return collapseNoticeItemsEnabled", renderer)
         self.assertIn('menuItems: ["제목", "Title"]', renderer)
         self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
         self.assertIn(
-            "if uiStyleMenuFormattingEnabled || styleNoticeItemsAsHeadingsEnabled || collapseNoticeItemsEnabled",
+            "if uiStyleMenuFormattingEnabled || styleNoticeItemsAsHeadingsEnabled || effectiveCollapseNoticeItemsEnabled",
             renderer,
         )
         self.assertIn("collapse_heading_retry", renderer)
-        self.assertIn("if collapseNoticeCoursesEnabled", renderer)
+        self.assertIn("if effectiveCollapseCoursesEnabled", renderer)
+        self.assertIn("if effectiveCollapseNoticeItemsEnabled", renderer)
         self.assertIn("collapseHeading(range, label: \"course-\\(offset + 1)\")", renderer)
         self.assertIn("collapseHeading(range, label: \"section-\\(offset + 1)\")", renderer)
-        self.assertIn("collapse_courses=\\(collapseNoticeCoursesEnabled ? \"1\" : \"0\")", renderer)
-        self.assertIn("collapse_notice_items=\\(collapseNoticeItemsEnabled ? \"1\" : \"0\")", renderer)
+        self.assertIn("display_mode=\\(noticeDisplayModeName(plan.mode))", renderer)
+        self.assertIn("collapse_courses=\\(shouldCollapseNoticeCourses(plan) ? \"1\" : \"0\")", renderer)
+        self.assertIn("collapse_notice_items=\\(shouldCollapseNoticeItems(plan) ? \"1\" : \"0\")", renderer)
         self.assertIn("style_notice_items=\\(styleNoticeItemsAsHeadingsEnabled ? \"1\" : \"0\")", renderer)
         self.assertIn("NOTICE_COLLAPSE_SECTIONS=\"1\"", config)
         self.assertIn("NOTICE_COLLAPSE_COURSES=\"0\"", config)
@@ -280,11 +287,12 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn("NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS=\"1\"", config)
         self.assertIn("NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT=\"1\"", config)
 
-        course_index = renderer.index("let courseCollapseRanges")
-        section_index = renderer.index("let sectionCollapseRanges")
-        notice_index = renderer.index("if collapseNoticeItemsEnabled")
+        collapse_block_index = renderer.index("var collapsedSections = 0")
+        notice_index = renderer.index("if effectiveCollapseNoticeItemsEnabled", collapse_block_index)
+        course_index = renderer.index("let courseCollapseRanges", collapse_block_index)
+        section_index = renderer.index("let sectionCollapseRanges", collapse_block_index)
+        self.assertLess(notice_index, course_index)
         self.assertLess(course_index, section_index)
-        self.assertLess(section_index, notice_index)
 
     def test_notice_ui_operations_force_target_note_focus(self) -> None:
         renderer = (
@@ -319,6 +327,9 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
             renderer.index("let archivedCollapsedSections = arguments.target == \"primary\""),
             renderer.index("let collapsedSections = arguments.target == \"archive\""),
         )
+        self.assertIn("noticeTargetRequiresPostCaptureRender", js)
+        self.assertIn("targetComparison && targetComparison.matches && !mustRenderAfterCapture", js)
+        self.assertIn("allowNoOpSkip: false", renderer)
 
     def test_notice_native_config_is_passed_to_swift_wrapper(self) -> None:
         js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
@@ -333,6 +344,60 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn('"NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT"', js)
         self.assertIn("noticeNativeEnvironment", js)
         self.assertIn("...nativeEnv", js)
+
+    def test_notice_prebuild_warning_does_not_fail_core_sync(self) -> None:
+        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+        prebuild = js[
+            js.index('beginStage(steps, stageTelemetry, "notice-summary-prebuild")') :
+            js.index('debugStderr("after notice-summary-prebuild")')
+        ]
+
+        self.assertIn("notice-summary-prebuild warning ignored", prebuild)
+        self.assertNotIn("throw noticeError", prebuild)
+
+    def test_notice_summary_failure_restores_previous_notice_cache(self) -> None:
+        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+        prebuild = js[
+            js.index('beginStage(steps, stageTelemetry, "notice-summary-prebuild")') :
+            js.index('debugStderr("after notice-summary-prebuild")')
+        ]
+        final_summary = js[
+            js.index('beginStage(steps, stageTelemetry, "notice-summary");') :
+            js.index("completeStageTelemetry(stageTelemetry", js.index('beginStage(steps, stageTelemetry, "notice-summary");'))
+        ]
+
+        self.assertIn("const noticeSnapshot = snapshotFiles", prebuild)
+        self.assertIn("restoreFileSnapshot(noticeSnapshot)", prebuild)
+        self.assertIn("const noticeSnapshot = snapshotFiles", final_summary)
+        self.assertIn("restoreFileSnapshot(noticeSnapshot)", final_summary)
+
+    def test_core_notice_prebuild_skips_native_render_and_restores_cache_after_build_note(self) -> None:
+        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+        prebuild = js[
+            js.index('beginStage(steps, stageTelemetry, "notice-summary-prebuild")') :
+            js.index('debugStderr("after notice-summary-prebuild")')
+        ]
+        build_note = js[
+            js.index('beginStage(steps, stageTelemetry, "build-note")') :
+            js.index('debugStderr("after build-note")')
+        ]
+        sync_notice_summary = js[
+            js.index("function syncNoticeSummary") :
+            js.index("function classifyNoticeRenderError")
+        ]
+
+        self.assertIn("skipNativeRender: true", prebuild)
+        self.assertIn("noticeSummaryPrebuildSnapshot = noticeSnapshot", prebuild)
+        self.assertIn("finally", build_note)
+        self.assertIn("restoreFileSnapshot(noticeSummaryPrebuildSnapshot)", build_note)
+        self.assertIn("paths.skipNativeRender", sync_notice_summary)
+        self.assertIn('reason: "prebuild"', sync_notice_summary)
 
     def test_notice_style_version_is_shared_between_swift_and_js(self) -> None:
         support = (

@@ -210,7 +210,11 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
         ), "exam-candidate"
 
     if ASSIGNMENT_WORD_RE.search(text) and DEADLINE_RE.search(text):
-        title_match = re.search(r"\b(Project\s+\d+|HW\s*\d+|Assignment\s+\d+)\b", text, re.IGNORECASE)
+        title_match = re.search(
+            r"\b(Project\s+\d+|HW\s*\d+|(?:Programming|Written)\s+Assignment\s+\d+|Assignment\s+\d+)\b",
+            text,
+            re.IGNORECASE,
+        )
         title = title_match.group(1) if title_match else notice.title
         return Assignment(
             url=notice.url,
