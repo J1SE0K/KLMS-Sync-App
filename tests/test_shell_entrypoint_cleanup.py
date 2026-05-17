@@ -32,6 +32,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
             "doctor.sh",
             "sync_report.sh",
             "process_klms_assignments.sh",
+            "klms_v2_build_state.sh",
             "kaikey_auto_login.sh",
             "kaikey_setup.sh",
             "kaikey_approve_number.sh",
@@ -141,6 +142,16 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
 
         self.assertIn('KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED="1"', config)
 
+    def test_launch_agent_aborts_sync_when_user_returns(self) -> None:
+        text = (PROJECT_DIR / "src" / "sh" / "launch_sync_if_idle.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("SYNC_ABORT_ON_USER_ACTIVITY", text)
+        self.assertIn("SYNC_ACTIVE_ABORT_IDLE_SECONDS", text)
+        self.assertIn("terminate_process_tree", text)
+        self.assertIn("aborted=user-activity", text)
+
     def test_cleanup_tracked_downloads_can_preserve_archive_destinations(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "cleanup_tracked_downloads.js").read_text(
             encoding="utf-8"
@@ -180,6 +191,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('cp "$SCRIPT_DIR/doctor.sh" "$INSTALL_DIR/"', text)
         self.assertIn('cp "$SCRIPT_DIR/sync_report.sh" "$INSTALL_DIR/"', text)
         self.assertIn('cp "$SCRIPT_DIR/process_klms_assignments.sh" "$INSTALL_DIR/"', text)
+        self.assertIn('cp "$SCRIPT_DIR/klms_v2_build_state.sh" "$INSTALL_DIR/"', text)
 
     def test_assignment_processor_is_not_part_of_core_sync(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8")

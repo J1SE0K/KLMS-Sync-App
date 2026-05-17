@@ -96,6 +96,32 @@ class V2CoreTests(unittest.TestCase):
 
         self.assertEqual(state.assignments, [])
 
+    def test_submitted_written_assignment_does_not_block_programming_assignment_same_number(self) -> None:
+        detail_pages = [
+            Page(
+                url="https://klms.kaist.ac.kr/mod/assign/view.php?id=1228325",
+                title="CS.30000_2026_1: Written Assignment 3",
+                html="제출 상태 채점을 위해 제출되었습니다. 마감 일시 2026년 5월 13일(수요일) 오후 11:59",
+            )
+        ]
+        notices = [
+            Notice(
+                url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=2",
+                course="알고리즘 개론",
+                title="Programming Assignment 3 is released (~5/21 23:59:00)",
+                body_text="The programming assignment is released on Elice. The deadline is 5/21 23:59:00.",
+            )
+        ]
+
+        state = build_sync_state(
+            generated_at="2026-05-14 20:39 KST",
+            detail_pages=detail_pages,
+            notices=notices,
+        )
+
+        self.assertEqual(len(state.assignments), 1)
+        self.assertEqual(state.assignments[0].title, "Programming Assignment 3")
+
     def test_nano_quiz_detail_is_not_exam(self) -> None:
         page = Page(
             url="https://klms.kaist.ac.kr/mod/url/view.php?id=1230079",

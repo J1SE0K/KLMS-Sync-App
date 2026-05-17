@@ -15,9 +15,18 @@ def submitted_assignment_tokens(page: Page) -> set[str]:
     _course, title = split_course_title(page.title)
     normalized = one_line(title).lower()
     tokens = {normalized} if normalized else set()
-    match = re.search(r"\b(?:written\s+)?assignment\s+(\d+)\b", normalized, re.IGNORECASE)
+    match = re.search(
+        r"\b(?:(written|programming)\s+)?assignment\s+(\d+)\b",
+        normalized,
+        re.IGNORECASE,
+    )
     if match:
-        tokens.add(f"assignment {match.group(1)}")
+        prefix = match.group(1)
+        number = match.group(2)
+        if prefix:
+            tokens.add(f"{prefix.lower()} assignment {number}")
+        else:
+            tokens.add(f"assignment {number}")
     match = re.search(r"\bhw\s*#?\s*(\d+)\b", normalized, re.IGNORECASE)
     if match:
         tokens.add(f"hw {match.group(1)}")

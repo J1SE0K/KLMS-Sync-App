@@ -23,6 +23,26 @@ cp examples/config.env.example config.env
 - 첫 실행 때 macOS가 Safari / Reminders / Calendar / Notes 자동화 권한을 물으면 허용한다.
 - 실제 설정, 인증 state, 수업 파일은 커밋하지 않는다. 자세한 공개 전 점검은 [publication-checklist.md](./docs/publication-checklist.md)를 따른다.
 
+## macOS 앱
+
+SwiftUI 메뉴바 앱은 [apps/KLMSync](./apps/KLMSync)에 있다. 앱은 기존 sync 엔진을 `~/Library/Application Support/KLMSNotesSync`에 설치하고, 동기화 실행, dry-run preview, 상태/로그 표시, 설정 편집, LaunchAgent 자동 실행 관리를 맡는다.
+
+```sh
+cd apps/KLMSync
+swift test --scratch-path /private/tmp/klmsync-swiftpm-build --jobs 1
+swift run --scratch-path /private/tmp/klmsync-swiftpm-build KLMSMac
+```
+
+로컬 `.app` 번들은 레포 루트에서 아래 명령으로 만든다.
+
+```sh
+tools/build_klms_mac_app.sh
+```
+
+빌드 결과는 기본적으로 `~/Applications/KLMS Sync.app`에 생성된다. 이 번들은 현재 레포의 엔진 코드를 앱 리소스 `EnginePayload`로 포함하고, 실행 시 설치본의 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`, `kaikey_state.json`은 덮어쓰지 않는다. `Documents`/iCloud-backed 폴더 안에서는 macOS File Provider 메타데이터 때문에 ad-hoc codesign이 실패할 수 있어 앱 번들은 사용자 Applications 폴더에 둔다. 다른 위치가 필요하면 `DIST_DIR=/path/to/output tools/build_klms_mac_app.sh`처럼 지정한다.
+
+iPhone companion 타깃은 같은 package의 `KLMSiOS`에 있고, CloudKit private database를 통한 원격 실행 요청/상태 표시 골격만 둔다. 실제 KLMS scraping과 macOS 앱 연동은 Mac 앱이 담당한다.
+
 ## 실행 파일
 
 루트에는 사용자가 직접 실행하는 wrapper만 둔다. 실제 구현은 [bin](./bin) 아래에 있다.
@@ -50,6 +70,7 @@ cp examples/config.env.example config.env
 ```text
 .
 ├── bin/          # 루트 wrapper가 호출하는 실제 shell entrypoint 구현
+├── apps/         # SwiftUI macOS 메뉴바 앱과 iPhone companion package
 ├── docs/         # 사용법, 동작 정책, 공개 전 점검 문서
 ├── examples/     # 공개 가능한 설정/override 예시
 ├── legacy/       # 호환 wrapper와 수동 디버깅용 보조 스크립트
