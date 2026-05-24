@@ -2137,9 +2137,10 @@ function splitFileName(name) {
 
 function openReusableDownloadPage(safari, existingWindowRef, targetUrl) {
   const backgroundWindowEnabled = safariBackgroundWindowEnabled();
+  const reuseExistingWindowEnabled = safariReuseExistingWindowEnabled();
   const activeWindow =
     reusableWindowByReference(safari, existingWindowRef) ||
-    findKlmsWindow(safari, backgroundWindowEnabled) ||
+    (reuseExistingWindowEnabled ? findKlmsWindow(safari, backgroundWindowEnabled) : null) ||
     createSafariWindow(safari, targetUrl, backgroundWindowEnabled);
   if (backgroundWindowEnabled) {
     prepareBackgroundWindow(activeWindow);
@@ -3093,6 +3094,10 @@ function ensureSafari(existingSafari) {
 
 function safariBackgroundWindowEnabled() {
   return envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1");
+}
+
+function safariReuseExistingWindowEnabled() {
+  return envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0");
 }
 
 function envValue(name) {

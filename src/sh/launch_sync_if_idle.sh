@@ -1,6 +1,7 @@
 #!/bin/zsh
 
 set -euo pipefail
+unsetopt bg_nice
 
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin"
 
@@ -15,6 +16,7 @@ LOCK_DIR="$AUTOMATION_DIR/launch.lock"
 LAST_ATTEMPT_FILE="$AUTOMATION_DIR/last_attempt_epoch"
 ALERT_STATE_FILE="$AUTOMATION_DIR/reminder_alert_state.json"
 LOGIN_PROMPT_EPOCH_FILE="$AUTOMATION_DIR/login_prompt_epoch"
+LOGIN_PROMPT_DIGITS_FILE="$AUTOMATION_DIR/login_prompt_digits"
 LOGIN_WATCH_LOCK_DIR="$AUTOMATION_DIR/login-watch.lock"
 LAUNCH_LOG="$LOG_DIR/launch-agent.log"
 NEXT_STATE_FILE="$RUNTIME_DIR/state/next_state.json"
@@ -109,6 +111,7 @@ prompt_login_if_needed() {
   local sync_output="${1:-}"
   local prompt_now_epoch
   local last_prompt=0
+  local last_auth_digits=""
   local timestamp
   local auth_digits=""
 
@@ -116,17 +119,23 @@ prompt_login_if_needed() {
   if [[ -f "$LOGIN_PROMPT_EPOCH_FILE" ]]; then
     last_prompt="$(<"$LOGIN_PROMPT_EPOCH_FILE")"
   fi
-
-  if [[ "$last_prompt" == <-> ]] && (( prompt_now_epoch - last_prompt < LOGIN_PROMPT_COOLDOWN_SECONDS )); then
-    timestamp="$(date '+%Y-%m-%d %H:%M:%S %Z')"
-    printf '[%s] login-prompt suppressed cooldown=%ss\n' "$timestamp" "$LOGIN_PROMPT_COOLDOWN_SECONDS" >> "$LAUNCH_LOG"
-    return 0
+  if [[ -f "$LOGIN_PROMPT_DIGITS_FILE" ]]; then
+    last_auth_digits="$(<"$LOGIN_PROMPT_DIGITS_FILE")"
   fi
 
   if [[ "$sync_output" =~ 'KAIST 인증 번호: ([0-9][0-9])' ]]; then
     auth_digits="${match[1]}"
   elif [[ "$sync_output" =~ 'digits=([0-9][0-9])' ]]; then
     auth_digits="${match[1]}"
+  fi
+
+  if [[ "$last_prompt" == <-> ]] \
+    && (( prompt_now_epoch - last_prompt < LOGIN_PROMPT_COOLDOWN_SECONDS )) \
+    && { [[ -z "$auth_digits" ]] || [[ "$auth_digits" == "$last_auth_digits" ]]; }; then
+    timestamp="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+    printf '[%s] login-prompt suppressed cooldown=%ss digits=%s\n' \
+      "$timestamp" "$LOGIN_PROMPT_COOLDOWN_SECONDS" "${auth_digits:-none}" >> "$LAUNCH_LOG"
+    return 0
   fi
 
   if [[ -n "$auth_digits" ]]; then
@@ -148,6 +157,7 @@ prompt_login_if_needed() {
       "$KLMS_LOGIN_URL" >/dev/null 2>&1 || true
   fi
   print -r -- "$prompt_now_epoch" > "$LOGIN_PROMPT_EPOCH_FILE"
+  print -r -- "${auth_digits:-}" > "$LOGIN_PROMPT_DIGITS_FILE"
   timestamp="$(date '+%Y-%m-%d %H:%M:%S %Z')"
   printf '[%s] login-prompt notified backend=%s open_safari=%s url=%s digits=%s\n' \
     "$timestamp" "safari" "$LOGIN_PROMPT_OPEN_SAFARI" "$KLMS_LOGIN_URL" "${auth_digits:-none}" >> "$LAUNCH_LOG"

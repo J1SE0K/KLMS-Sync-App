@@ -21,6 +21,7 @@ FILE_DOWNLOAD_TIMEOUT_SECONDS="${FILE_DOWNLOAD_TIMEOUT_SECONDS:-180}"
 FILE_MAX_DOWNLOAD_ATTEMPTS="${FILE_MAX_DOWNLOAD_ATTEMPTS:-3}"
 FILE_DOWNLOAD_RETRY_DELAY_SECONDS="${FILE_DOWNLOAD_RETRY_DELAY_SECONDS:-2}"
 FILE_FORCE_DOWNLOAD="${FILE_FORCE_DOWNLOAD:-0}"
+FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY="${FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY:-1}"
 FILE_FULL_TTL_SECONDS="${FILE_FULL_TTL_SECONDS:-259200}"
 FILE_COURSE_PAGE_STALE_SECONDS="${FILE_COURSE_PAGE_STALE_SECONDS:-43200}"
 FILE_ALL_WEEK_COURSE_PAGE_STALE_SECONDS="${FILE_ALL_WEEK_COURSE_PAGE_STALE_SECONDS:-43200}"
@@ -30,8 +31,10 @@ FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED="${FILE_TIMESTAMP_GATED_SEED_REFRESH_E
 FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS="${FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS:-$FILE_FULL_TTL_SECONDS}"
 FILE_NESTED_QUICK_LIMIT_RAW="${FILE_NESTED_QUICK_LIMIT:-}"
 FILE_NESTED_STALE_SECONDS="${FILE_NESTED_STALE_SECONDS:-86400}"
+FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS="${FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS:-$FILE_FULL_TTL_SECONDS}"
 FILE_NESTED2_QUICK_LIMIT_RAW="${FILE_NESTED2_QUICK_LIMIT:-}"
 FILE_NESTED2_STALE_SECONDS="${FILE_NESTED2_STALE_SECONDS:-86400}"
+FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS="${FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS:-$FILE_FULL_TTL_SECONDS}"
 FILE_NESTED_BACKGROUND_QUICK_LIMIT_RAW="${FILE_NESTED_BACKGROUND_QUICK_LIMIT:-}"
 FILE_NESTED2_BACKGROUND_QUICK_LIMIT_RAW="${FILE_NESTED2_BACKGROUND_QUICK_LIMIT:-}"
 FILE_KEEP_FRESH_DOWNLOADS="${FILE_KEEP_FRESH_DOWNLOADS:-1}"
@@ -392,6 +395,40 @@ except Exception:
 PY
 }
 
+preview_has_no_download_candidates() {
+  local preview_json="$1"
+  python3 - "$preview_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    raise SystemExit(1)
+
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+
+if not isinstance(payload, dict):
+    raise SystemExit(1)
+
+keys = [
+    "new_url_count",
+    "moved_count",
+    "fresh_download_candidate_count",
+    "type_mismatch_candidate_count",
+]
+try:
+    has_candidates = any(int(payload.get(key, 0) or 0) > 0 for key in keys)
+except Exception:
+    raise SystemExit(1)
+
+raise SystemExit(1 if has_candidates else 0)
+PY
+}
+
 file_content_hash() {
   local file_path="$1"
   if [[ ! -s "$file_path" ]]; then
@@ -416,6 +453,7 @@ write_existing_download_result_if_complete() {
   local download_result_json="$4"
   local download_archive_root="$5"
   local preserve_download_archive="${6:-0}"
+  local allow_timestamp_reuse="${7:-0}"
 
   python3 - \
     "$manifest_json" \
@@ -423,8 +461,10 @@ write_existing_download_result_if_complete() {
     "$download_log_json" \
     "$download_result_json" \
     "$download_archive_root" \
-    "$preserve_download_archive" <<'PY'
+    "$preserve_download_archive" \
+    "$allow_timestamp_reuse" <<'PY'
 import json
+import os
 import shutil
 import sys
 from datetime import datetime
@@ -437,6 +477,7 @@ download_log_path = Path(sys.argv[3])
 download_result_path = Path(sys.argv[4])
 archive_root = Path(sys.argv[5])
 preserve_archive = str(sys.argv[6]).lower() in {"1", "true", "yes", "on"}
+allow_timestamp_reuse = str(sys.argv[7]).lower() in {"1", "true", "yes", "on"}
 
 manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else []
 if not isinstance(manifest, list):
@@ -513,11 +554,22 @@ for index, entry in enumerate(manifest, start=1):
     if not destination_path.is_file():
         raise SystemExit(1)
     previous = previous_by_url.get(str(entry.get("url") or "")) or previous_by_relative.get(relative_path) or {}
-    if existing_file_needs_refresh(entry, destination_path, previous):
+    if existing_file_needs_refresh(entry, destination_path, previous) and not allow_timestamp_reuse:
         raise SystemExit(1)
     if preserve_archive and not archive_path.is_file():
         archive_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(destination_path, archive_path)
+
+    current_epoch = normalized_epoch(entry.get("klms_timestamp_epoch"))
+    if allow_timestamp_reuse and current_epoch > 0:
+        for path in (destination_path, archive_path if preserve_archive else None):
+            if path is None or not path.is_file():
+                continue
+            try:
+                atime = path.stat().st_atime
+                os.utime(path, (atime, current_epoch))
+            except Exception:
+                pass
 
     local_epoch = previous.get("local_downloaded_epoch")
     try:
@@ -791,6 +843,14 @@ if [[ -z "$FILE_NESTED_DYNAMIC_QUICK_LIMIT" || "$FILE_NESTED_DYNAMIC_QUICK_LIMIT
 fi
 SEED_CHANGED_COUNT="$(summary_changed_count "$FILE_SEED_FETCH_SUMMARY_JSON")"
 FILE_NESTED_EFFECTIVE_STALE_SECONDS="$FILE_NESTED_STALE_SECONDS"
+if (( SEED_CHANGED_COUNT == 0 )) \
+  && (( PREVIOUS_MANIFEST_COUNT > 0 )) \
+  && (( EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then
+  if (( FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS > FILE_NESTED_EFFECTIVE_STALE_SECONDS )); then
+    FILE_NESTED_EFFECTIVE_STALE_SECONDS="$FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS"
+    log_files_timing "nested timestamp gate active seed_changed=$SEED_CHANGED_COUNT nested_stale_seconds=$FILE_NESTED_EFFECTIVE_STALE_SECONDS"
+  fi
+fi
 run_fetch_backend \
   "files-nested-pages" \
   "$FILE_NESTED_PAGES_JSON" \
@@ -841,6 +901,14 @@ if [[ -z "$FILE_NESTED2_DYNAMIC_QUICK_LIMIT" || "$FILE_NESTED2_DYNAMIC_QUICK_LIM
 fi
 NESTED_CHANGED_COUNT="$(summary_changed_count "$FILE_NESTED_FETCH_SUMMARY_JSON")"
 FILE_NESTED2_EFFECTIVE_STALE_SECONDS="$FILE_NESTED2_STALE_SECONDS"
+if (( NESTED_CHANGED_COUNT == 0 )) \
+  && (( PREVIOUS_MANIFEST_COUNT > 0 )) \
+  && (( EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then
+  if (( FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS > FILE_NESTED2_EFFECTIVE_STALE_SECONDS )); then
+    FILE_NESTED2_EFFECTIVE_STALE_SECONDS="$FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS"
+    log_files_timing "nested2 timestamp gate active nested_changed=$NESTED_CHANGED_COUNT nested2_stale_seconds=$FILE_NESTED2_EFFECTIVE_STALE_SECONDS"
+  fi
+fi
 run_fetch_backend \
   "files-nested-round2-pages" \
   "$FILE_NESTED2_PAGES_JSON" \
@@ -997,13 +1065,26 @@ Path(sys.argv[2]).write_text(json.dumps(payload, ensure_ascii=False, indent=2) +
 PY
   log_files_timing "download skipped dry_run=1 duration_s=$(($(date +%s) - download_started_epoch))"
 elif ! is_truthy "$FILE_FORCE_DOWNLOAD" \
+  && is_truthy "$FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY" \
+  && preview_has_no_download_candidates "$SYNC_PREVIEW_JSON" \
   && write_existing_download_result_if_complete \
     "$MANIFEST_JSON" \
     "$OUTPUT_ROOT" \
     "$DOWNLOAD_LOG_JSON" \
     "$DOWNLOAD_RESULT_JSON" \
     "$DOWNLOAD_ARCHIVE_ROOT" \
-    "$FILE_PRESERVE_DOWNLOAD_ARCHIVE"; then
+    "$FILE_PRESERVE_DOWNLOAD_ARCHIVE" \
+    "1"; then
+  log_files_timing "download skipped preview_empty=1 duration_s=$(($(date +%s) - download_started_epoch))"
+elif ! is_truthy "$FILE_FORCE_DOWNLOAD" \
+  && write_existing_download_result_if_complete \
+    "$MANIFEST_JSON" \
+    "$OUTPUT_ROOT" \
+    "$DOWNLOAD_LOG_JSON" \
+    "$DOWNLOAD_RESULT_JSON" \
+    "$DOWNLOAD_ARCHIVE_ROOT" \
+    "$FILE_PRESERVE_DOWNLOAD_ARCHIVE" \
+    "0"; then
   log_files_timing "download skipped existing_complete=1 duration_s=$(($(date +%s) - download_started_epoch))"
 else
   /bin/zsh "$KLMS_SH_DIR/run_download_files_step.sh" \

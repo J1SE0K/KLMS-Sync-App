@@ -6,7 +6,7 @@ const MARKER = "[[KLMS 자동 동기화]]";
 const REMINDER_MARKER_PREFIX = "KLMS_SYNC_ITEM_ID:";
 const LEGACY_REMINDER_MARKER_PREFIXES = ["KLMS_ASSIGN_ID:"];
 const REMINDER_MARKER_PREFIXES = [REMINDER_MARKER_PREFIX].concat(LEGACY_REMINDER_MARKER_PREFIXES);
-const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-14-archive-course-collapse";
+const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-24-functional-notes-v8-archive-section-style";
 let DEBUG_STDERR_ENABLED = false;
 let ACTIVE_STAGE_TELEMETRY = null;
 let COMMAND_TIMING_ENABLED = true;
@@ -72,6 +72,7 @@ function run(argv) {
     const scope = cli.scope;
     const usePrefetchedDashboard = cli.usePrefetchedDashboard;
     const config = parseEnvFile(configPath);
+    applyRuntimeConfigOverrides(config);
     const dryRun = cli.dryRun || envValue("KLMS_DRY_RUN") === "1";
     DEBUG_STDERR_ENABLED = config.KLMS_DEBUG_STDERR === "1";
     COMMAND_TIMING_ENABLED = config.SYNC_COMMAND_TIMING_ENABLED !== "0";
@@ -98,6 +99,16 @@ function run(argv) {
       config,
       "NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER",
       false
+    );
+    const noticeNativeForceArchivePostCaptureRenderEnabled = readEnabledConfig(
+      config,
+      "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER",
+      false
+    );
+    const calendarSkipUnchangedDesired = readEnabledConfig(
+      config,
+      "CALENDAR_SKIP_UNCHANGED_DESIRED",
+      true
     );
     const skipUnchangedSideEffects = readEnabledConfig(
       config,
@@ -289,6 +300,7 @@ function run(argv) {
     const stageTimingJson = `${workCacheDir}/stage_timings.json`;
     const dryRunReportJson = `${workCacheDir}/dry_run_report.json`;
     const remindersDesiredHashTxt = `${workCacheDir}/reminders_desired_hash.txt`;
+    const calendarDesiredHashTxt = `${workCacheDir}/calendar_desired_hash.txt`;
     const calendarSyncResultJson = `${workCacheDir}/calendar_sync_result.json`;
 
     const baseFetchOptions = {
@@ -410,6 +422,7 @@ function run(argv) {
       noticeNativeStableNoopSkipEnabled,
       noticeNativeAlwaysCaptureStateEnabled,
       noticeNativeDeferStateOnlyRenderEnabled,
+      noticeNativeForceArchivePostCaptureRenderEnabled,
       noticeNativeEnvironment: nativeNoticeEnvironment(config),
       syncFullTtlSeconds,
       coursePageStaleSeconds,
@@ -509,7 +522,17 @@ function run(argv) {
             mode: "full",
             outputPath: dashboardJson,
             summaryPath: dashboardFetchSummaryJson,
+            requireAll: true,
           });
+    assertRequiredPageCount(
+      "대시보드 페이지를 가져오지 못했어. Safari에서 KLMS가 열린 상태인지 확인한 뒤 다시 실행해 줘.",
+      dashboardPages,
+      1
+    );
+    assertNoLoginPages(
+      "대시보드 정리를 시작하는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
+      dashboardPages
+    );
     debugStderr("after dashboard-fetch");
 
     beginStage(steps, stageTelemetry, "course-list");
@@ -883,6 +906,10 @@ function run(argv) {
         noticeSummaryPrebuildSnapshot = null;
         writeText(noticeDigestErrorTxt, String(noticeError));
         writeText(noticeNoteRenderWarningTxt, "");
+        writeText(
+          noticeRenderErrorSummaryJson,
+          JSON.stringify(classifyNoticeRenderError(String(noticeError)), null, 2)
+        );
         debugStderr(`notice-summary-prebuild warning ignored: ${String(noticeError)}`);
       }
       debugStderr("after notice-summary-prebuild");
@@ -946,15 +973,30 @@ function run(argv) {
         beginStage(steps, stageTelemetry, "calendar-sync-skipped");
         debugStderr("skip calendar-sync changed=false");
       } else {
-        beginStage(steps, stageTelemetry, "calendar-sync");
-        debugStderr("before calendar-sync");
-        syncCalendarsFromState(outputState, scriptDir, config, {
+        const calendarOptions = {
           examEnabled: examCalendarEnabled,
           helpDeskEnabled: helpDeskCalendarEnabled,
           tmpDir: workTmpDir,
           resultJson: calendarSyncResultJson,
-        });
-        debugStderr("after calendar-sync");
+        };
+        const calendarDesiredHash = buildCalendarDesiredHash(outputState, config, calendarOptions);
+        const previousCalendarDesiredHash = fileExists(calendarDesiredHashTxt)
+          ? readText(calendarDesiredHashTxt).trim()
+          : "";
+        if (
+          calendarSkipUnchangedDesired &&
+          previousCalendarDesiredHash &&
+          previousCalendarDesiredHash === calendarDesiredHash
+        ) {
+          beginStage(steps, stageTelemetry, "calendar-sync-skipped-hash");
+          debugStderr("skip calendar-sync desired hash unchanged");
+        } else {
+          beginStage(steps, stageTelemetry, "calendar-sync");
+          debugStderr("before calendar-sync");
+          syncCalendarsFromState(outputState, scriptDir, config, calendarOptions);
+          writeText(calendarDesiredHashTxt, `${calendarDesiredHash}\n`);
+          debugStderr("after calendar-sync");
+        }
       }
     }
 
@@ -1050,6 +1092,10 @@ function run(argv) {
         restoreFileSnapshot(noticeSnapshot);
         writeText(noticeDigestErrorTxt, String(noticeError));
         writeText(noticeNoteRenderWarningTxt, "");
+        writeText(
+          noticeRenderErrorSummaryJson,
+          JSON.stringify(classifyNoticeRenderError(String(noticeError)), null, 2)
+        );
       }
     }
     completeStageTelemetry(stageTelemetry, {
@@ -1387,6 +1433,12 @@ function assertNoLoginPages(message, pages) {
   }
 }
 
+function assertRequiredPageCount(message, pages, expectedCount) {
+  if (!Array.isArray(pages) || pages.length < expectedCount) {
+    throw new Error(message);
+  }
+}
+
 function mergePagesByRequestedUrl(pages) {
   const merged = [];
   const seen = new Set();
@@ -1434,7 +1486,13 @@ function runStandaloneNoticeSummary(
           mode: "full",
           outputPath: paths.dashboardJson,
           summaryPath: paths.dashboardFetchSummaryJson,
+          requireAll: true,
         });
+  assertRequiredPageCount(
+    "공지 대시보드 페이지를 가져오지 못했어. Safari에서 KLMS가 열린 상태인지 확인한 뒤 다시 실행해 줘.",
+    dashboardPages,
+    1
+  );
   assertNoLoginPages(
     "공지 정리를 시작하는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
     dashboardPages
@@ -1768,6 +1826,7 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
 
   if (paths.skipNativeRender) {
     writeText(paths.noticeNoteRenderWarningTxt, "");
+    writeText(paths.noticeRenderErrorSummaryJson, JSON.stringify({ status: "ok" }, null, 2));
     return {
       results: [{ target: "render", status: "skipped", reason: "prebuild" }],
       renderWarnings: [],
@@ -1776,6 +1835,7 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
 
   if (paths.dryRun) {
     writeText(paths.noticeNoteRenderWarningTxt, "");
+    writeText(paths.noticeRenderErrorSummaryJson, JSON.stringify({ status: "ok" }, null, 2));
     return {
       results: [{ target: "render", status: "skipped", reason: "dry-run" }],
       renderWarnings: [],
@@ -1798,16 +1858,23 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
         paths.noticeNativeStableNoopSkipEnabled,
         paths.noticeNativeAlwaysCaptureStateEnabled,
         paths.noticeNativeDeferStateOnlyRenderEnabled,
+        paths.noticeNativeForceArchivePostCaptureRenderEnabled,
         paths.noticeNativeEnvironment || [],
         stageTelemetry
       )
   );
   const renderWarningText = (renderResult.renderWarnings || []).join("\n\n");
+  const nonFatalRenderWarning = noticeRenderWarningsAreNonFatal(renderResult);
   if (renderWarningText) {
+    const summary = classifyNoticeRenderError(renderWarningText);
+    if (nonFatalRenderWarning) {
+      summary.status = "warn";
+      summary.nonfatal = true;
+    }
     writeText(paths.noticeNoteRenderWarningTxt, renderWarningText);
     writeText(
       paths.noticeRenderErrorSummaryJson,
-      JSON.stringify(classifyNoticeRenderError(renderWarningText), null, 2)
+      JSON.stringify(summary, null, 2)
     );
   } else {
     writeText(paths.noticeNoteRenderWarningTxt, "");
@@ -1817,10 +1884,67 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
     stageTelemetry.noticeRenderResults = renderResult.results;
     persistStageTelemetry(stageTelemetry);
   }
-  if (renderWarningText) {
+  if (renderWarningText && !nonFatalRenderWarning) {
     throw new Error(renderWarningText);
   }
   return renderResult;
+}
+
+function noticeRenderWarningsAreNonFatal(renderResult) {
+  if (envValue("KLMS_APP_RUN") === "1") {
+    return false;
+  }
+  const results = Array.isArray(renderResult && renderResult.results)
+    ? renderResult.results
+    : [];
+  if (results.some((item) =>
+    item &&
+    item.target === "render" &&
+    item.status === "skipped" &&
+    item.reason === "capture-failed-preserve-user-state"
+  )) {
+    return true;
+  }
+  const warnings = results.filter((item) => item && item.status === "warning");
+  return warnings.length > 0 && warnings.every((item) =>
+    noticeRenderWarningIsRecoverable(item.error)
+  );
+}
+
+function noticeRenderWarningIsRecoverable(text) {
+  return /Could not confirm the cursor is in the target Notes note|Could not place the cursor in the target Notes editor|Could not confirm Notes selection|Focused UI element is not inside the target Notes editor|Typing target is not Notes|Notes selection moved away from the target note/i.test(
+    String(text || "")
+  );
+}
+
+function sleepSeconds(seconds) {
+  $.NSThread.sleepForTimeInterval(Math.max(0, Number(seconds) || 0));
+}
+
+function runNativeNoticeCommandWithRecoverableRetry(stageTelemetry, targetName, command, scriptDir) {
+  const maxAttempts = 2;
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return runTelemetryEvent(
+        stageTelemetry,
+        "native-notice-note",
+        targetName,
+        () => runCommand(command, scriptDir)
+      );
+    } catch (error) {
+      lastError = error;
+      if (!noticeRenderWarningIsRecoverable(String(error)) || attempt >= maxAttempts) {
+        throw error;
+      }
+      debugStderr(
+        `native notice ${targetName} retrying after recoverable focus warning ` +
+          `attempt=${attempt}/${maxAttempts}`
+      );
+      sleepSeconds(1.25);
+    }
+  }
+  throw lastError;
 }
 
 function classifyNoticeRenderError(text) {
@@ -1834,6 +1958,9 @@ function classifyNoticeRenderError(text) {
   } else if (/capture-failed-preserve-user-state|capture/i.test(message)) {
     code = "capture_state_failed";
     userMessage = "읽음/중요 체크 상태 캡처 실패";
+  } else if (/Could not confirm the cursor is in the target Notes note|Could not place the cursor in the target Notes editor|Could not confirm Notes selection|Focused UI element is not inside the target Notes editor|Typing target is not Notes|Notes selection moved away from the target note/i.test(message)) {
+    code = "notes_focus_unconfirmed";
+    userMessage = "Notes 포커스 확인 실패";
   } else if (/readability-format-check-failed|readable|format/i.test(message)) {
     code = "readability_format_failed";
     userMessage = "공지 문단 형식 검증 실패";
@@ -1853,23 +1980,94 @@ function nativeNoticeEnvironment(config) {
     "NOTICE_COLLAPSE_COURSES",
     "NOTICE_COLLAPSE_NOTICE_ITEMS",
     "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS",
+    "NOTICE_HIDE_HIDDEN_ITEMS",
     "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT",
     "NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT",
     "NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT",
     "NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT",
     "NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT",
-    "NOTICE_NATIVE_INLINE_HTML_STYLE_VERIFY",
+    "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER",
+    "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
+    "NOTICE_NATIVE_NOTE_MAX_ATTEMPTS",
+    "NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS",
+    "NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS",
+    "NOTICE_NATIVE_NOTE_TIMEOUT_GRACE_SECONDS",
+    "NOTICE_NATIVE_STYLE_BUDGET_SECONDS",
+    "NOTICE_NATIVE_BOLD_REINFORCE_LIMIT",
+    "NOTICE_NATIVE_VALIDATE_STYLE",
+    "NOTICE_NATIVE_COLLAPSE_ALL_FIRST",
+    "NOTICE_NATIVE_SELECTION_SETTLE_SECONDS",
+    "NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US",
+    "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY",
+    "NOTICE_NATIVE_PLAIN_TEXT_PASTE",
     "NOTICE_DEBUG_CAPTURE",
     "NOTICE_DEBUG_AUTOMATION",
     "NOTICE_TIMING",
   ];
   return keys
     .filter((key) => Object.prototype.hasOwnProperty.call(config, key))
-    .map((key) => `${key}=${config[key]}`);
+    .map((key) => [key, normalizeRuntimeEnvValue(config[key])])
+    .filter((entry) => entry[1] !== "")
+    .map((entry) => `${entry[0]}=${entry[1]}`);
 }
 
-function noticeTargetRequiresPostCaptureRender(targetKey) {
-  return targetKey === "archive";
+function noticeTargetRequiresPostCaptureRender(
+  targetKey,
+  forceArchivePostCaptureRenderEnabled
+) {
+  return targetKey === "archive" && forceArchivePostCaptureRenderEnabled === true;
+}
+
+function nativeNoticeEnvHasKey(nativeEnvironment, key) {
+  return (Array.isArray(nativeEnvironment) ? nativeEnvironment : []).some((entry) =>
+    String(entry || "").startsWith(`${key}=`)
+  );
+}
+
+function nativeNoticeDefaultEnvironment(nativeEnvironment) {
+  const defaults = [];
+  if (!nativeNoticeEnvHasKey(nativeEnvironment, "NOTICE_NATIVE_PLAIN_TEXT_PASTE")) {
+    defaults.push("NOTICE_NATIVE_PLAIN_TEXT_PASTE=0");
+  }
+  if (!nativeNoticeEnvHasKey(nativeEnvironment, "NOTICE_NATIVE_NOTE_MAX_ATTEMPTS")) {
+    defaults.push("NOTICE_NATIVE_NOTE_MAX_ATTEMPTS=3");
+  }
+  if (!nativeNoticeEnvHasKey(nativeEnvironment, "NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS")) {
+    defaults.push("NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS=2");
+  }
+  return defaults;
+}
+
+function nativeNoticeVerifyStableSkipFormatEnabled(nativeEnvironment) {
+  return nativeNoticeEnvironmentEnabled(
+    nativeEnvironment,
+    "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
+    false
+  );
+}
+
+function nativeNoticeEnvironmentEnabled(nativeEnvironment, key, fallback) {
+  const value = nativeNoticeEnvironmentValue(nativeEnvironment, key);
+  if (value === null) {
+    return fallback;
+  }
+  if (/^(1|true|yes|on)$/i.test(value)) {
+    return true;
+  }
+  if (/^(0|false|no|off)$/i.test(value)) {
+    return false;
+  }
+  return fallback;
+}
+
+function nativeNoticeEnvironmentValue(nativeEnvironment, key) {
+  const combined = Array.isArray(nativeEnvironment) ? nativeEnvironment : [];
+  const prefix = `${key}=`;
+  const entry = combined.find((item) => String(item || "").startsWith(prefix));
+  if (!entry) {
+    return null;
+  }
+  return String(entry).slice(prefix.length).trim();
 }
 
 function updateNoticeNativeNote(
@@ -1883,6 +2081,7 @@ function updateNoticeNativeNote(
   stableNoopSkipEnabled,
   alwaysCaptureStateEnabled,
   deferStateOnlyRenderEnabled,
+  forceArchivePostCaptureRenderEnabled,
   nativeEnvironment,
   stageTelemetry
 ) {
@@ -1901,8 +2100,11 @@ function updateNoticeNativeNote(
   ];
   const captureArgs = ["--capture-only", ...commonArgs];
   const nativeEnv = Array.isArray(nativeEnvironment) ? nativeEnvironment : [];
+  const nativeDefaultEnv = nativeNoticeDefaultEnvironment(nativeEnv);
+  const effectiveNativeEnv = [...nativeDefaultEnv, ...nativeEnv];
   const nativeCommand = (args, extraEnv) => [
     "/usr/bin/env",
+    ...nativeDefaultEnv,
     ...nativeEnv,
     ...(extraEnv || []),
     `${scriptDir}/src/sh/update_notice_native_note.sh`,
@@ -1916,27 +2118,90 @@ function updateNoticeNativeNote(
     { key: "archive", args: ["--render-only", "--archive-only"] },
     { key: "primary", args: ["--render-only", "--primary-only"] },
   ];
+  const verifyNativeNoticeReadableFormat = (targetKey) =>
+    verifyNoticeNativeNoteReadableFormat(
+      targetKey,
+      targetKey === "archive" ? archiveNoticeRenderStateJsonPath : noticeRenderStateJsonPath,
+      nativeCommand([
+        "--verify-only",
+        targetKey === "archive" ? "--archive-only" : "--primary-only",
+        ...commonArgs,
+      ], []),
+      scriptDir
+    );
   const hasPostCaptureRenderTarget = targets.some((target) =>
-    noticeTargetRequiresPostCaptureRender(target.key)
+    noticeTargetRequiresPostCaptureRender(target.key, forceArchivePostCaptureRenderEnabled)
   );
   const results = [];
   const renderWarnings = [];
+  const verifyStableSkipFormatEnabled =
+    nativeNoticeVerifyStableSkipFormatEnabled(effectiveNativeEnv);
+  let stableComparison = null;
   let captureSucceeded = false;
 
-  try {
-    const output = runTelemetryEvent(
-      stageTelemetry,
-      "native-notice-note",
-      "capture",
-      () =>
-        runCommand(
-          captureCommand,
-          scriptDir
-        )
+  if (
+    stableNoopSkipEnabled !== false &&
+    alwaysCaptureStateEnabled === false &&
+    !hasPostCaptureRenderTarget
+  ) {
+    stableComparison = noticeNativeRenderComparison(
+      noticeDigestJsonPath,
+      noticeUserStateJsonPath,
+      noticeRenderStateJsonPath,
+      archiveNoticeRenderStateJsonPath,
+      effectiveNativeEnv
     );
+    if (
+      stableComparison.canCompare &&
+      stableComparison.primary.matches &&
+      stableComparison.archive.matches
+    ) {
+      try {
+        const formatOutputs = verifyStableSkipFormatEnabled
+          ? [
+              verifyNativeNoticeReadableFormat("archive"),
+              verifyNativeNoticeReadableFormat("primary"),
+            ]
+          : [];
+        const output = [
+          `Skipped native notice notes: stable_noop=1 capture=skipped notice_count=${stableComparison.expected.total} ` +
+            `primary=${stableComparison.expected.primary.length} archived=${stableComparison.expected.archive.length}`,
+          ...formatOutputs,
+        ].filter(Boolean).join("\n");
+        debugStderr(String(output || "skip native notice notes stable-noop-before-capture"));
+        results.push({
+          target: "stable-noop-before-capture",
+          status: "skipped",
+          output,
+        });
+        return { results, renderWarnings };
+      } catch (error) {
+        const reason = `readability-format-check-failed: ${String(error)}`;
+        results.push({
+          target: "stable-noop-before-capture",
+          status: "not-skipped",
+          reason,
+        });
+        debugStderr(`native notice stable-noop before capture not skipped: ${reason}`);
+      }
+    } else if (!stableComparison.canCompare && stableComparison.reason) {
+      debugStderr(`native notice stable-noop before capture not skipped: ${stableComparison.reason}`);
+    }
+  }
+
+  try {
+    const shouldRunCapture = alwaysCaptureStateEnabled !== false;
+    const output = shouldRunCapture
+      ? runNativeNoticeCommandWithRecoverableRetry(
+        stageTelemetry,
+        "capture",
+        captureCommand,
+        scriptDir
+      )
+      : "Skipped native notice checklist capture: always_capture_state=0";
     results.push({
       target: "capture",
-      status: "ok",
+      status: shouldRunCapture ? "ok" : "skipped",
       output: String(output || "").trim(),
     });
     captureSucceeded = true;
@@ -1961,14 +2226,16 @@ function updateNoticeNativeNote(
     return { results, renderWarnings };
   }
 
-  let stableComparison = null;
   if (stableNoopSkipEnabled !== false) {
-    stableComparison = noticeNativeRenderComparison(
-      noticeDigestJsonPath,
-      noticeUserStateJsonPath,
-      noticeRenderStateJsonPath,
-      archiveNoticeRenderStateJsonPath
-    );
+    if (!stableComparison) {
+      stableComparison = noticeNativeRenderComparison(
+        noticeDigestJsonPath,
+        noticeUserStateJsonPath,
+        noticeRenderStateJsonPath,
+        archiveNoticeRenderStateJsonPath,
+        effectiveNativeEnv
+      );
+    }
     if (
       stableComparison.canCompare &&
       stableComparison.primary.matches &&
@@ -1976,20 +2243,12 @@ function updateNoticeNativeNote(
       !hasPostCaptureRenderTarget
     ) {
       try {
-        const formatOutputs = [
-          verifyNoticeNativeNoteReadableFormat(
-            archiveNoteName,
-            "archive",
-            scriptDir,
-            archiveNoticeRenderStateJsonPath
-          ),
-          verifyNoticeNativeNoteReadableFormat(
-            noteName,
-            "primary",
-            scriptDir,
-            noticeRenderStateJsonPath
-          ),
-        ];
+        const formatOutputs = verifyStableSkipFormatEnabled
+          ? [
+              verifyNativeNoticeReadableFormat("archive"),
+              verifyNativeNoticeReadableFormat("primary"),
+            ]
+          : [];
         const output = [
           `Skipped native notice notes: stable_noop=1 notice_count=${stableComparison.expected.total} ` +
             `primary=${stableComparison.expected.primary.length} archived=${stableComparison.expected.archive.length}`,
@@ -2037,20 +2296,12 @@ function updateNoticeNativeNote(
       (key) => !stableComparison[key].matches
     );
     try {
-      const formatOutputs = [
-        verifyNoticeNativeNoteReadableFormat(
-          archiveNoteName,
-          "archive",
-          scriptDir,
-          archiveNoticeRenderStateJsonPath
-        ),
-        verifyNoticeNativeNoteReadableFormat(
-          noteName,
-          "primary",
-          scriptDir,
-          noticeRenderStateJsonPath
-        ),
-      ];
+      const formatOutputs = verifyStableSkipFormatEnabled
+        ? [
+            verifyNativeNoticeReadableFormat("archive"),
+            verifyNativeNoticeReadableFormat("primary"),
+          ]
+        : [];
       const output = [
         `Deferred native notice notes: state_only=1 differing=${differingTargets.join(",")} ` +
           `notice_count=${stableComparison.expected.total} ` +
@@ -2083,18 +2334,19 @@ function updateNoticeNativeNote(
         stableComparison.canCompare
           ? stableComparison[target.key]
           : null;
-      const mustRenderAfterCapture = noticeTargetRequiresPostCaptureRender(target.key);
+      const mustRenderAfterCapture = noticeTargetRequiresPostCaptureRender(
+        target.key,
+        forceArchivePostCaptureRenderEnabled
+      );
       if (targetComparison && targetComparison.matches && !mustRenderAfterCapture) {
         try {
-          const formatOutput = verifyNoticeNativeNoteReadableFormat(
-            target.key === "archive" ? archiveNoteName : noteName,
-            target.key,
-            scriptDir,
-            target.key === "archive" ? archiveNoticeRenderStateJsonPath : noticeRenderStateJsonPath
-          );
+          const formatOutput = verifyStableSkipFormatEnabled
+            ? verifyNativeNoticeReadableFormat(target.key)
+            : "";
           const output =
             `Skipped native notice note: target=${target.key} stable_noop=1 ` +
-            `notices=${targetComparison.expectedLength}\n${formatOutput}`;
+            `notices=${targetComparison.expectedLength}` +
+            (formatOutput ? `\n${formatOutput}` : "");
           debugStderr(output);
           results.push({
             target: `${target.key}-stable-noop`,
@@ -2110,22 +2362,13 @@ function updateNoticeNativeNote(
         }
       }
 
-      const output = runTelemetryEvent(
+      const output = runNativeNoticeCommandWithRecoverableRetry(
         stageTelemetry,
-        "native-notice-note",
         target.key,
-        () =>
-          runCommand(
-            nativeCommand([...target.args, ...commonArgs], []),
-            scriptDir
-          )
+        nativeCommand([...target.args, ...commonArgs], []),
+        scriptDir
       );
-      const formatOutput = verifyNoticeNativeNoteReadableFormat(
-        target.key === "archive" ? archiveNoteName : noteName,
-        target.key,
-        scriptDir,
-        target.key === "archive" ? archiveNoticeRenderStateJsonPath : noticeRenderStateJsonPath
-      );
+      const formatOutput = verifyNativeNoticeReadableFormat(target.key);
       results.push({
         target: target.key,
         status: "ok",
@@ -2146,89 +2389,6 @@ function updateNoticeNativeNote(
   return { results, renderWarnings };
 }
 
-function appleScriptStringLiteral(value) {
-  return `"${String(value || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')}"`;
-}
-
-function parseNoticeReadableStyleMetrics(output) {
-  const metrics = {
-    boldTags: 0,
-    fontSizeTags: 0,
-    headingTags: 0,
-    largeFontTags: 0,
-  };
-  String(output || "")
-    .split(/\r?\n/)
-    .forEach((line) => {
-      const match = line.match(/^([a-z_]+)=(\d+)$/);
-      if (!match) {
-        return;
-      }
-      const value = Number(match[2] || "0");
-      if (match[1] === "bold_tags") {
-        metrics.boldTags = value;
-      } else if (match[1] === "font_size_tags") {
-        metrics.fontSizeTags = value;
-      } else if (match[1] === "heading_tags") {
-        metrics.headingTags = value;
-      } else if (match[1] === "large_font_tags") {
-        metrics.largeFontTags = value;
-      }
-    });
-  return metrics;
-}
-
-function noteReadableStyleMetricsViaAppleScript(noteName, scriptDir) {
-  const script = [
-    "on countOccurrences(sourceText, needle)",
-    "  set previousDelimiters to AppleScript's text item delimiters",
-    "  set AppleScript's text item delimiters to needle",
-    "  set itemCount to count of text items of sourceText",
-    "  set AppleScript's text item delimiters to previousDelimiters",
-    "  return itemCount - 1",
-    "end countOccurrences",
-    "",
-    "set htmlText to \"\"",
-    'tell application "Notes"',
-    "  try",
-    `    set htmlText to body of note ${appleScriptStringLiteral(noteName)}`,
-    "  on error",
-    "    set htmlText to \"\"",
-    "  end try",
-    "end tell",
-    "set boldCount to countOccurrences(htmlText, \"<b\")",
-    "set boldCount to boldCount + countOccurrences(htmlText, \"<strong\")",
-    "set boldCount to boldCount + countOccurrences(htmlText, \"<h1\")",
-    "set boldCount to boldCount + countOccurrences(htmlText, \"<h2\")",
-    "set boldCount to boldCount + countOccurrences(htmlText, \"<h3\")",
-    "set boldCount to boldCount + countOccurrences(htmlText, \"<h4\")",
-    "set boldCount to boldCount + countOccurrences(htmlText, \"<h5\")",
-    "set boldCount to boldCount + countOccurrences(htmlText, \"<h6\")",
-    "set headingCount to countOccurrences(htmlText, \"<h1\")",
-    "set headingCount to headingCount + countOccurrences(htmlText, \"<h2\")",
-    "set headingCount to headingCount + countOccurrences(htmlText, \"<h3\")",
-    "set headingCount to headingCount + countOccurrences(htmlText, \"<h4\")",
-    "set headingCount to headingCount + countOccurrences(htmlText, \"<h5\")",
-    "set headingCount to headingCount + countOccurrences(htmlText, \"<h6\")",
-    "set fontSizeCount to countOccurrences(htmlText, \"font-size\")",
-    "set largeFontCount to 0",
-    "set largeFontCount to largeFontCount + countOccurrences(htmlText, \"font-size:22\")",
-    "set largeFontCount to largeFontCount + countOccurrences(htmlText, \"font-size: 22\")",
-    "set largeFontCount to largeFontCount + countOccurrences(htmlText, \"font-size:18\")",
-    "set largeFontCount to largeFontCount + countOccurrences(htmlText, \"font-size: 18\")",
-    "set largeFontCount to largeFontCount + countOccurrences(htmlText, \"font-size:16\")",
-    "set largeFontCount to largeFontCount + countOccurrences(htmlText, \"font-size: 16\")",
-    "set largeFontCount to largeFontCount + countOccurrences(htmlText, \"font-size:15\")",
-    "set largeFontCount to largeFontCount + countOccurrences(htmlText, \"font-size: 15\")",
-    "set largeFontCount to largeFontCount + headingCount",
-    "return \"bold_tags=\" & (boldCount as text) & linefeed & \"font_size_tags=\" & (fontSizeCount as text) & linefeed & \"heading_tags=\" & (headingCount as text) & linefeed & \"large_font_tags=\" & (largeFontCount as text)",
-  ].join("\n");
-  const output = runCommand(["/usr/bin/osascript", "-e", script], scriptDir);
-  return parseNoticeReadableStyleMetrics(output);
-}
-
 function noticeRenderStyleVersion(renderStateJsonPath) {
   if (!renderStateJsonPath || !fileExists(renderStateJsonPath)) {
     return "";
@@ -2241,42 +2401,34 @@ function noticeRenderStyleVersion(renderStateJsonPath) {
   }
 }
 
-function verifyNoticeNativeNoteReadableFormat(noteName, targetKey, scriptDir, renderStateJsonPath) {
-  const metrics = noteReadableStyleMetricsViaAppleScript(noteName, scriptDir);
+function verifyNoticeNativeNoteReadableFormat(targetKey, renderStateJsonPath, command, scriptDir) {
   const styleVersion = noticeRenderStyleVersion(renderStateJsonPath);
-  const usesFastRichPaste = styleVersion === NATIVE_NOTICE_RENDER_STYLE_VERSION;
-  const minimumBoldTags = targetKey === "primary" ? 20 : 2;
-  const minimumLargeFontTags = usesFastRichPaste ? 0 : targetKey === "primary" ? 20 : 1;
-  if (
-    metrics.boldTags < minimumBoldTags ||
-    metrics.largeFontTags < minimumLargeFontTags
-  ) {
+  if (styleVersion !== NATIVE_NOTICE_RENDER_STYLE_VERSION) {
     throw new Error(
-      `Native notice note readability format missing (${targetKey}): ` +
-        `bold_tags=${metrics.boldTags} minimum=${minimumBoldTags} ` +
-        `font_size_tags=${metrics.fontSizeTags} heading_tags=${metrics.headingTags} ` +
-        `large_font_tags=${metrics.largeFontTags} minimum=${minimumLargeFontTags}`
+      `Native notice note readability format stale (${targetKey}): ` +
+        `style_version=${styleVersion || "unknown"}`
     );
   }
-  return (
-    `Verified native notice readability format: ${targetKey} ` +
-    `bold_tags=${metrics.boldTags} font_size_tags=${metrics.fontSizeTags} ` +
-    `heading_tags=${metrics.headingTags} large_font_tags=${metrics.largeFontTags} ` +
-    `style_version=${styleVersion || "unknown"}`
-  );
+  const verificationOutput = runCommand(command, scriptDir);
+  return [
+    `Verified native notice readability format: ${targetKey} style_version=${styleVersion}`,
+    String(verificationOutput || "").trim(),
+  ].filter(Boolean).join("\n");
 }
 
 function maybeSkipStableNoticeNativeUpdate(
   noticeDigestJsonPath,
   noticeUserStateJsonPath,
   noticeRenderStateJsonPath,
-  archiveNoticeRenderStateJsonPath
+  archiveNoticeRenderStateJsonPath,
+  nativeEnvironment
 ) {
   const comparison = noticeNativeRenderComparison(
     noticeDigestJsonPath,
     noticeUserStateJsonPath,
     noticeRenderStateJsonPath,
-    archiveNoticeRenderStateJsonPath
+    archiveNoticeRenderStateJsonPath,
+    nativeEnvironment
   );
   if (!comparison.canCompare) {
     return { skipped: false, reason: comparison.reason };
@@ -2299,7 +2451,8 @@ function noticeNativeRenderComparison(
   noticeDigestJsonPath,
   noticeUserStateJsonPath,
   noticeRenderStateJsonPath,
-  archiveNoticeRenderStateJsonPath
+  archiveNoticeRenderStateJsonPath,
+  nativeEnvironment
 ) {
   const digest = JSON.parse(readText(noticeDigestJsonPath));
   if (noticeDigestHasFreshNotices(digest)) {
@@ -2316,9 +2469,19 @@ function noticeNativeRenderComparison(
 
   const primaryRenderState = JSON.parse(readText(noticeRenderStateJsonPath));
   const archiveRenderState = JSON.parse(readText(archiveNoticeRenderStateJsonPath));
-  const expected = expectedNoticeNativeRenderState(digest, userState);
-  const primary = compareRenderStateToExpected(primaryRenderState, expected.primary);
-  const archive = compareRenderStateToExpected(archiveRenderState, expected.archive);
+  const expected = expectedNoticeNativeRenderState(digest, userState, nativeEnvironment);
+  const primary = compareRenderStateToExpected(
+    primaryRenderState,
+    expected.primary,
+    "primary",
+    nativeEnvironment
+  );
+  const archive = compareRenderStateToExpected(
+    archiveRenderState,
+    expected.archive,
+    "archive",
+    nativeEnvironment
+  );
   const stateOnlyDiff =
     (!primary.matches || !archive.matches) &&
     primary.styleVersionMatches &&
@@ -2356,17 +2519,24 @@ function noticeDigestHasFreshNotices(digest) {
   );
 }
 
-function expectedNoticeNativeRenderState(digest, userState) {
+function expectedNoticeNativeRenderState(digest, userState, nativeEnvironment) {
   const primaryImportant = [];
   const primaryFresh = [];
   const primaryUnread = [];
+  const primaryAllVisible = [];
   const archive = [];
   let total = 0;
+  const hideHidden = nativeNoticeEnvironmentEnabled(
+    nativeEnvironment,
+    "NOTICE_HIDE_HIDDEN_ITEMS",
+    true
+  );
   (digest.courses || []).forEach((course) => {
     const courseName = String(course.course || "");
     const importantCourse = [];
     const freshCourse = [];
     const unreadCourse = [];
+    const allVisibleCourse = [];
     const archiveCourse = [];
     (course.notices || []).forEach((notice) => {
       total += 1;
@@ -2375,39 +2545,48 @@ function expectedNoticeNativeRenderState(digest, userState) {
       const state = userState.notices[noticeId] || {};
       const isImportant = state.important === true;
       const isRead = Boolean(fingerprint) && state.read_fingerprint === fingerprint;
+      const isHidden = state.hidden === true;
+      if (hideHidden && isHidden) {
+        return;
+      }
       const changeState = String(notice.change_state || "stable");
       const isFresh = changeState === "new" || changeState === "updated";
-      const rendered = {
+      const rendered = (shouldCheckRead, shouldCheckImportant) => ({
         notice_id: noticeId,
         fingerprint,
-      };
+        should_check_read: Boolean(shouldCheckRead),
+        should_check_important: Boolean(shouldCheckImportant),
+      });
+      allVisibleCourse.push(rendered(isRead, isImportant));
       if (isImportant) {
-        importantCourse.push(rendered);
+        importantCourse.push(rendered(isRead, true));
       } else if (!isRead) {
         if (isFresh) {
-          freshCourse.push(rendered);
+          freshCourse.push(rendered(false, false));
         } else {
-          unreadCourse.push(rendered);
+          unreadCourse.push(rendered(false, false));
         }
       }
       if (isRead && !isImportant) {
-        archiveCourse.push(rendered);
+        archiveCourse.push(rendered(true, false));
       }
     });
     primaryImportant.push(...importantCourse);
     primaryFresh.push(...freshCourse);
     primaryUnread.push(...unreadCourse);
+    primaryAllVisible.push(...allVisibleCourse);
     archive.push(...archiveCourse);
   });
-  const primary = [...primaryImportant, ...primaryFresh, ...primaryUnread];
+  const groupedPrimary = [...primaryImportant, ...primaryFresh, ...primaryUnread];
+  const primary = groupedPrimary.length > 0 ? groupedPrimary : primaryAllVisible;
   return { primary, archive, total };
 }
 
 function renderStateMatchesExpected(renderState, expected) {
-  return compareRenderStateToExpected(renderState, expected).matches;
+  return compareRenderStateToExpected(renderState, expected, "primary", []).matches;
 }
 
-function compareRenderStateToExpected(renderState, expected) {
+function compareRenderStateToExpected(renderState, expected, targetKey, nativeEnvironment) {
   const expectedLength = Array.isArray(expected) ? expected.length : 0;
   if (String(renderState && renderState.style_version || "") !== NATIVE_NOTICE_RENDER_STYLE_VERSION) {
     return {
@@ -2415,6 +2594,24 @@ function compareRenderStateToExpected(renderState, expected) {
       reason: "style-version-differs",
       expectedLength,
       styleVersionMatches: false,
+    };
+  }
+  const expectedSignature = noticeExpectedRenderSignature(expected, targetKey, nativeEnvironment);
+  const actualSignature = String(renderState && renderState.render_signature || "");
+  if (!actualSignature) {
+    return {
+      matches: false,
+      reason: "render-signature-missing",
+      expectedLength,
+      styleVersionMatches: true,
+    };
+  }
+  if (actualSignature !== expectedSignature) {
+    return {
+      matches: false,
+      reason: "render-signature-differs",
+      expectedLength,
+      styleVersionMatches: true,
     };
   }
   const rendered = (renderState && renderState.rendered_notices) || [];
@@ -2445,6 +2642,28 @@ function compareRenderStateToExpected(renderState, expected) {
         styleVersionMatches: true,
       };
     }
+    if (
+      actual.should_check_read != null &&
+      Boolean(actual.should_check_read) !== Boolean(desired.should_check_read)
+    ) {
+      return {
+        matches: false,
+        reason: "read-check-state-differs",
+        expectedLength,
+        styleVersionMatches: true,
+      };
+    }
+    if (
+      actual.should_check_important != null &&
+      Boolean(actual.should_check_important) !== Boolean(desired.should_check_important)
+    ) {
+      return {
+        matches: false,
+        reason: "important-check-state-differs",
+        expectedLength,
+        styleVersionMatches: true,
+      };
+    }
   }
   return {
     matches: true,
@@ -2452,6 +2671,47 @@ function compareRenderStateToExpected(renderState, expected) {
     expectedLength,
     styleVersionMatches: true,
   };
+}
+
+function noticeExpectedRenderSignature(expected, targetKey, nativeEnvironment) {
+  const components = noticeRenderSignatureComponents(targetKey, nativeEnvironment);
+  (Array.isArray(expected) ? expected : []).forEach((notice) => {
+    components.push([
+      String(notice.notice_id || ""),
+      String(notice.fingerprint || ""),
+      notice.should_check_read ? "read=1" : "read=0",
+      notice.should_check_important ? "important=1" : "important=0",
+    ].join("|"));
+  });
+  return stableHash(components.join("\u001f"));
+}
+
+function noticeRenderSignatureComponents(targetKey, nativeEnvironment) {
+  const collapseCourses =
+    nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_COURSES", false);
+  const batchChecklist =
+    nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT", false) &&
+    !nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT", false);
+  const fastBatchChecklist =
+    batchChecklist &&
+    !nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT", false);
+  const uiStyleMenu =
+    nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT", false) &&
+    !nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT", false);
+  return [
+    NATIVE_NOTICE_RENDER_STYLE_VERSION,
+    `display_mode=${targetKey === "archive" ? "archive" : "primary"}`,
+    `collapse_sections=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_SECTIONS", false) ? "1" : "0"}`,
+    `collapse_courses=${collapseCourses ? "1" : "0"}`,
+    `collapse_notice_items=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_NOTICE_ITEMS", false) ? "1" : "0"}`,
+    `style_notice_items=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS", false) ? "1" : "0"}`,
+    `hide_hidden=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_HIDE_HIDDEN_ITEMS", true) ? "1" : "0"}`,
+    `ui_style_menu=${uiStyleMenu ? "1" : "0"}`,
+    `preformatted_paste_only=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY", false) ? "1" : "0"}`,
+    `plain_text_paste=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_PLAIN_TEXT_PASTE", false) ? "1" : "0"}`,
+    `batch_checklist=${batchChecklist ? "1" : "0"}`,
+    `fast_batch_checklist=${fastBatchChecklist ? "1" : "0"}`,
+  ];
 }
 
 function noticeRenderVisibleKeys(primaryRenderState, archiveRenderState) {
@@ -2550,6 +2810,9 @@ function fetchPages(urls, waitSeconds, scriptDir, options) {
   if (options && options.summaryPath) {
     command.push(`--summary-out=${options.summaryPath}`);
   }
+  if (options && options.requireAll) {
+    command.push("--require-all");
+  }
   if (options && options.reuseFallbackAlwaysFetch) {
     command.push("--reuse-fallback-always-fetch");
   }
@@ -2569,10 +2832,25 @@ function fetchPages(urls, waitSeconds, scriptDir, options) {
     }
   );
 
-  runCommand(command, scriptDir);
-  removeFileIfExists(urlFilePath);
+  try {
+    runCommand(command, scriptDir);
+  } finally {
+    removeFileIfExists(urlFilePath);
+  }
   recordFetchSummaryTelemetry(options && options.summaryPath, context);
-  return JSON.parse(readText(outputPath));
+  const pages = JSON.parse(readText(outputPath));
+  if (
+    options &&
+    options.requireAll &&
+    (!Array.isArray(pages) || pages.length < urls.length)
+  ) {
+    throw new Error(
+      `${context}: required page fetch returned ${
+        Array.isArray(pages) ? pages.length : "invalid"
+      } / ${urls.length}`
+    );
+  }
+  return pages;
 }
 
 function recordFetchSummaryTelemetry(summaryPath, context) {
@@ -2670,10 +2948,23 @@ function writeCalendarSyncResult(path, output, backend) {
     return;
   }
   const summaries = [];
+  const changes = [];
   String(output || "")
     .split(/\r?\n/)
     .filter(Boolean)
     .forEach((line) => {
+      if (line.startsWith("calendar_change_json=")) {
+        const raw = line.slice("calendar_change_json=".length);
+        try {
+          changes.push(JSON.parse(raw));
+        } catch (error) {
+          changes.push({
+            raw: line,
+            parse_error: String((error && error.message) || error),
+          });
+        }
+        return;
+      }
       const item = { raw: line };
       line.split(/\s+/).forEach((part) => {
         const pieces = part.split("=");
@@ -2692,6 +2983,7 @@ function writeCalendarSyncResult(path, output, backend) {
         backend,
         generated_at: new Date().toISOString(),
         summaries,
+        changes,
       },
       null,
       2
@@ -2823,6 +3115,66 @@ function buildRemindersDesiredHash(
         alertListName: options.alertListName || "KLMS 알림",
       },
       desired,
+    })
+  );
+}
+
+function buildCalendarDesiredHash(stateJsonPath, config, calendarOptions) {
+  const state = JSON.parse(readText(stateJsonPath));
+  if (state.status !== "ok" || !state.content || state.content.kind !== "success") {
+    return stableHash(readText(stateJsonPath));
+  }
+
+  const options = calendarOptions || {};
+  const content = state.content || {};
+  const normalizeCalendarItem = (item) => ({
+    category: item && item.category || "",
+    course: item && item.course || "",
+    title: item && item.title || "",
+    due: item && item.due || "",
+    submission: item && item.submission || "",
+    instructions: item && item.instructions || "",
+    url: item && item.url || "",
+    sync_start: item && item.sync_start || "",
+    sync_due: item && item.sync_due || "",
+    timing_precision: item && item.timing_precision || "",
+    time_source: item && item.time_source || "",
+    source_title: item && item.source_title || "",
+    location: item && item.location || "",
+    coverage: item && item.coverage || "",
+    coverage_summary: item && item.coverage_summary || "",
+  });
+  const sortCalendarItems = (items) =>
+    (Array.isArray(items) ? items : [])
+      .map(normalizeCalendarItem)
+      .sort((left, right) =>
+        [
+          left.category,
+          left.url,
+          left.course,
+          left.title,
+          left.sync_due || left.due,
+        ].join("\u0000").localeCompare([
+          right.category,
+          right.url,
+          right.course,
+          right.title,
+          right.sync_due || right.due,
+        ].join("\u0000"))
+      );
+
+  return stableHash(
+    JSON.stringify({
+      options: {
+        examEnabled: Boolean(options.examEnabled),
+        helpDeskEnabled: Boolean(options.helpDeskEnabled),
+        examCalendarName: config.EXAM_CALENDAR_NAME || "시험",
+        helpDeskCalendarName: config.HELP_DESK_CALENDAR_NAME || "기타",
+        durationMinutes: String(config.CALENDAR_EVENT_DURATION_MINUTES || "15"),
+        lookbackDays: String(config.CALENDAR_LOOKBACK_DAYS || "365"),
+      },
+      exam_items: options.examEnabled ? sortCalendarItems(content.exam_items) : [],
+      help_desk_items: options.helpDeskEnabled ? sortCalendarItems(content.help_desk_items) : [],
     })
   );
 }
@@ -3717,6 +4069,48 @@ function parseEnvFile(path) {
   return config;
 }
 
+function applyRuntimeConfigOverrides(config) {
+  const overrideKeys = [
+    "NOTICE_COLLAPSE_SECTIONS",
+    "NOTICE_COLLAPSE_COURSES",
+    "NOTICE_COLLAPSE_NOTICE_ITEMS",
+    "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS",
+    "NOTICE_HIDE_HIDDEN_ITEMS",
+    "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT",
+    "NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT",
+    "NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT",
+    "NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT",
+    "NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT",
+    "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE",
+    "NOTICE_NATIVE_STABLE_NOOP_SKIP",
+    "NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER",
+    "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER",
+    "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
+    "NOTICE_NATIVE_NOTE_MAX_ATTEMPTS",
+    "NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS",
+    "NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS",
+    "NOTICE_NATIVE_NOTE_TIMEOUT_GRACE_SECONDS",
+    "NOTICE_NATIVE_STYLE_BUDGET_SECONDS",
+    "NOTICE_NATIVE_BOLD_REINFORCE_LIMIT",
+    "NOTICE_NATIVE_VALIDATE_STYLE",
+    "NOTICE_NATIVE_COLLAPSE_ALL_FIRST",
+    "NOTICE_NATIVE_SELECTION_SETTLE_SECONDS",
+    "NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US",
+    "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY",
+    "NOTICE_NATIVE_PLAIN_TEXT_PASTE",
+    "NOTICE_DEBUG_CAPTURE",
+    "NOTICE_DEBUG_AUTOMATION",
+    "NOTICE_TIMING",
+  ];
+  overrideKeys.forEach((key) => {
+    const value = normalizeRuntimeEnvValue(envValue(key));
+    if (value !== "") {
+      config[key] = value;
+    }
+  });
+
+}
+
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\"'\"'`)}'`;
 }
@@ -3756,7 +4150,25 @@ function removeFileIfExists(path) {
 
 function envValue(key) {
   const value = $.NSProcessInfo.processInfo.environment.objectForKey($(key));
-  return value ? ObjC.unwrap(value) : "";
+  if (value === null || value === undefined) {
+    return "";
+  }
+  try {
+    return normalizeRuntimeEnvValue(ObjC.unwrap(value));
+  } catch (error) {
+    return "";
+  }
+}
+
+function normalizeRuntimeEnvValue(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const text = String(value).trim();
+  if (!text || /^(undefined|null)$/i.test(text)) {
+    return "";
+  }
+  return text;
 }
 
 function buildPythonPath(scriptDir, runtimeDir) {

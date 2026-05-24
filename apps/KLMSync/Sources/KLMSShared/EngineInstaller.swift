@@ -136,6 +136,7 @@ public struct EnginePayloadLocator: Sendable {
             rootURL.appendingPathComponent("src", isDirectory: true),
             rootURL.appendingPathComponent("bin", isDirectory: true),
             rootURL.appendingPathComponent("examples", isDirectory: true),
+            rootURL.appendingPathComponent("runtime/python-packages", isDirectory: true),
         ]
 
         for root in roots {
@@ -253,6 +254,8 @@ public struct EngineInstaller {
             copied.append(directory)
         }
 
+        try installPythonPackagesIfPresent(from: payload.rootURL, to: destination, copiedPaths: &copied)
+
         for file in Self.rootCodeFiles {
             let source = payload.rootURL.appendingPathComponent(file)
             guard fileManager.fileExists(atPath: source.path) else { continue }
@@ -321,6 +324,30 @@ public struct EngineInstaller {
                 try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fileURL.path)
             }
         }
+    }
+
+    private func installPythonPackagesIfPresent(
+        from payloadRoot: URL,
+        to destination: URL,
+        copiedPaths: inout [String]
+    ) throws {
+        let candidates = [
+            payloadRoot.appendingPathComponent("python-packages", isDirectory: true),
+            payloadRoot.appendingPathComponent("runtime/python-packages", isDirectory: true),
+        ]
+        guard let source = candidates.first(where: { fileManager.fileExists(atPath: $0.path) }) else {
+            return
+        }
+
+        let target = destination
+            .appendingPathComponent("runtime", isDirectory: true)
+            .appendingPathComponent("app-python-packages", isDirectory: true)
+        try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if fileManager.fileExists(atPath: target.path) {
+            try fileManager.removeItem(at: target)
+        }
+        try fileManager.copyItem(at: source, to: target)
+        copiedPaths.append("runtime/app-python-packages")
     }
 
     public static let rootCodeFiles: [String] = [

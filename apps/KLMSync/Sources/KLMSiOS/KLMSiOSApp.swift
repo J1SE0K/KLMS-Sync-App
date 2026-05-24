@@ -26,7 +26,7 @@ struct CompanionRootView: View {
                     LabeledContent("새 파일", value: "\(status.newFiles)")
                     LabeledContent("격리", value: "\(status.quarantine)")
                     if !status.phase.isEmpty {
-                        LabeledContent("Phase", value: status.phase)
+                        LabeledContent("진행 상태", value: status.phase.klmsLocalizedStatus)
                     }
                 }
 
@@ -39,9 +39,9 @@ struct CompanionRootView: View {
 
                 if let pendingCommand {
                     Section("최근 요청") {
-                        LabeledContent("Command", value: pendingCommand.kind.rawValue)
-                        LabeledContent("Status", value: pendingCommand.status.rawValue)
-                        LabeledContent("Created", value: pendingCommand.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        LabeledContent("명령", value: pendingCommand.kind.displayName)
+                        LabeledContent("상태", value: pendingCommand.status.displayName)
+                        LabeledContent("생성 시각", value: pendingCommand.createdAt.formatted(date: .abbreviated, time: .shortened))
                     }
                 }
 

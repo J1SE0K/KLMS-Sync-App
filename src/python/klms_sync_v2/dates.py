@@ -45,6 +45,10 @@ EN_MONTH_RANGE_RE = re.compile(
     r"\s*(?:-|~|to|부터|에서)\s*"
     r"(?P<end_hour>\d{1,2})\s*:\s*(?P<end_minute>\d{2})\s*(?P<end_ampm>AM|PM|am|pm)?"
 )
+REFERENCE_DATETIME_RE = re.compile(
+    r"\b(?P<year>20\d{2})[-/.](?P<month>\d{1,2})[-/.](?P<day>\d{1,2})"
+    r"[ T]+(?P<hour>\d{1,2}):(?P<minute>\d{2})"
+)
 
 MONTHS = {
     "jan": 1,
@@ -74,6 +78,32 @@ def parse_reference_year(generated_at: str, default: int | None = None) -> int:
     if match:
         return int(match.group(1))
     return default or datetime.now(KST).year
+
+
+def parse_reference_datetime(generated_at: str) -> datetime | None:
+    text = (generated_at or "").strip()
+    if not text:
+        return None
+
+    iso_candidate = text.removesuffix(" KST")
+    try:
+        parsed = datetime.fromisoformat(iso_candidate.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=KST)
+        return parsed.astimezone(KST)
+    except ValueError:
+        pass
+
+    match = REFERENCE_DATETIME_RE.search(text)
+    if not match:
+        return None
+    return build_datetime(
+        int(match.group("year")),
+        int(match.group("month")),
+        int(match.group("day")),
+        int(match.group("hour")),
+        int(match.group("minute")),
+    )
 
 
 def normalize_ampm(hour: int, ampm: str | None) -> int:
@@ -222,12 +252,5 @@ def is_past(iso_value: str, generated_at: str = "") -> bool:
         parsed = datetime.fromisoformat(iso_value)
     except ValueError:
         return False
-    generated = parse_due_datetime(generated_at or "")
-    if generated:
-        try:
-            reference = datetime.fromisoformat(generated.iso)
-        except ValueError:
-            reference = datetime.now(KST)
-    else:
-        reference = datetime.now(KST)
+    reference = parse_reference_datetime(generated_at or "") or datetime.now(KST)
     return parsed < reference

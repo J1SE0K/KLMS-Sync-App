@@ -10,7 +10,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR / "src" / "python"))
 
 from klms_sync_v2.classifiers import classify_detail_page, classify_notice  # noqa: E402
-from klms_sync_v2.dates import parse_due_datetime  # noqa: E402
+from klms_sync_v2.dates import is_past, parse_due_datetime  # noqa: E402
 from klms_sync_v2.models import Notice, Page  # noqa: E402
 from klms_sync_v2.pipeline import build_sync_state  # noqa: E402
 
@@ -44,6 +44,14 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(parsed.start_iso, "2026-05-14T10:30:00+09:00")
         self.assertEqual(parsed.iso, "2026-05-14T11:30:00+09:00")
 
+    def test_is_past_uses_generated_at_label_not_wall_clock(self) -> None:
+        self.assertFalse(
+            is_past("2026-05-18T18:30:00+09:00", "2026-05-13 19:18 KST")
+        )
+        self.assertTrue(
+            is_past("2026-05-13T18:30:00+09:00", "2026-05-13 19:18 KST")
+        )
+
     def test_notice_deadline_project_becomes_assignment(self) -> None:
         notice = Notice(
             url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=2",
@@ -69,8 +77,10 @@ class V2CoreTests(unittest.TestCase):
 
         item, reason = classify_detail_page(page, "2026-05-13 19:18 KST")
 
-        self.assertIsNone(item)
         self.assertEqual(reason, "submitted")
+        self.assertIsNotNone(item)
+        self.assertEqual(item.record_status, "completed")
+        self.assertEqual(item.completion_reason, "submitted")
 
     def test_submitted_detail_blocks_matching_notice_assignment(self) -> None:
         detail_pages = [
@@ -95,6 +105,11 @@ class V2CoreTests(unittest.TestCase):
         )
 
         self.assertEqual(state.assignments, [])
+        self.assertEqual(len(state.completed_assignments), 1)
+        self.assertEqual(len(state.assignment_records), 1)
+        self.assertTrue(
+            all(item.record_status == "completed" for item in state.assignment_records)
+        )
 
     def test_submitted_written_assignment_does_not_block_programming_assignment_same_number(self) -> None:
         detail_pages = [
@@ -122,7 +137,7 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(len(state.assignments), 1)
         self.assertEqual(state.assignments[0].title, "Programming Assignment 3")
 
-    def test_nano_quiz_detail_is_not_exam(self) -> None:
+    def test_nano_quiz_detail_is_assignment_not_exam(self) -> None:
         page = Page(
             url="https://klms.kaist.ac.kr/mod/url/view.php?id=1230079",
             title="CS.30600(A)_2026_1: Nano Quiz - 25.05.07(Wed)",
@@ -131,8 +146,10 @@ class V2CoreTests(unittest.TestCase):
 
         item, reason = classify_detail_page(page, "2026-05-13 19:18 KST")
 
-        self.assertIsNone(item)
-        self.assertEqual(reason, "not-relevant")
+        self.assertIsNotNone(item)
+        self.assertEqual(reason, "assignment")
+        self.assertEqual(item.category, "assignment")
+        self.assertEqual(item.title, "Nano Quiz - 25.05.07(Wed)")
 
     def test_unsubmitted_assignment_detail_is_active(self) -> None:
         page = Page(
@@ -364,6 +381,64 @@ class V2CoreTests(unittest.TestCase):
             self.assertEqual(rendered["content"]["assignments"][0]["title"], "Project 3")
             status = json.loads(output_status.read_text(encoding="utf-8"))
             self.assertTrue(status["changed"])
+
+    def test_cli_build_note_renders_completed_assignment_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            details = tmp_dir / "details.json"
+            state = tmp_dir / "state.json"
+            output_state = tmp_dir / "next_state.json"
+            output_status = tmp_dir / "status.json"
+            output_html = tmp_dir / "section.html"
+            details.write_text(
+                json.dumps(
+                    [
+                        {
+                            "requestedUrl": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1228325",
+                            "title": "CS.30000_2026_1: Written Assignment 3",
+                            "html": "제출 상태 채점을 위해 제출되었습니다. 마감 일시 2026년 5월 13일(수요일) 오후 11:59",
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            state.write_text("{}", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "build-note",
+                    "--details-json",
+                    str(details),
+                    "--state-json",
+                    str(state),
+                    "--output-html",
+                    str(output_html),
+                    "--output-state",
+                    str(output_state),
+                    "--output-status",
+                    str(output_status),
+                    "--generated-at",
+                    "2026-05-13 19:18 KST",
+                ],
+                cwd=PROJECT_DIR,
+                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            self.assertIn('"assignment_count": 0', result.stdout)
+            self.assertIn('"completed_assignment_count": 1', result.stdout)
+            html = output_html.read_text(encoding="utf-8")
+            self.assertIn("완료 기록", html)
+            self.assertIn("KLMS 제출 완료", html)
+            status = json.loads(output_status.read_text(encoding="utf-8"))
+            self.assertEqual(status["completed_assignment_count"], 1)
+            self.assertEqual(status["assignment_record_count"], 1)
 
     def test_cli_build_note_login_page_writes_error_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

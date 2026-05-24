@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import replace
 import re
 
 from .classifiers import classify_detail_page, classify_notice, clean_detail_instructions
@@ -69,18 +70,43 @@ def build_sync_state(
         }
 
     def add_assignment(item: Assignment) -> None:
+        def record_assignment(record: Assignment) -> None:
+            if record.url in seen_assignments:
+                return
+            seen_assignments.add(record.url)
+            state.assignment_records.append(record)
+
+        if item.record_status == "completed" or item.auto_completed:
+            record_assignment(item)
+            state.completed_assignments.append(item)
+            return
         if not include_past and is_past(item.sync_due, generated_at):
+            completed = replace(
+                item,
+                auto_completed=True,
+                record_status="completed",
+                completion_reason="past_due",
+            )
+            record_assignment(completed)
+            state.completed_assignments.append(completed)
             return
         normalized = one_line(" ".join([item.title, item.source_title])).lower()
         if any(token and token in normalized for token in submitted_tokens):
+            completed = replace(
+                item,
+                auto_completed=True,
+                record_status="completed",
+                completion_reason="submitted_match",
+            )
+            record_assignment(completed)
+            state.completed_assignments.append(completed)
             return
-        if item.url in seen_assignments:
-            return
-        seen_assignments.add(item.url)
+        active = replace(item, record_status=item.record_status or "active")
+        record_assignment(active)
         if item.category == "assignment_candidate":
-            state.assignment_candidates.append(item)
+            state.assignment_candidates.append(active)
         else:
-            state.assignments.append(item)
+            state.assignments.append(active)
 
     def add_event(item: Event) -> None:
         if item.category == "exam_candidate" and not include_past and is_past(item.sync_due, generated_at):
@@ -111,6 +137,8 @@ def build_sync_state(
             add_event(item)
 
     state.assignments.sort(key=lambda item: (item.sync_due, item.course, item.title))
+    state.completed_assignments.sort(key=lambda item: (item.sync_due, item.course, item.title))
+    state.assignment_records.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.assignment_candidates.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.exams.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.exam_candidates.sort(key=lambda item: (item.sync_due, item.course, item.title))

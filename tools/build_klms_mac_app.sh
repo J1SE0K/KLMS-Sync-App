@@ -7,6 +7,7 @@ APP_PACKAGE_DIR="$ROOT_DIR/apps/KLMSync"
 CONFIGURATION="${CONFIGURATION:-release}"
 APP_NAME="${APP_NAME:-KLMS Sync}"
 BUNDLE_ID="${BUNDLE_ID:-com.local.KLMSync}"
+APP_ICON_SOURCE="$APP_PACKAGE_DIR/Resources/AppIcon.icns"
 # Keep the default outside Documents/iCloud-backed workspaces. Those locations can
 # attach File Provider metadata to .app directories and make codesign reject them.
 DIST_DIR="${DIST_DIR:-$HOME/Applications}"
@@ -36,11 +37,77 @@ if [[ ! -d "$RESOURCE_BUNDLE_SOURCE" ]]; then
 fi
 
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" "$APP_BUNDLE/Contents/Helpers"
 
 cp -X "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/KLMSMac"
 chmod +x "$APP_BUNDLE/Contents/MacOS/KLMSMac"
 ditto --norsrc "$RESOURCE_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/KLMSync_KLMSMac.bundle"
+if [[ -f "$APP_ICON_SOURCE" ]]; then
+  cp -X "$APP_ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+fi
+
+HELPER_BUNDLE_ID="${BUNDLE_ID}.notice-native-note"
+NATIVE_NOTICE_HELPER_APP="$APP_BUNDLE/Contents/Helpers/KLMSNoticeNativeNote.app"
+NATIVE_NOTICE_HELPER="$NATIVE_NOTICE_HELPER_APP/Contents/MacOS/KLMSNoticeNativeNote"
+mkdir -p "$NATIVE_NOTICE_HELPER_APP/Contents/MacOS" "$NATIVE_NOTICE_HELPER_APP/Contents/Resources"
+if [[ -f "$APP_ICON_SOURCE" ]]; then
+  cp -X "$APP_ICON_SOURCE" "$NATIVE_NOTICE_HELPER_APP/Contents/Resources/AppIcon.icns"
+fi
+HELPER_INFO_PLIST="$NATIVE_NOTICE_HELPER_APP/Contents/Info.plist"
+cat > "$HELPER_INFO_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>ko</string>
+  <key>CFBundleExecutable</key>
+  <string>KLMSNoticeNativeNote</string>
+  <key>CFBundleIdentifier</key>
+  <string>$HELPER_BUNDLE_ID</string>
+  <key>CFBundleName</key>
+  <string>KLMS Notice Renderer</string>
+  <key>CFBundleDisplayName</key>
+  <string>KLMS 공지 메모 렌더러</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>KLMS Sync가 Notes와 System Events를 사용해 공지 메모의 체크리스트와 문단 형식을 갱신합니다.</string>
+  <key>NSAccessibilityUsageDescription</key>
+  <string>KLMS Sync가 Notes 편집 영역을 확인하고 공지 메모의 체크리스트와 문단 형식을 적용합니다.</string>
+</dict>
+</plist>
+EOF
+HELPER_EXECUTABLE_INFO_PLIST="$SWIFT_SCRATCH_PATH/KLMSNoticeNativeNote-Executable-Info.plist"
+cp "$HELPER_INFO_PLIST" "$HELPER_EXECUTABLE_INFO_PLIST"
+helper_info_plist_args=(
+  -Xlinker -sectcreate
+  -Xlinker __TEXT
+  -Xlinker __info_plist
+  -Xlinker "$HELPER_EXECUTABLE_INFO_PLIST"
+)
+if [[ -x "/usr/bin/xcrun" ]]; then
+  /usr/bin/xcrun --sdk macosx swiftc \
+    "$ROOT_DIR/src/swift/notice_native_note_support.swift" \
+    "$ROOT_DIR/src/swift/update_notice_native_note.swift" \
+    "${helper_info_plist_args[@]}" \
+    -o "$NATIVE_NOTICE_HELPER"
+else
+  swiftc \
+    "$ROOT_DIR/src/swift/notice_native_note_support.swift" \
+    "$ROOT_DIR/src/swift/update_notice_native_note.swift" \
+    "${helper_info_plist_args[@]}" \
+    -o "$NATIVE_NOTICE_HELPER"
+fi
+chmod +x "$NATIVE_NOTICE_HELPER"
 
 PAYLOAD_ROOT="$APP_BUNDLE/Contents/Resources/EnginePayload"
 rm -rf "$PAYLOAD_ROOT"
@@ -51,6 +118,9 @@ for directory in src bin examples docs legacy; do
     ditto --norsrc "$ROOT_DIR/$directory" "$PAYLOAD_ROOT/$directory"
   fi
 done
+if [[ -d "$ROOT_DIR/runtime/python-packages" ]]; then
+  ditto --norsrc "$ROOT_DIR/runtime/python-packages" "$PAYLOAD_ROOT/python-packages"
+fi
 
 root_files=(
   kaikey_auto_login.sh
@@ -119,6 +189,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
   <string>$APP_NAME</string>
   <key>CFBundleDisplayName</key>
   <string>$APP_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -128,7 +200,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSAppleEventsUsageDescription</key>
-  <string>KLMS Sync가 Safari, Notes, Calendar, Reminders를 사용해 개인 KLMS 동기화를 실행합니다.</string>
+  <string>KLMS Sync가 Safari, Notes, System Events, Calendar, Reminders를 사용해 개인 KLMS 동기화를 실행합니다.</string>
+  <key>NSAccessibilityUsageDescription</key>
+  <string>KLMS Sync가 Notes 편집 영역을 확인하고 공지 메모의 체크리스트와 문단 형식을 적용합니다.</string>
   <key>NSCalendarsUsageDescription</key>
   <string>KLMS 시험과 헬프데스크 일정을 Calendar에 동기화합니다.</string>
   <key>NSRemindersUsageDescription</key>
@@ -137,8 +211,23 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
 </plist>
 EOF
 
-codesign_identity="${CODE_SIGN_IDENTITY:--}"
+requested_codesign_identity="${CODE_SIGN_IDENTITY:-}"
+codesign_identity="$requested_codesign_identity"
+if [[ -z "$codesign_identity" ]] && command -v security >/dev/null 2>&1; then
+  codesign_identity="$(
+    security find-identity -v -p codesigning 2>/dev/null \
+      | awk -F '"' '/[A-F0-9]{40}/ { print $2; exit }'
+  )"
+fi
+codesign_identity="${codesign_identity:-"-"}"
 if command -v codesign >/dev/null 2>&1; then
+  if [[ "$codesign_identity" == "-" ]]; then
+    print -u2 -- "warning: KLMS Sync.app is being ad-hoc signed."
+    print -u2 -- "warning: macOS may invalidate Automation/Accessibility permissions after each rebuild."
+    print -u2 -- "warning: set CODE_SIGN_IDENTITY to a stable local code-signing identity to keep permissions stable."
+  else
+    print -u2 -- "Signing KLMS Sync.app with identity: $codesign_identity"
+  fi
   if command -v xattr >/dev/null 2>&1; then
     xattr -cr "$APP_BUNDLE" >/dev/null 2>&1 || true
     while IFS= read -r bundle_path; do
@@ -146,7 +235,18 @@ if command -v codesign >/dev/null 2>&1; then
       xattr -c "$bundle_path" >/dev/null 2>&1 || true
     done < <(find "$APP_BUNDLE" -print)
   fi
-  /usr/bin/codesign --force --deep --sign "$codesign_identity" "$APP_BUNDLE" >/dev/null
+  /usr/bin/codesign --force --sign "$codesign_identity" "$NATIVE_NOTICE_HELPER_APP" >/dev/null
+  /usr/bin/codesign --force --sign "$codesign_identity" "$APP_BUNDLE" >/dev/null
+  if ! /usr/bin/codesign --verify --deep --strict --verbose=4 "$APP_BUNDLE" >/dev/null 2>&1; then
+    if [[ "$codesign_identity" != "-" ]]; then
+      print -u2 -- "warning: selected signing identity did not pass verification; falling back to ad-hoc signing."
+      codesign_identity="-"
+      /usr/bin/codesign --force --sign "$codesign_identity" "$NATIVE_NOTICE_HELPER_APP" >/dev/null
+      /usr/bin/codesign --force --sign "$codesign_identity" "$APP_BUNDLE" >/dev/null
+    else
+      print -u2 -- "warning: ad-hoc signed app did not pass codesign verification."
+    fi
+  fi
 fi
 
 print -r -- "$APP_BUNDLE"

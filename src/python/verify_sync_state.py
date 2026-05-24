@@ -48,6 +48,10 @@ def ok_check(name: str, ok: bool, detail: str = "") -> dict[str, Any]:
     return {"name": name, "status": "ok" if ok else "fail", "detail": detail}
 
 
+def warn_check(name: str, detail: str = "") -> dict[str, Any]:
+    return {"name": name, "status": "warn", "detail": detail}
+
+
 def build_payload(cache_dir: Path, state_json: Path, calendar_lines: Path | None) -> dict[str, Any]:
     notice_digest = load_json(cache_dir / "notice_digest.json", {})
     notice_primary = load_json(cache_dir / "notice_note_render_state.json", {})
@@ -92,15 +96,28 @@ def build_payload(cache_dir: Path, state_json: Path, calendar_lines: Path | None
     calendar_helpdesk_count = int(calendar.get("calendar_helpdesk_count", 0) or 0)
     legacy_assignment = bool(calendar.get("legacy_calendar_assignment_exists", False))
     legacy_alert = bool(calendar.get("legacy_calendar_alert_exists", False))
+    calendar_error = str(calendar.get("calendar_error", "") or "").strip()
+
+    if calendar_error:
+        calendar_checks = [
+            warn_check("calendar_access", calendar_error),
+            warn_check("calendar_exam_count_matches_state", "skipped: calendar unavailable"),
+            warn_check("calendar_helpdesk_count_matches_state", "skipped: calendar unavailable"),
+            warn_check("legacy_calendars_absent", "skipped: calendar unavailable"),
+        ]
+    else:
+        calendar_checks = [
+            ok_check("calendar_access", True, "available"),
+            ok_check("calendar_exam_count_matches_state", calendar_exam_count == len(exam_items), f"calendar={calendar_exam_count} state={len(exam_items)}"),
+            ok_check("calendar_helpdesk_count_matches_state", calendar_helpdesk_count == len(helpdesk_items), f"calendar={calendar_helpdesk_count} state={len(helpdesk_items)}"),
+            ok_check("legacy_calendars_absent", not legacy_assignment and not legacy_alert, f"assignment={legacy_assignment} alert={legacy_alert}"),
+        ]
 
     checks = [
         ok_check("notice_render_complete", len(missing_notice_urls) == 0, f"missing={len(missing_notice_urls)}"),
         ok_check("manifest_files_exist", len(missing_files) == 0, f"missing={len(missing_files)}"),
-        ok_check("calendar_exam_count_matches_state", calendar_exam_count == len(exam_items), f"calendar={calendar_exam_count} state={len(exam_items)}"),
-        ok_check("calendar_helpdesk_count_matches_state", calendar_helpdesk_count == len(helpdesk_items), f"calendar={calendar_helpdesk_count} state={len(helpdesk_items)}"),
-        ok_check("legacy_calendars_absent", not legacy_assignment and not legacy_alert, f"assignment={legacy_assignment} alert={legacy_alert}"),
-    ]
-    status = "ok" if all(item["status"] == "ok" for item in checks) else "fail"
+    ] + calendar_checks
+    status = "fail" if any(item["status"] == "fail" for item in checks) else "ok"
 
     return {
         "status": status,
@@ -133,6 +150,7 @@ def build_payload(cache_dir: Path, state_json: Path, calendar_lines: Path | None
             "helpdesk_count": calendar_helpdesk_count,
             "legacy_assignment_exists": legacy_assignment,
             "legacy_alert_exists": legacy_alert,
+            "error": calendar_error,
         },
         "checks": checks,
     }

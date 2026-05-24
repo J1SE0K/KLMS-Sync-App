@@ -137,6 +137,198 @@ public struct SyncReport: Decodable, Sendable, Equatable {
     }
 }
 
+public struct CalendarSyncResult: Decodable, Sendable, Equatable {
+    public var backend: String
+    public var generatedAt: String
+    public var summaries: [CalendarSyncSummary]
+    public var changes: [CalendarChange]
+
+    enum CodingKeys: String, CodingKey {
+        case backend
+        case generatedAt = "generated_at"
+        case summaries
+        case changes
+    }
+
+    public init(
+        backend: String = "",
+        generatedAt: String = "",
+        summaries: [CalendarSyncSummary] = [],
+        changes: [CalendarChange] = []
+    ) {
+        self.backend = backend
+        self.generatedAt = generatedAt
+        self.summaries = summaries
+        self.changes = changes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        backend = container.decodeIfPresentDefault(String.self, forKey: .backend, default: "")
+        generatedAt = container.decodeIfPresentDefault(String.self, forKey: .generatedAt, default: "")
+        summaries = container.decodeIfPresentDefault([CalendarSyncSummary].self, forKey: .summaries, default: [])
+        changes = container.decodeIfPresentDefault([CalendarChange].self, forKey: .changes, default: [])
+    }
+}
+
+public struct CalendarSyncSummary: Decodable, Sendable, Equatable, Identifiable {
+    public var raw: String
+    public var calendar: String
+    public var bucket: String
+    public var created: Int
+    public var updated: Int
+    public var deleted: Int
+    public var total: Int
+
+    public var id: String {
+        "\(calendar)-\(bucket)-\(created)-\(updated)-\(deleted)-\(total)-\(raw)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case raw
+        case calendar
+        case bucket
+        case created
+        case updated
+        case deleted
+        case total
+    }
+
+    public init(
+        raw: String = "",
+        calendar: String = "",
+        bucket: String = "",
+        created: Int = 0,
+        updated: Int = 0,
+        deleted: Int = 0,
+        total: Int = 0
+    ) {
+        self.raw = raw
+        self.calendar = calendar
+        self.bucket = bucket
+        self.created = created
+        self.updated = updated
+        self.deleted = deleted
+        self.total = total
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        raw = container.decodeIfPresentDefault(String.self, forKey: .raw, default: "")
+        calendar = container.decodeIfPresentDefault(String.self, forKey: .calendar, default: "")
+        bucket = container.decodeIfPresentDefault(String.self, forKey: .bucket, default: "")
+        created = container.decodeIfPresentDefault(Int.self, forKey: .created, default: 0)
+        updated = container.decodeIfPresentDefault(Int.self, forKey: .updated, default: 0)
+        deleted = container.decodeIfPresentDefault(Int.self, forKey: .deleted, default: 0)
+        total = container.decodeIfPresentDefault(Int.self, forKey: .total, default: 0)
+    }
+}
+
+public struct CalendarChange: Decodable, Sendable, Equatable, Identifiable {
+    public var action: String
+    public var calendar: String
+    public var bucket: String
+    public var identifier: String
+    public var title: String
+    public var course: String
+    public var url: String
+    public var startAt: String
+    public var dueAt: String
+    public var location: String
+    public var changes: [String]
+    public var raw: String
+    public var parseError: String
+
+    public var id: String {
+        [
+            action,
+            calendar,
+            bucket,
+            identifier,
+            title,
+            startAt,
+            dueAt,
+            raw,
+        ].joined(separator: "|")
+    }
+
+    public var actionDisplayName: String {
+        switch action {
+        case "created":
+            "생성"
+        case "updated":
+            "수정"
+        case "deleted":
+            "삭제"
+        default:
+            action.isEmpty ? "변경" : action
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case action
+        case calendar
+        case bucket
+        case identifier
+        case title
+        case course
+        case url
+        case startAt = "start_at"
+        case dueAt = "due_at"
+        case location
+        case changes
+        case raw
+        case parseError = "parse_error"
+    }
+
+    public init(
+        action: String = "",
+        calendar: String = "",
+        bucket: String = "",
+        identifier: String = "",
+        title: String = "",
+        course: String = "",
+        url: String = "",
+        startAt: String = "",
+        dueAt: String = "",
+        location: String = "",
+        changes: [String] = [],
+        raw: String = "",
+        parseError: String = ""
+    ) {
+        self.action = action
+        self.calendar = calendar
+        self.bucket = bucket
+        self.identifier = identifier
+        self.title = title
+        self.course = course
+        self.url = url
+        self.startAt = startAt
+        self.dueAt = dueAt
+        self.location = location
+        self.changes = changes
+        self.raw = raw
+        self.parseError = parseError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        action = container.decodeIfPresentDefault(String.self, forKey: .action, default: "")
+        calendar = container.decodeIfPresentDefault(String.self, forKey: .calendar, default: "")
+        bucket = container.decodeIfPresentDefault(String.self, forKey: .bucket, default: "")
+        identifier = container.decodeIfPresentDefault(String.self, forKey: .identifier, default: "")
+        title = container.decodeIfPresentDefault(String.self, forKey: .title, default: "")
+        course = container.decodeIfPresentDefault(String.self, forKey: .course, default: "")
+        url = container.decodeIfPresentDefault(String.self, forKey: .url, default: "")
+        startAt = container.decodeIfPresentDefault(String.self, forKey: .startAt, default: "")
+        dueAt = container.decodeIfPresentDefault(String.self, forKey: .dueAt, default: "")
+        location = container.decodeIfPresentDefault(String.self, forKey: .location, default: "")
+        changes = container.decodeIfPresentDefault([String].self, forKey: .changes, default: [])
+        raw = container.decodeIfPresentDefault(String.self, forKey: .raw, default: "")
+        parseError = container.decodeIfPresentDefault(String.self, forKey: .parseError, default: "")
+    }
+}
+
 public struct SlowStage: Decodable, Sendable, Equatable, Identifiable {
     public var name: String
     public var durationMS: Int
@@ -165,6 +357,131 @@ public struct SlowStage: Decodable, Sendable, Equatable, Identifiable {
 
     public var durationSecondsText: String {
         TimeDisplay.secondsText(milliseconds: durationMS)
+    }
+}
+
+public struct StageTimingReport: Decodable, Sendable, Equatable {
+    public var status: String
+    public var completedAt: String
+    public var elapsedMS: Int
+    public var noticeRenderResults: [NoticeRenderResult]
+    public var slowestEvents: [SlowEvent]
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case completedAt = "completed_at"
+        case elapsedMS = "elapsed_ms"
+        case noticeRenderResults = "notice_render_results"
+        case slowestEvents = "slowest_events"
+    }
+
+    public init(
+        status: String = "missing",
+        completedAt: String = "",
+        elapsedMS: Int = 0,
+        noticeRenderResults: [NoticeRenderResult] = [],
+        slowestEvents: [SlowEvent] = []
+    ) {
+        self.status = status
+        self.completedAt = completedAt
+        self.elapsedMS = elapsedMS
+        self.noticeRenderResults = noticeRenderResults
+        self.slowestEvents = slowestEvents
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = container.decodeIfPresentDefault(String.self, forKey: .status, default: "missing")
+        completedAt = container.decodeIfPresentDefault(String.self, forKey: .completedAt, default: "")
+        elapsedMS = container.decodeIfPresentDefault(Int.self, forKey: .elapsedMS, default: 0)
+        noticeRenderResults = container.decodeIfPresentDefault([NoticeRenderResult].self, forKey: .noticeRenderResults, default: [])
+        slowestEvents = container.decodeIfPresentDefault([SlowEvent].self, forKey: .slowestEvents, default: [])
+    }
+
+    public var elapsedSecondsText: String {
+        TimeDisplay.secondsText(milliseconds: elapsedMS)
+    }
+
+}
+
+public struct NoticeRenderResult: Decodable, Sendable, Equatable, Identifiable {
+    public var target: String
+    public var status: String
+    public var output: String
+
+    public var id: String { "\(target)-\(status)-\(output)" }
+
+    enum CodingKeys: String, CodingKey {
+        case target
+        case status
+        case output
+    }
+
+    public init(target: String = "", status: String = "", output: String = "") {
+        self.target = target
+        self.status = status
+        self.output = output
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        target = container.decodeIfPresentDefault(String.self, forKey: .target, default: "")
+        status = container.decodeIfPresentDefault(String.self, forKey: .status, default: "")
+        output = container.decodeIfPresentDefault(String.self, forKey: .output, default: "")
+    }
+}
+
+public struct SlowEvent: Decodable, Sendable, Equatable, Identifiable {
+    public var group: String
+    public var name: String
+    public var stage: String
+    public var durationMS: Int
+    public var status: String
+    public var command: [String]
+
+    public var id: String { "\(group)-\(name)-\(stage)-\(durationMS)-\(status)" }
+
+    enum CodingKeys: String, CodingKey {
+        case group
+        case name
+        case stage
+        case durationMS = "duration_ms"
+        case status
+        case command
+    }
+
+    public init(
+        group: String = "",
+        name: String = "",
+        stage: String = "",
+        durationMS: Int = 0,
+        status: String = "",
+        command: [String] = []
+    ) {
+        self.group = group
+        self.name = name
+        self.stage = stage
+        self.durationMS = durationMS
+        self.status = status
+        self.command = command
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        group = container.decodeIfPresentDefault(String.self, forKey: .group, default: "")
+        name = container.decodeIfPresentDefault(String.self, forKey: .name, default: "")
+        stage = container.decodeIfPresentDefault(String.self, forKey: .stage, default: "")
+        durationMS = container.decodeIfPresentDefault(Int.self, forKey: .durationMS, default: 0)
+        status = container.decodeIfPresentDefault(String.self, forKey: .status, default: "")
+        command = container.decodeIfPresentDefault([String].self, forKey: .command, default: [])
+    }
+
+    public var durationSecondsText: String {
+        TimeDisplay.secondsText(milliseconds: durationMS)
+    }
+
+    public var rawCommandText: String {
+        command.joined(separator: " ")
     }
 }
 
@@ -208,27 +525,33 @@ public struct DoctorResult: Decodable, Sendable, Equatable {
 public struct DoctorCheck: Decodable, Sendable, Equatable, Identifiable {
     public var name: String
     public var status: String
-    public var message: String
+    public var detail: String
+
+    public var message: String { detail }
 
     public var id: String { name }
 
     enum CodingKeys: String, CodingKey {
         case name
         case status
+        case detail
         case message
     }
 
-    public init(name: String = "", status: String = "", message: String = "") {
+    public init(name: String = "", status: String = "", detail: String = "", message: String? = nil) {
         self.name = name
         self.status = status
-        self.message = message
+        self.detail = detail.isEmpty ? (message ?? "") : detail
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = container.decodeIfPresentDefault(String.self, forKey: .name, default: "")
         status = container.decodeIfPresentDefault(String.self, forKey: .status, default: "")
-        message = container.decodeIfPresentDefault(String.self, forKey: .message, default: "")
+        detail = container.decodeIfPresentDefault(String.self, forKey: .detail, default: "")
+        if detail.isEmpty {
+            detail = container.decodeIfPresentDefault(String.self, forKey: .message, default: "")
+        }
     }
 }
 
@@ -249,6 +572,88 @@ public struct LoginStatus: Decodable, Sendable, Equatable {
     public var checkedAt: Date? {
         checkedAtEpoch > 0 ? Date(timeIntervalSince1970: TimeInterval(checkedAtEpoch)) : nil
     }
+}
+
+public struct NoticeRenderStatus: Decodable, Sendable, Equatable {
+    public var status: String
+    public var code: String
+    public var userMessage: String
+    public var rawFirstLine: String
+    public var nonfatal: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case code
+        case userMessage = "user_message"
+        case rawFirstLine = "raw_first_line"
+        case nonfatal
+    }
+
+    public init(
+        status: String = "missing",
+        code: String = "",
+        userMessage: String = "",
+        rawFirstLine: String = "",
+        nonfatal: Bool = false
+    ) {
+        self.status = status
+        self.code = code
+        self.userMessage = userMessage
+        self.rawFirstLine = rawFirstLine
+        self.nonfatal = nonfatal
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = container.decodeIfPresentDefault(String.self, forKey: .status, default: "missing")
+        code = container.decodeIfPresentDefault(String.self, forKey: .code, default: "")
+        userMessage = container.decodeIfPresentDefault(String.self, forKey: .userMessage, default: "")
+        rawFirstLine = container.decodeIfPresentDefault(String.self, forKey: .rawFirstLine, default: "")
+        nonfatal = container.decodeIfPresentDefault(Bool.self, forKey: .nonfatal, default: false)
+    }
+}
+
+public struct NoticeNoteRenderState: Decodable, Sendable, Equatable {
+    public var noteID: String
+    public var noteTitle: String
+    public var updatedAt: String
+    public var styleVersion: String
+    public var renderedNoticeCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case noteID = "note_id"
+        case noteTitle = "note_title"
+        case updatedAt = "updated_at"
+        case styleVersion = "style_version"
+        case renderedNotices = "rendered_notices"
+    }
+
+    public init(
+        noteID: String = "",
+        noteTitle: String = "",
+        updatedAt: String = "",
+        styleVersion: String = "",
+        renderedNoticeCount: Int = 0
+    ) {
+        self.noteID = noteID
+        self.noteTitle = noteTitle
+        self.updatedAt = updatedAt
+        self.styleVersion = styleVersion
+        self.renderedNoticeCount = renderedNoticeCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        noteID = container.decodeIfPresentDefault(String.self, forKey: .noteID, default: "")
+        noteTitle = container.decodeIfPresentDefault(String.self, forKey: .noteTitle, default: "")
+        updatedAt = container.decodeIfPresentDefault(String.self, forKey: .updatedAt, default: "")
+        styleVersion = container.decodeIfPresentDefault(String.self, forKey: .styleVersion, default: "")
+        renderedNoticeCount = container.decodeIfPresentDefault([NoticeRenderedStateItem].self, forKey: .renderedNotices, default: []).count
+    }
+}
+
+private struct NoticeRenderedStateItem: Decodable, Equatable {
+    init(from decoder: Decoder) throws {}
 }
 
 public struct DryRunReport: Decodable, Sendable, Equatable {

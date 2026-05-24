@@ -62,6 +62,42 @@ struct DesiredStandardEvent {
     let dueDate: Date
     let location: String
     let notes: String
+    let course: String
+    let url: String
+    let kindLabel: String
+}
+
+struct CalendarSyncBucketResult {
+    let summary: String
+    let changes: [CalendarChangeRecord]
+}
+
+struct CalendarChangeRecord: Encodable {
+    let action: String
+    let calendar: String
+    let bucket: String
+    let identifier: String
+    let title: String
+    let course: String
+    let url: String
+    let startAt: String
+    let dueAt: String
+    let location: String
+    let changes: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case action
+        case calendar
+        case bucket
+        case identifier
+        case title
+        case course
+        case url
+        case startAt = "start_at"
+        case dueAt = "due_at"
+        case location
+        case changes
+    }
 }
 
 enum StandardBucket: String {
@@ -132,31 +168,32 @@ func main() throws {
     }
 
     var summaries: [String] = []
+    var changeRecords: [CalendarChangeRecord] = []
 
     if let calendarName = examCalendarName {
-        summaries.append(
-            try syncStandardCalendar(
-                named: calendarName,
-                bucket: .exam,
-                content: content,
-                store: store,
-                minimumSpanMinutes: durationMinutes,
-                lookbackDays: lookbackDays
-            )
+        let result = try syncStandardCalendar(
+            named: calendarName,
+            bucket: .exam,
+            content: content,
+            store: store,
+            minimumSpanMinutes: durationMinutes,
+            lookbackDays: lookbackDays
         )
+        summaries.append(result.summary)
+        changeRecords.append(contentsOf: result.changes)
     }
 
     if let calendarName = helpDeskCalendarName {
-        summaries.append(
-            try syncStandardCalendar(
-                named: calendarName,
-                bucket: .helpdesk,
-                content: content,
-                store: store,
-                minimumSpanMinutes: durationMinutes,
-                lookbackDays: lookbackDays
-            )
+        let result = try syncStandardCalendar(
+            named: calendarName,
+            bucket: .helpdesk,
+            content: content,
+            store: store,
+            minimumSpanMinutes: durationMinutes,
+            lookbackDays: lookbackDays
         )
+        summaries.append(result.summary)
+        changeRecords.append(contentsOf: result.changes)
     }
 
     do {
@@ -165,7 +202,8 @@ func main() throws {
         throw SuiteError.message("Failed to commit calendar changes: \(error.localizedDescription)")
     }
 
-    print(summaries.joined(separator: "\n"))
+    let changeLines = changeRecords.compactMap(encodedCalendarChangeLine)
+    print((summaries + changeLines).joined(separator: "\n"))
 }
 
 func parseStringArgument(_ arguments: [String], prefix: String) -> String? {
@@ -185,6 +223,17 @@ func parseIntArgument(_ arguments: [String], prefix: String, defaultValue: Int) 
     return value
 }
 
+func encodedCalendarChangeLine(_ record: CalendarChangeRecord) -> String? {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    guard let data = try? encoder.encode(record),
+          let text = String(data: data, encoding: .utf8)
+    else {
+        return nil
+    }
+    return "calendar_change_json=\(text)"
+}
+
 func syncStandardCalendar(
     named calendarName: String,
     bucket: StandardBucket,
@@ -192,7 +241,7 @@ func syncStandardCalendar(
     store: EKEventStore,
     minimumSpanMinutes: Int,
     lookbackDays: Int
-) throws -> String {
+) throws -> CalendarSyncBucketResult {
     guard let calendar = resolveStandardCalendar(named: calendarName, store: store) else {
         throw SuiteError.message("Could not resolve or create calendar: \(calendarName)")
     }
@@ -209,29 +258,46 @@ func syncStandardCalendar(
     var created = 0
     var updated = 0
     var deleted = 0
+    var changes: [CalendarChangeRecord] = []
 
     for event in existingEvents {
         guard let identifier = extractIdentifier(from: event.notes, markerPrefixes: syncMarkerPrefixes) else {
             continue
         }
         guard let desired = desiredByID[identifier] else {
+            let record = deletedCalendarChangeRecord(
+                event: event,
+                identifier: identifier,
+                calendarName: calendar.title,
+                bucket: bucket
+            )
             do {
                 try store.remove(event, span: .thisEvent, commit: false)
                 deleted += 1
+                changes.append(record)
             } catch {
                 throw SuiteError.message("Failed to delete event for \(identifier): \(error.localizedDescription)")
             }
             continue
         }
 
-        if applyStandardEventIfNeeded(
+        let fieldChanges = applyStandardEventIfNeeded(
             event: event,
             desired: desired,
             minimumSpanMinutes: minimumSpanMinutes
-        ) {
+        )
+        if !fieldChanges.isEmpty {
             do {
                 try store.save(event, span: .thisEvent, commit: false)
                 updated += 1
+                changes.append(calendarChangeRecord(
+                    action: "updated",
+                    calendarName: calendar.title,
+                    bucket: bucket,
+                    desired: desired,
+                    startDate: event.startDate,
+                    changes: fieldChanges
+                ))
             } catch {
                 throw SuiteError.message("Failed to update event for \(identifier): \(error.localizedDescription)")
             }
@@ -261,12 +327,21 @@ func syncStandardCalendar(
         do {
             try store.save(event, span: .thisEvent, commit: false)
             created += 1
+            changes.append(calendarChangeRecord(
+                action: "created",
+                calendarName: calendar.title,
+                bucket: bucket,
+                desired: desired,
+                startDate: event.startDate,
+                changes: ["생성"]
+            ))
         } catch {
             throw SuiteError.message("Failed to create event for \(desired.identifier): \(error.localizedDescription)")
         }
     }
 
-    return "calendar=\(calendar.title) bucket=\(bucket.rawValue) created=\(created) updated=\(updated) deleted=\(deleted) total=\(desiredEvents.count)"
+    let summary = "calendar=\(calendar.title) bucket=\(bucket.rawValue) created=\(created) updated=\(updated) deleted=\(deleted) total=\(desiredEvents.count)"
+    return CalendarSyncBucketResult(summary: summary, changes: changes)
 }
 
 func buildDesiredStandardEvents(items: [SyncItem]) -> [DesiredStandardEvent] {
@@ -307,7 +382,10 @@ func buildDesiredStandardEvents(items: [SyncItem]) -> [DesiredStandardEvent] {
             startDate: explicitStartDate,
             dueDate: dueDate,
             location: location,
-            notes: notes
+            notes: notes,
+            course: item.course,
+            url: item.url,
+            kindLabel: kindLabel
         )
     }
 }
@@ -728,12 +806,78 @@ func extractIdentifier(from notes: String?, markerPrefixes: [String]) -> String?
     return nil
 }
 
+let calendarChangeDateFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+    return formatter
+}()
+
+func calendarChangeDateText(_ date: Date?) -> String {
+    guard let date else { return "" }
+    return calendarChangeDateFormatter.string(from: date)
+}
+
+func calendarChangeRecord(
+    action: String,
+    calendarName: String,
+    bucket: StandardBucket,
+    desired: DesiredStandardEvent,
+    startDate: Date?,
+    changes: [String]
+) -> CalendarChangeRecord {
+    CalendarChangeRecord(
+        action: action,
+        calendar: calendarName,
+        bucket: bucket.rawValue,
+        identifier: desired.identifier,
+        title: desired.title,
+        course: desired.course,
+        url: desired.url,
+        startAt: calendarChangeDateText(startDate),
+        dueAt: calendarChangeDateText(desired.dueDate),
+        location: desired.location,
+        changes: changes
+    )
+}
+
+func deletedCalendarChangeRecord(
+    event: EKEvent,
+    identifier: String,
+    calendarName: String,
+    bucket: StandardBucket
+) -> CalendarChangeRecord {
+    CalendarChangeRecord(
+        action: "deleted",
+        calendar: calendarName,
+        bucket: bucket.rawValue,
+        identifier: identifier,
+        title: event.title ?? identifier,
+        course: noteLineValue(in: event.notes, prefix: "과목: "),
+        url: noteLineValue(in: event.notes, prefix: "링크: "),
+        startAt: calendarChangeDateText(event.startDate),
+        dueAt: calendarChangeDateText(event.endDate),
+        location: event.location ?? "",
+        changes: ["삭제"]
+    )
+}
+
+func noteLineValue(in notes: String?, prefix: String) -> String {
+    guard let notes else { return "" }
+    for line in notes.split(separator: "\n", omittingEmptySubsequences: false) {
+        if line.hasPrefix(prefix) {
+            return String(line.dropFirst(prefix.count))
+        }
+    }
+    return ""
+}
+
 func applyStandardEventIfNeeded(
     event: EKEvent,
     desired: DesiredStandardEvent,
     minimumSpanMinutes: Int
-) -> Bool {
-    var changed = false
+) -> [String] {
+    var changes: [String] = []
     let desiredStartDate =
         desired.startDate
         ?? resolvedStartDate(
@@ -745,34 +889,34 @@ func applyStandardEventIfNeeded(
 
     if event.title != desired.title {
         event.title = desired.title
-        changed = true
+        changes.append("제목")
     }
     if abs(event.startDate.timeIntervalSince(desiredStartDate)) > 1 {
         event.startDate = desiredStartDate
-        changed = true
+        changes.append("시작")
     }
     if abs(event.endDate.timeIntervalSince(desired.dueDate)) > 1 {
         event.endDate = desired.dueDate
-        changed = true
+        changes.append("종료")
     }
     if event.notes != desired.notes {
         event.notes = desired.notes
-        changed = true
+        changes.append("메모")
     }
     if (event.location ?? "") != desired.location {
         event.location = desired.location
-        changed = true
+        changes.append("장소")
     }
 
     let desiredAlarms = buildRelativeAlarms(dueDate: desired.dueDate)
     if !sameRelativeAlarms(lhs: event.alarms ?? [], rhs: desiredAlarms) {
         event.alarms = desiredAlarms
-        changed = true
+        changes.append("알림")
     }
 
     event.timeZone = TimeZone(identifier: "Asia/Seoul")
     event.availability = .free
-    return changed
+    return changes
 }
 
 func buildRelativeAlarms(dueDate: Date) -> [EKAlarm] {

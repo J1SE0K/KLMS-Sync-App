@@ -29,6 +29,10 @@ public struct KLMSPaths: Sendable, Equatable {
         engineRoot.appendingPathComponent("config.env")
     }
 
+    public var overridesURL: URL {
+        engineRoot.appendingPathComponent("manual_assignment_overrides.json")
+    }
+
     public var runtimeURL: URL {
         engineRoot.appendingPathComponent("runtime", isDirectory: true)
     }
@@ -49,12 +53,34 @@ public struct KLMSPaths: Sendable, Equatable {
         runtimeURL.appendingPathComponent("logs", isDirectory: true)
     }
 
+    public var backupsURL: URL {
+        runtimeURL.appendingPathComponent("backups", isDirectory: true)
+    }
+
+    public var appPythonPackagesURL: URL {
+        runtimeURL.appendingPathComponent("app-python-packages", isDirectory: true)
+    }
+
+    public var appHistoryURL: URL {
+        cacheURL.appendingPathComponent("app_command_history.json")
+    }
+
+    public var installedPayloadVersionURL: URL {
+        automationURL.appendingPathComponent("app_engine_payload_version")
+    }
+
     public var launchAgentLogURL: URL {
         logsURL.appendingPathComponent("launch-agent.log")
     }
 
     public var syncReportURL: URL {
         cacheURL.appendingPathComponent("sync_report.json")
+    }
+
+    public var calendarSyncResultURL: URL {
+        cacheURL
+            .appendingPathComponent("core", isDirectory: true)
+            .appendingPathComponent("calendar_sync_result.json")
     }
 
     public var doctorResultURL: URL {
@@ -67,6 +93,36 @@ public struct KLMSPaths: Sendable, Equatable {
 
     public var loginStatusURL: URL {
         cacheURL.appendingPathComponent("login_status.json")
+    }
+
+    public var noticeRenderErrorSummaryURL: URL {
+        cacheURL.appendingPathComponent("notice_render_error_summary.json")
+    }
+
+    public var noticeStageTimingURL: URL {
+        cacheURL
+            .appendingPathComponent("notice", isDirectory: true)
+            .appendingPathComponent("stage_timings.json")
+    }
+
+    public var noticeDigestURL: URL {
+        cacheURL.appendingPathComponent("notice_digest.json")
+    }
+
+    public var noticeRenderStateURL: URL {
+        cacheURL.appendingPathComponent("notice_note_render_state.json")
+    }
+
+    public var noticeArchiveRenderStateURL: URL {
+        cacheURL.appendingPathComponent("notice_archive_note_render_state.json")
+    }
+
+    public var noticeUserStateURL: URL {
+        cacheURL.appendingPathComponent("notice_user_state.json")
+    }
+
+    public var appUserStateURL: URL {
+        cacheURL.appendingPathComponent("app_user_state.json")
     }
 
     public var stateJSONURL: URL {
@@ -87,6 +143,10 @@ public struct KLMSPaths: Sendable, Equatable {
 
     public var cleanupResultURL: URL {
         cacheURL.appendingPathComponent("course_file_cleanup_result.json")
+    }
+
+    public var courseFileManifestURL: URL {
+        cacheURL.appendingPathComponent("course_file_manifest.json")
     }
 
     public func dryRunReportURL(scope: KLMSSyncScope) -> URL {
