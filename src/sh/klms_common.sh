@@ -28,6 +28,73 @@ klms_init_context() {
   local config_path="${2:-}"
   local runtime_namespace=""
   local lock_name=""
+  local key
+  local -a runtime_override_keys=(
+    KLMS_APP_RUN
+    KLMS_SCRIPT_NOTIFICATIONS_ENABLED
+    LANG
+    LC_ALL
+    LC_CTYPE
+    PYTHONIOENCODING
+    PYTHONUTF8
+    KLMS_PYTHON_BIN
+    KLMS_PYTHONPATH_DIR
+    KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED
+    KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED
+    KLMS_LOGIN_ASSIST_ENABLED
+    KLMS_LOGIN_ASSIST_MODE
+    KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE
+    SYNC_MODE
+    FILE_REFRESH_MODE
+    FILE_FORCE_DOWNLOAD
+    FILE_KEEP_FRESH_DOWNLOADS
+    FILE_WEEKLY_FOLDERS_ENABLED
+    FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY
+    FILE_PRESERVE_DOWNLOAD_ARCHIVE
+    FILE_NEW_FILES_ROOT
+    FILE_QUARANTINE_ROOT
+    NOTICE_COLLAPSE_SECTIONS
+    NOTICE_COLLAPSE_COURSES
+    NOTICE_COLLAPSE_NOTICE_ITEMS
+    NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS
+    NOTICE_HIDE_HIDDEN_ITEMS
+    NOTICE_NATIVE_STABLE_NOOP_SKIP
+    NOTICE_NATIVE_ALWAYS_CAPTURE_STATE
+    NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER
+    NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER
+    NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT
+    NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT
+    NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT
+    NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT
+    NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT
+    NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT
+    NOTICE_NATIVE_NOTE_MAX_ATTEMPTS
+    NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS
+    NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS
+    NOTICE_NATIVE_NOTE_TIMEOUT_GRACE_SECONDS
+    NOTICE_NATIVE_STYLE_BUDGET_SECONDS
+    NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY
+    NOTICE_NATIVE_PLAIN_TEXT_PASTE
+    NOTICE_DEBUG_CAPTURE
+    NOTICE_DEBUG_AUTOMATION
+    NOTICE_TIMING
+  )
+  local -A runtime_override_present=()
+  local -A runtime_override_values=()
+
+  for key in "${runtime_override_keys[@]}"; do
+    if (( ${+parameters[$key]} )); then
+      runtime_override_present[$key]=1
+      runtime_override_values[$key]="${(P)key}"
+    fi
+  done
+
+  : "${LANG:=ko_KR.UTF-8}"
+  : "${LC_ALL:=ko_KR.UTF-8}"
+  : "${LC_CTYPE:=ko_KR.UTF-8}"
+  : "${PYTHONIOENCODING:=utf-8}"
+  : "${PYTHONUTF8:=1}"
+  export LANG LC_ALL LC_CTYPE PYTHONIOENCODING PYTHONUTF8
 
   SCRIPT_DIR="$(cd "$(dirname "$entry_path")" && pwd)"
   KLMS_SRC_DIR="$SCRIPT_DIR/src"
@@ -36,26 +103,14 @@ klms_init_context() {
   KLMS_PYTHON_DIR="$KLMS_SRC_DIR/python"
   KLMS_SWIFT_DIR="$KLMS_SRC_DIR/swift"
   CONFIG_PATH="${config_path:-$SCRIPT_DIR/config.env}"
-
-  local env_sync_mode_set="${+SYNC_MODE}"
-  local env_sync_mode="${SYNC_MODE:-}"
-  local env_file_refresh_mode_set="${+FILE_REFRESH_MODE}"
-  local env_file_refresh_mode="${FILE_REFRESH_MODE:-}"
-  local env_file_force_download_set="${+FILE_FORCE_DOWNLOAD}"
-  local env_file_force_download="${FILE_FORCE_DOWNLOAD:-}"
-  local env_file_keep_fresh_downloads_set="${+FILE_KEEP_FRESH_DOWNLOADS}"
-  local env_file_keep_fresh_downloads="${FILE_KEEP_FRESH_DOWNLOADS:-}"
-  local env_file_weekly_folders_enabled_set="${+FILE_WEEKLY_FOLDERS_ENABLED}"
-  local env_file_weekly_folders_enabled="${FILE_WEEKLY_FOLDERS_ENABLED:-}"
-
   if [[ -f "$CONFIG_PATH" ]]; then
     source "$CONFIG_PATH"
   fi
-  (( env_sync_mode_set )) && SYNC_MODE="$env_sync_mode"
-  (( env_file_refresh_mode_set )) && FILE_REFRESH_MODE="$env_file_refresh_mode"
-  (( env_file_force_download_set )) && FILE_FORCE_DOWNLOAD="$env_file_force_download"
-  (( env_file_keep_fresh_downloads_set )) && FILE_KEEP_FRESH_DOWNLOADS="$env_file_keep_fresh_downloads"
-  (( env_file_weekly_folders_enabled_set )) && FILE_WEEKLY_FOLDERS_ENABLED="$env_file_weekly_folders_enabled"
+  for key in "${runtime_override_keys[@]}"; do
+    if [[ "${runtime_override_present[$key]:-0}" == "1" ]]; then
+      typeset -gx "$key=${runtime_override_values[$key]}"
+    fi
+  done
 
   runtime_namespace="${KLMS_RUNTIME_NAMESPACE:-$(klms_default_runtime_namespace "$entry_path")}"
 
@@ -103,6 +158,7 @@ klms_init_context() {
   KLMS_SHARED_SYNC_LOCK_DIR="${KLMS_SHARED_SYNC_LOCK_DIR:-$KLMS_SHARED_SYNC_LOCK_ROOT/${lock_name}.lock}"
   KLMS_SHARED_SYNC_LOCK_WAIT_SECONDS="${KLMS_SHARED_SYNC_LOCK_WAIT_SECONDS:-900}"
   KLMS_LOGIN_PREFETCH_READY=0
+  KLMS_LOGIN_ASSIST_READY=0
   KLMS_LAST_LOGIN_ERROR_MESSAGE=""
   export KLMS_SRC_DIR KLMS_SH_DIR KLMS_JS_DIR KLMS_PYTHON_DIR KLMS_SWIFT_DIR
 }
@@ -294,33 +350,19 @@ klms_open_login_page_if_enabled() {
   /usr/bin/osascript \
     -e 'on run argv' \
     -e 'set targetUrl to item 1 of argv' \
+    -e 'set shouldMinimize to true' \
+    -e 'if (count of argv) > 1 and item 2 of argv is "0" then set shouldMinimize to false' \
     -e 'tell application "Safari"' \
-    -e 'set reusedTab to false' \
-    -e 'repeat with w in windows' \
-    -e 'repeat with t in tabs of w' \
-    -e 'set tabUrl to ""' \
     -e 'try' \
-    -e 'set tabUrl to URL of t' \
-    -e 'end try' \
-    -e 'if tabUrl contains "klms.kaist.ac.kr" or tabUrl contains "portal.kaist.ac.kr" then' \
-    -e 'set current tab of w to t' \
-    -e 'set URL of t to targetUrl' \
-    -e 'set reusedTab to true' \
-    -e 'exit repeat' \
-    -e 'end if' \
-    -e 'end repeat' \
-    -e 'if reusedTab then exit repeat' \
-    -e 'end repeat' \
-    -e 'if reusedTab is false then' \
-    -e 'if (count of windows) is 0 then' \
     -e 'make new document with properties {URL:targetUrl}' \
-    -e 'else' \
-    -e 'tell window 1 to set current tab to (make new tab at end of tabs with properties {URL:targetUrl})' \
-    -e 'end if' \
-    -e 'end if' \
+    -e 'if shouldMinimize then set miniaturized of front window to true' \
+    -e 'on error' \
+    -e 'make new document with properties {URL:targetUrl}' \
+    -e 'if shouldMinimize then set miniaturized of front window to true' \
+    -e 'end try' \
     -e 'end tell' \
     -e 'end run' \
-    "$KLMS_LOGIN_URL" >/dev/null 2>&1 || true
+    "$KLMS_LOGIN_URL" "${KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED:-1}" >/dev/null 2>&1 || true
 }
 
 klms_login_assist_enabled() {
@@ -425,6 +467,21 @@ klms_check_login_pages() {
 }
 
 klms_require_login() {
+  if [[ "${KLMS_PARENT_LOGIN_ASSIST_READY:-0}" == "1" ]]; then
+    KLMS_LOGIN_PREFETCH_READY=0
+    KLMS_LOGIN_ASSIST_READY=1
+    return 0
+  fi
+
+  if [[ "${KLMS_APP_RUN:-0}" == "1" ]]; then
+    klms_clear_login_status
+    klms_try_login_assist || true
+    klms_write_login_status_ok
+    KLMS_LOGIN_PREFETCH_READY=0
+    KLMS_LOGIN_ASSIST_READY=1
+    return 0
+  fi
+
   if [[ "${KLMS_PARENT_LOGIN_PREFLIGHT_READY:-0}" == "1" && "${KLMS_USE_EXISTING_DASHBOARD:-0}" == "1" && -s "$WORK_CACHE_DIR/dashboard.json" ]]; then
     klms_check_login_pages "$WORK_CACHE_DIR/dashboard.json" || return 1
     KLMS_LOGIN_PREFETCH_READY=1
@@ -440,6 +497,8 @@ klms_require_login() {
       print -r -- "KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘." >&2
       return 1
     fi
+    klms_write_login_status_ok
+    KLMS_LOGIN_ASSIST_READY=1
   fi
 
   if [[ "$fast_tab_state" != "login_required" ]] && klms_recent_login_status_ok; then
@@ -563,8 +622,9 @@ klms_run_serial_child_job() {
   (
     cd "$SCRIPT_DIR"
     /usr/bin/env -u KLMS_SHARED_SYNC_LOCK_HELD -u KLMS_SHARED_SYNC_LOCK_DIR \
-      KLMS_USE_EXISTING_DASHBOARD=1 \
-      KLMS_PARENT_LOGIN_PREFLIGHT_READY=1 \
+      KLMS_USE_EXISTING_DASHBOARD="${KLMS_LOGIN_PREFETCH_READY:-0}" \
+      KLMS_PARENT_LOGIN_PREFLIGHT_READY="${KLMS_LOGIN_PREFETCH_READY:-0}" \
+      KLMS_PARENT_LOGIN_ASSIST_READY="${KLMS_LOGIN_ASSIST_READY:-0}" \
       KLMS_RUN_STARTED_EPOCH="$KLMS_RUN_STARTED_EPOCH" \
       KLMS_SHARED_COURSE_PAGES_JSON="$KLMS_SHARED_COURSE_PAGES_JSON" \
       KLMS_SHARED_ALL_WEEK_COURSE_PAGES_JSON="$KLMS_SHARED_ALL_WEEK_COURSE_PAGES_JSON" \

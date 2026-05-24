@@ -14,7 +14,7 @@ SUBMITTED_RE = re.compile(
 )
 NOT_SUBMITTED_RE = re.compile(r"(시도 하지 않음|You have not made a submission yet)", re.IGNORECASE)
 ASSIGNMENT_WORD_RE = re.compile(
-    r"(assignment|homework|hw\b|project|과제|쪽글|report|proposal)",
+    r"(assignment|homework|hw\b|project|nano\s+quiz|quiz\b|과제|쪽글|퀴즈|report|proposal)",
     re.IGNORECASE,
 )
 EXAM_WORD_RE = re.compile(r"(midterm|final|exam|고사|시험)", re.IGNORECASE)
@@ -143,9 +143,22 @@ def classify_detail_page(page: Page, generated_at: str) -> tuple[Assignment | Ev
             type="exam",
         ), "exam"
 
-    if "/mod/assign/" in page.url or ASSIGNMENT_WORD_RE.search(title):
+    if re.search(r"/mod/(?:assign|quiz)/", page.url, re.IGNORECASE) or ASSIGNMENT_WORD_RE.search(title):
         if status == "제출 완료":
-            return None, "submitted"
+            return Assignment(
+                url=page.url,
+                course=course,
+                title=title,
+                due=due.display,
+                sync_due=due.iso,
+                source="detail",
+                submission=status,
+                instructions=clean_detail_instructions(text),
+                type="assign",
+                auto_completed=True,
+                record_status="completed",
+                completion_reason="submitted",
+            ), "submitted"
         if EXAM_WORD_RE.search(title) and not ASSIGNMENT_WORD_RE.search(title):
             return None, "exam-assignment-page"
         return Assignment(
@@ -211,7 +224,7 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
 
     if ASSIGNMENT_WORD_RE.search(text) and DEADLINE_RE.search(text):
         title_match = re.search(
-            r"\b(Project\s+\d+|HW\s*\d+|(?:Programming|Written)\s+Assignment\s+\d+|Assignment\s+\d+)\b",
+            r"\b(Project\s+\d+|HW\s*\d+|(?:Programming|Written)\s+Assignment\s+\d+|Assignment\s+\d+|Nano\s+Quiz(?:\s*#?\s*\d+)?|Quiz(?:\s*#?\s*\d+)?)\b|퀴즈\s*\d*",
             text,
             re.IGNORECASE,
         )

@@ -21,6 +21,7 @@ function run(argv) {
   const outPath = outArg ? outArg.replace("--out=", "") : "";
   const strategy = strategyArg ? strategyArg.replace("--strategy=", "") : "auto";
   const backgroundWindowEnabled = envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1");
+  const reuseExistingWindowEnabled = envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0");
   const inlineUrls = argv.filter(
     (arg) =>
       !arg.startsWith("--wait=") &&
@@ -60,7 +61,7 @@ function run(argv) {
   restoreFrontmostApplication(frontmostApp);
 
   const results = [];
-  const windowRef = resolveFetchWindow(safari, backgroundWindowEnabled);
+  const windowRef = resolveFetchWindow(safari, backgroundWindowEnabled, reuseExistingWindowEnabled);
   if (!windowRef) {
     throw new Error("Failed to resolve a Safari window for page fetch.");
   }
@@ -312,10 +313,12 @@ function readTab(tab) {
   };
 }
 
-function resolveFetchWindow(safari, backgroundWindowEnabled) {
-  const reusableWindow = findReusableKlmsWindow(safari, backgroundWindowEnabled);
-  if (reusableWindow) {
-    return reusableWindow;
+function resolveFetchWindow(safari, backgroundWindowEnabled, reuseExistingWindowEnabled) {
+  if (reuseExistingWindowEnabled) {
+    const reusableWindow = findReusableKlmsWindow(safari, backgroundWindowEnabled);
+    if (reusableWindow) {
+      return reusableWindow;
+    }
   }
   return openFetchWindow(safari, backgroundWindowEnabled);
 }
@@ -341,8 +344,10 @@ function openFetchWindow(safari, backgroundWindowEnabled) {
   const windows = safeList(() => safari.windows());
   const windowRef =
     windows.find((windowRef) => !previousWindowIds.has(safeNumber(() => windowRef.id(), -1))) ||
-    safeValue(() => safari.windows()[0]) ||
     null;
+  if (!windowRef) {
+    throw new Error("Failed to create a dedicated Safari fetch window.");
+  }
   if (windowRef && backgroundWindowEnabled) {
     prepareBackgroundWindow(windowRef);
     restoreFrontmostApplication(frontmostApp);

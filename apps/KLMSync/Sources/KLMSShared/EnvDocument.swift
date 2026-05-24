@@ -11,8 +11,11 @@ public enum EnvKnownKey: String, CaseIterable, Sendable, Identifiable {
     case syncAbortOnUserActivity = "SYNC_ABORT_ON_USER_ACTIVITY"
     case syncActiveAbortIdleSeconds = "SYNC_ACTIVE_ABORT_IDLE_SECONDS"
     case safariBackgroundWindowEnabled = "KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED"
+    case safariReuseExistingWindowEnabled = "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED"
+    case calendarSkipUnchangedDesired = "CALENDAR_SKIP_UNCHANGED_DESIRED"
     case syncMode = "SYNC_MODE"
     case fileRefreshMode = "FILE_REFRESH_MODE"
+    case fileSkipDownloadWhenPreviewEmpty = "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY"
     case fileKeepFreshDownloads = "FILE_KEEP_FRESH_DOWNLOADS"
     case fileWeeklyFoldersEnabled = "FILE_WEEKLY_FOLDERS_ENABLED"
     case fileForceDownload = "FILE_FORCE_DOWNLOAD"
@@ -25,6 +28,12 @@ public enum EnvKnownKey: String, CaseIterable, Sendable, Identifiable {
     case noticeCollapseCourses = "NOTICE_COLLAPSE_COURSES"
     case noticeCollapseItems = "NOTICE_COLLAPSE_NOTICE_ITEMS"
     case noticeStyleItemsAsHeadings = "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS"
+    case noticeHideHiddenItems = "NOTICE_HIDE_HIDDEN_ITEMS"
+    case noticeStableNoopSkip = "NOTICE_NATIVE_STABLE_NOOP_SKIP"
+    case noticeAlwaysCaptureState = "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE"
+    case noticeVerifyStableSkipFormat = "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT"
+    case noticePreformattedPasteOnly = "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY"
+    case noticePlainTextPaste = "NOTICE_NATIVE_PLAIN_TEXT_PASTE"
 
     public var id: String { rawValue }
 }

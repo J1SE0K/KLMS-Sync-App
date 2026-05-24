@@ -143,6 +143,20 @@ class CalendarExamFieldTests(unittest.TestCase):
         self.assertIn("    let existingEvents = managedEvents(", source)
         self.assertNotIn("        let existingEvents = managedEvents(", source)
 
+    def test_calendar_suite_emits_change_detail_json(self) -> None:
+        swift_source = (
+            PROJECT_DIR / "src" / "swift" / "sync_klms_calendar_suite.swift"
+        ).read_text(encoding="utf-8")
+        js_source = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("struct CalendarChangeRecord", swift_source)
+        self.assertIn("calendar_change_json=", swift_source)
+        self.assertIn("changes.append(calendarChangeRecord(", swift_source)
+        self.assertIn('line.startsWith("calendar_change_json=")', js_source)
+        self.assertIn("changes,", js_source)
+
 
 if __name__ == "__main__":
     unittest.main()

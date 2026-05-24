@@ -25,19 +25,23 @@ done
 klms_init_context "$SCRIPT_DIR/verify_sync_state.sh" "$CONFIG_ARG"
 STATE_JSON="$SCRIPT_DIR/runtime/state/state.json"
 CALENDAR_COUNTS_TXT="$TMP_DIR/verify_calendar_counts.txt"
+CALENDAR_COUNTS_ERR="$TMP_DIR/verify_calendar_counts.err"
 VERIFY_JSON="$CACHE_DIR/verify_sync_state.json"
 
 SWIFT_MODULE_CACHE_DIR="$TMP_DIR/swift-module-cache"
 CLANG_MODULE_CACHE_DIR="$TMP_DIR/clang-module-cache"
 mkdir -p "$SWIFT_MODULE_CACHE_DIR" "$CLANG_MODULE_CACHE_DIR"
 
-SWIFT_MODULE_CACHE_PATH="$SWIFT_MODULE_CACHE_DIR" \
-CLANG_MODULE_CACHE_PATH="$CLANG_MODULE_CACHE_DIR" \
-/usr/bin/swift -module-cache-path "$SWIFT_MODULE_CACHE_DIR" \
-  "$SCRIPT_DIR/src/swift/verify_calendar_counts.swift" \
-  "--exam-calendar=${EXAM_CALENDAR_NAME:-시험}" \
-  "--helpdesk-calendar=${HELP_DESK_CALENDAR_NAME:-기타}" \
-  > "$CALENDAR_COUNTS_TXT"
+if ! SWIFT_MODULE_CACHE_PATH="$SWIFT_MODULE_CACHE_DIR" \
+  CLANG_MODULE_CACHE_PATH="$CLANG_MODULE_CACHE_DIR" \
+  /usr/bin/swift -module-cache-path "$SWIFT_MODULE_CACHE_DIR" \
+    "$SCRIPT_DIR/src/swift/verify_calendar_counts.swift" \
+    "--exam-calendar=${EXAM_CALENDAR_NAME:-시험}" \
+    "--helpdesk-calendar=${HELP_DESK_CALENDAR_NAME:-기타}" \
+    > "$CALENDAR_COUNTS_TXT" 2> "$CALENDAR_COUNTS_ERR"; then
+  calendar_error="$(tr '\n' ' ' < "$CALENDAR_COUNTS_ERR" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+  print -r -- "calendar_error=${calendar_error:-Calendar verification unavailable.}" > "$CALENDAR_COUNTS_TXT"
+fi
 
 verify_args=(
   "$KLMS_PYTHON_BIN"

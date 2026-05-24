@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -194,6 +195,97 @@ class FetchPagesBackendTests(unittest.TestCase):
             )
 
         self.assertIsNotNone(summary)
+
+    def test_require_all_ignores_recent_empty_fetch_summary(self) -> None:
+        url = "https://klms.kaist.ac.kr/my/"
+        page = {"requestedUrl": url, "url": url, "title": "KLMS", "html": "<html>ok</html>"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_path = root / "dashboard.json"
+            state_path = root / "fetch_state.json"
+            summary_path = root / "summary.json"
+            summary_path.write_text(
+                json.dumps(
+                    {
+                        "finished_at": fetch_pages_backend.now_utc_iso(),
+                        "total_urls": 1,
+                        "fetched_urls": 0,
+                        "missing_urls": 1,
+                        "selected_url_list": [url],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                fetch_pages_backend,
+                "fetch_pages_with_safari",
+                return_value=[page],
+            ) as fetch_mock:
+                with mock.patch(
+                    "sys.argv",
+                    [
+                        "fetch_pages_backend.py",
+                        "--backend=safari",
+                        "--mode=full",
+                        "--context=sync-dashboard",
+                        "--out",
+                        str(out_path),
+                        "--cache-state",
+                        str(state_path),
+                        "--summary-out",
+                        str(summary_path),
+                        "--complete-reuse-seconds=900",
+                        "--require-all",
+                        url,
+                    ],
+                ):
+                    status = fetch_pages_backend.main()
+
+            self.assertEqual(status, 0)
+            self.assertTrue(fetch_mock.called)
+            self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), [page])
+
+    def test_require_all_missing_pages_fails_without_overwriting_previous_output(self) -> None:
+        url = "https://klms.kaist.ac.kr/my/"
+        previous_payload = [{"requestedUrl": url, "url": url, "title": "", "html": ""}]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_path = root / "dashboard.json"
+            state_path = root / "fetch_state.json"
+            summary_path = root / "summary.json"
+            out_path.write_text(json.dumps(previous_payload), encoding="utf-8")
+
+            with mock.patch.object(
+                fetch_pages_backend,
+                "fetch_pages_with_safari",
+                return_value=[],
+            ):
+                with mock.patch(
+                    "sys.argv",
+                    [
+                        "fetch_pages_backend.py",
+                        "--backend=safari",
+                        "--mode=full",
+                        "--context=sync-dashboard",
+                        "--out",
+                        str(out_path),
+                        "--cache-state",
+                        str(state_path),
+                        "--summary-out",
+                        str(summary_path),
+                        "--require-all",
+                        url,
+                    ],
+                ):
+                    status = fetch_pages_backend.main()
+
+            self.assertEqual(status, 2)
+            self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), previous_payload)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(summary["status"], "error")
+            self.assertEqual(summary["error"], "missing-required-pages")
+            self.assertEqual(summary["missing_url_list"], [url])
 
     def test_update_context_state_preserves_reused_fetch_timestamp(self) -> None:
         url = "https://klms.kaist.ac.kr/course/view.php?id=1"

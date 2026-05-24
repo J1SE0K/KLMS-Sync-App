@@ -46,9 +46,54 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
             with self.subTest(script=script_name):
                 text = (PROJECT_DIR / "bin" / script_name).read_text(encoding="utf-8")
                 self.assertIn("klms_export_shared_sync_cache_defaults", text)
-        self.assertIn("klms_prepare_prefetched_dashboard_for_namespaces", text)
-        self.assertIn("klms_run_serial_child_job", text)
-        self.assertNotIn("run_serial_job()", text)
+                self.assertIn("klms_prepare_prefetched_dashboard_for_namespaces", text)
+                self.assertIn("klms_run_serial_child_job", text)
+                self.assertNotIn("run_serial_job()", text)
+
+    def test_full_sync_entrypoint_runs_notice_memo_sync_between_core_and_files(self) -> None:
+        text = (PROJECT_DIR / "bin" / "run_all_full.sh").read_text(encoding="utf-8")
+
+        core_index = text.index("klms_run_serial_child_job core ./sync_klms_core.sh")
+        notice_index = text.index("klms_run_serial_child_job notice ./sync_klms_notice.sh")
+        files_index = text.index("klms_run_serial_child_job files ./refresh_course_files.sh")
+
+        self.assertLess(core_index, notice_index)
+        self.assertLess(notice_index, files_index)
+
+    def test_runtime_notice_environment_overrides_config_file(self) -> None:
+        common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = root / "config.env"
+            config.write_text(
+                "\n".join(
+                    [
+                        'NOTICE_COLLAPSE_COURSES="0"',
+                        'NOTICE_COLLAPSE_NOTICE_ITEMS="0"',
+                        'NOTICE_NATIVE_ALWAYS_CAPTURE_STATE="1"',
+                        'NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY="0"',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            script = f"""
+            source {common}
+            export NOTICE_COLLAPSE_COURSES=1
+            export NOTICE_COLLAPSE_NOTICE_ITEMS=1
+            export NOTICE_NATIVE_ALWAYS_CAPTURE_STATE=0
+            export NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY=1
+            klms_init_context {root / "sync_klms_notice.sh"} {config}
+            print -- "$NOTICE_COLLAPSE_COURSES:$NOTICE_COLLAPSE_NOTICE_ITEMS:$NOTICE_NATIVE_ALWAYS_CAPTURE_STATE:$NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY"
+            """
+            result = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.stdout.strip(), "1:1:0:1")
 
     def test_common_login_preflight_can_reuse_recent_success(self) -> None:
         text = (PROJECT_DIR / "src" / "sh" / "klms_common.sh").read_text(encoding="utf-8")
@@ -59,6 +104,64 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('[[ -s "$CACHE_DIR/dashboard.json" ]]', text)
         self.assertIn('fast_tab_state" != "login_required"', text)
         self.assertIn('KLMS_LOGIN_STATUS_REUSE_SECONDS="900"', config)
+
+    def test_app_run_skips_redundant_login_preflight_checks(self) -> None:
+        common = (PROJECT_DIR / "src" / "sh" / "klms_common.sh").read_text(encoding="utf-8")
+        app_model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('KLMS_LOGIN_ASSIST_ENABLED": "1"', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": "1"', app_model)
+        self.assertNotIn("KLMS_LOGIN_ALWAYS_ASSIST_ENABLED", app_model)
+        self.assertIn('"${KLMS_APP_RUN:-0}" == "1"', common)
+        self.assertIn("KLMS_PARENT_LOGIN_ASSIST_READY", common)
+        self.assertIn("KLMS_LOGIN_ASSIST_READY=1", common)
+        self.assertIn('KLMS_USE_EXISTING_DASHBOARD="${KLMS_LOGIN_PREFETCH_READY:-0}"', common)
+        self.assertIn('KLMS_PARENT_LOGIN_PREFLIGHT_READY="${KLMS_LOGIN_PREFETCH_READY:-0}"', common)
+        self.assertNotIn("KLMS_LOGIN_ALWAYS_ASSIST_ENABLED", common)
+
+    def test_app_run_marks_login_ready_without_dashboard_prefetch(self) -> None:
+        common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src" / "python").mkdir(parents=True)
+            (root / "src" / "js").mkdir(parents=True)
+            (root / "src" / "sh").mkdir(parents=True)
+            (root / "config.env").write_text(
+                "\n".join(
+                    [
+                        'KLMS_LOGIN_ASSIST_ENABLED="1"',
+                        'KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="1"',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            helper = root / "kaikey_auto_login.sh"
+            helper.write_text(
+                "#!/bin/zsh\nprint -- 'status=ok stage=authenticated'\n",
+                encoding="utf-8",
+            )
+            helper.chmod(0o755)
+
+            script = f"""
+            source {common}
+            export KLMS_APP_RUN=1
+            klms_init_context {root / "run_all_full.sh"} {root / "config.env"}
+            klms_require_login
+            print -- "$KLMS_LOGIN_PREFETCH_READY:$KLMS_LOGIN_ASSIST_READY"
+            """
+            result = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertIn("status=ok stage=authenticated", result.stdout)
+            self.assertEqual(result.stdout.strip().splitlines()[-1], "0:1")
+            self.assertNotIn("klms-login-preflight", result.stdout + result.stderr)
+            self.assertNotIn("KLMS 로그인이 풀린", result.stdout + result.stderr)
 
     def test_cleanup_script_removes_common_local_artifacts(self) -> None:
         text = (
@@ -136,11 +239,30 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
 
         for text in [fetch_text, download_text]:
             self.assertIn("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", text)
+            self.assertIn("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", text)
             self.assertIn("prepareBackgroundWindow", text)
             self.assertIn("windowRef.miniaturized = true", text)
             self.assertIn("isBackgroundWindow", text)
 
         self.assertIn('KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED="1"', config)
+        self.assertIn('KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED="0"', config)
+
+    def test_safari_automation_defaults_to_dedicated_windows(self) -> None:
+        fetch_text = (PROJECT_DIR / "src" / "js" / "fetch_pages_with_safari.js").read_text(
+            encoding="utf-8"
+        )
+        download_text = (PROJECT_DIR / "src" / "js" / "download_klms_files.js").read_text(
+            encoding="utf-8"
+        )
+        login_text = (PROJECT_DIR / "src" / "sh" / "klms_common.sh").read_text(encoding="utf-8")
+
+        self.assertIn('envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0")', fetch_text)
+        self.assertIn("if (reuseExistingWindowEnabled)", fetch_text)
+        self.assertIn("Failed to create a dedicated Safari fetch window", fetch_text)
+        self.assertIn('envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0")', download_text)
+        self.assertIn("reuseExistingWindowEnabled ? findKlmsWindow", download_text)
+        self.assertIn('make new document with properties {URL:targetUrl}', login_text)
+        self.assertNotIn('repeat with w in windows', login_text)
 
     def test_launch_agent_aborts_sync_when_user_returns(self) -> None:
         text = (PROJECT_DIR / "src" / "sh" / "launch_sync_if_idle.sh").read_text(
@@ -151,6 +273,15 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("SYNC_ACTIVE_ABORT_IDLE_SECONDS", text)
         self.assertIn("terminate_process_tree", text)
         self.assertIn("aborted=user-activity", text)
+
+    def test_launch_agent_notifies_new_auth_digits_despite_cooldown(self) -> None:
+        text = (PROJECT_DIR / "src" / "sh" / "launch_sync_if_idle.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("LOGIN_PROMPT_DIGITS_FILE", text)
+        self.assertIn('[[ "$auth_digits" == "$last_auth_digits" ]]', text)
+        self.assertIn("login-prompt suppressed cooldown=%ss digits=%s", text)
 
     def test_cleanup_tracked_downloads_can_preserve_archive_destinations(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "cleanup_tracked_downloads.js").read_text(
@@ -236,12 +367,14 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertNotIn("config.NOTE_NAME", text)
         self.assertNotIn("ASSIGNMENT_NOTE_SYNC_ENABLED", text)
 
-    def test_notice_notes_are_existing_only(self) -> None:
+    def test_notice_managed_notes_recover_missing_note(self) -> None:
         text = (PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn("Refusing to create a new Notes note.", text)
+        self.assertIn("func createManagedNote", text)
+        self.assertIn("Could not locate or create managed Notes note", text)
+        self.assertIn("Ignoring stale explicit Notes note id", text)
         self.assertNotIn("notes.make({", text)
         self.assertNotIn("new: \"note\"", text)
         self.assertNotIn("note.delete()", text)
@@ -279,6 +412,63 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('config.CALENDAR_SYNC_APPLESCRIPT_FALLBACK !== "1"', text)
         self.assertIn("deprecated-calendar-jxa-fallback", text)
         self.assertIn('CALENDAR_SYNC_APPLESCRIPT_FALLBACK="0"', config)
+
+    def test_mac_app_requests_permissions_explicitly(self) -> None:
+        model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+        view = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
+        build_script = (PROJECT_DIR / "tools" / "build_klms_mac_app.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("AXIsProcessTrustedWithOptions", model)
+        self.assertIn("AXTrustedCheckOptionPrompt", model)
+        self.assertIn("requestFullAccessToEvents", model)
+        self.assertIn("requestFullAccessToReminders", model)
+        self.assertIn("UNUserNotificationCenter.current()", model)
+        self.assertIn("runAutomationPermissionProbes", model)
+        self.assertIn('tell application id "com.apple.Safari"', model)
+        self.assertIn('tell application id "com.apple.Notes"', model)
+        self.assertIn('tell application id "com.apple.systemevents"', model)
+        self.assertIn("shouldRequestPermissionsAfterInstall", model)
+        self.assertIn("권한 요청", view)
+        self.assertIn("System Events", build_script)
+        self.assertIn("security find-identity -v -p codesigning", build_script)
+        self.assertIn("Signing KLMS Sync.app with identity", build_script)
+
+    def test_app_notice_renderer_uses_bundled_signed_helper(self) -> None:
+        model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+        wrapper = (PROJECT_DIR / "src" / "sh" / "update_notice_native_note.sh").read_text(
+            encoding="utf-8"
+        )
+        build_script = (PROJECT_DIR / "tools" / "build_klms_mac_app.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("NOTICE_NATIVE_NOTE_BIN_PATH", model)
+        self.assertIn("KLMSNoticeNativeNote", model)
+        self.assertIn('APP_HELPER_BIN="${NOTICE_NATIVE_NOTE_BIN_PATH:-}"', wrapper)
+        self.assertIn('if [[ -n "$APP_HELPER_BIN" && -x "$APP_HELPER_BIN" ]]', wrapper)
+        self.assertIn('BUILD_DIR="${NOTICE_NATIVE_NOTE_BUILD_DIR:-$SCRIPT_DIR/runtime/bin}"', wrapper)
+        self.assertIn('local timeout_seconds="${TIMEOUT_SECONDS:-420}"', wrapper)
+        self.assertIn('local target_pid="${!:-}"', wrapper)
+        self.assertIn('if [[ -n "${target_pid:-}" ]]', wrapper)
+        self.assertIn(
+            'NATIVE_NOTICE_HELPER_APP="$APP_BUNDLE/Contents/Helpers/KLMSNoticeNativeNote.app"',
+            build_script,
+        )
+        self.assertIn(
+            'NATIVE_NOTICE_HELPER="$NATIVE_NOTICE_HELPER_APP/Contents/MacOS/KLMSNoticeNativeNote"',
+            build_script,
+        )
+        self.assertIn('HELPER_BUNDLE_ID="${BUNDLE_ID}.notice-native-note"', build_script)
+        self.assertIn("notice_native_note_support.swift", build_script)
+        self.assertIn("update_notice_native_note.swift", build_script)
 
 
 if __name__ == "__main__":

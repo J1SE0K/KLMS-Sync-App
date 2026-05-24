@@ -81,6 +81,8 @@ struct NoticeInteractionState: Codable {
     var readAt: String?
     var important: Bool?
     var importantAt: String?
+    var hidden: Bool?
+    var hiddenAt: String?
     var updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
@@ -92,6 +94,8 @@ struct NoticeInteractionState: Codable {
         case readAt = "read_at"
         case important
         case importantAt = "important_at"
+        case hidden
+        case hiddenAt = "hidden_at"
         case updatedAt = "updated_at"
     }
 }
@@ -114,6 +118,8 @@ struct RenderedNoticeState: Codable {
     let title: String
     let renderedTitle: String?
     let fingerprint: String
+    let shouldCheckRead: Bool?
+    let shouldCheckImportant: Bool?
     let sectionRange: LineRange
     let readChecklistRange: LineRange
     let importantChecklistRange: LineRange
@@ -124,6 +130,8 @@ struct RenderedNoticeState: Codable {
         case title
         case renderedTitle = "rendered_title"
         case fingerprint
+        case shouldCheckRead = "should_check_read"
+        case shouldCheckImportant = "should_check_important"
         case sectionRange = "section_range"
         case readChecklistRange = "read_checklist_range"
         case importantChecklistRange = "important_checklist_range"
@@ -139,6 +147,7 @@ struct NoticeRenderStateFile: Codable {
     let renderedNotices: [RenderedNoticeState]
     let contentHash: String?
     let plaintextHash: String?
+    let renderSignature: String?
 
     enum CodingKeys: String, CodingKey {
         case version
@@ -149,6 +158,7 @@ struct NoticeRenderStateFile: Codable {
         case renderedNotices = "rendered_notices"
         case contentHash = "content_hash"
         case plaintextHash = "plaintext_hash"
+        case renderSignature = "render_signature"
     }
 }
 
@@ -208,6 +218,7 @@ struct RenderedNoticePlan {
 
 struct RenderPlan {
     let mode: NoticeDisplayMode
+    let primaryFallbackAllNotices: Bool
     let bodyLines: [RenderLine]
     let titleLineIndex: Int
     let summaryLineIndex: Int
@@ -282,7 +293,7 @@ struct ResolvedRenderedNotice {
 let defaultNoteTitle = "KLMS 공지"
 let defaultArchiveNoteTitle = "KLMS 확인한 공지"
 let nativeNoticeRenderStateVersion = 2
-let nativeNoticeRenderStyleVersion = "2026-05-14-archive-course-collapse"
+let nativeNoticeRenderStyleVersion = "2026-05-24-functional-notes-v8-archive-section-style"
 let readChecklistLabel = "읽음"
 let importantChecklistLabel = "중요"
 let noticeReadGuidanceLine = "\"읽음\"만 체크한 공지는 다음 동기화 때 KLMS 확인한 공지에 표시됩니다."
@@ -298,21 +309,31 @@ let checklistMenuTitles = ["체크리스트", "Checklist"]
 let noticeDebugEnabled = ProcessInfo.processInfo.environment["NOTICE_DEBUG_CAPTURE"] == "1"
 let automationDebugEnabled = ProcessInfo.processInfo.environment["NOTICE_DEBUG_AUTOMATION"] == "1"
 let noticeTimingEnabled = ProcessInfo.processInfo.environment["NOTICE_TIMING"] == "1"
-let collapseNoticeSectionsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_SECTIONS"] != "0"
+let collapseNoticeSectionsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_SECTIONS"] == "1"
 let collapseNoticeCoursesEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_COURSES"] == "1"
 let collapseNoticeItemsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_NOTICE_ITEMS"] == "1"
 let styleNoticeItemsAsHeadingsEnabled =
-    ProcessInfo.processInfo.environment["NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS"] != "0"
+    ProcessInfo.processInfo.environment["NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS"] == "1"
+let hideHiddenNoticeItemsEnabled = ProcessInfo.processInfo.environment["NOTICE_HIDE_HIDDEN_ITEMS"] != "0"
 let uiStyleMenuFormattingEnabled =
     ProcessInfo.processInfo.environment["NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT"] == "1"
     && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT"] != "1"
+let preformattedPasteOnlyEnabled =
+    ProcessInfo.processInfo.environment["NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY"] == "1"
+let plainTextPasteEnabled =
+    ProcessInfo.processInfo.environment["NOTICE_NATIVE_PLAIN_TEXT_PASTE"] == "1"
 let uiCollapsibleGroupStyleFormattingEnabled =
     (
         uiStyleMenuFormattingEnabled
-        || collapseNoticeSectionsEnabled
-        || collapseNoticeCoursesEnabled
-        || collapseNoticeItemsEnabled
-        || styleNoticeItemsAsHeadingsEnabled
+        || (
+            !preformattedPasteOnlyEnabled
+            && (
+                collapseNoticeSectionsEnabled
+                || collapseNoticeCoursesEnabled
+                || collapseNoticeItemsEnabled
+                || styleNoticeItemsAsHeadingsEnabled
+            )
+        )
     )
     && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT"] != "1"
 let batchChecklistFormattingEnabled =
@@ -321,8 +342,16 @@ let batchChecklistFormattingEnabled =
 let fastBatchChecklistFormattingEnabled =
     batchChecklistFormattingEnabled
     && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT"] != "1"
+let validateReadabilityStyleEnabled =
+    ProcessInfo.processInfo.environment["NOTICE_NATIVE_VALIDATE_STYLE"] == "1"
+let collapseAllFirstEnabled =
+    ProcessInfo.processInfo.environment["NOTICE_NATIVE_COLLAPSE_ALL_FIRST"] == "1"
 let pasteboardSettleUsec: useconds_t = 35_000
 let pasteSettleUsec: useconds_t = 70_000
+let selectionSettleDelay: TimeInterval =
+    max(0.012, Double(ProcessInfo.processInfo.environment["NOTICE_NATIVE_SELECTION_SETTLE_SECONDS"] ?? "") ?? 0.02)
+let checklistPressSettleUsec: useconds_t =
+    useconds_t(max(15_000, Int(ProcessInfo.processInfo.environment["NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US"] ?? "") ?? 25_000))
 let initialEditorClearDelay: TimeInterval = 0.12
 let initialEditorFocusDelay: TimeInterval = 0.04
 let finalChecklistDisableDelay: TimeInterval = 0.12
@@ -330,10 +359,10 @@ let noticeCollapseStyleSettleDelay: TimeInterval = 0.45
 let noticeBodyFontSize: CGFloat = 14
 let noticeMetaFontSize: CGFloat = 12
 let noticeSummaryFontSize: CGFloat = 14
-let noticeItemTitleFontSize: CGFloat = 16
-let noticeCourseHeadingFontSize: CGFloat = 17
-let noticeSectionHeadingFontSize: CGFloat = 19
-let noticeDocumentTitleFontSize: CGFloat = 23
+let noticeItemTitleFontSize: CGFloat = 14
+let noticeCourseHeadingFontSize: CGFloat = 14
+let noticeSectionHeadingFontSize: CGFloat = 14
+let noticeDocumentTitleFontSize: CGFloat = 14
 
 func fail(_ message: String) -> Never {
     fputs("\(message)\n", stderr)

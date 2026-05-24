@@ -9,6 +9,7 @@ function run(argv) {
   const maxSeconds = Math.max(0, Number(options["max-seconds"] || "0"));
   const pollMs = Math.max(75, Math.min(1000, Number(options["poll-ms"] || "150")));
   const backgroundWindowEnabled = safariBackgroundWindowEnabled();
+  const reuseExistingWindowEnabled = safariReuseExistingWindowEnabled();
   if (!displayName) {
     return JSON.stringify({ status: "error", error: "missing-display-name" });
   }
@@ -20,7 +21,7 @@ function run(argv) {
   }
   restoreFrontmostApplication(frontmostApp);
 
-  const windowRef = resolveWindow(safari, backgroundWindowEnabled);
+  const windowRef = resolveWindow(safari, backgroundWindowEnabled, reuseExistingWindowEnabled);
   if (!windowRef) {
     return JSON.stringify({ status: "error", error: "no-safari-window" });
   }
@@ -212,19 +213,28 @@ function parseOptions(argv) {
   return options;
 }
 
-function resolveWindow(safari, backgroundWindowEnabled) {
-  const windows = safeList(() => safari.windows());
-  for (let i = 0; i < windows.length; i += 1) {
-    const tab = safeValue(() => windows[i].currentTab());
-    const url = safeString(() => tab.url());
-    if (looksLikeKaistAuthUrl(url) && (!backgroundWindowEnabled || isBackgroundWindow(windows[i]))) {
-      return windows[i];
+function resolveWindow(safari, backgroundWindowEnabled, reuseExistingWindowEnabled) {
+  if (reuseExistingWindowEnabled) {
+    const windows = safeList(() => safari.windows());
+    for (let i = 0; i < windows.length; i += 1) {
+      const tab = safeValue(() => windows[i].currentTab());
+      const url = safeString(() => tab.url());
+      if (looksLikeKaistAuthUrl(url) && (!backgroundWindowEnabled || isBackgroundWindow(windows[i]))) {
+        return windows[i];
+      }
     }
+    if (!backgroundWindowEnabled && windows.length > 0) return windows[0];
   }
-  if (!backgroundWindowEnabled && windows.length > 0) return windows[0];
+  return createSafariWindow(safari, backgroundWindowEnabled);
+}
+
+function createSafariWindow(safari, backgroundWindowEnabled) {
+  const previousWindowIds = new Set(listWindowIds(safari));
   safari.make({ new: "document" });
   delay(0.2);
-  const windowRef = safeValue(() => safari.windows()[0]);
+  const windowRef = safeList(() => safari.windows()).find(
+    (candidate) => !previousWindowIds.has(safeNumber(() => candidate.id(), -1))
+  ) || null;
   if (backgroundWindowEnabled) {
     prepareBackgroundWindow(windowRef);
   }
@@ -277,6 +287,15 @@ function safeBoolean(getter) {
   }
 }
 
+function safeNumber(getter, fallback) {
+  try {
+    const value = Number(getter());
+    return Number.isFinite(value) ? value : fallback;
+  } catch (_error) {
+    return fallback;
+  }
+}
+
 function safeList(getter) {
   try {
     const value = getter();
@@ -306,6 +325,12 @@ function isBackgroundWindow(windowRef) {
   return visible === false;
 }
 
+function listWindowIds(safari) {
+  return safeList(() => safari.windows())
+    .map((windowRef) => safeNumber(() => windowRef.id(), null))
+    .filter((value) => value != null);
+}
+
 function frontmostApplicationName() {
   try {
     const systemEvents = Application("System Events");
@@ -329,6 +354,10 @@ function restoreFrontmostApplication(appName) {
 
 function safariBackgroundWindowEnabled() {
   return envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1");
+}
+
+function safariReuseExistingWindowEnabled() {
+  return envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0");
 }
 
 function envValue(name) {

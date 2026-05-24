@@ -40,9 +40,11 @@ final class EngineInstallerTests: XCTestCase {
         try FileManager.default.createDirectory(at: source.appendingPathComponent("bin", isDirectory: true), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: source.appendingPathComponent("src/sh", isDirectory: true), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: source.appendingPathComponent("examples", isDirectory: true), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: source.appendingPathComponent("python-packages/bs4", isDirectory: true), withIntermediateDirectories: true)
         try "#!/bin/zsh\n".write(to: source.appendingPathComponent("run_all_full.sh"), atomically: true, encoding: .utf8)
         try "x".write(to: source.appendingPathComponent("bin/run_all_full.sh"), atomically: true, encoding: .utf8)
         try "x".write(to: source.appendingPathComponent("src/sh/launch_sync_if_idle.sh"), atomically: true, encoding: .utf8)
+        try "package".write(to: source.appendingPathComponent("python-packages/bs4/__init__.py"), atomically: true, encoding: .utf8)
         try "SYNC_MODE=\"auto\"\n".write(to: source.appendingPathComponent("examples/config.env.example"), atomically: true, encoding: .utf8)
         try "{\"assignments\":{}}\n".write(
             to: source.appendingPathComponent("manual_assignment_overrides.json"),
@@ -53,6 +55,8 @@ final class EngineInstallerTests: XCTestCase {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         try "SYNC_MODE=\"quick\"\n".write(to: destination.appendingPathComponent("config.env"), atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: destination.appendingPathComponent("runtime", isDirectory: true), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination.appendingPathComponent("runtime/python-packages/private", isDirectory: true), withIntermediateDirectories: true)
+        try "keep".write(to: destination.appendingPathComponent("runtime/python-packages/private/state.txt"), atomically: true, encoding: .utf8)
         try "secret".write(to: destination.appendingPathComponent("kaikey_state.json"), atomically: true, encoding: .utf8)
 
         let result = try EngineInstaller().installIfNeeded(
@@ -69,6 +73,14 @@ final class EngineInstallerTests: XCTestCase {
         XCTAssertEqual(
             try String(contentsOf: destination.appendingPathComponent("kaikey_state.json"), encoding: .utf8),
             "secret"
+        )
+        XCTAssertEqual(
+            try String(contentsOf: destination.appendingPathComponent("runtime/python-packages/private/state.txt"), encoding: .utf8),
+            "keep"
+        )
+        XCTAssertEqual(
+            try String(contentsOf: destination.appendingPathComponent("runtime/app-python-packages/bs4/__init__.py"), encoding: .utf8),
+            "package"
         )
         XCTAssertEqual(
             try String(contentsOf: destination.appendingPathComponent("manual_assignment_overrides.json"), encoding: .utf8),

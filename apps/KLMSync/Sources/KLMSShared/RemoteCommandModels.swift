@@ -23,6 +23,10 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
             .report
         }
     }
+
+    public var displayName: String {
+        engineCommand.displayName
+    }
 }
 
 public enum RemoteCommandStatus: String, Codable, Sendable {
@@ -31,6 +35,21 @@ public enum RemoteCommandStatus: String, Codable, Sendable {
     case completed
     case failed
     case macUnavailable
+
+    public var displayName: String {
+        switch self {
+        case .pending:
+            "대기 중"
+        case .running:
+            "실행 중"
+        case .completed:
+            "완료"
+        case .failed:
+            "실패"
+        case .macUnavailable:
+            "Mac 응답 없음"
+        }
+    }
 }
 
 public struct RemoteRunCommand: Identifiable, Codable, Sendable, Equatable {

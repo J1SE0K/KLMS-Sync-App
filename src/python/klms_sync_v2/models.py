@@ -58,6 +58,9 @@ class Assignment:
     instructions: str = ""
     category: Category = "assignment"
     type: str = "assign"
+    auto_completed: bool = False
+    record_status: str = ""
+    completion_reason: str = ""
 
     def to_legacy_dict(self) -> dict[str, Any]:
         return {
@@ -77,7 +80,9 @@ class Assignment:
             "location": "",
             "coverage": "",
             "coverage_summary": "",
-            "auto_completed": False,
+            "auto_completed": self.auto_completed,
+            "record_status": self.record_status,
+            "completion_reason": self.completion_reason,
         }
 
 
@@ -123,6 +128,8 @@ class Event:
 class SyncState:
     generated_at: str
     assignments: list[Assignment] = field(default_factory=list)
+    completed_assignments: list[Assignment] = field(default_factory=list)
+    assignment_records: list[Assignment] = field(default_factory=list)
     assignment_candidates: list[Assignment] = field(default_factory=list)
     exams: list[Event] = field(default_factory=list)
     exam_candidates: list[Event] = field(default_factory=list)
@@ -135,6 +142,12 @@ class SyncState:
             "content": {
                 "kind": "success",
                 "assignments": [item.to_legacy_dict() for item in self.assignments],
+                "completed_assignments": [
+                    item.to_legacy_dict() for item in self.completed_assignments
+                ],
+                "assignment_records": [
+                    item.to_legacy_dict() for item in self.assignment_records
+                ],
                 "exam_items": [item.to_legacy_dict() for item in self.exams],
                 "exam_candidates": [item.to_legacy_dict() for item in self.exam_candidates],
                 "assignment_candidates": [
@@ -148,6 +161,8 @@ class SyncState:
         return {
             "generated_at": self.generated_at,
             "assignment_count": len(self.assignments),
+            "completed_assignment_count": len(self.completed_assignments),
+            "assignment_record_count": len(self.assignment_records),
             "assignment_candidate_count": len(self.assignment_candidates),
             "exam_count": len(self.exams),
             "exam_candidate_count": len(self.exam_candidates),

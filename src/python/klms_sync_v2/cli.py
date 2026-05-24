@@ -181,6 +181,8 @@ def status_from_state(state_payload: dict[str, Any], previous_state: dict[str, A
         "changed": content != previous_content,
         "status": state_payload.get("status") or "ok",
         "assignment_count": len(content.get("assignments") or []),
+        "completed_assignment_count": len(content.get("completed_assignments") or []),
+        "assignment_record_count": len(content.get("assignment_records") or []),
         "exam_count": len(content.get("exam_items") or []),
         "exam_candidate_count": len(content.get("exam_candidates") or []),
         "assignment_candidate_count": len(content.get("assignment_candidates") or []),

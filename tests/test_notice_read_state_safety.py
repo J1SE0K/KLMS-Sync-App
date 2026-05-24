@@ -34,7 +34,76 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         )
 
         self.assertIn("capture-failed-preserve-user-state", text)
-        self.assertIn("throw new Error(renderWarningText)", text)
+        self.assertIn("noticeRenderWarningsAreNonFatal", text)
+        self.assertIn("noticeRenderWarningIsRecoverable", text)
+        self.assertIn("if (renderWarningText && !nonFatalRenderWarning)", text)
+        self.assertIn('summary.status = "warn"', text)
+
+    def test_notice_render_summary_is_cleared_on_skipped_paths(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("paths.noticeRenderErrorSummaryJson", text)
+        self.assertIn('JSON.stringify({ status: "ok" }, null, 2)', text)
+        self.assertIn("JSON.stringify(classifyNoticeRenderError(String(noticeError)), null, 2)", text)
+
+    def test_notes_focus_render_warning_is_nonfatal(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed")
+
+        script = r"""
+const fs = require("fs");
+const source = fs.readFileSync("src/js/sync_klms_notes.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+eval([
+  extractFunction("noticeRenderWarningsAreNonFatal"),
+  extractFunction("noticeRenderWarningIsRecoverable"),
+  extractFunction("classifyNoticeRenderError"),
+].join("\n"));
+
+function envValue() { return ""; }
+const warning = "Native notice note render warning (archive): Error: Could not confirm the cursor is in the target Notes note: KLMS 확인한 공지";
+const nonfatal = noticeRenderWarningsAreNonFatal({
+  results: [{ target: "archive", status: "warning", error: warning }],
+});
+const summary = classifyNoticeRenderError(warning);
+envValue = (key) => key === "KLMS_APP_RUN" ? "1" : "";
+const appNonfatal = noticeRenderWarningsAreNonFatal({
+  results: [{ target: "archive", status: "warning", error: warning }],
+});
+console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
+"""
+        result = subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(
+            result.stdout.strip(),
+            '{"nonfatal":true,"appNonfatal":false,"code":"notes_focus_unconfirmed"}',
+        )
 
     def test_notice_accessibility_tree_searches_are_cycle_guarded(self) -> None:
         text = (
@@ -116,18 +185,29 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
             PROJECT_DIR / "src" / "swift" / "notice_native_note_support.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("html: html, attributedText: attributed", renderer)
-        self.assertIn("font-size:\\(cssFontSize(line.fontSize))pt", renderer)
+        self.assertIn("attributedText: pasteAttributedText", renderer)
+        self.assertNotIn("forType: .html", renderer)
+        self.assertIn("NSFont.systemFont(ofSize: line.fontSize)", renderer)
         self.assertIn("NSFont.boldSystemFont(ofSize: line.fontSize)", renderer)
         self.assertIn("uiStyleMenuFormattingEnabled", renderer)
+        self.assertIn("plainTextPasteEnabled", renderer)
         self.assertIn('NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT', support)
         self.assertIn('NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT', support)
+        self.assertIn('NOTICE_NATIVE_PLAIN_TEXT_PASTE', support)
+        self.assertIn("if preformattedPasteOnlyEnabled && !uiStyleMenuFormattingEnabled", renderer)
+        self.assertIn("placeCaretForFormatting(\n            context: context,", renderer)
         self.assertNotIn('NOTICE_NATIVE_ENABLE_UI_STYLE_FALLBACK"] == "1"', renderer)
         self.assertIn('menuItems: ["제목", "Title"]', renderer)
-        self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
+        self.assertIn('["제목", "Title", "머리말", "Heading"]', renderer)
+        self.assertIn(': ["머리말", "Heading"]', renderer)
         self.assertIn('menuItems: ["부머리말", "Subheading"]', renderer)
         self.assertIn("reason=rich_paste_default", renderer)
         self.assertIn("readability_validation_targets_finish", renderer)
+        self.assertIn("case .chunked:", renderer)
+        self.assertIn("case .conservative:", renderer)
+        self.assertIn("attributedNoticeText(for: lines)", renderer)
+        self.assertIn("attributedNoticeText(text: text, like: line)", renderer)
+        self.assertNotIn("_ = strategy", renderer)
 
     def test_notice_render_batches_adjacent_checklist_lines(self) -> None:
         renderer = (
@@ -173,7 +253,7 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
             support,
         )
 
-    def test_notice_render_assigns_readability_font_hierarchy(self) -> None:
+    def test_notice_render_keeps_headings_in_body_font_size(self) -> None:
         support = (
             PROJECT_DIR / "src" / "swift" / "notice_native_note_support.swift"
         ).read_text(encoding="utf-8")
@@ -197,12 +277,14 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
             renderer,
         )
         self.assertIn(
-            "appendLine(finalTitle, bold: true, fontSize: noticeItemTitleFontSize)",
+            "appendLine(noticeHeadingText(finalTitle), bold: true, fontSize: noticeItemTitleFontSize)",
             renderer,
         )
         self.assertIn("cssFontSize(line.fontSize)", renderer)
         self.assertIn("let noticeBodyFontSize: CGFloat = 14", support)
-        self.assertIn("line-height:1.42", renderer)
+        self.assertIn("let noticeSectionHeadingFontSize: CGFloat = 14", support)
+        self.assertIn("let noticeDocumentTitleFontSize: CGFloat = 14", support)
+        self.assertNotIn("line-height:1.42", renderer)
 
     def test_notice_format_menu_does_not_toggle_bold_off(self) -> None:
         renderer = (
@@ -211,12 +293,11 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
 
         self.assertIn("func missingBoldTargets", renderer)
         self.assertIn("func reinforceMissingBoldTargetsIfNeeded", renderer)
-        self.assertIn("func boldBlockTextsContain", renderer)
         self.assertIn("func currentLineRange", renderer)
-        self.assertIn('replacingOccurrences(of: "&amp", with: "&")', renderer)
+        self.assertIn("boldInspectionResult(textArea: context.textArea", renderer)
         self.assertIn("bold_reinforce_start", renderer)
         self.assertIn("bold_reinforce_finish", renderer)
-        self.assertIn("font-weight\\s*:\\s*(?:bold|bolder|[6-9]00)", renderer)
+        self.assertNotIn("func boldBlockTextsContain", renderer)
         self.assertNotIn("applyBold(summaryRange)", renderer)
         self.assertNotIn("applyBold(meta)", renderer)
         self.assertNotIn("applyBold(attachmentHeading)", renderer)
@@ -228,6 +309,17 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
 
         self.assertIn("func appendPrimarySection", renderer)
         self.assertIn("guard count > 0 else", renderer)
+        self.assertIn("primaryFallbackAllNotices", renderer)
+        self.assertIn("allVisibleCourses", renderer)
+        self.assertIn('sectionHeadingText("전체 공지", count: allVisibleNoticeCount)', renderer)
+        self.assertIn('sectionHeadingText("확인한 공지", count: visibleUnreadCount)', renderer)
+        self.assertIn("} else if visibleUnreadCount > 0 {", renderer)
+        self.assertIn('"\\(title) (\\(count)건)"', renderer)
+        self.assertIn('"\\(course.title) (\\(course.notices.count)건)"', renderer)
+        self.assertIn("func noticeHeadingText(_ title: String) -> String", renderer)
+        self.assertNotIn('"[분류] \\(title) (\\(count)건)"', renderer)
+        self.assertNotIn('"[과목] \\(course.title) (\\(course.notices.count)건)"', renderer)
+        self.assertNotIn('"[공지] \\(title)"', renderer)
         self.assertIn("noticePrimaryEmptyGuidanceLine", renderer)
         self.assertIn("(?im)^\\s*-{20,}\\s*$", renderer)
         self.assertIn("Original\\s+due|New\\s+due|Original|New|Due", renderer)
@@ -243,7 +335,7 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertNotIn('appendLine("체크 안내"', renderer)
         self.assertNotIn("appendNoticeGuidanceBlock(includeFreshGuidance:", renderer)
 
-    def test_notice_category_and_course_headings_are_collapsible_groups(self) -> None:
+    def test_notice_category_and_course_headings_are_opt_in_collapsible_groups(self) -> None:
         renderer = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
         ).read_text(encoding="utf-8")
@@ -254,25 +346,34 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn('environment["NOTICE_COLLAPSE_SECTIONS"] != "0"', support)
+        self.assertIn('environment["NOTICE_COLLAPSE_SECTIONS"] == "1"', support)
         self.assertIn("collapseNoticeCoursesEnabled", support)
         self.assertIn("collapseNoticeItemsEnabled", support)
         self.assertIn("styleNoticeItemsAsHeadingsEnabled", support)
+        self.assertIn("hideHiddenNoticeItemsEnabled", support)
         self.assertIn("uiCollapsibleGroupStyleFormattingEnabled", support)
         self.assertIn("noticeCollapseStyleSettleDelay", support)
         self.assertIn("let mode: NoticeDisplayMode", support)
         self.assertIn("uiCollapsibleGroupStyleFormattingEnabled", renderer)
+        self.assertIn("if preformattedPasteOnlyEnabled && !uiStyleMenuFormattingEnabled", renderer)
         self.assertIn("func shouldCollapseNoticeCourses(_ plan: RenderPlan) -> Bool", renderer)
         self.assertIn("func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool", renderer)
-        self.assertIn("collapseNoticeCoursesEnabled || plan.mode == .archive", renderer)
+        self.assertIn("return collapseNoticeCoursesEnabled", renderer)
+        self.assertNotIn("collapseNoticeCoursesEnabled || plan.mode == .archive", renderer)
         self.assertIn("return collapseNoticeItemsEnabled", renderer)
         self.assertIn('menuItems: ["제목", "Title"]', renderer)
-        self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
+        self.assertIn("let menuItems = effectiveCollapseCoursesEnabled", renderer)
+        self.assertIn('["제목", "Title", "머리말", "Heading"]', renderer)
+        self.assertIn(': ["머리말", "Heading"]', renderer)
+        self.assertIn("let shouldApplyNoticeTitleStyle =", renderer)
         self.assertIn(
-            "if uiStyleMenuFormattingEnabled || styleNoticeItemsAsHeadingsEnabled || effectiveCollapseNoticeItemsEnabled",
+            "|| (!preformattedPasteOnlyEnabled && styleNoticeItemsAsHeadingsEnabled)",
             renderer,
         )
+        self.assertIn("if shouldApplyNoticeTitleStyle", renderer)
         self.assertIn("collapse_heading_retry", renderer)
+        self.assertIn("collapse failed: \\(label)", renderer)
+        self.assertIn("return (collapsedSections, collapseIssues)", renderer)
         self.assertIn("if effectiveCollapseCoursesEnabled", renderer)
         self.assertIn("if effectiveCollapseNoticeItemsEnabled", renderer)
         self.assertIn("collapseHeading(range, label: \"course-\\(offset + 1)\")", renderer)
@@ -281,11 +382,17 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn("collapse_courses=\\(shouldCollapseNoticeCourses(plan) ? \"1\" : \"0\")", renderer)
         self.assertIn("collapse_notice_items=\\(shouldCollapseNoticeItems(plan) ? \"1\" : \"0\")", renderer)
         self.assertIn("style_notice_items=\\(styleNoticeItemsAsHeadingsEnabled ? \"1\" : \"0\")", renderer)
-        self.assertIn("NOTICE_COLLAPSE_SECTIONS=\"1\"", config)
+        self.assertIn("plain_text_paste=\\(plainTextPasteEnabled ? \"1\" : \"0\")", renderer)
+        self.assertIn("let isHidden = boolValue(state.hidden)", renderer)
+        self.assertIn("if isHidden && hideHiddenNoticeItemsEnabled", renderer)
+        self.assertIn("NOTICE_COLLAPSE_SECTIONS=\"0\"", config)
         self.assertIn("NOTICE_COLLAPSE_COURSES=\"0\"", config)
         self.assertIn("NOTICE_COLLAPSE_NOTICE_ITEMS=\"0\"", config)
-        self.assertIn("NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS=\"1\"", config)
+        self.assertIn("NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS=\"0\"", config)
+        self.assertIn("NOTICE_HIDE_HIDDEN_ITEMS=\"1\"", config)
+        self.assertIn("NOTICE_NATIVE_PLAIN_TEXT_PASTE=\"0\"", config)
         self.assertIn("NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT=\"1\"", config)
+        self.assertIn("NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT=\"0\"", config)
 
         collapse_block_index = renderer.index("var collapsedSections = 0")
         notice_index = renderer.index("if effectiveCollapseNoticeItemsEnabled", collapse_block_index)
@@ -298,18 +405,72 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         renderer = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
         ).read_text(encoding="utf-8")
+        support = (
+            PROJECT_DIR / "src" / "swift" / "notice_native_note_support.swift"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("func focusNotesEditor(_ context: NotesEditorContext", renderer)
         self.assertIn("AXUIElementPerformAction(context.window, kAXRaiseAction", renderer)
         self.assertIn("trySetAttr(context.app, kAXFocusedWindowAttribute", renderer)
         self.assertIn("func pressMenuIfAvailable(_ context: NotesEditorContext", renderer)
-        self.assertIn("paste(context: context, text: plaintext, html: html, attributedText: attributed)", renderer)
+        self.assertIn("func reshowTargetNoteForContext", renderer)
+        self.assertIn("func optionalNotesEditorContext", renderer)
+        self.assertNotIn("func setManagedNoteBodyByScript", renderer)
+        self.assertNotIn("func renderDirectNotesHTML", renderer)
+        self.assertNotIn("func renderHTML", renderer)
+        self.assertNotIn("render_fallback_body", renderer)
+        self.assertNotIn("forceBodyFallbackRenderEnabled", support)
+        self.assertIn("Retrying Notes context after re-showing target note", renderer)
+        self.assertIn("retries: 50", renderer)
+        self.assertIn("let pasteAttributedText = (plainTextPasteEnabled || preformattedPasteOnlyEnabled)", renderer)
+        self.assertIn("paste(context: context, text: plaintext, attributedText: pasteAttributedText)", renderer)
+        self.assertIn("paste(context: context, text: text, attributedText: pasteAttributedText)", renderer)
         self.assertIn("ensureChecklistStates(\n        context: context,", renderer)
         self.assertIn("ensureCheckedItemsStayInPlace(\n        context: context,", renderer)
         self.assertIn("notes.selection = [note]", renderer)
-        self.assertIn("text areas of entire contents of w", renderer)
+        self.assertIn("set frontmost to true", renderer)
+        self.assertNotIn("text areas of entire contents", renderer)
+        self.assertIn("kAXMenuBarItemRole", renderer)
+        self.assertIn("AXUIElementPerformAction(topLevelMenuItem, kAXPressAction", renderer)
+        self.assertIn("func preferredTopLevelMenuTitles", renderer)
+        self.assertIn('preferred.append(contentsOf: ["포맷", "Format"])', renderer)
+        self.assertIn("} else if desiredReadState {", renderer)
+        self.assertIn("} else if desiredImportantState {", renderer)
+        self.assertIn("timeoutSeconds: 4", renderer)
+        self.assertIn("timed_out=", renderer)
+        self.assertIn("NOTICE_NATIVE_STYLE_BUDGET_SECONDS", renderer)
+        self.assertIn("style_budget_exhausted", renderer)
+        self.assertIn(
+            'styleIssues = ["style budget exhausted before functional Notes formatting could be verified"]',
+            renderer,
+        )
+        self.assertNotIn("styleIssues = []", renderer)
         self.assertNotIn("text area 1 of scroll area 3", renderer)
         self.assertNotIn("paste(context.app, text:", renderer)
+
+    def test_notice_renderer_does_not_post_global_input_events(self) -> None:
+        renderer = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("CGEventSource", renderer)
+        self.assertNotIn("CGEvent(keyboardEventSource", renderer)
+        self.assertNotIn(".post(tap: .cghidEventTap)", renderer)
+        self.assertNotIn("sendCommandKey", renderer)
+        self.assertNotIn("sendReturnKey", renderer)
+
+    def test_notice_capture_context_failure_is_nonfatal(self) -> None:
+        renderer = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+        capture = renderer[
+            renderer.index("func captureRenderedNoticeState") :
+            renderer.index("func buildRenderPlan")
+        ]
+
+        self.assertIn("attemptResolveNotesEditorContext", capture)
+        self.assertIn("Skipping capture because Notes editor context could not be confirmed", capture)
+        self.assertNotIn("let captureContext = resolveNotesEditorContext", capture)
 
     def test_archive_notice_note_renders_before_primary(self) -> None:
         renderer = (
@@ -329,7 +490,8 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         )
         self.assertIn("noticeTargetRequiresPostCaptureRender", js)
         self.assertIn("targetComparison && targetComparison.matches && !mustRenderAfterCapture", js)
-        self.assertIn("allowNoOpSkip: false", renderer)
+        self.assertIn("NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER", js)
+        self.assertIn("allowNoOpSkip: true", renderer)
 
     def test_notice_native_config_is_passed_to_swift_wrapper(self) -> None:
         js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
@@ -341,9 +503,112 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn('"NOTICE_COLLAPSE_COURSES"', js)
         self.assertIn('"NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT"', js)
         self.assertIn('"NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS"', js)
+        self.assertIn('"NOTICE_HIDE_HIDDEN_ITEMS"', js)
         self.assertIn('"NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT"', js)
+        self.assertIn('"NOTICE_NATIVE_NOTE_MAX_ATTEMPTS"', js)
+        self.assertIn('"NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS"', js)
+        self.assertIn('"NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS"', js)
+        self.assertIn('"NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT"', js)
+        self.assertIn('"NOTICE_NATIVE_STYLE_BUDGET_SECONDS"', js)
+        self.assertIn('"NOTICE_NATIVE_PLAIN_TEXT_PASTE"', js)
+        self.assertIn("nativeNoticeDefaultEnvironment", js)
+        self.assertIn("applyRuntimeConfigOverrides(config)", js)
+        self.assertIn('"NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",\n    "NOTICE_NATIVE_NOTE_MAX_ATTEMPTS"', js)
+        self.assertNotIn("KLMS_APP_NOTICE_BODY_FALLBACK", js)
+        self.assertNotIn("NOTICE_NATIVE_FORCE_BODY_FALLBACK", js)
+        self.assertIn("runNativeNoticeCommandWithRecoverableRetry", js)
         self.assertIn("noticeNativeEnvironment", js)
+        self.assertIn('envValue("KLMS_APP_RUN") === "1"', js)
+        self.assertIn('"NOTICE_NATIVE_STABLE_NOOP_SKIP",\n      true', js)
+        self.assertIn("...nativeDefaultEnv", js)
         self.assertIn("...nativeEnv", js)
+        self.assertIn('defaults.push("NOTICE_NATIVE_PLAIN_TEXT_PASTE=0")', js)
+
+    def test_runtime_env_undefined_does_not_disable_notice_formatting(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed")
+
+        script = r"""
+const fs = require("fs");
+const source = fs.readFileSync("src/js/sync_klms_notes.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+eval([
+  extractFunction("normalizeRuntimeEnvValue"),
+  extractFunction("applyRuntimeConfigOverrides"),
+].join("\n"));
+
+let mode = "undefined";
+function envValue(key) {
+  if (key === "NOTICE_COLLAPSE_SECTIONS") return mode;
+  return "";
+}
+
+const config = {
+  NOTICE_COLLAPSE_SECTIONS: "1",
+  NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS: "1",
+};
+applyRuntimeConfigOverrides(config);
+const kept = config.NOTICE_COLLAPSE_SECTIONS;
+mode = "0";
+applyRuntimeConfigOverrides(config);
+const overridden = config.NOTICE_COLLAPSE_SECTIONS;
+console.log(JSON.stringify({ kept, overridden }));
+"""
+        result = subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.stdout.strip(), '{"kept":"1","overridden":"0"}')
+
+    def test_app_notice_requires_functional_notes_renderer(self) -> None:
+        renderer = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+        support = (
+            PROJECT_DIR / "src" / "swift" / "notice_native_note_support.swift"
+        ).read_text(encoding="utf-8")
+        app_model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT": "1"', app_model)
+        self.assertIn('NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT": "1"', app_model)
+        self.assertIn('NOTICE_NATIVE_VALIDATE_STYLE": "0"', app_model)
+        self.assertIn('NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": "0"', app_model)
+        self.assertIn('NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": "1"', app_model)
+        self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": "0"', app_model)
+        self.assertIn('NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0"', app_model)
+        self.assertNotIn('NOTICE_COLLAPSE_SECTIONS": "0"', app_model)
+        self.assertNotIn('NOTICE_COLLAPSE_COURSES": "0"', app_model)
+        self.assertNotIn('NOTICE_COLLAPSE_NOTICE_ITEMS": "0"', app_model)
+        self.assertNotIn('NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS": "0"', app_model)
+        self.assertNotIn("requireFunctionalNotesRenderEnabled", support)
+        self.assertIn("Functional Notes editor unavailable", renderer)
+        self.assertIn("Grant KLMS Sync Accessibility/Automation permissions", renderer)
+        self.assertNotIn("method=applescript", renderer)
+        self.assertNotIn("method=app-direct-html", renderer)
 
     def test_notice_prebuild_warning_does_not_fail_core_sync(self) -> None:
         js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
@@ -437,13 +702,15 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         verify_index = text.index("verifyNoticeNativeNoteReadableFormat")
         self.assertLess(verify_index, stable_noop_index)
         self.assertIn("readability-format-check-failed", text)
-        self.assertIn("Native notice note readability format missing", text)
-        self.assertIn("noteReadableStyleMetricsViaAppleScript", text)
-        self.assertIn("font_size_tags", text)
-        self.assertIn("heading_tags", text)
-        self.assertIn("large_font_tags", text)
-        self.assertIn("minimumLargeFontTags", text)
-        self.assertIn('targetKey === "primary" ? 20 : 1', text)
+        self.assertIn("Native notice note readability format stale", text)
+        self.assertIn('"--verify-only"', text)
+        self.assertIn("runCommand(command, scriptDir)", text)
+        self.assertIn("Verified native notice readability format", text)
+        self.assertNotIn("noteReadableStyleMetricsViaAppleScript", text)
+        self.assertNotIn("font_size_tags", text)
+        self.assertNotIn("heading_tags", text)
+        self.assertNotIn("large_font_tags", text)
+        self.assertNotIn("minimumLargeFontTags", text)
         self.assertIn("NATIVE_NOTICE_RENDER_STYLE_VERSION", text)
         self.assertIn("noticeRenderStyleVersion", text)
         self.assertIn("style_version", text)
@@ -505,6 +772,8 @@ function extractFunction(name) {
 
 eval([
   extractFunction("expectedNoticeNativeRenderState"),
+  extractFunction("nativeNoticeEnvironmentEnabled"),
+  extractFunction("nativeNoticeEnvironmentValue"),
   extractFunction("noticeIdentifierForDigestNotice"),
   extractFunction("oneLineText"),
 ].join("\n"));
@@ -547,6 +816,128 @@ console.log(JSON.stringify({
             result.stdout.strip(),
             '{"primary":["important-1","fresh-1","stable-1"],"archive":["read-1"]}',
         )
+
+    def test_notice_native_expected_state_keeps_primary_populated_when_all_read(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not available")
+        script = r"""
+const fs = require("fs");
+const path = "src/js/sync_klms_notes.js";
+const source = fs.readFileSync(path, "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+eval([
+  extractFunction("expectedNoticeNativeRenderState"),
+  extractFunction("nativeNoticeEnvironmentEnabled"),
+  extractFunction("nativeNoticeEnvironmentValue"),
+  extractFunction("noticeIdentifierForDigestNotice"),
+  extractFunction("oneLineText"),
+].join("\n"));
+
+const digest = {
+  courses: [
+    {
+      course: "Course A",
+      notices: [
+        { url: "read-1", fingerprint: "fp-read-1", change_state: "stable" },
+        { url: "read-2", fingerprint: "fp-read-2", change_state: "stable" },
+      ],
+    },
+  ],
+};
+const userState = {
+  notices: {
+    "read-1": { read_fingerprint: "fp-read-1" },
+    "read-2": { read_fingerprint: "fp-read-2" },
+  },
+};
+
+const expected = expectedNoticeNativeRenderState(digest, userState);
+console.log(JSON.stringify({
+  primary: expected.primary.map((notice) => notice.notice_id),
+  primaryChecked: expected.primary.map((notice) => notice.should_check_read),
+  archive: expected.archive.map((notice) => notice.notice_id),
+}));
+"""
+        result = subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(
+            result.stdout.strip(),
+            '{"primary":["read-1","read-2"],"primaryChecked":[true,true],"archive":["read-1","read-2"]}',
+        )
+
+    def test_notice_render_noop_ignores_generated_timestamp_only(self) -> None:
+        renderer = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("func stableRenderLineText", renderer)
+        self.assertIn('text.hasPrefix("기준 시각:")', renderer)
+        self.assertIn('"기준 시각: <ignored>\\(text[separatorRange.lowerBound...])"', renderer)
+        self.assertIn("previousRenderState?.updatedAt == timestamp", renderer)
+        self.assertIn("stablePlaintextHash(for: snapshot.plaintext)", renderer)
+        self.assertIn("stablePlaintextHash(for: desiredPlaintext)", renderer)
+
+    def test_notice_render_comparison_uses_render_signature_not_generated_at(self) -> None:
+        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("noticeExpectedRenderSignature", js)
+        self.assertIn("render_signature", js)
+        self.assertIn('reason: "render-signature-differs"', js)
+        self.assertNotIn("renderStateTimestampMatches", js)
+        self.assertNotIn("compareRenderStateTimestamp", js)
+        self.assertNotIn('reason: "generated-at-differs"', js)
+
+    def test_notes_context_fallback_accepts_selected_note_id(self) -> None:
+        renderer = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("expectedAnchorTexts.isEmpty || selectedNoteIDs().contains(expectedNoteID)", renderer)
+        self.assertIn("Falling back to the focused Notes text area for selected note id", renderer)
+        self.assertIn("Could not confirm Notes selection for explicit note", renderer)
+        self.assertIn("timeoutSeconds: 15", renderer)
+        self.assertNotIn("focusedEmptyExplicitNote", renderer)
+        self.assertIn("func createManagedNote", renderer)
+        self.assertIn("Ignoring stale explicit Notes note id", renderer)
+        self.assertIn("Explicit Notes note id is stale", renderer)
+        self.assertIn("Thread.sleep(forTimeInterval: 1.0)", renderer)
+        self.assertIn('"AXVisibleChildren"', renderer)
+        self.assertIn("func selectedContextStillMatches", renderer)
+        self.assertIn("activateApplication(pid: targetPID)", renderer)
+        self.assertIn("frontmost of first process whose unix id", renderer)
+        self.assertNotIn(".activateIgnoringOtherApps", renderer)
+        self.assertIn('role == kAXTextAreaRole as String || role == "AXTextView"', renderer)
+        self.assertIn("if !textAreaFocused && !matchesAnchor && !selectedExpectedNote", renderer)
+        self.assertIn("CFHash(element)", renderer)
+        self.assertIn("String(value.prefix(80))", renderer)
+        self.assertNotIn("Unmanaged.passUnretained(element).toOpaque()", renderer)
+        self.assertNotIn("text areas of entire contents", renderer)
 
 
 if __name__ == "__main__":

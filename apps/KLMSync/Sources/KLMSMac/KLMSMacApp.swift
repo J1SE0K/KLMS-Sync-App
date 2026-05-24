@@ -1,4 +1,5 @@
 import KLMSShared
+import AppKit
 import SwiftUI
 
 @main
@@ -8,7 +9,14 @@ struct KLMSMacApp: App {
     var body: some Scene {
         WindowGroup("KLMS Sync") {
             MenuBarRootView(model: model)
-                .frame(minWidth: 640, idealWidth: 820, minHeight: 700, idealHeight: 820)
+                .frame(
+                    minWidth: 460,
+                    idealWidth: 820,
+                    maxWidth: .infinity,
+                    minHeight: 520,
+                    idealHeight: 820,
+                    maxHeight: .infinity
+                )
                 .task {
                     await model.bootstrap()
                 }
@@ -16,7 +24,7 @@ struct KLMSMacApp: App {
 
         MenuBarExtra {
             MenuBarRootView(model: model)
-                .frame(width: 520, height: 700)
+                .frame(width: KLMSWindowMetrics.menuBarWidth, height: KLMSWindowMetrics.menuBarHeight)
                 .task {
                     await model.bootstrap()
                 }
@@ -27,7 +35,29 @@ struct KLMSMacApp: App {
 
         Settings {
             SettingsView(model: model)
-                .frame(width: 540, height: 620)
+                .frame(width: KLMSWindowMetrics.settingsWidth, height: KLMSWindowMetrics.settingsHeight)
         }
+    }
+}
+
+private enum KLMSWindowMetrics {
+    private static var visibleFrame: CGRect {
+        NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1024, height: 768)
+    }
+
+    static var menuBarWidth: CGFloat {
+        min(620, max(360, visibleFrame.width - 48))
+    }
+
+    static var menuBarHeight: CGFloat {
+        min(760, max(360, visibleFrame.height - 80))
+    }
+
+    static var settingsWidth: CGFloat {
+        min(560, max(420, visibleFrame.width - 64))
+    }
+
+    static var settingsHeight: CGFloat {
+        min(660, max(420, visibleFrame.height - 96))
     }
 }

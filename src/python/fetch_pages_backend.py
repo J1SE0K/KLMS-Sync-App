@@ -169,6 +169,10 @@ def main() -> int:
         if recent_empty_fetch is not None:
             reusable_pages = [previous_lookup[url] for url in urls if url in previous_lookup]
             missing_final_urls = [url for url in urls if url not in previous_lookup]
+            if args.require_all and missing_final_urls:
+                recent_empty_fetch = None
+
+        if recent_empty_fetch is not None:
             write_json(out_path, reusable_pages)
             summary = {
                 "context": context_key,
@@ -279,6 +283,42 @@ def main() -> int:
 
     fetched_url_list = dedupe_preserving_order(fetched_url_list)
     changed_url_list = dedupe_preserving_order(changed_url_list)
+    reused_url_list = [url for url in urls if url in ordered_lookup and url not in set(fetched_url_list)]
+    missing_final_urls = [url for url in urls if url not in ordered_lookup]
+
+    if args.require_all and missing_final_urls:
+        summary = {
+            "context": context_key,
+            "backend": backend,
+            "requested_mode": args.mode,
+            "effective_mode": effective_mode,
+            "status": "error",
+            "error": "missing-required-pages",
+            "started_at": run_started_at,
+            "finished_at": now_utc_iso(),
+            "duration_ms": int((time.time() - run_started_epoch) * 1000),
+            "total_urls": len(urls),
+            "selected_urls": len(urls_to_fetch),
+            "fetched_urls": fetched_total,
+            "reused_urls": len(reused_url_list),
+            "missing_urls": len(missing_final_urls),
+            "changed_urls": len(changed_url_list),
+            "out_path": str(out_path),
+            "cache_state_path": str(cache_state_path),
+            "previous_page_count": len(previous_pages),
+            "previous_pages_discarded": previous_pages_discarded,
+        }
+        if args.summary_out:
+            summary_payload = dict(summary)
+            summary_payload["fetched_url_list"] = fetched_url_list
+            summary_payload["reused_url_list"] = reused_url_list
+            summary_payload["selected_url_list"] = urls_to_fetch
+            summary_payload["missing_url_list"] = missing_final_urls
+            summary_payload["changed_url_list"] = changed_url_list
+            write_json(Path(args.summary_out).expanduser().resolve(), summary_payload)
+        print(json.dumps(summary, ensure_ascii=False))
+        return 2
+
     update_context_state(
         context_state=context_state,
         pages=final_pages,
@@ -289,8 +329,6 @@ def main() -> int:
     write_json(out_path, final_pages)
     write_json(cache_state_path, state)
 
-    reused_url_list = [url for url in urls if url in ordered_lookup and url not in set(fetched_url_list)]
-    missing_final_urls = [url for url in urls if url not in ordered_lookup]
     summary = {
         "context": context_key,
         "backend": backend,
@@ -346,6 +384,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fallback-pages-json", action="append")
     parser.add_argument("--reuse-fallback-always-fetch", action="store_true")
     parser.add_argument("--complete-reuse-seconds", type=int, default=0)
+    parser.add_argument("--require-all", action="store_true")
     parser.add_argument("--allow-login-pages", action="store_true")
     parser.add_argument("--discard-previous", action="store_true")
     parser.add_argument("--max-previous-bytes", type=int, default=DEFAULT_MAX_PREVIOUS_BYTES)

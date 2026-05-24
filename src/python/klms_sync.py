@@ -62,9 +62,12 @@ ASSIGNMENT_CANDIDATE_KEYWORDS = (
     "assignment",
     "homework",
     "project",
+    "quiz",
+    "nano quiz",
     "과제",
     "숙제",
     "프로젝트",
+    "퀴즈",
     "hw",
     "pa",
     "wa",
@@ -458,18 +461,33 @@ def cmd_build_note(args: argparse.Namespace) -> None:
         )
     else:
         assignments = []
+        completed_assignments = []
+        assignment_records = []
         direct_exam_items = []
         for item in collect_candidate_items(dashboard, course_pages):
             detail = detail_lookup.get(item.url)
             assignment = merge_assignment(item, detail)
-            if is_hidden_by_override(assignment, overrides):
+            override_status = assignment_override_status(assignment, overrides)
+            if override_status in {"ignored", "hidden", "skip"}:
+                assignment_records.append(assignment_record(assignment, override_status))
+                continue
+            if override_status == "completed":
+                completed = assignment_record(assignment, "completed", "manual_completed")
+                completed_assignments.append(completed)
+                assignment_records.append(completed)
                 continue
             if assignment_should_be_exam_item(assignment):
                 direct_exam_items.append(assignment_to_exam_item(assignment))
+                assignment_records.append(assignment_record(assignment, "converted_to_exam"))
                 continue
-            if is_completed_assignment(assignment):
+            completion_reason = assignment_completion_reason(assignment)
+            if completion_reason:
+                completed = assignment_record(assignment, "completed", completion_reason)
+                completed_assignments.append(completed)
+                assignment_records.append(completed)
                 continue
             assignments.append(assignment)
+            assignment_records.append(assignment_record(assignment, "active"))
 
         supplemental_sources = supplemental_detail_pages + supplemental_pages
         notice_digest_pages = build_notice_digest_candidate_pages(notice_digest)
@@ -498,12 +516,25 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             assignments,
             course_lookup,
         )
-        notice_assignments = [
-            item
-            for item in activate_notice_assignments(assignment_candidates)
-            if not is_hidden_by_override(item, overrides)
-        ]
-        assignments.extend(notice_assignments)
+        notice_assignments = activate_notice_assignments(assignment_candidates)
+        for item in notice_assignments:
+            override_status = assignment_override_status(item, overrides)
+            if override_status in {"ignored", "hidden", "skip"}:
+                assignment_records.append(assignment_record(item, override_status))
+                continue
+            if override_status == "completed":
+                completed = assignment_record(item, "completed", "manual_completed")
+                completed_assignments.append(completed)
+                assignment_records.append(completed)
+                continue
+            completion_reason = assignment_completion_reason(item)
+            if completion_reason:
+                completed = assignment_record(item, "completed", completion_reason)
+                completed_assignments.append(completed)
+                assignment_records.append(completed)
+            else:
+                assignments.append(item)
+                assignment_records.append(assignment_record(item, "active"))
         help_desk_items = extract_help_desk_items(supplemental_sources, course_lookup)
         approved_exam_items, exam_candidates = split_exam_items_for_confirmation(resolved_exam_items)
         direct_approved_exam_items, direct_exam_candidates = split_exam_items_for_confirmation(
@@ -517,6 +548,8 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             exam_candidates,
             [],
             help_desk_items,
+            completed_assignments,
+            assignment_records,
         )
 
     changed = payload.get("content") != previous_state.get("content")
@@ -528,6 +561,12 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             "changed": changed,
             "status": payload["status"],
             "assignment_count": len(payload.get("content", {}).get("assignments", [])),
+            "completed_assignment_count": len(
+                payload.get("content", {}).get("completed_assignments", [])
+            ),
+            "assignment_record_count": len(
+                payload.get("content", {}).get("assignment_records", [])
+            ),
             "exam_count": len(payload.get("content", {}).get("exam_items", [])),
             "exam_candidate_count": len(payload.get("content", {}).get("exam_candidates", [])),
             "assignment_candidate_count": len(
@@ -3057,22 +3096,43 @@ def dedupe_sync_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def is_hidden_by_override(assignment: dict[str, Any], overrides: dict[str, str]) -> bool:
-    status = overrides.get(assignment["url"], "").strip().lower()
+    status = assignment_override_status(assignment, overrides)
     return status in {"ignored", "completed"}
 
 
-def is_completed_assignment(assignment: dict[str, Any]) -> bool:
+def assignment_override_status(assignment: dict[str, Any], overrides: dict[str, str]) -> str:
+    return overrides.get(assignment["url"], "").strip().lower()
+
+
+def assignment_completion_reason(assignment: dict[str, Any]) -> str:
     if assignment.get("category") == "exam":
-        return False
+        return ""
     if assignment.get("auto_completed"):
-        return True
+        return "auto_completed"
     submission = " ".join(str(assignment.get("submission") or "").split()).strip().lower().rstrip(".")
     if submission in COMPLETED_ASSIGNMENT_SUBMISSION_STATUSES:
-        return True
+        return "submitted"
     sort_due = assignment.get("sort_due")
     if isinstance(sort_due, datetime) and sort_due <= datetime.now(SEOUL):
-        return True
-    return False
+        return "past_due"
+    return ""
+
+
+def is_completed_assignment(assignment: dict[str, Any]) -> bool:
+    return bool(assignment_completion_reason(assignment))
+
+
+def assignment_record(
+    assignment: dict[str, Any],
+    status: str,
+    reason: str = "",
+) -> dict[str, Any]:
+    record = dict(assignment)
+    record["record_status"] = status
+    record["completion_reason"] = reason
+    if status == "completed":
+        record["auto_completed"] = bool(record.get("auto_completed") or reason in {"past_due", "auto_completed"})
+    return record
 
 
 def extract_assignment_candidate_items(
@@ -3165,16 +3225,11 @@ def extract_assignment_candidate_items(
 
 def activate_notice_assignments(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     active_items: list[dict[str, Any]] = []
-    now = datetime.now(SEOUL)
 
     for item in items:
         normalized = dict(item)
         normalized["type"] = "assignment_notice"
         normalized["category"] = "assignment"
-        sort_due = normalized.get("sort_due")
-        if sort_due and sort_due <= now:
-            normalized["auto_completed"] = True
-            continue
         active_items.append(normalized)
 
     return sorted(active_items, key=assignment_sort_key)
@@ -3719,7 +3774,7 @@ def find_help_desk_label_matches(text: str) -> list[re.Match[str]]:
 
 def find_assignment_label_matches(text: str) -> list[re.Match[str]]:
     pattern = re.compile(
-        r"programming\s+assignment\s*#?\s*\d+|written\s+assignment\s*#?\s*\d+|assignment\s*#?\s*\d+|homework\s*#?\s*\d+|hw\s*#?\s*\d+|pa\s*#?\s*\d+|wa\s*#?\s*\d+|project\s*#?\s*\d+|term\s+project|quiz\s*#?\s*\d+|\d+\s*주차\s*과제|과제\s*\d+|숙제\s*\d+|퀴즈\s*\d+",
+        r"programming\s+assignment\s*#?\s*\d+|written\s+assignment\s*#?\s*\d+|assignment\s*#?\s*\d+|homework\s*#?\s*\d+|hw\s*#?\s*\d+|pa\s*#?\s*\d+|wa\s*#?\s*\d+|project\s*#?\s*\d+|term\s+project|nano\s+quiz(?:\s*#?\s*\d+)?|(?<![A-Za-z])quiz(?:\s*#?\s*\d+)?(?![A-Za-z])|\d+\s*주차\s*과제|과제\s*\d+|숙제\s*\d+|퀴즈\s*\d*",
         re.IGNORECASE,
     )
     return list(pattern.finditer(text))
@@ -4284,8 +4339,14 @@ def build_success_payload(
     exam_candidates: list[dict[str, Any]],
     assignment_candidates: list[dict[str, Any]],
     help_desk_items: list[dict[str, Any]],
+    completed_assignments: list[dict[str, Any]] | None = None,
+    assignment_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    completed_assignments = completed_assignments or []
+    assignment_records = assignment_records or assignments + completed_assignments + assignment_candidates
     sorted_assignments = sorted(assignments, key=assignment_sort_key)
+    sorted_completed_assignments = sorted(completed_assignments, key=assignment_sort_key)
+    sorted_assignment_records = sorted(assignment_records, key=assignment_sort_key)
     sorted_exam_items = sorted(exam_items, key=assignment_sort_key)
     sorted_exam_candidates = sorted(exam_candidates, key=assignment_sort_key)
     sorted_assignment_candidates = sorted(assignment_candidates, key=assignment_sort_key)
@@ -4294,6 +4355,8 @@ def build_success_payload(
     content = {
         "kind": "success",
         "assignments": [serialize_sync_item(item) for item in sorted_assignments],
+        "completed_assignments": [serialize_sync_item(item) for item in sorted_completed_assignments],
+        "assignment_records": [serialize_sync_item(item) for item in sorted_assignment_records],
         "exam_items": [serialize_sync_item(item) for item in sorted_exam_items],
         "exam_candidates": [serialize_sync_item(item) for item in sorted_exam_candidates],
         "assignment_candidates": [serialize_sync_item(item) for item in sorted_assignment_candidates],
@@ -4306,6 +4369,7 @@ def build_success_payload(
         sorted_assignment_candidates,
         sorted_help_desk_items,
         generated_at,
+        sorted_completed_assignments,
     )
     return {
         "status": "ok",
@@ -4334,6 +4398,8 @@ def serialize_sync_item(item: dict[str, Any]) -> dict[str, Any]:
         "coverage": item.get("coverage", ""),
         "coverage_summary": exam_coverage_summary_for_item(item),
         "auto_completed": bool(item.get("auto_completed")),
+        "record_status": item.get("record_status", ""),
+        "completion_reason": item.get("completion_reason", ""),
     }
 
 
@@ -4586,13 +4652,16 @@ def render_success_html(
     assignment_candidates: list[dict[str, Any]],
     help_desk_items: list[dict[str, Any]],
     generated_at: str,
+    completed_assignments: list[dict[str, Any]] | None = None,
 ) -> str:
+    completed_assignments = completed_assignments or []
     if (
         not assignments
         and not exam_items
         and not exam_candidates
         and not assignment_candidates
         and not help_desk_items
+        and not completed_assignments
     ):
         return "\n".join(
             [
@@ -4605,7 +4674,7 @@ def render_success_html(
         div(
             f"총 {len(assignments)}개 과제 / {len(exam_items)}개 시험 일정 / "
             f"{len(help_desk_items)}개 헬프데스크 안내 / {len(assignment_candidates)}개 과제 후보 / "
-            f"{len(exam_candidates)}개 시험 후보"
+            f"{len(exam_candidates)}개 시험 후보 / {len(completed_assignments)}개 완료 기록"
         ),
         div(f"마지막 반영: {escape(generated_at)}"),
         div("과제, 확인 필요 후보, 시험 일정, 헬프데스크 안내를 함께 정리했어. 자세한 내용은 링크에서 바로 열 수 있어."),
@@ -4693,6 +4762,21 @@ def render_success_html(
             lines.append(div(f'링크: <a href="{escape(item["url"], quote=True)}">KLMS 열기</a>'))
             lines.append(br())
 
+    if completed_assignments:
+        lines.append(div("<b>완료 기록</b>"))
+        for item in completed_assignments:
+            reason = completion_reason_label(str(item.get("completion_reason") or ""))
+            lines.append(div(f"☑ <b>{escape(item['title'])}</b>"))
+            lines.append(div(f"마감: {escape(display_due_text(item['due']))}"))
+            if item["course"]:
+                lines.append(div(f"과목: {escape(item['course'])}"))
+            if reason:
+                lines.append(div(f"상태: {escape(reason)}"))
+            if item.get("source_title"):
+                lines.append(div(f"출처: {escape(item['source_title'])}"))
+            lines.append(div(f'링크: <a href="{escape(item["url"], quote=True)}">KLMS 열기</a>'))
+            lines.append(br())
+
     return "\n".join(lines)
 
 
@@ -4718,6 +4802,16 @@ def br() -> str:
 
 def display_due_text(text: str) -> str:
     return format_short_due(text) or normalize_whitespace(text) or "마감 정보 없음"
+
+
+def completion_reason_label(reason: str) -> str:
+    return {
+        "manual_completed": "앱에서 완료 처리됨",
+        "submitted": "KLMS 제출 완료",
+        "past_due": "마감 지남",
+        "auto_completed": "자동 완료 처리됨",
+        "submitted_match": "제출 완료 항목과 일치",
+    }.get(reason, "")
 
 
 def extract_due_text(text: str) -> str:

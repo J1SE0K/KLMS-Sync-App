@@ -22,6 +22,8 @@ class LoginAssistPerformanceTests(unittest.TestCase):
         self.assertIn('options["refresh-twofactor"]', text)
         self.assertIn('method: "restart-login"', text)
         self.assertIn("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", text)
+        self.assertIn("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", text)
+        self.assertIn("createSafariWindow", text)
         self.assertIn("prepareBackgroundWindow(windowRef)", text)
         self.assertIn("windowRef.miniaturized = true", text)
         self.assertNotIn("const title = safeString(() => tab.name())", text)
@@ -41,6 +43,9 @@ class LoginAssistPerformanceTests(unittest.TestCase):
         self.assertIn('KLMS_LOGIN_ASSIST_AUTO_APPROVE_ENABLED="${KLMS_LOGIN_ASSIST_AUTO_APPROVE_ENABLED:-0}"', text)
         self.assertIn('if [[ "$KAIKEY_AUTO_APPROVE_ENABLED" == "1" && -n "$NODE_BIN" ]]', text)
         self.assertIn("KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED", text)
+        self.assertIn("KLMS_SCRIPT_NOTIFICATIONS_ENABLED", text)
+        self.assertIn("KLMS_APP_RUN", text)
+        self.assertIn('KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED="0"', text)
         self.assertIn("KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS", text)
         self.assertIn("--refresh-twofactor=1", text)
         self.assertIn('KAIKEY_AUTO_LOGIN_POLL_SECONDS="${KAIKEY_AUTO_LOGIN_POLL_SECONDS:-0.2}"', text)
@@ -60,6 +65,7 @@ class LoginAssistPerformanceTests(unittest.TestCase):
         self.assertIn("klms_recent_login_status_ok", text)
         self.assertIn("klms_try_login_assist", text)
         self.assertIn("klms_login_assist_enabled", text)
+        self.assertIn('"${KLMS_APP_RUN:-0}" == "1"', text)
         self.assertIn('"$fast_tab_state" == "unknown"', text)
 
 

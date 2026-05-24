@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 from typing import Any
 
 from .exam_fields import extract_coverage, extract_location, online_exam_location
@@ -27,17 +28,61 @@ def apply_overrides(
     updated = deepcopy(state)
 
     assignment_overrides = overrides.get("assignments") or {}
-    removed_assignment_urls = {
-        split_override_key(str(url))[0]
-        for url, status in assignment_overrides.items()
-        if str(status).lower() in {"completed", "ignored"}
-    }
+    removed_assignment_urls = set()
+    completed_assignment_urls = set()
+    ignored_assignment_urls = set()
+    for url, status in assignment_overrides.items():
+        normalized_url = split_override_key(str(url))[0]
+        normalized_status = str(status).lower()
+        if normalized_status == "completed":
+            removed_assignment_urls.add(normalized_url)
+            completed_assignment_urls.add(normalized_url)
+        elif normalized_status == "ignored":
+            removed_assignment_urls.add(normalized_url)
+            ignored_assignment_urls.add(normalized_url)
     if removed_assignment_urls:
+        removed_items = [
+            item
+            for item in updated.assignments + updated.assignment_candidates
+            if item.url in removed_assignment_urls
+        ]
         updated.assignments = [
             item for item in updated.assignments if item.url not in removed_assignment_urls
         ]
         updated.assignment_candidates = [
             item for item in updated.assignment_candidates if item.url not in removed_assignment_urls
+        ]
+        existing_record_urls = {item.url for item in updated.assignment_records}
+        existing_completed_urls = {item.url for item in updated.completed_assignments}
+        for item in removed_items:
+            if item.url in completed_assignment_urls:
+                completed = replace(
+                    item,
+                    auto_completed=True,
+                    record_status="completed",
+                    completion_reason="manual_completed",
+                )
+                if item.url not in existing_completed_urls:
+                    updated.completed_assignments.append(completed)
+                    existing_completed_urls.add(item.url)
+                if item.url not in existing_record_urls:
+                    updated.assignment_records.append(completed)
+                    existing_record_urls.add(item.url)
+            elif item.url in ignored_assignment_urls and item.url not in existing_record_urls:
+                updated.assignment_records.append(replace(item, record_status="ignored"))
+                existing_record_urls.add(item.url)
+        updated.assignment_records = [
+            replace(
+                item,
+                auto_completed=True,
+                record_status="completed",
+                completion_reason=item.completion_reason or "manual_completed",
+            )
+            if item.url in completed_assignment_urls
+            else replace(item, record_status=item.record_status or "ignored")
+            if item.url in ignored_assignment_urls
+            else item
+            for item in updated.assignment_records
         ]
 
     exam_overrides = overrides.get("exams") or {}
@@ -87,4 +132,6 @@ def apply_overrides(
         )
 
     updated.exams.sort(key=lambda item: (item.sync_due, item.course, item.title))
+    updated.completed_assignments.sort(key=lambda item: (item.sync_due, item.course, item.title))
+    updated.assignment_records.sort(key=lambda item: (item.sync_due, item.course, item.title))
     return updated

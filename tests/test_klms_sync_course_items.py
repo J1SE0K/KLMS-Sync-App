@@ -131,6 +131,51 @@ class CourseItemParsingTests(unittest.TestCase):
         self.assertEqual(items[0].url, "https://klms.kaist.ac.kr/mod/url/view.php?id=100004")
         self.assertTrue(items[0].schedule)
 
+    def test_notice_nano_quiz_with_due_date_becomes_assignment_candidate(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/mod/courseboard/article.php?bwid=100004",
+            "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?bwid=100004",
+            "course": "Example Course",
+            "title": "Nano Quiz - 25.04.21(Mon)",
+            "html": """
+            <html><body>
+              <h1>Nano Quiz - 25.04.21(Mon)</h1>
+              <p>Due Date: Monday, May 4, 11:59:59 PM.</p>
+            </body></html>
+            """,
+        }
+
+        items = klms_sync.extract_assignment_candidate_items([page], [])
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["category"], "assignment_candidate")
+        self.assertEqual(items[0]["title"], "Nano Quiz")
+        self.assertIn("May 4", items[0]["due"])
+
+    def test_success_payload_keeps_completed_assignment_records(self) -> None:
+        completed = {
+            "url": "https://klms.kaist.ac.kr/mod/url/view.php?id=100004",
+            "type": "assignment_notice",
+            "category": "assignment",
+            "course": "Example Course",
+            "title": "Nano Quiz",
+            "due": "Monday, May 4, 11:59:59 PM",
+            "submission": "",
+            "instructions": "",
+            "record_status": "completed",
+            "completion_reason": "past_due",
+            "auto_completed": True,
+        }
+
+        payload = klms_sync.build_success_payload([], [], [], [], [], [completed], [completed])
+        content = payload["content"]
+
+        self.assertEqual(content["assignments"], [])
+        self.assertEqual(len(content["completed_assignments"]), 1)
+        self.assertEqual(len(content["assignment_records"]), 1)
+        self.assertEqual(content["completed_assignments"][0]["record_status"], "completed")
+        self.assertIn("완료 기록", payload["html"])
+
 
 if __name__ == "__main__":
     unittest.main()
