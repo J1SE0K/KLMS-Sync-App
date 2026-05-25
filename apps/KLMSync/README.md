@@ -27,7 +27,7 @@ tools/build_klms_mac_app.sh
 
 The bundle is written to `~/Applications/KLMS Sync.app` by default. The build script injects the current engine code into the app resource bundle as `EnginePayload`; private runtime data stays in `~/Library/Application Support/KLMSNotesSync` and is preserved by the installer. Set `DIST_DIR=/path/to/output` when a different output directory is needed.
 
-The Mac build is signed with a CloudKit entitlement so it can poll the iPhone companion's private database requests. The default container is `iCloud.com.local.KLMSync`; override it with `ICLOUD_CONTAINER_IDENTIFIER=iCloud.<your.container>` when building. The iPhone target must use the same container in `Config/KLMSiOS.entitlements`.
+CloudKit signing is opt-in for local builds. A Mac app with iCloud entitlements needs a matching Apple Developer App ID, provisioning profile, and iCloud container; adding the entitlement without that provisioning can make macOS refuse to launch the app. After the CloudKit container is ready, build with `ENABLE_CLOUDKIT_ENTITLEMENT=1 ICLOUD_CONTAINER_IDENTIFIER=iCloud.<your.container> tools/build_klms_mac_app.sh`. The iPhone target must use the same container in `Config/KLMSiOS.entitlements`.
 
 ## iPhone companion
 

@@ -8,7 +8,8 @@ CONFIGURATION="${CONFIGURATION:-release}"
 APP_NAME="${APP_NAME:-KLMS Sync}"
 BUNDLE_ID="${BUNDLE_ID:-com.local.KLMSync}"
 APP_ICON_SOURCE="$APP_PACKAGE_DIR/Resources/AppIcon.icns"
-ICLOUD_CONTAINER_IDENTIFIER="${ICLOUD_CONTAINER_IDENTIFIER:-iCloud.$BUNDLE_ID}"
+ENABLE_CLOUDKIT_ENTITLEMENT="${ENABLE_CLOUDKIT_ENTITLEMENT:-0}"
+ICLOUD_CONTAINER_IDENTIFIER="${ICLOUD_CONTAINER_IDENTIFIER:-}"
 # Keep the default outside Documents/iCloud-backed workspaces. Those locations can
 # attach File Provider metadata to .app directories and make codesign reject them.
 DIST_DIR="${DIST_DIR:-$HOME/Applications}"
@@ -222,8 +223,11 @@ if [[ -z "$codesign_identity" ]] && command -v security >/dev/null 2>&1; then
 fi
 codesign_identity="${codesign_identity:-"-"}"
 if command -v codesign >/dev/null 2>&1; then
-  APP_ENTITLEMENTS="$SWIFT_SCRATCH_PATH/KLMSync.entitlements"
-  cat > "$APP_ENTITLEMENTS" <<EOF
+  app_codesign_args=(--force --sign "$codesign_identity")
+  if [[ "$ENABLE_CLOUDKIT_ENTITLEMENT" == "1" ]]; then
+    ICLOUD_CONTAINER_IDENTIFIER="${ICLOUD_CONTAINER_IDENTIFIER:-iCloud.$BUNDLE_ID}"
+    APP_ENTITLEMENTS="$SWIFT_SCRATCH_PATH/KLMSync.entitlements"
+    cat > "$APP_ENTITLEMENTS" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -239,6 +243,8 @@ if command -v codesign >/dev/null 2>&1; then
 </dict>
 </plist>
 EOF
+    app_codesign_args+=(--entitlements "$APP_ENTITLEMENTS")
+  fi
   if [[ "$codesign_identity" == "-" ]]; then
     print -u2 -- "warning: KLMS Sync.app is being ad-hoc signed."
     print -u2 -- "warning: macOS may invalidate Automation/Accessibility permissions after each rebuild."
@@ -246,7 +252,11 @@ EOF
   else
     print -u2 -- "Signing KLMS Sync.app with identity: $codesign_identity"
   fi
-  print -u2 -- "CloudKit container entitlement: $ICLOUD_CONTAINER_IDENTIFIER"
+  if [[ "$ENABLE_CLOUDKIT_ENTITLEMENT" == "1" ]]; then
+    print -u2 -- "CloudKit container entitlement: $ICLOUD_CONTAINER_IDENTIFIER"
+  else
+    print -u2 -- "CloudKit container entitlement: disabled (set ENABLE_CLOUDKIT_ENTITLEMENT=1 after provisioning)"
+  fi
   if command -v xattr >/dev/null 2>&1; then
     xattr -cr "$APP_BUNDLE" >/dev/null 2>&1 || true
     while IFS= read -r bundle_path; do
@@ -255,13 +265,17 @@ EOF
     done < <(find "$APP_BUNDLE" -print)
   fi
   /usr/bin/codesign --force --sign "$codesign_identity" "$NATIVE_NOTICE_HELPER_APP" >/dev/null
-  /usr/bin/codesign --force --sign "$codesign_identity" --entitlements "$APP_ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
+  /usr/bin/codesign "${app_codesign_args[@]}" "$APP_BUNDLE" >/dev/null
   if ! /usr/bin/codesign --verify --deep --strict --verbose=4 "$APP_BUNDLE" >/dev/null 2>&1; then
     if [[ "$codesign_identity" != "-" ]]; then
       print -u2 -- "warning: selected signing identity did not pass verification; falling back to ad-hoc signing."
       codesign_identity="-"
+      app_codesign_args=(--force --sign "$codesign_identity")
+      if [[ "$ENABLE_CLOUDKIT_ENTITLEMENT" == "1" ]]; then
+        app_codesign_args+=(--entitlements "$APP_ENTITLEMENTS")
+      fi
       /usr/bin/codesign --force --sign "$codesign_identity" "$NATIVE_NOTICE_HELPER_APP" >/dev/null
-      /usr/bin/codesign --force --sign "$codesign_identity" --entitlements "$APP_ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
+      /usr/bin/codesign "${app_codesign_args[@]}" "$APP_BUNDLE" >/dev/null
     else
       print -u2 -- "warning: ad-hoc signed app did not pass codesign verification."
     fi
