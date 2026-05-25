@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if canImport(Security)
+import Security
+#endif
+
 #if canImport(KLMSShared)
 import KLMSShared
 #endif
@@ -22,13 +26,30 @@ final class CompanionModel: ObservableObject {
     @Published var isSubmitting = false
 
     private let store: (any RemoteCommandStore)?
+    let remoteAvailabilityMessage: String
 
     init(store: (any RemoteCommandStore)? = nil) {
+        if let store {
+            self.store = store
+            self.remoteAvailabilityMessage = ""
+            return
+        }
         #if canImport(CloudKit)
-        self.store = store ?? CloudKitCommandStore()
+        if CloudKitRuntimeAccess.isEntitled {
+            self.store = CloudKitCommandStore()
+            self.remoteAvailabilityMessage = ""
+        } else {
+            self.store = nil
+            self.remoteAvailabilityMessage = "현재 iPhone 앱은 CloudKit 권한 없이 빌드되었습니다. 무료 Apple ID에서는 앱 화면 확인만 가능하고, 원격 실행 요청은 비활성화됩니다."
+        }
         #else
         self.store = store
+        self.remoteAvailabilityMessage = "이 빌드는 CloudKit을 사용할 수 없습니다."
         #endif
+    }
+
+    var isRemoteAvailable: Bool {
+        store != nil
     }
 
     var latestCommand: RemoteRunCommand? {
@@ -67,7 +88,7 @@ final class CompanionModel: ObservableObject {
             return
         }
         guard let store else {
-            errorMessage = "CloudKit을 사용할 수 없는 빌드입니다."
+            errorMessage = remoteAvailabilityMessage
             return
         }
         isSubmitting = true
@@ -88,7 +109,7 @@ final class CompanionModel: ObservableObject {
 
     func refreshRecent() async {
         guard let store else {
-            errorMessage = "CloudKit을 사용할 수 없는 빌드입니다."
+            errorMessage = ""
             return
         }
         isRefreshing = true
@@ -108,6 +129,9 @@ final class CompanionModel: ObservableObject {
     }
 
     func pollRecentCommands() async {
+        guard store != nil else {
+            return
+        }
         while !Task.isCancelled {
             await refreshRecent()
             try? await Task.sleep(nanoseconds: 10_000_000_000)
@@ -123,6 +147,9 @@ struct CompanionRootView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     RemoteStatusHeader(model: model)
+                    if !model.isRemoteAvailable {
+                        InfoBanner(message: model.remoteAvailabilityMessage)
+                    }
                     RemoteCommandPanel(model: model)
                     RecentRemoteCommandsView(commands: model.recentCommands)
                     RemotePrivacyNote()
@@ -296,7 +323,7 @@ private struct RemoteCommandPanel: View {
                 .frame(maxWidth: .infinity, minHeight: 42)
         }
         .buttonStyle(.borderedProminent)
-        .disabled(model.isSubmitting || model.hasInFlightRequest)
+        .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
     }
 }
@@ -381,9 +408,9 @@ private struct RemoteCommandRow: View {
 private struct RemotePrivacyNote: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("CloudKit private database만 사용", systemImage: "lock.icloud")
+            Label("원격 요청은 CloudKit private database만 사용", systemImage: "lock.icloud")
                 .font(.subheadline.weight(.semibold))
-            Text("iPhone에는 실행 요청과 요약 숫자만 저장됩니다. KLMS URL, 로그, config.env, 파일 경로는 올리지 않습니다.")
+            Text("CloudKit 권한을 켠 빌드에서만 실행 요청과 요약 숫자를 저장합니다. KLMS URL, 로그, config.env, 파일 경로는 올리지 않습니다.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -391,6 +418,20 @@ private struct RemotePrivacyNote: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quinary)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct InfoBanner: View {
+    var message: String
+
+    var body: some View {
+        Label(message, systemImage: "info.circle")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.blue.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -405,5 +446,32 @@ private struct ErrorBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.red.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private enum CloudKitRuntimeAccess {
+    static var isEntitled: Bool {
+        #if canImport(CloudKit) && canImport(Security)
+        guard let task = SecTaskCreateFromSelf(nil),
+              let value = SecTaskCopyValueForEntitlement(
+                  task,
+                  "com.apple.developer.icloud-services" as CFString,
+                  nil
+              ) else {
+            return false
+        }
+        if let services = value as? [String] {
+            return services.contains("CloudKit")
+        }
+        if let services = value as? [NSString] {
+            return services.contains { $0 as String == "CloudKit" }
+        }
+        if let service = value as? String {
+            return service == "CloudKit"
+        }
+        return false
+        #else
+        return false
+        #endif
     }
 }

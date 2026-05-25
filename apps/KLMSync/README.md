@@ -27,7 +27,7 @@ tools/build_klms_mac_app.sh
 
 The bundle is written to `~/Applications/KLMS Sync.app` by default. The build script injects the current engine code into the app resource bundle as `EnginePayload`; private runtime data stays in `~/Library/Application Support/KLMSNotesSync` and is preserved by the installer. Set `DIST_DIR=/path/to/output` when a different output directory is needed.
 
-CloudKit signing is opt-in for local builds. A Mac app with iCloud entitlements needs a matching Apple Developer App ID, provisioning profile, and iCloud container; adding the entitlement without that provisioning can make macOS refuse to launch the app. After the CloudKit container is ready, build with `ENABLE_CLOUDKIT_ENTITLEMENT=1 ICLOUD_CONTAINER_IDENTIFIER=iCloud.<your.container> tools/build_klms_mac_app.sh`. The iPhone target must use the same container in `Config/KLMSiOS.entitlements`.
+CloudKit signing is opt-in for local builds. A Mac or iPhone app with iCloud entitlements needs a matching Apple Developer App ID, provisioning profile, and iCloud container; Apple Personal Team/free Apple ID signing does not support the iCloud capability. Adding the entitlement without that provisioning can make the app fail to launch. The default iPhone entitlement file is intentionally empty so the app can run on a free account with remote buttons disabled. After the CloudKit container is ready, build the Mac app with `ENABLE_CLOUDKIT_ENTITLEMENT=1 ICLOUD_CONTAINER_IDENTIFIER=iCloud.<your.container> tools/build_klms_mac_app.sh`, and enable the same iCloud container on the iPhone target.
 
 ## iPhone companion
 
@@ -61,7 +61,13 @@ Open the iPhone project in Xcode:
 tools/open_klms_ios_project.sh
 ```
 
-For an actual iPhone device build, configure the generated Xcode target with:
+For an actual iPhone device build with a free Apple ID, configure the generated Xcode target with:
+
+- a unique bundle identifier;
+- your Personal Team;
+- no iCloud capability.
+
+This launches the companion UI with remote execution disabled. For CloudKit remote execution, configure the target with a paid Apple Developer team and:
 
 - bundle identifier matched to the same Apple developer team as the Mac app;
 - iCloud capability enabled with CloudKit;
