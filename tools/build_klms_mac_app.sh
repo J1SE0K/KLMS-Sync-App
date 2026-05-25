@@ -8,6 +8,7 @@ CONFIGURATION="${CONFIGURATION:-release}"
 APP_NAME="${APP_NAME:-KLMS Sync}"
 BUNDLE_ID="${BUNDLE_ID:-com.local.KLMSync}"
 APP_ICON_SOURCE="$APP_PACKAGE_DIR/Resources/AppIcon.icns"
+ICLOUD_CONTAINER_IDENTIFIER="${ICLOUD_CONTAINER_IDENTIFIER:-iCloud.$BUNDLE_ID}"
 # Keep the default outside Documents/iCloud-backed workspaces. Those locations can
 # attach File Provider metadata to .app directories and make codesign reject them.
 DIST_DIR="${DIST_DIR:-$HOME/Applications}"
@@ -221,6 +222,23 @@ if [[ -z "$codesign_identity" ]] && command -v security >/dev/null 2>&1; then
 fi
 codesign_identity="${codesign_identity:-"-"}"
 if command -v codesign >/dev/null 2>&1; then
+  APP_ENTITLEMENTS="$SWIFT_SCRATCH_PATH/KLMSync.entitlements"
+  cat > "$APP_ENTITLEMENTS" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.developer.icloud-container-identifiers</key>
+  <array>
+    <string>$ICLOUD_CONTAINER_IDENTIFIER</string>
+  </array>
+  <key>com.apple.developer.icloud-services</key>
+  <array>
+    <string>CloudKit</string>
+  </array>
+</dict>
+</plist>
+EOF
   if [[ "$codesign_identity" == "-" ]]; then
     print -u2 -- "warning: KLMS Sync.app is being ad-hoc signed."
     print -u2 -- "warning: macOS may invalidate Automation/Accessibility permissions after each rebuild."
@@ -228,6 +246,7 @@ if command -v codesign >/dev/null 2>&1; then
   else
     print -u2 -- "Signing KLMS Sync.app with identity: $codesign_identity"
   fi
+  print -u2 -- "CloudKit container entitlement: $ICLOUD_CONTAINER_IDENTIFIER"
   if command -v xattr >/dev/null 2>&1; then
     xattr -cr "$APP_BUNDLE" >/dev/null 2>&1 || true
     while IFS= read -r bundle_path; do
@@ -236,13 +255,13 @@ if command -v codesign >/dev/null 2>&1; then
     done < <(find "$APP_BUNDLE" -print)
   fi
   /usr/bin/codesign --force --sign "$codesign_identity" "$NATIVE_NOTICE_HELPER_APP" >/dev/null
-  /usr/bin/codesign --force --sign "$codesign_identity" "$APP_BUNDLE" >/dev/null
+  /usr/bin/codesign --force --sign "$codesign_identity" --entitlements "$APP_ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
   if ! /usr/bin/codesign --verify --deep --strict --verbose=4 "$APP_BUNDLE" >/dev/null 2>&1; then
     if [[ "$codesign_identity" != "-" ]]; then
       print -u2 -- "warning: selected signing identity did not pass verification; falling back to ad-hoc signing."
       codesign_identity="-"
       /usr/bin/codesign --force --sign "$codesign_identity" "$NATIVE_NOTICE_HELPER_APP" >/dev/null
-      /usr/bin/codesign --force --sign "$codesign_identity" "$APP_BUNDLE" >/dev/null
+      /usr/bin/codesign --force --sign "$codesign_identity" --entitlements "$APP_ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
     else
       print -u2 -- "warning: ad-hoc signed app did not pass codesign verification."
     fi
