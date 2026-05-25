@@ -910,6 +910,7 @@ private struct CommandPanelView: View {
                             )
                         )
                         .toggleStyle(.switch)
+                        .disabled(!model.appDiagnostics.codeSigning.cloudKitEntitled)
                         .help("켜두면 Mac 앱이 CloudKit의 iPhone 실행 요청을 주기적으로 확인해 실행합니다.")
                         .accessibilityHint("켜두면 Mac 앱이 CloudKit의 iPhone 실행 요청을 주기적으로 확인해 실행합니다.")
 
@@ -925,7 +926,11 @@ private struct CommandPanelView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
-                        .disabled(model.runningCommand != nil || model.isCheckingRemoteCommands)
+                        .disabled(
+                            model.runningCommand != nil
+                                || model.isCheckingRemoteCommands
+                                || !model.appDiagnostics.codeSigning.cloudKitEntitled
+                        )
                         .help("iPhone companion이 CloudKit에 올린 실행 요청을 Mac에서 바로 확인합니다.")
                         .accessibilityLabel("iPhone 요청 지금 확인")
                         .accessibilityHint("iPhone companion이 CloudKit에 올린 실행 요청을 Mac에서 바로 확인합니다.")
@@ -937,6 +942,11 @@ private struct CommandPanelView: View {
                         }
                         if let message = model.remoteProcessingStatusMessage {
                             Text(message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if !model.appDiagnostics.codeSigning.cloudKitEntitled {
+                            Text("iPhone 원격 요청은 CloudKit entitlement/provisioning 설정 후 사용할 수 있습니다.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
