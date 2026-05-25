@@ -32,6 +32,9 @@ final class KLMSMacModel: ObservableObject {
     @Published var installResult: EngineInstallResult?
     @Published var lastCommandResult: KLMSCommandResult?
     @Published var lastRemoteCommand: RemoteRunCommand?
+    @Published var remoteProcessingEnabled: Bool
+    @Published var remoteProcessingStatusMessage: String?
+    @Published var isCheckingRemoteCommands = false
     @Published var permissionStatusMessage: String?
     @Published var permissionProbeRows: [KLMSPermissionProbeRow] = []
     @Published var runningCommand: KLMSEngineCommand?
@@ -47,9 +50,22 @@ final class KLMSMacModel: ObservableObject {
     private let installer = EngineInstaller()
     private let locator = EnginePayloadLocator()
     private var isBootstrapping = false
+    private var remotePollingTask: Task<Void, Never>?
     private var notifiedAuthDigits = Set<String>()
     private var authStatusClearTask: Task<Void, Never>?
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
+    private static let remoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
+    private static let remotePollingIntervalNanoseconds: UInt64 = 20_000_000_000
+
+    init() {
+        remoteProcessingEnabled = UserDefaults.standard.bool(
+            forKey: Self.remoteProcessingEnabledKey
+        )
+    }
+
+    deinit {
+        remotePollingTask?.cancel()
+    }
 
     var menuBarSystemImage: String {
         if runningCommand != nil {
@@ -143,6 +159,7 @@ final class KLMSMacModel: ObservableObject {
             await requestAppPermissions(markAutomatic: true)
         }
         await refresh()
+        configureRemotePolling()
     }
 
     var shouldRequestPermissionsAfterInstall: Bool {
@@ -179,7 +196,9 @@ final class KLMSMacModel: ObservableObject {
     func clearDisplayState(resetSnapshot: Bool) {
         errorMessage = nil
         lastCommandResult = nil
-        lastRemoteCommand = nil
+        if !remoteProcessingEnabled {
+            lastRemoteCommand = nil
+        }
         liveCommandOutput = ""
         liveAuthDigits = nil
         authStatusMessage = nil
@@ -191,6 +210,34 @@ final class KLMSMacModel: ObservableObject {
         if resetSnapshot {
             snapshot = EngineSnapshot()
             launchAgentState = nil
+        }
+    }
+
+    func setRemoteProcessingEnabled(_ enabled: Bool) {
+        remoteProcessingEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.remoteProcessingEnabledKey)
+        configureRemotePolling()
+        if enabled {
+            remoteProcessingStatusMessage = "iPhone 요청 자동 처리가 켜졌습니다."
+            Task {
+                await processRemoteCommands(silent: true)
+            }
+        } else {
+            remoteProcessingStatusMessage = "iPhone 요청 자동 처리가 꺼졌습니다."
+        }
+    }
+
+    private func configureRemotePolling() {
+        remotePollingTask?.cancel()
+        remotePollingTask = nil
+        guard remoteProcessingEnabled else {
+            return
+        }
+        remotePollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.processRemoteCommands(silent: true)
+                try? await Task.sleep(nanoseconds: Self.remotePollingIntervalNanoseconds)
+            }
         }
     }
 
@@ -596,13 +643,47 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    func processRemoteCommands() async {
+    func processRemoteCommands(silent: Bool = false) async {
         #if canImport(CloudKit)
+        guard runningCommand == nil else {
+            if !silent {
+                remoteProcessingStatusMessage = "동기화 실행 중에는 iPhone 요청을 처리하지 않습니다."
+            }
+            return
+        }
+        guard !isCheckingRemoteCommands else {
+            return
+        }
+        isCheckingRemoteCommands = true
+        defer {
+            isCheckingRemoteCommands = false
+        }
         do {
             let store = CloudKitCommandStore()
             let pending = try await store.fetchPending()
-            guard let command = pending.first else {
-                errorMessage = "대기 중인 iPhone 요청이 없습니다."
+            let now = Date()
+            var commandToRun: RemoteRunCommand?
+            for command in pending {
+                if command.isStaleForExecution(now: now) {
+                    var stale = command
+                    stale.status = .macUnavailable
+                    stale.updatedAt = now
+                    stale.summary = SanitizedRemoteStatus(
+                        snapshot: snapshot,
+                        phase: stale.status.rawValue
+                    )
+                    try? await store.update(stale)
+                    lastRemoteCommand = stale
+                    continue
+                }
+                commandToRun = command
+                break
+            }
+            guard let command = commandToRun else {
+                remoteProcessingStatusMessage = "대기 중인 iPhone 요청이 없습니다."
+                if !silent {
+                    errorMessage = remoteProcessingStatusMessage
+                }
                 return
             }
             var running = command
@@ -611,6 +692,7 @@ final class KLMSMacModel: ObservableObject {
             running.summary = SanitizedRemoteStatus(snapshot: snapshot, phase: "running")
             try await store.update(running)
             lastRemoteCommand = running
+            remoteProcessingStatusMessage = "\(running.kind.displayName) 요청 처리 중"
 
             await run(command.kind.engineCommand)
             let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
@@ -622,11 +704,18 @@ final class KLMSMacModel: ObservableObject {
             completed.summary = SanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: completed.status.rawValue)
             try await store.update(completed)
             lastRemoteCommand = completed
+            remoteProcessingStatusMessage = "최근 iPhone 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
         } catch {
-            errorMessage = error.localizedDescription
+            remoteProcessingStatusMessage = "iPhone 요청 확인 실패: \(error.localizedDescription)"
+            if !silent {
+                errorMessage = error.localizedDescription
+            }
         }
         #else
-        errorMessage = "CloudKit을 사용할 수 없는 빌드입니다."
+        remoteProcessingStatusMessage = "CloudKit을 사용할 수 없는 빌드입니다."
+        if !silent {
+            errorMessage = remoteProcessingStatusMessage
+        }
         #endif
     }
 
