@@ -43,6 +43,8 @@ DerivedData/
 apps/KLMSync/dist/
 apps/KLMSync/Xcode/**/build/
 *.xcuserdata/
+**/xcuserdata/
+*.xcuserstate
 
 # Logs and temporary files
 *.log

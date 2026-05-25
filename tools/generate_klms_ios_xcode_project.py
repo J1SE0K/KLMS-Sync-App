@@ -111,9 +111,9 @@ def main() -> int:
     objects.append("")
     objects.append("/* Begin PBXFileReference section */")
     objects.append(
-        f"\t\t{product_ref_id} /* KLMS Sync.app */ = "
+        f"\t\t{product_ref_id} /* KLMSiOS.app */ = "
         "{isa = PBXFileReference; explicitFileType = wrapper.application; "
-        "includeInIndex = 0; path = \"KLMS Sync.app\"; sourceTree = BUILT_PRODUCTS_DIR; };"
+        "includeInIndex = 0; path = KLMSiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };"
     )
     for rel, name, ref_id, _ in file_refs:
         objects.append(
@@ -169,7 +169,7 @@ def main() -> int:
         f"\t\t{product_group_id} /* Products */ = {{\n"
         "\t\t\tisa = PBXGroup;\n"
         "\t\t\tchildren = (\n"
-        f"\t\t\t\t{product_ref_id} /* KLMS Sync.app */,\n"
+        f"\t\t\t\t{product_ref_id} /* KLMSiOS.app */,\n"
         "\t\t\t);\n"
         "\t\t\tname = Products;\n"
         "\t\t\tsourceTree = \"<group>\";\n"
@@ -192,7 +192,7 @@ def main() -> int:
         "\t\t\tdependencies = ();\n"
         "\t\t\tname = KLMSiOS;\n"
         "\t\t\tproductName = KLMSiOS;\n"
-        f"\t\t\tproductReference = {product_ref_id} /* KLMS Sync.app */;\n"
+        f"\t\t\tproductReference = {product_ref_id} /* KLMSiOS.app */;\n"
         "\t\t\tproductType = \"com.apple.product-type.application\";\n"
         "\t\t};"
     )
@@ -426,7 +426,7 @@ def main() -> int:
         f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <Scheme
    LastUpgradeVersion = \"1600\"
-   version = \"1.7\">
+   version = \"1.3\">
    <BuildAction
       parallelizeBuildables = \"YES\"
       buildImplicitDependencies = \"YES\"
@@ -441,7 +441,7 @@ def main() -> int:
             <BuildableReference
                BuildableIdentifier = \"primary\"
                BlueprintIdentifier = \"{target_id}\"
-               BuildableName = \"KLMS Sync.app\"
+               BuildableName = \"KLMSiOS.app\"
                BlueprintName = \"KLMSiOS\"
                ReferencedContainer = \"container:KLMSiOS.xcodeproj\">
             </BuildableReference>
@@ -453,6 +453,8 @@ def main() -> int:
       selectedDebuggerIdentifier = \"Xcode.DebuggerFoundation.Debugger.LLDB\"
       selectedLauncherIdentifier = \"Xcode.DebuggerFoundation.Launcher.LLDB\"
       shouldUseLaunchSchemeArgsEnv = \"YES\">
+      <Testables>
+      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = \"Debug\"
@@ -469,7 +471,7 @@ def main() -> int:
          <BuildableReference
             BuildableIdentifier = \"primary\"
             BlueprintIdentifier = \"{target_id}\"
-            BuildableName = \"KLMS Sync.app\"
+            BuildableName = \"KLMSiOS.app\"
             BlueprintName = \"KLMSiOS\"
             ReferencedContainer = \"container:KLMSiOS.xcodeproj\">
          </BuildableReference>
@@ -486,7 +488,7 @@ def main() -> int:
          <BuildableReference
             BuildableIdentifier = \"primary\"
             BlueprintIdentifier = \"{target_id}\"
-            BuildableName = \"KLMS Sync.app\"
+            BuildableName = \"KLMSiOS.app\"
             BlueprintName = \"KLMSiOS\"
             ReferencedContainer = \"container:KLMSiOS.xcodeproj\">
          </BuildableReference>

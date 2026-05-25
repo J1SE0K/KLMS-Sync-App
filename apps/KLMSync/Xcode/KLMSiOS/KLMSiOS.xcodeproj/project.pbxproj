@@ -22,7 +22,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		C3BEB3A18D594EEBF19A5C4E /* KLMS Sync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "KLMS Sync.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C3BEB3A18D594EEBF19A5C4E /* KLMSiOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KLMSiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KLMSiOSApp.swift"; path = "../../Sources/KLMSiOS/KLMSiOSApp.swift"; sourceTree = "<group>"; };
 		C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AcademicTerm.swift"; path = "../../Sources/KLMSShared/AcademicTerm.swift"; sourceTree = "<group>"; };
 		AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DashboardDataModels.swift"; path = "../../Sources/KLMSShared/DashboardDataModels.swift"; sourceTree = "<group>"; };
@@ -80,7 +80,7 @@
 		00C45FD35CB0F9C5F764F070 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C3BEB3A18D594EEBF19A5C4E /* KLMS Sync.app */,
+				C3BEB3A18D594EEBF19A5C4E /* KLMSiOS.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -100,7 +100,7 @@
 			dependencies = ();
 			name = KLMSiOS;
 			productName = KLMSiOS;
-			productReference = C3BEB3A18D594EEBF19A5C4E /* KLMS Sync.app */;
+			productReference = C3BEB3A18D594EEBF19A5C4E /* KLMSiOS.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */

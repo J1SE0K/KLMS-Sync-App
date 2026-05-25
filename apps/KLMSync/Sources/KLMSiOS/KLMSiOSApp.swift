@@ -407,7 +407,3 @@ private struct ErrorBanner: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
-
-#Preview {
-    CompanionRootView()
-}
