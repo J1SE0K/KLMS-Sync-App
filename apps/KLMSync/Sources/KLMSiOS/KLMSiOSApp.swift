@@ -1,5 +1,8 @@
-import KLMSShared
 import SwiftUI
+
+#if canImport(KLMSShared)
+import KLMSShared
+#endif
 
 @main
 struct KLMSiOSApp: App {

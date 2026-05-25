@@ -1,0 +1,366 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3A268377EE4DD927AC953A87 /* KLMSiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */; };
+		C2EF411E78CE8BF6A1A0C96A /* AcademicTerm.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */; };
+		D29FF8D94FC5E72F267755D7 /* DashboardDataModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */; };
+		12FB52A0868020B585EEDD6F /* DisplayText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 679F1606F4382D6BA089FD18 /* DisplayText.swift */; };
+		E8E6859883C24F06C53E4C8F /* EngineSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70DBB8B89438B2CCA51735D1 /* EngineSnapshot.swift */; };
+		2F60C3D611CF73FF3D24B4E7 /* FileStatusModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BF111AACABB1DE9775EFDAB /* FileStatusModels.swift */; };
+		A2FB44896AC5A3E93E1C0C20 /* JSONDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = B527DB490021021AA98854C3 /* JSONDefaults.swift */; };
+		CD081BE5F5542A72BB2E1A80 /* KLMSEngineCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = F246C506CC84D5668F04AA5C /* KLMSEngineCommand.swift */; };
+		E29BC1E4076D65755AC920D7 /* KLMSPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CB33DB3DC3038C739B1939 /* KLMSPaths.swift */; };
+		64147424957CACF294C32996 /* RemoteCommandModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */; };
+		0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6709D4B7C4D5248C468873FD /* StateModels.swift */; };
+		FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C3A8268D3376FED887FD75 /* StatusModels.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		C3BEB3A18D594EEBF19A5C4E /* KLMS Sync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "KLMS Sync.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KLMSiOSApp.swift"; path = "../../Sources/KLMSiOS/KLMSiOSApp.swift"; sourceTree = "<group>"; };
+		C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AcademicTerm.swift"; path = "../../Sources/KLMSShared/AcademicTerm.swift"; sourceTree = "<group>"; };
+		AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DashboardDataModels.swift"; path = "../../Sources/KLMSShared/DashboardDataModels.swift"; sourceTree = "<group>"; };
+		679F1606F4382D6BA089FD18 /* DisplayText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DisplayText.swift"; path = "../../Sources/KLMSShared/DisplayText.swift"; sourceTree = "<group>"; };
+		70DBB8B89438B2CCA51735D1 /* EngineSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "EngineSnapshot.swift"; path = "../../Sources/KLMSShared/EngineSnapshot.swift"; sourceTree = "<group>"; };
+		5BF111AACABB1DE9775EFDAB /* FileStatusModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FileStatusModels.swift"; path = "../../Sources/KLMSShared/FileStatusModels.swift"; sourceTree = "<group>"; };
+		B527DB490021021AA98854C3 /* JSONDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "JSONDefaults.swift"; path = "../../Sources/KLMSShared/JSONDefaults.swift"; sourceTree = "<group>"; };
+		F246C506CC84D5668F04AA5C /* KLMSEngineCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KLMSEngineCommand.swift"; path = "../../Sources/KLMSShared/KLMSEngineCommand.swift"; sourceTree = "<group>"; };
+		E1CB33DB3DC3038C739B1939 /* KLMSPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KLMSPaths.swift"; path = "../../Sources/KLMSShared/KLMSPaths.swift"; sourceTree = "<group>"; };
+		6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteCommandModels.swift"; path = "../../Sources/KLMSShared/RemoteCommandModels.swift"; sourceTree = "<group>"; };
+		6709D4B7C4D5248C468873FD /* StateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StateModels.swift"; path = "../../Sources/KLMSShared/StateModels.swift"; sourceTree = "<group>"; };
+		11C3A8268D3376FED887FD75 /* StatusModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StatusModels.swift"; path = "../../Sources/KLMSShared/StatusModels.swift"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CF5BDB0BEAFE176F9629192A /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		ADCF10F76EBF2A74473E9DC4 = {
+			isa = PBXGroup;
+			children = (
+				A86258D10EACDD04E3CF9C24 /* KLMSiOS */,
+				0D56A8FBC26F5FF681C40D75 /* KLMSShared */,
+				00C45FD35CB0F9C5F764F070 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A86258D10EACDD04E3CF9C24 /* KLMSiOS */ = {
+			isa = PBXGroup;
+			children = (
+				332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */,
+			);
+			name = KLMSiOS;
+			sourceTree = "<group>";
+		};
+		0D56A8FBC26F5FF681C40D75 /* KLMSShared */ = {
+			isa = PBXGroup;
+			children = (
+				C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */,
+				AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */,
+				679F1606F4382D6BA089FD18 /* DisplayText.swift */,
+				70DBB8B89438B2CCA51735D1 /* EngineSnapshot.swift */,
+				5BF111AACABB1DE9775EFDAB /* FileStatusModels.swift */,
+				B527DB490021021AA98854C3 /* JSONDefaults.swift */,
+				F246C506CC84D5668F04AA5C /* KLMSEngineCommand.swift */,
+				E1CB33DB3DC3038C739B1939 /* KLMSPaths.swift */,
+				6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */,
+				6709D4B7C4D5248C468873FD /* StateModels.swift */,
+				11C3A8268D3376FED887FD75 /* StatusModels.swift */,
+			);
+			name = KLMSShared;
+			sourceTree = "<group>";
+		};
+		00C45FD35CB0F9C5F764F070 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C3BEB3A18D594EEBF19A5C4E /* KLMS Sync.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1AC0FC761C940DB652F96682 /* KLMSiOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 28481F935DF53F60AE719A46 /* Build configuration list for PBXNativeTarget "KLMSiOS" */;
+			buildPhases = (
+				1CDF2F71A52B082132B04DFF /* Sources */,
+				CF5BDB0BEAFE176F9629192A /* Frameworks */,
+				C02F1309AF4906C92F1EAD44 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = KLMSiOS;
+			productName = KLMSiOS;
+			productReference = C3BEB3A18D594EEBF19A5C4E /* KLMS Sync.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		98F54143AB4E86B28C3AFEE0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					1AC0FC761C940DB652F96682 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = FCBE72429C0B1B8B87DC8CC9 /* Build configuration list for PBXProject "KLMSiOS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = ko;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				ko,
+				en,
+				Base,
+			);
+			mainGroup = ADCF10F76EBF2A74473E9DC4;
+			productRefGroup = 00C45FD35CB0F9C5F764F070 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1AC0FC761C940DB652F96682 /* KLMSiOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C02F1309AF4906C92F1EAD44 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1CDF2F71A52B082132B04DFF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3A268377EE4DD927AC953A87 /* KLMSiOSApp.swift in Sources */,
+				C2EF411E78CE8BF6A1A0C96A /* AcademicTerm.swift in Sources */,
+				D29FF8D94FC5E72F267755D7 /* DashboardDataModels.swift in Sources */,
+				12FB52A0868020B585EEDD6F /* DisplayText.swift in Sources */,
+				E8E6859883C24F06C53E4C8F /* EngineSnapshot.swift in Sources */,
+				2F60C3D611CF73FF3D24B4E7 /* FileStatusModels.swift in Sources */,
+				A2FB44896AC5A3E93E1C0C20 /* JSONDefaults.swift in Sources */,
+				CD081BE5F5542A72BB2E1A80 /* KLMSEngineCommand.swift in Sources */,
+				E29BC1E4076D65755AC920D7 /* KLMSPaths.swift in Sources */,
+				64147424957CACF294C32996 /* RemoteCommandModels.swift in Sources */,
+				0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */,
+				FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		73BFC4993D558C2844970A56 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = "DEBUG=1 $(inherited)";
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		3C5BC6FE1E438E679FB7F74F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A45358D7F57D12409C956205 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "../../Config/KLMSiOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.KLMSync.iOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+			};
+			name = Debug;
+		};
+		7A3CC3E65B4BE81911CE6871 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "../../Config/KLMSiOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.local.KLMSync.iOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		FCBE72429C0B1B8B87DC8CC9 /* Build configuration list for PBXProject "KLMSiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				73BFC4993D558C2844970A56 /* Debug */,
+				3C5BC6FE1E438E679FB7F74F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		28481F935DF53F60AE719A46 /* Build configuration list for PBXNativeTarget "KLMSiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A45358D7F57D12409C956205 /* Debug */,
+				7A3CC3E65B4BE81911CE6871 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+}
