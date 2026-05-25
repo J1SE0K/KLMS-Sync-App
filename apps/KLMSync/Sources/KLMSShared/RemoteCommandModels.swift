@@ -50,9 +50,25 @@ public enum RemoteCommandStatus: String, Codable, Sendable {
             "Mac 응답 없음"
         }
     }
+
+    public var isInFlight: Bool {
+        switch self {
+        case .pending, .running:
+            true
+        case .completed, .failed, .macUnavailable:
+            false
+        }
+    }
+
+    public var isTerminal: Bool {
+        !isInFlight
+    }
 }
 
 public struct RemoteRunCommand: Identifiable, Codable, Sendable, Equatable {
+    public static let macUnavailableInterval: TimeInterval = 5 * 60
+    public static let staleExecutionInterval: TimeInterval = 60 * 60
+
     public var id: UUID
     public var kind: RemoteCommandKind
     public var status: RemoteCommandStatus
@@ -80,6 +96,23 @@ public struct RemoteRunCommand: Identifiable, Codable, Sendable, Equatable {
         self.lastExitCode = lastExitCode
         self.loginRequired = loginRequired
         self.summary = summary
+    }
+
+    public func displayStatus(
+        now: Date = Date(),
+        unavailableInterval: TimeInterval = Self.macUnavailableInterval
+    ) -> RemoteCommandStatus {
+        guard status == .pending, now.timeIntervalSince(createdAt) > unavailableInterval else {
+            return status
+        }
+        return .macUnavailable
+    }
+
+    public func isStaleForExecution(
+        now: Date = Date(),
+        staleInterval: TimeInterval = Self.staleExecutionInterval
+    ) -> Bool {
+        status == .pending && now.timeIntervalSince(createdAt) > staleInterval
     }
 }
 
@@ -194,6 +227,8 @@ public final class CloudKitCommandStore: RemoteCommandStore, @unchecked Sendable
         record["updatedAt"] = command.updatedAt as NSDate
         if let lastExitCode = command.lastExitCode {
             record["lastExitCode"] = NSNumber(value: lastExitCode)
+        } else {
+            record["lastExitCode"] = nil
         }
         record["loginRequired"] = NSNumber(value: command.loginRequired)
         record["assignments"] = NSNumber(value: command.summary.assignments)
@@ -216,8 +251,8 @@ public final class CloudKitCommandStore: RemoteCommandStore, @unchecked Sendable
             id: id,
             kind: kind,
             status: status,
-            createdAt: (record["createdAt"] as? Date) ?? Date(),
-            updatedAt: (record["updatedAt"] as? Date) ?? Date(),
+            createdAt: Self.dateValue(record["createdAt"]) ?? Date(),
+            updatedAt: Self.dateValue(record["updatedAt"]) ?? Date(),
             lastExitCode: (record["lastExitCode"] as? NSNumber)?.intValue,
             loginRequired: (record["loginRequired"] as? NSNumber)?.boolValue ?? false,
             summary: SanitizedRemoteStatus(
@@ -230,6 +265,16 @@ public final class CloudKitCommandStore: RemoteCommandStore, @unchecked Sendable
                 phase: (record["phase"] as? String) ?? ""
             )
         )
+    }
+
+    private static func dateValue(_ value: Any?) -> Date? {
+        if let date = value as? Date {
+            return date
+        }
+        if let date = value as? NSDate {
+            return date as Date
+        }
+        return nil
     }
 }
 #endif

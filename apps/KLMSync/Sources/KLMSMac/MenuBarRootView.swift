@@ -902,22 +902,41 @@ private struct CommandPanelView: View {
                             commandButton(.report)
                             commandButton(.v2BuildState)
                         }
+                        Toggle(
+                            "iPhone 요청 자동 처리",
+                            isOn: Binding(
+                                get: { model.remoteProcessingEnabled },
+                                set: { model.setRemoteProcessingEnabled($0) }
+                            )
+                        )
+                        .toggleStyle(.switch)
+                        .help("켜두면 Mac 앱이 CloudKit의 iPhone 실행 요청을 주기적으로 확인해 실행합니다.")
+                        .accessibilityHint("켜두면 Mac 앱이 CloudKit의 iPhone 실행 요청을 주기적으로 확인해 실행합니다.")
+
                         Button {
                             Task {
-                                await model.processRemoteCommands()
+                                await model.processRemoteCommands(silent: false)
                             }
                         } label: {
-                            Label("iPhone 요청 처리", systemImage: "iphone.radiowaves.left.and.right")
+                            Label(
+                                model.isCheckingRemoteCommands ? "iPhone 요청 확인 중" : "iPhone 요청 지금 확인",
+                                systemImage: "iphone.radiowaves.left.and.right"
+                            )
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
-                        .disabled(model.runningCommand != nil)
-                        .help("iPhone companion이 CloudKit에 올린 실행 요청을 Mac에서 읽어 처리합니다. 일반 사용 중에는 누르지 않아도 됩니다.")
-                        .accessibilityLabel("iPhone 요청 처리")
-                        .accessibilityHint("iPhone companion이 CloudKit에 올린 실행 요청을 Mac에서 읽어 처리합니다.")
+                        .disabled(model.runningCommand != nil || model.isCheckingRemoteCommands)
+                        .help("iPhone companion이 CloudKit에 올린 실행 요청을 Mac에서 바로 확인합니다.")
+                        .accessibilityLabel("iPhone 요청 지금 확인")
+                        .accessibilityHint("iPhone companion이 CloudKit에 올린 실행 요청을 Mac에서 바로 확인합니다.")
 
                         if let remote = model.lastRemoteCommand {
                             Text("최근 iPhone 요청: \(remote.kind.displayName) · \(remote.status.displayName)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let message = model.remoteProcessingStatusMessage {
+                            Text(message)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

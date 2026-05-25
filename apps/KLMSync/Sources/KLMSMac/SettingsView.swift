@@ -73,6 +73,29 @@ struct SettingsView: View {
                 }
             }
 
+            Section("iPhone") {
+                Toggle(
+                    "iPhone 요청 자동 처리",
+                    isOn: Binding(
+                        get: { model.remoteProcessingEnabled },
+                        set: { model.setRemoteProcessingEnabled($0) }
+                    )
+                )
+                LabeledContent("처리 상태") {
+                    Text(model.remoteProcessingStatusMessage ?? "대기 중")
+                        .foregroundStyle(.secondary)
+                }
+                if let remote = model.lastRemoteCommand {
+                    LabeledContent("최근 요청") {
+                        Text("\(remote.kind.displayName) · \(remote.status.displayName)")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text("iPhone은 CloudKit private database에 실행 요청만 올립니다. Mac 앱이 켜져 있고 이 옵션이 켜져 있어야 요청이 처리됩니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("파일") {
                 configToggle("파일 변경 없으면 다운로드 확인 건너뛰기", .fileSkipDownloadWhenPreviewEmpty, defaultValue: true)
                 configToggle("새 다운로드 임시 폴더 유지", .fileKeepFreshDownloads)
