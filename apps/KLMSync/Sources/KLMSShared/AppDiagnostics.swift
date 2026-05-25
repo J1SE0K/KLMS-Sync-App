@@ -51,6 +51,8 @@ public struct KLMSCodeSigningInfo: Sendable, Equatable {
     public var verificationSucceeded: Bool?
     public var verificationOutput: String
     public var validIdentityCount: Int?
+    public var entitlementsOutput: String
+    public var cloudKitEntitled: Bool
     public var rawOutput: String
 
     public init(
@@ -60,6 +62,8 @@ public struct KLMSCodeSigningInfo: Sendable, Equatable {
         verificationSucceeded: Bool? = nil,
         verificationOutput: String = "",
         validIdentityCount: Int? = nil,
+        entitlementsOutput: String = "",
+        cloudKitEntitled: Bool = false,
         rawOutput: String = ""
     ) {
         self.signature = signature
@@ -68,6 +72,8 @@ public struct KLMSCodeSigningInfo: Sendable, Equatable {
         self.verificationSucceeded = verificationSucceeded
         self.verificationOutput = verificationOutput
         self.validIdentityCount = validIdentityCount
+        self.entitlementsOutput = entitlementsOutput
+        self.cloudKitEntitled = cloudKitEntitled
         self.rawOutput = rawOutput
     }
 
@@ -119,6 +125,10 @@ public struct KLMSCodeSigningInfo: Sendable, Equatable {
             executable: "/usr/bin/codesign",
             arguments: ["--verify", "--deep", "--strict", "--verbose=4", bundleURL.path]
         )
+        let entitlementsOutput = runProcess(
+            executable: "/usr/bin/codesign",
+            arguments: ["-d", "--entitlements", ":-", bundleURL.path]
+        )
         let identityOutput = runProcess(
             executable: "/usr/bin/security",
             arguments: ["find-identity", "-v", "-p", "codesigning"]
@@ -130,6 +140,9 @@ public struct KLMSCodeSigningInfo: Sendable, Equatable {
             verificationSucceeded: verification.status == 0,
             verificationOutput: verification.output,
             validIdentityCount: validIdentityCount(from: identityOutput),
+            entitlementsOutput: entitlementsOutput,
+            cloudKitEntitled: entitlementsOutput.contains("com.apple.developer.icloud-services")
+                && entitlementsOutput.contains("CloudKit"),
             rawOutput: codeSignOutput
         )
     }

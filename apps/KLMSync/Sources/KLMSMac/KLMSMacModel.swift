@@ -214,6 +214,13 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func setRemoteProcessingEnabled(_ enabled: Bool) {
+        if enabled, !appDiagnostics.codeSigning.cloudKitEntitled {
+            remoteProcessingEnabled = false
+            UserDefaults.standard.set(false, forKey: Self.remoteProcessingEnabledKey)
+            remoteProcessingStatusMessage = "CloudKit 권한이 없어 iPhone 요청 자동 처리를 켤 수 없습니다."
+            errorMessage = "iPhone 원격 요청은 Apple Developer iCloud container/provisioning 설정 후 사용할 수 있습니다."
+            return
+        }
         remoteProcessingEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: Self.remoteProcessingEnabledKey)
         configureRemotePolling()
@@ -645,6 +652,13 @@ final class KLMSMacModel: ObservableObject {
 
     func processRemoteCommands(silent: Bool = false) async {
         #if canImport(CloudKit)
+        guard appDiagnostics.codeSigning.cloudKitEntitled else {
+            remoteProcessingStatusMessage = "CloudKit 권한이 없어 iPhone 요청을 확인할 수 없습니다."
+            if !silent {
+                errorMessage = "iPhone 원격 요청은 Apple Developer iCloud container/provisioning 설정 후 사용할 수 있습니다."
+            }
+            return
+        }
         guard runningCommand == nil else {
             if !silent {
                 remoteProcessingStatusMessage = "동기화 실행 중에는 iPhone 요청을 처리하지 않습니다."
@@ -724,12 +738,20 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func refreshAppDiagnostics() {
-        appDiagnostics = KLMSAppDiagnostics.collect(
+        let diagnostics = KLMSAppDiagnostics.collect(
             bundleURL: Bundle.main.bundleURL,
             bundleIdentifier: Bundle.main.bundleIdentifier,
             paths: paths,
             payloadVersion: payload?.version
         )
+        appDiagnostics = diagnostics
+        if remoteProcessingEnabled, !diagnostics.codeSigning.cloudKitEntitled {
+            remoteProcessingEnabled = false
+            UserDefaults.standard.set(false, forKey: Self.remoteProcessingEnabledKey)
+            remotePollingTask?.cancel()
+            remotePollingTask = nil
+            remoteProcessingStatusMessage = "CloudKit 권한이 없어 iPhone 요청 자동 처리를 껐습니다."
+        }
     }
 
     private func openSystemSettingsPane(_ text: String) {

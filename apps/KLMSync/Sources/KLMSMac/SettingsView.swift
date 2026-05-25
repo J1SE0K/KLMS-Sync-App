@@ -74,6 +74,10 @@ struct SettingsView: View {
             }
 
             Section("iPhone") {
+                LabeledContent("CloudKit 권한") {
+                    Text(model.appDiagnostics.codeSigning.cloudKitEntitled ? "설정됨" : "설정 필요")
+                        .foregroundStyle(model.appDiagnostics.codeSigning.cloudKitEntitled ? Color.secondary : Color.orange)
+                }
                 Toggle(
                     "iPhone 요청 자동 처리",
                     isOn: Binding(
@@ -81,6 +85,7 @@ struct SettingsView: View {
                         set: { model.setRemoteProcessingEnabled($0) }
                     )
                 )
+                .disabled(!model.appDiagnostics.codeSigning.cloudKitEntitled)
                 LabeledContent("처리 상태") {
                     Text(model.remoteProcessingStatusMessage ?? "대기 중")
                         .foregroundStyle(.secondary)
