@@ -27,7 +27,7 @@ tools/build_klms_mac_app.sh
 
 The bundle is written to `~/Applications/KLMS Sync.app` by default. The build script injects the current engine code into the app resource bundle as `EnginePayload`; private runtime data stays in `~/Library/Application Support/KLMSNotesSync` and is preserved by the installer. Set `DIST_DIR=/path/to/output` when a different output directory is needed.
 
-CloudKit signing is opt-in for local builds. A Mac or iPhone app with iCloud entitlements needs a matching Apple Developer App ID, provisioning profile, and iCloud container; Apple Personal Team/free Apple ID signing does not support the iCloud capability. Adding the entitlement without that provisioning can make the app fail to launch. The default iPhone entitlement file is intentionally empty so the app can run on a free account with remote buttons disabled. After the CloudKit container is ready, build the Mac app with `ENABLE_CLOUDKIT_ENTITLEMENT=1 ICLOUD_CONTAINER_IDENTIFIER=iCloud.<your.container> tools/build_klms_mac_app.sh`, and enable the same iCloud container on the iPhone target.
+CloudKit signing is opt-in for local builds. A Mac or iPhone app with iCloud entitlements needs a matching Apple Developer App ID, provisioning profile, and iCloud container; Apple Personal Team/free Apple ID signing does not support the iCloud capability. Adding the entitlement without that provisioning can make the app fail to launch. The default iPhone entitlement file is intentionally empty so the app can run on a free account with remote buttons disabled. After the CloudKit container is ready, build the Mac app with `ENABLE_CLOUDKIT_ENTITLEMENT=1 ICLOUD_CONTAINER_IDENTIFIER=iCloud.<your.container> tools/build_klms_mac_app.sh`, enable the same iCloud container on the iPhone target, and add `KLMS_ENABLE_CLOUDKIT` to the iPhone target's Swift active compilation conditions.
 
 ## iPhone companion
 
@@ -72,6 +72,7 @@ This launches the companion UI with remote execution disabled. For CloudKit remo
 - bundle identifier matched to the same Apple developer team as the Mac app;
 - iCloud capability enabled with CloudKit;
 - `Config/KLMSiOS.entitlements` attached and using the same iCloud container as the Mac app;
+- `KLMS_ENABLE_CLOUDKIT` added to Swift active compilation conditions;
 - a matching iOS runtime/device support package installed in Xcode.
 
 If the app is ad-hoc signed, macOS can treat each rebuilt bundle as a different privacy subject. When Notes automation works from Terminal/Codex but fails from `KLMS Sync.app`, reset the app privacy records and grant them again:

@@ -1,9 +1,5 @@
 import SwiftUI
 
-#if canImport(Security)
-import Security
-#endif
-
 #if canImport(KLMSShared)
 import KLMSShared
 #endif
@@ -34,17 +30,12 @@ final class CompanionModel: ObservableObject {
             self.remoteAvailabilityMessage = ""
             return
         }
-        #if canImport(CloudKit)
-        if CloudKitRuntimeAccess.isEntitled {
-            self.store = CloudKitCommandStore()
-            self.remoteAvailabilityMessage = ""
-        } else {
-            self.store = nil
-            self.remoteAvailabilityMessage = "현재 iPhone 앱은 CloudKit 권한 없이 빌드되었습니다. 무료 Apple ID에서는 앱 화면 확인만 가능하고, 원격 실행 요청은 비활성화됩니다."
-        }
+        #if canImport(CloudKit) && KLMS_ENABLE_CLOUDKIT
+        self.store = CloudKitCommandStore()
+        self.remoteAvailabilityMessage = ""
         #else
-        self.store = store
-        self.remoteAvailabilityMessage = "이 빌드는 CloudKit을 사용할 수 없습니다."
+        self.store = nil
+        self.remoteAvailabilityMessage = "현재 iPhone 앱은 CloudKit 원격 기능을 끈 상태로 빌드되었습니다. 무료 Apple ID에서는 앱 화면 확인만 가능하고, 원격 실행 요청은 비활성화됩니다."
         #endif
     }
 
@@ -446,32 +437,5 @@ private struct ErrorBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.red.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-private enum CloudKitRuntimeAccess {
-    static var isEntitled: Bool {
-        #if canImport(CloudKit) && canImport(Security)
-        guard let task = SecTaskCreateFromSelf(nil),
-              let value = SecTaskCopyValueForEntitlement(
-                  task,
-                  "com.apple.developer.icloud-services" as CFString,
-                  nil
-              ) else {
-            return false
-        }
-        if let services = value as? [String] {
-            return services.contains("CloudKit")
-        }
-        if let services = value as? [NSString] {
-            return services.contains { $0 as String == "CloudKit" }
-        }
-        if let service = value as? String {
-            return service == "CloudKit"
-        }
-        return false
-        #else
-        return false
-        #endif
     }
 }
