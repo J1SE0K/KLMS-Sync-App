@@ -110,15 +110,45 @@ class FetchPagesBackendTests(unittest.TestCase):
     def test_complete_recent_cached_pages_reuses_full_url_set(self) -> None:
         url = "https://klms.kaist.ac.kr/course/view.php?id=1"
         page = {"requestedUrl": url, "html": "<html>cached</html>"}
+        now = fetch_pages_backend.now_utc_iso()
 
         reused = fetch_pages_backend.complete_recent_cached_pages(
             urls=[url],
             previous_lookup={url: page},
-            context_state={"last_run_at": fetch_pages_backend.now_utc_iso()},
+            context_state={
+                "last_run_at": now,
+                "urls": {
+                    url: {
+                        "last_fetched_at": now,
+                        "fingerprint": fetch_pages_backend.page_fingerprint(page),
+                    }
+                },
+            },
             max_age_seconds=900,
         )
 
         self.assertEqual(reused, [page])
+
+    def test_complete_recent_cached_pages_requires_each_url_to_be_fresh(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/courseboard/view.php?id=1"
+        page = {"requestedUrl": url, "html": "<html>stale board</html>"}
+
+        reused = fetch_pages_backend.complete_recent_cached_pages(
+            urls=[url],
+            previous_lookup={url: page},
+            context_state={
+                "last_run_at": fetch_pages_backend.now_utc_iso(),
+                "urls": {
+                    url: {
+                        "last_fetched_at": "2026-04-01T00:00:00Z",
+                        "fingerprint": fetch_pages_backend.page_fingerprint(page),
+                    }
+                },
+            },
+            max_age_seconds=900,
+        )
+
+        self.assertIsNone(reused)
 
     def test_complete_recent_cached_pages_requires_every_url(self) -> None:
         url = "https://klms.kaist.ac.kr/course/view.php?id=1"
@@ -245,6 +275,72 @@ class FetchPagesBackendTests(unittest.TestCase):
             self.assertEqual(status, 0)
             self.assertTrue(fetch_mock.called)
             self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), [page])
+
+    def test_fallback_page_replaces_stale_previous_output_when_reused(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/courseboard/view.php?id=1"
+        old_page = {"requestedUrl": url, "url": url, "title": "Board", "html": "<html>old</html>"}
+        fallback_page = {
+            "requestedUrl": url,
+            "url": url,
+            "title": "Board",
+            "html": "<html>fresh pagination</html>",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_path = root / "pages.json"
+            state_path = root / "fetch_state.json"
+            fallback_path = root / "fallback.json"
+            summary_path = root / "summary.json"
+            out_path.write_text(json.dumps([old_page]), encoding="utf-8")
+            fallback_path.write_text(json.dumps([fallback_page]), encoding="utf-8")
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "contexts": {
+                            "notice-supplemental-primary-pages": {
+                                "last_run_at": fetch_pages_backend.now_utc_iso(),
+                                "urls": {
+                                    url: {
+                                        "last_fetched_at": "2026-04-01T00:00:00Z",
+                                        "fingerprint": fetch_pages_backend.page_fingerprint(old_page),
+                                    }
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(fetch_pages_backend, "fetch_pages_with_safari") as fetch_mock:
+                with mock.patch(
+                    "sys.argv",
+                    [
+                        "fetch_pages_backend.py",
+                        "--backend=safari",
+                        "--mode=auto",
+                        "--context=notice-supplemental-primary-pages",
+                        "--out",
+                        str(out_path),
+                        "--cache-state",
+                        str(state_path),
+                        "--summary-out",
+                        str(summary_path),
+                        "--fallback-pages-json",
+                        str(fallback_path),
+                        "--reuse-fallback-always-fetch",
+                        "--always-fetch-pattern",
+                        r"/mod/courseboard/view\.php",
+                        "--complete-reuse-seconds=900",
+                        url,
+                    ],
+                ):
+                    status = fetch_pages_backend.main()
+
+            self.assertEqual(status, 0)
+            self.assertFalse(fetch_mock.called)
+            self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), [fallback_page])
 
     def test_require_all_missing_pages_fails_without_overwriting_previous_output(self) -> None:
         url = "https://klms.kaist.ac.kr/my/"

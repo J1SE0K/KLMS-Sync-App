@@ -106,7 +106,7 @@ def main() -> int:
     fallback_lookup = load_fallback_page_lookup(args.fallback_pages_json, urls)
     fallback_url_set = set(fallback_lookup)
     if fallback_lookup:
-        previous_lookup.update({url: page for url, page in fallback_lookup.items() if url not in previous_lookup})
+        previous_lookup.update(fallback_lookup)
         seed_context_state_from_fallback(
             context_state=context_state,
             fallback_lookup=fallback_lookup,
@@ -524,17 +524,23 @@ def complete_recent_cached_pages(
     context_state: dict[str, Any],
     max_age_seconds: int,
 ) -> list[dict[str, Any]] | None:
-    last_run_at = parse_iso_datetime(str(context_state.get("last_run_at") or ""))
     now = parse_iso_datetime(now_utc_iso())
-    if last_run_at is None or now is None:
-        return None
-    if (now - last_run_at).total_seconds() > max(0, max_age_seconds):
+    if now is None:
         return None
 
     pages: list[dict[str, Any]] = []
+    url_state = context_state.get("urls", {})
     for url in urls:
         page = previous_lookup.get(url)
         if page is None or looks_like_login_page_payload(page):
+            return None
+        metadata = url_state.get(url, {})
+        fetched_at = parse_iso_datetime(str(metadata.get("last_fetched_at") or ""))
+        if fetched_at is None:
+            return None
+        if (now - fetched_at).total_seconds() > max(0, max_age_seconds):
+            return None
+        if metadata.get("fingerprint") and metadata.get("fingerprint") != page_fingerprint(page):
             return None
         pages.append(page)
     return pages
