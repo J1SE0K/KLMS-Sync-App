@@ -41,6 +41,8 @@ yarn-error.log*
 DerivedData/
 *.dSYM/
 apps/KLMSync/dist/
+apps/KLMSync/Xcode/**/build/
+*.xcuserdata/
 
 # Logs and temporary files
 *.log

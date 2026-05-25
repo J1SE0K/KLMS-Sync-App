@@ -35,12 +35,38 @@ The iPhone app only creates `RunCommand` records and reads sanitized status coun
 
 On the Mac app, turn on `iPhone 요청 자동 처리` from the command panel or Settings > iPhone. The Mac app polls CloudKit every 20 seconds while it is running, marks old pending requests as `Mac 응답 없음`, and executes only one sync command at a time.
 
-For an actual device build, create or configure an Xcode iOS app target with:
+The checked-in iPhone Xcode project is generated at:
+
+```sh
+apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodeproj
+```
+
+Regenerate it after adding/removing shared source files:
+
+```sh
+tools/generate_klms_ios_xcode_project.py
+```
+
+Compile the iPhone companion for the iOS Simulator SDK without signing:
+
+```sh
+tools/build_klms_ios_sim.sh
+```
+
+The build product is written under `/private/tmp/klms-ios-build`. This avoids Xcode build database writes inside the repository.
+
+Open the iPhone project in Xcode:
+
+```sh
+tools/open_klms_ios_project.sh
+```
+
+For an actual iPhone device build, configure the generated Xcode target with:
 
 - bundle identifier matched to the same Apple developer team as the Mac app;
 - iCloud capability enabled with CloudKit;
 - `Config/KLMSiOS.entitlements` attached and using the same iCloud container as the Mac app;
-- the `KLMSiOS` and `KLMSShared` source folders included in the target.
+- a matching iOS runtime/device support package installed in Xcode.
 
 If the app is ad-hoc signed, macOS can treat each rebuilt bundle as a different privacy subject. When Notes automation works from Terminal/Codex but fails from `KLMS Sync.app`, reset the app privacy records and grant them again:
 

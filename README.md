@@ -41,7 +41,7 @@ tools/build_klms_mac_app.sh
 
 빌드 결과는 기본적으로 `~/Applications/KLMS Sync.app`에 생성된다. 이 번들은 현재 레포의 엔진 코드를 앱 리소스 `EnginePayload`로 포함하고, 실행 시 설치본의 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`, `kaikey_state.json`은 덮어쓰지 않는다. `Documents`/iCloud-backed 폴더 안에서는 macOS File Provider 메타데이터 때문에 ad-hoc codesign이 실패할 수 있어 앱 번들은 사용자 Applications 폴더에 둔다. 다른 위치가 필요하면 `DIST_DIR=/path/to/output tools/build_klms_mac_app.sh`처럼 지정한다.
 
-iPhone companion 타깃은 같은 package의 `KLMSiOS`에 있고, CloudKit private database를 통해 원격 실행 요청과 sanitized 상태 숫자를 주고받는다. 실제 KLMS scraping과 macOS 앱 연동은 Mac 앱이 담당한다. Mac 앱에서 `iPhone 요청 자동 처리`를 켜두면 CloudKit 요청을 주기적으로 확인해 한 번에 하나씩 실행한다.
+iPhone companion 타깃은 같은 package의 `KLMSiOS`에 있고, CloudKit private database를 통해 원격 실행 요청과 sanitized 상태 숫자를 주고받는다. 실제 KLMS scraping과 macOS 앱 연동은 Mac 앱이 담당한다. Mac 앱에서 `iPhone 요청 자동 처리`를 켜두면 CloudKit 요청을 주기적으로 확인해 한 번에 하나씩 실행한다. iPhone용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodeproj`에 생성되어 있고, `tools/build_klms_ios_sim.sh`로 simulator SDK 컴파일을 확인한다.
 
 ## 실행 파일
 
