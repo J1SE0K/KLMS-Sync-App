@@ -105,6 +105,12 @@ final class CompanionModel: ObservableObject {
     }
 
     var statusLine: String {
+        if let authDigits = status.authDigits {
+            return "KAIST 인증 화면에서 \(authDigits)를 선택해야 합니다."
+        }
+        if status.loginRequired {
+            return "Mac에서 KLMS 로그인을 다시 확인해야 합니다."
+        }
         guard let latestCommand, let latestDisplayStatus else {
             return "Mac 앱이 아직 상태를 올린 적 없습니다."
         }
@@ -120,6 +126,16 @@ final class CompanionModel: ObservableObject {
         case .macUnavailable:
             return "Mac 앱 응답 없음. Mac에서 로컬 원격 제어를 켜야 합니다."
         }
+    }
+
+    var loginAttentionMessage: String? {
+        if let authDigits = status.authDigits {
+            return "KAIST 인증 번호 \(authDigits)를 휴대폰 인증 화면에서 선택하면 Mac 동기화가 계속됩니다."
+        }
+        if status.loginRequired {
+            return "KLMS 로그인이 풀렸을 수 있습니다. Mac에서 Safari KLMS 로그인을 완료한 뒤 다시 확인해 주세요."
+        }
+        return nil
     }
 
     func createCommand(_ kind: RemoteCommandKind) async {
@@ -202,6 +218,9 @@ struct CompanionRootView: View {
                     LocalConnectionPanel(model: model)
                     if !model.localRemoteConfigured {
                         InfoBanner(message: model.remoteAvailabilityMessage)
+                    }
+                    if let message = model.loginAttentionMessage {
+                        LoginAttentionBanner(message: message)
                     }
                     RemoteCommandPanel(model: model)
                     RecentRemoteCommandsView(commands: model.recentCommands)
@@ -310,6 +329,12 @@ private struct RemoteStatusHeader: View {
     }
 
     private var statusTitle: String {
+        if model.status.authDigits != nil {
+            return "인증 번호 선택 필요"
+        }
+        if model.status.loginRequired {
+            return "KLMS 로그인 필요"
+        }
         guard let latest = model.latestCommand,
               let status = model.latestDisplayStatus else {
             return "대기 중"
@@ -318,32 +343,41 @@ private struct RemoteStatusHeader: View {
     }
 
     private var statusImage: String {
+        if model.status.authDigits != nil {
+            return "key"
+        }
+        if model.status.loginRequired {
+            return "person.crop.circle.badge.exclamationmark"
+        }
         switch model.latestDisplayStatus {
         case .pending:
-            "clock"
+            return "clock"
         case .running:
-            "arrow.triangle.2.circlepath"
+            return "arrow.triangle.2.circlepath"
         case .completed:
-            "checkmark.circle"
+            return "checkmark.circle"
         case .failed:
-            "xmark.octagon"
+            return "xmark.octagon"
         case .macUnavailable:
-            "macbook.and.iphone"
+            return "macbook.and.iphone"
         case nil:
-            "iphone"
+            return "iphone"
         }
     }
 
     private var statusColor: Color {
+        if model.status.loginRequired {
+            return .orange
+        }
         switch model.latestDisplayStatus {
         case .pending, .running:
-            .blue
+            return .blue
         case .completed:
-            .green
+            return .green
         case .failed, .macUnavailable:
-            .orange
+            return .orange
         case nil:
-            .secondary
+            return .secondary
         }
     }
 }
@@ -459,7 +493,11 @@ private struct RemoteCommandRow: View {
                 Text(command.displayStatus().displayName)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(statusColor)
-                if command.loginRequired {
+                if let authDigits = command.summary.authDigits {
+                    Text("인증 \(authDigits)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.orange)
+                } else if command.loginRequired {
                     Text("로그인 필요")
                         .font(.caption2)
                         .foregroundStyle(.orange)
@@ -531,6 +569,20 @@ private struct ErrorBanner: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.red.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct LoginAttentionBanner: View {
+    var message: String
+
+    var body: some View {
+        Label(message, systemImage: "key")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.orange)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.orange.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
