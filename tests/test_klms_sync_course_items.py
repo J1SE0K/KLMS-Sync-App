@@ -205,6 +205,69 @@ class CourseItemParsingTests(unittest.TestCase):
         self.assertEqual(items[0]["timing_precision"], "time-range")
         self.assertIn("오후 2:30 - 오후 3:30", items[0]["due"])
 
+    def test_notice_digest_exam_page_keeps_course_and_class_time(self) -> None:
+        digest = {
+            "courses": [
+                {
+                    "course": "영미 단편소설",
+                    "notices": [
+                        {
+                            "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189366&bwid=434501",
+                            "title": "기말 고사 건 / On Final-term Exam",
+                            "body_text": (
+                                "시험은 2026년 6월 4일 수업 시간에 봅니다. "
+                                "The exam will be taken on the 4th of June at the classroom."
+                            ),
+                        }
+                    ],
+                }
+            ]
+        }
+        pages = klms_sync.build_notice_digest_candidate_pages(digest)
+        class_times = klms_sync.normalize_class_time_overrides(
+            {"영미 단편소설": "목요일 14:30-15:30"}
+        )
+
+        items = klms_sync.apply_exam_class_time_fallback(
+            klms_sync.extract_exam_items(pages, {"unrelated": "Other Course"}),
+            class_times,
+        )
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["course"], "영미 단편소설")
+        self.assertEqual(items[0]["title"], "기말고사")
+        self.assertEqual(items[0]["timing_precision"], "class-time")
+        self.assertEqual(items[0]["sync_start"], "2026-06-04T14:30:00+09:00")
+        self.assertEqual(items[0]["sync_due"], "2026-06-04T15:30:00+09:00")
+
+    def test_past_exam_items_are_not_visible(self) -> None:
+        past = {
+            "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=100007",
+            "type": "exam",
+            "category": "exam",
+            "course": "Example Course",
+            "title": "중간고사",
+            "due": "2020년 4월 16일",
+            "sync_due": "2020-04-16T15:30:00+09:00",
+            "approval_status": "approved",
+        }
+        future = {
+            "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=100008",
+            "type": "exam",
+            "category": "exam",
+            "course": "Example Course",
+            "title": "기말고사",
+            "due": "2099년 6월 4일",
+            "sync_due": "2099-06-04T15:30:00+09:00",
+            "approval_status": "approved",
+        }
+
+        approved, candidates = klms_sync.split_exam_items_for_confirmation([past, future])
+
+        self.assertEqual(candidates, [])
+        self.assertEqual(len(approved), 1)
+        self.assertEqual(approved[0]["title"], "기말고사")
+
     def test_success_payload_keeps_completed_assignment_records(self) -> None:
         completed = {
             "url": "https://klms.kaist.ac.kr/mod/url/view.php?id=100004",

@@ -36,6 +36,7 @@ final class CompanionModel: ObservableObject {
         didSet { Self.persistLocalToken(localToken) }
     }
 
+    private var lastAuthSuccessAlertMessage = ""
     private let cloudStore: (any RemoteCommandStore)?
 
     private static let localHostKey = "KLMSLocalRemoteHost"
@@ -284,7 +285,16 @@ final class CompanionModel: ObservableObject {
     }
 
     private func apply(_ response: LocalRemoteResponse) {
+        let previousAuthStatusMessage = status.authStatusMessage
         status = response.status
+        if let authStatusMessage = response.status.authStatusMessage, !authStatusMessage.isEmpty {
+            if authStatusMessage != lastAuthSuccessAlertMessage || previousAuthStatusMessage == nil {
+                userAlert = UserAlert(title: "인증 완료", message: authStatusMessage)
+            }
+            lastAuthSuccessAlertMessage = authStatusMessage
+        } else {
+            lastAuthSuccessAlertMessage = ""
+        }
         if let latestCommand = response.latestCommand {
             recentCommands = [latestCommand]
         }

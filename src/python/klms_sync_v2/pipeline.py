@@ -168,7 +168,7 @@ def build_sync_state(
             state.assignments.append(active)
 
     def add_event(item: Event) -> None:
-        if item.category == "exam_candidate" and not include_past and is_past(item.sync_due, generated_at):
+        if item.category in {"exam", "exam_candidate"} and not include_past and is_past(item.sync_due, generated_at):
             return
         key = (item.url, item.category)
         if key in seen_events:

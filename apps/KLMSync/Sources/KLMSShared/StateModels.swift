@@ -148,13 +148,27 @@ public extension LegacySyncState.Content {
         var nextAssignmentCandidates: [StateItem] = []
         var nextCompletedAssignments: [StateItem] = []
         var nextAssignmentRecords: [StateItem] = []
+        var nextExamItems: [StateItem] = []
+        var nextExamCandidates: [StateItem] = []
         var assignmentIndexes: [String: Int] = [:]
         var candidateIndexes: [String: Int] = [:]
         var completedIndexes: [String: Int] = [:]
         var recordIndexes: [String: Int] = [:]
+        var examIndexes: [String: Int] = [:]
+        var examCandidateIndexes: [String: Int] = [:]
 
         func upsert(_ item: StateItem, into items: inout [StateItem], indexes: inout [String: Int]) {
             let key = item.dashboardIdentityKey
+            if let index = indexes[key] {
+                items[index] = item
+            } else {
+                indexes[key] = items.count
+                items.append(item)
+            }
+        }
+
+        func upsertExam(_ item: StateItem, into items: inout [StateItem], indexes: inout [String: Int]) {
+            let key = item.dashboardExamIdentityKey
             if let index = indexes[key] {
                 items[index] = item
             } else {
@@ -181,6 +195,31 @@ public extension LegacySyncState.Content {
             } else {
                 upsert(item, into: &nextAssignments, indexes: &assignmentIndexes)
                 appendRecord(item.dashboardMarkedActiveIfNeeded())
+            }
+        }
+
+        func processExam(_ item: StateItem, asCandidate: Bool) {
+            if item.isDashboardPastExam {
+                return
+            }
+            let override = overrides.examOverride(for: item)
+            let status = override.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if status.isDashboardIgnoredExamStatus {
+                return
+            }
+
+            var next = item.dashboardApplyingExamOverride(override)
+            if status == "approved" || status == "confirmed" || status == "active" {
+                next.type = "exam"
+                next.category = "exam"
+                upsertExam(next, into: &nextExamItems, indexes: &examIndexes)
+            } else if asCandidate {
+                next.category = "exam_candidate"
+                upsertExam(next, into: &nextExamCandidates, indexes: &examCandidateIndexes)
+            } else {
+                next.type = "exam"
+                next.category = "exam"
+                upsertExam(next, into: &nextExamItems, indexes: &examIndexes)
             }
         }
 
@@ -228,6 +267,15 @@ public extension LegacySyncState.Content {
         updated.assignmentCandidates = nextAssignmentCandidates.sorted(by: StateItem.dashboardSort)
         updated.completedAssignments = nextCompletedAssignments.sorted(by: StateItem.dashboardSort)
         updated.assignmentRecords = nextAssignmentRecords.sorted(by: StateItem.dashboardSort)
+
+        for item in examItems {
+            processExam(item, asCandidate: false)
+        }
+        for item in examCandidates {
+            processExam(item, asCandidate: true)
+        }
+        updated.examItems = nextExamItems.sorted(by: StateItem.dashboardSort)
+        updated.examCandidates = nextExamCandidates.sorted(by: StateItem.dashboardSort)
         return updated
     }
 }
@@ -235,6 +283,10 @@ public extension LegacySyncState.Content {
 private extension String {
     var isDashboardIgnoredAssignmentStatus: Bool {
         ["ignored", "hidden", "skip"].contains(trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    var isDashboardIgnoredExamStatus: Bool {
+        ["ignored", "hidden", "skip", "completed"].contains(trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 }
 
@@ -253,6 +305,63 @@ private extension StateItem {
                     .joined(separator: " ")
             }
             .joined(separator: "::")
+    }
+
+    var dashboardExamIdentityKey: String {
+        let url = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !url.isEmpty {
+            let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return title.isEmpty ? url : "\(url)::\(title)"
+        }
+        return [course, title, syncDue.isEmpty ? due : syncDue]
+            .map {
+                $0
+                    .split(whereSeparator: \.isNewline)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " ")
+            }
+            .joined(separator: "::")
+    }
+
+    var isDashboardPastExam: Bool {
+        let normalizedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalizedCategory == "exam" || normalizedCategory == "exam_candidate" else {
+            return false
+        }
+        let rawDue = syncDue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawDue.isEmpty, let due = ISO8601DateFormatter().date(from: rawDue) else {
+            return false
+        }
+        return due < Date()
+    }
+
+    func dashboardApplyingExamOverride(_ override: ExamOverride) -> StateItem {
+        var item = self
+        let due = override.due.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !due.isEmpty {
+            item.due = due
+        }
+        let syncStart = override.syncStart.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !syncStart.isEmpty {
+            item.syncStart = syncStart
+        }
+        let syncDue = override.syncDue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !syncDue.isEmpty {
+            item.syncDue = syncDue
+        }
+        let location = override.location.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !location.isEmpty {
+            item.location = location
+        }
+        let coverageSummary = override.coverageSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let coverage = override.coverage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !coverageSummary.isEmpty {
+            item.coverageSummary = coverageSummary
+        } else if !coverage.isEmpty {
+            item.coverageSummary = coverage
+        }
+        return item
     }
 
     var isDashboardManualCompletedRecord: Bool {
