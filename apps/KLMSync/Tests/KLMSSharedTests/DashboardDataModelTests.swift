@@ -65,6 +65,59 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertEqual(updated.content.assignmentRecords.first?.recordStatus, "completed")
     }
 
+    func testExamOverridePromotesCandidateToVisibleExamImmediately() throws {
+        let item = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=8",
+            title: "기말고사",
+            course: "영미 단편소설",
+            category: "exam_candidate",
+            syncDue: "2099-06-04T15:30:00+09:00"
+        )
+        let key = ManualOverridesSnapshot.preferredExamOverrideKey(for: item)
+        let state = LegacySyncState(content: .init(examCandidates: [item]))
+        let updated = state.applyingManualOverrides(.init(
+            exams: [
+                key: ExamOverride(
+                    status: "approved",
+                    due: "2099년 6월 4일 오후 2:30 - 오후 3:30",
+                    syncStart: "2099-06-04T14:30:00+09:00",
+                    syncDue: "2099-06-04T15:30:00+09:00",
+                    location: "강의실",
+                    coverage: "전체 범위"
+                )
+            ]
+        ))
+
+        XCTAssertEqual(updated.content.examCandidates.count, 0)
+        XCTAssertEqual(updated.content.examItems.count, 1)
+        XCTAssertEqual(updated.content.examItems.first?.category, "exam")
+        XCTAssertEqual(updated.content.examItems.first?.syncStart, "2099-06-04T14:30:00+09:00")
+        XCTAssertEqual(updated.content.examItems.first?.location, "강의실")
+        XCTAssertEqual(updated.content.examItems.first?.coverageSummary, "전체 범위")
+    }
+
+    func testPastExamsAreHiddenFromDashboardState() throws {
+        let exam = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=9",
+            title: "중간고사",
+            course: "영미 단편소설",
+            category: "exam",
+            syncDue: "2020-04-16T15:30:00+09:00"
+        )
+        let candidate = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=10",
+            title: "기말고사",
+            course: "영미 단편소설",
+            category: "exam_candidate",
+            syncDue: "2020-06-04T15:30:00+09:00"
+        )
+        let state = LegacySyncState(content: .init(examItems: [exam], examCandidates: [candidate]))
+        let updated = state.applyingManualOverrides(.init())
+
+        XCTAssertEqual(updated.content.examItems.count, 0)
+        XCTAssertEqual(updated.content.examCandidates.count, 0)
+    }
+
     func testClearedManualCompletedOverrideRestoresVisibleAssignment() throws {
         let item = try decodeStateItem(
             url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=43",
@@ -301,6 +354,9 @@ final class DashboardDataModelTests: XCTestCase {
         url: String,
         title: String = "Item",
         course: String = "Course",
+        category: String = "assignment",
+        due: String = "",
+        syncDue: String = "",
         recordStatus: String = "",
         completionReason: String = ""
     ) throws -> StateItem {
@@ -309,6 +365,9 @@ final class DashboardDataModelTests: XCTestCase {
           "url": "\(url)",
           "title": "\(title)",
           "course": "\(course)",
+          "category": "\(category)",
+          "due": "\(due)",
+          "sync_due": "\(syncDue)",
           "record_status": "\(recordStatus)",
           "completion_reason": "\(completionReason)"
         }

@@ -496,10 +496,11 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             build_course_class_time_lookup(course_pages + supplemental_sources + notice_digest_pages),
             class_time_overrides,
         )
+        exam_sources = supplemental_sources + notice_digest_pages
         resolved_exam_items = apply_exam_overrides(
             apply_exam_class_time_fallback(
                 extract_exam_items(
-                    supplemental_sources,
+                    exam_sources,
                     course_lookup,
                 ),
                 class_time_lookup,
@@ -511,11 +512,7 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             exam_overrides,
             default_status="approved",
         )
-        assignment_candidates = extract_assignment_candidate_items(
-            supplemental_sources + notice_digest_pages,
-            assignments,
-            course_lookup,
-        )
+        assignment_candidates = extract_assignment_candidate_items(exam_sources, assignments, course_lookup)
         notice_assignments = activate_notice_assignments(assignment_candidates)
         for item in notice_assignments:
             override_status = assignment_override_status(item, overrides)
@@ -535,7 +532,7 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             else:
                 assignments.append(item)
                 assignment_records.append(assignment_record(item, "active"))
-        help_desk_items = extract_help_desk_items(supplemental_sources, course_lookup)
+        help_desk_items = extract_help_desk_items(exam_sources, course_lookup)
         approved_exam_items, exam_candidates = split_exam_items_for_confirmation(resolved_exam_items)
         direct_approved_exam_items, direct_exam_candidates = split_exam_items_for_confirmation(
             resolved_direct_exam_items
@@ -3245,7 +3242,8 @@ def extract_exam_items(pages: list[dict[str, Any]], course_lookup: dict[str, str
 
         requested_url = page.get("requestedUrl", "") or page.get("url", "")
         page_identifier = url_query_id(requested_url)
-        if course_lookup and page_identifier and page_identifier not in course_lookup:
+        explicit_course = normalize_whitespace(str(page.get("course", "")))
+        if course_lookup and page_identifier and page_identifier not in course_lookup and not explicit_course:
             continue
         if (
             module_name_from_url(requested_url) == "courseboard"
@@ -3257,7 +3255,7 @@ def extract_exam_items(pages: list[dict[str, Any]], course_lookup: dict[str, str
             continue
 
         soup = BeautifulSoup(page.get("html", ""), "html.parser")
-        course = course_lookup.get(url_query_id(requested_url), "") or extract_course_name(page, soup)
+        course = course_lookup.get(url_query_id(requested_url), "") or explicit_course or extract_course_name(page, soup)
         if should_ignore_course_name(course) or should_ignore_course_url(requested_url):
             continue
         page_title = clean_title(normalize_whitespace(page.get("title", "")))
@@ -3341,7 +3339,8 @@ def extract_help_desk_items(
 
         requested_url = page.get("requestedUrl", "") or page.get("url", "")
         page_identifier = url_query_id(requested_url)
-        if course_lookup and page_identifier and page_identifier not in course_lookup:
+        explicit_course = normalize_whitespace(str(page.get("course", "")))
+        if course_lookup and page_identifier and page_identifier not in course_lookup and not explicit_course:
             continue
         if (
             module_name_from_url(requested_url) == "courseboard"
@@ -3353,7 +3352,7 @@ def extract_help_desk_items(
             continue
 
         soup = BeautifulSoup(page.get("html", ""), "html.parser")
-        course = course_lookup.get(url_query_id(requested_url), "") or extract_course_name(page, soup)
+        course = course_lookup.get(url_query_id(requested_url), "") or explicit_course or extract_course_name(page, soup)
         if should_ignore_course_name(course) or should_ignore_course_url(requested_url):
             continue
         page_title = clean_title(normalize_whitespace(page.get("title", "")))
@@ -3471,6 +3470,19 @@ def apply_exam_overrides(
     return sorted(updated_items, key=assignment_sort_key)
 
 
+def is_past_schedule_item(item: dict[str, Any]) -> bool:
+    sync_due = str(item.get("sync_due", "")).strip()
+    if not sync_due:
+        return False
+    try:
+        due_at = datetime.fromisoformat(sync_due)
+    except ValueError:
+        return False
+    if due_at.tzinfo is None:
+        due_at = due_at.replace(tzinfo=SEOUL)
+    return due_at.astimezone(SEOUL) < datetime.now(SEOUL)
+
+
 def split_exam_items_for_confirmation(
     items: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -3479,6 +3491,8 @@ def split_exam_items_for_confirmation(
 
     for item in items:
         normalized = dict(item)
+        if is_past_schedule_item(normalized):
+            continue
         status = str(normalized.pop("approval_status", "candidate")).strip().lower()
         if status in {"ignored", "hidden", "skip", "completed"}:
             continue

@@ -11,7 +11,7 @@ sys.path.insert(0, str(PROJECT_DIR / "src" / "python"))
 
 from klms_sync_v2.classifiers import classify_detail_page, classify_notice  # noqa: E402
 from klms_sync_v2.dates import is_past, parse_due_date_only, parse_due_datetime  # noqa: E402
-from klms_sync_v2.models import Assignment, Notice, Page  # noqa: E402
+from klms_sync_v2.models import Assignment, Event, Notice, Page  # noqa: E402
 from klms_sync_v2.pipeline import build_sync_state  # noqa: E402
 
 
@@ -410,7 +410,7 @@ class V2CoreTests(unittest.TestCase):
         }
 
         state = build_sync_state(
-            generated_at="2026-05-13 19:18 KST",
+            generated_at="2026-04-01 19:18 KST",
             detail_pages=[],
             notices=notices,
             overrides=overrides,
@@ -421,6 +421,27 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(state.exams[0].title, "중간고사")
         self.assertEqual(state.exams[0].sync_start, "2026-04-08T10:30:00+09:00")
         self.assertEqual(state.exams[0].coverage, "Lecture 3")
+
+    def test_past_approved_exam_is_hidden_from_state(self) -> None:
+        state = build_sync_state(
+            generated_at="2026-05-27 19:18 KST",
+            detail_pages=[],
+            notices=[],
+            source_events=[
+                Event(
+                    url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=10",
+                    course="영미 단편소설",
+                    title="중간고사",
+                    due="2026년 4월 16일 오후 2:30 - 오후 3:30",
+                    sync_due="2026-04-16T15:30:00+09:00",
+                    sync_start="2026-04-16T14:30:00+09:00",
+                    source="notice",
+                    category="exam",
+                )
+            ],
+        )
+
+        self.assertEqual(state.exams, [])
 
     def test_cli_build_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

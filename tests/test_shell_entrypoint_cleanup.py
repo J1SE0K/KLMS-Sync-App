@@ -547,6 +547,7 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
         self.assertIn('content.title = "KLMS 인증 완료"', model)
         self.assertIn('content.body = "로그인 인증이 완료됐습니다. 동기화를 계속 진행합니다."', model)
         self.assertIn('showTransientAuthStatus("인증 완료됨")', model)
+        self.assertIn("clearAuthDigitsState(showAuthenticatedMessage: true)", model)
         self.assertIn("removeDeliveredNotifications(withIdentifiers: identifiers)", model)
         self.assertNotIn("removeAllPendingNotificationRequests", model)
         self.assertNotIn("removeAllDeliveredNotifications", model)
@@ -558,6 +559,7 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
         self.assertIn("shouldShowAuthCompletion", ios_app)
         self.assertIn('return "인증 완료"', ios_app)
         self.assertIn("AuthSuccessBanner", ios_app)
+        self.assertIn('UserAlert(title: "인증 완료", message: authStatusMessage)', ios_app)
         self.assertNotIn("if let authStatusMessage = status.authStatusMessage {\n            return authStatusMessage\n        }\n        if status.loginRequired", ios_app)
         self.assertIn("? 2_000_000_000", ios_app)
 
