@@ -112,6 +112,26 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(status.phase, "idle")
         XCTAssertFalse(status.loginRequired)
         XCTAssertNil(status.authDigits)
+        XCTAssertNil(status.authStatusMessage)
+    }
+
+    func testSanitizedRemoteStatusCarriesAuthCompletionMessage() throws {
+        let status = SanitizedRemoteStatus(
+            assignments: 1,
+            exams: 2,
+            phase: "running",
+            authStatusMessage: "인증 완료됨"
+        )
+
+        let data = try JSONEncoder.klmsLocalRemote.encode(status)
+        let decoded = try JSONDecoder.klmsLocalRemote.decode(SanitizedRemoteStatus.self, from: data)
+
+        XCTAssertEqual(decoded.assignments, 1)
+        XCTAssertEqual(decoded.exams, 2)
+        XCTAssertEqual(decoded.phase, "running")
+        XCTAssertFalse(decoded.loginRequired)
+        XCTAssertNil(decoded.authDigits)
+        XCTAssertEqual(decoded.authStatusMessage, "인증 완료됨")
     }
 
     func testLocalRemoteConnectionInfoParsesCopiedMacConnectionText() {

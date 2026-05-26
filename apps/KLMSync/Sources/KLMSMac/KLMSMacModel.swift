@@ -59,6 +59,7 @@ final class KLMSMacModel: ObservableObject {
     private var localRemoteServer: LocalRemoteServer?
     private var notifiedAuthDigits = Set<String>()
     private var notifiedAuthCompletionForCurrentRun = false
+    private var lastAuthCompletionAt: Date?
     private var authStatusClearTask: Task<Void, Never>?
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
     private static let remoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
@@ -252,6 +253,8 @@ final class KLMSMacModel: ObservableObject {
         isCancellingCommand = false
         authDigitsSuppressed = false
         notifiedAuthDigits.removeAll()
+        notifiedAuthCompletionForCurrentRun = false
+        lastAuthCompletionAt = nil
         if resetSnapshot {
             snapshot = EngineSnapshot()
             launchAgentState = nil
@@ -406,8 +409,24 @@ final class KLMSMacModel: ObservableObject {
         if let liveAuthDigits {
             status.loginRequired = true
             status.authDigits = liveAuthDigits
+            status.authStatusMessage = nil
+        } else if let authStatusMessage = currentAuthStatusMessageForRemote() {
+            status.loginRequired = false
+            status.authDigits = nil
+            status.authStatusMessage = authStatusMessage
         }
         return status
+    }
+
+    private func currentAuthStatusMessageForRemote(now: Date = Date()) -> String? {
+        if let authStatusMessage {
+            return authStatusMessage
+        }
+        if let lastAuthCompletionAt,
+           now.timeIntervalSince(lastAuthCompletionAt) <= 120 {
+            return "인증 완료됨"
+        }
+        return nil
     }
 
     private func copyToPasteboard(_ value: String) {
@@ -465,6 +484,7 @@ final class KLMSMacModel: ObservableObject {
         authDigitsSuppressed = false
         notifiedAuthDigits.removeAll()
         notifiedAuthCompletionForCurrentRun = false
+        lastAuthCompletionAt = nil
         defer {
             runningCommand = nil
             isCancellingCommand = false
@@ -1436,6 +1456,7 @@ final class KLMSMacModel: ObservableObject {
         clearAuthNotifications()
         notifiedAuthDigits.removeAll()
         if showAuthenticatedMessage {
+            lastAuthCompletionAt = Date()
             showTransientAuthStatus("인증 완료됨")
             await notifyAuthCompletionIfNeeded()
         }

@@ -539,13 +539,23 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
         ).read_text(encoding="utf-8")
 
         self.assertIn("notifiedAuthCompletionForCurrentRun", model)
+        self.assertIn("lastAuthCompletionAt", model)
         self.assertIn("notifyAuthCompletionIfNeeded()", model)
+        self.assertIn("currentAuthStatusMessageForRemote", model)
+        self.assertIn("status.authStatusMessage = authStatusMessage", model)
         self.assertIn('content.title = "KLMS 인증 완료"', model)
         self.assertIn('content.body = "로그인 인증이 완료됐습니다. 동기화를 계속 진행합니다."', model)
         self.assertIn('showTransientAuthStatus("인증 완료됨")', model)
         self.assertIn("removeDeliveredNotifications(withIdentifiers: identifiers)", model)
         self.assertNotIn("removeAllPendingNotificationRequests", model)
         self.assertNotIn("removeAllDeliveredNotifications", model)
+
+        ios_app = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
+        ).read_text(encoding="utf-8")
+        self.assertIn("status.authStatusMessage", ios_app)
+        self.assertIn('return "인증 완료"', ios_app)
+        self.assertIn("? 2_000_000_000", ios_app)
 
     def test_app_notice_renderer_uses_bundled_signed_helper(self) -> None:
         model = (
