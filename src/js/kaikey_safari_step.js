@@ -83,10 +83,7 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
     !urlLower.includes("/login/") &&
     !urlLower.includes("ssologin.php")
   ) {
-    if (
-      String(options["force-twofactor"] || "") !== "1" &&
-      klmsPageLooksAuthenticated(tab)
-    ) {
+    if (klmsPageLooksAuthenticated(tab)) {
       return { status: "authenticated", url, title: readTitle(tab) };
     }
     tab.url = "https://klms.kaist.ac.kr/login/ssologin.php";
@@ -95,7 +92,7 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
     }
     return {
       status: "navigated",
-      reason: String(options["force-twofactor"] || "") === "1" ? "force-twofactor" : "unverified-klms-page",
+      reason: "unverified-klms-page",
       url
     };
   }

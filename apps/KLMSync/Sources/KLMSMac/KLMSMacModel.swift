@@ -480,7 +480,7 @@ final class KLMSMacModel: ObservableObject {
             lastCommandResult = result
             commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(result)) ?? commandHistory
             if result.loginAuthenticated {
-                await clearAuthDigitsState(showAuthenticatedMessage: result.authDigits != nil)
+                await clearAuthDigitsState(showAuthenticatedMessage: result.sawAuthDigits)
             } else if let digits = result.authDigits {
                 await notifyAuthDigitsIfNeeded(digits)
             }
@@ -1387,7 +1387,8 @@ final class KLMSMacModel: ObservableObject {
             await notifyAuthDigitsIfNeeded(digits)
         }
         if KLMSCommandRunner.outputIndicatesAuthenticatedAfterLatestAuthDigits(liveCommandOutput) {
-            await clearAuthDigitsState(showAuthenticatedMessage: liveAuthDigits != nil)
+            let sawDigits = liveAuthDigits != nil || KLMSCommandRunner.extractLatestAuthDigits(from: liveCommandOutput) != nil
+            await clearAuthDigitsState(showAuthenticatedMessage: sawDigits)
             return
         }
     }

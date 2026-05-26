@@ -385,10 +385,6 @@ klms_try_login_assist() {
   fi
 }
 
-klms_try_login_assist_force_code() {
-  KLMS_LOGIN_ASSIST_FORCE_TWOFACTOR=1 klms_try_login_assist
-}
-
 klms_try_kaikey_auto_login() {
   klms_try_login_assist
 }
@@ -482,7 +478,12 @@ klms_require_login() {
     if klms_login_assist_enabled; then
       app_run_login_assist_attempted=1
       if klms_try_login_assist; then
+        klms_write_login_status_ok
+        KLMS_LOGIN_PREFETCH_READY=0
         KLMS_LOGIN_ASSIST_READY=1
+        return 0
+      else
+        return 1
       fi
     fi
   fi
@@ -536,11 +537,7 @@ klms_require_login() {
   )
 
   if ! klms_check_login_pages "$pages_json" "KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘." 0; then
-    if [[ "$app_run_login_assist_attempted" == "1" ]]; then
-      klms_try_login_assist_force_code || true
-      print -r -- "KAIST 인증 번호가 앱에 표시되면 휴대폰에서 같은 번호를 선택해 줘." >&2
-      return 1
-    elif klms_try_login_assist; then
+    if klms_try_login_assist; then
       (
         cd "$SCRIPT_DIR"
         /usr/bin/env python3 "$KLMS_PYTHON_DIR/fetch_pages_backend.py" \
