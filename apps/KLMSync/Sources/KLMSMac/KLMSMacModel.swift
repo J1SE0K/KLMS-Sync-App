@@ -165,6 +165,9 @@ final class KLMSMacModel: ObservableObject {
             "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": "0",
             "NOTICE_NATIVE_PLAIN_TEXT_PASTE": "0",
             "NOTICE_NATIVE_STYLE_BUDGET_SECONDS": "60",
+            "FILE_REFRESH_MODE": "auto",
+            "FILE_FORCE_DOWNLOAD": "0",
+            "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": "1",
         ]
     }
 

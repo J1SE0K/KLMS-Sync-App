@@ -66,10 +66,9 @@ struct SettingsView: View {
                     Text("빠르게").tag("quick")
                     Text("전체").tag("full")
                 }
-                Picker("파일 모드", selection: binding(.fileRefreshMode, defaultValue: "auto")) {
+                Picker("파일 탐색 모드", selection: sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick"])) {
                     Text("자동").tag("auto")
                     Text("빠르게").tag("quick")
-                    Text("전체").tag("full")
                 }
             }
 
@@ -151,7 +150,6 @@ struct SettingsView: View {
                 configToggle("파일 변경 없으면 다운로드 확인 건너뛰기", .fileSkipDownloadWhenPreviewEmpty, defaultValue: true)
                 configToggle("새 다운로드 임시 폴더 유지", .fileKeepFreshDownloads)
                 configToggle("주차/출처 폴더 사용", .fileWeeklyFoldersEnabled)
-                configToggle("강제 재다운로드", .fileForceDownload)
                 configToggle("임시 다운로드 보관", .filePreserveDownloadArchive)
                 configText("새 파일 보관함", .fileNewFilesRoot)
                 configText("격리 폴더", .fileQuarantineRoot)
@@ -224,6 +222,22 @@ struct SettingsView: View {
             },
             set: { value in
                 model.setConfigValue(value, for: key)
+            }
+        )
+    }
+
+    private func sanitizedBinding(
+        _ key: EnvKnownKey,
+        defaultValue: String,
+        allowedValues: Set<String>
+    ) -> Binding<String> {
+        Binding(
+            get: {
+                let value = model.configValue(key)
+                return allowedValues.contains(value) ? value : defaultValue
+            },
+            set: { value in
+                model.setConfigValue(allowedValues.contains(value) ? value : defaultValue, for: key)
             }
         )
     }
