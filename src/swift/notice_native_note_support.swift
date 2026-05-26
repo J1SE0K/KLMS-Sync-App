@@ -293,7 +293,7 @@ struct ResolvedRenderedNotice {
 let defaultNoteTitle = "KLMS 공지"
 let defaultArchiveNoteTitle = "KLMS 확인한 공지"
 let nativeNoticeRenderStateVersion = 2
-let nativeNoticeRenderStyleVersion = "2026-05-27-functional-notes-v11-compact-collapse"
+let nativeNoticeRenderStyleVersion = "2026-05-27-functional-notes-v14-section-item-collapse-only"
 let readChecklistLabel = "읽음"
 let importantChecklistLabel = "중요"
 let noticeReadGuidanceLine = "\"읽음\"만 체크한 공지는 다음 동기화 때 KLMS 확인한 공지에 표시됩니다."
@@ -357,9 +357,9 @@ let noticeCollapseStyleSettleDelay: TimeInterval = 0.45
 let noticeBodyFontSize: CGFloat = 14
 let noticeMetaFontSize: CGFloat = 12
 let noticeSummaryFontSize: CGFloat = 14
-let noticeItemTitleFontSize: CGFloat = 14
-let noticeCourseHeadingFontSize: CGFloat = 14
-let noticeSectionHeadingFontSize: CGFloat = 14
+let noticeItemTitleFontSize: CGFloat = 16
+let noticeCourseHeadingFontSize: CGFloat = 17
+let noticeSectionHeadingFontSize: CGFloat = 19
 let noticeDocumentTitleFontSize: CGFloat = 14
 
 func fail(_ message: String) -> Never {

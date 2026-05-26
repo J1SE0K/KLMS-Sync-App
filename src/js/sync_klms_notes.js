@@ -6,7 +6,7 @@ const MARKER = "[[KLMS 자동 동기화]]";
 const REMINDER_MARKER_PREFIX = "KLMS_SYNC_ITEM_ID:";
 const LEGACY_REMINDER_MARKER_PREFIXES = ["KLMS_ASSIGN_ID:"];
 const REMINDER_MARKER_PREFIXES = [REMINDER_MARKER_PREFIX].concat(LEGACY_REMINDER_MARKER_PREFIXES);
-const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-27-functional-notes-v11-compact-collapse";
+const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-05-27-functional-notes-v14-section-item-collapse-only";
 let DEBUG_STDERR_ENABLED = false;
 let ACTIVE_STAGE_TELEMETRY = null;
 let COMMAND_TIMING_ENABLED = true;
@@ -932,6 +932,8 @@ function run(argv) {
           coursePagesJson,
           "--all-week-course-pages-json",
           allWeekCoursePagesJson,
+          "--course-file-manifest-json",
+          courseFileManifestJson,
           "--details-json",
           detailsJson,
           "--supplemental-pages-json",

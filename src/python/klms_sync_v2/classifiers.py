@@ -24,6 +24,12 @@ ASSIGNMENT_RESULT_TITLE_RE = re.compile(
     re.IGNORECASE,
 )
 EXAM_WORD_RE = re.compile(r"(midterm|final|exam|고사|시험)", re.IGNORECASE)
+EXAM_RESULT_TITLE_RE = re.compile(
+    r"(score|scores|grade|grades|grading|claim|statistics|result|results|posted|uploaded|"
+    r"성적|점수|채점|이의|문의|통계|결과|공개)",
+    re.IGNORECASE,
+)
+EXAM_CANCELLATION_RE = re.compile(r"(no\s+(?:midterm|final|exam)|시험\s*없|고사\s*없)", re.IGNORECASE)
 HELP_DESK_RE = re.compile(r"(help\s*desk|헬프\s*데스크|헬프데스크)", re.IGNORECASE)
 DEADLINE_RE = re.compile(
     r"(deadline|due|submit|submission|마감|기한|까지|제출)",
@@ -100,6 +106,14 @@ def clean_detail_instructions(text: str) -> str:
     ):
         return ""
     return clipped(text)
+
+
+def exam_display_title(text: str, fallback: str) -> str:
+    if re.search(r"(final|기말)", text, re.IGNORECASE):
+        return "기말고사"
+    if re.search(r"(midterm|중간)", text, re.IGNORECASE):
+        return "중간고사"
+    return one_line(fallback)
 
 
 def classify_detail_page(page: Page, generated_at: str) -> tuple[Assignment | Event | None, str]:
@@ -212,10 +226,15 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
             type="help_desk",
         ), "help-desk"
 
+    if EXAM_CANCELLATION_RE.search(text):
+        return None, "not-relevant"
+
     if EXAM_WORD_RE.search(text) and not ASSIGNMENT_WORD_RE.search(notice.title):
+        if EXAM_RESULT_TITLE_RE.search(notice.title):
+            return None, "not-relevant"
         if not due:
             return None, "missing-due"
-        title = "중간고사" if re.search(r"(midterm|중간)", text, re.IGNORECASE) else notice.title
+        title = exam_display_title(text, notice.title)
         instructions = clipped(notice.body_text or notice.summary)
         return Event(
             url=notice.url,
@@ -229,9 +248,9 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
             instructions=instructions,
             location=extract_location(instructions),
             coverage=extract_coverage(instructions),
-            category="exam_candidate",
+            category="exam",
             type="exam",
-        ), "exam-candidate"
+        ), "exam-notice"
 
     if (
         ASSIGNMENT_WORD_RE.search(text)
