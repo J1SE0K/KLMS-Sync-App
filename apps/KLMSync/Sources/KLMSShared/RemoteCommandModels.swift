@@ -1,5 +1,13 @@
 import Foundation
 
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
+
+#if canImport(Security)
+import Security
+#endif
+
 #if canImport(Network)
 import Network
 #endif
@@ -316,20 +324,162 @@ private extension String {
     }
 }
 
+public enum LocalRemoteTokenStore {
+    private static let service = "com.local.KLMSync.localRemoteToken"
+
+    public static func load(account: String) -> String? {
+        #if canImport(Security)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        #else
+        return nil
+        #endif
+    }
+
+    @discardableResult
+    public static func save(_ token: String, account: String) -> Bool {
+        #if canImport(Security)
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmedToken.data(using: .utf8), !trimmedToken.isEmpty else {
+            delete(account: account)
+            return false
+        }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let update: [String: Any] = [
+            kSecValueData as String: data,
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        if updateStatus == errSecSuccess {
+            return true
+        }
+        guard updateStatus == errSecItemNotFound else {
+            return false
+        }
+        var add = query
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+        #else
+        return false
+        #endif
+    }
+
+    public static func delete(account: String) {
+        #if canImport(Security)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        SecItemDelete(query as CFDictionary)
+        #endif
+    }
+}
+
 public enum LocalRemoteAction: String, Codable, Sendable {
     case status
     case run
 }
 
 public struct LocalRemoteRequest: Codable, Sendable, Equatable {
-    public var token: String
     public var action: LocalRemoteAction
     public var kind: RemoteCommandKind?
+    public var nonce: String
+    public var issuedAtEpochSeconds: Int64
+    public var signature: String
 
-    public init(token: String, action: LocalRemoteAction, kind: RemoteCommandKind? = nil) {
-        self.token = token
+    public init(
+        token: String,
+        action: LocalRemoteAction,
+        kind: RemoteCommandKind? = nil,
+        nonce: String = UUID().uuidString,
+        issuedAt: Date = Date()
+    ) {
         self.action = action
         self.kind = kind
+        self.nonce = nonce
+        issuedAtEpochSeconds = Int64(issuedAt.timeIntervalSince1970)
+        signature = Self.signature(
+            token: token,
+            action: action,
+            kind: kind,
+            nonce: nonce,
+            issuedAtEpochSeconds: issuedAtEpochSeconds
+        )
+    }
+
+    public func isAuthorized(
+        token: String,
+        now: Date = Date(),
+        allowedClockSkew: TimeInterval = 120
+    ) -> Bool {
+        guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !nonce.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !signature.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        let age = abs(now.timeIntervalSince1970 - TimeInterval(issuedAtEpochSeconds))
+        guard age <= allowedClockSkew else {
+            return false
+        }
+        let expected = Self.signature(
+            token: token,
+            action: action,
+            kind: kind,
+            nonce: nonce,
+            issuedAtEpochSeconds: issuedAtEpochSeconds
+        )
+        return Self.timingSafeEqual(signature.lowercased(), expected.lowercased())
+    }
+
+    public static func signature(
+        token: String,
+        action: LocalRemoteAction,
+        kind: RemoteCommandKind?,
+        nonce: String,
+        issuedAtEpochSeconds: Int64
+    ) -> String {
+        let payload = [
+            action.rawValue,
+            kind?.rawValue ?? "",
+            nonce,
+            String(issuedAtEpochSeconds),
+        ].joined(separator: "\n")
+        #if canImport(CryptoKit)
+        let key = SymmetricKey(data: Data(token.utf8))
+        let code = HMAC<SHA256>.authenticationCode(for: Data(payload.utf8), using: key)
+        return code.map { String(format: "%02x", $0) }.joined()
+        #else
+        return ""
+        #endif
+    }
+
+    private static func timingSafeEqual(_ lhs: String, _ rhs: String) -> Bool {
+        let lhsBytes = Array(lhs.utf8)
+        let rhsBytes = Array(rhs.utf8)
+        guard lhsBytes.count == rhsBytes.count else {
+            return false
+        }
+        var difference: UInt8 = 0
+        for (lhsByte, rhsByte) in zip(lhsBytes, rhsBytes) {
+            difference |= lhsByte ^ rhsByte
+        }
+        return difference == 0
     }
 }
 
