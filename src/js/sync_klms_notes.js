@@ -1424,8 +1424,17 @@ function looksLikeLoginPage(page) {
   return (
     url.includes("/login/") ||
     url.includes("ssologin") ||
+    url.includes("sso.kaist.ac.kr") ||
+    url.includes("portal.kaist.ac.kr") ||
+    url.includes("login2factor") ||
     title.includes("ssologin") ||
-    html.includes("login/ssologin.php")
+    title.includes("single sign on") ||
+    html.includes("login/ssologin.php") ||
+    html.includes('name="username"') ||
+    html.includes('type="password"') ||
+    html.includes("login_id_mfa") ||
+    html.includes("single sign on") ||
+    html.includes("비밀번호")
   );
 }
 

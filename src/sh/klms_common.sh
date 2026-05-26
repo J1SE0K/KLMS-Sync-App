@@ -467,19 +467,20 @@ klms_check_login_pages() {
 }
 
 klms_require_login() {
+  local app_run_login_assist_attempted=0
+
   if [[ "${KLMS_PARENT_LOGIN_ASSIST_READY:-0}" == "1" ]]; then
-    KLMS_LOGIN_PREFETCH_READY=0
     KLMS_LOGIN_ASSIST_READY=1
-    return 0
   fi
 
   if [[ "${KLMS_APP_RUN:-0}" == "1" ]]; then
     klms_clear_login_status
-    klms_try_login_assist || true
-    klms_write_login_status_ok
-    KLMS_LOGIN_PREFETCH_READY=0
-    KLMS_LOGIN_ASSIST_READY=1
-    return 0
+    if klms_login_assist_enabled; then
+      app_run_login_assist_attempted=1
+      if klms_try_login_assist; then
+        KLMS_LOGIN_ASSIST_READY=1
+      fi
+    fi
   fi
 
   if [[ "${KLMS_PARENT_LOGIN_PREFLIGHT_READY:-0}" == "1" && "${KLMS_USE_EXISTING_DASHBOARD:-0}" == "1" && -s "$WORK_CACHE_DIR/dashboard.json" ]]; then
@@ -490,7 +491,7 @@ klms_require_login() {
 
   local fast_tab_state
   fast_tab_state="$(klms_fast_tab_login_state)"
-  if [[ "$fast_tab_state" == "login_required" ]]; then
+  if [[ "$fast_tab_state" == "login_required" && "$app_run_login_assist_attempted" != "1" ]]; then
     klms_clear_login_status
     if ! klms_try_login_assist; then
       klms_open_login_page_if_enabled
@@ -501,12 +502,12 @@ klms_require_login() {
     KLMS_LOGIN_ASSIST_READY=1
   fi
 
-  if [[ "$fast_tab_state" != "login_required" ]] && klms_recent_login_status_ok; then
+  if [[ "${KLMS_APP_RUN:-0}" != "1" && "$fast_tab_state" != "login_required" ]] && klms_recent_login_status_ok; then
     KLMS_LOGIN_PREFETCH_READY=1
     return 0
   fi
 
-  if [[ "$fast_tab_state" == "unknown" && "${KLMS_LOGIN_ASSIST_EARLY_ENABLED:-1}" == "1" ]]; then
+  if [[ "$fast_tab_state" == "unknown" && "${KLMS_LOGIN_ASSIST_EARLY_ENABLED:-1}" == "1" && "$app_run_login_assist_attempted" != "1" ]]; then
     klms_try_login_assist || true
   fi
 
@@ -531,7 +532,11 @@ klms_require_login() {
   )
 
   if ! klms_check_login_pages "$pages_json" "KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘." 0; then
-    if klms_try_login_assist; then
+    if [[ "$app_run_login_assist_attempted" == "1" ]]; then
+      klms_open_login_page_if_enabled
+      print -r -- "${KLMS_LAST_LOGIN_ERROR_MESSAGE:-KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘.}" >&2
+      return 1
+    elif klms_try_login_assist; then
       (
         cd "$SCRIPT_DIR"
         /usr/bin/env python3 "$KLMS_PYTHON_DIR/fetch_pages_backend.py" \
