@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(Network)
+import Network
+#endif
+
 public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifiable {
     case fullSync
     case coreSync
@@ -159,6 +163,224 @@ public protocol RemoteCommandStore: Sendable {
     func fetchPending() async throws -> [RemoteRunCommand]
     func fetchRecent(limit: Int) async throws -> [RemoteRunCommand]
     func update(_ command: RemoteRunCommand) async throws
+}
+
+public enum LocalRemoteAction: String, Codable, Sendable {
+    case status
+    case run
+}
+
+public struct LocalRemoteRequest: Codable, Sendable, Equatable {
+    public var token: String
+    public var action: LocalRemoteAction
+    public var kind: RemoteCommandKind?
+
+    public init(token: String, action: LocalRemoteAction, kind: RemoteCommandKind? = nil) {
+        self.token = token
+        self.action = action
+        self.kind = kind
+    }
+}
+
+public struct LocalRemoteResponse: Codable, Sendable, Equatable {
+    public var ok: Bool
+    public var message: String
+    public var status: SanitizedRemoteStatus
+    public var latestCommand: RemoteRunCommand?
+    public var running: Bool
+
+    public init(
+        ok: Bool = true,
+        message: String = "",
+        status: SanitizedRemoteStatus = SanitizedRemoteStatus(),
+        latestCommand: RemoteRunCommand? = nil,
+        running: Bool = false
+    ) {
+        self.ok = ok
+        self.message = message
+        self.status = status
+        self.latestCommand = latestCommand
+        self.running = running
+    }
+}
+
+public enum LocalRemoteClientError: LocalizedError, Sendable {
+    case networkUnavailable
+    case invalidPort
+    case emptyHost
+    case emptyToken
+    case connectionFailed(String)
+    case invalidResponse
+    case serverRejected(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .networkUnavailable:
+            "이 빌드는 로컬 네트워크 연결을 사용할 수 없습니다."
+        case .invalidPort:
+            "포트 번호가 올바르지 않습니다."
+        case .emptyHost:
+            "Mac 주소를 입력해 주세요."
+        case .emptyToken:
+            "Mac 앱에 표시된 토큰을 입력해 주세요."
+        case let .connectionFailed(message):
+            message.isEmpty ? "Mac 앱에 연결하지 못했습니다." : message
+        case .invalidResponse:
+            "Mac 앱 응답을 해석하지 못했습니다."
+        case let .serverRejected(message):
+            message
+        }
+    }
+}
+
+#if canImport(Network)
+public struct LocalRemoteClient: Sendable {
+    public var host: String
+    public var port: UInt16
+    public var token: String
+    private static let connectionTimeoutSeconds: TimeInterval = 8
+
+    public init(host: String, port: UInt16, token: String) {
+        self.host = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.port = port
+        self.token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public func fetchStatus() async throws -> LocalRemoteResponse {
+        try await send(LocalRemoteRequest(token: token, action: .status))
+    }
+
+    public func run(_ kind: RemoteCommandKind) async throws -> LocalRemoteResponse {
+        try await send(LocalRemoteRequest(token: token, action: .run, kind: kind))
+    }
+
+    private func send(_ request: LocalRemoteRequest) async throws -> LocalRemoteResponse {
+        guard !host.isEmpty else { throw LocalRemoteClientError.emptyHost }
+        guard port > 0 else { throw LocalRemoteClientError.invalidPort }
+        guard !token.isEmpty else { throw LocalRemoteClientError.emptyToken }
+
+        let endpointHost = NWEndpoint.Host(host)
+        guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
+            throw LocalRemoteClientError.invalidPort
+        }
+        let connection = NWConnection(host: endpointHost, port: endpointPort, using: .tcp)
+        let requestData = try JSONEncoder.klmsLocalRemote.encode(request) + Data([0x0A])
+        let responseData: Data = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+            LocalRemoteClientSession(
+                connection: connection,
+                requestData: requestData,
+                timeoutSeconds: Self.connectionTimeoutSeconds,
+                continuation: continuation
+            ).start()
+        }
+
+        let response = try JSONDecoder.klmsLocalRemote.decode(LocalRemoteResponse.self, from: responseData)
+        if !response.ok {
+            throw LocalRemoteClientError.serverRejected(response.message)
+        }
+        return response
+    }
+}
+
+private final class LocalRemoteClientSession: @unchecked Sendable {
+    private let connection: NWConnection
+    private let requestData: Data
+    private let timeoutSeconds: TimeInterval
+    private let continuation: CheckedContinuation<Data, Error>
+    private let queue = DispatchQueue(label: "KLMSLocalRemoteClient")
+    private let lock = NSLock()
+    private var didResume = false
+    private var buffer = Data()
+
+    init(
+        connection: NWConnection,
+        requestData: Data,
+        timeoutSeconds: TimeInterval,
+        continuation: CheckedContinuation<Data, Error>
+    ) {
+        self.connection = connection
+        self.requestData = requestData
+        self.timeoutSeconds = timeoutSeconds
+        self.continuation = continuation
+    }
+
+    func start() {
+        connection.stateUpdateHandler = { [self] state in
+            switch state {
+            case .ready:
+                self.send()
+            case let .failed(error):
+                self.resume(.failure(LocalRemoteClientError.connectionFailed(error.localizedDescription)))
+            default:
+                break
+            }
+        }
+        connection.start(queue: queue)
+        queue.asyncAfter(deadline: .now() + timeoutSeconds) { [self] in
+            self.resume(.failure(LocalRemoteClientError.connectionFailed("Mac 앱 연결 시간이 초과되었습니다.")))
+        }
+    }
+
+    private func send() {
+        connection.send(content: requestData, completion: .contentProcessed { [self] error in
+            if let error {
+                self.resume(.failure(LocalRemoteClientError.connectionFailed(error.localizedDescription)))
+            } else {
+                self.receive()
+            }
+        })
+    }
+
+    private func receive() {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [self] data, _, isComplete, error in
+            if let error {
+                self.resume(.failure(LocalRemoteClientError.connectionFailed(error.localizedDescription)))
+                return
+            }
+            if let data {
+                self.buffer.append(data)
+                if let newlineIndex = self.buffer.firstIndex(of: 0x0A) {
+                    self.resume(.success(Data(self.buffer[..<newlineIndex])))
+                    return
+                }
+            }
+            if isComplete {
+                guard !self.buffer.isEmpty else {
+                    self.resume(.failure(LocalRemoteClientError.invalidResponse))
+                    return
+                }
+                self.resume(.success(self.buffer))
+            } else {
+                self.receive()
+            }
+        }
+    }
+
+    private func resume(_ result: Result<Data, Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didResume else { return }
+        didResume = true
+        connection.cancel()
+        continuation.resume(with: result)
+    }
+}
+#endif
+
+public extension JSONEncoder {
+    static var klmsLocalRemote: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+}
+
+public extension JSONDecoder {
+    static var klmsLocalRemote: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
 }
 
 #if canImport(CloudKit)

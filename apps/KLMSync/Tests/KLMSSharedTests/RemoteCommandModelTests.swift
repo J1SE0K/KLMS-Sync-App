@@ -86,4 +86,35 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(status.quarantine, 1)
         XCTAssertEqual(status.phase, "completed")
     }
+
+    func testLocalRemoteRequestAndResponseRoundTrip() throws {
+        let request = LocalRemoteRequest(
+            token: "ABCD2345",
+            action: .run,
+            kind: .fullSync
+        )
+        let requestData = try JSONEncoder.klmsLocalRemote.encode(request)
+        let decodedRequest = try JSONDecoder.klmsLocalRemote.decode(LocalRemoteRequest.self, from: requestData)
+
+        XCTAssertEqual(decodedRequest, request)
+
+        let command = RemoteRunCommand(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            kind: .noticeSync,
+            status: .running,
+            createdAt: Date(timeIntervalSince1970: 1_779_788_400),
+            updatedAt: Date(timeIntervalSince1970: 1_779_788_401),
+            summary: SanitizedRemoteStatus(assignments: 1, exams: 2, helpDesk: 3, notices: 4, newFiles: 5, quarantine: 0, phase: "running")
+        )
+        let response = LocalRemoteResponse(
+            message: "공지 동기화 실행을 시작했습니다.",
+            status: command.summary,
+            latestCommand: command,
+            running: true
+        )
+        let responseData = try JSONEncoder.klmsLocalRemote.encode(response)
+        let decodedResponse = try JSONDecoder.klmsLocalRemote.decode(LocalRemoteResponse.self, from: responseData)
+
+        XCTAssertEqual(decodedResponse, response)
+    }
 }
