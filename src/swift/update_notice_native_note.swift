@@ -4132,19 +4132,29 @@ func noticeDisplayModeName(_ mode: NoticeDisplayMode) -> String {
 
 func shouldCollapseNoticeCourses(_ plan: RenderPlan) -> Bool {
     _ = plan
-    return collapseNoticeCoursesEnabled
+    return false
 }
 
 func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool {
-    _ = plan
-    return collapseNoticeItemsEnabled
+    plan.mode == .archive && !plan.renderedNotices.isEmpty
+}
+
+func shouldCollapseNoticeSections(_ plan: RenderPlan) -> Bool {
+    plan.mode == .primary
+        && (
+            collapseNoticeSectionsEnabled
+            || !plan.importantHeadingLineIndexes.isEmpty
+            || !plan.freshHeadingLineIndexes.isEmpty
+            || !plan.unreadHeadingLineIndexes.isEmpty
+        )
 }
 
 func shouldApplyCollapsibleGroupStyle(_ plan: RenderPlan) -> Bool {
-    if preformattedPasteOnlyEnabled && !uiStyleMenuFormattingEnabled {
+    if ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT"] == "1" {
         return false
     }
-    return uiCollapsibleGroupStyleFormattingEnabled
+    return uiStyleMenuFormattingEnabled
+        || shouldCollapseNoticeSections(plan)
         || shouldCollapseNoticeCourses(plan)
         || shouldCollapseNoticeItems(plan)
 }
@@ -4251,6 +4261,7 @@ func renderNativeNoteOnce(
     timingLog("render_once_start note=\(noteTitle) strategy=\(strategy)")
     let effectiveCollapseCoursesEnabled = shouldCollapseNoticeCourses(plan)
     let effectiveCollapseNoticeItemsEnabled = shouldCollapseNoticeItems(plan)
+    let effectiveCollapseSectionsEnabled = shouldCollapseNoticeSections(plan)
     let effectiveCollapsibleGroupStyleFormattingEnabled = shouldApplyCollapsibleGroupStyle(plan)
     timingLog("render_body_start note=\(noteTitle)")
     renderBodyLines(
@@ -4575,43 +4586,39 @@ func renderNativeNoteOnce(
 
     if effectiveCollapsibleGroupStyleFormattingEnabled {
         timingLog("style_apply_start note=\(noteTitle)")
-        applyStyle(
-            lineRange(plan.titleLineIndex, fallback: plan.titleRange),
-            menuItems: ["제목", "Title"],
-            fallbackToBold: true
-        )
 
         let summaryRange = lineRange(plan.summaryLineIndex, fallback: plan.summaryRange)
         rememberBoldTarget("summary", summaryRange)
 
-        for (offset, index) in plan.importantHeadingLineIndexes.enumerated() {
-            let heading = lineRange(index, fallback: plan.importantHeadingRanges[offset])
-            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+        if plan.mode == .primary {
+            for (offset, index) in plan.importantHeadingLineIndexes.enumerated() {
+                let heading = lineRange(index, fallback: plan.importantHeadingRanges[offset])
+                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+            }
+
+            for (offset, index) in plan.freshHeadingLineIndexes.enumerated() {
+                let heading = lineRange(index, fallback: plan.freshHeadingRanges[offset])
+                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+            }
+
+            for (offset, index) in plan.unreadHeadingLineIndexes.enumerated() {
+                let heading = lineRange(index, fallback: plan.unreadHeadingRanges[offset])
+                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+            }
         }
 
-        for (offset, index) in plan.freshHeadingLineIndexes.enumerated() {
-            let heading = lineRange(index, fallback: plan.freshHeadingRanges[offset])
-            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+        if effectiveCollapseCoursesEnabled {
+            for (offset, index) in plan.courseHeadingLineIndexes.enumerated() {
+                let fallback = plan.courseHeadingRanges[offset]
+                applyStyle(
+                    lineRange(index, fallback: fallback),
+                    menuItems: ["제목", "Title", "머리말", "Heading"],
+                    fallbackToBold: true
+                )
+            }
         }
 
-        for (offset, index) in plan.unreadHeadingLineIndexes.enumerated() {
-            let heading = lineRange(index, fallback: plan.unreadHeadingRanges[offset])
-            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
-        }
-
-        for (offset, index) in plan.courseHeadingLineIndexes.enumerated() {
-            let fallback = plan.courseHeadingRanges[offset]
-            let menuItems = effectiveCollapseCoursesEnabled
-                ? ["제목", "Title", "머리말", "Heading"]
-                : ["머리말", "Heading"]
-            applyStyle(lineRange(index, fallback: fallback), menuItems: menuItems, fallbackToBold: true)
-        }
-
-        let shouldApplyNoticeTitleStyle =
-            uiStyleMenuFormattingEnabled
-            || effectiveCollapseNoticeItemsEnabled
-            || (!preformattedPasteOnlyEnabled && styleNoticeItemsAsHeadingsEnabled)
-        if shouldApplyNoticeTitleStyle {
+        if effectiveCollapseNoticeItemsEnabled {
             for notice in plan.renderedNotices {
                 let titleRange = lineRange(notice.sectionLineIndex, fallback: notice.sectionRange)
                 applyStyle(titleRange, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
@@ -4725,7 +4732,7 @@ func renderNativeNoteOnce(
     var collapsedSections = 0
     var collapseIssues: [String] = []
     if !plainTextPasteEnabled
-        && (collapseNoticeSectionsEnabled || effectiveCollapseCoursesEnabled || effectiveCollapseNoticeItemsEnabled) {
+        && (effectiveCollapseSectionsEnabled || effectiveCollapseCoursesEnabled || effectiveCollapseNoticeItemsEnabled) {
         Thread.sleep(forTimeInterval: noticeCollapseStyleSettleDelay)
 
         let noticeCollapseRanges: [LineRange]
@@ -4741,7 +4748,7 @@ func renderNativeNoteOnce(
                 lineRange(index, fallback: plan.courseHeadingRanges[offset])
             }
             : []
-        let sectionCollapseRanges = collapseNoticeSectionsEnabled
+        let sectionCollapseRanges = effectiveCollapseSectionsEnabled
             ? (
                 plan.importantHeadingLineIndexes.enumerated().map { offset, index in
                     lineRange(index, fallback: plan.importantHeadingRanges[offset])
@@ -4814,7 +4821,7 @@ func renderNativeNoteOnce(
             }
         }
 
-        if collapseNoticeSectionsEnabled {
+        if effectiveCollapseSectionsEnabled {
             for (offset, range) in sectionCollapseRanges.enumerated().reversed() {
                 collapseHeading(range, label: "section-\(offset + 1)")
             }
@@ -4870,7 +4877,7 @@ func renderContentHash(for plan: RenderPlan) -> String {
     var components: [String] = [nativeNoticeRenderStyleVersion]
     components.reserveCapacity(plan.bodyLines.count + plan.renderedNotices.count + 6)
     components.append("display_mode=\(noticeDisplayModeName(plan.mode))")
-    components.append("collapse_sections=\(collapseNoticeSectionsEnabled ? "1" : "0")")
+    components.append("collapse_sections=\(shouldCollapseNoticeSections(plan) ? "1" : "0")")
     components.append("collapse_courses=\(shouldCollapseNoticeCourses(plan) ? "1" : "0")")
     components.append("collapse_notice_items=\(shouldCollapseNoticeItems(plan) ? "1" : "0")")
     components.append("style_notice_items=\(styleNoticeItemsAsHeadingsEnabled ? "1" : "0")")
@@ -4905,7 +4912,7 @@ func stableNoticeSignatureHash(_ value: String) -> String {
 func renderSignature(for plan: RenderPlan) -> String {
     var components: [String] = [nativeNoticeRenderStyleVersion]
     components.append("display_mode=\(noticeDisplayModeName(plan.mode))")
-    components.append("collapse_sections=\(collapseNoticeSectionsEnabled ? "1" : "0")")
+    components.append("collapse_sections=\(shouldCollapseNoticeSections(plan) ? "1" : "0")")
     components.append("collapse_courses=\(shouldCollapseNoticeCourses(plan) ? "1" : "0")")
     components.append("collapse_notice_items=\(shouldCollapseNoticeItems(plan) ? "1" : "0")")
     components.append("style_notice_items=\(styleNoticeItemsAsHeadingsEnabled ? "1" : "0")")
@@ -5044,7 +5051,7 @@ func functionalNoticeValidationIssues(
 func shouldRestoreCollapsedNoticeState(plan: RenderPlan) -> Bool {
     !plainTextPasteEnabled
         && (
-            collapseNoticeSectionsEnabled
+            shouldCollapseNoticeSections(plan)
             || shouldCollapseNoticeCourses(plan)
             || shouldCollapseNoticeItems(plan)
         )

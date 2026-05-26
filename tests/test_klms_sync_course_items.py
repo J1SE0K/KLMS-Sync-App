@@ -152,6 +152,34 @@ class CourseItemParsingTests(unittest.TestCase):
         self.assertEqual(items[0]["title"], "Nano Quiz")
         self.assertIn("May 4", items[0]["due"])
 
+    def test_exam_notice_title_combines_with_body_date_and_time(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/mod/courseboard/article.php?bwid=100005",
+            "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?bwid=100005",
+            "title": "Midterm Exam Notice",
+            "html": """
+            <html><body>
+              <nav><a href="/course/view.php?id=100001">Example Course</a></nav>
+              <h1>Midterm Exam Notice</h1>
+              <div class="courseboard"><div class="content">
+                <p>Date &amp; Time: April 23rd, 2026, 9:00 am - 11:45 am</p>
+                <p>Place: KAIST E15 Auditorium</p>
+                <p>Range: Week 1 to Week 7 lectures.</p>
+              </div></div>
+            </body></html>
+            """,
+        }
+
+        items = klms_sync.extract_exam_items([page])
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["course"], "Example Course")
+        self.assertEqual(items[0]["title"], "중간고사")
+        self.assertEqual(items[0]["timing_precision"], "time-range")
+        self.assertIn("오전 9:00 - 오전 11:45", items[0]["due"])
+        self.assertEqual(items[0]["location"], "KAIST E15 Auditorium")
+        self.assertEqual(items[0]["coverage"], "Week 1 to Week 7 lectures")
+
     def test_success_payload_keeps_completed_assignment_records(self) -> None:
         completed = {
             "url": "https://klms.kaist.ac.kr/mod/url/view.php?id=100004",

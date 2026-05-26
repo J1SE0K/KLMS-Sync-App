@@ -3269,7 +3269,10 @@ def extract_exam_items(pages: list[dict[str, Any]], course_lookup: dict[str, str
         source_title = determine_source_title(page_title, soup, course)
         if looks_like_exam_source_false_positive(page_title, source_title):
             continue
-        for chunk in candidate_exam_chunks(page_title, page_text):
+        exam_context_title = " ".join(
+            part for part in (page_title, source_title) if part and part != page_title
+        )
+        for chunk in candidate_exam_chunks(exam_context_title or page_title, page_text):
             if looks_like_help_desk_context(page_title, source_title, chunk):
                 continue
             labels = list(find_exam_label_matches(chunk))
@@ -3585,8 +3588,18 @@ def candidate_exam_chunks(page_title: str, page_text: str) -> list[str]:
         seen.add(chunk)
         chunks.append(chunk)
 
-    add(page_title)
     lines = [normalize_whitespace(line) for line in page_text.splitlines() if normalize_whitespace(line)]
+    add(page_title)
+    if contains_any_keyword(page_title.lower(), EXAM_KEYWORDS) and lines:
+        for span in (3, 6, 10):
+            head = lines[:span]
+            if head:
+                add(" ".join([page_title] + head))
+        for index, line in enumerate(lines):
+            if find_date_snippets(line):
+                start = max(0, index - 1)
+                end = min(len(lines), index + 5)
+                add(" ".join([page_title] + lines[start:end]))
     for index, line in enumerate(lines):
         if not contains_any_keyword(line.lower(), EXAM_KEYWORDS):
             continue
@@ -4045,7 +4058,7 @@ def find_time_range_after_date(chunk: str, date_match: DateSnippet) -> tuple[dat
 
     patterns = [
         re.compile(
-            r"from\s+(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*(?:to|-|~)\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?",
+            r"(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*(?:to|-|~)\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?",
             re.IGNORECASE,
         ),
         re.compile(
@@ -4114,6 +4127,25 @@ def find_time_range_after_date(chunk: str, date_match: DateSnippet) -> tuple[dat
             end_at += timedelta(hours=12)
         return start_at, end_at
 
+    if date_match.timing_precision == "datetime":
+        trailing_end_time = re.search(
+            r"^\s*(?:-|~|to)\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM|오전|오후)?",
+            tail,
+            re.IGNORECASE,
+        )
+        if trailing_end_time:
+            start_at = date_match.sort_due
+            end_at = build_time_on_same_day(
+                date_match.sort_due,
+                int(trailing_end_time.group(1)),
+                int(trailing_end_time.group(2) or "0"),
+                trailing_end_time.group(3),
+                tail,
+            )
+            if end_at <= start_at:
+                end_at += timedelta(hours=12)
+            return start_at, end_at
+
     return None
 
 
@@ -4160,7 +4192,7 @@ def find_date_snippets(text: str) -> list[DateSnippet]:
         ),
         (
             "english",
-            r"\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:,\s*(\d{4}))?(?:(?:,\s*|\s+)(\d{1,2}):(\d{2})\s*(AM|PM))?",
+            r"\b([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s*\([^)]+\))?(?:,\s*(\d{4}))?(?:\s*\([^)]+\))?(?:(?:,\s*|\s+)(\d{1,2}):(\d{2})\s*(AM|PM))?",
         ),
         (
             "english_of",

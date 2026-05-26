@@ -31,9 +31,10 @@
 - 빈 상태에서는 해당 메모와 관련된 안내만 짧게 표시한다.
 - 굵기와 글자 크기는 HTML/RTF rich paste를 우선 사용한다.
 - 느린 Notes Format 메뉴 반복 적용은 기본적으로 끈다.
-- 공지 메모는 공지 분류/과목명/공지 제목을 실제 Notes heading 계층으로 만든다. 기본값은 `NOTICE_COLLAPSE_SECTIONS=1`, `NOTICE_COLLAPSE_COURSES=0`, `NOTICE_COLLAPSE_NOTICE_ITEMS=0`, `NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS=1`이다.
-- 렌더가 끝난 상태에서는 최상위 공지 분류만 접혀 있고, 과목명과 개별 공지 제목은 펼쳐져 있다. 과목명까지 자동으로 접으려면 `NOTICE_COLLAPSE_COURSES=1`, 공지 제목까지 자동으로 접으려면 `NOTICE_COLLAPSE_NOTICE_ITEMS=1`을 켠다.
-- `NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT=1`이면 native 제목/머리말 메뉴 스타일을 공지 개별 제목까지 강제로 다시 적용한다.
+- 맨 위 `KLMS 공지`, `KLMS 확인한 공지` 제목은 Notes 접기 heading으로 만들지 않는다.
+- `KLMS 공지`는 최상위 분류인 중요 공지, 새로운 공지, 읽지 않은 공지만 접는다. 과목명과 개별 공지명은 접지 않는다.
+- `KLMS 확인한 공지`는 최상위 확인한 공지/과목명은 접지 않고, 개별 공지명만 접는다.
+- `NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT=1`이면 native 제목/머리말 메뉴 적용을 더 적극적으로 시도하지만, 위 mode별 접기 범위는 유지한다.
 - 형식 적용 후 굵게가 빠진 줄만 확인해서 보강한다.
 - 체크리스트는 공지별 `읽음`/`중요` 두 줄을 fast batch 변환해서 사전 검사 반복을 줄인다. `NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT=1`이면 검사를 더 많이 하는 batch 경로를, `NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT=1`이면 보수적인 개별 변환을 사용한다.
 - 공지 메모는 매 실행마다 먼저 Notes 체크 상태를 캡처한다. 체크 상태가 바뀌었으면 새 KLMS 글이 없어도 즉시 재렌더해서 `읽음`/`중요` 이동을 반영한다.
