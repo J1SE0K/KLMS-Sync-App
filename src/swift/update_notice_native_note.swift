@@ -4159,6 +4159,139 @@ func shouldApplyCollapsibleGroupStyle(_ plan: RenderPlan) -> Bool {
         || shouldCollapseNoticeItems(plan)
 }
 
+func isDocumentHeaderLineIndex(_ index: Int, plan: RenderPlan) -> Bool {
+    index == plan.titleLineIndex || index == plan.summaryLineIndex
+}
+
+func safeCollapsibleLineRange(
+    index: Int,
+    fallback: LineRange,
+    plan: RenderPlan,
+    lineRanges: [LineRange]?
+) -> LineRange? {
+    guard !isDocumentHeaderLineIndex(index, plan: plan) else {
+        return nil
+    }
+    let range: LineRange
+    if let lineRanges, index >= 0, index < lineRanges.count {
+        range = lineRanges[index]
+    } else {
+        range = fallback
+    }
+    guard range.length > 0 else {
+        return nil
+    }
+    return range
+}
+
+func noticeCollapseLineRangeGroups(
+    plan: RenderPlan,
+    lineRanges: [LineRange]?
+) -> (notice: [LineRange], course: [LineRange], section: [LineRange]) {
+    let noticeRanges: [LineRange]
+    if shouldCollapseNoticeItems(plan) {
+        noticeRanges = plan.renderedNotices.compactMap {
+            safeCollapsibleLineRange(
+                index: $0.sectionLineIndex,
+                fallback: $0.sectionRange,
+                plan: plan,
+                lineRanges: lineRanges
+            )
+        }
+    } else {
+        noticeRanges = []
+    }
+
+    let courseRanges: [LineRange]
+    if shouldCollapseNoticeCourses(plan) {
+        courseRanges = plan.courseHeadingLineIndexes.enumerated().compactMap { offset, index in
+            safeCollapsibleLineRange(
+                index: index,
+                fallback: plan.courseHeadingRanges[offset],
+                plan: plan,
+                lineRanges: lineRanges
+            )
+        }
+    } else {
+        courseRanges = []
+    }
+
+    let sectionRanges: [LineRange]
+    if shouldCollapseNoticeSections(plan) {
+        sectionRanges =
+            plan.importantHeadingLineIndexes.enumerated().compactMap { offset, index in
+                safeCollapsibleLineRange(
+                    index: index,
+                    fallback: plan.importantHeadingRanges[offset],
+                    plan: plan,
+                    lineRanges: lineRanges
+                )
+            }
+            + plan.freshHeadingLineIndexes.enumerated().compactMap { offset, index in
+                safeCollapsibleLineRange(
+                    index: index,
+                    fallback: plan.freshHeadingRanges[offset],
+                    plan: plan,
+                    lineRanges: lineRanges
+                )
+            }
+            + plan.unreadHeadingLineIndexes.enumerated().compactMap { offset, index in
+                safeCollapsibleLineRange(
+                    index: index,
+                    fallback: plan.unreadHeadingRanges[offset],
+                    plan: plan,
+                    lineRanges: lineRanges
+                )
+            }
+    } else {
+        sectionRanges = []
+    }
+
+    return (notice: noticeRanges, course: courseRanges, section: sectionRanges)
+}
+
+@discardableResult
+func collapseNoticeHeading(
+    context: NotesEditorContext,
+    noteTitle: String,
+    noteID: String?,
+    range: LineRange,
+    label: String
+) -> Bool {
+    let caretLocation = range.location
+    for attempt in 0..<4 {
+        guard placeCaretForFormatting(
+            context: context,
+            location: caretLocation,
+            noteTitle: noteTitle,
+            noteID: noteID
+        ) else {
+            timingLog(
+                "collapse_heading_retry note=\(noteTitle) label=\(label) "
+                    + "attempt=\(attempt + 1) reason=select-failed"
+            )
+            if attempt < 3 {
+                Thread.sleep(forTimeInterval: 0.16)
+            }
+            continue
+        }
+        if pressMenuIfAvailable(context, ["섹션 접기", "Collapse Section"]) {
+            timingLog("collapse_heading_ok note=\(noteTitle) label=\(label)")
+            Thread.sleep(forTimeInterval: 0.06)
+            return true
+        }
+        timingLog(
+            "collapse_heading_retry note=\(noteTitle) label=\(label) "
+                + "attempt=\(attempt + 1) reason=menu-missing"
+        )
+        if attempt < 3 {
+            Thread.sleep(forTimeInterval: 0.18)
+        }
+    }
+    timingLog("collapse_heading_skip note=\(noteTitle) label=\(label) reason=retry-exhausted")
+    return false
+}
+
 func readabilityStyleTargets(plan: RenderPlan, lineRanges: [LineRange]?) -> [StyleValidationTarget] {
     var targets: [StyleValidationTarget] = []
     var seen = Set<String>()
@@ -4735,78 +4868,29 @@ func renderNativeNoteOnce(
         && (effectiveCollapseSectionsEnabled || effectiveCollapseCoursesEnabled || effectiveCollapseNoticeItemsEnabled) {
         Thread.sleep(forTimeInterval: noticeCollapseStyleSettleDelay)
 
+        let collapseRanges = noticeCollapseLineRangeGroups(plan: plan, lineRanges: styledLineRanges)
         let noticeCollapseRanges: [LineRange]
         if effectiveCollapseNoticeItemsEnabled {
-            noticeCollapseRanges = plan.renderedNotices.map {
-                lineRange($0.sectionLineIndex, fallback: $0.sectionRange)
-            }
+            noticeCollapseRanges = collapseRanges.notice
         } else {
             noticeCollapseRanges = []
         }
-        let courseCollapseRanges = effectiveCollapseCoursesEnabled
-            ? plan.courseHeadingLineIndexes.enumerated().map { offset, index in
-                lineRange(index, fallback: plan.courseHeadingRanges[offset])
-            }
-            : []
-        let sectionCollapseRanges = effectiveCollapseSectionsEnabled
-            ? (
-                plan.importantHeadingLineIndexes.enumerated().map { offset, index in
-                    lineRange(index, fallback: plan.importantHeadingRanges[offset])
-                }
-                + plan.freshHeadingLineIndexes.enumerated().map { offset, index in
-                    lineRange(index, fallback: plan.freshHeadingRanges[offset])
-                }
-                + plan.unreadHeadingLineIndexes.enumerated().map { offset, index in
-                    lineRange(index, fallback: plan.unreadHeadingRanges[offset])
-                }
-            )
-            : []
-        let expectedCollapsibleCount = noticeCollapseRanges.count + courseCollapseRanges.count + sectionCollapseRanges.count
-
-        if collapseAllFirstEnabled, expectedCollapsibleCount > 1 {
-            if pressMenuIfAvailable(context, ["모두 접기", "모든 섹션 접기", "Collapse All", "Collapse All Sections"]) {
-                collapsedSections = expectedCollapsibleCount
-                timingLog("collapse_all_ok note=\(noteTitle) count=\(collapsedSections)")
-                return (collapsedSections, [])
-            }
-            timingLog("collapse_all_unavailable note=\(noteTitle)")
-        }
+        let courseCollapseRanges = effectiveCollapseCoursesEnabled ? collapseRanges.course : []
+        let sectionCollapseRanges = effectiveCollapseSectionsEnabled ? collapseRanges.section : []
 
         func collapseHeading(_ range: LineRange, label: String) {
-            let caretLocation = range.location
-            for attempt in 0..<4 {
-                guard placeCaretForFormatting(
-                    context: context,
-                    location: caretLocation,
-                    noteTitle: noteTitle,
-                    noteID: noteID
-                ) else {
-                    timingLog(
-                        "collapse_heading_retry note=\(noteTitle) label=\(label) "
-                            + "attempt=\(attempt + 1) reason=select-failed"
-                    )
-                    if attempt < 3 {
-                        Thread.sleep(forTimeInterval: 0.16)
-                    }
-                    continue
-                }
-                if pressMenuIfAvailable(context, ["섹션 접기", "Collapse Section"]) {
-                    collapsedSections += 1
-                    timingLog("collapse_heading_ok note=\(noteTitle) label=\(label)")
-                    Thread.sleep(forTimeInterval: 0.06)
-                    return
-                }
-                timingLog(
-                    "collapse_heading_retry note=\(noteTitle) label=\(label) "
-                        + "attempt=\(attempt + 1) reason=menu-missing"
-                )
-                if attempt < 3 {
-                    Thread.sleep(forTimeInterval: 0.18)
-                }
+            if collapseNoticeHeading(
+                context: context,
+                noteTitle: noteTitle,
+                noteID: noteID,
+                range: range,
+                label: label
+            ) {
+                collapsedSections += 1
+                return
             }
             let issue = "collapse failed: \(label)"
             collapseIssues.append(issue)
-            timingLog("collapse_heading_skip note=\(noteTitle) label=\(label) reason=retry-exhausted")
         }
 
         if effectiveCollapseNoticeItemsEnabled {
@@ -5075,19 +5159,60 @@ func expandNoticeSectionsForVerification(context: NotesEditorContext, noteTitle:
     }
 }
 
-func restoreCollapsedNoticeStateAfterVerification(context: NotesEditorContext, noteTitle: String) {
+func restoreCollapsedNoticeStateAfterVerification(context: NotesEditorContext, noteTitle: String, plan: RenderPlan) {
     guard focusNotesEditor(context) else {
         return
     }
-    if pressMenuIfAvailable(
-        context,
-        ["모두 접기", "모든 섹션 접기", "Collapse All", "Collapse All Sections"]
-    ) {
-        timingLog("verify_restore_collapse_all_ok note=\(noteTitle)")
-        Thread.sleep(forTimeInterval: 0.2)
-    } else {
-        timingLog("verify_restore_collapse_all_unavailable note=\(noteTitle)")
+    let currentText = loadCaptureText(
+        textArea: context.textArea,
+        expectedTitles: plan.renderedNotices.map(\.title)
+    )
+    let lineRanges = resolvedPlanLineRanges(
+        currentText: currentText,
+        bodyLines: plan.bodyLines
+    )
+    let collapseRanges = noticeCollapseLineRangeGroups(plan: plan, lineRanges: lineRanges)
+    let expectedCount = collapseRanges.notice.count + collapseRanges.course.count + collapseRanges.section.count
+    guard expectedCount > 0 else {
+        timingLog("verify_restore_collapse_skip note=\(noteTitle) reason=no-targets")
+        return
     }
+
+    var restoredCount = 0
+    for (offset, range) in collapseRanges.notice.enumerated().reversed() {
+        if collapseNoticeHeading(
+            context: context,
+            noteTitle: noteTitle,
+            noteID: nil,
+            range: range,
+            label: "verify-notice-\(offset + 1)"
+        ) {
+            restoredCount += 1
+        }
+    }
+    for (offset, range) in collapseRanges.course.enumerated().reversed() {
+        if collapseNoticeHeading(
+            context: context,
+            noteTitle: noteTitle,
+            noteID: nil,
+            range: range,
+            label: "verify-course-\(offset + 1)"
+        ) {
+            restoredCount += 1
+        }
+    }
+    for (offset, range) in collapseRanges.section.enumerated().reversed() {
+        if collapseNoticeHeading(
+            context: context,
+            noteTitle: noteTitle,
+            noteID: nil,
+            range: range,
+            label: "verify-section-\(offset + 1)"
+        ) {
+            restoredCount += 1
+        }
+    }
+    timingLog("verify_restore_collapse_finish note=\(noteTitle) count=\(restoredCount)/\(expectedCount)")
 }
 
 func verifyManagedNoticeNote(
@@ -5119,7 +5244,7 @@ func verifyManagedNoticeNote(
     }
     let issues = functionalNoticeValidationIssues(context: renderContext, plan: plan)
     if shouldRestoreCollapsedState {
-        restoreCollapsedNoticeStateAfterVerification(context: renderContext, noteTitle: noteTitle)
+        restoreCollapsedNoticeStateAfterVerification(context: renderContext, noteTitle: noteTitle, plan: plan)
     }
     if shouldRestoreCollapsedState,
        issues.contains(where: { $0.contains("plaintext drifted") || $0.contains("line ranges") }) {

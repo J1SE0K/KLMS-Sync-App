@@ -402,6 +402,28 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertLess(notice_index, course_index)
         self.assertLess(course_index, section_index)
 
+    def test_notice_document_header_is_never_a_collapse_target(self) -> None:
+        renderer = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+        support = (
+            PROJECT_DIR / "src" / "swift" / "notice_native_note_support.swift"
+        ).read_text(encoding="utf-8")
+        app_model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("func isDocumentHeaderLineIndex(_ index: Int, plan: RenderPlan) -> Bool", renderer)
+        self.assertIn("index == plan.titleLineIndex || index == plan.summaryLineIndex", renderer)
+        self.assertIn("guard !isDocumentHeaderLineIndex(index, plan: plan) else", renderer)
+        self.assertIn("func noticeCollapseLineRangeGroups(", renderer)
+        self.assertIn("restoreCollapsedNoticeStateAfterVerification(context: NotesEditorContext, noteTitle: String, plan: RenderPlan)", renderer)
+        self.assertIn("noticeCollapseLineRangeGroups(plan: plan, lineRanges: lineRanges)", renderer)
+        self.assertNotIn("Collapse All", renderer)
+        self.assertNotIn("모두 접기", renderer)
+        self.assertNotIn("collapseAllFirstEnabled", support)
+        self.assertNotIn("NOTICE_NATIVE_COLLAPSE_ALL_FIRST", app_model)
+
     def test_notice_ui_operations_force_target_note_focus(self) -> None:
         renderer = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"

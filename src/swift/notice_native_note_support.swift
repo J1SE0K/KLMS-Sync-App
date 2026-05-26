@@ -293,7 +293,7 @@ struct ResolvedRenderedNotice {
 let defaultNoteTitle = "KLMS 공지"
 let defaultArchiveNoteTitle = "KLMS 확인한 공지"
 let nativeNoticeRenderStateVersion = 2
-let nativeNoticeRenderStyleVersion = "2026-05-26-functional-notes-v9-mode-specific-collapse"
+let nativeNoticeRenderStyleVersion = "2026-05-27-functional-notes-v10-header-safe-collapse"
 let readChecklistLabel = "읽음"
 let importantChecklistLabel = "중요"
 let noticeReadGuidanceLine = "\"읽음\"만 체크한 공지는 다음 동기화 때 KLMS 확인한 공지에 표시됩니다."
@@ -344,8 +344,6 @@ let fastBatchChecklistFormattingEnabled =
     && ProcessInfo.processInfo.environment["NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT"] != "1"
 let validateReadabilityStyleEnabled =
     ProcessInfo.processInfo.environment["NOTICE_NATIVE_VALIDATE_STYLE"] == "1"
-let collapseAllFirstEnabled =
-    ProcessInfo.processInfo.environment["NOTICE_NATIVE_COLLAPSE_ALL_FIRST"] == "1"
 let pasteboardSettleUsec: useconds_t = 35_000
 let pasteSettleUsec: useconds_t = 70_000
 let selectionSettleDelay: TimeInterval =
