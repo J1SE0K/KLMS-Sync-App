@@ -269,16 +269,29 @@ private struct LocalConnectionPanel: View {
                 TextField("토큰", text: $model.localToken)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
             }
-            Button {
-                Task {
-                    await model.refreshRecent()
+            HStack(spacing: 8) {
+                Button {
+                    Task {
+                        await model.refreshRecent()
+                    }
+                } label: {
+                    Label("연결 확인", systemImage: "antenna.radiowaves.left.and.right")
+                        .frame(maxWidth: .infinity)
                 }
-            } label: {
-                Label("연결 확인", systemImage: "antenna.radiowaves.left.and.right")
-                    .frame(maxWidth: .infinity)
+                .buttonStyle(.bordered)
+                .disabled(model.isRefreshing || !model.localRemoteConfigured)
+
+                Button {
+                    Task {
+                        await model.createCommand(.doctor)
+                    }
+                } label: {
+                    Label("로그인 확인", systemImage: "person.crop.circle.badge.questionmark")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!model.localRemoteConfigured || model.isSubmitting || model.hasInFlightRequest)
             }
-            .buttonStyle(.bordered)
-            .disabled(model.isRefreshing || !model.localRemoteConfigured)
         }
         .padding(12)
         .background(.quinary)

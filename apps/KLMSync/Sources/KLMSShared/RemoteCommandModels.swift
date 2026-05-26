@@ -9,6 +9,7 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
     case coreSync
     case noticeSync
     case filesSync
+    case doctor
     case report
 
     public var id: String { rawValue }
@@ -23,6 +24,8 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
             .noticeSync
         case .filesSync:
             .filesSync
+        case .doctor:
+            .doctor
         case .report:
             .report
         }
