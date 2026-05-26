@@ -543,6 +543,7 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
         self.assertIn("notifyAuthCompletionIfNeeded()", model)
         self.assertIn("currentAuthStatusMessageForRemote", model)
         self.assertIn("status.authStatusMessage = authStatusMessage", model)
+        self.assertIn('phase == "running"', model)
         self.assertIn('content.title = "KLMS 인증 완료"', model)
         self.assertIn('content.body = "로그인 인증이 완료됐습니다. 동기화를 계속 진행합니다."', model)
         self.assertIn('showTransientAuthStatus("인증 완료됨")', model)
@@ -554,8 +555,39 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
         ).read_text(encoding="utf-8")
         self.assertIn("status.authStatusMessage", ios_app)
+        self.assertIn("shouldShowAuthCompletion", ios_app)
         self.assertIn('return "인증 완료"', ios_app)
+        self.assertIn("AuthSuccessBanner", ios_app)
+        self.assertNotIn("if let authStatusMessage = status.authStatusMessage {\n            return authStatusMessage\n        }\n        if status.loginRequired", ios_app)
         self.assertIn("? 2_000_000_000", ios_app)
+
+    def test_local_remote_security_avoids_bearer_token_requests(self) -> None:
+        shared = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSShared" / "RemoteCommandModels.swift"
+        ).read_text(encoding="utf-8")
+        model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+        ios_app = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("import CryptoKit", shared)
+        self.assertIn("HMAC<SHA256>", shared)
+        self.assertIn("nonce", shared)
+        self.assertIn("issuedAtEpochSeconds", shared)
+        self.assertIn("signature", shared)
+        self.assertIn("public func isAuthorized(", shared)
+        self.assertIn("token: String", shared)
+        self.assertNotIn("public var token: String\n    public var action", shared)
+        self.assertIn("LocalRemoteTokenStore.load(account: \"mac\")", model)
+        self.assertIn("LocalRemoteTokenStore.save(token, account: \"mac\")", model)
+        self.assertIn("registerLocalRemoteAuthFailure", model)
+        self.assertIn("localRemoteRecentNonces", model)
+        self.assertIn("pasteboardClearTask", model)
+        self.assertIn("LocalRemoteTokenStore.load(account: \"ios\")", ios_app)
+        self.assertIn("persistLocalToken", ios_app)
+        self.assertIn("UIPasteboard.general.string = \"\"", ios_app)
 
     def test_app_notice_renderer_uses_bundled_signed_helper(self) -> None:
         model = (

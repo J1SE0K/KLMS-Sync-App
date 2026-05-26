@@ -61,6 +61,10 @@ final class KLMSMacModel: ObservableObject {
     private var notifiedAuthCompletionForCurrentRun = false
     private var lastAuthCompletionAt: Date?
     private var authStatusClearTask: Task<Void, Never>?
+    private var pasteboardClearTask: Task<Void, Never>?
+    private var localRemoteFailedAuthCount = 0
+    private var localRemoteBlockedUntil: Date?
+    private var localRemoteRecentNonces: [String: Date] = [:]
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
     private static let remoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
     private static let localRemoteEnabledKey = "KLMSLocalRemoteEnabled"
@@ -73,18 +77,22 @@ final class KLMSMacModel: ObservableObject {
             forKey: Self.remoteProcessingEnabledKey
         )
         localRemoteEnabled = UserDefaults.standard.bool(forKey: Self.localRemoteEnabledKey)
-        if let token = UserDefaults.standard.string(forKey: Self.localRemoteTokenKey),
+        if let token = LocalRemoteTokenStore.load(account: "mac")
+            ?? UserDefaults.standard.string(forKey: Self.localRemoteTokenKey),
            !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             localRemoteToken = token
+            LocalRemoteTokenStore.save(token, account: "mac")
+            UserDefaults.standard.removeObject(forKey: Self.localRemoteTokenKey)
         } else {
             let token = Self.makeLocalRemoteToken()
             localRemoteToken = token
-            UserDefaults.standard.set(token, forKey: Self.localRemoteTokenKey)
+            LocalRemoteTokenStore.save(token, account: "mac")
         }
     }
 
     deinit {
         remotePollingTask?.cancel()
+        pasteboardClearTask?.cancel()
         localRemoteServer?.stop()
     }
 
@@ -291,7 +299,11 @@ final class KLMSMacModel: ObservableObject {
     func regenerateLocalRemoteToken() {
         let token = Self.makeLocalRemoteToken()
         localRemoteToken = token
-        UserDefaults.standard.set(token, forKey: Self.localRemoteTokenKey)
+        LocalRemoteTokenStore.save(token, account: "mac")
+        UserDefaults.standard.removeObject(forKey: Self.localRemoteTokenKey)
+        localRemoteFailedAuthCount = 0
+        localRemoteBlockedUntil = nil
+        localRemoteRecentNonces.removeAll()
         if localRemoteEnabled {
             configureLocalRemoteServer()
         }
@@ -337,9 +349,11 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func handleLocalRemoteRequest(_ request: LocalRemoteRequest) async -> LocalRemoteResponse {
-        guard request.token == localRemoteToken else {
-            return LocalRemoteResponse(ok: false, message: "토큰이 맞지 않습니다.")
+        guard authorizeLocalRemoteRequest(request) else {
+            return LocalRemoteResponse(ok: false, message: registerLocalRemoteAuthFailure())
         }
+        localRemoteFailedAuthCount = 0
+        localRemoteBlockedUntil = nil
         switch request.action {
         case .status:
             let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
@@ -410,12 +424,43 @@ final class KLMSMacModel: ObservableObject {
             status.loginRequired = true
             status.authDigits = liveAuthDigits
             status.authStatusMessage = nil
-        } else if let authStatusMessage = currentAuthStatusMessageForRemote() {
-            status.loginRequired = false
+        } else if phase == "running",
+                  let authStatusMessage = currentAuthStatusMessageForRemote() {
             status.authDigits = nil
             status.authStatusMessage = authStatusMessage
         }
         return status
+    }
+
+    private func authorizeLocalRemoteRequest(_ request: LocalRemoteRequest, now: Date = Date()) -> Bool {
+        if let localRemoteBlockedUntil, localRemoteBlockedUntil > now {
+            return false
+        }
+        guard request.isAuthorized(token: localRemoteToken, now: now) else {
+            return false
+        }
+        localRemoteRecentNonces = localRemoteRecentNonces.filter { _, seenAt in
+            now.timeIntervalSince(seenAt) <= 120
+        }
+        guard localRemoteRecentNonces[request.nonce] == nil else {
+            return false
+        }
+        localRemoteRecentNonces[request.nonce] = now
+        return true
+    }
+
+    private func registerLocalRemoteAuthFailure(now: Date = Date()) -> String {
+        if let localRemoteBlockedUntil, localRemoteBlockedUntil > now {
+            let remaining = max(1, Int(ceil(localRemoteBlockedUntil.timeIntervalSince(now))))
+            return "인증 실패가 많아 \(remaining)초 뒤 다시 시도해 주세요."
+        }
+        localRemoteFailedAuthCount += 1
+        if localRemoteFailedAuthCount >= 5 {
+            let delay = min(120, 15 * (localRemoteFailedAuthCount - 4))
+            localRemoteBlockedUntil = now.addingTimeInterval(TimeInterval(delay))
+            return "인증 실패가 많아 \(delay)초 동안 로컬 원격 요청을 막았습니다."
+        }
+        return "원격 요청 인증에 실패했습니다."
     }
 
     private func currentAuthStatusMessageForRemote(now: Date = Date()) -> String? {
@@ -432,6 +477,17 @@ final class KLMSMacModel: ObservableObject {
     private func copyToPasteboard(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+        pasteboardClearTask?.cancel()
+        pasteboardClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            if NSPasteboard.general.string(forType: .string) == value {
+                NSPasteboard.general.clearContents()
+            }
+            self?.pasteboardClearTask = nil
+        }
     }
 
     private func configureRemotePolling() {

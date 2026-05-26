@@ -164,12 +164,18 @@ final class RemoteCommandModelTests: XCTestCase {
         let request = LocalRemoteRequest(
             token: "ABCD2345",
             action: .run,
-            kind: .fullSync
+            kind: .fullSync,
+            nonce: "nonce-1",
+            issuedAt: Date(timeIntervalSince1970: 1_779_788_400)
         )
         let requestData = try JSONEncoder.klmsLocalRemote.encode(request)
         let decodedRequest = try JSONDecoder.klmsLocalRemote.decode(LocalRemoteRequest.self, from: requestData)
 
         XCTAssertEqual(decodedRequest, request)
+        XCTAssertTrue(decodedRequest.isAuthorized(token: "ABCD2345", now: Date(timeIntervalSince1970: 1_779_788_410)))
+        XCTAssertFalse(decodedRequest.isAuthorized(token: "WRONG2345", now: Date(timeIntervalSince1970: 1_779_788_410)))
+        XCTAssertFalse(decodedRequest.isAuthorized(token: "ABCD2345", now: Date(timeIntervalSince1970: 1_779_788_600)))
+        XCTAssertFalse(String(data: requestData, encoding: .utf8)?.contains("ABCD2345") ?? true)
 
         let command = RemoteRunCommand(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,

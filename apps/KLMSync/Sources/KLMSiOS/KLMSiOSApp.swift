@@ -33,7 +33,7 @@ final class CompanionModel: ObservableObject {
         didSet { UserDefaults.standard.set(localPortText, forKey: Self.localPortKey) }
     }
     @Published var localToken: String {
-        didSet { UserDefaults.standard.set(localToken, forKey: Self.localTokenKey) }
+        didSet { Self.persistLocalToken(localToken) }
     }
 
     private let cloudStore: (any RemoteCommandStore)?
@@ -43,9 +43,13 @@ final class CompanionModel: ObservableObject {
     private static let localTokenKey = "KLMSLocalRemoteToken"
 
     init(store: (any RemoteCommandStore)? = nil) {
+        let storedLocalToken = LocalRemoteTokenStore.load(account: "ios")
+            ?? UserDefaults.standard.string(forKey: Self.localTokenKey)
+            ?? ""
         localHost = UserDefaults.standard.string(forKey: Self.localHostKey) ?? ""
         localPortText = UserDefaults.standard.string(forKey: Self.localPortKey) ?? "18483"
-        localToken = UserDefaults.standard.string(forKey: Self.localTokenKey) ?? ""
+        localToken = storedLocalToken
+        Self.persistLocalToken(storedLocalToken)
         if let store {
             cloudStore = store
             return
@@ -105,15 +109,21 @@ final class CompanionModel: ObservableObject {
         latestDisplayStatus?.isInFlight == true
     }
 
+    var shouldShowAuthCompletion: Bool {
+        status.authStatusMessage != nil
+            && latestDisplayStatus?.isTerminal != true
+            && !status.loginRequired
+    }
+
     var statusLine: String {
         if let authDigits = status.authDigits {
             return "KAIST 인증 화면에서 \(authDigits)를 선택해야 합니다."
         }
-        if let authStatusMessage = status.authStatusMessage {
-            return authStatusMessage
-        }
         if status.loginRequired {
             return "Mac에서 KLMS 로그인을 다시 확인해야 합니다."
+        }
+        if shouldShowAuthCompletion, let authStatusMessage = status.authStatusMessage {
+            return authStatusMessage
         }
         guard let latestCommand, let latestDisplayStatus else {
             return "Mac 앱이 아직 상태를 올린 적 없습니다."
@@ -136,13 +146,17 @@ final class CompanionModel: ObservableObject {
         if let authDigits = status.authDigits {
             return "KAIST 인증 번호 \(authDigits)를 휴대폰 인증 화면에서 선택하면 Mac 동기화가 계속됩니다."
         }
-        if let authStatusMessage = status.authStatusMessage {
-            return authStatusMessage
-        }
         if status.loginRequired {
             return "KLMS 로그인이 풀렸을 수 있습니다. Mac에서 Safari KLMS 로그인을 완료한 뒤 다시 확인해 주세요."
         }
         return nil
+    }
+
+    var authSuccessMessage: String? {
+        guard shouldShowAuthCompletion else {
+            return nil
+        }
+        return status.authStatusMessage
     }
 
     func createCommand(_ kind: RemoteCommandKind) async {
@@ -246,6 +260,9 @@ final class CompanionModel: ObservableObject {
         if let token = connectionInfo.token {
             localToken = token
         }
+        if UIPasteboard.general.string == text {
+            UIPasteboard.general.string = ""
+        }
         connectionMessage = "연결 정보를 붙여넣었습니다. 이제 연결 확인을 눌러 주세요."
         connectionSucceeded = nil
         errorMessage = ""
@@ -272,6 +289,16 @@ final class CompanionModel: ObservableObject {
             recentCommands = [latestCommand]
         }
     }
+
+    private static func persistLocalToken(_ token: String) {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedToken.isEmpty {
+            LocalRemoteTokenStore.delete(account: "ios")
+        } else {
+            LocalRemoteTokenStore.save(trimmedToken, account: "ios")
+        }
+        UserDefaults.standard.removeObject(forKey: Self.localTokenKey)
+    }
 }
 
 struct UserAlert: Identifiable {
@@ -294,6 +321,9 @@ struct CompanionRootView: View {
                     }
                     if let message = model.loginAttentionMessage {
                         LoginAttentionBanner(message: message)
+                    }
+                    if let message = model.authSuccessMessage {
+                        AuthSuccessBanner(message: message)
                     }
                     RemoteCommandPanel(model: model)
                     RecentRemoteCommandsView(commands: model.recentCommands)
@@ -483,11 +513,11 @@ private struct RemoteStatusHeader: View {
         if model.status.authDigits != nil {
             return "인증 번호 선택 필요"
         }
-        if model.status.authStatusMessage != nil {
-            return "인증 완료"
-        }
         if model.status.loginRequired {
             return "KLMS 로그인 필요"
+        }
+        if model.shouldShowAuthCompletion {
+            return "인증 완료"
         }
         guard let latest = model.latestCommand,
               let status = model.latestDisplayStatus else {
@@ -500,11 +530,11 @@ private struct RemoteStatusHeader: View {
         if model.status.authDigits != nil {
             return "key"
         }
-        if model.status.authStatusMessage != nil {
-            return "checkmark.circle.fill"
-        }
         if model.status.loginRequired {
             return "person.crop.circle.badge.exclamationmark"
+        }
+        if model.shouldShowAuthCompletion {
+            return "checkmark.circle.fill"
         }
         switch model.latestDisplayStatus {
         case .pending:
@@ -523,11 +553,11 @@ private struct RemoteStatusHeader: View {
     }
 
     private var statusColor: Color {
-        if model.status.authStatusMessage != nil {
-            return .green
-        }
         if model.status.loginRequired {
             return .orange
+        }
+        if model.shouldShowAuthCompletion {
+            return .green
         }
         switch model.latestDisplayStatus {
         case .pending, .running:
@@ -657,7 +687,8 @@ private struct RemoteCommandRow: View {
                     Text("인증 \(authDigits)")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.orange)
-                } else if let authStatusMessage = command.summary.authStatusMessage {
+                } else if command.displayStatus().isInFlight,
+                          let authStatusMessage = command.summary.authStatusMessage {
                     Text(authStatusMessage)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.green)
@@ -733,6 +764,20 @@ private struct ErrorBanner: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.red.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct AuthSuccessBanner: View {
+    var message: String
+
+    var body: some View {
+        Label(message, systemImage: "checkmark.circle.fill")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.green)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.green.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
