@@ -405,6 +405,29 @@ except Exception:
 PY
 }
 
+manifest_layout_matches() {
+  python3 - "$MANIFEST_STATE_JSON" "$FILE_WEEKLY_FOLDERS_ENABLED" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+state_path = Path(sys.argv[1])
+expected = sys.argv[2] == "1"
+if not state_path.exists():
+    print("0")
+    raise SystemExit
+
+try:
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+except Exception:
+    print("0")
+    raise SystemExit
+
+layout = state.get("layout", {}) if isinstance(state, dict) else {}
+print("1" if layout.get("weekly_folders_enabled") is expected else "0")
+PY
+}
+
 preview_has_no_download_candidates() {
   local preview_json="$1"
   python3 - "$preview_json" <<'PY'
@@ -782,6 +805,22 @@ if [[ -n "$PREVIOUS_FILE_SEED_URLS_HASH" && "$PREVIOUS_FILE_SEED_URLS_HASH" == "
 fi
 mv "$TMP_DIR/file_seed_urls.next" "$FILE_SEED_URLS_TXT"
 
+MANIFEST_LAYOUT_MATCHES="$(manifest_layout_matches)"
+FILE_DEEP_FETCH_SKIPPED=0
+if [[ -s "$MANIFEST_JSON" \
+  && "$MANIFEST_LAYOUT_MATCHES" == "1" \
+  && "${FILE_REFRESH_MODE:l}" != "full" \
+  && "$COURSE_CHANGED_COUNT" == "0" \
+  && "$ALL_WEEK_COURSE_CHANGED_COUNT" == "0" \
+  && "$FILE_SEED_URL_LIST_CHANGED" == "0" ]] \
+  && (( PREVIOUS_MANIFEST_COUNT > 0 )) \
+  && (( EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then
+  FILE_DEEP_FETCH_SKIPPED=1
+  SEED_CHANGED_COUNT=0
+  NESTED_CHANGED_COUNT=0
+  NESTED2_CHANGED_COUNT=0
+  log_files_timing "deep file page fetch skipped reason=no-course-or-url-change manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT"
+else
 if is_truthy "$FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED" \
   && (( FILE_SEED_URL_LIST_CHANGED == 0 )) \
   && (( PREVIOUS_MANIFEST_COUNT > 0 )) \
@@ -931,28 +970,8 @@ run_fetch_backend \
   "${FILE_NESTED2_FETCH_ALWAYS_PATTERNS[@]}"
 
 NESTED2_CHANGED_COUNT="$(summary_changed_count "$FILE_NESTED2_FETCH_SUMMARY_JSON")"
-MANIFEST_LAYOUT_MATCHES="$(
-  python3 - "$MANIFEST_STATE_JSON" "$FILE_WEEKLY_FOLDERS_ENABLED" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-state_path = Path(sys.argv[1])
-expected = sys.argv[2] == "1"
-if not state_path.exists():
-    print("0")
-    raise SystemExit
-
-try:
-    state = json.loads(state_path.read_text(encoding="utf-8"))
-except Exception:
-    print("0")
-    raise SystemExit
-
-layout = state.get("layout", {}) if isinstance(state, dict) else {}
-print("1" if layout.get("weekly_folders_enabled") is expected else "0")
-PY
-)"
+fi
+MANIFEST_LAYOUT_MATCHES="$(manifest_layout_matches)"
 MANIFEST_REUSED=0
 if [[ -s "$MANIFEST_JSON" \
   && "$MANIFEST_LAYOUT_MATCHES" == "1" \

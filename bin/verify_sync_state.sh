@@ -26,7 +26,10 @@ klms_init_context "$SCRIPT_DIR/verify_sync_state.sh" "$CONFIG_ARG"
 STATE_JSON="$SCRIPT_DIR/runtime/state/state.json"
 CALENDAR_COUNTS_TXT="$TMP_DIR/verify_calendar_counts.txt"
 CALENDAR_COUNTS_ERR="$TMP_DIR/verify_calendar_counts.err"
+REMINDERS_COUNTS_TXT="$TMP_DIR/verify_reminders_counts.txt"
+REMINDERS_COUNTS_ERR="$TMP_DIR/verify_reminders_counts.err"
 VERIFY_JSON="$CACHE_DIR/verify_sync_state.json"
+OVERRIDES_JSON="${OVERRIDES_JSON_PATH:-$SCRIPT_DIR/manual_assignment_overrides.json}"
 
 SWIFT_MODULE_CACHE_DIR="$TMP_DIR/swift-module-cache"
 CLANG_MODULE_CACHE_DIR="$TMP_DIR/clang-module-cache"
@@ -43,12 +46,22 @@ if ! SWIFT_MODULE_CACHE_PATH="$SWIFT_MODULE_CACHE_DIR" \
   print -r -- "calendar_error=${calendar_error:-Calendar verification unavailable.}" > "$CALENDAR_COUNTS_TXT"
 fi
 
+if ! /usr/bin/osascript -l JavaScript \
+  "$SCRIPT_DIR/src/js/verify_reminders_counts.js" \
+  "--assignment-list=${REMINDERS_LIST_NAME:-KLMS 과제}" \
+  > "$REMINDERS_COUNTS_TXT" 2> "$REMINDERS_COUNTS_ERR"; then
+  reminders_error="$(tr '\n' ' ' < "$REMINDERS_COUNTS_ERR" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
+  print -r -- "reminders_error=${reminders_error:-Reminders verification unavailable.}" > "$REMINDERS_COUNTS_TXT"
+fi
+
 verify_args=(
   "$KLMS_PYTHON_BIN"
   "$KLMS_PYTHON_DIR/verify_sync_state.py"
   --cache-dir "$CACHE_DIR"
   --state-json "$STATE_JSON"
   --calendar-lines "$CALENDAR_COUNTS_TXT"
+  --reminders-lines "$REMINDERS_COUNTS_TXT"
+  --overrides-json "$OVERRIDES_JSON"
   --write-json "$VERIFY_JSON"
 )
 if (( OUTPUT_JSON )); then

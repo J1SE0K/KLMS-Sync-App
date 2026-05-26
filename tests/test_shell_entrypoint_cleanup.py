@@ -278,6 +278,12 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('FILE_REFRESH_MODE="auto"', text)
         self.assertIn('FILE_FORCE_DOWNLOAD="0"', text)
         self.assertIn('FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY="1"', text)
+        self.assertIn("manifest_layout_matches()", text)
+        self.assertIn('"${FILE_REFRESH_MODE:l}" != "full"', text)
+        self.assertIn('"$COURSE_CHANGED_COUNT" == "0"', text)
+        self.assertIn('"$ALL_WEEK_COURSE_CHANGED_COUNT" == "0"', text)
+        self.assertIn('"$FILE_SEED_URL_LIST_CHANGED" == "0"', text)
+        self.assertIn("deep file page fetch skipped reason=no-course-or-url-change", text)
 
     def test_mac_app_files_sync_is_incremental_by_default(self) -> None:
         model = (
@@ -514,7 +520,8 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
         self.assertIn("verify_sync_state.py", text)
         self.assertIn("--exam-calendar=", text)
         self.assertIn("--helpdesk-calendar=", text)
-        self.assertNotIn("osascript -l JavaScript", text)
+        self.assertIn("verify_reminders_counts.js", text)
+        self.assertIn("--reminders-lines", text)
         self.assertNotIn("summary of every event of calendar", text)
 
     def test_calendar_sync_uses_repo_swift_module_cache_and_opt_in_fallback(self) -> None:
