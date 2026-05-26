@@ -89,9 +89,15 @@ struct SettingsView: View {
                     LabeledContent("Mac 주소") {
                         VStack(alignment: .trailing, spacing: 2) {
                             ForEach(model.localRemoteEndpointHints, id: \.self) { endpoint in
-                                Text(endpoint)
-                                    .font(.caption.monospaced())
-                                    .textSelection(.enabled)
+                                HStack(spacing: 6) {
+                                    Text(endpoint)
+                                        .font(.caption.monospaced())
+                                        .textSelection(.enabled)
+                                    Button("복사") {
+                                        model.copyLocalRemoteEndpoint(endpoint)
+                                    }
+                                    .font(.caption)
+                                }
                             }
                         }
                     }
@@ -100,9 +106,17 @@ struct SettingsView: View {
                             Text(model.localRemoteToken)
                                 .font(.caption.monospaced())
                                 .textSelection(.enabled)
+                            Button("복사") {
+                                model.copyLocalRemoteToken()
+                            }
                             Button("재생성") {
                                 model.regenerateLocalRemoteToken()
                             }
+                        }
+                    }
+                    LabeledContent("연결 정보") {
+                        Button("주소와 토큰 복사") {
+                            model.copyLocalRemoteConnectionInfo()
                         }
                     }
                 }

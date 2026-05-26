@@ -163,6 +163,18 @@ final class KLMSMacModel: ObservableObject {
         Self.localIPv4Addresses().map { "\($0):\(Self.localRemotePort)" }
     }
 
+    var localRemotePrimaryEndpoint: String {
+        localRemoteEndpointHints.first ?? "이 Mac의 IP:\(Self.localRemotePort)"
+    }
+
+    var localRemoteConnectionInfoText: String {
+        """
+        KLMS Sync iPhone 연결 정보
+        Mac 주소: \(localRemotePrimaryEndpoint)
+        토큰: \(localRemoteToken)
+        """
+    }
+
     var nativeNoticeHelperPath: String {
         let nestedHelper = Bundle.main.bundleURL
             .appendingPathComponent("Contents/Helpers/KLMSNoticeNativeNote.app/Contents/MacOS/KLMSNoticeNativeNote")
@@ -277,6 +289,22 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    func copyLocalRemoteEndpoint(_ endpoint: String? = nil) {
+        let value = endpoint ?? localRemotePrimaryEndpoint
+        copyToPasteboard(value)
+        localRemoteStatusMessage = "Mac 주소를 복사했습니다: \(value)"
+    }
+
+    func copyLocalRemoteToken() {
+        copyToPasteboard(localRemoteToken)
+        localRemoteStatusMessage = "토큰을 복사했습니다."
+    }
+
+    func copyLocalRemoteConnectionInfo() {
+        copyToPasteboard(localRemoteConnectionInfoText)
+        localRemoteStatusMessage = "iPhone 연결 정보를 복사했습니다."
+    }
+
     private func configureLocalRemoteServer() {
         localRemoteServer?.stop()
         localRemoteServer = nil
@@ -362,6 +390,11 @@ final class KLMSMacModel: ObservableObject {
         let message = "최근 로컬 iPhone 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
         localRemoteStatusMessage = message
         remoteProcessingStatusMessage = message
+    }
+
+    private func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 
     private func configureRemotePolling() {
