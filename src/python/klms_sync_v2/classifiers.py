@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from .dates import parse_due_datetime
+from .dates import parse_due_date_only, parse_due_datetime
 from .exam_fields import extract_coverage, extract_location, online_exam_location
 from .models import Assignment, Event, Notice, Page
 from .text import clipped, html_to_text, one_line, split_course_title, strip_access_suffix
@@ -14,12 +14,21 @@ SUBMITTED_RE = re.compile(
 )
 NOT_SUBMITTED_RE = re.compile(r"(시도 하지 않음|You have not made a submission yet)", re.IGNORECASE)
 ASSIGNMENT_WORD_RE = re.compile(
-    r"(assignment|homework|hw\b|project|nano\s+quiz|quiz\b|과제|쪽글|퀴즈|report|proposal)",
+    r"(assignment|homework|hw\s*#?\s*\d*|wa\s*#?\s*\d+|pa\s*#?\s*\d+|"
+    r"project|nano\s+quiz|quiz\b|과제|쪽글|퀴즈|report|proposal)",
+    re.IGNORECASE,
+)
+ASSIGNMENT_RESULT_TITLE_RE = re.compile(
+    r"(score|grade|solution|answer|statistics|claim|award|criteria|"
+    r"성적|점수|채점|정답|해설|풀이|통계|이의\s*신청)",
     re.IGNORECASE,
 )
 EXAM_WORD_RE = re.compile(r"(midterm|final|exam|고사|시험)", re.IGNORECASE)
 HELP_DESK_RE = re.compile(r"(help\s*desk|헬프\s*데스크|헬프데스크)", re.IGNORECASE)
-DEADLINE_RE = re.compile(r"(deadline|due|마감|제출\s*기한)", re.IGNORECASE)
+DEADLINE_RE = re.compile(
+    r"(deadline|due|submit|submission|마감|기한|까지|제출)",
+    re.IGNORECASE,
+)
 
 
 def submission_status(text: str) -> str:
@@ -182,10 +191,10 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
         return None, "empty"
 
     due = parse_due_datetime(text, generated_at)
-    if not due:
-        return None, "missing-due"
 
     if HELP_DESK_RE.search(text):
+        if not due:
+            return None, "missing-due"
         title = "중간고사 헬프데스크" if re.search(r"(midterm|중간)", text, re.IGNORECASE) else "헬프데스크"
         instructions = clipped(notice.body_text or notice.summary)
         return Event(
@@ -203,7 +212,9 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
             type="help_desk",
         ), "help-desk"
 
-    if EXAM_WORD_RE.search(text) and not ASSIGNMENT_WORD_RE.search(text):
+    if EXAM_WORD_RE.search(text) and not ASSIGNMENT_WORD_RE.search(notice.title):
+        if not due:
+            return None, "missing-due"
         title = "중간고사" if re.search(r"(midterm|중간)", text, re.IGNORECASE) else notice.title
         instructions = clipped(notice.body_text or notice.summary)
         return Event(
@@ -222,13 +233,22 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
             type="exam",
         ), "exam-candidate"
 
-    if ASSIGNMENT_WORD_RE.search(text) and DEADLINE_RE.search(text):
+    if (
+        ASSIGNMENT_WORD_RE.search(text)
+        and DEADLINE_RE.search(text)
+        and not ASSIGNMENT_RESULT_TITLE_RE.search(notice.title)
+    ):
+        due = due or parse_due_date_only(text, generated_at)
+        if not due:
+            return None, "missing-due"
         title_match = re.search(
-            r"\b(Project\s+\d+|HW\s*\d+|(?:Programming|Written)\s+Assignment\s+\d+|Assignment\s+\d+|Nano\s+Quiz(?:\s*#?\s*\d+)?|Quiz(?:\s*#?\s*\d+)?)\b|퀴즈\s*\d*",
+            r"\b(Project\s+\d+|HW\s*#?\s*\d+|(?:Programming|Written)\s+Assignment\s+\d+|Assignment\s+\d+|Nano\s+Quiz(?:\s*#?\s*\d+)?|Quiz(?:\s*#?\s*\d+)?)\b|(?:\d+\s*주차\s*)?과제|퀴즈\s*\d*",
             text,
             re.IGNORECASE,
         )
-        title = title_match.group(1) if title_match else notice.title
+        title = notice.title
+        if title_match:
+            title = title_match.group(1) or title_match.group(0)
         return Assignment(
             url=notice.url,
             course=notice.course,
@@ -241,4 +261,4 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
             type="assignment_notice",
         ), "assignment-notice"
 
-    return None, "not-relevant"
+    return None, "missing-due" if not due else "not-relevant"

@@ -10,7 +10,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR / "src" / "python"))
 
 from klms_sync_v2.classifiers import classify_detail_page, classify_notice  # noqa: E402
-from klms_sync_v2.dates import is_past, parse_due_datetime  # noqa: E402
+from klms_sync_v2.dates import is_past, parse_due_date_only, parse_due_datetime  # noqa: E402
 from klms_sync_v2.models import Notice, Page  # noqa: E402
 from klms_sync_v2.pipeline import build_sync_state  # noqa: E402
 
@@ -21,6 +21,24 @@ class V2CoreTests(unittest.TestCase):
 
         self.assertIsNotNone(parsed)
         self.assertEqual(parsed.iso, "2026-05-18T18:30:00+09:00")
+
+    def test_korean_month_day_deadline_defaults_to_end_of_day(self) -> None:
+        parsed = parse_due_date_only(
+            "7주차 과제의 경우, 중간고사 시험 일정으로 인해 4월 27일 마감입니다.",
+            "2026-05-13 19:18 KST",
+        )
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.iso, "2026-04-27T23:59:00+09:00")
+
+    def test_slash_date_with_weekday_and_pm_parses(self) -> None:
+        parsed = parse_due_datetime(
+            "성적 문의가 있는 경우 5/3 (Sun) 11:59 PM까지 메일로 보내주시기 바랍니다.",
+            "2026-05-13 19:18 KST",
+        )
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.iso, "2026-05-03T23:59:00+09:00")
 
     def test_english_month_range_uses_end_as_due_and_start_as_start(self) -> None:
         parsed = parse_due_datetime(
@@ -64,6 +82,85 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(reason, "assignment-notice")
         self.assertEqual(item.title, "Project 3")
         self.assertEqual(item.sync_due, "2026-05-31T23:59:00+09:00")
+
+    def test_exam_notice_with_assignment_coverage_stays_exam_candidate(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=6",
+            course="알고리즘 개론",
+            title="Announcement for the Midterm",
+            body_text=(
+                "Time: April 23th, 9:00 am - 11:45 am. "
+                "Range: week 1 to week 7 lectures, WA 1-2 and PA 1-2."
+            ),
+        )
+
+        item, reason = classify_notice(notice, "2026-04-01 19:18 KST")
+
+        self.assertEqual(reason, "exam-candidate")
+        self.assertEqual(item.category, "exam_candidate")
+        self.assertEqual(item.title, "중간고사")
+
+    def test_mixed_hw_deadline_and_exam_title_does_not_hide_assignment(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=7",
+            course="전기 전자공학특강",
+            title="Schedule Update: HW1 Deadline & Midterm Exam",
+            body_text="HW1 deadline has been extended to 3/27 23:59. Midterm exam details are separate.",
+        )
+
+        item, reason = classify_notice(notice, "2026-03-20 19:18 KST")
+
+        self.assertEqual(reason, "assignment-notice")
+        self.assertEqual(item.category, "assignment")
+        self.assertEqual(item.title, "HW1")
+        self.assertEqual(item.sync_due, "2026-03-27T23:59:00+09:00")
+
+    def test_notice_submit_by_date_becomes_assignment_without_deadline_word(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=3",
+            course="데이타베이스 개론",
+            title="[IMPORTANT] Reminder: Mandatory Nano Quiz for GitHub Classroom Registration",
+            body_text=(
+                "Mandatory Nano Quiz 를 아직 제출하지 않은 학생들은 "
+                "2026년 3월 15일(일) 23:59까지 반드시 제출해주시기 바랍니다."
+            ),
+        )
+
+        item, reason = classify_notice(notice, "2026-03-10 19:18 KST")
+
+        self.assertEqual(reason, "assignment-notice")
+        self.assertEqual(item.title, "Nano Quiz")
+        self.assertEqual(item.sync_due, "2026-03-15T23:59:00+09:00")
+
+    def test_notice_korean_assignment_deadline_without_year_becomes_assignment(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=4",
+            course="지성과 문명 강독:우주",
+            title="7주차 과제 마감 기한",
+            body_text="7주차 과제의 경우, 중간고사 시험 일정으로 인해 4월 27일 마감입니다.",
+        )
+
+        item, reason = classify_notice(notice, "2026-04-20 19:18 KST")
+
+        self.assertEqual(reason, "assignment-notice")
+        self.assertEqual(item.title, "7주차 과제")
+        self.assertEqual(item.sync_due, "2026-04-27T23:59:00+09:00")
+
+    def test_notice_assignment_grade_inquiry_deadline_is_not_tracked_as_assignment(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=5",
+            course="데이타베이스 개론",
+            title="[Notice] Nano Quiz Grades and Answers Uploaded",
+            body_text=(
+                "Nano Quiz 성적이 업로드되었습니다. 성적에 대한 문의가 있는 경우 "
+                "5/3 (Sun) 11:59 PM까지 메일로 보내주시기 바랍니다."
+            ),
+        )
+
+        item, reason = classify_notice(notice, "2026-05-01 19:18 KST")
+
+        self.assertEqual(reason, "not-relevant")
+        self.assertIsNone(item)
 
     def test_submitted_assignment_detail_is_excluded(self) -> None:
         page = Page(
