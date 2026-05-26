@@ -133,6 +133,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
     public var phase: String
     public var loginRequired: Bool
     public var authDigits: String?
+    public var authStatusMessage: String?
 
     enum CodingKeys: String, CodingKey {
         case assignments
@@ -144,6 +145,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         case phase
         case loginRequired
         case authDigits
+        case authStatusMessage
     }
 
     public init(
@@ -155,7 +157,8 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         quarantine: Int = 0,
         phase: String = "",
         loginRequired: Bool = false,
-        authDigits: String? = nil
+        authDigits: String? = nil,
+        authStatusMessage: String? = nil
     ) {
         self.assignments = assignments
         self.exams = exams
@@ -166,6 +169,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         self.phase = phase
         self.loginRequired = loginRequired
         self.authDigits = authDigits
+        self.authStatusMessage = authStatusMessage
     }
 
     public init(snapshot: EngineSnapshot, phase: String = "") {
@@ -177,6 +181,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         quarantine = snapshot.syncReport?.files.quarantine ?? snapshot.quarantineReport?.quarantineCount ?? 0
         self.phase = phase
         authDigits = snapshot.authDigits
+        authStatusMessage = nil
         loginRequired = snapshot.loginPromptDetected
             || snapshot.issues.contains { issue in
                 issue.sourceName == "auth-digits"
@@ -196,6 +201,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         phase = container.decodeIfPresentDefault(String.self, forKey: .phase, default: "")
         loginRequired = container.decodeIfPresentDefault(Bool.self, forKey: .loginRequired, default: false)
         authDigits = try container.decodeIfPresent(String.self, forKey: .authDigits)
+        authStatusMessage = try container.decodeIfPresent(String.self, forKey: .authStatusMessage)
     }
 }
 
@@ -605,6 +611,11 @@ public final class CloudKitCommandStore: RemoteCommandStore, @unchecked Sendable
         record["newFiles"] = NSNumber(value: command.summary.newFiles)
         record["quarantine"] = NSNumber(value: command.summary.quarantine)
         record["phase"] = command.summary.phase as NSString
+        if let authStatusMessage = command.summary.authStatusMessage {
+            record["authStatusMessage"] = authStatusMessage as NSString
+        } else {
+            record["authStatusMessage"] = nil
+        }
     }
 
     private func command(from record: CKRecord) -> RemoteRunCommand? {
@@ -629,7 +640,8 @@ public final class CloudKitCommandStore: RemoteCommandStore, @unchecked Sendable
                 notices: (record["notices"] as? NSNumber)?.intValue ?? 0,
                 newFiles: (record["newFiles"] as? NSNumber)?.intValue ?? 0,
                 quarantine: (record["quarantine"] as? NSNumber)?.intValue ?? 0,
-                phase: (record["phase"] as? String) ?? ""
+                phase: (record["phase"] as? String) ?? "",
+                authStatusMessage: record["authStatusMessage"] as? String
             )
         )
     }

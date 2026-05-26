@@ -109,6 +109,9 @@ final class CompanionModel: ObservableObject {
         if let authDigits = status.authDigits {
             return "KAIST 인증 화면에서 \(authDigits)를 선택해야 합니다."
         }
+        if let authStatusMessage = status.authStatusMessage {
+            return authStatusMessage
+        }
         if status.loginRequired {
             return "Mac에서 KLMS 로그인을 다시 확인해야 합니다."
         }
@@ -132,6 +135,9 @@ final class CompanionModel: ObservableObject {
     var loginAttentionMessage: String? {
         if let authDigits = status.authDigits {
             return "KAIST 인증 번호 \(authDigits)를 휴대폰 인증 화면에서 선택하면 Mac 동기화가 계속됩니다."
+        }
+        if let authStatusMessage = status.authStatusMessage {
+            return authStatusMessage
         }
         if status.loginRequired {
             return "KLMS 로그인이 풀렸을 수 있습니다. Mac에서 Safari KLMS 로그인을 완료한 뒤 다시 확인해 주세요."
@@ -251,7 +257,12 @@ final class CompanionModel: ObservableObject {
     func pollRecentCommands() async {
         while !Task.isCancelled {
             await refreshRecent()
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            let interval: UInt64 = hasInFlightRequest
+                || status.authDigits != nil
+                || status.authStatusMessage != nil
+                ? 2_000_000_000
+                : 10_000_000_000
+            try? await Task.sleep(nanoseconds: interval)
         }
     }
 
@@ -472,6 +483,9 @@ private struct RemoteStatusHeader: View {
         if model.status.authDigits != nil {
             return "인증 번호 선택 필요"
         }
+        if model.status.authStatusMessage != nil {
+            return "인증 완료"
+        }
         if model.status.loginRequired {
             return "KLMS 로그인 필요"
         }
@@ -485,6 +499,9 @@ private struct RemoteStatusHeader: View {
     private var statusImage: String {
         if model.status.authDigits != nil {
             return "key"
+        }
+        if model.status.authStatusMessage != nil {
+            return "checkmark.circle.fill"
         }
         if model.status.loginRequired {
             return "person.crop.circle.badge.exclamationmark"
@@ -506,6 +523,9 @@ private struct RemoteStatusHeader: View {
     }
 
     private var statusColor: Color {
+        if model.status.authStatusMessage != nil {
+            return .green
+        }
         if model.status.loginRequired {
             return .orange
         }
@@ -637,6 +657,10 @@ private struct RemoteCommandRow: View {
                     Text("인증 \(authDigits)")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.orange)
+                } else if let authStatusMessage = command.summary.authStatusMessage {
+                    Text(authStatusMessage)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.green)
                 } else if command.loginRequired {
                     Text("로그인 필요")
                         .font(.caption2)
