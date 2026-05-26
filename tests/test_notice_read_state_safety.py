@@ -284,7 +284,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("cssFontSize(line.fontSize)", renderer)
         self.assertIn("let noticeBodyFontSize: CGFloat = 14", support)
         self.assertIn("let noticeSectionHeadingFontSize: CGFloat = 19", support)
-        self.assertIn("let noticeDocumentTitleFontSize: CGFloat = 14", support)
+        self.assertIn("let noticeDocumentTitleFontSize: CGFloat = 23", support)
         self.assertNotIn("line-height:1.42", renderer)
 
     def test_notice_format_menu_does_not_toggle_bold_off(self) -> None:
