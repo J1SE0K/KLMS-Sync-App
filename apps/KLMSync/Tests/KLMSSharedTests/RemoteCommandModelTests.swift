@@ -66,15 +66,25 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertTrue(RemoteCommandStatus.macUnavailable.isTerminal)
     }
 
-    func testSanitizedRemoteStatusUsesOnlyCountsAndPhase() {
+    func testSanitizedRemoteStatusUsesCountsPhaseAndLoginAttention() {
         let report = SyncReport(
             status: "ok",
             state: .init(assignments: 2, exams: 4, helpdesk: 1),
             notices: .init(total: 63, new: 7, updated: 0, ignored: 0),
             files: .init(total: 72, newFiles: 3, quarantine: 1, pruned: 0, archivePruned: 0)
         )
+        let doctor = DoctorResult(
+            status: "fail",
+            checks: [
+                DoctorCheck(
+                    name: "klms-login-cache",
+                    status: "warn",
+                    detail: "KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘."
+                )
+            ]
+        )
         let status = SanitizedRemoteStatus(
-            snapshot: EngineSnapshot(syncReport: report),
+            snapshot: EngineSnapshot(syncReport: report, doctorResult: doctor),
             phase: "completed"
         )
 
@@ -85,6 +95,23 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(status.newFiles, 3)
         XCTAssertEqual(status.quarantine, 1)
         XCTAssertEqual(status.phase, "completed")
+        XCTAssertTrue(status.loginRequired)
+        XCTAssertNil(status.authDigits)
+    }
+
+    func testSanitizedRemoteStatusDecodesOlderPayloadWithoutLoginFields() throws {
+        let data = Data(
+            """
+            {"assignments":1,"exams":2,"helpDesk":3,"notices":4,"newFiles":5,"quarantine":0,"phase":"idle"}
+            """.utf8
+        )
+
+        let status = try JSONDecoder.klmsLocalRemote.decode(SanitizedRemoteStatus.self, from: data)
+
+        XCTAssertEqual(status.assignments, 1)
+        XCTAssertEqual(status.phase, "idle")
+        XCTAssertFalse(status.loginRequired)
+        XCTAssertNil(status.authDigits)
     }
 
     func testLocalRemoteRequestAndResponseRoundTrip() throws {

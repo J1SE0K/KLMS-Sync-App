@@ -160,11 +160,12 @@ final class KLMSMacModel: ObservableObject {
     }
 
     var localRemoteEndpointHints: [String] {
-        Self.localIPv4Addresses().map { "\($0):\(Self.localRemotePort)" }
+        localRemotePrimaryEndpoint == "이 Mac의 IP:\(Self.localRemotePort)" ? [] : [localRemotePrimaryEndpoint]
     }
 
     var localRemotePrimaryEndpoint: String {
-        localRemoteEndpointHints.first ?? "이 Mac의 IP:\(Self.localRemotePort)"
+        Self.localIPv4Addresses().first.map { "\($0):\(Self.localRemotePort)" }
+            ?? "이 Mac의 IP:\(Self.localRemotePort)"
     }
 
     var localRemoteConnectionInfoText: String {
@@ -321,8 +322,7 @@ final class KLMSMacModel: ObservableObject {
             try server.start()
             localRemoteServer = server
             isLocalRemoteServerRunning = true
-            let endpoint = localRemoteEndpointHints.first ?? "이 Mac의 IP:\(Self.localRemotePort)"
-            localRemoteStatusMessage = "로컬 원격 제어 실행 중: \(endpoint)"
+            localRemoteStatusMessage = "로컬 원격 제어 실행 중: \(localRemotePrimaryEndpoint)"
         } catch {
             localRemoteStatusMessage = "로컬 원격 제어 시작 실패: \(error.localizedDescription)"
             errorMessage = localRemoteStatusMessage
@@ -335,10 +335,15 @@ final class KLMSMacModel: ObservableObject {
         }
         switch request.action {
         case .status:
+            let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
+            snapshot = refreshedSnapshot
             return LocalRemoteResponse(
                 ok: true,
                 message: localRemoteStatusMessage ?? "대기 중",
-                status: SanitizedRemoteStatus(snapshot: snapshot, phase: runningCommand == nil ? "idle" : "running"),
+                status: sanitizedRemoteStatus(
+                    snapshot: refreshedSnapshot,
+                    phase: runningCommand == nil ? "idle" : "running"
+                ),
                 latestCommand: lastRemoteCommand,
                 running: runningCommand != nil
             )
@@ -351,7 +356,7 @@ final class KLMSMacModel: ObservableObject {
                 return LocalRemoteResponse(
                     ok: false,
                     message: "이미 동기화가 실행 중입니다.",
-                    status: SanitizedRemoteStatus(snapshot: snapshot, phase: "busy"),
+                    status: sanitizedRemoteStatus(snapshot: snapshot, phase: "busy"),
                     latestCommand: lastRemoteCommand,
                     running: true
                 )
@@ -359,7 +364,7 @@ final class KLMSMacModel: ObservableObject {
             let command = RemoteRunCommand(
                 kind: kind,
                 status: .running,
-                summary: SanitizedRemoteStatus(snapshot: snapshot, phase: "running")
+                summary: sanitizedRemoteStatus(snapshot: snapshot, phase: "running")
             )
             lastRemoteCommand = command
             remoteProcessingStatusMessage = "로컬 iPhone 요청 처리 중: \(kind.displayName)"
@@ -384,12 +389,21 @@ final class KLMSMacModel: ObservableObject {
         completed.status = lastCommandResult?.succeeded == true ? .completed : .failed
         completed.updatedAt = Date()
         completed.lastExitCode = lastCommandResult.map { Int($0.exitCode) }
-        completed.loginRequired = lastCommandResult?.requiresLoginApproval == true
-        completed.summary = SanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: completed.status.rawValue)
+        completed.summary = sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: completed.status.rawValue)
+        completed.loginRequired = lastCommandResult?.requiresLoginApproval == true || completed.summary.loginRequired
         lastRemoteCommand = completed
         let message = "최근 로컬 iPhone 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
         localRemoteStatusMessage = message
         remoteProcessingStatusMessage = message
+    }
+
+    private func sanitizedRemoteStatus(snapshot: EngineSnapshot, phase: String) -> SanitizedRemoteStatus {
+        var status = SanitizedRemoteStatus(snapshot: snapshot, phase: phase)
+        if let liveAuthDigits {
+            status.loginRequired = true
+            status.authDigits = liveAuthDigits
+        }
+        return status
     }
 
     private func copyToPasteboard(_ value: String) {
@@ -845,7 +859,7 @@ final class KLMSMacModel: ObservableObject {
                     var stale = command
                     stale.status = .macUnavailable
                     stale.updatedAt = now
-                    stale.summary = SanitizedRemoteStatus(
+                    stale.summary = sanitizedRemoteStatus(
                         snapshot: snapshot,
                         phase: stale.status.rawValue
                     )
@@ -866,7 +880,7 @@ final class KLMSMacModel: ObservableObject {
             var running = command
             running.status = .running
             running.updatedAt = Date()
-            running.summary = SanitizedRemoteStatus(snapshot: snapshot, phase: "running")
+            running.summary = sanitizedRemoteStatus(snapshot: snapshot, phase: "running")
             try await store.update(running)
             lastRemoteCommand = running
             remoteProcessingStatusMessage = "\(running.kind.displayName) 요청 처리 중"
@@ -877,8 +891,8 @@ final class KLMSMacModel: ObservableObject {
             completed.status = lastCommandResult?.succeeded == true ? .completed : .failed
             completed.updatedAt = Date()
             completed.lastExitCode = lastCommandResult.map { Int($0.exitCode) }
-            completed.loginRequired = lastCommandResult?.requiresLoginApproval == true
-            completed.summary = SanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: completed.status.rawValue)
+            completed.summary = sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: completed.status.rawValue)
+            completed.loginRequired = lastCommandResult?.requiresLoginApproval == true || completed.summary.loginRequired
             try await store.update(completed)
             lastRemoteCommand = completed
             remoteProcessingStatusMessage = "최근 iPhone 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
@@ -929,11 +943,16 @@ final class KLMSMacModel: ObservableObject {
         return String((0..<12).map { _ in alphabet.randomElement() ?? "K" })
     }
 
+    private struct LocalIPv4AddressCandidate {
+        var interfaceName: String
+        var address: String
+    }
+
     private static func localIPv4Addresses() -> [String] {
-        var addresses: [String] = []
+        var candidates: [LocalIPv4AddressCandidate] = []
         var interfaces: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&interfaces) == 0, let first = interfaces else {
-            return addresses
+            return []
         }
         defer { freeifaddrs(interfaces) }
 
@@ -959,11 +978,53 @@ final class KLMSMacModel: ObservableObject {
             guard result == 0 else { continue }
             let ipBytes = hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
             let ip = String(decoding: ipBytes, as: UTF8.self)
-            if !ip.isEmpty {
-                addresses.append(ip)
+            guard !ip.isEmpty, !ip.hasPrefix("169.254.") else {
+                continue
             }
+            let rawName = interface.ifa_name.map { String(cString: $0) } ?? ""
+            candidates.append(LocalIPv4AddressCandidate(interfaceName: rawName, address: ip))
         }
-        return Array(NSOrderedSet(array: addresses)) as? [String] ?? addresses
+
+        var seen = Set<String>()
+        return candidates
+            .sorted { lhs, rhs in localIPv4AddressPriority(lhs) < localIPv4AddressPriority(rhs) }
+            .compactMap { candidate in
+                guard seen.insert(candidate.address).inserted else {
+                    return nil
+                }
+                return candidate.address
+            }
+    }
+
+    private static func localIPv4AddressPriority(_ candidate: LocalIPv4AddressCandidate) -> Int {
+        let name = candidate.interfaceName
+        let interfaceRank: Int
+        if name == "en0" || name == "en1" {
+            interfaceRank = 0
+        } else if name.hasPrefix("en") {
+            interfaceRank = 1
+        } else if name.hasPrefix("bridge") {
+            interfaceRank = 4
+        } else if name.hasPrefix("utun") || name.hasPrefix("awdl") || name.hasPrefix("llw") {
+            interfaceRank = 8
+        } else {
+            interfaceRank = 3
+        }
+        return interfaceRank * 10 + localIPv4AddressRangeRank(candidate.address)
+    }
+
+    private static func localIPv4AddressRangeRank(_ address: String) -> Int {
+        if address.hasPrefix("192.168.") {
+            return 0
+        }
+        if address.hasPrefix("10.") {
+            return 1
+        }
+        let parts = address.split(separator: ".").compactMap { Int($0) }
+        if parts.count == 4, parts[0] == 172, (16...31).contains(parts[1]) {
+            return 2
+        }
+        return 3
     }
 
     private static func requestAccessibilityPermissionPrompt() -> Bool {

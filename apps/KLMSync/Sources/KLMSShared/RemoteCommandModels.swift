@@ -128,6 +128,20 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
     public var newFiles: Int
     public var quarantine: Int
     public var phase: String
+    public var loginRequired: Bool
+    public var authDigits: String?
+
+    enum CodingKeys: String, CodingKey {
+        case assignments
+        case exams
+        case helpDesk
+        case notices
+        case newFiles
+        case quarantine
+        case phase
+        case loginRequired
+        case authDigits
+    }
 
     public init(
         assignments: Int = 0,
@@ -136,7 +150,9 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         notices: Int = 0,
         newFiles: Int = 0,
         quarantine: Int = 0,
-        phase: String = ""
+        phase: String = "",
+        loginRequired: Bool = false,
+        authDigits: String? = nil
     ) {
         self.assignments = assignments
         self.exams = exams
@@ -145,6 +161,8 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         self.newFiles = newFiles
         self.quarantine = quarantine
         self.phase = phase
+        self.loginRequired = loginRequired
+        self.authDigits = authDigits
     }
 
     public init(snapshot: EngineSnapshot, phase: String = "") {
@@ -155,6 +173,26 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         newFiles = snapshot.syncReport?.files.newFiles ?? snapshot.downloadResult?.newFilesCopiedCount ?? 0
         quarantine = snapshot.syncReport?.files.quarantine ?? snapshot.quarantineReport?.quarantineCount ?? 0
         self.phase = phase
+        authDigits = snapshot.authDigits
+        loginRequired = snapshot.loginPromptDetected
+            || snapshot.issues.contains { issue in
+                issue.sourceName == "auth-digits"
+                    || issue.sourceName == "login-required"
+                    || issue.sourceName == "klms-login-cache"
+            }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        assignments = container.decodeIfPresentDefault(Int.self, forKey: .assignments, default: 0)
+        exams = container.decodeIfPresentDefault(Int.self, forKey: .exams, default: 0)
+        helpDesk = container.decodeIfPresentDefault(Int.self, forKey: .helpDesk, default: 0)
+        notices = container.decodeIfPresentDefault(Int.self, forKey: .notices, default: 0)
+        newFiles = container.decodeIfPresentDefault(Int.self, forKey: .newFiles, default: 0)
+        quarantine = container.decodeIfPresentDefault(Int.self, forKey: .quarantine, default: 0)
+        phase = container.decodeIfPresentDefault(String.self, forKey: .phase, default: "")
+        loginRequired = container.decodeIfPresentDefault(Bool.self, forKey: .loginRequired, default: false)
+        authDigits = try container.decodeIfPresent(String.self, forKey: .authDigits)
     }
 }
 

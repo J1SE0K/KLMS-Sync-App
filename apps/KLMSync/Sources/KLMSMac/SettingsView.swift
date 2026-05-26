@@ -87,18 +87,14 @@ struct SettingsView: View {
                 }
                 if model.localRemoteEnabled {
                     LabeledContent("Mac 주소") {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            ForEach(model.localRemoteEndpointHints, id: \.self) { endpoint in
-                                HStack(spacing: 6) {
-                                    Text(endpoint)
-                                        .font(.caption.monospaced())
-                                        .textSelection(.enabled)
-                                    Button("복사") {
-                                        model.copyLocalRemoteEndpoint(endpoint)
-                                    }
-                                    .font(.caption)
-                                }
+                        HStack(spacing: 6) {
+                            Text(model.localRemotePrimaryEndpoint)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                            Button("복사") {
+                                model.copyLocalRemoteEndpoint()
                             }
+                            .font(.caption)
                         }
                     }
                     LabeledContent("토큰") {
