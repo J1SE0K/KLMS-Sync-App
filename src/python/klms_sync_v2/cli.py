@@ -8,7 +8,8 @@ import re
 import sys
 from typing import Any
 
-from .models import Notice, Page
+from .models import Assignment, Event, Notice, Page
+from .overrides import split_override_key
 from .pipeline import build_sync_state
 from .render import render_error_html, render_success_html
 from .text import html_to_text, one_line, split_course_title
@@ -174,6 +175,107 @@ def merge_notices(*groups: list[Notice]) -> list[Notice]:
     return merged
 
 
+def assignment_override_urls(overrides: dict[str, Any] | None) -> set[str]:
+    if not overrides:
+        return set()
+    assignment_overrides = overrides.get("assignments") or {}
+    if not isinstance(assignment_overrides, dict):
+        return set()
+    return {split_override_key(str(key))[0] for key in assignment_overrides}
+
+
+def legacy_assignment_to_v2(record: dict[str, Any]) -> Assignment:
+    title = clean_source_title(str(record.get("title") or ""))
+    return Assignment(
+        url=str(record.get("url") or ""),
+        course=one_line(str(record.get("course") or "")),
+        title=title,
+        due=one_line(str(record.get("due") or record.get("schedule") or "")),
+        sync_due=one_line(str(record.get("sync_due") or "")),
+        source=one_line(str(record.get("time_source") or "source")),
+        source_title=one_line(str(record.get("source_title") or title)),
+        submission=one_line(str(record.get("submission") or "")),
+        instructions=one_line(str(record.get("instructions") or "")),
+        category="assignment",
+        type=one_line(str(record.get("type") or "assign")),
+    )
+
+
+def legacy_event_to_v2(record: dict[str, Any]) -> Event:
+    title = clean_source_title(str(record.get("title") or ""))
+    return Event(
+        url=str(record.get("url") or ""),
+        course=one_line(str(record.get("course") or "")),
+        title=title,
+        due=one_line(str(record.get("due") or record.get("schedule") or "")),
+        sync_due=one_line(str(record.get("sync_due") or "")),
+        sync_start=one_line(str(record.get("sync_start") or "")),
+        source=one_line(str(record.get("time_source") or "source")),
+        source_title=one_line(str(record.get("source_title") or title)),
+        instructions=one_line(str(record.get("instructions") or "")),
+        location=one_line(str(record.get("location") or "")),
+        coverage=one_line(str(record.get("coverage") or record.get("coverage_summary") or "")),
+        category="exam",
+        type=one_line(str(record.get("type") or "exam")),
+    )
+
+
+def clean_source_title(value: str) -> str:
+    return re.sub(r"^\[(?:과제|퀴즈|시험|공지)\]\s*", "", one_line(value))
+
+
+def load_source_items(
+    *,
+    dashboard_json: str | None,
+    course_pages_json: str | None,
+    all_week_course_pages_json: str | None,
+    overrides: dict[str, Any] | None,
+) -> tuple[list[Assignment], list[Event], dict[str, dict[str, str]]]:
+    if not dashboard_json:
+        return [], [], {}
+    dashboard_path = Path(dashboard_json)
+    if not dashboard_path.exists():
+        return [], [], {}
+
+    legacy_module = legacy().legacy
+    dashboard = legacy_module.parse_dashboard_page(legacy_module.load_single_page(dashboard_path))
+    if dashboard.status != "ok":
+        return [], [], {}
+
+    course_pages = legacy().load_pages(course_pages_json) + legacy().load_pages(
+        all_week_course_pages_json
+    )
+    override_urls = assignment_override_urls(overrides)
+    assignments: list[Assignment] = []
+    events: list[Event] = []
+    metadata: dict[str, dict[str, str]] = {}
+    seen_urls: set[str] = set()
+
+    for source_item in legacy_module.collect_candidate_items(dashboard, course_pages):
+        if source_item.url in seen_urls:
+            continue
+        seen_urls.add(source_item.url)
+        record = legacy_module.merge_assignment(source_item, None)
+        title = clean_source_title(str(record.get("title") or source_item.title))
+        metadata[source_item.url] = {
+            "course": one_line(source_item.course),
+            "title": title,
+            "instructions": one_line(str(record.get("instructions") or "")),
+        }
+        has_resolved_time = bool(record.get("sync_due"))
+        has_visible_schedule = bool(one_line(source_item.schedule))
+        has_manual_override = source_item.url in override_urls
+        if not (has_resolved_time or has_visible_schedule or has_manual_override):
+            continue
+        if has_resolved_time and legacy_module.assignment_should_be_exam_item(record):
+            exam_record = legacy_module.assignment_to_exam_item(record)
+            events.append(legacy_event_to_v2(exam_record))
+        else:
+            assignments.append(legacy_assignment_to_v2(record))
+
+    return assignments, events, metadata
+
+
 def status_from_state(state_payload: dict[str, Any], previous_state: dict[str, Any]) -> dict[str, Any]:
     content = state_payload.get("content") or {}
     previous_content = previous_state.get("content") or {}
@@ -234,10 +336,19 @@ def command_build_note(args: argparse.Namespace) -> int:
         page_notices = notices_from_article_pages(supplemental_detail_pages)
         generated_at = args.generated_at or digest_generated_at or now_kst_label()
         overrides = load_optional_json(args.overrides_json, None)
+        source_assignments, source_events, source_metadata = load_source_items(
+            dashboard_json=args.dashboard_json,
+            course_pages_json=args.course_pages_json,
+            all_week_course_pages_json=args.all_week_course_pages_json,
+            overrides=overrides,
+        )
         state = build_sync_state(
             generated_at=generated_at,
             detail_pages=detail_pages,
             notices=merge_notices(digest_notices, page_notices),
+            source_assignments=source_assignments,
+            source_events=source_events,
+            source_metadata=source_metadata,
             overrides=overrides,
             include_past=args.include_past,
         )
@@ -443,6 +554,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_note = subparsers.add_parser("build-note")
     build_note.add_argument("--dashboard-json")
     build_note.add_argument("--course-pages-json")
+    build_note.add_argument("--all-week-course-pages-json")
     build_note.add_argument("--details-json", required=True)
     build_note.add_argument("--supplemental-pages-json")
     build_note.add_argument("--supplemental-detail-pages-json")

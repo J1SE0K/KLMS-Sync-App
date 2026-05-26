@@ -930,6 +930,8 @@ function run(argv) {
           dashboardJson,
           "--course-pages-json",
           coursePagesJson,
+          "--all-week-course-pages-json",
+          allWeekCoursePagesJson,
           "--details-json",
           detailsJson,
           "--supplemental-pages-json",

@@ -39,6 +39,9 @@ def build_sync_state(
     generated_at: str,
     detail_pages: Iterable[Page],
     notices: Iterable[Notice],
+    source_assignments: Iterable[Assignment] = (),
+    source_events: Iterable[Event] = (),
+    source_metadata: dict[str, dict[str, str]] | None = None,
     overrides: dict | None = None,
     include_past: bool = False,
 ) -> SyncState:
@@ -48,13 +51,18 @@ def build_sync_state(
     submitted_tokens: set[str] = set()
     materialized_detail_pages = list(detail_pages)
     materialized_notices = list(notices)
+    materialized_source_assignments = list(source_assignments)
+    materialized_source_events = list(source_events)
     source_by_url: dict[str, dict[str, str]] = {}
+    source_metadata_by_url = source_metadata or {}
 
     for page in materialized_detail_pages:
         raw_text = html_to_text(page.html) or page.text
         course, title = split_course_title(page.title)
+        source_info = source_metadata_by_url.get(page.url, {})
         source_by_url[page.url] = {
-            "course": course_name_from_text(course, one_line(raw_text)),
+            "course": course_name_from_text(course, one_line(raw_text))
+            or source_info.get("course", ""),
             "title": strip_access_suffix(title),
             "instructions": clean_detail_instructions(raw_text),
         }
@@ -69,16 +77,66 @@ def build_sync_state(
             "instructions": clipped(notice.body_text or notice.summary),
         }
 
+    for item in materialized_source_assignments:
+        source_by_url.setdefault(
+            item.url,
+            {
+                "course": item.course,
+                "title": item.title,
+                "instructions": clipped(item.instructions),
+            },
+        )
+
+    for item in materialized_source_events:
+        source_by_url.setdefault(
+            item.url,
+            {
+                "course": item.course,
+                "title": item.title,
+                "instructions": clipped(item.instructions),
+            },
+        )
+
+    for url, source_info in source_metadata_by_url.items():
+        source_by_url.setdefault(url, source_info)
+
+    def enrich_assignment(item: Assignment) -> Assignment:
+        source_info = source_metadata_by_url.get(item.url)
+        if not source_info:
+            return item
+        if item.course and item.source_title and item.instructions:
+            return item
+        return replace(
+            item,
+            course=item.course or source_info.get("course", ""),
+            source_title=item.source_title or source_info.get("title", ""),
+            instructions=item.instructions or source_info.get("instructions", ""),
+        )
+
+    def enrich_event(item: Event) -> Event:
+        source_info = source_metadata_by_url.get(item.url)
+        if not source_info:
+            return item
+        if item.course and item.source_title and item.instructions:
+            return item
+        return replace(
+            item,
+            course=item.course or source_info.get("course", ""),
+            source_title=item.source_title or source_info.get("title", ""),
+            instructions=item.instructions or source_info.get("instructions", ""),
+        )
+
     def add_assignment(item: Assignment) -> None:
-        def record_assignment(record: Assignment) -> None:
+        def record_assignment(record: Assignment) -> bool:
             if record.url in seen_assignments:
-                return
+                return False
             seen_assignments.add(record.url)
             state.assignment_records.append(record)
+            return True
 
         if item.record_status == "completed" or item.auto_completed:
-            record_assignment(item)
-            state.completed_assignments.append(item)
+            if record_assignment(item):
+                state.completed_assignments.append(item)
             return
         if not include_past and is_past(item.sync_due, generated_at):
             completed = replace(
@@ -87,8 +145,8 @@ def build_sync_state(
                 record_status="completed",
                 completion_reason="past_due",
             )
-            record_assignment(completed)
-            state.completed_assignments.append(completed)
+            if record_assignment(completed):
+                state.completed_assignments.append(completed)
             return
         normalized = one_line(" ".join([item.title, item.source_title])).lower()
         if any(token and token in normalized for token in submitted_tokens):
@@ -98,11 +156,12 @@ def build_sync_state(
                 record_status="completed",
                 completion_reason="submitted_match",
             )
-            record_assignment(completed)
-            state.completed_assignments.append(completed)
+            if record_assignment(completed):
+                state.completed_assignments.append(completed)
             return
         active = replace(item, record_status=item.record_status or "active")
-        record_assignment(active)
+        if not record_assignment(active):
+            return
         if item.category == "assignment_candidate":
             state.assignment_candidates.append(active)
         else:
@@ -125,9 +184,15 @@ def build_sync_state(
     for page in materialized_detail_pages:
         item, _reason = classify_detail_page(page, generated_at)
         if isinstance(item, Assignment):
-            add_assignment(item)
+            add_assignment(enrich_assignment(item))
         elif isinstance(item, Event):
-            add_event(item)
+            add_event(enrich_event(item))
+
+    for item in materialized_source_assignments:
+        add_assignment(enrich_assignment(item))
+
+    for item in materialized_source_events:
+        add_event(enrich_event(item))
 
     for notice in materialized_notices:
         item, _reason = classify_notice(notice, generated_at)
