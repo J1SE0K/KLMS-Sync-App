@@ -8,6 +8,14 @@ import re
 import sys
 from typing import Any
 
+from .classifiers import (
+    ASSIGNMENT_RESULT_TITLE_RE,
+    ASSIGNMENT_WORD_RE,
+    EXAM_RESULT_TITLE_RE,
+    EXAM_WORD_RE,
+    exam_display_title,
+)
+from .dates import parse_due_datetime
 from .models import Assignment, Event, Notice, Page
 from .overrides import split_override_key
 from .pipeline import build_sync_state
@@ -253,6 +261,140 @@ def clean_source_title(value: str) -> str:
     return re.sub(r"^\[(?:과제|퀴즈|시험|공지)\]\s*", "", one_line(value))
 
 
+def comparable_assignment_title(value: str) -> str:
+    normalized = clean_source_title(value).casefold()
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = normalized.replace("쪽글 및 과제", "과제")
+    normalized = normalized.replace("쪽글과 과제", "과제")
+    normalized = normalized.replace(" 및 ", " ")
+    return normalized.strip()
+
+
+def previous_assignment_keys(previous_state: dict[str, Any]) -> set[tuple[str, str]]:
+    content = previous_state.get("content") if isinstance(previous_state, dict) else {}
+    if not isinstance(content, dict):
+        return set()
+    keys: set[tuple[str, str]] = set()
+    for section in ("assignments", "completed_assignments", "assignment_records", "assignment_candidates"):
+        for item in content.get(section) or []:
+            if not isinstance(item, dict):
+                continue
+            course = one_line(str(item.get("course") or ""))
+            title = comparable_assignment_title(str(item.get("title") or ""))
+            if course and title:
+                keys.add((course, title))
+    return keys
+
+
+def load_file_manifest_items(
+    path: str | None,
+    *,
+    generated_at: str,
+    previous_state: dict[str, Any] | None = None,
+) -> tuple[list[Assignment], list[Event], dict[str, dict[str, str]]]:
+    if not path:
+        return [], [], {}
+    target = Path(path)
+    if not target.exists():
+        return [], [], {}
+    records = load_json(target)
+    if not isinstance(records, list):
+        return [], [], {}
+
+    assignments: list[Assignment] = []
+    events: list[Event] = []
+    metadata: dict[str, dict[str, str]] = {}
+    seen: set[tuple[str, str, str, str]] = set()
+    existing_assignment_keys = previous_assignment_keys(previous_state or {})
+
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        course = one_line(str(record.get("course") or ""))
+        url = str(record.get("url") or "")
+        activity_title = clean_source_title(str(record.get("activity_title") or record.get("link_text") or ""))
+        filename = one_line(str(record.get("filename") or ""))
+        section_title = one_line(str(record.get("section_title") or record.get("source_title") or ""))
+        timestamp_label = one_line(str(record.get("klms_timestamp_label") or ""))
+        timestamp_text = one_line(str(record.get("klms_timestamp_text") or record.get("klms_timestamp") or ""))
+        combined = one_line(" ".join([activity_title, filename, section_title, timestamp_text]))
+        if not course or not url or not combined:
+            continue
+        if ASSIGNMENT_RESULT_TITLE_RE.search(combined) or EXAM_RESULT_TITLE_RE.search(combined):
+            continue
+        if not re.search(r"(마감|deadline|due)", timestamp_label, re.IGNORECASE):
+            continue
+        due = parse_due_datetime(timestamp_text, generated_at) or parse_due_datetime(combined, generated_at)
+        if not due:
+            continue
+
+        source_title = activity_title or filename or section_title
+        instructions = clipped_file_manifest_instructions(filename, section_title)
+        metadata[url] = {
+            "course": course,
+            "title": source_title,
+            "instructions": instructions,
+        }
+
+        if EXAM_WORD_RE.search(combined) and not ASSIGNMENT_WORD_RE.search(activity_title):
+            title = exam_display_title(combined, source_title)
+            key = ("exam", course, title, due.iso)
+            if key in seen:
+                continue
+            seen.add(key)
+            events.append(
+                Event(
+                    url=url,
+                    course=course,
+                    title=title,
+                    due=due.display,
+                    sync_due=due.iso,
+                    sync_start=due.start_iso,
+                    source="file",
+                    source_title=source_title,
+                    instructions=instructions,
+                    category="exam_candidate",
+                    type="exam",
+                )
+            )
+            continue
+
+        if ASSIGNMENT_WORD_RE.search(combined):
+            title = activity_title or filename.rsplit(".", 1)[0] or source_title
+            comparable_key = (course, comparable_assignment_title(title))
+            if comparable_key in existing_assignment_keys:
+                continue
+            key = ("assignment", course, title, due.iso)
+            if key in seen:
+                continue
+            seen.add(key)
+            assignments.append(
+                Assignment(
+                    url=url,
+                    course=course,
+                    title=one_line(title),
+                    due=due.display,
+                    sync_due=due.iso,
+                    source="file",
+                    source_title=source_title,
+                    instructions=instructions,
+                    category="assignment_candidate",
+                    type="file_assignment_candidate",
+                )
+            )
+
+    return assignments, events, metadata
+
+
+def clipped_file_manifest_instructions(filename: str, section_title: str) -> str:
+    parts = []
+    if filename:
+        parts.append(f"파일: {filename}")
+    if section_title:
+        parts.append(f"섹션: {section_title}")
+    return one_line(" / ".join(parts))
+
+
 def load_source_items(
     *,
     dashboard_json: str | None,
@@ -327,10 +469,17 @@ def command_build_state(args: argparse.Namespace) -> int:
         generated_at = args.generated_at
     detail_pages = load_detail_pages(args.details_json)
     overrides = load_json(args.overrides_json) if args.overrides_json else None
+    source_assignments, source_events, source_metadata = load_file_manifest_items(
+        args.course_file_manifest_json,
+        generated_at=generated_at,
+    )
     state = build_sync_state(
         generated_at=generated_at,
         detail_pages=detail_pages,
         notices=notices,
+        source_assignments=source_assignments,
+        source_events=source_events,
+        source_metadata=source_metadata,
         overrides=overrides,
         include_past=args.include_past,
     )
@@ -371,6 +520,14 @@ def command_build_note(args: argparse.Namespace) -> int:
             all_week_course_pages_json=args.all_week_course_pages_json,
             overrides=overrides,
         )
+        file_assignments, file_events, file_metadata = load_file_manifest_items(
+            args.course_file_manifest_json,
+            generated_at=generated_at,
+            previous_state=previous_state,
+        )
+        source_assignments.extend(file_assignments)
+        source_events.extend(file_events)
+        source_metadata.update(file_metadata)
         state = build_sync_state(
             generated_at=generated_at,
             detail_pages=detail_pages,
@@ -519,6 +676,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_state = subparsers.add_parser("build-state")
     build_state.add_argument("--details-json", required=True)
     build_state.add_argument("--notice-digest-json", required=True)
+    build_state.add_argument("--course-file-manifest-json")
     build_state.add_argument("--output-json")
     build_state.add_argument("--generated-at")
     build_state.add_argument("--overrides-json")
@@ -592,6 +750,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_note.add_argument("--dashboard-json")
     build_note.add_argument("--course-pages-json")
     build_note.add_argument("--all-week-course-pages-json")
+    build_note.add_argument("--course-file-manifest-json")
     build_note.add_argument("--details-json", required=True)
     build_note.add_argument("--supplemental-pages-json")
     build_note.add_argument("--supplemental-detail-pages-json")

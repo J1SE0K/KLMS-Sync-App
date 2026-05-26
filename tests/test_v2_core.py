@@ -51,6 +51,28 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(parsed.start_iso, "2026-03-31T10:30:00+09:00")
         self.assertEqual(parsed.iso, "2026-03-31T12:00:00+09:00")
 
+    def test_english_day_month_h_notation_range_parses(self) -> None:
+        parsed = parse_due_datetime(
+            "The exam will be taken on the 4th of June at the classroom from 14h:30 to 15h:30.",
+            "2026-05-27 19:18 KST",
+        )
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.display, "2026년 6월 4일(목요일) 오후 2:30 - 오후 3:30")
+        self.assertEqual(parsed.start_iso, "2026-06-04T14:30:00+09:00")
+        self.assertEqual(parsed.iso, "2026-06-04T15:30:00+09:00")
+
+    def test_english_day_month_space_h_notation_range_parses(self) -> None:
+        parsed = parse_due_datetime(
+            "The exam will be taken on the 16th of April from 14h 30 to 15h 30 in our lecture room.",
+            "2026-03-20 19:18 KST",
+        )
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.display, "2026년 4월 16일(목요일) 오후 2:30 - 오후 3:30")
+        self.assertEqual(parsed.start_iso, "2026-04-16T14:30:00+09:00")
+        self.assertEqual(parsed.iso, "2026-04-16T15:30:00+09:00")
+
     def test_slash_range_uses_end_as_due_and_start_as_start(self) -> None:
         parsed = parse_due_datetime(
             "Thursday, 5/14, from 10:30 AM to 11:30 AM",
@@ -103,7 +125,7 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(item.title, "Project 3")
         self.assertEqual(item.sync_due, "2026-05-31T23:59:00+09:00")
 
-    def test_exam_notice_with_assignment_coverage_stays_exam_candidate(self) -> None:
+    def test_exam_notice_with_assignment_coverage_becomes_exam(self) -> None:
         notice = Notice(
             url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=6",
             course="알고리즘 개론",
@@ -116,9 +138,43 @@ class V2CoreTests(unittest.TestCase):
 
         item, reason = classify_notice(notice, "2026-04-01 19:18 KST")
 
-        self.assertEqual(reason, "exam-candidate")
-        self.assertEqual(item.category, "exam_candidate")
+        self.assertEqual(reason, "exam-notice")
+        self.assertEqual(item.category, "exam")
         self.assertEqual(item.title, "중간고사")
+
+    def test_final_exam_notice_becomes_exam(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=8",
+            course="데이타베이스 개론",
+            title="[Notice] Final Exam Schedule",
+            body_text=(
+                "The final exam for CS360 will be held on Wednesday, June 17, "
+                "from 13:00 to 16:00 in the Auditorium."
+            ),
+        )
+
+        item, reason = classify_notice(notice, "2026-05-27 19:18 KST")
+
+        self.assertEqual(reason, "exam-notice")
+        self.assertEqual(item.category, "exam")
+        self.assertEqual(item.title, "기말고사")
+        self.assertEqual(item.sync_due, "2026-06-17T16:00:00+09:00")
+
+    def test_exam_grade_claim_notice_is_not_tracked_as_exam(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=9",
+            course="알고리즘 개론",
+            title="Midterm Grade Posted / Claim Session (05/14 10:30am~11:45am)",
+            body_text=(
+                "The midterm exam scores have been released. We will hold a claim session "
+                "on Thursday, 5/14, from 10:30 AM to 11:30 AM."
+            ),
+        )
+
+        item, reason = classify_notice(notice, "2026-05-01 19:18 KST")
+
+        self.assertEqual(reason, "not-relevant")
+        self.assertIsNone(item)
 
     def test_mixed_hw_deadline_and_exam_title_does_not_hide_assignment(self) -> None:
         notice = Notice(
@@ -430,6 +486,65 @@ class V2CoreTests(unittest.TestCase):
             self.assertIn('"assignment_count": 2', result.stdout)
             rendered = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(len(rendered["content"]["assignments"]), 2)
+
+    def test_cli_build_state_uses_course_file_manifest_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            details = tmp_dir / "details.json"
+            digest = tmp_dir / "notice_digest.json"
+            manifest = tmp_dir / "course_file_manifest.json"
+            output = tmp_dir / "state.json"
+            details.write_text("[]", encoding="utf-8")
+            digest.write_text(
+                json.dumps({"generated_at": "2026-05-27 19:18 KST", "courses": []}),
+                encoding="utf-8",
+            )
+            manifest.write_text(
+                json.dumps(
+                    [
+                        {
+                            "url": "https://klms.kaist.ac.kr/mod/resource/view.php?id=10",
+                            "course": "지성과 문명 강독:우주",
+                            "section_title": "14주차",
+                            "activity_title": "14주차 쪽글 및 과제",
+                            "filename": "20260603-topic.pdf",
+                            "klms_timestamp_label": "마감 일시",
+                            "klms_timestamp_text": "2026년 6월 3일(수요일) 오후 6:30",
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "build-state",
+                    "--details-json",
+                    str(details),
+                    "--notice-digest-json",
+                    str(digest),
+                    "--course-file-manifest-json",
+                    str(manifest),
+                    "--output-json",
+                    str(output),
+                    "--legacy",
+                ],
+                cwd=PROJECT_DIR,
+                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            self.assertIn('"assignment_candidate_count": 1', result.stdout)
+            rendered = json.loads(output.read_text(encoding="utf-8"))
+            candidates = rendered["content"]["assignment_candidates"]
+            self.assertEqual(candidates[0]["title"], "14주차 쪽글 및 과제")
+            self.assertEqual(candidates[0]["time_source"], "file")
 
     def test_cli_build_note_uses_supplemental_article_without_digest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

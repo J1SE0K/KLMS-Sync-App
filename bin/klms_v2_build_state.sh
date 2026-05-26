@@ -11,6 +11,7 @@ klms_init_context "$SCRIPT_DIR/klms_v2_build_state.sh" "$KLMS_ENTRY_CONFIG_ARG"
 
 DETAILS_JSON="${DETAILS_JSON:-$CACHE_DIR/core/details.json}"
 NOTICE_DIGEST_JSON="${NOTICE_DIGEST_JSON:-$CACHE_DIR/notice_digest.json}"
+COURSE_FILE_MANIFEST_JSON="${COURSE_FILE_MANIFEST_JSON:-$CACHE_DIR/course_file_manifest.json}"
 OUTPUT_JSON="${OUTPUT_JSON:-$TMP_DIR/v2_state.json}"
 OVERRIDES_JSON="${OVERRIDES_JSON_PATH:-$SCRIPT_DIR/manual_assignment_overrides.json}"
 
@@ -22,6 +23,7 @@ fi
 python3 -m klms_sync_v2.cli build-state \
   --details-json "$DETAILS_JSON" \
   --notice-digest-json "$NOTICE_DIGEST_JSON" \
+  --course-file-manifest-json "$COURSE_FILE_MANIFEST_JSON" \
   --output-json "$OUTPUT_JSON" \
   "${override_args[@]}" \
   --legacy

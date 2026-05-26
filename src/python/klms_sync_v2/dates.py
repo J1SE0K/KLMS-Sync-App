@@ -29,6 +29,7 @@ SLASH_RANGE_RE = re.compile(
     r"\s*(?:-|~|to|부터|에서)\s*"
     r"(?P<end_hour>\d{1,2})\s*:\s*(?P<end_minute>\d{2})\s*(?P<end_ampm>AM|PM|am|pm)?"
 )
+EN_TIME_SEPARATOR = r"(?:\s*:\s*|\s*h\s*:?\s*)"
 EN_MONTH_RE = re.compile(
     r"\b(?P<month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
     r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
@@ -43,9 +44,19 @@ EN_MONTH_RANGE_RE = re.compile(
     r"\s+(?P<day>\d{1,2})(?:st|nd|rd|th)?"
     r"(?:,\s*(?P<year>20\d{2}))?"
     r".{0,40}?"
-    r"(?P<start_hour>\d{1,2})\s*:\s*(?P<start_minute>\d{2})\s*(?P<start_ampm>AM|PM|am|pm)?"
+    rf"(?P<start_hour>\d{{1,2}}){EN_TIME_SEPARATOR}(?P<start_minute>\d{{2}})\s*(?P<start_ampm>AM|PM|am|pm)?"
     r"\s*(?:-|~|to|부터|에서)\s*"
-    r"(?P<end_hour>\d{1,2})\s*:\s*(?P<end_minute>\d{2})\s*(?P<end_ampm>AM|PM|am|pm)?"
+    rf"(?P<end_hour>\d{{1,2}}){EN_TIME_SEPARATOR}(?P<end_minute>\d{{2}})\s*(?P<end_ampm>AM|PM|am|pm)?"
+)
+EN_DAY_MONTH_RANGE_RE = re.compile(
+    r"\b(?P<day>\d{1,2})(?:st|nd|rd|th)?\s+of\s+"
+    r"(?P<month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    r"(?:,\s*(?P<year>20\d{2}))?"
+    r".{0,80}?"
+    rf"(?P<start_hour>\d{{1,2}}){EN_TIME_SEPARATOR}(?P<start_minute>\d{{2}})\s*(?P<start_ampm>AM|PM|am|pm)?"
+    r"\s*(?:-|~|to|부터|에서)\s*"
+    rf"(?P<end_hour>\d{{1,2}}){EN_TIME_SEPARATOR}(?P<end_minute>\d{{2}})\s*(?P<end_ampm>AM|PM|am|pm)?"
 )
 REFERENCE_DATETIME_RE = re.compile(
     r"\b(?P<year>20\d{2})[-/.](?P<month>\d{1,2})[-/.](?P<day>\d{1,2})"
@@ -188,7 +199,7 @@ def parse_due_datetime(text: str, generated_at: str = "") -> ParsedDate | None:
             start_iso=start.isoformat(),
         )
 
-    match = EN_MONTH_RANGE_RE.search(text)
+    match = EN_MONTH_RANGE_RE.search(text) or EN_DAY_MONTH_RANGE_RE.search(text)
     if match:
         month = MONTHS[match.group("month")[:3].lower()]
         end_ampm = match.group("end_ampm")

@@ -3879,6 +3879,18 @@ func buildRenderPlan(
         title
     }
 
+    func sectionHeadingFontSize() -> CGFloat {
+        mode == .archive ? noticeBodyFontSize : noticeSectionHeadingFontSize
+    }
+
+    func courseHeadingFontSize() -> CGFloat {
+        min(noticeCourseHeadingFontSize, noticeBodyFontSize)
+    }
+
+    func noticeTitleFontSize() -> CGFloat {
+        mode == .archive ? noticeItemTitleFontSize : noticeBodyFontSize
+    }
+
     appendLine(noteTitle, bold: true, fontSize: noticeDocumentTitleFontSize)
     if mode == .primary {
         let summaryLine =
@@ -3894,7 +3906,7 @@ func buildRenderPlan(
         let normalizedTitle = oneLine(notice.displayTitle.isEmpty ? notice.title : notice.displayTitle)
         let finalTitle = normalizedTitle.isEmpty ? "(제목 없음)" : normalizedTitle
         let sectionLineIndex = bodyLines.count
-        appendLine(noticeHeadingText(finalTitle), bold: true, fontSize: noticeItemTitleFontSize)
+        appendLine(noticeHeadingText(finalTitle), bold: true, fontSize: noticeTitleFontSize())
 
         let readLineIndex = bodyLines.count
         appendLine(readChecklistLabel, checklist: true)
@@ -3990,7 +4002,7 @@ func buildRenderPlan(
     func appendCourseGroup(_ courses: [DisplayCourse]) {
         for (courseIndex, course) in courses.enumerated() {
             courseHeadingLineIndexes.append(bodyLines.count)
-            appendLine(courseHeadingText(course), bold: true, fontSize: noticeCourseHeadingFontSize)
+            appendLine(courseHeadingText(course), bold: true, fontSize: courseHeadingFontSize())
             appendLine("")
             for notice in course.notices {
                 appendNotice(notice)
@@ -4019,7 +4031,7 @@ func buildRenderPlan(
                 appendLine("")
             }
             headingIndexes.append(bodyLines.count)
-            appendLine(sectionHeadingText(title, count: count), bold: true, fontSize: noticeSectionHeadingFontSize)
+            appendLine(sectionHeadingText(title, count: count), bold: true, fontSize: sectionHeadingFontSize())
             appendLine("")
             appendCourseGroup(courses)
             didAppendPrimarySection = true
@@ -4046,7 +4058,7 @@ func buildRenderPlan(
 
         if !didAppendPrimarySection && primaryFallbackAllNotices {
             unreadHeadingLineIndexes.append(bodyLines.count)
-            appendLine(sectionHeadingText("전체 공지", count: allVisibleNoticeCount), bold: true, fontSize: noticeSectionHeadingFontSize)
+            appendLine(sectionHeadingText("전체 공지", count: allVisibleNoticeCount), bold: true, fontSize: sectionHeadingFontSize())
             appendLine("")
             appendCourseGroup(allVisibleCourses)
         } else if !didAppendPrimarySection {
@@ -4054,7 +4066,7 @@ func buildRenderPlan(
         }
     } else if visibleUnreadCount > 0 {
         unreadHeadingLineIndexes.append(bodyLines.count)
-        appendLine(sectionHeadingText("확인한 공지", count: visibleUnreadCount), bold: true, fontSize: noticeSectionHeadingFontSize)
+        appendLine(sectionHeadingText("확인한 공지", count: visibleUnreadCount), bold: true, fontSize: sectionHeadingFontSize())
         appendLine("")
         appendCourseGroup(unreadCourses)
     }
@@ -4726,17 +4738,17 @@ func renderNativeNoteOnce(
         if plan.mode == .primary {
             for (offset, index) in plan.importantHeadingLineIndexes.enumerated() {
                 let heading = lineRange(index, fallback: plan.importantHeadingRanges[offset])
-                applyStyle(heading, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
+                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
             }
 
             for (offset, index) in plan.freshHeadingLineIndexes.enumerated() {
                 let heading = lineRange(index, fallback: plan.freshHeadingRanges[offset])
-                applyStyle(heading, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
+                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
             }
 
             for (offset, index) in plan.unreadHeadingLineIndexes.enumerated() {
                 let heading = lineRange(index, fallback: plan.unreadHeadingRanges[offset])
-                applyStyle(heading, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
+                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
             }
         }
 
@@ -4745,7 +4757,7 @@ func renderNativeNoteOnce(
                 let fallback = plan.courseHeadingRanges[offset]
                 applyStyle(
                     lineRange(index, fallback: fallback),
-                    menuItems: ["부머리말", "Subheading"],
+                    menuItems: ["머리말", "Heading"],
                     fallbackToBold: true
                 )
             }

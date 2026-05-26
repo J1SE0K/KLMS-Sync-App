@@ -199,9 +199,9 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("placeCaretForFormatting(\n            context: context,", renderer)
         self.assertNotIn('NOTICE_NATIVE_ENABLE_UI_STYLE_FALLBACK"] == "1"', renderer)
         self.assertIn("return false", renderer[renderer.index("func shouldCollapseNoticeCourses") : renderer.index("func shouldCollapseNoticeItems")])
+        self.assertIn('menuItems: ["제목", "Title"]', renderer)
+        self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
         self.assertIn('menuItems: ["부머리말", "Subheading"]', renderer)
-        self.assertNotIn('menuItems: ["제목", "Title"]', renderer)
-        self.assertNotIn('["제목", "Title", "머리말", "Heading"]', renderer)
         self.assertIn("reason=rich_paste_default", renderer)
         self.assertIn("readability_validation_targets_finish", renderer)
         self.assertIn("case .chunked:", renderer)
@@ -278,12 +278,12 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
             renderer,
         )
         self.assertIn(
-            "appendLine(noticeHeadingText(finalTitle), bold: true, fontSize: noticeItemTitleFontSize)",
+            "appendLine(noticeHeadingText(finalTitle), bold: true, fontSize: noticeTitleFontSize())",
             renderer,
         )
         self.assertIn("cssFontSize(line.fontSize)", renderer)
         self.assertIn("let noticeBodyFontSize: CGFloat = 14", support)
-        self.assertIn("let noticeSectionHeadingFontSize: CGFloat = 14", support)
+        self.assertIn("let noticeSectionHeadingFontSize: CGFloat = 19", support)
         self.assertIn("let noticeDocumentTitleFontSize: CGFloat = 14", support)
         self.assertNotIn("line-height:1.42", renderer)
 
@@ -368,9 +368,9 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertNotIn("collapseNoticeCoursesEnabled || plan.mode == .archive", renderer)
         self.assertIn("plan.mode == .archive && !plan.renderedNotices.isEmpty", renderer)
         self.assertIn("plan.mode == .primary", renderer)
+        self.assertIn('menuItems: ["제목", "Title"]', renderer)
+        self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
         self.assertIn('menuItems: ["부머리말", "Subheading"]', renderer)
-        self.assertNotIn('menuItems: ["제목", "Title"]', renderer)
-        self.assertNotIn('["제목", "Title", "머리말", "Heading"]', renderer)
         self.assertIn("let effectiveCollapseSectionsEnabled = shouldCollapseNoticeSections(plan)", renderer)
         self.assertIn("collapse_heading_retry", renderer)
         self.assertIn("collapse failed: \\(label)", renderer)
@@ -624,10 +624,10 @@ console.log(JSON.stringify({ kept, overridden }));
         self.assertIn('NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0"', app_model)
-        self.assertNotIn('NOTICE_COLLAPSE_SECTIONS": "0"', app_model)
-        self.assertNotIn('NOTICE_COLLAPSE_COURSES": "0"', app_model)
-        self.assertNotIn('NOTICE_COLLAPSE_NOTICE_ITEMS": "0"', app_model)
-        self.assertNotIn('NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS": "0"', app_model)
+        self.assertIn('NOTICE_COLLAPSE_SECTIONS": "1"', app_model)
+        self.assertIn('NOTICE_COLLAPSE_COURSES": "0"', app_model)
+        self.assertIn('NOTICE_COLLAPSE_NOTICE_ITEMS": "1"', app_model)
+        self.assertIn('NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS": "0"', app_model)
         self.assertNotIn("requireFunctionalNotesRenderEnabled", support)
         self.assertIn("Functional Notes editor unavailable", renderer)
         self.assertIn("Grant KLMS Sync Accessibility/Automation permissions", renderer)
