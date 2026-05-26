@@ -21,6 +21,9 @@ final class CompanionModel: ObservableObject {
     @Published var recentCommands: [RemoteRunCommand] = []
     @Published var status = SanitizedRemoteStatus()
     @Published var errorMessage = ""
+    @Published var connectionMessage = ""
+    @Published var connectionSucceeded: Bool?
+    @Published var userAlert: UserAlert?
     @Published var isRefreshing = false
     @Published var isSubmitting = false
     @Published var localHost: String {
@@ -190,6 +193,41 @@ final class CompanionModel: ObservableObject {
         }
     }
 
+    func checkLocalConnection() async {
+        connectionMessage = "Mac 연결을 확인하는 중..."
+        connectionSucceeded = nil
+        errorMessage = ""
+        isRefreshing = true
+        defer {
+            isRefreshing = false
+        }
+
+        guard let localRemoteClient else {
+            let message = remoteAvailabilityMessage
+            connectionMessage = message
+            connectionSucceeded = false
+            errorMessage = message
+            userAlert = UserAlert(title: "연결 확인 실패", message: message)
+            return
+        }
+
+        do {
+            let response = try await localRemoteClient.fetchStatus()
+            apply(response)
+            let message = "Mac 앱과 연결됐습니다."
+            connectionMessage = message
+            connectionSucceeded = true
+            errorMessage = ""
+            userAlert = UserAlert(title: "연결 확인 완료", message: message)
+        } catch {
+            let message = error.localizedDescription
+            connectionMessage = message
+            connectionSucceeded = false
+            errorMessage = message
+            userAlert = UserAlert(title: "연결 확인 실패", message: message)
+        }
+    }
+
     func pasteLocalConnectionInfo() {
         #if canImport(UIKit)
         guard let text = UIPasteboard.general.string,
@@ -202,6 +240,8 @@ final class CompanionModel: ObservableObject {
         if let token = connectionInfo.token {
             localToken = token
         }
+        connectionMessage = "연결 정보를 붙여넣었습니다. 이제 연결 확인을 눌러 주세요."
+        connectionSucceeded = nil
         errorMessage = ""
         #else
         errorMessage = "이 빌드는 클립보드 붙여넣기를 사용할 수 없습니다."
@@ -221,6 +261,12 @@ final class CompanionModel: ObservableObject {
             recentCommands = [latestCommand]
         }
     }
+}
+
+struct UserAlert: Identifiable {
+    let id = UUID()
+    var title: String
+    var message: String
 }
 
 struct CompanionRootView: View {
@@ -265,6 +311,13 @@ struct CompanionRootView: View {
             .task {
                 await model.pollRecentCommands()
             }
+            .alert(item: $model.userAlert) { alert in
+                Alert(
+                    title: Text(alert.title),
+                    message: Text(alert.message),
+                    dismissButton: .default(Text("확인"))
+                )
+            }
         }
     }
 }
@@ -295,14 +348,14 @@ private struct LocalConnectionPanel: View {
             HStack(spacing: 8) {
                 Button {
                     Task {
-                        await model.refreshRecent()
+                        await model.checkLocalConnection()
                     }
                 } label: {
                     Label("연결 확인", systemImage: "antenna.radiowaves.left.and.right")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(model.isRefreshing || !model.localRemoteConfigured)
+                .disabled(model.isRefreshing)
 
                 Button {
                     Task {
@@ -315,6 +368,12 @@ private struct LocalConnectionPanel: View {
                 .buttonStyle(.bordered)
                 .disabled(!model.localRemoteConfigured || model.isSubmitting || model.hasInFlightRequest)
             }
+            if !model.connectionMessage.isEmpty {
+                ConnectionNoticeBanner(
+                    message: model.connectionMessage,
+                    succeeded: model.connectionSucceeded
+                )
+            }
             Text("처음 연결할 때 iOS의 로컬 네트워크 권한 알림이 뜨면 허용해야 합니다.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -322,6 +381,48 @@ private struct LocalConnectionPanel: View {
         .padding(12)
         .background(.quinary)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct ConnectionNoticeBanner: View {
+    var message: String
+    var succeeded: Bool?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+                .frame(width: 18)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(10)
+        .background(tint.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var systemImage: String {
+        switch succeeded {
+        case .some(true):
+            return "checkmark.circle.fill"
+        case .some(false):
+            return "exclamationmark.triangle.fill"
+        case nil:
+            return "hourglass"
+        }
+    }
+
+    private var tint: Color {
+        switch succeeded {
+        case .some(true):
+            return .green
+        case .some(false):
+            return .orange
+        case nil:
+            return .blue
+        }
     }
 }
 
