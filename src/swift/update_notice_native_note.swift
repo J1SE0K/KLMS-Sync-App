@@ -4726,17 +4726,17 @@ func renderNativeNoteOnce(
         if plan.mode == .primary {
             for (offset, index) in plan.importantHeadingLineIndexes.enumerated() {
                 let heading = lineRange(index, fallback: plan.importantHeadingRanges[offset])
-                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+                applyStyle(heading, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
             }
 
             for (offset, index) in plan.freshHeadingLineIndexes.enumerated() {
                 let heading = lineRange(index, fallback: plan.freshHeadingRanges[offset])
-                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+                applyStyle(heading, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
             }
 
             for (offset, index) in plan.unreadHeadingLineIndexes.enumerated() {
                 let heading = lineRange(index, fallback: plan.unreadHeadingRanges[offset])
-                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+                applyStyle(heading, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
             }
         }
 
@@ -4745,7 +4745,7 @@ func renderNativeNoteOnce(
                 let fallback = plan.courseHeadingRanges[offset]
                 applyStyle(
                     lineRange(index, fallback: fallback),
-                    menuItems: ["제목", "Title", "머리말", "Heading"],
+                    menuItems: ["부머리말", "Subheading"],
                     fallbackToBold: true
                 )
             }
