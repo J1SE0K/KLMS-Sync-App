@@ -11,7 +11,7 @@ sys.path.insert(0, str(PROJECT_DIR / "src" / "python"))
 
 from klms_sync_v2.classifiers import classify_detail_page, classify_notice  # noqa: E402
 from klms_sync_v2.dates import is_past, parse_due_date_only, parse_due_datetime  # noqa: E402
-from klms_sync_v2.models import Notice, Page  # noqa: E402
+from klms_sync_v2.models import Assignment, Notice, Page  # noqa: E402
 from klms_sync_v2.pipeline import build_sync_state  # noqa: E402
 
 
@@ -69,6 +69,26 @@ class V2CoreTests(unittest.TestCase):
         self.assertTrue(
             is_past("2026-05-13T18:30:00+09:00", "2026-05-13 19:18 KST")
         )
+
+    def test_duplicate_source_assignments_do_not_duplicate_completed_lists(self) -> None:
+        item = Assignment(
+            url="https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
+            course="테스트",
+            title="과제",
+            due="2026년 5월 13일 오후 6:30",
+            sync_due="2026-05-13T18:30:00+09:00",
+            source="source",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-05-13 19:18 KST",
+            detail_pages=[],
+            notices=[],
+            source_assignments=[item, item],
+        )
+
+        self.assertEqual(len(state.assignment_records), 1)
+        self.assertEqual(len(state.completed_assignments), 1)
 
     def test_notice_deadline_project_becomes_assignment(self) -> None:
         notice = Notice(
@@ -536,6 +556,75 @@ class V2CoreTests(unittest.TestCase):
             status = json.loads(output_status.read_text(encoding="utf-8"))
             self.assertEqual(status["completed_assignment_count"], 1)
             self.assertEqual(status["assignment_record_count"], 1)
+
+    def test_cli_build_note_keeps_dashboard_assignment_without_detail_page(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            dashboard = tmp_dir / "dashboard.json"
+            details = tmp_dir / "details.json"
+            state = tmp_dir / "state.json"
+            output_state = tmp_dir / "next_state.json"
+            output_status = tmp_dir / "status.json"
+            output_html = tmp_dir / "section.html"
+            dashboard.write_text(
+                json.dumps(
+                    [
+                        {
+                            "requestedUrl": "https://klms.kaist.ac.kr/my/",
+                            "title": "Dashboard",
+                            "html": """
+                            <div class="list-box assign">
+                              <a href="https://klms.kaist.ac.kr/mod/assign/view.php?id=1234195">열기</a>
+                              <ul>
+                                <li>2026.05.23~2026.06.14</li>
+                                <li>[과제] Project Submission</li>
+                                <li>데이터과학을 위한 선형대수학</li>
+                              </ul>
+                            </div>
+                            """,
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            details.write_text("[]", encoding="utf-8")
+            state.write_text("{}", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "build-note",
+                    "--dashboard-json",
+                    str(dashboard),
+                    "--details-json",
+                    str(details),
+                    "--state-json",
+                    str(state),
+                    "--output-html",
+                    str(output_html),
+                    "--output-state",
+                    str(output_state),
+                    "--output-status",
+                    str(output_status),
+                    "--generated-at",
+                    "2026-05-26 19:18 KST",
+                ],
+                cwd=PROJECT_DIR,
+                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            self.assertIn('"assignment_count": 1', result.stdout)
+            rendered = json.loads(output_state.read_text(encoding="utf-8"))
+            assignment = rendered["content"]["assignments"][0]
+            self.assertEqual(assignment["course"], "데이터과학을 위한 선형대수학")
+            self.assertEqual(assignment["title"], "Project Submission")
+            self.assertEqual(assignment["sync_due"], "2026-06-14T23:59:00+09:00")
 
     def test_cli_build_note_login_page_writes_error_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

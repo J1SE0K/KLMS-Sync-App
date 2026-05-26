@@ -36,7 +36,7 @@ class CourseItemParsingTests(unittest.TestCase):
 
         self.assertEqual(items, [])
 
-    def test_exact_ignored_dashboard_course_name_is_not_collected(self) -> None:
+    def test_dashboard_course_name_is_not_dropped_by_exact_title(self) -> None:
         dashboard = klms_sync.DashboardParseResult(
             status="ok",
             items=[
@@ -52,7 +52,8 @@ class CourseItemParsingTests(unittest.TestCase):
 
         items = klms_sync.collect_candidate_items(dashboard, [])
 
-        self.assertEqual(items, [])
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].course, "데이터과학을 위한 선형대수학")
 
     def test_placeholder_dashboard_course_is_recovered_from_course_page(self) -> None:
         url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1231095"
