@@ -247,7 +247,7 @@ exec /usr/bin/python3 "$@"
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("status=ok stage=authenticated", result.stdout)
-            self.assertIn("KLMS 로그인이 풀린", result.stderr)
+            self.assertIn("KAIST 인증 번호가 앱에 표시되면", result.stderr)
 
     def test_cleanup_script_removes_common_local_artifacts(self) -> None:
         text = (

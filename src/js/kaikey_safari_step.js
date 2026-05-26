@@ -83,7 +83,21 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
     !urlLower.includes("/login/") &&
     !urlLower.includes("ssologin.php")
   ) {
-    return { status: "authenticated", url, title: readTitle(tab) };
+    if (
+      String(options["force-twofactor"] || "") !== "1" &&
+      klmsPageLooksAuthenticated(tab)
+    ) {
+      return { status: "authenticated", url, title: readTitle(tab) };
+    }
+    tab.url = "https://klms.kaist.ac.kr/login/ssologin.php";
+    if (safariBackgroundWindowEnabled()) {
+      prepareBackgroundWindow(windowRef);
+    }
+    return {
+      status: "navigated",
+      reason: String(options["force-twofactor"] || "") === "1" ? "force-twofactor" : "unverified-klms-page",
+      url
+    };
   }
 
   if (urlLower.includes("klms.kaist.ac.kr/login/ssologin.php")) {
@@ -195,6 +209,29 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
 
 function readTitle(tab) {
   return safeString(() => tab.name());
+}
+
+function klmsPageLooksAuthenticated(tab) {
+  const result = runPageScript(tab, `
+(() => {
+  const html = String(document.documentElement?.innerHTML || "").toLowerCase();
+  const text = String(document.body?.innerText || "").toLowerCase();
+  const tokens = [
+    "logout",
+    "로그아웃",
+    "세션 연장",
+    "/login/logout.php",
+    "/course/view.php",
+    "main-course-list",
+    "list-box",
+    "나의 강좌",
+    "my courses"
+  ];
+  return JSON.stringify({ ok: tokens.some((token) => html.includes(token) || text.includes(token)) });
+})();
+`);
+  const payload = parseJson(result);
+  return payload.ok === true;
 }
 
 function parseOptions(argv) {
