@@ -675,6 +675,82 @@ class V2CoreTests(unittest.TestCase):
             self.assertEqual(rendered["status"], "error")
             self.assertEqual(status["status"], "error")
 
+    def test_cli_check_login_status_rejects_unconfirmed_dashboard_page(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pages = Path(tmp) / "dashboard.json"
+            pages.write_text(
+                json.dumps(
+                    [
+                        {
+                            "requestedUrl": "https://klms.kaist.ac.kr/my/",
+                            "url": "https://klms.kaist.ac.kr/my/",
+                            "title": "KLMS",
+                            "html": "<html><body></body></html>",
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "check-login-status",
+                    "--pages-json",
+                    str(pages),
+                ],
+                cwd=PROJECT_DIR,
+                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "error")
+            self.assertEqual(payload["error"], "login_unconfirmed")
+
+    def test_cli_check_login_status_rejects_sso_twofactor_page(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pages = Path(tmp) / "dashboard.json"
+            pages.write_text(
+                json.dumps(
+                    [
+                        {
+                            "requestedUrl": "https://klms.kaist.ac.kr/my/",
+                            "url": "https://sso.kaist.ac.kr/auth/twofactor/mfa/login2factor",
+                            "title": "Single Sign On",
+                            "html": '<input id="login_id_mfa"><input type="password">',
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "check-login-status",
+                    "--pages-json",
+                    str(pages),
+                ],
+                cwd=PROJECT_DIR,
+                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "error")
+            self.assertEqual(payload["error"], "login_required")
+
 
 if __name__ == "__main__":
     unittest.main()

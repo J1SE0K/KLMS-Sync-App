@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -121,10 +122,11 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('KLMS_PARENT_LOGIN_PREFLIGHT_READY="${KLMS_LOGIN_PREFETCH_READY:-0}"', common)
         self.assertNotIn("KLMS_LOGIN_ALWAYS_ASSIST_ENABLED", common)
 
-    def test_app_run_marks_login_ready_without_dashboard_prefetch(self) -> None:
+    def test_app_run_verifies_dashboard_after_login_assist(self) -> None:
         common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            (root / "bin").mkdir(parents=True)
             (root / "src" / "python").mkdir(parents=True)
             (root / "src" / "js").mkdir(parents=True)
             (root / "src" / "sh").mkdir(parents=True)
@@ -143,9 +145,29 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
                 encoding="utf-8",
             )
             helper.chmod(0o755)
+            python = root / "bin" / "python3"
+            python.write_text(
+                """#!/bin/zsh
+if [[ "$1" == */fetch_pages_backend.py ]]; then
+  out=""
+  for arg in "$@"; do
+    if [[ "$arg" == --out=* ]]; then out="${arg#--out=}"; fi
+  done
+  mkdir -p "${out:h}"
+  print -r -- '[{"requestedUrl":"https://klms.kaist.ac.kr/my/","url":"https://klms.kaist.ac.kr/my/","title":"KLMS","html":"<a href=\\"/login/logout.php\\">logout</a><ul class=\\"main-course-list student\\"><a href=\\"/course/view.php?id=1\\">Course</a></ul>"}]' > "$out"
+  print -r -- '{"context":"klms-login-preflight"}'
+  exit 0
+fi
+exec /usr/bin/python3 "$@"
+""",
+                encoding="utf-8",
+            )
+            python.chmod(0o755)
 
             script = f"""
             source {common}
+            export PATH={root / "bin"}:$PATH
+            export PYTHONPATH={PROJECT_DIR / "src" / "python"}
             export KLMS_APP_RUN=1
             klms_init_context {root / "run_all_full.sh"} {root / "config.env"}
             klms_require_login
@@ -159,9 +181,73 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
             )
 
             self.assertIn("status=ok stage=authenticated", result.stdout)
-            self.assertEqual(result.stdout.strip().splitlines()[-1], "0:1")
-            self.assertNotIn("klms-login-preflight", result.stdout + result.stderr)
+            self.assertEqual(result.stdout.strip().splitlines()[-1], "1:1")
+            self.assertIn("klms-login-preflight", result.stdout + result.stderr)
             self.assertNotIn("KLMS 로그인이 풀린", result.stdout + result.stderr)
+
+    def test_app_run_stops_when_dashboard_login_is_unconfirmed_after_assist(self) -> None:
+        common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "bin").mkdir(parents=True)
+            (root / "src" / "python").mkdir(parents=True)
+            (root / "src" / "js").mkdir(parents=True)
+            (root / "src" / "sh").mkdir(parents=True)
+            (root / "config.env").write_text(
+                "\n".join(
+                    [
+                        'KLMS_LOGIN_ASSIST_ENABLED="1"',
+                        'KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="1"',
+                        'KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE="0"',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            helper = root / "kaikey_auto_login.sh"
+            helper.write_text(
+                "#!/bin/zsh\nprint -- 'status=ok stage=authenticated'\n",
+                encoding="utf-8",
+            )
+            helper.chmod(0o755)
+            python = root / "bin" / "python3"
+            python.write_text(
+                """#!/bin/zsh
+if [[ "$1" == */fetch_pages_backend.py ]]; then
+  out=""
+  for arg in "$@"; do
+    if [[ "$arg" == --out=* ]]; then out="${arg#--out=}"; fi
+  done
+  mkdir -p "${out:h}"
+  print -r -- '[{"requestedUrl":"https://klms.kaist.ac.kr/my/","url":"https://sso.kaist.ac.kr/auth/twofactor/mfa/login2factor","title":"Single Sign On","html":"<input id=\\"login_id_mfa\\"><input type=\\"password\\">"}]' > "$out"
+  print -r -- '{"context":"klms-login-preflight"}'
+  exit 0
+fi
+exec /usr/bin/python3 "$@"
+""",
+                encoding="utf-8",
+            )
+            python.chmod(0o755)
+
+            script = f"""
+            source {common}
+            export PATH={root / "bin"}:$PATH
+            export PYTHONPATH={PROJECT_DIR / "src" / "python"}
+            export KLMS_APP_RUN=1
+            klms_init_context {root / "run_all_full.sh"} {root / "config.env"}
+            klms_require_login
+            status=$?
+            print -- "status=$status ready=${{KLMS_LOGIN_PREFETCH_READY:-0}}"
+            exit $status
+            """
+            result = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("status=ok stage=authenticated", result.stdout)
+            self.assertIn("KLMS 로그인이 풀린", result.stderr)
 
     def test_cleanup_script_removes_common_local_artifacts(self) -> None:
         text = (
@@ -337,6 +423,53 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         build_stage = text[build_stage_index:text.index('debugStderr("after build-note")')]
         self.assertIn("klms_sync_v2.cli", build_stage)
         self.assertNotIn("src/python/klms_sync.py", build_stage)
+
+    def test_sync_js_login_page_detection_covers_sso_and_password_forms(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed")
+
+        script = r"""
+const fs = require("fs");
+const source = fs.readFileSync("src/js/sync_klms_notes.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+eval(extractFunction("looksLikeLoginPage"));
+const cases = [
+  { url: "https://sso.kaist.ac.kr/auth/twofactor/mfa/login2factor", title: "Single Sign On", html: "" },
+  { url: "https://klms.kaist.ac.kr/my/", title: "KLMS", html: "<input name=\"username\"><input type=\"password\">" },
+  { url: "https://portal.kaist.ac.kr/", title: "KAIST Portal", html: "" },
+];
+if (!cases.every((item) => looksLikeLoginPage(item))) {
+  throw new Error("login detection missed an SSO/password case");
+}
+if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", html: "<a href=\"/login/logout.php\">logout</a>" })) {
+  throw new Error("authenticated logout page was classified as login");
+}
+"""
+        subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
     def test_entrypoints_do_not_call_legacy_klms_sync_directly(self) -> None:
         for path in [

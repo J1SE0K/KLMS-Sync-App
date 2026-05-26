@@ -93,13 +93,42 @@ def now_kst_label() -> str:
 def looks_like_login_page(page: Page) -> bool:
     url = page.url.lower()
     text = one_line(html_to_text(page.html) or page.text).lower()
-    if "/login/" in url or "sso.kaist.ac.kr" in url:
+    if (
+        "/login/" in url
+        or "sso.kaist.ac.kr" in url
+        or "portal.kaist.ac.kr" in url
+        or "login2factor" in url
+    ):
         return True
     if "로그인" in text and ("password" in text or "비밀번호" in text or "kaist" in text):
         return True
     if "login" in text and ("password" in text or "username" in text):
         return True
     return False
+
+
+def looks_like_authenticated_klms_page(page: Page) -> bool:
+    url = page.url.lower()
+    html = (page.html or page.text or "").lower()
+    text = one_line(html_to_text(page.html) or page.text).lower()
+    if "klms.kaist.ac.kr" not in url:
+        return False
+    if not html.strip() and not text.strip():
+        return False
+    return any(
+        token in html or token in text
+        for token in (
+            "logout",
+            "로그아웃",
+            "세션 연장",
+            "/login/logout.php",
+            "/course/view.php",
+            "main-course-list",
+            "list-box",
+            "나의 강좌",
+            "my courses",
+        )
+    )
 
 
 def validate_pages_for_state_build(pages: list[Page]) -> str:
@@ -466,6 +495,14 @@ def command_check_login_status(args: argparse.Namespace) -> int:
                 "status": "error",
                 "error": "login_required",
                 "message": "KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘.",
+                "url": url,
+                "title": title,
+            }
+        elif not looks_like_authenticated_klms_page(Page(url=url, title=title, html=html)):
+            payload = {
+                "status": "error",
+                "error": "login_unconfirmed",
+                "message": "KLMS 로그인 확인에 실패했어. Safari에서 KLMS 로그인을 완료한 뒤 다시 실행해 줘.",
                 "url": url,
                 "title": title,
             }
