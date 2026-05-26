@@ -1,6 +1,7 @@
 import Foundation
 import ApplicationServices
 import AppKit
+import Darwin
 import EventKit
 import KLMSShared
 import SwiftUI
@@ -35,6 +36,10 @@ final class KLMSMacModel: ObservableObject {
     @Published var remoteProcessingEnabled: Bool
     @Published var remoteProcessingStatusMessage: String?
     @Published var isCheckingRemoteCommands = false
+    @Published var localRemoteEnabled: Bool
+    @Published var localRemoteToken: String
+    @Published var localRemoteStatusMessage: String?
+    @Published var isLocalRemoteServerRunning = false
     @Published var permissionStatusMessage: String?
     @Published var permissionProbeRows: [KLMSPermissionProbeRow] = []
     @Published var runningCommand: KLMSEngineCommand?
@@ -51,20 +56,34 @@ final class KLMSMacModel: ObservableObject {
     private let locator = EnginePayloadLocator()
     private var isBootstrapping = false
     private var remotePollingTask: Task<Void, Never>?
+    private var localRemoteServer: LocalRemoteServer?
     private var notifiedAuthDigits = Set<String>()
     private var authStatusClearTask: Task<Void, Never>?
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
     private static let remoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
+    private static let localRemoteEnabledKey = "KLMSLocalRemoteEnabled"
+    private static let localRemoteTokenKey = "KLMSLocalRemoteToken"
+    private static let localRemotePort: UInt16 = 18483
     private static let remotePollingIntervalNanoseconds: UInt64 = 20_000_000_000
 
     init() {
         remoteProcessingEnabled = UserDefaults.standard.bool(
             forKey: Self.remoteProcessingEnabledKey
         )
+        localRemoteEnabled = UserDefaults.standard.bool(forKey: Self.localRemoteEnabledKey)
+        if let token = UserDefaults.standard.string(forKey: Self.localRemoteTokenKey),
+           !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            localRemoteToken = token
+        } else {
+            let token = Self.makeLocalRemoteToken()
+            localRemoteToken = token
+            UserDefaults.standard.set(token, forKey: Self.localRemoteTokenKey)
+        }
     }
 
     deinit {
         remotePollingTask?.cancel()
+        localRemoteServer?.stop()
     }
 
     var menuBarSystemImage: String {
@@ -136,6 +155,14 @@ final class KLMSMacModel: ObservableObject {
         ]
     }
 
+    var localRemotePort: UInt16 {
+        Self.localRemotePort
+    }
+
+    var localRemoteEndpointHints: [String] {
+        Self.localIPv4Addresses().map { "\($0):\(Self.localRemotePort)" }
+    }
+
     var nativeNoticeHelperPath: String {
         let nestedHelper = Bundle.main.bundleURL
             .appendingPathComponent("Contents/Helpers/KLMSNoticeNativeNote.app/Contents/MacOS/KLMSNoticeNativeNote")
@@ -160,6 +187,7 @@ final class KLMSMacModel: ObservableObject {
         }
         await refresh()
         configureRemotePolling()
+        configureLocalRemoteServer()
     }
 
     var shouldRequestPermissionsAfterInstall: Bool {
@@ -232,6 +260,108 @@ final class KLMSMacModel: ObservableObject {
         } else {
             remoteProcessingStatusMessage = "iPhone 요청 자동 처리가 꺼졌습니다."
         }
+    }
+
+    func setLocalRemoteEnabled(_ enabled: Bool) {
+        localRemoteEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.localRemoteEnabledKey)
+        configureLocalRemoteServer()
+    }
+
+    func regenerateLocalRemoteToken() {
+        let token = Self.makeLocalRemoteToken()
+        localRemoteToken = token
+        UserDefaults.standard.set(token, forKey: Self.localRemoteTokenKey)
+        if localRemoteEnabled {
+            configureLocalRemoteServer()
+        }
+    }
+
+    private func configureLocalRemoteServer() {
+        localRemoteServer?.stop()
+        localRemoteServer = nil
+        isLocalRemoteServerRunning = false
+        guard localRemoteEnabled else {
+            localRemoteStatusMessage = "로컬 원격 제어가 꺼져 있습니다."
+            return
+        }
+        let server = LocalRemoteServer(port: Self.localRemotePort) { [weak self] request in
+            await self?.handleLocalRemoteRequest(request)
+                ?? LocalRemoteResponse(ok: false, message: "Mac 앱이 준비되지 않았습니다.")
+        }
+        do {
+            try server.start()
+            localRemoteServer = server
+            isLocalRemoteServerRunning = true
+            let endpoint = localRemoteEndpointHints.first ?? "이 Mac의 IP:\(Self.localRemotePort)"
+            localRemoteStatusMessage = "로컬 원격 제어 실행 중: \(endpoint)"
+        } catch {
+            localRemoteStatusMessage = "로컬 원격 제어 시작 실패: \(error.localizedDescription)"
+            errorMessage = localRemoteStatusMessage
+        }
+    }
+
+    private func handleLocalRemoteRequest(_ request: LocalRemoteRequest) async -> LocalRemoteResponse {
+        guard request.token == localRemoteToken else {
+            return LocalRemoteResponse(ok: false, message: "토큰이 맞지 않습니다.")
+        }
+        switch request.action {
+        case .status:
+            return LocalRemoteResponse(
+                ok: true,
+                message: localRemoteStatusMessage ?? "대기 중",
+                status: SanitizedRemoteStatus(snapshot: snapshot, phase: runningCommand == nil ? "idle" : "running"),
+                latestCommand: lastRemoteCommand,
+                running: runningCommand != nil
+            )
+        case .run:
+            guard let kind = request.kind else {
+                return LocalRemoteResponse(ok: false, message: "실행할 명령이 없습니다.")
+            }
+            guard runningCommand == nil,
+                  lastRemoteCommand?.status.isInFlight != true else {
+                return LocalRemoteResponse(
+                    ok: false,
+                    message: "이미 동기화가 실행 중입니다.",
+                    status: SanitizedRemoteStatus(snapshot: snapshot, phase: "busy"),
+                    latestCommand: lastRemoteCommand,
+                    running: true
+                )
+            }
+            let command = RemoteRunCommand(
+                kind: kind,
+                status: .running,
+                summary: SanitizedRemoteStatus(snapshot: snapshot, phase: "running")
+            )
+            lastRemoteCommand = command
+            remoteProcessingStatusMessage = "로컬 iPhone 요청 처리 중: \(kind.displayName)"
+            localRemoteStatusMessage = "로컬 iPhone 요청 처리 중: \(kind.displayName)"
+            Task { [weak self] in
+                await self?.executeLocalRemoteCommand(command)
+            }
+            return LocalRemoteResponse(
+                ok: true,
+                message: "\(kind.displayName) 실행을 시작했습니다.",
+                status: command.summary,
+                latestCommand: command,
+                running: true
+            )
+        }
+    }
+
+    private func executeLocalRemoteCommand(_ command: RemoteRunCommand) async {
+        await run(command.kind.engineCommand)
+        let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
+        var completed = command
+        completed.status = lastCommandResult?.succeeded == true ? .completed : .failed
+        completed.updatedAt = Date()
+        completed.lastExitCode = lastCommandResult.map { Int($0.exitCode) }
+        completed.loginRequired = lastCommandResult?.requiresLoginApproval == true
+        completed.summary = SanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: completed.status.rawValue)
+        lastRemoteCommand = completed
+        let message = "최근 로컬 iPhone 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
+        localRemoteStatusMessage = message
+        remoteProcessingStatusMessage = message
     }
 
     private func configureRemotePolling() {
@@ -759,6 +889,48 @@ final class KLMSMacModel: ObservableObject {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+
+    private static func makeLocalRemoteToken() -> String {
+        let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+        return String((0..<12).map { _ in alphabet.randomElement() ?? "K" })
+    }
+
+    private static func localIPv4Addresses() -> [String] {
+        var addresses: [String] = []
+        var interfaces: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&interfaces) == 0, let first = interfaces else {
+            return addresses
+        }
+        defer { freeifaddrs(interfaces) }
+
+        for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let interface = pointer.pointee
+            let flags = Int32(interface.ifa_flags)
+            guard flags & IFF_UP != 0,
+                  flags & IFF_LOOPBACK == 0,
+                  let address = interface.ifa_addr,
+                  address.pointee.sa_family == UInt8(AF_INET) else {
+                continue
+            }
+            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let result = getnameinfo(
+                address,
+                socklen_t(address.pointee.sa_len),
+                &hostname,
+                socklen_t(hostname.count),
+                nil,
+                0,
+                NI_NUMERICHOST
+            )
+            guard result == 0 else { continue }
+            let ipBytes = hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+            let ip = String(decoding: ipBytes, as: UTF8.self)
+            if !ip.isEmpty {
+                addresses.append(ip)
+            }
+        }
+        return Array(NSOrderedSet(array: addresses)) as? [String] ?? addresses
     }
 
     private static func requestAccessibilityPermissionPrompt() -> Bool {

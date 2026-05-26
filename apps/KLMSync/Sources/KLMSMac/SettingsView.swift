@@ -74,12 +74,48 @@ struct SettingsView: View {
             }
 
             Section("iPhone") {
+                Toggle(
+                    "로컬 원격 제어",
+                    isOn: Binding(
+                        get: { model.localRemoteEnabled },
+                        set: { model.setLocalRemoteEnabled($0) }
+                    )
+                )
+                LabeledContent("로컬 상태") {
+                    Text(model.localRemoteStatusMessage ?? "대기 중")
+                        .foregroundStyle(.secondary)
+                }
+                if model.localRemoteEnabled {
+                    LabeledContent("Mac 주소") {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            ForEach(model.localRemoteEndpointHints, id: \.self) { endpoint in
+                                Text(endpoint)
+                                    .font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                    LabeledContent("토큰") {
+                        HStack {
+                            Text(model.localRemoteToken)
+                                .font(.caption.monospaced())
+                                .textSelection(.enabled)
+                            Button("재생성") {
+                                model.regenerateLocalRemoteToken()
+                            }
+                        }
+                    }
+                }
+                Text("무료 Apple ID에서는 이 로컬 원격 제어를 사용합니다. iPhone과 Mac이 같은 Wi-Fi에 있어야 하며, iPhone 앱에 Mac 주소와 토큰을 입력합니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 LabeledContent("CloudKit 권한") {
                     Text(model.appDiagnostics.codeSigning.cloudKitEntitled ? "설정됨" : "설정 필요")
                         .foregroundStyle(model.appDiagnostics.codeSigning.cloudKitEntitled ? Color.secondary : Color.orange)
                 }
                 Toggle(
-                    "iPhone 요청 자동 처리",
+                    "CloudKit 요청 자동 처리",
                     isOn: Binding(
                         get: { model.remoteProcessingEnabled },
                         set: { model.setRemoteProcessingEnabled($0) }
@@ -96,7 +132,7 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Text("iPhone은 CloudKit private database에 실행 요청만 올립니다. Mac 앱이 켜져 있고 이 옵션이 켜져 있어야 요청이 처리됩니다.")
+                Text("CloudKit은 유료 Apple Developer 팀과 iCloud container/provisioning이 있을 때만 사용합니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

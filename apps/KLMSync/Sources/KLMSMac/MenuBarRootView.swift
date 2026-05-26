@@ -903,7 +903,48 @@ private struct CommandPanelView: View {
                             commandButton(.v2BuildState)
                         }
                         Toggle(
-                            "iPhone 요청 자동 처리",
+                            "로컬 iPhone 원격 제어",
+                            isOn: Binding(
+                                get: { model.localRemoteEnabled },
+                                set: { model.setLocalRemoteEnabled($0) }
+                            )
+                        )
+                        .toggleStyle(.switch)
+                        .help("같은 Wi-Fi의 iPhone 앱에서 이 Mac으로 직접 실행 요청을 보낼 수 있게 합니다.")
+                        .accessibilityHint("같은 Wi-Fi의 iPhone 앱에서 이 Mac으로 직접 실행 요청을 보낼 수 있게 합니다.")
+
+                        if model.localRemoteEnabled {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(model.localRemoteStatusMessage ?? "로컬 원격 제어 준비 중")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                ForEach(model.localRemoteEndpointHints, id: \.self) { endpoint in
+                                    Text("주소: \(endpoint)")
+                                        .font(.caption.monospaced())
+                                        .textSelection(.enabled)
+                                }
+                                HStack(spacing: 8) {
+                                    Text("토큰: \(model.localRemoteToken)")
+                                        .font(.caption.monospaced())
+                                        .textSelection(.enabled)
+                                    Button {
+                                        model.regenerateLocalRemoteToken()
+                                    } label: {
+                                        Label("토큰 재생성", systemImage: "arrow.triangle.2.circlepath")
+                                            .labelStyle(.iconOnly)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("기존 iPhone 연결 토큰을 폐기하고 새 토큰을 만듭니다.")
+                                }
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.quinary)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+
+                        Toggle(
+                            "CloudKit iPhone 요청 자동 처리",
                             isOn: Binding(
                                 get: { model.remoteProcessingEnabled },
                                 set: { model.setRemoteProcessingEnabled($0) }
