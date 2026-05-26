@@ -3880,15 +3880,15 @@ func buildRenderPlan(
     }
 
     func sectionHeadingFontSize() -> CGFloat {
-        mode == .archive ? noticeBodyFontSize : noticeSectionHeadingFontSize
+        noticeSectionHeadingFontSize
     }
 
     func courseHeadingFontSize() -> CGFloat {
-        min(noticeCourseHeadingFontSize, noticeBodyFontSize)
+        noticeCourseHeadingFontSize
     }
 
     func noticeTitleFontSize() -> CGFloat {
-        mode == .archive ? noticeItemTitleFontSize : noticeBodyFontSize
+        noticeItemTitleFontSize
     }
 
     appendLine(noteTitle, bold: true, fontSize: noticeDocumentTitleFontSize)
@@ -4143,12 +4143,11 @@ func noticeDisplayModeName(_ mode: NoticeDisplayMode) -> String {
 }
 
 func shouldCollapseNoticeCourses(_ plan: RenderPlan) -> Bool {
-    _ = plan
-    return false
+    collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty
 }
 
 func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool {
-    plan.mode == .archive && !plan.renderedNotices.isEmpty
+    collapseNoticeItemsEnabled && !plan.renderedNotices.isEmpty
 }
 
 func shouldCollapseNoticeSections(_ plan: RenderPlan) -> Bool {
@@ -4735,21 +4734,19 @@ func renderNativeNoteOnce(
         let summaryRange = lineRange(plan.summaryLineIndex, fallback: plan.summaryRange)
         rememberBoldTarget("summary", summaryRange)
 
-        if plan.mode == .primary {
-            for (offset, index) in plan.importantHeadingLineIndexes.enumerated() {
-                let heading = lineRange(index, fallback: plan.importantHeadingRanges[offset])
-                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
-            }
+        for (offset, index) in plan.importantHeadingLineIndexes.enumerated() {
+            let heading = lineRange(index, fallback: plan.importantHeadingRanges[offset])
+            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+        }
 
-            for (offset, index) in plan.freshHeadingLineIndexes.enumerated() {
-                let heading = lineRange(index, fallback: plan.freshHeadingRanges[offset])
-                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
-            }
+        for (offset, index) in plan.freshHeadingLineIndexes.enumerated() {
+            let heading = lineRange(index, fallback: plan.freshHeadingRanges[offset])
+            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+        }
 
-            for (offset, index) in plan.unreadHeadingLineIndexes.enumerated() {
-                let heading = lineRange(index, fallback: plan.unreadHeadingRanges[offset])
-                applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
-            }
+        for (offset, index) in plan.unreadHeadingLineIndexes.enumerated() {
+            let heading = lineRange(index, fallback: plan.unreadHeadingRanges[offset])
+            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
         }
 
         if effectiveCollapseCoursesEnabled {

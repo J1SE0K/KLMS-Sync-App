@@ -145,7 +145,7 @@ final class KLMSMacModel: ObservableObject {
             "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT": "1",
             "NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT": "1",
             "NOTICE_COLLAPSE_SECTIONS": "1",
-            "NOTICE_COLLAPSE_COURSES": "0",
+            "NOTICE_COLLAPSE_COURSES": "1",
             "NOTICE_COLLAPSE_NOTICE_ITEMS": "1",
             "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS": "0",
             "NOTICE_NATIVE_BOLD_REINFORCE_LIMIT": "0",

@@ -198,7 +198,10 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("shouldCollapseNoticeSections(plan)", renderer)
         self.assertIn("placeCaretForFormatting(\n            context: context,", renderer)
         self.assertNotIn('NOTICE_NATIVE_ENABLE_UI_STYLE_FALLBACK"] == "1"', renderer)
-        self.assertIn("return false", renderer[renderer.index("func shouldCollapseNoticeCourses") : renderer.index("func shouldCollapseNoticeItems")])
+        self.assertIn(
+            "collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty",
+            renderer[renderer.index("func shouldCollapseNoticeCourses") : renderer.index("func shouldCollapseNoticeItems")],
+        )
         self.assertIn('menuItems: ["제목", "Title"]', renderer)
         self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
         self.assertIn('menuItems: ["부머리말", "Subheading"]', renderer)
@@ -359,14 +362,14 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool", renderer)
         self.assertIn("func shouldCollapseNoticeSections(_ plan: RenderPlan) -> Bool", renderer)
         self.assertIn(
-            "return false",
+            "collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty",
             renderer[
                 renderer.index("func shouldCollapseNoticeCourses")
                 : renderer.index("func shouldCollapseNoticeItems")
             ],
         )
         self.assertNotIn("collapseNoticeCoursesEnabled || plan.mode == .archive", renderer)
-        self.assertIn("plan.mode == .archive && !plan.renderedNotices.isEmpty", renderer)
+        self.assertIn("collapseNoticeItemsEnabled && !plan.renderedNotices.isEmpty", renderer)
         self.assertIn("plan.mode == .primary", renderer)
         self.assertIn('menuItems: ["제목", "Title"]', renderer)
         self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
@@ -625,7 +628,7 @@ console.log(JSON.stringify({ kept, overridden }));
         self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0"', app_model)
         self.assertIn('NOTICE_COLLAPSE_SECTIONS": "1"', app_model)
-        self.assertIn('NOTICE_COLLAPSE_COURSES": "0"', app_model)
+        self.assertIn('NOTICE_COLLAPSE_COURSES": "1"', app_model)
         self.assertIn('NOTICE_COLLAPSE_NOTICE_ITEMS": "1"', app_model)
         self.assertIn('NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS": "0"', app_model)
         self.assertNotIn("requireFunctionalNotesRenderEnabled", support)
