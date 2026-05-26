@@ -58,6 +58,7 @@ final class KLMSMacModel: ObservableObject {
     private var remotePollingTask: Task<Void, Never>?
     private var localRemoteServer: LocalRemoteServer?
     private var notifiedAuthDigits = Set<String>()
+    private var notifiedAuthCompletionForCurrentRun = false
     private var authStatusClearTask: Task<Void, Never>?
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
     private static let remoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
@@ -463,6 +464,7 @@ final class KLMSMacModel: ObservableObject {
         authStatusClearTask = nil
         authDigitsSuppressed = false
         notifiedAuthDigits.removeAll()
+        notifiedAuthCompletionForCurrentRun = false
         defer {
             runningCommand = nil
             isCancellingCommand = false
@@ -1375,7 +1377,23 @@ final class KLMSMacModel: ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = "KLMS 인증 번호"
         content.body = "휴대폰 KAIST 인증 화면에서 \(digits)를 선택해 주세요."
+        content.sound = .default
         let request = UNNotificationRequest(identifier: "klms-auth-\(digits)", content: content, trigger: nil)
+        try? await center.add(request)
+    }
+
+    private func notifyAuthCompletion() async {
+        let center = UNUserNotificationCenter.current()
+        _ = try? await center.requestAuthorization(options: [.alert, .sound])
+        let content = UNMutableNotificationContent()
+        content.title = "KLMS 인증 완료"
+        content.body = "로그인 인증이 완료됐습니다. 동기화를 계속 진행합니다."
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "klms-auth-completed-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
         try? await center.add(request)
     }
 
@@ -1404,6 +1422,14 @@ final class KLMSMacModel: ObservableObject {
         await notifyAuthDigits(digits)
     }
 
+    private func notifyAuthCompletionIfNeeded() async {
+        guard !notifiedAuthCompletionForCurrentRun else {
+            return
+        }
+        notifiedAuthCompletionForCurrentRun = true
+        await notifyAuthCompletion()
+    }
+
     private func clearAuthDigitsState(showAuthenticatedMessage: Bool) async {
         liveAuthDigits = nil
         authDigitsSuppressed = true
@@ -1411,6 +1437,7 @@ final class KLMSMacModel: ObservableObject {
         notifiedAuthDigits.removeAll()
         if showAuthenticatedMessage {
             showTransientAuthStatus("인증 완료됨")
+            await notifyAuthCompletionIfNeeded()
         }
     }
 
@@ -1430,12 +1457,10 @@ final class KLMSMacModel: ObservableObject {
     private func clearAuthNotifications() {
         let center = UNUserNotificationCenter.current()
         let identifiers = notifiedAuthDigits.map { "klms-auth-\($0)" }
-        if identifiers.isEmpty {
-            center.removeAllPendingNotificationRequests()
-            center.removeAllDeliveredNotifications()
-        } else {
-            center.removePendingNotificationRequests(withIdentifiers: identifiers)
-            center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        guard !identifiers.isEmpty else {
+            return
         }
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
     }
 }
