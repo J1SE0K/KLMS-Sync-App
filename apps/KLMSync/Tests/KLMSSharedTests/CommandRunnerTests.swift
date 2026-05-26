@@ -105,6 +105,22 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(KLMSCommandRunner.extractLatestAuthDigits(from: log), "85")
     }
 
+    func testAuthenticatedResultRemembersDigitsWereShown() {
+        let result = KLMSCommandResult(
+            invocation: KLMSEngineCommand.fullSync.invocation(),
+            startedAt: Date(),
+            finishedAt: Date(),
+            exitCode: 0,
+            standardOutput: "KAIST 인증 번호: 85\nstatus=ok stage=authenticated",
+            standardError: "KLMS 로그인 보조 완료",
+            authDigits: KLMSCommandRunner.extractAuthDigits(from: "KAIST 인증 번호: 85\nstatus=ok stage=authenticated")
+        )
+
+        XCTAssertTrue(result.loginAuthenticated)
+        XCTAssertTrue(result.sawAuthDigits)
+        XCTAssertNil(result.authDigits)
+    }
+
     func testOldAuthenticatedOutputDoesNotHideNewerAuthDigits() {
         let log = """
         status=ok stage=authenticated

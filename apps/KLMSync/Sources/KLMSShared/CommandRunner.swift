@@ -43,6 +43,10 @@ public struct KLMSCommandResult: Sendable, Equatable {
         KLMSCommandRunner.outputIndicatesAuthenticatedAfterLatestAuthDigits(combinedOutput)
     }
 
+    public var sawAuthDigits: Bool {
+        KLMSCommandRunner.extractLatestAuthDigits(from: combinedOutput) != nil
+    }
+
     public var requiresLoginApproval: Bool {
         authDigits != nil && !loginAuthenticated
     }
