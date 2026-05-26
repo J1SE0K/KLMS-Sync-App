@@ -3,6 +3,9 @@ import SwiftUI
 #if canImport(KLMSShared)
 import KLMSShared
 #endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @main
 struct KLMSiOSApp: App {
@@ -68,28 +71,23 @@ final class CompanionModel: ObservableObject {
 
     private var localRemoteClient: LocalRemoteClient? {
         #if canImport(Network)
-        guard let endpoint = localRemoteEndpoint,
-              !localToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard let connectionInfo = localConnectionInfo,
+              let token = connectionInfo.token,
+              !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
-        return LocalRemoteClient(host: endpoint.host, port: endpoint.port, token: localToken)
+        return LocalRemoteClient(host: connectionInfo.host, port: connectionInfo.port, token: token)
         #else
         return nil
         #endif
     }
 
-    private var localRemoteEndpoint: (host: String, port: UInt16)? {
-        var host = localHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        var portText = localPortText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hostParts = host.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: true)
-        if hostParts.count == 2, let pastedPort = UInt16(hostParts[1]) {
-            host = String(hostParts[0])
-            portText = String(pastedPort)
-        }
-        guard let port = UInt16(portText), port > 0, !host.isEmpty else {
-            return nil
-        }
-        return (host, port)
+    private var localConnectionInfo: LocalRemoteConnectionInfo? {
+        LocalRemoteConnectionInfo.parse(
+            hostText: localHost,
+            portText: localPortText,
+            tokenText: localToken
+        )
     }
 
     var latestCommand: RemoteRunCommand? {
@@ -192,6 +190,24 @@ final class CompanionModel: ObservableObject {
         }
     }
 
+    func pasteLocalConnectionInfo() {
+        #if canImport(UIKit)
+        guard let text = UIPasteboard.general.string,
+              let connectionInfo = LocalRemoteConnectionInfo.parse(hostText: text) else {
+            errorMessage = "붙여넣은 텍스트에서 Mac 주소와 토큰을 찾지 못했습니다."
+            return
+        }
+        localHost = "\(connectionInfo.host):\(connectionInfo.port)"
+        localPortText = "\(connectionInfo.port)"
+        if let token = connectionInfo.token {
+            localToken = token
+        }
+        errorMessage = ""
+        #else
+        errorMessage = "이 빌드는 클립보드 붙여넣기를 사용할 수 없습니다."
+        #endif
+    }
+
     func pollRecentCommands() async {
         while !Task.isCancelled {
             await refreshRecent()
@@ -269,6 +285,13 @@ private struct LocalConnectionPanel: View {
                 TextField("토큰", text: $model.localToken)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
             }
+            Button {
+                model.pasteLocalConnectionInfo()
+            } label: {
+                Label("복사한 연결 정보 붙여넣기", systemImage: "doc.on.clipboard")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
             HStack(spacing: 8) {
                 Button {
                     Task {
@@ -292,6 +315,9 @@ private struct LocalConnectionPanel: View {
                 .buttonStyle(.bordered)
                 .disabled(!model.localRemoteConfigured || model.isSubmitting || model.hasInFlightRequest)
             }
+            Text("처음 연결할 때 iOS의 로컬 네트워크 권한 알림이 뜨면 허용해야 합니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(12)
         .background(.quinary)

@@ -114,6 +114,32 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertNil(status.authDigits)
     }
 
+    func testLocalRemoteConnectionInfoParsesCopiedMacConnectionText() {
+        let text = """
+        KLMS Sync iPhone 연결 정보
+        Mac 주소: 10.249.54.97:18483
+        토큰: 337TY82EXTX2
+        """
+
+        let info = LocalRemoteConnectionInfo.parse(hostText: text)
+
+        XCTAssertEqual(info?.host, "10.249.54.97")
+        XCTAssertEqual(info?.port, 18483)
+        XCTAssertEqual(info?.token, "337TY82EXTX2")
+    }
+
+    func testLocalRemoteConnectionInfoParsesHostPortFieldAndSeparateToken() {
+        let info = LocalRemoteConnectionInfo.parse(
+            hostText: "10.249.54.97:18483",
+            portText: "",
+            tokenText: "337TY82EXTX2"
+        )
+
+        XCTAssertEqual(info?.host, "10.249.54.97")
+        XCTAssertEqual(info?.port, 18483)
+        XCTAssertEqual(info?.token, "337TY82EXTX2")
+    }
+
     func testLocalRemoteRequestAndResponseRoundTrip() throws {
         let request = LocalRemoteRequest(
             token: "ABCD2345",

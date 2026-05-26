@@ -206,6 +206,110 @@ public protocol RemoteCommandStore: Sendable {
     func update(_ command: RemoteRunCommand) async throws
 }
 
+public struct LocalRemoteConnectionInfo: Sendable, Equatable {
+    public static let defaultPort: UInt16 = 18483
+
+    public var host: String
+    public var port: UInt16
+    public var token: String?
+
+    public init(host: String, port: UInt16 = Self.defaultPort, token: String? = nil) {
+        self.host = host
+        self.port = port
+        self.token = token
+    }
+
+    public static func parse(
+        hostText: String,
+        portText: String = "\(Self.defaultPort)",
+        tokenText: String = ""
+    ) -> LocalRemoteConnectionInfo? {
+        let rawHostText = hostText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawPortText = portText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawTokenText = tokenText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let combinedText = [rawHostText, rawPortText, rawTokenText]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+
+        let extractedHost = labeledValue(in: combinedText, labels: ["Mac 주소", "주소", "Host", "Address"])
+            ?? firstIPv4Endpoint(in: rawHostText)?.host
+            ?? firstIPv4Endpoint(in: combinedText)?.host
+            ?? rawHostText
+        let extractedPort = firstIPv4Endpoint(in: rawHostText)?.port
+            ?? firstIPv4Endpoint(in: combinedText)?.port
+            ?? UInt16(rawPortText)
+            ?? Self.defaultPort
+        let extractedToken = rawTokenText.isEmpty
+            ? labeledValue(in: combinedText, labels: ["토큰", "Token"])
+            : rawTokenText
+
+        let normalizedHost = normalizeHost(extractedHost)
+        guard !normalizedHost.isEmpty, extractedPort > 0 else {
+            return nil
+        }
+        return LocalRemoteConnectionInfo(
+            host: normalizedHost,
+            port: extractedPort,
+            token: extractedToken?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        )
+    }
+
+    private static func labeledValue(in text: String, labels: [String]) -> String? {
+        for rawLine in text.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+            for label in labels {
+                guard let range = line.range(of: "\(label):", options: [.caseInsensitive]) else {
+                    continue
+                }
+                let value = line[range.upperBound...]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty {
+                    return value
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func firstIPv4Endpoint(in text: String) -> (host: String, port: UInt16?)? {
+        let pattern = #"(?<![0-9])(\d{1,3}(?:\.\d{1,3}){3})(?::(\d{1,5}))?(?![0-9])"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return nil
+        }
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
+        guard let match = regex.firstMatch(in: text, range: range) else {
+            return nil
+        }
+        let host = nsText.substring(with: match.range(at: 1))
+        let port: UInt16?
+        if match.range(at: 2).location != NSNotFound {
+            port = UInt16(nsText.substring(with: match.range(at: 2)))
+        } else {
+            port = nil
+        }
+        return (host, port)
+    }
+
+    private static func normalizeHost(_ value: String) -> String {
+        var host = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: host), let parsedHost = url.host {
+            host = parsedHost
+        }
+        if let endpoint = firstIPv4Endpoint(in: host) {
+            host = endpoint.host
+        }
+        return host
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
 public enum LocalRemoteAction: String, Codable, Sendable {
     case status
     case run
@@ -265,7 +369,7 @@ public enum LocalRemoteClientError: LocalizedError, Sendable {
         case .emptyToken:
             "Mac 앱에 표시된 토큰을 입력해 주세요."
         case let .connectionFailed(message):
-            message.isEmpty ? "Mac 앱에 연결하지 못했습니다." : message
+            "\(message.isEmpty ? "Mac 앱에 연결하지 못했습니다." : message) 같은 Wi-Fi에 연결되어 있는지, Mac 앱이 켜져 있는지, iOS 로컬 네트워크 권한을 허용했는지 확인해 주세요."
         case .invalidResponse:
             "Mac 앱 응답을 해석하지 못했습니다."
         case let .serverRejected(message):
