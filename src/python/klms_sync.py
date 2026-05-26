@@ -3804,7 +3804,7 @@ def extract_assignment_candidate_title(*values: str) -> str:
 
 def normalize_exam_title(text: str) -> str:
     lowered = text.lower()
-    if "midterm" in lowered or "중간" in text:
+    if re.search(r"\bmid-?term\b", lowered) or "중간" in text:
         return "중간고사"
     if "final" in lowered or "기말" in text:
         return "기말고사"
@@ -3813,7 +3813,7 @@ def normalize_exam_title(text: str) -> str:
 
 def normalize_help_desk_title(text: str) -> str:
     lowered = text.lower()
-    if "midterm" in lowered or "중간" in text:
+    if re.search(r"\bmid-?term\b", lowered) or "중간" in text:
         return "중간고사 헬프데스크"
     if "final" in lowered or "기말" in text:
         return "기말고사 헬프데스크"
@@ -4058,11 +4058,11 @@ def find_time_range_after_date(chunk: str, date_match: DateSnippet) -> tuple[dat
 
     patterns = [
         re.compile(
-            r"(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*(?:to|-|~)\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?",
+            r"from\s+(\d{1,2})h\s*(\d{2})?\s*(?:to|-|~)\s*(\d{1,2})h\s*(\d{2})?",
             re.IGNORECASE,
         ),
         re.compile(
-            r"from\s+(\d{1,2})h\s*(\d{2})?\s*(?:to|-|~)\s*(\d{1,2})h\s*(\d{2})?",
+            r"(?:from\s+)?(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*(?:to|-|~)\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?",
             re.IGNORECASE,
         ),
         re.compile(
@@ -4072,60 +4072,54 @@ def find_time_range_after_date(chunk: str, date_match: DateSnippet) -> tuple[dat
     ]
 
     for pattern in patterns:
-        match = pattern.search(tail)
-        if not match:
-            continue
-
-        if "from" in pattern.pattern:
-            if "h" in pattern.pattern:
-                start_at = build_time_on_same_day(
-                    date_match.sort_due,
-                    int(match.group(1)),
-                    int(match.group(2) or "0"),
-                    None,
-                    tail,
-                )
-                end_at = build_time_on_same_day(
-                    date_match.sort_due,
-                    int(match.group(3)),
-                    int(match.group(4) or "0"),
-                    None,
-                    tail,
-                )
+        for match in pattern.finditer(tail):
+            if "from" in pattern.pattern:
+                if "h" in pattern.pattern:
+                    start_hour = int(match.group(1))
+                    start_minute = int(match.group(2) or "0")
+                    start_meridiem = None
+                    end_hour = int(match.group(3))
+                    end_minute = int(match.group(4) or "0")
+                    end_meridiem = None
+                else:
+                    start_hour = int(match.group(1))
+                    start_minute = int(match.group(2) or "0")
+                    start_meridiem = match.group(3)
+                    end_hour = int(match.group(4))
+                    end_minute = int(match.group(5) or "0")
+                    end_meridiem = match.group(6)
             else:
-                start_at = build_time_on_same_day(
-                    date_match.sort_due,
-                    int(match.group(1)),
-                    int(match.group(2) or "0"),
-                    match.group(3),
-                    tail,
-                )
-                end_at = build_time_on_same_day(
-                    date_match.sort_due,
-                    int(match.group(4)),
-                    int(match.group(5) or "0"),
-                    match.group(6),
-                    tail,
-                )
-        else:
+                start_hour = int(match.group(2))
+                start_minute = int(match.group(3))
+                start_meridiem = match.group(1)
+                end_hour = int(match.group(5))
+                end_minute = int(match.group(6))
+                end_meridiem = match.group(4)
+
+            if not (
+                is_valid_clock_time(start_hour, start_minute, start_meridiem)
+                and is_valid_clock_time(end_hour, end_minute, end_meridiem)
+            ):
+                continue
+
             start_at = build_time_on_same_day(
                 date_match.sort_due,
-                int(match.group(2)),
-                int(match.group(3)),
-                match.group(1),
+                start_hour,
+                start_minute,
+                start_meridiem,
                 tail,
             )
             end_at = build_time_on_same_day(
                 date_match.sort_due,
-                int(match.group(5)),
-                int(match.group(6)),
-                match.group(4),
+                end_hour,
+                end_minute,
+                end_meridiem,
                 tail,
             )
 
-        if end_at <= start_at:
-            end_at += timedelta(hours=12)
-        return start_at, end_at
+            if end_at <= start_at:
+                end_at += timedelta(hours=12)
+            return start_at, end_at
 
     if date_match.timing_precision == "datetime":
         trailing_end_time = re.search(
@@ -4134,12 +4128,17 @@ def find_time_range_after_date(chunk: str, date_match: DateSnippet) -> tuple[dat
             re.IGNORECASE,
         )
         if trailing_end_time:
+            end_hour = int(trailing_end_time.group(1))
+            end_minute = int(trailing_end_time.group(2) or "0")
+            end_meridiem = trailing_end_time.group(3)
+            if not is_valid_clock_time(end_hour, end_minute, end_meridiem):
+                return None
             start_at = date_match.sort_due
             end_at = build_time_on_same_day(
                 date_match.sort_due,
-                int(trailing_end_time.group(1)),
-                int(trailing_end_time.group(2) or "0"),
-                trailing_end_time.group(3),
+                end_hour,
+                end_minute,
+                end_meridiem,
                 tail,
             )
             if end_at <= start_at:
@@ -4147,6 +4146,15 @@ def find_time_range_after_date(chunk: str, date_match: DateSnippet) -> tuple[dat
             return start_at, end_at
 
     return None
+
+
+def is_valid_clock_time(hour: int, minute: int, meridiem: str | None = None) -> bool:
+    if minute < 0 or minute > 59:
+        return False
+    meridiem_text = normalize_whitespace(meridiem or "").lower()
+    if meridiem_text in {"am", "pm", "오전", "오후"}:
+        return 1 <= hour <= 12
+    return 0 <= hour <= 23
 
 
 def build_time_on_same_day(

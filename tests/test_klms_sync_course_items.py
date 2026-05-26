@@ -180,6 +180,30 @@ class CourseItemParsingTests(unittest.TestCase):
         self.assertEqual(items[0]["location"], "KAIST E15 Auditorium")
         self.assertEqual(items[0]["coverage"], "Week 1 to Week 7 lectures")
 
+    def test_exam_notice_parses_h_notation_time_range(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/mod/courseboard/article.php?bwid=100006",
+            "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?bwid=100006",
+            "title": "Mid-term exam essay topic",
+            "html": """
+            <html><body>
+              <nav><a href="/course/view.php?id=100001">World Literature</a></nav>
+              <h1>Mid-term exam essay topic</h1>
+              <div class="courseboard"><div class="content">
+                <p>The exam will be taken on the 16th of April, 2026 from 14h 30 to 15h 30 in our lecture room.</p>
+              </div></div>
+            </body></html>
+            """,
+        }
+
+        items = klms_sync.extract_exam_items([page])
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["course"], "World Literature")
+        self.assertEqual(items[0]["title"], "중간고사")
+        self.assertEqual(items[0]["timing_precision"], "time-range")
+        self.assertIn("오후 2:30 - 오후 3:30", items[0]["due"])
+
     def test_success_payload_keeps_completed_assignment_records(self) -> None:
         completed = {
             "url": "https://klms.kaist.ac.kr/mod/url/view.php?id=100004",
