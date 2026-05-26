@@ -116,6 +116,16 @@ is_truthy() {
   esac
 }
 
+if is_truthy "${KLMS_APP_RUN:-0}"; then
+  case "${FILE_REFRESH_MODE:l}" in
+    full)
+      FILE_REFRESH_MODE="auto"
+      ;;
+  esac
+  FILE_FORCE_DOWNLOAD="0"
+  FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY="1"
+fi
+
 if is_truthy "$FILE_DRY_RUN"; then
   MANIFEST_JSON="$WORK_CACHE_DIR/course_file_manifest.json"
   MANIFEST_MD="$WORK_CACHE_DIR/course_file_manifest.md"

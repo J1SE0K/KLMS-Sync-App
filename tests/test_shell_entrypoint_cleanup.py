@@ -274,6 +274,27 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("file_seed_urls.next", text)
         self.assertIn("build_files_stage_timings.py", text)
         self.assertIn("klms_cleanup_runtime_tmp_if_enabled", text)
+        self.assertIn('if is_truthy "${KLMS_APP_RUN:-0}"; then', text)
+        self.assertIn('FILE_REFRESH_MODE="auto"', text)
+        self.assertIn('FILE_FORCE_DOWNLOAD="0"', text)
+        self.assertIn('FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY="1"', text)
+
+    def test_mac_app_files_sync_is_incremental_by_default(self) -> None:
+        model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+        settings = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "SettingsView.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('"FILE_REFRESH_MODE": "auto"', model)
+        self.assertIn('"FILE_FORCE_DOWNLOAD": "0"', model)
+        self.assertIn('"FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": "1"', model)
+        self.assertIn('Picker("파일 탐색 모드"', settings)
+        self.assertIn('allowedValues: ["auto", "quick"]', settings)
+        file_picker = settings.split('Picker("파일 탐색 모드"', 1)[1].split("}", 1)[0]
+        self.assertNotIn('Text("전체").tag("full")', file_picker)
+        self.assertNotIn('configToggle("강제 재다운로드"', settings)
 
     def test_safari_automation_uses_background_windows_by_default(self) -> None:
         fetch_text = (PROJECT_DIR / "src" / "js" / "fetch_pages_with_safari.js").read_text(
