@@ -533,6 +533,20 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
         self.assertIn("security find-identity -v -p codesigning", build_script)
         self.assertIn("Signing KLMS Sync.app with identity", build_script)
 
+    def test_mac_app_notifies_auth_completion(self) -> None:
+        model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("notifiedAuthCompletionForCurrentRun", model)
+        self.assertIn("notifyAuthCompletionIfNeeded()", model)
+        self.assertIn('content.title = "KLMS 인증 완료"', model)
+        self.assertIn('content.body = "로그인 인증이 완료됐습니다. 동기화를 계속 진행합니다."', model)
+        self.assertIn('showTransientAuthStatus("인증 완료됨")', model)
+        self.assertIn("removeDeliveredNotifications(withIdentifiers: identifiers)", model)
+        self.assertNotIn("removeAllPendingNotificationRequests", model)
+        self.assertNotIn("removeAllDeliveredNotifications", model)
+
     def test_app_notice_renderer_uses_bundled_signed_helper(self) -> None:
         model = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
