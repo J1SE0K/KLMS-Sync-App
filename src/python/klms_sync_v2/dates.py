@@ -18,7 +18,9 @@ KO_DATETIME_RE = re.compile(
 )
 SLASH_DATETIME_RE = re.compile(
     r"(?<!\d)(?P<month>\d{1,2})\s*/\s*(?P<day>\d{1,2})"
-    r"(?:\s*(?P<hour>\d{1,2})\s*:\s*(?P<minute>\d{2})(?::\d{2})?)"
+    r".{0,24}?"
+    r"(?P<hour>\d{1,2})\s*:\s*(?P<minute>\d{2})(?::\d{2})?\s*"
+    r"(?P<ampm>AM|PM|am|pm)?"
 )
 SLASH_RANGE_RE = re.compile(
     r"(?<!\d)(?P<month>\d{1,2})\s*/\s*(?P<day>\d{1,2})"
@@ -48,6 +50,13 @@ EN_MONTH_RANGE_RE = re.compile(
 REFERENCE_DATETIME_RE = re.compile(
     r"\b(?P<year>20\d{2})[-/.](?P<month>\d{1,2})[-/.](?P<day>\d{1,2})"
     r"[ T]+(?P<hour>\d{1,2}):(?P<minute>\d{2})"
+)
+KO_DATE_ONLY_RE = re.compile(
+    r"(?<!\d)(?:(?P<year>20\d{2})\s*년\s*)?"
+    r"(?P<month>\d{1,2})\s*월\s*"
+    r"(?P<day>\d{1,2})\s*일"
+    r"(?:\s*\([^)]*\))?"
+    r"(?!\s*(?:오전|오후)?\s*\d{1,2}\s*:)"
 )
 
 MONTHS = {
@@ -223,7 +232,7 @@ def parse_due_datetime(text: str, generated_at: str = "") -> ParsedDate | None:
             year,
             int(match.group("month")),
             int(match.group("day")),
-            int(match.group("hour")),
+            normalize_ampm(int(match.group("hour")), match.group("ampm")),
             int(match.group("minute")),
         )
         return ParsedDate(display=korean_datetime_display(value), iso=value.isoformat())
@@ -243,6 +252,22 @@ def parse_due_datetime(text: str, generated_at: str = "") -> ParsedDate | None:
         return ParsedDate(display=korean_datetime_display(value), iso=value.isoformat())
 
     return None
+
+
+def parse_due_date_only(text: str, generated_at: str = "") -> ParsedDate | None:
+    text = text or ""
+    year = parse_reference_year(generated_at)
+    match = KO_DATE_ONLY_RE.search(text)
+    if not match:
+        return None
+    value = build_datetime(
+        int(match.group("year") or year),
+        int(match.group("month")),
+        int(match.group("day")),
+        23,
+        59,
+    )
+    return ParsedDate(display=korean_datetime_display(value), iso=value.isoformat())
 
 
 def is_past(iso_value: str, generated_at: str = "") -> bool:
