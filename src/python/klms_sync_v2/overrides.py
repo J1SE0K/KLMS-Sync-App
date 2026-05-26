@@ -5,6 +5,7 @@ from dataclasses import replace
 from typing import Any
 
 from .exam_fields import extract_coverage, extract_location, online_exam_location
+from .dates import is_past
 from .models import Event, SyncState
 from .text import clipped, one_line
 
@@ -20,6 +21,9 @@ def apply_overrides(
     state: SyncState,
     overrides: dict[str, Any] | None,
     source_by_url: dict[str, dict[str, str]] | None = None,
+    *,
+    generated_at: str = "",
+    include_past: bool = False,
 ) -> SyncState:
     if not overrides:
         return state
@@ -101,6 +105,8 @@ def apply_overrides(
         due = one_line(str(spec.get("due") or ""))
         sync_due = one_line(str(spec.get("sync_due") or ""))
         if not due or not sync_due:
+            continue
+        if not include_past and is_past(sync_due, generated_at or state.generated_at):
             continue
         instructions = one_line(source.get("instructions") or "")
         append = one_line(str(spec.get("instructions_append") or ""))

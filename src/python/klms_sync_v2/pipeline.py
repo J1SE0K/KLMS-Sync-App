@@ -208,4 +208,10 @@ def build_sync_state(
     state.exams.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.exam_candidates.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.help_desk_items.sort(key=lambda item: (item.sync_due, item.course, item.title))
-    return apply_overrides(state, overrides, source_by_url)
+    return apply_overrides(
+        state,
+        overrides,
+        source_by_url,
+        generated_at=generated_at,
+        include_past=include_past,
+    )

@@ -443,6 +443,38 @@ class V2CoreTests(unittest.TestCase):
 
         self.assertEqual(state.exams, [])
 
+    def test_past_approved_exam_override_is_hidden_from_state(self) -> None:
+        state = build_sync_state(
+            generated_at="2026-05-27 19:18 KST",
+            detail_pages=[],
+            notices=[],
+            source_events=[
+                Event(
+                    url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=10",
+                    course="영미 단편소설",
+                    title="중간고사",
+                    due="2026년 4월 16일 오후 2:30 - 오후 3:30",
+                    sync_due="2026-04-16T15:30:00+09:00",
+                    sync_start="2026-04-16T14:30:00+09:00",
+                    source="notice",
+                    category="exam_candidate",
+                )
+            ],
+            overrides={
+                "exams": {
+                    "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=10::중간고사": {
+                        "status": "approved",
+                        "due": "2026년 4월 16일 오후 2:30 - 오후 3:30",
+                        "sync_due": "2026-04-16T15:30:00+09:00",
+                        "sync_start": "2026-04-16T14:30:00+09:00",
+                    }
+                }
+            },
+        )
+
+        self.assertEqual(state.exams, [])
+        self.assertEqual(state.exam_candidates, [])
+
     def test_cli_build_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
