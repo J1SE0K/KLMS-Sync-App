@@ -919,14 +919,34 @@ private struct CommandPanelView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 ForEach(model.localRemoteEndpointHints, id: \.self) { endpoint in
-                                    Text("주소: \(endpoint)")
-                                        .font(.caption.monospaced())
-                                        .textSelection(.enabled)
+                                    HStack(spacing: 8) {
+                                        Text("주소: \(endpoint)")
+                                            .font(.caption.monospaced())
+                                            .textSelection(.enabled)
+                                        Spacer(minLength: 4)
+                                        Button {
+                                            model.copyLocalRemoteEndpoint(endpoint)
+                                        } label: {
+                                            Label("주소 복사", systemImage: "doc.on.doc")
+                                                .labelStyle(.iconOnly)
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .help("이 주소를 복사합니다.")
+                                    }
                                 }
                                 HStack(spacing: 8) {
                                     Text("토큰: \(model.localRemoteToken)")
                                         .font(.caption.monospaced())
                                         .textSelection(.enabled)
+                                    Spacer(minLength: 4)
+                                    Button {
+                                        model.copyLocalRemoteToken()
+                                    } label: {
+                                        Label("토큰 복사", systemImage: "doc.on.doc")
+                                            .labelStyle(.iconOnly)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("iPhone 앱에 입력할 토큰을 복사합니다.")
                                     Button {
                                         model.regenerateLocalRemoteToken()
                                     } label: {
@@ -936,6 +956,13 @@ private struct CommandPanelView: View {
                                     .buttonStyle(.borderless)
                                     .help("기존 iPhone 연결 토큰을 폐기하고 새 토큰을 만듭니다.")
                                 }
+                                Button {
+                                    model.copyLocalRemoteConnectionInfo()
+                                } label: {
+                                    Label("주소와 토큰 복사", systemImage: "doc.on.clipboard")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
                             }
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
