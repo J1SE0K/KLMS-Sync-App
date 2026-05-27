@@ -40,6 +40,26 @@ class V2CoreTests(unittest.TestCase):
         self.assertIsNotNone(parsed)
         self.assertEqual(parsed.iso, "2026-05-03T23:59:00+09:00")
 
+    def test_due_label_beats_uploaded_timestamp(self) -> None:
+        parsed = parse_due_datetime(
+            "HW3 (Due: 6/15 23:59) HW3.pdf 2026년 5월 25일 오후 3:40 "
+            "제출 상태 시도 하지 않음 마감 일시 2026년 6월 15일(월요일) 오후 11:59",
+            "2026-05-27 11:12 KST",
+        )
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.iso, "2026-06-15T23:59:00+09:00")
+
+    def test_english_due_label_beats_quiz_open_timestamp(self) -> None:
+        parsed = parse_due_datetime(
+            "Attendance Quiz for Week 13 Due: May 30, 23:59 "
+            "이 퀴즈는 2026년 5월 26일(화요일) 오전 10:30 에 개봉됨",
+            "2026-05-27 11:12 KST",
+        )
+
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.iso, "2026-05-30T23:59:00+09:00")
+
     def test_english_month_range_uses_end_as_due_and_start_as_start(self) -> None:
         parsed = parse_due_datetime(
             "March 31 (Tuesday), from 10:30 to 12:00",
@@ -370,6 +390,25 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(item.course, "지성과 문명 강독:우주")
         self.assertEqual(item.submission, "시도 하지 않음")
         self.assertEqual(item.instructions, "")
+
+    def test_assignment_detail_uses_real_due_date_not_upload_date(self) -> None:
+        page = Page(
+            url="https://klms.kaist.ac.kr/mod/assign/view.php?id=1234405",
+            title="EE.49904(B)_2026_1: HW3 (Due: 6/15 23:59)",
+            html="""
+            <div>전기 전자공학특강&lt;전자공학을 위한 사이버 보안 개론&gt;(EE.49904(B)_2026_1(B))</div>
+            <div>HW3 (Due: 6/15 23:59) HW3.pdf 2026년 5월 25일 오후 3:40</div>
+            <div>제출 상태 시도 하지 않음</div>
+            <div>마감 일시 2026년 6월 15일(월요일) 오후 11:59</div>
+            """,
+        )
+
+        item, reason = classify_detail_page(page, "2026-05-27 11:12 KST")
+
+        self.assertEqual(reason, "assignment")
+        self.assertEqual(item.title, "HW3 (Due: 6/15 23:59)")
+        self.assertEqual(item.sync_due, "2026-06-15T23:59:00+09:00")
+        self.assertEqual(item.submission, "시도 하지 않음")
 
     def test_parenthesized_course_name_is_preserved(self) -> None:
         page = Page(

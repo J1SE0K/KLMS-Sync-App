@@ -69,6 +69,11 @@ KO_DATE_ONLY_RE = re.compile(
     r"(?:\s*\([^)]*\))?"
     r"(?!\s*(?:오전|오후)?\s*\d{1,2}\s*:)"
 )
+DUE_LABEL_RE = re.compile(
+    r"(마감\s*일시|마감\s*기한|제출\s*마감|제출\s*기한|"
+    r"Due\s*Date|Due|Deadline|마감)",
+    re.IGNORECASE,
+)
 
 MONTHS = {
     "jan": 1,
@@ -171,9 +176,34 @@ def build_datetime(year: int, month: int, day: int, hour: int, minute: int) -> d
     return datetime(year, month, day, hour, minute, tzinfo=KST)
 
 
-def parse_due_datetime(text: str, generated_at: str = "") -> ParsedDate | None:
+def labeled_due_windows(text: str) -> list[str]:
+    windows: list[str] = []
+    for match in DUE_LABEL_RE.finditer(text or ""):
+        window = text[match.start() : match.start() + 220]
+        if re.search(r"Due|Deadline", match.group(0), re.IGNORECASE):
+            window = re.split(
+                r"(?=20\d{2}\s*년)|제출\s*상태|채점\s*상태|이\s*퀴즈는|남은\s*시간",
+                window,
+                maxsplit=1,
+            )[0]
+        windows.append(window)
+    return windows
+
+
+def parse_due_datetime(
+    text: str,
+    generated_at: str = "",
+    *,
+    prefer_labeled: bool = True,
+) -> ParsedDate | None:
     text = text or ""
     year = parse_reference_year(generated_at)
+
+    if prefer_labeled:
+        for window in labeled_due_windows(text):
+            parsed = parse_due_datetime(window, generated_at, prefer_labeled=False)
+            if parsed:
+                return parsed
 
     match = SLASH_RANGE_RE.search(text)
     if match:
