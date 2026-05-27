@@ -207,9 +207,10 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
             "collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty",
             renderer[renderer.index("func shouldCollapseNoticeCourses") : renderer.index("func shouldCollapseNoticeItems")],
         )
-        self.assertIn('menuItems: ["제목", "Title"]', renderer)
-        self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
-        self.assertIn('menuItems: ["부머리말", "Subheading"]', renderer)
+        self.assertIn("noticeTitleStyleMenuItems", renderer)
+        self.assertIn("noticeHeadingStyleMenuItems", renderer)
+        self.assertIn("noticeSubheadingStyleMenuItems", renderer)
+        self.assertIn('let noticeSubheadingStyleMenuItems = ["부머리말", "부제목", "소제목", "Subheading"]', support)
         self.assertIn("reason=rich_paste_default", renderer)
         self.assertIn("readability_validation_targets_finish", renderer)
         self.assertIn("case .chunked:", renderer)
@@ -376,9 +377,10 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertNotIn("collapseNoticeCoursesEnabled || plan.mode == .archive", renderer)
         self.assertIn("collapseNoticeItemsEnabled && !plan.renderedNotices.isEmpty", renderer)
         self.assertIn("plan.mode == .primary", renderer)
-        self.assertIn('menuItems: ["제목", "Title"]', renderer)
-        self.assertIn('menuItems: ["머리말", "Heading"]', renderer)
-        self.assertIn('menuItems: ["부머리말", "Subheading"]', renderer)
+        self.assertIn("noticeTitleStyleMenuItems", renderer)
+        self.assertIn("noticeHeadingStyleMenuItems", renderer)
+        self.assertIn("noticeSubheadingStyleMenuItems", renderer)
+        self.assertIn('let noticeSubheadingStyleMenuItems = ["부머리말", "부제목", "소제목", "Subheading"]', support)
         self.assertIn("let effectiveCollapseSectionsEnabled = shouldCollapseNoticeSections(plan)", renderer)
         self.assertIn("collapse_heading_retry", renderer)
         self.assertIn("collapse failed: \\(label)", renderer)
@@ -471,6 +473,9 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("timeoutSeconds: 4", renderer)
         self.assertIn("timed_out=", renderer)
         self.assertIn("NOTICE_NATIVE_STYLE_BUDGET_SECONDS", renderer)
+        self.assertIn("scaledStyleBudgetSeconds", renderer)
+        self.assertIn("configuredStyleBudgetSeconds", renderer)
+        self.assertIn("style-fallback-bold", renderer)
         self.assertIn("style_budget_exhausted", renderer)
         self.assertIn(
             'styleIssues = ["style budget exhausted before functional Notes formatting could be verified"]',
