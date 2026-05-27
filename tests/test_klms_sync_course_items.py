@@ -55,6 +55,24 @@ class CourseItemParsingTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0].course, "데이터과학을 위한 선형대수학")
 
+    def test_linear_algebra_intro_course_is_ignored(self) -> None:
+        dashboard = klms_sync.DashboardParseResult(
+            status="ok",
+            items=[
+                klms_sync.DashboardItem(
+                    url="https://klms.kaist.ac.kr/mod/assign/view.php?id=222222",
+                    title="Homework",
+                    course="선형대수학 개론",
+                    schedule="~2026.05.11",
+                    item_type="assign",
+                )
+            ],
+        )
+
+        items = klms_sync.collect_candidate_items(dashboard, [])
+
+        self.assertEqual(items, [])
+
     def test_placeholder_dashboard_course_is_recovered_from_course_page(self) -> None:
         url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1231095"
         dashboard = klms_sync.DashboardParseResult(

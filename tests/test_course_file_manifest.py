@@ -13,6 +13,13 @@ import klms_sync  # noqa: E402
 
 
 class CourseFileManifestTests(unittest.TestCase):
+    def test_linear_algebra_intro_course_is_ignored(self) -> None:
+        self.assertEqual(build_course_file_manifest.normalize_course_name("선형대수학 개론"), "")
+        self.assertEqual(
+            build_course_file_manifest.normalize_course_name("데이터과학을 위한 선형대수학"),
+            "데이터과학을 위한 선형대수학",
+        )
+
     def test_resource_index_uses_course_id_mapping(self) -> None:
         course_page = {
             "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=100001&section=0",

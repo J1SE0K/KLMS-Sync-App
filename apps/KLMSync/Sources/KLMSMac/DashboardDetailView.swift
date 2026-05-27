@@ -53,7 +53,8 @@ struct DashboardDetailPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var searchText = ""
     @State private var selectedCourse = DashboardCourseFilter.all
-    @State private var selectedTerm = DashboardTermFilter.all
+    @State private var selectedYear = DashboardTermFilter.allYears
+    @State private var selectedSemester = DashboardTermFilter.allSemesters
     @State private var showHidden = false
     @State private var newOnly = false
     @State private var recentOnly = false
@@ -75,12 +76,14 @@ struct DashboardDetailPanelView: View {
             DashboardFilterBarView(
                 searchText: $searchText,
                 selectedCourse: $selectedCourse,
-                selectedTerm: $selectedTerm,
+                selectedYear: $selectedYear,
+                selectedSemester: $selectedSemester,
                 showHidden: $showHidden,
                 newOnly: $newOnly,
                 recentOnly: $recentOnly,
                 courses: courseOptions,
-                terms: termOptions,
+                years: yearOptions,
+                semesters: semesterOptions,
                 supportsNewOnly: kind.supportsNewOnly,
                 supportsRecentOnly: kind.supportsRecentOnly,
                 supportsHiddenToggle: kind != .calendar && kind != .hidden && hiddenCount > 0
@@ -157,7 +160,8 @@ struct DashboardDetailPanelView: View {
         DashboardDetailFilters(
             searchText: searchText,
             selectedCourse: selectedCourse,
-            selectedTerm: selectedTerm,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester,
             showHidden: showHidden || kind == .hidden,
             hiddenOnly: kind == .hidden,
             newOnly: newOnly,
@@ -169,8 +173,12 @@ struct DashboardDetailPanelView: View {
         DashboardCourseFilter.options(for: kind, snapshot: model.snapshot)
     }
 
-    private var termOptions: [String] {
-        DashboardTermFilter.options(for: kind, snapshot: model.snapshot)
+    private var yearOptions: [String] {
+        DashboardTermFilter.yearOptions(for: kind, snapshot: model.snapshot)
+    }
+
+    private var semesterOptions: [String] {
+        DashboardTermFilter.semesterOptions(for: kind, snapshot: model.snapshot)
     }
 
     private var hiddenCount: Int {
@@ -181,7 +189,8 @@ struct DashboardDetailPanelView: View {
 private struct DashboardDetailFilters {
     var searchText: String
     var selectedCourse: String
-    var selectedTerm: String
+    var selectedYear: String
+    var selectedSemester: String
     var showHidden: Bool
     var hiddenOnly: Bool
     var newOnly: Bool
@@ -190,7 +199,8 @@ private struct DashboardDetailFilters {
     var hasActiveFilter: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || selectedCourse != DashboardCourseFilter.all
-            || selectedTerm != DashboardTermFilter.all
+            || selectedYear != DashboardTermFilter.allYears
+            || selectedSemester != DashboardTermFilter.allSemesters
             || showHidden
             || hiddenOnly
             || newOnly
@@ -254,18 +264,46 @@ private enum DashboardCourseFilter {
 }
 
 private enum DashboardTermFilter {
-    static let all = "전체 학기"
+    static let allYears = "전체 년도"
+    static let allSemesters = "전체 학기"
     static let unknown = "학기 미확인"
 
     static func label(_ term: AcademicTerm?) -> String {
         term?.displayName ?? unknown
     }
 
-    static func matches(_ term: AcademicTerm?, selected: String) -> Bool {
-        selected == all || label(term) == selected
+    static func matches(_ term: AcademicTerm?, selectedYear: String, selectedSemester: String) -> Bool {
+        if selectedYear != allYears {
+            guard let term, "\(term.year)" == selectedYear else {
+                return false
+            }
+        }
+        if selectedSemester == unknown {
+            return term == nil
+        }
+        if selectedSemester != allSemesters {
+            guard let term, term.semester.displayName == selectedSemester else {
+                return false
+            }
+        }
+        return true
     }
 
-    static func options(for kind: DashboardDetailKind, snapshot: EngineSnapshot) -> [String] {
+    static func yearOptions(for kind: DashboardDetailKind, snapshot: EngineSnapshot) -> [String] {
+        let years = Set(terms(for: kind, snapshot: snapshot).compactMap { $0?.year })
+        return [allYears] + years.sorted(by: >).map(String.init)
+    }
+
+    static func semesterOptions(for kind: DashboardDetailKind, snapshot: EngineSnapshot) -> [String] {
+        let terms = terms(for: kind, snapshot: snapshot)
+        let known = Set(terms.compactMap { $0?.semester })
+            .sorted(by: <)
+            .map(\.displayName)
+        let unknowns = terms.contains(where: { $0 == nil }) ? [unknown] : []
+        return [allSemesters] + known + unknowns
+    }
+
+    private static func terms(for kind: DashboardDetailKind, snapshot: EngineSnapshot) -> [AcademicTerm?] {
         let terms: [AcademicTerm?]
         switch kind {
         case .assignments:
@@ -294,18 +332,7 @@ private enum DashboardTermFilter {
         case .hidden:
             terms = hiddenTerms(snapshot: snapshot)
         }
-        return labels(from: terms)
-    }
-
-    private static func labels(from terms: [AcademicTerm?]) -> [String] {
-        guard !terms.isEmpty else {
-            return [all]
-        }
-        let known = Array(Set(terms.compactMap { $0 }))
-            .sorted(by: >)
-            .map(\.displayName)
-        let unknowns = terms.contains(where: { $0 == nil }) ? [unknown] : []
-        return [all] + known + unknowns
+        return terms
     }
 
     private static func newFileTerms(snapshot: EngineSnapshot) -> [AcademicTerm?] {
@@ -413,12 +440,14 @@ private struct DashboardHiddenSummary {
 private struct DashboardFilterBarView: View {
     @Binding var searchText: String
     @Binding var selectedCourse: String
-    @Binding var selectedTerm: String
+    @Binding var selectedYear: String
+    @Binding var selectedSemester: String
     @Binding var showHidden: Bool
     @Binding var newOnly: Bool
     @Binding var recentOnly: Bool
     var courses: [String]
-    var terms: [String]
+    var years: [String]
+    var semesters: [String]
     var supportsNewOnly: Bool
     var supportsRecentOnly: Bool
     var supportsHiddenToggle: Bool
@@ -435,14 +464,23 @@ private struct DashboardFilterBarView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 170)
-                if terms.count > 1 {
-                    Picker("학기", selection: normalizedTermBinding) {
-                        ForEach(terms, id: \.self) { term in
-                            Text(term).tag(term)
+                if years.count > 1 {
+                    Picker("년도", selection: normalizedYearBinding) {
+                        ForEach(years, id: \.self) { year in
+                            Text(year).tag(year)
                         }
                     }
                     .labelsHidden()
-                    .frame(maxWidth: 150)
+                    .frame(maxWidth: 110)
+                }
+                if semesters.count > 1 {
+                    Picker("학기", selection: normalizedTermBinding) {
+                        ForEach(semesters, id: \.self) { semester in
+                            Text(semester).tag(semester)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 120)
                 }
             }
             HStack(spacing: 12) {
@@ -473,7 +511,8 @@ private struct DashboardFilterBarView: View {
     private var hasActiveFilter: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || selectedCourse != DashboardCourseFilter.all
-            || selectedTerm != DashboardTermFilter.all
+            || selectedYear != DashboardTermFilter.allYears
+            || selectedSemester != DashboardTermFilter.allSemesters
             || showHidden
             || newOnly
             || recentOnly
@@ -488,19 +527,31 @@ private struct DashboardFilterBarView: View {
         )
     }
 
+    private var normalizedYearBinding: Binding<String> {
+        Binding(
+            get: {
+                years.contains(selectedYear) ? selectedYear : DashboardTermFilter.allYears
+            },
+            set: { selectedYear = $0 }
+        )
+    }
+
     private var normalizedTermBinding: Binding<String> {
         Binding(
             get: {
-                terms.contains(selectedTerm) ? selectedTerm : DashboardTermFilter.all
+                semesters.contains(selectedSemester)
+                    ? selectedSemester
+                    : DashboardTermFilter.allSemesters
             },
-            set: { selectedTerm = $0 }
+            set: { selectedSemester = $0 }
         )
     }
 
     private func resetFilters() {
         searchText = ""
         selectedCourse = DashboardCourseFilter.all
-        selectedTerm = DashboardTermFilter.all
+        selectedYear = DashboardTermFilter.allYears
+        selectedSemester = DashboardTermFilter.allSemesters
         showHidden = false
         newOnly = false
         recentOnly = false
@@ -539,7 +590,11 @@ private struct StateItemListView: View {
             guard filters.showHidden || !hidden else { return false }
             guard !filters.hiddenOnly || hidden else { return false }
             guard courseMatches(item.course) else { return false }
-            guard DashboardTermFilter.matches(item.academicTerm, selected: filters.selectedTerm) else {
+            guard DashboardTermFilter.matches(
+                item.academicTerm,
+                selectedYear: filters.selectedYear,
+                selectedSemester: filters.selectedSemester
+            ) else {
                 return false
             }
             guard searchMatches([
@@ -889,7 +944,11 @@ private struct NoticeListView: View {
             guard !filters.hiddenOnly || hidden else { return false }
             guard !filters.newOnly || fresh else { return false }
             guard !filters.recentOnly || fresh else { return false }
-            guard DashboardTermFilter.matches(term, selected: filters.selectedTerm) else {
+            guard DashboardTermFilter.matches(
+                term,
+                selectedYear: filters.selectedYear,
+                selectedSemester: filters.selectedSemester
+            ) else {
                 return false
             }
             guard filters.selectedCourse == DashboardCourseFilter.all || notice.course == filters.selectedCourse else {
@@ -1170,7 +1229,11 @@ private struct DashboardFileItem: Identifiable {
         guard filters.showHidden || !isHidden else { return false }
         guard !filters.hiddenOnly || isHidden else { return false }
         guard !filters.recentOnly || isRecent else { return false }
-        guard DashboardTermFilter.matches(academicTerm, selected: filters.selectedTerm) else {
+        guard DashboardTermFilter.matches(
+            academicTerm,
+            selectedYear: filters.selectedYear,
+            selectedSemester: filters.selectedSemester
+        ) else {
             return false
         }
         guard filters.selectedCourse == DashboardCourseFilter.all || course == filters.selectedCourse else {
@@ -1381,7 +1444,11 @@ private struct PrunedListView: View {
     private var filteredActions: [CleanupAction] {
         (snapshot.cleanupResult?.actions.filter { $0.action == "deleted" } ?? []).filter { action in
             let term = AcademicTerm.infer(title: action.path, dateTexts: [action.path])
-            guard DashboardTermFilter.matches(term, selected: filters.selectedTerm) else {
+            guard DashboardTermFilter.matches(
+                term,
+                selectedYear: filters.selectedYear,
+                selectedSemester: filters.selectedSemester
+            ) else {
                 return false
             }
             let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1644,7 +1711,11 @@ private struct CalendarChangeListView: View {
             guard filters.selectedCourse == DashboardCourseFilter.all || change.course == filters.selectedCourse else {
                 return false
             }
-            guard DashboardTermFilter.matches(change.academicTerm, selected: filters.selectedTerm) else {
+            guard DashboardTermFilter.matches(
+                change.academicTerm,
+                selectedYear: filters.selectedYear,
+                selectedSemester: filters.selectedSemester
+            ) else {
                 return false
             }
             let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
