@@ -210,7 +210,7 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
         if not due:
             return None, "missing-due"
         title = "중간고사 헬프데스크" if re.search(r"(midterm|중간)", text, re.IGNORECASE) else "헬프데스크"
-        instructions = clipped(notice.body_text or notice.summary)
+        instructions = clipped(notice.body_text or notice.summary, 1200)
         return Event(
             url=notice.url,
             course=notice.course,
@@ -235,7 +235,7 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
         if not due:
             return None, "missing-due"
         title = exam_display_title(text, notice.title)
-        instructions = clipped(notice.body_text or notice.summary)
+        instructions = clipped(notice.body_text or notice.summary, 1200)
         return Event(
             url=notice.url,
             course=notice.course,

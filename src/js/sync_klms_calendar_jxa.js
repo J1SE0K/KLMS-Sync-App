@@ -196,10 +196,17 @@ function calendarTimingLine(item) {
 
 function extractExamLocation(text) {
   const compact = normalizeWhitespace(text);
-  return firstCapture(compact, [
-    /(?:시험\s*)?(?:장소|고사장)\s*[:：]\s*(.+?)(?=\s*(?:시험\s*범위|범위|Date\s*&\s*Time|Coverage|Range|Time|Place|Location|$))/i,
-    /\b(?:Location|Place|Venue|Room)\s*:\s*(.+?)(?=\s*(?:Range|Coverage|Exam\s*Range|Time|Date\s*&\s*Time|시험\s*범위|시험\s*일시|$))/i,
-  ]);
+  return cleanupLocationField(
+    firstCapture(compact, [
+      /(?:시험\s*)?(?:장소|고사장)\s*[:：]\s*(.+?)(?=\s*(?:시험\s*범위|범위|Date\s*&\s*Time|Coverage|Range|Time|Place|Location|$))/i,
+      /\b(?:Location|Place|Venue|Room)\s*:\s*(.+?)(?=\s*(?:Range|Coverage|Exam\s*Range|Time|Date\s*&\s*Time|시험\s*범위|시험\s*일시|$))/i,
+      /\b(?:in|at)\s+(?:the\s+)?((?:[A-Z][A-Za-z0-9'’().&+-]*\s*){1,8}(?:Auditorium|Room|Hall|Classroom|Lecture\s+Room|Lab|Building))\b/i,
+    ])
+  );
+}
+
+function cleanupLocationField(text) {
+  return cleanupExtractedField(text).replace(/^(?:the|a|an)\s+/i, "");
 }
 
 function resolveExamLocation(item) {
@@ -225,6 +232,8 @@ function extractExamCoverage(text) {
   return firstCapture(compact, [
     /(?:시험\s*)?범위\s*[:：]\s*(.+?)(?=\s*(?:Date\s*&\s*Time|Location|Place|Venue|Room|Coverage|Range|Time|시험\s*일시|시험\s*장소|$))/i,
     /\b(?:Coverage|Range|Exam\s*Range)\s*:\s*(.+?)(?=\s*(?:[•⦁]|Time|Date\s*&\s*Time|Location|Place|Venue|Room|시험\s*일시|시험\s*장소|$))/i,
+    /(?:주제|논제)\s*[:：]\s*(.+?)(?=\s*(?:주의\s*사항|주의사항|시험은|시험\s*시간|Please\s+analyse|Please\s+analyze|$))/i,
+    /<\s*(Write\s+an\s+essay.+?)\s*>/i,
   ]);
 }
 
