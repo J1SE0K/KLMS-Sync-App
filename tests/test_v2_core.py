@@ -141,6 +141,7 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(reason, "exam-notice")
         self.assertEqual(item.category, "exam")
         self.assertEqual(item.title, "중간고사")
+        self.assertEqual(item.coverage, "week 1 to week 7 lectures, WA 1-2 and PA 1-2")
 
     def test_final_exam_notice_becomes_exam(self) -> None:
         notice = Notice(
@@ -159,6 +160,33 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(item.category, "exam")
         self.assertEqual(item.title, "기말고사")
         self.assertEqual(item.sync_due, "2026-06-17T16:00:00+09:00")
+        self.assertEqual(item.location, "Auditorium")
+
+    def test_essay_exam_notice_keeps_topic_as_coverage(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=10",
+            course="영미 단편소설",
+            title="기말 고사 건 / On Final-term Exam",
+            body_text=(
+                "기말 고사 관련 내용입니다. 아래 주제를 분석하세요. "
+                "주제 : 주 교재와 부 교재를 매개로 <탈식민주의의 관점으로 보는 젠터 불평등 문제>를 분석하세요. "
+                "주의사항 1. 반드시 주/부 교재에서 인용문을 합해서 5개 이상 달아야 합니다. "
+                "3. 시험은 6월 4일 수업 시간에 치르고, 시험 시간은 1시간입니다. "
+                "Please analyse the following topic. "
+                "<Write an essay on the issue of \"gender inequality from post-colonial perspective\" "
+                "by recommending on our main and secondary texts.> "
+                "The exam will be taken on the 4th of June at the classroom from 14h:30 to 15h:30."
+            ),
+        )
+
+        item, reason = classify_notice(notice, "2026-05-27 19:18 KST")
+
+        self.assertEqual(reason, "exam-notice")
+        self.assertEqual(item.category, "exam")
+        self.assertEqual(item.title, "기말고사")
+        self.assertEqual(item.sync_due, "2026-06-04T15:30:00+09:00")
+        self.assertIn("탈식민주의", item.coverage)
+        self.assertIn("주/부 교재", item.instructions)
 
     def test_exam_grade_claim_notice_is_not_tracked_as_exam(self) -> None:
         notice = Notice(

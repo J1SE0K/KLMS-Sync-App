@@ -344,6 +344,17 @@ def build_payload(
         for item in exam_items
         if isinstance(item, dict) and is_past(str(item.get("sync_due") or ""), generated_at)
     ]
+    missing_exam_info = [
+        item
+        for item in exam_items
+        if isinstance(item, dict)
+        and not compact_text(
+            item.get("instructions"),
+            item.get("location"),
+            item.get("coverage"),
+            item.get("coverage_summary"),
+        )
+    ]
 
     calendar = parse_calendar_lines(calendar_lines)
     calendar_exam_count = int(calendar.get("calendar_exam_count", 0) or 0)
@@ -443,6 +454,19 @@ def build_payload(
                 ]
             ),
         ),
+        ok_check(
+            "exam_information_present",
+            len(missing_exam_info) == 0,
+            summarize_missing(
+                [
+                    {
+                        "course": str(item.get("course") or ""),
+                        "title": str(item.get("title") or ""),
+                    }
+                    for item in missing_exam_info
+                ]
+            ),
+        ),
     ] + calendar_checks + reminder_checks
     status = "fail" if any(item["status"] == "fail" for item in checks) else "ok"
 
@@ -480,6 +504,7 @@ def build_payload(
             "exam_count": len(exam_items),
             "exam_candidate_count": len(exam_candidates),
             "past_exam_count": len(past_exam_items),
+            "missing_exam_info_count": len(missing_exam_info),
             "helpdesk_count": len(helpdesk_items),
             "exam_items": [
                 {"course": item.get("course", ""), "title": item.get("title", ""), "due": item.get("due", "")}
@@ -538,6 +563,7 @@ def print_text(payload: dict[str, Any]) -> None:
     print(f"state_exam_count={state['exam_count']}")
     print(f"state_exam_candidate_count={state['exam_candidate_count']}")
     print(f"state_past_exam_count={state['past_exam_count']}")
+    print(f"state_missing_exam_info_count={state['missing_exam_info_count']}")
     for item in state["exam_items"]:
         print(f"state_exam={item['course']} | {item['title']} | {item['due']}")
     print(f"state_helpdesk_count={state['helpdesk_count']}")

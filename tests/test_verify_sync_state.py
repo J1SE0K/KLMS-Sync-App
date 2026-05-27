@@ -24,7 +24,14 @@ class VerifySyncStateTests(unittest.TestCase):
                     {
                         "content": {
                             "assignments": [],
-                            "exam_items": [{"course": "C", "title": "T", "due": "D"}],
+                            "exam_items": [
+                                {
+                                    "course": "C",
+                                    "title": "T",
+                                    "due": "D",
+                                    "instructions": "시험 안내",
+                                }
+                            ],
                             "help_desk_items": [],
                         }
                     }
@@ -152,6 +159,7 @@ class VerifySyncStateTests(unittest.TestCase):
                                     "title": "기말고사",
                                     "due": "2026년 6월 4일 오후 2:30 - 오후 3:30",
                                     "sync_due": "2026-06-04T15:30:00+09:00",
+                                    "instructions": "The exam will be taken on the 4th of June.",
                                 }
                             ],
                             "exam_candidates": [],
@@ -285,6 +293,7 @@ class VerifySyncStateTests(unittest.TestCase):
                                     "title": "중간고사",
                                     "due": "2026년 4월 16일",
                                     "sync_due": "2026-04-16T15:30:00+09:00",
+                                    "instructions": "시험 안내",
                                 }
                             ],
                             "exam_candidates": [],
