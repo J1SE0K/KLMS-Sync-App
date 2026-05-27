@@ -293,7 +293,7 @@ struct ResolvedRenderedNotice {
 let defaultNoteTitle = "KLMS 공지"
 let defaultArchiveNoteTitle = "KLMS 확인한 공지"
 let nativeNoticeRenderStateVersion = 2
-let nativeNoticeRenderStyleVersion = "2026-05-27-functional-notes-v16-course-item-collapse"
+let nativeNoticeRenderStyleVersion = "2026-05-27-functional-notes-v17-archive-style-aliases"
 let readChecklistLabel = "읽음"
 let importantChecklistLabel = "중요"
 let noticeReadGuidanceLine = "\"읽음\"만 체크한 공지는 다음 동기화 때 KLMS 확인한 공지에 표시됩니다."
@@ -305,6 +305,9 @@ let noticePrimaryEmptyGuidanceLine =
     "표시할 공지가 생기면 상태에 따라 중요 공지, 새로운 공지, 읽지 않은 공지에 표시됩니다."
 let noticeArchiveEmptyGuidanceLine =
     "\"읽음\"만 체크한 공지는 다음 동기화 때 이 메모에 표시됩니다."
+let noticeTitleStyleMenuItems = ["제목", "Title"]
+let noticeHeadingStyleMenuItems = ["머리말", "Heading"]
+let noticeSubheadingStyleMenuItems = ["부머리말", "부제목", "소제목", "Subheading"]
 let checklistMenuTitles = ["체크리스트", "Checklist"]
 let noticeDebugEnabled = ProcessInfo.processInfo.environment["NOTICE_DEBUG_CAPTURE"] == "1"
 let automationDebugEnabled = ProcessInfo.processInfo.environment["NOTICE_DEBUG_AUTOMATION"] == "1"

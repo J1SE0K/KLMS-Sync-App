@@ -4485,9 +4485,20 @@ func renderNativeNoteOnce(
         currentText: styleBaseText,
         bodyLines: plan.bodyLines
     )
+    let configuredStyleBudgetSeconds =
+        Double(ProcessInfo.processInfo.environment["NOTICE_NATIVE_STYLE_BUDGET_SECONDS"] ?? "")
+    let scaledStyleBudgetSeconds =
+        20.0
+        + Double(plan.renderedNotices.count) * 1.4
+        + Double(plan.courseHeadingLineIndexes.count) * 0.8
+        + Double(
+            plan.importantHeadingLineIndexes.count
+                + plan.freshHeadingLineIndexes.count
+                + plan.unreadHeadingLineIndexes.count
+        ) * 0.8
     let styleBudgetSeconds = max(
         8.0,
-        Double(ProcessInfo.processInfo.environment["NOTICE_NATIVE_STYLE_BUDGET_SECONDS"] ?? "") ?? 45.0
+        max(configuredStyleBudgetSeconds ?? 45.0, scaledStyleBudgetSeconds)
     )
     let styleDeadline = Date().addingTimeInterval(styleBudgetSeconds)
     var styleBudgetExhausted = false
@@ -4501,6 +4512,24 @@ func renderNativeNoteOnce(
             return false
         }
         return true
+    }
+
+    func performBoldToggle(_ range: LineRange, phase: String) {
+        guard styleBudgetAvailable(phase) else {
+            return
+        }
+        guard selectRangeForFormatting(
+            context: context,
+            range: range,
+            noteTitle: noteTitle,
+            noteID: noteID
+        ) else {
+            return
+        }
+        if !pressMenuIfAvailable(context, ["굵게", "Bold"]) {
+            timingLog("bold_menu_missing note=\(noteTitle)")
+        }
+        Thread.sleep(forTimeInterval: 0.06)
     }
 
     func applyStyle(_ range: LineRange, menuItems: [String], fallbackToBold: Bool = false) {
@@ -4519,28 +4548,17 @@ func renderNativeNoteOnce(
             )
             return
         }
-        if !pressMenuIfAvailable(context, menuItems), fallbackToBold {
+        if !pressMenuIfAvailable(context, menuItems) {
             timingLog("style_menu_missing note=\(noteTitle) menu=\(menuItems.joined(separator: "/"))")
+            if fallbackToBold {
+                performBoldToggle(range, phase: "style-fallback-bold")
+            }
         }
         Thread.sleep(forTimeInterval: 0.05)
     }
 
     func toggleBold(_ range: LineRange) {
-        guard styleBudgetAvailable("bold") else {
-            return
-        }
-        guard selectRangeForFormatting(
-            context: context,
-            range: range,
-            noteTitle: noteTitle,
-            noteID: noteID
-        ) else {
-            return
-        }
-        if !pressMenuIfAvailable(context, ["굵게", "Bold"]) {
-            timingLog("bold_menu_missing note=\(noteTitle)")
-        }
-        Thread.sleep(forTimeInterval: 0.06)
+        performBoldToggle(range, phase: "bold")
     }
 
     let styledLineRanges = styleBaseLineRanges
@@ -4736,17 +4754,17 @@ func renderNativeNoteOnce(
 
         for (offset, index) in plan.importantHeadingLineIndexes.enumerated() {
             let heading = lineRange(index, fallback: plan.importantHeadingRanges[offset])
-            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+            applyStyle(heading, menuItems: noticeTitleStyleMenuItems, fallbackToBold: true)
         }
 
         for (offset, index) in plan.freshHeadingLineIndexes.enumerated() {
             let heading = lineRange(index, fallback: plan.freshHeadingRanges[offset])
-            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+            applyStyle(heading, menuItems: noticeTitleStyleMenuItems, fallbackToBold: true)
         }
 
         for (offset, index) in plan.unreadHeadingLineIndexes.enumerated() {
             let heading = lineRange(index, fallback: plan.unreadHeadingRanges[offset])
-            applyStyle(heading, menuItems: ["제목", "Title"], fallbackToBold: true)
+            applyStyle(heading, menuItems: noticeTitleStyleMenuItems, fallbackToBold: true)
         }
 
         if effectiveCollapseCoursesEnabled {
@@ -4754,7 +4772,7 @@ func renderNativeNoteOnce(
                 let fallback = plan.courseHeadingRanges[offset]
                 applyStyle(
                     lineRange(index, fallback: fallback),
-                    menuItems: ["머리말", "Heading"],
+                    menuItems: noticeHeadingStyleMenuItems,
                     fallbackToBold: true
                 )
             }
@@ -4763,7 +4781,7 @@ func renderNativeNoteOnce(
         if effectiveCollapseNoticeItemsEnabled {
             for notice in plan.renderedNotices {
                 let titleRange = lineRange(notice.sectionLineIndex, fallback: notice.sectionRange)
-                applyStyle(titleRange, menuItems: ["부머리말", "Subheading"], fallbackToBold: true)
+                applyStyle(titleRange, menuItems: noticeSubheadingStyleMenuItems, fallbackToBold: true)
             }
         }
 
