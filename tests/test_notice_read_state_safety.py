@@ -631,7 +631,7 @@ console.log(JSON.stringify({ kept, overridden }));
         self.assertIn('NOTICE_NATIVE_VALIDATE_STYLE": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": "1"', app_model)
-        self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": "0"', app_model)
+        self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0"', app_model)
         self.assertIn('NOTICE_COLLAPSE_SECTIONS": "1"', app_model)
         self.assertIn('NOTICE_COLLAPSE_COURSES": "1"', app_model)
