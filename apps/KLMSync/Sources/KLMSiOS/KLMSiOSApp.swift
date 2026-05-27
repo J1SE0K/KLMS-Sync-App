@@ -111,8 +111,13 @@ final class CompanionModel: ObservableObject {
     }
 
     var shouldShowAuthCompletion: Bool {
-        status.authStatusMessage != nil
+        hasAuthCompletionStatus
             && latestDisplayStatus?.isTerminal != true
+    }
+
+    var hasAuthCompletionStatus: Bool {
+        status.authStatusMessage != nil
+            && status.authDigits == nil
             && !status.loginRequired
     }
 
@@ -154,7 +159,7 @@ final class CompanionModel: ObservableObject {
     }
 
     var authSuccessMessage: String? {
-        guard shouldShowAuthCompletion else {
+        guard hasAuthCompletionStatus else {
             return nil
         }
         return status.authStatusMessage

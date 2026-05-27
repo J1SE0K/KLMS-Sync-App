@@ -427,8 +427,9 @@ final class KLMSMacModel: ObservableObject {
             status.loginRequired = true
             status.authDigits = liveAuthDigits
             status.authStatusMessage = nil
-        } else if phase == "running",
+        } else if phase != "failed",
                   let authStatusMessage = currentAuthStatusMessageForRemote() {
+            status.loginRequired = false
             status.authDigits = nil
             status.authStatusMessage = authStatusMessage
         }
