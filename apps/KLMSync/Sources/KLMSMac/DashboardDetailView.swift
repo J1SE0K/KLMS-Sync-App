@@ -464,24 +464,22 @@ private struct DashboardFilterBarView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 170)
-                if years.count > 1 {
-                    Picker("년도", selection: normalizedYearBinding) {
-                        ForEach(years, id: \.self) { year in
-                            Text(year).tag(year)
-                        }
+                Picker("년도", selection: normalizedYearBinding) {
+                    ForEach(years, id: \.self) { year in
+                        Text(year).tag(year)
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: 110)
                 }
-                if semesters.count > 1 {
-                    Picker("학기", selection: normalizedTermBinding) {
-                        ForEach(semesters, id: \.self) { semester in
-                            Text(semester).tag(semester)
-                        }
+                .labelsHidden()
+                .frame(maxWidth: 110)
+                .disabled(years.count <= 1)
+                Picker("학기", selection: normalizedTermBinding) {
+                    ForEach(semesters, id: \.self) { semester in
+                        Text(semester).tag(semester)
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: 120)
                 }
+                .labelsHidden()
+                .frame(maxWidth: 120)
+                .disabled(semesters.count <= 1)
             }
             HStack(spacing: 12) {
                 if supportsNewOnly {
