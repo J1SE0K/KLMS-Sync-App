@@ -120,8 +120,6 @@ class CalendarExamFieldTests(unittest.TestCase):
     def test_calendar_notes_do_not_repeat_location_line(self) -> None:
         for relative_path in (
             "src/swift/sync_klms_calendar_suite.swift",
-            "src/swift/sync_klms_calendar.swift",
-            "src/js/sync_klms_calendar_jxa.js",
         ):
             source = (PROJECT_DIR / relative_path).read_text(encoding="utf-8")
             self.assertNotIn("위치:", source)
@@ -129,8 +127,6 @@ class CalendarExamFieldTests(unittest.TestCase):
     def test_calendar_sources_use_coverage_summary(self) -> None:
         for relative_path in (
             "src/swift/sync_klms_calendar_suite.swift",
-            "src/swift/sync_klms_calendar.swift",
-            "src/js/sync_klms_calendar_jxa.js",
         ):
             source = (PROJECT_DIR / relative_path).read_text(encoding="utf-8")
             self.assertIn("coverage_summary", source)
@@ -147,7 +143,7 @@ class CalendarExamFieldTests(unittest.TestCase):
         swift_source = (
             PROJECT_DIR / "src" / "swift" / "sync_klms_calendar_suite.swift"
         ).read_text(encoding="utf-8")
-        js_source = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+        js_source = (PROJECT_DIR / "src" / "js" / "sync_calendar_bridge.js").read_text(
             encoding="utf-8"
         )
 

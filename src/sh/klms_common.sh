@@ -23,6 +23,28 @@ klms_default_runtime_namespace() {
   esac
 }
 
+klms_default_app_data_dir() {
+  print -r -- "$HOME/Library/Application Support/KLMSNotesSync"
+}
+
+klms_is_source_checkout_dir() {
+  local root="${1:-}"
+  [[ -d "$root/apps/KLMSync" && -d "$root/src" && -d "$root/bin" ]]
+}
+
+klms_default_readonly_data_dir() {
+  local script_dir="${1:?missing script dir}"
+  local installed_dir="${KLMS_INSTALLED_DATA_DIR:-$(klms_default_app_data_dir)}"
+
+  if [[ "$script_dir" != "$installed_dir" ]] \
+    && klms_is_source_checkout_dir "$script_dir" \
+    && [[ -d "$installed_dir/runtime" ]]; then
+    print -r -- "$installed_dir"
+  else
+    print -r -- "$script_dir"
+  fi
+}
+
 klms_init_context() {
   local entry_path="${1:?missing entry path}"
   local config_path="${2:-}"
@@ -97,12 +119,13 @@ klms_init_context() {
   export LANG LC_ALL LC_CTYPE PYTHONIOENCODING PYTHONUTF8
 
   SCRIPT_DIR="$(cd "$(dirname "$entry_path")" && pwd)"
+  KLMS_DATA_DIR="${KLMS_DATA_DIR:-$SCRIPT_DIR}"
   KLMS_SRC_DIR="$SCRIPT_DIR/src"
   KLMS_SH_DIR="$KLMS_SRC_DIR/sh"
   KLMS_JS_DIR="$KLMS_SRC_DIR/js"
   KLMS_PYTHON_DIR="$KLMS_SRC_DIR/python"
   KLMS_SWIFT_DIR="$KLMS_SRC_DIR/swift"
-  CONFIG_PATH="${config_path:-$SCRIPT_DIR/config.env}"
+  CONFIG_PATH="${config_path:-$KLMS_DATA_DIR/config.env}"
   if [[ -f "$CONFIG_PATH" ]]; then
     source "$CONFIG_PATH"
   fi
@@ -114,7 +137,7 @@ klms_init_context() {
 
   runtime_namespace="${KLMS_RUNTIME_NAMESPACE:-$(klms_default_runtime_namespace "$entry_path")}"
 
-  RUNTIME_DIR="$SCRIPT_DIR/runtime"
+  RUNTIME_DIR="${KLMS_RUNTIME_DIR:-$KLMS_DATA_DIR/runtime}"
   CACHE_DIR="$RUNTIME_DIR/cache"
   WORK_CACHE_DIR="$CACHE_DIR/$runtime_namespace"
   TMP_ROOT_DIR="$RUNTIME_DIR/tmp"
@@ -160,7 +183,7 @@ klms_init_context() {
   KLMS_LOGIN_PREFETCH_READY=0
   KLMS_LOGIN_ASSIST_READY=0
   KLMS_LAST_LOGIN_ERROR_MESSAGE=""
-  export KLMS_SRC_DIR KLMS_SH_DIR KLMS_JS_DIR KLMS_PYTHON_DIR KLMS_SWIFT_DIR
+  export KLMS_DATA_DIR KLMS_SRC_DIR KLMS_SH_DIR KLMS_JS_DIR KLMS_PYTHON_DIR KLMS_SWIFT_DIR
 }
 
 klms_parse_entry_args() {

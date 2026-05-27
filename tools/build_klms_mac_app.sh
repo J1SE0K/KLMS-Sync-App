@@ -115,7 +115,7 @@ PAYLOAD_ROOT="$APP_BUNDLE/Contents/Resources/EnginePayload"
 rm -rf "$PAYLOAD_ROOT"
 mkdir -p "$PAYLOAD_ROOT"
 
-for directory in src bin examples docs legacy; do
+for directory in src bin examples docs; do
   if [[ -d "$ROOT_DIR/$directory" ]]; then
     ditto --norsrc "$ROOT_DIR/$directory" "$PAYLOAD_ROOT/$directory"
   fi
@@ -133,7 +133,6 @@ root_files=(
   sync_klms_all.sh
   run_all.sh
   run_all_full.sh
-  run_all_parallel.sh
   refresh_course_files.sh
   verify_sync_state.sh
   doctor.sh

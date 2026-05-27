@@ -56,8 +56,12 @@ final class EngineInstallerTests: XCTestCase {
         try "SYNC_MODE=\"quick\"\n".write(to: destination.appendingPathComponent("config.env"), atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: destination.appendingPathComponent("runtime", isDirectory: true), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: destination.appendingPathComponent("runtime/python-packages/private", isDirectory: true), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination.appendingPathComponent("legacy", isDirectory: true), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: destination.appendingPathComponent("src/js", isDirectory: true), withIntermediateDirectories: true)
         try "keep".write(to: destination.appendingPathComponent("runtime/python-packages/private/state.txt"), atomically: true, encoding: .utf8)
         try "secret".write(to: destination.appendingPathComponent("kaikey_state.json"), atomically: true, encoding: .utf8)
+        try "old".write(to: destination.appendingPathComponent("run_all_parallel.sh"), atomically: true, encoding: .utf8)
+        try "old".write(to: destination.appendingPathComponent("src/js/sync_klms_calendar_jxa.js"), atomically: true, encoding: .utf8)
 
         let result = try EngineInstaller().installIfNeeded(
             payload: EnginePayload(rootURL: source, version: "test"),
@@ -87,6 +91,9 @@ final class EngineInstallerTests: XCTestCase {
             "{\"assignments\":{}}\n"
         )
         XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("src/sh/launch_sync_if_idle.sh").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("legacy").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("run_all_parallel.sh").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("src/js/sync_klms_calendar_jxa.js").path))
     }
 
     func testInstallCreatesOverridesOnlyWhenMissing() throws {

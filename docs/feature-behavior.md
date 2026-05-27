@@ -119,8 +119,8 @@ Example Course/resources/Week 1 Notes.pdf
 캘린더 정리만 필요할 때:
 
 ```sh
-swift ./src/swift/sync_klms_calendar.swift --clear "시험"
-swift ./src/swift/sync_klms_calendar.swift --delete-calendar "시험"
+swift ./src/swift/sync_klms_calendar_suite.swift runtime/state/state.json --clear "시험"
+swift ./src/swift/sync_klms_calendar_suite.swift runtime/state/state.json --delete-calendar "시험"
 ```
 
 ## Notes 사용 범위

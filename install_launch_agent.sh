@@ -32,7 +32,6 @@ cp "$SCRIPT_DIR/sync_klms_all.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/run_all.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/run_all_full.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/refresh_course_files.sh" "$INSTALL_DIR/"
-cp "$SCRIPT_DIR/run_all_parallel.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/verify_sync_state.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/doctor.sh" "$INSTALL_DIR/"
 cp "$SCRIPT_DIR/sync_report.sh" "$INSTALL_DIR/"
@@ -52,7 +51,6 @@ chmod +x \
   "$INSTALL_DIR/sync_klms_all.sh" \
   "$INSTALL_DIR/run_all.sh" \
   "$INSTALL_DIR/run_all_full.sh" \
-  "$INSTALL_DIR/run_all_parallel.sh" \
   "$INSTALL_DIR/refresh_course_files.sh" \
   "$INSTALL_DIR/verify_sync_state.sh" \
   "$INSTALL_DIR/doctor.sh" \
@@ -67,7 +65,15 @@ find "$INSTALL_DIR/bin" -type f -name '*.sh' -exec chmod +x {} +
 
 rm -f "$INSTALL_DIR/inspect_klms_front_tab.js"
 rm -f "$INSTALL_DIR/sync_klms_alert_calendar.swift"
-rm -f "$INSTALL_DIR/launch_sync_if_idle.sh" \
+rm -rf "$INSTALL_DIR/legacy" "$INSTALL_DIR/launchd"
+rm -f "$INSTALL_DIR/run_all_parallel.sh" \
+  "$INSTALL_DIR/bin/run_all_parallel.sh" \
+  "$INSTALL_DIR/src/js/download_klms_media_via_safari.js" \
+  "$INSTALL_DIR/src/js/export_panopto_transcripts.js" \
+  "$INSTALL_DIR/src/js/fetch_active_safari_page.js" \
+  "$INSTALL_DIR/src/js/sync_klms_calendar_jxa.js" \
+  "$INSTALL_DIR/src/swift/sync_klms_calendar.swift" \
+  "$INSTALL_DIR/launch_sync_if_idle.sh" \
   "$INSTALL_DIR/watch_klms_login_recovery.sh" \
   "$INSTALL_DIR/klms_common.sh" \
   "$INSTALL_DIR/kaikey_cli.mjs" \

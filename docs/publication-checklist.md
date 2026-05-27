@@ -34,7 +34,6 @@ python3 -m unittest discover -s tests
 node --check src/js/kaikey_cli.mjs
 node --check src/js/sync_klms_notes.js
 node --check src/js/download_klms_files.js
-node --check legacy/export_panopto_transcripts.js
 zsh -n *.sh bin/*.sh src/sh/*.sh
 swiftc -typecheck src/swift/decode_qr_image.swift
 swiftc -typecheck src/swift/verify_calendar_counts.swift
