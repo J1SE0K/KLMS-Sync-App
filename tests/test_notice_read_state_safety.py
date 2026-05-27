@@ -8,6 +8,15 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 
 
+def read_notice_js() -> str:
+    return "\n".join(
+        [
+            (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8"),
+            (PROJECT_DIR / "src" / "js" / "sync_notice_bridge.js").read_text(encoding="utf-8"),
+        ]
+    )
+
+
 class NoticeReadStateSafetyTests(unittest.TestCase):
     def test_notice_sync_has_no_stable_autoread_path(self) -> None:
         sources = [
@@ -29,9 +38,7 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
                     self.assertNotIn(token, text)
 
     def test_capture_failure_skips_render_to_preserve_checklists(self) -> None:
-        text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        text = read_notice_js()
 
         self.assertIn("capture-failed-preserve-user-state", text)
         self.assertIn("noticeRenderWarningsAreNonFatal", text)
@@ -40,9 +47,7 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         self.assertIn('summary.status = "warn"', text)
 
     def test_notice_render_summary_is_cleared_on_skipped_paths(self) -> None:
-        text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        text = read_notice_js()
 
         self.assertIn("paths.noticeRenderErrorSummaryJson", text)
         self.assertIn('JSON.stringify({ status: "ok" }, null, 2)', text)
@@ -55,7 +60,7 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
 
         script = r"""
 const fs = require("fs");
-const source = fs.readFileSync("src/js/sync_klms_notes.js", "utf8");
+const source = fs.readFileSync("src/js/sync_notice_bridge.js", "utf8");
 
 function extractFunction(name) {
   const marker = `function ${name}(`;
@@ -503,9 +508,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         renderer = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
         ).read_text(encoding="utf-8")
-        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        js = read_notice_js()
 
         self.assertLess(
             js.index('{ key: "archive", args: ["--render-only", "--archive-only"] }'),
@@ -521,9 +524,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("allowNoOpSkip: true", renderer)
 
     def test_notice_native_config_is_passed_to_swift_wrapper(self) -> None:
-        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        js = read_notice_js()
 
         self.assertIn("function nativeNoticeEnvironment(config)", js)
         self.assertIn('"NOTICE_COLLAPSE_SECTIONS"', js)
@@ -638,9 +639,7 @@ console.log(JSON.stringify({ kept, overridden }));
         self.assertNotIn("method=app-direct-html", renderer)
 
     def test_notice_prebuild_warning_does_not_fail_core_sync(self) -> None:
-        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        js = read_notice_js()
         prebuild = js[
             js.index('beginStage(steps, stageTelemetry, "notice-summary-prebuild")') :
             js.index('debugStderr("after notice-summary-prebuild")')
@@ -650,9 +649,7 @@ console.log(JSON.stringify({ kept, overridden }));
         self.assertNotIn("throw noticeError", prebuild)
 
     def test_notice_summary_failure_restores_previous_notice_cache(self) -> None:
-        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        js = read_notice_js()
         prebuild = js[
             js.index('beginStage(steps, stageTelemetry, "notice-summary-prebuild")') :
             js.index('debugStderr("after notice-summary-prebuild")')
@@ -668,9 +665,7 @@ console.log(JSON.stringify({ kept, overridden }));
         self.assertIn("restoreFileSnapshot(noticeSnapshot)", final_summary)
 
     def test_core_notice_prebuild_skips_native_render_and_restores_cache_after_build_note(self) -> None:
-        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        js = read_notice_js()
         prebuild = js[
             js.index('beginStage(steps, stageTelemetry, "notice-summary-prebuild")') :
             js.index('debugStderr("after notice-summary-prebuild")')
@@ -695,9 +690,7 @@ console.log(JSON.stringify({ kept, overridden }));
         support = (
             PROJECT_DIR / "src" / "swift" / "notice_native_note_support.swift"
         ).read_text(encoding="utf-8")
-        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        js = read_notice_js()
 
         swift_match = re.search(r'nativeNoticeRenderStyleVersion = "([^"]+)"', support)
         js_match = re.search(r'NATIVE_NOTICE_RENDER_STYLE_VERSION = "([^"]+)"', js)
@@ -721,9 +714,7 @@ console.log(JSON.stringify({ kept, overridden }));
         self.assertNotIn("readDataToEndOfFile", run_process)
 
     def test_stable_noop_verifies_notice_readability_format(self) -> None:
-        text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        text = read_notice_js()
 
         stable_noop_index = text.index("stable-noop-after-capture")
         verify_index = text.index("verifyNoticeNativeNoteReadableFormat")
@@ -757,9 +748,7 @@ console.log(JSON.stringify({ kept, overridden }));
         )
 
     def test_supplemental_detail_quick_limit_respects_cached_pages(self) -> None:
-        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        js = read_notice_js()
         config = (PROJECT_DIR / "examples" / "config.env.example").read_text(
             encoding="utf-8"
         )
@@ -777,7 +766,7 @@ console.log(JSON.stringify({ kept, overridden }));
 
         script = r"""
 const fs = require("fs");
-const path = "src/js/sync_klms_notes.js";
+const path = "src/js/sync_notice_bridge.js";
 const source = fs.readFileSync(path, "utf8");
 
 function extractFunction(name) {
@@ -850,7 +839,7 @@ console.log(JSON.stringify({
             self.skipTest("node is not available")
         script = r"""
 const fs = require("fs");
-const path = "src/js/sync_klms_notes.js";
+const path = "src/js/sync_notice_bridge.js";
 const source = fs.readFileSync(path, "utf8");
 
 function extractFunction(name) {
@@ -929,9 +918,7 @@ console.log(JSON.stringify({
         self.assertIn("stablePlaintextHash(for: desiredPlaintext)", renderer)
 
     def test_notice_render_comparison_uses_render_signature_not_generated_at(self) -> None:
-        js = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
-            encoding="utf-8"
-        )
+        js = read_notice_js()
 
         self.assertIn("noticeExpectedRenderSignature", js)
         self.assertIn("render_signature", js)

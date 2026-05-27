@@ -51,3 +51,4 @@ apps/KLMSync/Xcode/**/build/
 *.tmp
 *.swp
 *.swo
+treemap.html

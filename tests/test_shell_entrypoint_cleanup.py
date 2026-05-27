@@ -28,7 +28,6 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
             "refresh_course_files.sh",
             "run_all.sh",
             "run_all_full.sh",
-            "run_all_parallel.sh",
             "verify_sync_state.sh",
             "doctor.sh",
             "sync_report.sh",
@@ -95,6 +94,39 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
             )
 
             self.assertEqual(result.stdout.strip(), "1:1:0:1")
+
+    def test_readonly_entrypoints_default_to_installed_data_dir_from_source_checkout(self) -> None:
+        common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            installed = Path(tmp) / "installed"
+            (source / "apps" / "KLMSync").mkdir(parents=True)
+            (source / "src").mkdir()
+            (source / "bin").mkdir()
+            (installed / "runtime").mkdir(parents=True)
+
+            script = f"""
+            source {common}
+            export KLMS_INSTALLED_DATA_DIR={installed}
+            print -- "$(klms_default_readonly_data_dir {source})"
+            print -- "$(KLMS_DATA_DIR={source} klms_default_readonly_data_dir {installed})"
+            """
+            result = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.stdout.strip().splitlines(), [str(installed), str(installed)])
+
+    def test_readonly_entrypoints_use_data_runtime_paths(self) -> None:
+        for script_name in ["verify_sync_state.sh", "sync_report.sh", "doctor.sh"]:
+            with self.subTest(script=script_name):
+                text = (PROJECT_DIR / "bin" / script_name).read_text(encoding="utf-8")
+                self.assertIn("KLMS_DATA_DIR", text)
+                self.assertIn("klms_default_readonly_data_dir", text)
+                self.assertIn("$RUNTIME_DIR/state/state.json", text)
 
     def test_common_login_preflight_can_reuse_recent_success(self) -> None:
         text = (PROJECT_DIR / "src" / "sh" / "klms_common.sh").read_text(encoding="utf-8")
@@ -399,7 +431,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('cp "$SCRIPT_DIR/klms_v2_build_state.sh" "$INSTALL_DIR/"', text)
 
     def test_assignment_processor_is_not_part_of_core_sync(self) -> None:
-        text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8")
+        text = (PROJECT_DIR / "src" / "js" / "sync_notice_bridge.js").read_text(encoding="utf-8")
 
         self.assertNotIn("process_klms_assignments", text)
         self.assertNotIn("assignment-processor", text)
@@ -471,7 +503,7 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
                 self.assertIn("klms_sync_v2.cli", text)
 
     def test_reminders_hash_uses_desired_payload_not_generated_state_text(self) -> None:
-        text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8")
+        text = (PROJECT_DIR / "src" / "js" / "sync_reminders_bridge.js").read_text(encoding="utf-8")
 
         self.assertIn("function buildRemindersDesiredHash", text)
         self.assertIn("buildDesiredReminders(normalizeSyncEntries(state.content), options)", text)
@@ -501,7 +533,16 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
         self.assertNotIn("note.delete()", text)
 
     def test_notice_reuses_fresh_core_supplemental_primary_pages(self) -> None:
-        text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8")
+        text = "\n".join(
+            [
+                (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+                    encoding="utf-8"
+                ),
+                (PROJECT_DIR / "src" / "js" / "sync_notice_bridge.js").read_text(
+                    encoding="utf-8"
+                ),
+            ]
+        )
         config = (PROJECT_DIR / "examples" / "config.env.example").read_text(encoding="utf-8")
 
         self.assertIn("NOTICE_SHARED_FALLBACK_MAX_AGE_SECONDS", text)
@@ -524,16 +565,21 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
         self.assertIn("--reminders-lines", text)
         self.assertNotIn("summary of every event of calendar", text)
 
-    def test_calendar_sync_uses_repo_swift_module_cache_and_opt_in_fallback(self) -> None:
+    def test_calendar_sync_uses_repo_swift_module_cache_without_deprecated_fallback(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8")
+        bridge = (PROJECT_DIR / "src" / "js" / "sync_calendar_bridge.js").read_text(encoding="utf-8")
         config = (PROJECT_DIR / "examples" / "config.env.example").read_text(encoding="utf-8")
 
-        self.assertIn("SWIFT_MODULE_CACHE_PATH=", text)
-        self.assertIn("CLANG_MODULE_CACHE_PATH=", text)
-        self.assertIn("-module-cache-path", text)
-        self.assertIn('config.CALENDAR_SYNC_APPLESCRIPT_FALLBACK !== "1"', text)
-        self.assertIn("deprecated-calendar-jxa-fallback", text)
-        self.assertIn('CALENDAR_SYNC_APPLESCRIPT_FALLBACK="0"', config)
+        self.assertIn("sync_calendar_bridge.js", text)
+        self.assertIn("SWIFT_MODULE_CACHE_PATH=", bridge)
+        self.assertIn("CLANG_MODULE_CACHE_PATH=", bridge)
+        self.assertIn("-module-cache-path", bridge)
+        self.assertIn("sync_klms_calendar_suite.swift", bridge)
+        self.assertNotIn("sync_klms_calendar_jxa.js", text)
+        self.assertNotIn("sync_klms_calendar_jxa.js", bridge)
+        self.assertNotIn("deprecated-calendar-jxa-fallback", text)
+        self.assertNotIn("deprecated-calendar-jxa-fallback", bridge)
+        self.assertNotIn("CALENDAR_SYNC_APPLESCRIPT_FALLBACK", config)
 
     def test_mac_app_requests_permissions_explicitly(self) -> None:
         model = (

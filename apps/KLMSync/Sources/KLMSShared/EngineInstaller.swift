@@ -243,7 +243,7 @@ public struct EngineInstaller {
         try fileManager.createDirectory(at: versionURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         var copied: [String] = []
-        for directory in ["src", "bin", "examples", "docs", "legacy"] {
+        for directory in ["src", "bin", "examples", "docs"] {
             let source = payload.rootURL.appendingPathComponent(directory, isDirectory: true)
             guard fileManager.fileExists(atPath: source.path) else { continue }
             let target = destination.appendingPathComponent(directory, isDirectory: true)
@@ -266,6 +266,8 @@ public struct EngineInstaller {
             try fileManager.copyItem(at: source, to: target)
             copied.append(file)
         }
+
+        try removeRetiredCodePaths(in: destination)
 
         let configURL = destination.appendingPathComponent("config.env")
         var createdConfig = false
@@ -326,6 +328,15 @@ public struct EngineInstaller {
         }
     }
 
+    private func removeRetiredCodePaths(in rootURL: URL) throws {
+        for relativePath in Self.retiredCodePaths {
+            let url = rootURL.appendingPathComponent(relativePath)
+            if fileManager.fileExists(atPath: url.path) {
+                try fileManager.removeItem(at: url)
+            }
+        }
+    }
+
     private func installPythonPackagesIfPresent(
         from payloadRoot: URL,
         to destination: URL,
@@ -359,7 +370,6 @@ public struct EngineInstaller {
         "sync_klms_all.sh",
         "run_all.sh",
         "run_all_full.sh",
-        "run_all_parallel.sh",
         "refresh_course_files.sh",
         "verify_sync_state.sh",
         "doctor.sh",
@@ -367,5 +377,17 @@ public struct EngineInstaller {
         "process_klms_assignments.sh",
         "klms_v2_build_state.sh",
         "install_launch_agent.sh",
+    ]
+
+    public static let retiredCodePaths: [String] = [
+        "legacy",
+        "launchd",
+        "run_all_parallel.sh",
+        "bin/run_all_parallel.sh",
+        "src/js/download_klms_media_via_safari.js",
+        "src/js/export_panopto_transcripts.js",
+        "src/js/fetch_active_safari_page.js",
+        "src/js/sync_klms_calendar_jxa.js",
+        "src/swift/sync_klms_calendar.swift",
     ]
 }

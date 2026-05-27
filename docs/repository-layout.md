@@ -37,7 +37,6 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 | `tests/` | 파서, manifest, 파일 정리, 공지 렌더, shell entrypoint 테스트 |
 | `examples/` | 공개 가능한 설정과 manual override 예시 |
 | `docs/` | 상세 운영 문서와 공개 전 체크리스트 |
-| `legacy/` | 현재 기본 경로가 아닌 호환/디버깅용 스크립트 |
 | `tools/` | 로컬 앱 번들 빌드 같은 개발/배포 보조 스크립트 |
 
 ## Runtime And Private Data
@@ -53,8 +52,9 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 | `course_transcripts/`, `course_videos/` | 강의 자료 수집 산출물 |
 | `~/Library/Application Support/KLMSNotesSync` | LaunchAgent 설치본, 인증 state, 자동 실행 runtime |
 
-`runtime/cache/*/stage_timings.json`에는 stage별 소요 시간과 병목 후보가 남는다. `verify_sync_state.sh`는 canonical cache/state와 Apple Calendar를 함께 확인한다.
-`doctor.sh`와 `sync_report.sh`는 각각 `runtime/cache/doctor_result.json`, `runtime/cache/sync_report.json`을 생성한다.
+`runtime/cache/*/stage_timings.json`에는 stage별 소요 시간과 병목 후보가 남는다. 레포에서 실행한
+`verify_sync_state.sh`, `doctor.sh`, `sync_report.sh`는 기본적으로 앱 설치본 runtime을 확인한다.
+레포 내부 runtime을 보려면 `--source`를 붙인다.
 
 ## Installed Copy
 

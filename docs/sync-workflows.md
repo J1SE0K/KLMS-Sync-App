@@ -20,7 +20,6 @@ cp examples/config.env.example config.env
 | `./refresh_course_files.sh` | 파일 manifest 생성, 다운로드, `course_files` prune, 로컬 staging 정리 |
 | `./run_all.sh` | `core -> notice` 직렬 실행 |
 | `./run_all_full.sh` | `core -> notice -> files` 직렬 실행 |
-| `./run_all_parallel.sh` | 로그인 preflight 뒤 `core`, `notice`, `files` 병렬 실행 |
 
 자동 sync entrypoint는 성공 후 `runtime/tmp`를 정리한다. 실패한 실행의 tmp는 디버깅을 위해 보존한다. `KLMS_RUNTIME_TMP_CLEANUP_ENABLED=0`으로 끄거나 `KLMS_RUNTIME_TMP_MAX_AGE_HOURS`로 보존 시간을 바꿀 수 있다.
 
@@ -120,6 +119,10 @@ cd ~/Library/Application\ Support/KLMSNotesSync
 ./doctor.sh
 ./sync_report.sh
 ```
+
+이 세 검증성 명령은 레포 checkout에서 실행해도 기본적으로 앱 설치본
+`~/Library/Application Support/KLMSNotesSync`의 runtime을 본다. 레포 내부 `runtime/`을 비교해야 할 때만
+`--source`를 붙이고, 임의 data root는 `--data-dir=/path/to/KLMSNotesSync`로 지정한다.
 
 이 검증은 다음을 함께 확인한다.
 

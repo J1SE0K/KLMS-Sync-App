@@ -8,6 +8,8 @@ source "$COMMON_SH"
 
 OUTPUT_JSON=0
 CONFIG_ARG=""
+DATA_MODE="auto"
+DATA_DIR_ARG=""
 for arg in "$@"; do
   case "$arg" in
     --json)
@@ -16,20 +18,46 @@ for arg in "$@"; do
     --text)
       OUTPUT_JSON=0
       ;;
+    --installed)
+      DATA_MODE="installed"
+      ;;
+    --source)
+      DATA_MODE="source"
+      ;;
+    --data-dir=*)
+      DATA_MODE="custom"
+      DATA_DIR_ARG="${arg#--data-dir=}"
+      ;;
     *)
       CONFIG_ARG="$arg"
       ;;
   esac
 done
 
+case "$DATA_MODE" in
+  installed)
+    KLMS_DATA_DIR="${KLMS_INSTALLED_DATA_DIR:-$(klms_default_app_data_dir)}"
+    ;;
+  source)
+    KLMS_DATA_DIR="$SCRIPT_DIR"
+    ;;
+  custom)
+    KLMS_DATA_DIR="$DATA_DIR_ARG"
+    ;;
+  *)
+    KLMS_DATA_DIR="$(klms_default_readonly_data_dir "$SCRIPT_DIR")"
+    ;;
+esac
+export KLMS_DATA_DIR
+
 klms_init_context "$SCRIPT_DIR/verify_sync_state.sh" "$CONFIG_ARG"
-STATE_JSON="$SCRIPT_DIR/runtime/state/state.json"
+STATE_JSON="$RUNTIME_DIR/state/state.json"
 CALENDAR_COUNTS_TXT="$TMP_DIR/verify_calendar_counts.txt"
 CALENDAR_COUNTS_ERR="$TMP_DIR/verify_calendar_counts.err"
 REMINDERS_COUNTS_TXT="$TMP_DIR/verify_reminders_counts.txt"
 REMINDERS_COUNTS_ERR="$TMP_DIR/verify_reminders_counts.err"
 VERIFY_JSON="$CACHE_DIR/verify_sync_state.json"
-OVERRIDES_JSON="${OVERRIDES_JSON_PATH:-$SCRIPT_DIR/manual_assignment_overrides.json}"
+OVERRIDES_JSON="${OVERRIDES_JSON_PATH:-$KLMS_DATA_DIR/manual_assignment_overrides.json}"
 
 SWIFT_MODULE_CACHE_DIR="$TMP_DIR/swift-module-cache"
 CLANG_MODULE_CACHE_DIR="$TMP_DIR/clang-module-cache"
