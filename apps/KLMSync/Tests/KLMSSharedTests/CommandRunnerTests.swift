@@ -48,6 +48,17 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertFalse(KLMSEngineCommand.v2BuildState.refreshesSyncReportAfterRun)
     }
 
+    func testSyncCommandsRefreshVerificationAfterRun() {
+        XCTAssertTrue(KLMSEngineCommand.fullSync.refreshesVerificationAfterRun)
+        XCTAssertTrue(KLMSEngineCommand.coreSync.refreshesVerificationAfterRun)
+        XCTAssertTrue(KLMSEngineCommand.noticeSync.refreshesVerificationAfterRun)
+        XCTAssertTrue(KLMSEngineCommand.filesSync.refreshesVerificationAfterRun)
+        XCTAssertFalse(KLMSEngineCommand.verify.refreshesVerificationAfterRun)
+        XCTAssertFalse(KLMSEngineCommand.doctor.refreshesVerificationAfterRun)
+        XCTAssertFalse(KLMSEngineCommand.report.refreshesVerificationAfterRun)
+        XCTAssertFalse(KLMSEngineCommand.v2BuildState.refreshesVerificationAfterRun)
+    }
+
     func testLivePhaseUsesLatestRelevantLineInsteadOfStaleNoticeText() {
         let log = """
         == notice start 2026-05-20 22:22:20 KST ==

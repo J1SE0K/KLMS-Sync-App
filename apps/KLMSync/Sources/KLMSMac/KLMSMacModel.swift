@@ -613,6 +613,23 @@ final class KLMSMacModel: ObservableObject {
             if !dryRun, result.succeeded, command.refreshesSyncReportAfterRun {
                 _ = try? await runner.run(.report, paths: paths, environment: appRunEnvironment)
             }
+            if !dryRun, result.succeeded, command.refreshesVerificationAfterRun {
+                appendLiveCommandOutput("\n== 연동 상태 검사 start ==\n")
+                let verifyResult = try await runner.run(
+                    .verify,
+                    paths: paths,
+                    environment: appRunEnvironment
+                ) { [weak self] chunk in
+                    Task { @MainActor [weak self] in
+                        await self?.handleLiveCommandOutput(chunk)
+                    }
+                }
+                commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(verifyResult)) ?? commandHistory
+                appendLiveCommandOutput("== 연동 상태 검사 finish status=\(verifyResult.exitCode) ==\n")
+                if !verifyResult.succeeded {
+                    errorMessage = "동기화는 끝났지만 메모/캘린더/미리 알림 상태 검사에 실패했습니다."
+                }
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

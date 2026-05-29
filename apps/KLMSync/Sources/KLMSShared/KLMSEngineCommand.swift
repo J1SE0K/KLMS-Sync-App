@@ -185,6 +185,15 @@ public enum KLMSEngineCommand: String, CaseIterable, Sendable, Codable, Identifi
         }
     }
 
+    public var refreshesVerificationAfterRun: Bool {
+        switch self {
+        case .fullSync, .coreSync, .noticeSync, .filesSync:
+            true
+        case .verify, .doctor, .report, .v2BuildState:
+            false
+        }
+    }
+
     public func invocation(configPath: String = "./config.env", dryRun: Bool = false) -> KLMSCommandInvocation {
         var args: [String] = ["./\(scriptName)"]
         if emitsJSON {
