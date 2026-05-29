@@ -214,14 +214,15 @@ def live_reminder_checks(reminders: dict[str, Any], assignment_count: int) -> li
     if not reminders:
         return [warn_check("reminders_access", "skipped: reminders verification unavailable")]
     active_count = int(reminders.get("reminders_assignment_active_count", 0) or 0)
+    marker_count = int(reminders.get("reminders_assignment_marker_count", 0) or 0)
     list_exists = bool(reminders.get("reminders_assignment_list_exists", False))
     return [
         ok_check("reminders_access", True, "available"),
         ok_check("reminders_assignment_list_exists", list_exists or assignment_count == 0, f"exists={list_exists}"),
         ok_check(
             "reminders_assignment_count_matches_state",
-            active_count == assignment_count,
-            f"reminders={active_count} state={assignment_count}",
+            marker_count == assignment_count,
+            f"active={active_count} markers={marker_count} state={assignment_count}",
         ),
     ]
 

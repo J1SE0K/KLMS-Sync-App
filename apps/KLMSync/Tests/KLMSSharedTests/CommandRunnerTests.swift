@@ -69,19 +69,17 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(KLMSLiveCommandPhase.currentPhase(in: log), .cleanup)
     }
 
-    func testExtractsManualDigitsAndDigitsField() {
+    func testExtractsManualDigitsAndIgnoresStatusDigitsField() {
         XCTAssertEqual(
             KLMSCommandRunner.extractAuthDigits(from: "KAIST 인증 번호: 42"),
             "42"
         )
-        XCTAssertEqual(
-            KLMSCommandRunner.extractAuthDigits(from: "status=login digits=07"),
-            "07"
-        )
+        XCTAssertNil(KLMSCommandRunner.extractAuthDigits(from: "status=login digits=07"))
+        XCTAssertNil(KLMSCommandRunner.extractAuthDigits(from: "status=timeout last_status=twofactor_digits digits=07"))
         XCTAssertNil(KLMSCommandRunner.extractAuthDigits(from: "no digits"))
     }
 
-    func testExtractsLatestAuthDigitsFromLogTail() {
+    func testExtractsLatestManualAuthDigitsAndIgnoresLoggedPromptDigits() {
         let log = """
         KAIST 인증 번호: 05
         status=timeout last_status=twofactor_digits
@@ -89,7 +87,7 @@ final class CommandRunnerTests: XCTestCase {
         [next run] digits=17
         """
 
-        XCTAssertEqual(KLMSCommandRunner.extractAuthDigits(from: log), "17")
+        XCTAssertEqual(KLMSCommandRunner.extractAuthDigits(from: log), "05")
     }
 
     func testAuthenticatedOutputClearsAuthDigits() {
@@ -117,8 +115,28 @@ final class CommandRunnerTests: XCTestCase {
         )
 
         XCTAssertTrue(result.loginAuthenticated)
+        XCTAssertTrue(result.authChallengeCompleted)
         XCTAssertTrue(result.sawAuthDigits)
         XCTAssertNil(result.authDigits)
+    }
+
+    func testAuthenticatedOutputWithoutAuthDigitsDoesNotCompleteAuthChallenge() {
+        let output = "status=ok stage=authenticated\nKLMS 로그인 보조 완료"
+        let result = KLMSCommandResult(
+            invocation: KLMSEngineCommand.fullSync.invocation(),
+            startedAt: Date(),
+            finishedAt: Date(),
+            exitCode: 0,
+            standardOutput: output,
+            standardError: "",
+            authDigits: KLMSCommandRunner.extractAuthDigits(from: output)
+        )
+
+        XCTAssertTrue(result.loginAuthenticated)
+        XCTAssertFalse(result.authChallengeCompleted)
+        XCTAssertFalse(result.sawAuthDigits)
+        XCTAssertNil(result.authDigits)
+        XCTAssertFalse(KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(output))
     }
 
     func testOldAuthenticatedOutputDoesNotHideNewerAuthDigits() {

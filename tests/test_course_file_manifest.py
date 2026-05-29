@@ -15,10 +15,8 @@ import klms_sync  # noqa: E402
 class CourseFileManifestTests(unittest.TestCase):
     def test_linear_algebra_intro_course_is_ignored(self) -> None:
         self.assertEqual(build_course_file_manifest.normalize_course_name("선형대수학 개론"), "")
-        self.assertEqual(
-            build_course_file_manifest.normalize_course_name("데이터과학을 위한 선형대수학"),
-            "데이터과학을 위한 선형대수학",
-        )
+        self.assertEqual(build_course_file_manifest.normalize_course_name("선형대수학개론"), "")
+        self.assertEqual(build_course_file_manifest.normalize_course_name("데이터과학을 위한 선형대수학"), "")
 
     def test_resource_index_uses_course_id_mapping(self) -> None:
         course_page = {
@@ -269,6 +267,39 @@ class CourseFileManifestTests(unittest.TestCase):
             urls,
             ["https://klms.kaist.ac.kr/mod/resource/index.php?id=100001"],
         )
+
+    def test_file_seed_skips_heavy_non_file_modules(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=100001&section=0",
+            "title": "강좌: Example Course",
+            "html": """
+            <html><body>
+              <div role="main">
+                <ul>
+                  <li class="activity vod modtype_vod">
+                    <div class="activityinstance">
+                      <a href="https://klms.kaist.ac.kr/mod/vod/view.php?id=200001">강의 영상</a>
+                    </div>
+                  </li>
+                  <li class="activity lti modtype_lti">
+                    <div class="activityinstance">
+                      <a href="https://klms.kaist.ac.kr/mod/lti/view.php?id=200002">외부 도구</a>
+                    </div>
+                  </li>
+                  <li class="activity url modtype_url">
+                    <div class="activityinstance">
+                      <a href="https://klms.kaist.ac.kr/mod/url/view.php?id=200003">참고 링크</a>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </body></html>
+            """,
+        }
+
+        urls = klms_sync.collect_file_seed_urls([page])
+
+        self.assertEqual(urls, ["https://klms.kaist.ac.kr/mod/url/view.php?id=200003"])
 
 
 if __name__ == "__main__":

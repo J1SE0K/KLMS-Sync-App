@@ -204,9 +204,11 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("placeCaretForFormatting(\n            context: context,", renderer)
         self.assertNotIn('NOTICE_NATIVE_ENABLE_UI_STYLE_FALLBACK"] == "1"', renderer)
         self.assertIn(
-            "collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty",
+            "initialNoticeCollapseEnabled && collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty",
             renderer[renderer.index("func shouldCollapseNoticeCourses") : renderer.index("func shouldCollapseNoticeItems")],
         )
+        self.assertIn("func shouldStyleNoticeCourses", renderer)
+        self.assertIn("func shouldStyleNoticeItems", renderer)
         self.assertIn("noticeTitleStyleMenuItems", renderer)
         self.assertIn("noticeHeadingStyleMenuItems", renderer)
         self.assertIn("noticeSubheadingStyleMenuItems", renderer)
@@ -215,6 +217,8 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("readability_validation_targets_finish", renderer)
         self.assertIn("case .chunked:", renderer)
         self.assertIn("case .conservative:", renderer)
+        self.assertIn("conservativeRenderFallbackEnabled", support)
+        self.assertIn("line-by-line conservative render is disabled", renderer)
         self.assertIn("attributedNoticeText(for: lines)", renderer)
         self.assertIn("attributedNoticeText(text: text, like: line)", renderer)
         self.assertNotIn("_ = strategy", renderer)
@@ -359,6 +363,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn('environment["NOTICE_COLLAPSE_SECTIONS"] == "1"', support)
         self.assertIn("collapseNoticeCoursesEnabled", support)
         self.assertIn("collapseNoticeItemsEnabled", support)
+        self.assertIn("initialNoticeCollapseEnabled", support)
         self.assertIn("styleNoticeItemsAsHeadingsEnabled", support)
         self.assertIn("hideHiddenNoticeItemsEnabled", support)
         self.assertIn("uiCollapsibleGroupStyleFormattingEnabled", support)
@@ -368,25 +373,31 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool", renderer)
         self.assertIn("func shouldCollapseNoticeSections(_ plan: RenderPlan) -> Bool", renderer)
         self.assertIn(
-            "collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty",
+            "initialNoticeCollapseEnabled && collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty",
             renderer[
                 renderer.index("func shouldCollapseNoticeCourses")
                 : renderer.index("func shouldCollapseNoticeItems")
             ],
         )
+        self.assertIn("func shouldStyleNoticeCourses", renderer)
+        self.assertIn("func shouldStyleNoticeItems", renderer)
         self.assertNotIn("collapseNoticeCoursesEnabled || plan.mode == .archive", renderer)
-        self.assertIn("collapseNoticeItemsEnabled && !plan.renderedNotices.isEmpty", renderer)
-        self.assertIn("plan.mode == .primary", renderer)
+        self.assertIn("initialNoticeCollapseEnabled && collapseNoticeItemsEnabled && !plan.renderedNotices.isEmpty", renderer)
+        self.assertIn("initialNoticeCollapseEnabled\n        && plan.mode == .primary\n        && collapseNoticeSectionsEnabled", renderer)
         self.assertIn("noticeTitleStyleMenuItems", renderer)
         self.assertIn("noticeHeadingStyleMenuItems", renderer)
         self.assertIn("noticeSubheadingStyleMenuItems", renderer)
         self.assertIn('let noticeSubheadingStyleMenuItems = ["부머리말", "부제목", "소제목", "Subheading"]', support)
         self.assertIn("let effectiveCollapseSectionsEnabled = shouldCollapseNoticeSections(plan)", renderer)
+        self.assertIn("let effectiveStyleCoursesEnabled = shouldStyleNoticeCourses(plan)", renderer)
+        self.assertIn("let effectiveStyleNoticeItemsEnabled = shouldStyleNoticeItems(plan)", renderer)
         self.assertIn("collapse_heading_retry", renderer)
         self.assertIn("collapse failed: \\(label)", renderer)
         self.assertIn("return (collapsedSections, collapseIssues)", renderer)
         self.assertIn("if effectiveCollapseCoursesEnabled", renderer)
         self.assertIn("if effectiveCollapseNoticeItemsEnabled", renderer)
+        self.assertIn("if effectiveStyleCoursesEnabled", renderer)
+        self.assertIn("if effectiveStyleNoticeItemsEnabled", renderer)
         self.assertIn("collapseHeading(range, label: \"course-\\(offset + 1)\")", renderer)
         self.assertIn("collapseHeading(range, label: \"section-\\(offset + 1)\")", renderer)
         self.assertIn("display_mode=\\(noticeDisplayModeName(plan.mode))", renderer)
@@ -542,11 +553,18 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn('"NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS"', js)
         self.assertIn('"NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS"', js)
         self.assertIn('"NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT"', js)
+        self.assertIn('"NOTICE_NATIVE_POST_RENDER_VERIFY"', js)
+        self.assertIn('"NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED"', js)
+        self.assertIn('"NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK"', js)
         self.assertIn('"NOTICE_NATIVE_STYLE_BUDGET_SECONDS"', js)
         self.assertIn('"NOTICE_NATIVE_PLAIN_TEXT_PASTE"', js)
         self.assertIn("nativeNoticeDefaultEnvironment", js)
         self.assertIn("applyRuntimeConfigOverrides(config)", js)
-        self.assertIn('"NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",\n    "NOTICE_NATIVE_NOTE_MAX_ATTEMPTS"', js)
+        self.assertIn('"NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",\n    "NOTICE_NATIVE_POST_RENDER_VERIFY"', js)
+        self.assertIn('"NOTICE_NATIVE_POST_RENDER_VERIFY",\n    "NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED"', js)
+        self.assertIn('"NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED",\n    "NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK"', js)
+        self.assertIn('"NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK",\n    "NOTICE_NATIVE_NOTE_MAX_ATTEMPTS"', js)
+        self.assertIn("nativeNoticePostRenderVerifyEnabled", js)
         self.assertNotIn("KLMS_APP_NOTICE_BODY_FALLBACK", js)
         self.assertNotIn("NOTICE_NATIVE_FORCE_BODY_FALLBACK", js)
         self.assertIn("runNativeNoticeCommandWithRecoverableRetry", js)
@@ -615,6 +633,89 @@ console.log(JSON.stringify({ kept, overridden }));
 
         self.assertEqual(result.stdout.strip(), '{"kept":"1","overridden":"0"}')
 
+    def test_app_notice_post_render_verify_can_be_disabled(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed")
+
+        script = r"""
+const fs = require("fs");
+const source = fs.readFileSync("src/js/sync_notice_bridge.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+eval([
+  extractFunction("nativeNoticeEnvHasKey"),
+  extractFunction("nativeNoticeDefaultEnvironment"),
+  extractFunction("nativeNoticeVerifyStableSkipFormatEnabled"),
+  extractFunction("nativeNoticePostRenderVerifyEnabled"),
+  extractFunction("nativeNoticeEnvironmentEnabled"),
+  extractFunction("nativeNoticeEnvironmentValue"),
+  extractFunction("noticeTargetRequiresPostCaptureRender"),
+  extractFunction("updateNoticeNativeNote"),
+].join("\n"));
+
+let calls = [];
+function debugStderr() {}
+function runNativeNoticeCommandWithRecoverableRetry(stageTelemetry, target, command) {
+  calls.push({ kind: "render", target, command });
+  return `rendered ${target}`;
+}
+function verifyNoticeNativeNoteReadableFormat(target) {
+  calls.push({ kind: "verify", target });
+  return `verified ${target}`;
+}
+
+function runCase(flag) {
+  calls = [];
+  updateNoticeNativeNote(
+    "/engine",
+    "KLMS 공지",
+    "KLMS 확인한 공지",
+    "/digest.json",
+    "/notice_state.json",
+    "/primary_render_state.json",
+    "/archive_render_state.json",
+    false,
+    false,
+    false,
+    false,
+    [`NOTICE_NATIVE_POST_RENDER_VERIFY=${flag}`],
+    null
+  );
+  return calls.map((call) => `${call.kind}:${call.target}`);
+}
+
+console.log(JSON.stringify({ off: runCase("0"), on: runCase("1") }));
+"""
+        result = subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(
+            result.stdout.strip(),
+            '{"off":["render:archive","render:primary"],"on":["render:archive","verify:archive","render:primary","verify:primary"]}',
+        )
+
     def test_app_notice_requires_functional_notes_renderer(self) -> None:
         renderer = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
@@ -633,9 +734,12 @@ console.log(JSON.stringify({ kept, overridden }));
         self.assertIn('NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0"', app_model)
-        self.assertIn('NOTICE_COLLAPSE_SECTIONS": "1"', app_model)
+        self.assertIn('NOTICE_NATIVE_POST_RENDER_VERIFY": "1"', app_model)
+        self.assertIn('NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED": "1"', app_model)
+        self.assertIn('NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK": "0"', app_model)
+        self.assertIn('NOTICE_COLLAPSE_SECTIONS": "0"', app_model)
         self.assertIn('NOTICE_COLLAPSE_COURSES": "1"', app_model)
-        self.assertIn('NOTICE_COLLAPSE_NOTICE_ITEMS": "1"', app_model)
+        self.assertIn('NOTICE_COLLAPSE_NOTICE_ITEMS": "0"', app_model)
         self.assertIn('NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS": "0"', app_model)
         self.assertNotIn("requireFunctionalNotesRenderEnabled", support)
         self.assertIn("Functional Notes editor unavailable", renderer)

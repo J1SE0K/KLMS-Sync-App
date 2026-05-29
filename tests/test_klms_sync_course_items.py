@@ -36,7 +36,7 @@ class CourseItemParsingTests(unittest.TestCase):
 
         self.assertEqual(items, [])
 
-    def test_dashboard_course_name_is_not_dropped_by_exact_title(self) -> None:
+    def test_linear_algebra_course_is_ignored_by_substring(self) -> None:
         dashboard = klms_sync.DashboardParseResult(
             status="ok",
             items=[
@@ -52,8 +52,7 @@ class CourseItemParsingTests(unittest.TestCase):
 
         items = klms_sync.collect_candidate_items(dashboard, [])
 
-        self.assertEqual(len(items), 1)
-        self.assertEqual(items[0].course, "데이터과학을 위한 선형대수학")
+        self.assertEqual(items, [])
 
     def test_linear_algebra_intro_course_is_ignored(self) -> None:
         dashboard = klms_sync.DashboardParseResult(
@@ -63,6 +62,24 @@ class CourseItemParsingTests(unittest.TestCase):
                     url="https://klms.kaist.ac.kr/mod/assign/view.php?id=222222",
                     title="Homework",
                     course="선형대수학 개론",
+                    schedule="~2026.05.11",
+                    item_type="assign",
+                )
+            ],
+        )
+
+        items = klms_sync.collect_candidate_items(dashboard, [])
+
+        self.assertEqual(items, [])
+
+    def test_linear_algebra_intro_course_without_space_is_ignored(self) -> None:
+        dashboard = klms_sync.DashboardParseResult(
+            status="ok",
+            items=[
+                klms_sync.DashboardItem(
+                    url="https://klms.kaist.ac.kr/mod/assign/view.php?id=222223",
+                    title="Homework",
+                    course="선형대수학개론",
                     schedule="~2026.05.11",
                     item_type="assign",
                 )
@@ -234,7 +251,8 @@ class CourseItemParsingTests(unittest.TestCase):
                             "title": "기말 고사 건 / On Final-term Exam",
                             "body_text": (
                                 "시험은 2026년 6월 4일 수업 시간에 봅니다. "
-                                "The exam will be taken on the 4th of June at the classroom."
+                                "The exam will be taken on the 4th of June at the classroom "
+                                "from 14h:30 to 15h:30."
                             ),
                         }
                     ],

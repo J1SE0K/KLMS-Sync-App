@@ -737,6 +737,10 @@ log_files_timing "refresh start output_root=$OUTPUT_ROOT download_work_root=$FIL
 
 PREVIOUS_MANIFEST_COUNT="$(count_manifest_entries "$MANIFEST_JSON")"
 EXISTING_TRACKED_FILE_COUNT="$(count_tracked_output_files "$OUTPUT_ROOT")"
+TRACKED_FILE_MISSING_COUNT=0
+if (( PREVIOUS_MANIFEST_COUNT > EXISTING_TRACKED_FILE_COUNT )); then
+  TRACKED_FILE_MISSING_COUNT=$((PREVIOUS_MANIFEST_COUNT - EXISTING_TRACKED_FILE_COUNT))
+fi
 
 log_files_timing "login check start"
 klms_require_login
@@ -813,13 +817,16 @@ if [[ -s "$MANIFEST_JSON" \
   && "$COURSE_CHANGED_COUNT" == "0" \
   && "$ALL_WEEK_COURSE_CHANGED_COUNT" == "0" \
   && "$FILE_SEED_URL_LIST_CHANGED" == "0" ]] \
-  && (( PREVIOUS_MANIFEST_COUNT > 0 )) \
-  && (( EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then
+  && (( PREVIOUS_MANIFEST_COUNT > 0 )); then
   FILE_DEEP_FETCH_SKIPPED=1
   SEED_CHANGED_COUNT=0
   NESTED_CHANGED_COUNT=0
   NESTED2_CHANGED_COUNT=0
-  log_files_timing "deep file page fetch skipped reason=no-course-or-url-change manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT"
+  if (( TRACKED_FILE_MISSING_COUNT > 0 )); then
+    log_files_timing "deep file page fetch skipped reason=restore-missing-files-from-manifest manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT missing_files=$TRACKED_FILE_MISSING_COUNT"
+  else
+    log_files_timing "deep file page fetch skipped reason=no-course-or-url-change manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT"
+  fi
 else
 if is_truthy "$FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED" \
   && (( FILE_SEED_URL_LIST_CHANGED == 0 )) \

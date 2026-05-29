@@ -293,6 +293,50 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertEqual(store.load().records.first?.command, .noticeSync)
     }
 
+    func testCancelledCommandHistoryIsNotAttentionFailure() {
+        let record = CommandRunRecord(
+            command: .fullSync,
+            dryRun: false,
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 3),
+            exitCode: 15,
+            wasCancelled: true,
+            authDigits: "74",
+            outputTail: "KAIST 인증 번호: 74"
+        )
+
+        XCTAssertEqual(record.statusText, "중단됨")
+        XCTAssertFalse(record.succeeded)
+        XCTAssertFalse(record.needsAttention)
+    }
+
+    func testCancelledCommandHistoryRedactsAuthDigits() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("klms-dashboard-cancel-history-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let store = CommandRunHistoryStore(url: directory.appendingPathComponent("history.json"))
+        let result = KLMSCommandResult(
+            invocation: KLMSEngineCommand.fullSync.invocation(),
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 3),
+            exitCode: 15,
+            standardOutput: "KAIST 인증 번호: 74\nstatus=timeout digits=74",
+            standardError: "",
+            authDigits: "74",
+            wasCancelled: true
+        )
+
+        let history = try store.append(result)
+
+        XCTAssertNil(history.records.first?.authDigits)
+        XCTAssertEqual(history.records.first?.outputTail, "KAIST 인증 번호: --\nstatus=timeout digits=--")
+        XCTAssertEqual(store.load().records.first?.outputTail, "KAIST 인증 번호: --\nstatus=timeout digits=--")
+    }
+
     func testAppDataBackupCreatesAndRestoresPrivateState() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("klms-dashboard-backup-\(UUID().uuidString)", isDirectory: true)
@@ -350,6 +394,120 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertEqual(notice.academicTerm(generatedAt: "2026-05-23T08:55:35Z")?.displayName, "2026년 봄학기")
     }
 
+    func testVisibleCountsExcludeHiddenItemsAndKeepThemInHiddenSummary() throws {
+        let visibleAssignment = try decodeStateItem(url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=100")
+        let hiddenAssignment = try decodeStateItem(url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=101")
+        let visibleHelpDesk = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=3&bwid=1",
+            title: "Question"
+        )
+        let hiddenHelpDesk = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=3&bwid=2",
+            title: "Ignored question"
+        )
+        let visibleExam = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=4&bwid=1",
+            title: "Final",
+            category: "exam",
+            syncDue: "2099-06-01T09:00:00+09:00"
+        )
+        let hiddenExam = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=4&bwid=2",
+            title: "Not exam",
+            category: "exam",
+            syncDue: "2099-06-02T09:00:00+09:00"
+        )
+        let pastHiddenExam = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=4&bwid=3",
+            title: "Past not exam",
+            category: "exam",
+            syncDue: "2020-06-02T09:00:00+09:00"
+        )
+        let rawState = LegacySyncState(content: .init(
+            assignments: [visibleAssignment, hiddenAssignment],
+            examItems: [visibleExam, hiddenExam, pastHiddenExam],
+            helpDeskItems: [visibleHelpDesk, hiddenHelpDesk]
+        ))
+        let overrides = ManualOverridesSnapshot(
+            assignments: [
+                ManualOverridesSnapshot.preferredAssignmentOverrideKey(for: hiddenAssignment): "ignored",
+                ManualOverridesSnapshot.preferredAssignmentOverrideKey(for: hiddenHelpDesk): "ignored",
+            ],
+            exams: [
+                ManualOverridesSnapshot.preferredExamOverrideKey(for: hiddenExam): ExamOverride(status: "ignored"),
+                ManualOverridesSnapshot.preferredExamOverrideKey(for: pastHiddenExam): ExamOverride(status: "ignored"),
+            ]
+        )
+
+        let visibleNotice = try decodeNotice(url: "https://klms.kaist.ac.kr/notice-visible", title: "Visible")
+        let hiddenNotice = try decodeNotice(url: "https://klms.kaist.ac.kr/notice-hidden", title: "Hidden")
+        let noticeDigest = NoticeDigest(
+            noticeCount: 2,
+            courses: [NoticeCourseDigest(course: "Course", notices: [visibleNotice, hiddenNotice])]
+        )
+        let noticeState = NoticeUserStateFile(notices: [
+            hiddenNotice.noticeIdentifier: NoticeInteractionState(title: hiddenNotice.title, hidden: true)
+        ])
+        let appState = AppUserStateFile(
+            files: [
+                "https://klms.kaist.ac.kr/file-hidden": FileInteractionState(
+                    title: "Hidden.pdf",
+                    url: "https://klms.kaist.ac.kr/file-hidden",
+                    hidden: true
+                )
+            ],
+            quarantine: [
+                "https://klms.kaist.ac.kr/q-hidden": FileInteractionState(
+                    title: "Quarantine.pdf",
+                    url: "https://klms.kaist.ac.kr/q-hidden",
+                    ignored: true
+                )
+            ]
+        )
+        let downloadResult = try JSONDecoder().decode(CourseFileDownloadResult.self, from: Data("""
+        {
+          "newFilesCopiedCount": 2,
+          "results": [
+            {"url": "https://klms.kaist.ac.kr/file-visible", "relative_path": "Visible.pdf", "copied_to_new_files_inbox": true},
+            {"url": "https://klms.kaist.ac.kr/file-hidden", "relative_path": "Hidden.pdf", "copied_to_new_files_inbox": true}
+          ]
+        }
+        """.utf8))
+        let quarantineReport = try JSONDecoder().decode(QuarantineReport.self, from: Data("""
+        {
+          "quarantineCount": 2,
+          "records": [
+            {"url": "https://klms.kaist.ac.kr/q-visible", "quarantine_path": "/tmp/visible.pdf", "quarantine_relative_path": "visible.pdf"},
+            {"url": "https://klms.kaist.ac.kr/q-hidden", "quarantine_path": "/tmp/hidden.pdf", "quarantine_relative_path": "hidden.pdf"}
+          ]
+        }
+        """.utf8))
+
+        let snapshot = EngineSnapshot(
+            rawLegacyState: rawState,
+            legacyState: rawState.applyingManualOverrides(overrides),
+            manualOverrides: overrides,
+            noticeDigest: noticeDigest,
+            noticeUserState: noticeState,
+            appUserState: appState,
+            downloadResult: downloadResult,
+            quarantineReport: quarantineReport
+        )
+
+        XCTAssertEqual(snapshot.visibleCounts.assignments, 1)
+        XCTAssertEqual(snapshot.visibleCounts.exams, 1)
+        XCTAssertEqual(snapshot.visibleCounts.helpDesk, 1)
+        XCTAssertEqual(snapshot.visibleCounts.notices, 1)
+        XCTAssertEqual(snapshot.visibleCounts.newFiles, 1)
+        XCTAssertEqual(snapshot.visibleCounts.quarantine, 1)
+        XCTAssertEqual(snapshot.hiddenSummary.assignments, 2)
+        XCTAssertEqual(snapshot.hiddenSummary.exams, 1)
+        XCTAssertEqual(snapshot.hiddenSummary.notices, 1)
+        XCTAssertEqual(snapshot.hiddenSummary.files, 1)
+        XCTAssertEqual(snapshot.hiddenSummary.quarantine, 1)
+        XCTAssertEqual(snapshot.hiddenSummary.total, 6)
+    }
+
     private func decodeStateItem(
         url: String,
         title: String = "Item",
@@ -370,6 +528,17 @@ final class DashboardDataModelTests: XCTestCase {
           "sync_due": "\(syncDue)",
           "record_status": "\(recordStatus)",
           "completion_reason": "\(completionReason)"
+        }
+        """.utf8))
+    }
+
+    private func decodeNotice(url: String, title: String) throws -> NoticeDigestEntry {
+        try JSONDecoder().decode(NoticeDigestEntry.self, from: Data("""
+        {
+          "url": "\(url)",
+          "course": "Course",
+          "title": "\(title)",
+          "fingerprint": "\(title)-fingerprint"
         }
         """.utf8))
     }

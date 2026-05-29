@@ -19,7 +19,10 @@ from klms_transport import write_json, write_text
 COURSE_CODE_MAP: dict[str, str] = {}
 
 IGNORED_COURSE_CODES = {"KLMS", "오류"}
-IGNORED_COURSE_NAMES = {"기출문제은행", "공개강좌", "조교 과정", "조교", "선형대수학 개론"}
+IGNORED_COURSE_NAMES = {"기출문제은행", "공개강좌", "조교 과정", "조교", "선형대수학"}
+COMPACT_IGNORED_COURSE_NAMES = {
+    re.sub(r"\s+", "", keyword.lower()) for keyword in IGNORED_COURSE_NAMES
+}
 GENERIC_COURSE_NAMES = {"강의실 메인", "course home"}
 IGNORED_ACTIVITY_IDS: set[str] = set()
 COURSE_MATERIAL_BUCKETS = {"folders", "resources"}
@@ -907,7 +910,12 @@ def normalize_course_name(name: str) -> str:
         "",
         value,
     ).strip()
-    if not value or any(keyword in value for keyword in IGNORED_COURSE_NAMES):
+    compacted = re.sub(r"\s+", "", value.lower())
+    if (
+        not value
+        or any(keyword in value for keyword in IGNORED_COURSE_NAMES)
+        or any(keyword in compacted for keyword in COMPACT_IGNORED_COURSE_NAMES)
+    ):
         return ""
     return value
 

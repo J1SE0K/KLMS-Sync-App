@@ -43,6 +43,10 @@ public struct KLMSCommandResult: Sendable, Equatable {
         KLMSCommandRunner.outputIndicatesAuthenticatedAfterLatestAuthDigits(combinedOutput)
     }
 
+    public var authChallengeCompleted: Bool {
+        KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(combinedOutput)
+    }
+
     public var sawAuthDigits: Bool {
         KLMSCommandRunner.extractLatestAuthDigits(from: combinedOutput) != nil
     }
@@ -199,7 +203,6 @@ public actor KLMSCommandRunner {
     private static func latestAuthDigitsMatch(in text: String) -> (location: Int, digits: String)? {
         let patterns = [
             #"KAIST 인증 번호:\s*([0-9][0-9])"#,
-            #"digits=([0-9][0-9])"#,
         ]
         var latestMatch: (location: Int, digits: String)?
         for pattern in patterns {
@@ -235,6 +238,13 @@ public actor KLMSCommandRunner {
             return true
         }
         return authenticatedLocation > authDigitsLocation
+    }
+
+    public static func outputConfirmsAuthChallengeCompletion(_ text: String) -> Bool {
+        guard latestAuthDigitsMatch(in: text) != nil else {
+            return false
+        }
+        return outputIndicatesAuthenticatedAfterLatestAuthDigits(text)
     }
 
     public static func latestAuthenticatedLocation(in text: String) -> Int? {

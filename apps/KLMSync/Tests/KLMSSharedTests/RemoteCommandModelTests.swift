@@ -190,10 +190,97 @@ final class RemoteCommandModelTests: XCTestCase {
             status: command.summary,
             latestCommand: command,
             running: true
+        ).signed(
+            token: "ABCD2345",
+            request: request,
+            issuedAt: Date(timeIntervalSince1970: 1_779_788_411)
         )
         let responseData = try JSONEncoder.klmsLocalRemote.encode(response)
         let decodedResponse = try JSONDecoder.klmsLocalRemote.decode(LocalRemoteResponse.self, from: responseData)
 
         XCTAssertEqual(decodedResponse, response)
+        XCTAssertTrue(decodedResponse.isAuthorized(
+            token: "ABCD2345",
+            request: request,
+            now: Date(timeIntervalSince1970: 1_779_788_412)
+        ))
+        XCTAssertFalse(decodedResponse.isAuthorized(
+            token: "WRONG2345",
+            request: request,
+            now: Date(timeIntervalSince1970: 1_779_788_412)
+        ))
+        XCTAssertFalse(String(data: responseData, encoding: .utf8)?.contains("ABCD2345") ?? true)
+    }
+
+    func testLocalRemoteResponseSignatureRejectsTamperingAndReplayBinding() {
+        let request = LocalRemoteRequest(
+            token: "ABCD2345",
+            action: .status,
+            nonce: "nonce-1",
+            issuedAt: Date(timeIntervalSince1970: 1_779_788_400)
+        )
+        let response = LocalRemoteResponse(
+            message: "대기 중",
+            status: SanitizedRemoteStatus(assignments: 1, exams: 2, phase: "idle")
+        ).signed(
+            token: "ABCD2345",
+            request: request,
+            issuedAt: Date(timeIntervalSince1970: 1_779_788_401)
+        )
+
+        XCTAssertTrue(response.isAuthorized(
+            token: "ABCD2345",
+            request: request,
+            now: Date(timeIntervalSince1970: 1_779_788_402)
+        ))
+
+        var tampered = response
+        tampered.status.assignments = 99
+        XCTAssertFalse(tampered.isAuthorized(
+            token: "ABCD2345",
+            request: request,
+            now: Date(timeIntervalSince1970: 1_779_788_402)
+        ))
+
+        let replayedAgainstDifferentRequest = LocalRemoteRequest(
+            token: "ABCD2345",
+            action: .status,
+            nonce: "nonce-2",
+            issuedAt: Date(timeIntervalSince1970: 1_779_788_400)
+        )
+        XCTAssertFalse(response.isAuthorized(
+            token: "ABCD2345",
+            request: replayedAgainstDifferentRequest,
+            now: Date(timeIntervalSince1970: 1_779_788_402)
+        ))
+
+        XCTAssertFalse(response.isAuthorized(
+            token: "ABCD2345",
+            request: request,
+            now: Date(timeIntervalSince1970: 1_779_788_700)
+        ))
+    }
+
+    func testLocalRemoteResponseDecodesOlderUnsignedPayloadButDoesNotAuthorize() throws {
+        let request = LocalRemoteRequest(
+            token: "ABCD2345",
+            action: .status,
+            nonce: "nonce-1",
+            issuedAt: Date(timeIntervalSince1970: 1_779_788_400)
+        )
+        let data = Data(
+            """
+            {"ok":true,"message":"대기 중","status":{"assignments":1,"exams":2,"helpDesk":0,"notices":0,"newFiles":0,"quarantine":0,"phase":"idle","loginRequired":false},"running":false}
+            """.utf8
+        )
+
+        let response = try JSONDecoder.klmsLocalRemote.decode(LocalRemoteResponse.self, from: data)
+
+        XCTAssertEqual(response.message, "대기 중")
+        XCTAssertFalse(response.isAuthorized(
+            token: "ABCD2345",
+            request: request,
+            now: Date(timeIntervalSince1970: 1_779_788_402)
+        ))
     }
 }

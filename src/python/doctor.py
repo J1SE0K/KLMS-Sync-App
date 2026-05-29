@@ -44,18 +44,44 @@ def load_json(path: Path, default: Any) -> Any:
         return default
 
 
-def dashboard_login_cache_check(dashboard: Any) -> dict[str, str]:
+def dashboard_login_cache_check(dashboard: Any, source: str = "dashboard cache") -> dict[str, str]:
     if not isinstance(dashboard, list) or not dashboard:
         return check("klms-login-cache", "warn", "dashboard cache missing")
 
     status = analyze_login_status(dashboard)
     if status.get("status") == "ok":
         title = str(status.get("title") or "").strip()
-        detail = f"dashboard cache present title={title}" if title else "dashboard cache present"
+        detail = f"{source} present title={title}" if title else f"{source} present"
         return check("klms-login-cache", "ok", detail)
 
     detail = str(status.get("message") or status.get("error") or "dashboard cache looks login-like")
     return check("klms-login-cache", "warn", detail)
+
+
+def dashboard_login_cache_check_from_cache(cache_dir: Path) -> dict[str, str]:
+    candidates: list[dict[str, Any]] = []
+    for relative in ("dashboard.json", "core/dashboard.json", "notice/dashboard.json", "files/dashboard.json"):
+        path = cache_dir / relative
+        if not path.exists():
+            continue
+        dashboard = load_json(path, [])
+        result = dashboard_login_cache_check(dashboard, source=relative)
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        candidates.append({"relative": relative, "dashboard": dashboard, "result": result, "mtime": mtime})
+
+    if not candidates:
+        return check("klms-login-cache", "warn", "dashboard cache missing")
+
+    ok_candidates = [item for item in candidates if item["result"]["status"] == "ok"]
+    if ok_candidates:
+        newest_ok = max(ok_candidates, key=lambda item: float(item["mtime"]))
+        return newest_ok["result"]
+
+    newest = max(candidates, key=lambda item: float(item["mtime"]))
+    return newest["result"]
 
 
 def build_result(script_dir: Path, config: Path, cache_dir: Path, state_json: Path) -> dict[str, Any]:
@@ -93,8 +119,7 @@ def build_result(script_dir: Path, config: Path, cache_dir: Path, state_json: Pa
     detail = str(downloads_root) if downloads_root.exists() else f"{downloads_root} (created when new files exist)"
     checks.append(check("downloads-inbox", "ok", detail))
     checks.append(check("state-json", "ok" if state_json.exists() else "warn", str(state_json)))
-    dashboard = load_json(cache_dir / "dashboard.json", [])
-    checks.append(dashboard_login_cache_check(dashboard))
+    checks.append(dashboard_login_cache_check_from_cache(cache_dir))
     for scope in ("core", "notice", "files"):
         timing = cache_dir / scope / "stage_timings.json"
         checks.append(check(f"stage-timing:{scope}", "ok" if timing.exists() else "warn", str(timing)))

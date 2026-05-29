@@ -117,26 +117,11 @@ def looks_like_login_page(page: Page) -> bool:
 
 def looks_like_authenticated_klms_page(page: Page) -> bool:
     url = page.url.lower()
-    html = (page.html or page.text or "").lower()
-    text = one_line(html_to_text(page.html) or page.text).lower()
     if "klms.kaist.ac.kr" not in url:
         return False
-    if not html.strip() and not text.strip():
+    if looks_like_login_page(page):
         return False
-    return any(
-        token in html or token in text
-        for token in (
-            "logout",
-            "로그아웃",
-            "세션 연장",
-            "/login/logout.php",
-            "/course/view.php",
-            "main-course-list",
-            "list-box",
-            "나의 강좌",
-            "my courses",
-        )
-    )
+    return True
 
 
 def validate_pages_for_state_build(pages: list[Page]) -> str:

@@ -126,9 +126,12 @@ INFO_KEYWORDS = EXAM_KEYWORDS + (
 )
 SUPPLEMENTAL_DETAIL_KEYWORDS = INFO_KEYWORDS + HELP_DESK_KEYWORDS
 DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx", ".hwp", ".hwpx")
-IGNORED_COURSE_NAMES = ("기출문제은행", "조교 과정", "조교", "선형대수학 개론")
+IGNORED_COURSE_NAMES = ("기출문제은행", "조교 과정", "조교", "선형대수학")
 EXACT_IGNORED_COURSE_NAMES = {"klms"}
 IGNORED_COURSE_IDS = {"147806", "178264"}
+COMPACT_IGNORED_COURSE_NAMES = {
+    re.sub(r"\s+", "", keyword.lower()) for keyword in IGNORED_COURSE_NAMES
+}
 FILE_SEED_MODULE_PRIORITIES = {
     "courseboard": 1,
     "folder": 2,
@@ -141,6 +144,7 @@ FILE_SEED_MODULE_PRIORITIES = {
     "lti": 7,
     "vod": 8,
 }
+FILE_SEED_EXCLUDED_MODULES = {"lti", "vod"}
 LINKED_HTML_MODULE_PRIORITIES = {
     "courseboard": 0,
     "folder": 1,
@@ -2215,6 +2219,9 @@ def collect_file_seed_urls(course_pages: list[dict[str, Any]]) -> list[str]:
         url = canonicalize_crawl_url(raw_url)
         if not url or not is_crawlable_klms_page_url(url):
             return
+        module_name = (module or module_name_from_url(url)).lower()
+        if module_name in FILE_SEED_EXCLUDED_MODULES:
+            return
         candidates.append((file_seed_priority(url, module), sequence, url))
         sequence += 1
 
@@ -4231,7 +4238,10 @@ def find_date_snippets(text: str) -> list[DateSnippet]:
             if span in seen_spans:
                 continue
 
-            parsed = parse_date_match(kind, match)
+            try:
+                parsed = parse_date_match(kind, match)
+            except ValueError:
+                continue
             if not parsed:
                 continue
 
@@ -5279,9 +5289,12 @@ def should_ignore_course_name(name: str) -> bool:
     lowered = normalize_whitespace(name).lower()
     if not lowered:
         return False
+    compacted = re.sub(r"\s+", "", lowered)
     if lowered in EXACT_IGNORED_COURSE_NAMES:
         return True
-    return any(keyword.lower() in lowered for keyword in IGNORED_COURSE_NAMES)
+    return any(keyword.lower() in lowered for keyword in IGNORED_COURSE_NAMES) or any(
+        keyword in compacted for keyword in COMPACT_IGNORED_COURSE_NAMES
+    )
 
 
 def is_placeholder_course_name(name: str) -> bool:

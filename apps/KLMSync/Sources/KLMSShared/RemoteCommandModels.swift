@@ -181,14 +181,15 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
     }
 
     public init(snapshot: EngineSnapshot, phase: String = "") {
-        assignments = snapshot.syncReport?.state.assignments ?? snapshot.legacyState?.content.assignments.count ?? 0
-        exams = snapshot.syncReport?.state.exams ?? snapshot.legacyState?.content.examItems.count ?? 0
-        helpDesk = snapshot.syncReport?.state.helpdesk ?? snapshot.legacyState?.content.helpDeskItems.count ?? 0
-        notices = snapshot.syncReport?.notices.total ?? 0
-        newFiles = snapshot.syncReport?.files.newFiles ?? snapshot.downloadResult?.newFilesCopiedCount ?? 0
-        quarantine = snapshot.syncReport?.files.quarantine ?? snapshot.quarantineReport?.quarantineCount ?? 0
+        let counts = snapshot.visibleCounts
+        assignments = counts.assignments
+        exams = counts.exams
+        helpDesk = counts.helpDesk
+        notices = counts.notices
+        newFiles = counts.newFiles
+        quarantine = counts.quarantine
         self.phase = phase
-        authDigits = snapshot.authDigits
+        authDigits = nil
         authStatusMessage = nil
         loginRequired = snapshot.loginPromptDetected
             || snapshot.issues.contains { issue in
@@ -469,7 +470,7 @@ public struct LocalRemoteRequest: Codable, Sendable, Equatable {
         #endif
     }
 
-    private static func timingSafeEqual(_ lhs: String, _ rhs: String) -> Bool {
+    fileprivate static func timingSafeEqual(_ lhs: String, _ rhs: String) -> Bool {
         let lhsBytes = Array(lhs.utf8)
         let rhsBytes = Array(rhs.utf8)
         guard lhsBytes.count == rhsBytes.count else {
@@ -489,20 +490,118 @@ public struct LocalRemoteResponse: Codable, Sendable, Equatable {
     public var status: SanitizedRemoteStatus
     public var latestCommand: RemoteRunCommand?
     public var running: Bool
+    public var requestNonce: String?
+    public var responseIssuedAtEpochSeconds: Int64?
+    public var signature: String?
 
     public init(
         ok: Bool = true,
         message: String = "",
         status: SanitizedRemoteStatus = SanitizedRemoteStatus(),
         latestCommand: RemoteRunCommand? = nil,
-        running: Bool = false
+        running: Bool = false,
+        requestNonce: String? = nil,
+        responseIssuedAtEpochSeconds: Int64? = nil,
+        signature: String? = nil
     ) {
         self.ok = ok
         self.message = message
         self.status = status
         self.latestCommand = latestCommand
         self.running = running
+        self.requestNonce = requestNonce
+        self.responseIssuedAtEpochSeconds = responseIssuedAtEpochSeconds
+        self.signature = signature
     }
+
+    public func signed(
+        token: String,
+        request: LocalRemoteRequest,
+        issuedAt: Date = Date()
+    ) -> LocalRemoteResponse {
+        var response = self
+        response.requestNonce = request.nonce
+        response.responseIssuedAtEpochSeconds = Int64(issuedAt.timeIntervalSince1970)
+        response.signature = Self.signature(
+            token: token,
+            request: request,
+            response: response
+        )
+        return response
+    }
+
+    public func isAuthorized(
+        token: String,
+        request: LocalRemoteRequest,
+        now: Date = Date(),
+        allowedClockSkew: TimeInterval = 120
+    ) -> Bool {
+        guard !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              requestNonce == request.nonce,
+              let responseIssuedAtEpochSeconds,
+              let signature,
+              !signature.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        let age = abs(now.timeIntervalSince1970 - TimeInterval(responseIssuedAtEpochSeconds))
+        guard age <= allowedClockSkew else {
+            return false
+        }
+        let expected = Self.signature(
+            token: token,
+            request: request,
+            response: self
+        )
+        return LocalRemoteRequest.timingSafeEqual(signature.lowercased(), expected.lowercased())
+    }
+
+    public static func signature(
+        token: String,
+        request: LocalRemoteRequest,
+        response: LocalRemoteResponse
+    ) -> String {
+        guard let requestNonce = response.requestNonce,
+              let responseIssuedAtEpochSeconds = response.responseIssuedAtEpochSeconds else {
+            return ""
+        }
+        let body = LocalRemoteResponseSignatureBody(
+            requestAction: request.action,
+            requestKind: request.kind,
+            requestNonce: request.nonce,
+            requestIssuedAtEpochSeconds: request.issuedAtEpochSeconds,
+            responseRequestNonce: requestNonce,
+            responseIssuedAtEpochSeconds: responseIssuedAtEpochSeconds,
+            ok: response.ok,
+            message: response.message,
+            status: response.status,
+            latestCommand: response.latestCommand,
+            running: response.running
+        )
+        guard let payload = try? JSONEncoder.klmsLocalRemoteSignature.encode(body) else {
+            return ""
+        }
+        #if canImport(CryptoKit)
+        let key = SymmetricKey(data: Data(token.utf8))
+        let code = HMAC<SHA256>.authenticationCode(for: payload, using: key)
+        return code.map { String(format: "%02x", $0) }.joined()
+        #else
+        return ""
+        #endif
+    }
+}
+
+private struct LocalRemoteResponseSignatureBody: Codable {
+    var requestAction: LocalRemoteAction
+    var requestKind: RemoteCommandKind?
+    var requestNonce: String
+    var requestIssuedAtEpochSeconds: Int64
+    var responseRequestNonce: String
+    var responseIssuedAtEpochSeconds: Int64
+    var ok: Bool
+    var message: String
+    var status: SanitizedRemoteStatus
+    var latestCommand: RemoteRunCommand?
+    var running: Bool
 }
 
 public enum LocalRemoteClientError: LocalizedError, Sendable {
@@ -527,7 +626,7 @@ public enum LocalRemoteClientError: LocalizedError, Sendable {
         case let .connectionFailed(message):
             "\(message.isEmpty ? "Mac 앱에 연결하지 못했습니다." : message) 같은 Wi-Fi에 연결되어 있는지, Mac 앱이 켜져 있는지, iOS 로컬 네트워크 권한을 허용했는지 확인해 주세요."
         case .invalidResponse:
-            "Mac 앱 응답을 해석하지 못했습니다."
+            "Mac 앱 응답을 인증하거나 해석하지 못했습니다."
         case let .serverRejected(message):
             message
         }
@@ -576,6 +675,9 @@ public struct LocalRemoteClient: Sendable {
         }
 
         let response = try JSONDecoder.klmsLocalRemote.decode(LocalRemoteResponse.self, from: responseData)
+        guard response.isAuthorized(token: token, request: request) else {
+            throw LocalRemoteClientError.invalidResponse
+        }
         if !response.ok {
             throw LocalRemoteClientError.serverRejected(response.message)
         }
@@ -672,6 +774,12 @@ public extension JSONEncoder {
     static var klmsLocalRemote: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    static var klmsLocalRemoteSignature: JSONEncoder {
+        let encoder = JSONEncoder.klmsLocalRemote
+        encoder.outputFormatting = [.sortedKeys]
         return encoder
     }
 }

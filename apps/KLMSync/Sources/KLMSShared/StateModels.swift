@@ -150,12 +150,14 @@ public extension LegacySyncState.Content {
         var nextAssignmentRecords: [StateItem] = []
         var nextExamItems: [StateItem] = []
         var nextExamCandidates: [StateItem] = []
+        var nextHelpDeskItems: [StateItem] = []
         var assignmentIndexes: [String: Int] = [:]
         var candidateIndexes: [String: Int] = [:]
         var completedIndexes: [String: Int] = [:]
         var recordIndexes: [String: Int] = [:]
         var examIndexes: [String: Int] = [:]
         var examCandidateIndexes: [String: Int] = [:]
+        var helpDeskIndexes: [String: Int] = [:]
 
         func upsert(_ item: StateItem, into items: inout [StateItem], indexes: inout [String: Int]) {
             let key = item.dashboardIdentityKey
@@ -223,6 +225,17 @@ public extension LegacySyncState.Content {
             }
         }
 
+        func processHelpDesk(_ item: StateItem) {
+            let status = overrides.assignmentStatus(for: item)
+            if status == "completed" {
+                appendRecord(item.dashboardMarkedCompleted())
+            } else if status.isDashboardIgnoredAssignmentStatus {
+                appendRecord(item.dashboardMarkedRecordStatus(status))
+            } else {
+                upsert(item, into: &nextHelpDeskItems, indexes: &helpDeskIndexes)
+            }
+        }
+
         for record in assignmentRecords {
             let status = overrides.assignmentStatus(for: record)
             if status == "completed" {
@@ -276,6 +289,11 @@ public extension LegacySyncState.Content {
         }
         updated.examItems = nextExamItems.sorted(by: StateItem.dashboardSort)
         updated.examCandidates = nextExamCandidates.sorted(by: StateItem.dashboardSort)
+
+        for item in helpDeskItems {
+            processHelpDesk(item)
+        }
+        updated.helpDeskItems = nextHelpDeskItems.sorted(by: StateItem.dashboardSort)
         return updated
     }
 }

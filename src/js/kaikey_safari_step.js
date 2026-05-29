@@ -44,15 +44,19 @@ function run(argv) {
 function advanceUntilTerminal(windowRef, tab, targetUrl, displayName, maxSeconds, pollMs, options) {
   const deadline = Date.now() + maxSeconds * 1000;
   let lastPayload = { status: "waiting" };
+  let submittedLogin = false;
 
   while (Date.now() < deadline) {
     const payload = advanceOneStep(windowRef, tab, targetUrl, displayName, options);
+    if (payload.status === "login_submitted") {
+      submittedLogin = true;
+    }
     if (safariBackgroundWindowEnabled()) {
       prepareBackgroundWindow(windowRef);
     }
-    lastPayload = payload;
+    lastPayload = Object.assign({}, payload, { submittedLogin });
     if (isTerminalStatus(payload.status)) {
-      return payload;
+      return lastPayload;
     }
     delay(pollMs / 1000);
   }
@@ -62,7 +66,12 @@ function advanceUntilTerminal(windowRef, tab, targetUrl, displayName, maxSeconds
 }
 
 function isTerminalStatus(status) {
-  return status === "authenticated" || status === "twofactor_digits" || status === "error";
+  return (
+    status === "authenticated" ||
+    status === "twofactor_digits" ||
+    status === "twofactor_pending" ||
+    status === "error"
+  );
 }
 
 function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
@@ -78,22 +87,16 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
 
   const urlLower = url.toLowerCase();
 
-  if (
-    urlLower.includes("klms.kaist.ac.kr") &&
-    !urlLower.includes("/login/") &&
-    !urlLower.includes("ssologin.php")
-  ) {
-    if (klmsPageLooksAuthenticated(tab)) {
-      return { status: "authenticated", url, title: readTitle(tab) };
-    }
-    tab.url = "https://klms.kaist.ac.kr/login/ssologin.php";
-    if (safariBackgroundWindowEnabled()) {
-      prepareBackgroundWindow(windowRef);
+  if (looksLikeAuthenticatedKlmsUrl(urlLower)) {
+    const page = readKlmsPageLoadState(tab);
+    if (page.loaded) {
+      return { status: "authenticated", url: page.href || url, title: page.title || readTitle(tab) };
     }
     return {
-      status: "navigated",
-      reason: "unverified-klms-page",
-      url
+      status: "waiting",
+      reason: "klms-page-loading",
+      url,
+      title: page.title || readTitle(tab)
     };
   }
 
@@ -158,6 +161,10 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
   }
 
   if (urlLower.includes("sso.kaist.ac.kr/auth/twofactor/mfa/login2factor")) {
+    if (String(options["check-authenticated"] || "") === "1") {
+      return checkAuthenticatedWithoutLeavingTwofactor(targetUrl, url, options);
+    }
+
     if (String(options["refresh-twofactor"] || "") === "1") {
       tab.url = targetUrl;
       if (safariBackgroundWindowEnabled()) {
@@ -204,31 +211,104 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
   return { status: "waiting", url };
 }
 
+function checkAuthenticatedWithoutLeavingTwofactor(targetUrl, sourceUrl, options = {}) {
+  const safari = Application("/Applications/Safari.app");
+  const frontmostApp = frontmostApplicationName();
+  let checkWindow = null;
+  try {
+    checkWindow = createSafariWindow(safari, true);
+    if (!checkWindow) {
+      return twofactorPending(sourceUrl, "no-check-window");
+    }
+    prepareBackgroundWindow(checkWindow);
+    const checkTab = resolveTab(checkWindow);
+    if (!checkTab) {
+      return twofactorPending(sourceUrl, "no-check-tab");
+    }
+
+    checkTab.url = targetUrl;
+    prepareBackgroundWindow(checkWindow);
+    const deadline = Date.now() + authCheckMilliseconds(options);
+    let lastUrl = sourceUrl;
+    let pendingReason = "phone-approval-pending";
+    while (Date.now() < deadline) {
+      lastUrl = safeString(() => checkTab.url()) || lastUrl;
+      const lower = lastUrl.toLowerCase();
+      if (looksLikeAuthenticatedKlmsUrl(lower)) {
+        const page = readKlmsPageLoadState(checkTab);
+        if (page.loaded) {
+          return {
+            status: "authenticated",
+            method: "dashboard-check-window",
+            url: page.href || lastUrl,
+            title: page.title || readTitle(checkTab)
+          };
+        }
+        pendingReason = "dashboard-check-loading";
+      }
+      if (
+        lower.includes("klms.kaist.ac.kr/login/") ||
+        lower.includes("ssologin.php") ||
+        lower.includes("sso.kaist.ac.kr/auth/kaist/user/login/view")
+      ) {
+        pendingReason = "dashboard-check-login-required";
+      }
+      delay(0.1);
+    }
+    return twofactorPending(sourceUrl, pendingReason);
+  } finally {
+    closeWindow(checkWindow);
+    restoreFrontmostApplication(frontmostApp);
+  }
+}
+
+function authCheckMilliseconds(options = {}) {
+  const seconds = Number(options["auth-check-seconds"] || envValue("KAIKEY_AUTH_CHECK_SECONDS") || "1.2");
+  const bounded = Math.max(0.2, Math.min(3, Number.isFinite(seconds) ? seconds : 1.2));
+  return bounded * 1000;
+}
+
+function twofactorPending(url, reason) {
+  return {
+    status: "twofactor_pending",
+    reason: reason || "phone-approval-pending",
+    method: "dashboard-check-window",
+    url
+  };
+}
+
 function readTitle(tab) {
   return safeString(() => tab.name());
 }
 
-function klmsPageLooksAuthenticated(tab) {
+function looksLikeAuthenticatedKlmsUrl(url) {
+  const lower = String(url || "").toLowerCase();
+  return (
+    lower.includes("klms.kaist.ac.kr") &&
+    !lower.includes("/login/") &&
+    !lower.includes("ssologin.php")
+  );
+}
+
+function readKlmsPageLoadState(tab) {
   const result = runPageScript(tab, `
 (() => {
-  const html = String(document.documentElement?.innerHTML || "").toLowerCase();
-  const text = String(document.body?.innerText || "").toLowerCase();
-  const tokens = [
-    "logout",
-    "로그아웃",
-    "세션 연장",
-    "/login/logout.php",
-    "/course/view.php",
-    "main-course-list",
-    "list-box",
-    "나의 강좌",
-    "my courses"
-  ];
-  return JSON.stringify({ ok: tokens.some((token) => html.includes(token) || text.includes(token)) });
+  const href = String(window.location?.href || "");
+  const title = String(document.title || "");
+  const readyState = String(document.readyState || "");
+  const bodyTextLength = document.body && document.body.innerText ? document.body.innerText.length : 0;
+  return JSON.stringify({ href, title, readyState, bodyTextLength });
 })();
 `);
   const payload = parseJson(result);
-  return payload.ok === true;
+  const readyState = String(payload.readyState || "");
+  const title = String(payload.title || "");
+  const bodyTextLength = Number(payload.bodyTextLength || 0);
+  const loaded =
+    looksLikeAuthenticatedKlmsUrl(payload.href) &&
+    (readyState === "interactive" || readyState === "complete") &&
+    (title.trim().length > 0 || bodyTextLength > 0);
+  return Object.assign({}, payload, { loaded });
 }
 
 function parseOptions(argv) {
@@ -347,6 +427,17 @@ function prepareBackgroundWindow(windowRef) {
     windowRef.miniaturized = true;
   } catch (_error) {
     // Login assist can still scrape the page if minimizing is unavailable.
+  }
+}
+
+function closeWindow(windowRef) {
+  if (!windowRef) {
+    return;
+  }
+  try {
+    windowRef.close();
+  } catch (_error) {
+    // A temporary auth-check window may already be gone if Safari redirects slowly.
   }
 }
 

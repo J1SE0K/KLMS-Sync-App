@@ -159,7 +159,7 @@ final class CompanionModel: ObservableObject {
     }
 
     var authSuccessMessage: String? {
-        guard hasAuthCompletionStatus else {
+        guard shouldShowAuthCompletion else {
             return nil
         }
         return status.authStatusMessage

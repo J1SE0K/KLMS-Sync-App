@@ -51,6 +51,23 @@ class VerifySyncStateTests(unittest.TestCase):
         self.assertEqual(checks["calendar_exam_count_matches_state"]["status"], "warn")
         self.assertEqual(payload["calendar"]["error"], "Calendar access was not granted.")
 
+    def test_reminder_verification_counts_marked_items_not_only_open_items(self) -> None:
+        checks = verify_sync_state.live_reminder_checks(
+            {
+                "reminders_assignment_list_exists": True,
+                "reminders_assignment_active_count": 8,
+                "reminders_assignment_marker_count": 9,
+            },
+            assignment_count=9,
+        )
+
+        by_name = {item["name"]: item for item in checks}
+        self.assertEqual(by_name["reminders_assignment_count_matches_state"]["status"], "ok")
+        self.assertEqual(
+            by_name["reminders_assignment_count_matches_state"]["detail"],
+            "active=8 markers=9 state=9",
+        )
+
     def test_notice_file_calendar_and_reminder_coverage_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
