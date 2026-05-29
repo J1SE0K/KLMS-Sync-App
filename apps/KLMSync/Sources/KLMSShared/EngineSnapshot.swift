@@ -624,22 +624,295 @@ public struct EngineSnapshotStore: Sendable {
 
 public struct VerifyResult: Decodable, Sendable, Equatable {
     public var status: String
+    public var notices: VerifyNoticeSummary?
+    public var files: VerifyFileSummary?
+    public var state: VerifyStateSummary?
+    public var calendar: VerifyCalendarSummary?
+    public var reminders: VerifyRemindersSummary?
     public var checks: [VerifyCheck]
 
     enum CodingKeys: String, CodingKey {
         case status
+        case notices
+        case files
+        case state
+        case calendar
+        case reminders
         case checks
     }
 
-    public init(status: String = "missing", checks: [VerifyCheck] = []) {
+    public init(
+        status: String = "missing",
+        notices: VerifyNoticeSummary? = nil,
+        files: VerifyFileSummary? = nil,
+        state: VerifyStateSummary? = nil,
+        calendar: VerifyCalendarSummary? = nil,
+        reminders: VerifyRemindersSummary? = nil,
+        checks: [VerifyCheck] = []
+    ) {
         self.status = status
+        self.notices = notices
+        self.files = files
+        self.state = state
+        self.calendar = calendar
+        self.reminders = reminders
         self.checks = checks
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         status = container.decodeIfPresentDefault(String.self, forKey: .status, default: "missing")
+        notices = try? container.decodeIfPresent(VerifyNoticeSummary.self, forKey: .notices)
+        files = try? container.decodeIfPresent(VerifyFileSummary.self, forKey: .files)
+        state = try? container.decodeIfPresent(VerifyStateSummary.self, forKey: .state)
+        calendar = try? container.decodeIfPresent(VerifyCalendarSummary.self, forKey: .calendar)
+        reminders = try? container.decodeIfPresent(VerifyRemindersSummary.self, forKey: .reminders)
         checks = container.decodeIfPresentDefault([VerifyCheck].self, forKey: .checks, default: [])
+    }
+}
+
+public struct VerifyNoticeSummary: Decodable, Sendable, Equatable {
+    public var digestCount: Int
+    public var renderedCount: Int
+    public var missingCount: Int
+    public var examCandidateCount: Int
+    public var missingExamCandidateCount: Int
+    public var assignmentCandidateCount: Int
+    public var missingAssignmentCandidateCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case digestCount = "digest_count"
+        case renderedCount = "rendered_count"
+        case missingCount = "missing_count"
+        case examCandidateCount = "exam_candidate_count"
+        case missingExamCandidateCount = "missing_exam_candidate_count"
+        case assignmentCandidateCount = "assignment_candidate_count"
+        case missingAssignmentCandidateCount = "missing_assignment_candidate_count"
+    }
+
+    public init(
+        digestCount: Int = 0,
+        renderedCount: Int = 0,
+        missingCount: Int = 0,
+        examCandidateCount: Int = 0,
+        missingExamCandidateCount: Int = 0,
+        assignmentCandidateCount: Int = 0,
+        missingAssignmentCandidateCount: Int = 0
+    ) {
+        self.digestCount = digestCount
+        self.renderedCount = renderedCount
+        self.missingCount = missingCount
+        self.examCandidateCount = examCandidateCount
+        self.missingExamCandidateCount = missingExamCandidateCount
+        self.assignmentCandidateCount = assignmentCandidateCount
+        self.missingAssignmentCandidateCount = missingAssignmentCandidateCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        digestCount = container.decodeIfPresentDefault(Int.self, forKey: .digestCount, default: 0)
+        renderedCount = container.decodeIfPresentDefault(Int.self, forKey: .renderedCount, default: 0)
+        missingCount = container.decodeIfPresentDefault(Int.self, forKey: .missingCount, default: 0)
+        examCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .examCandidateCount, default: 0)
+        missingExamCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .missingExamCandidateCount, default: 0)
+        assignmentCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .assignmentCandidateCount, default: 0)
+        missingAssignmentCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .missingAssignmentCandidateCount, default: 0)
+    }
+}
+
+public struct VerifyFileSummary: Decodable, Sendable, Equatable {
+    public var manifestFileCount: Int
+    public var missingFileCount: Int
+    public var derivedAssignmentCount: Int
+    public var missingDerivedAssignmentCount: Int
+    public var derivedExamCount: Int
+    public var missingDerivedExamCount: Int
+    public var classificationError: String
+
+    enum CodingKeys: String, CodingKey {
+        case manifestFileCount = "manifest_file_count"
+        case missingFileCount = "missing_file_count"
+        case derivedAssignmentCount = "derived_assignment_count"
+        case missingDerivedAssignmentCount = "missing_derived_assignment_count"
+        case derivedExamCount = "derived_exam_count"
+        case missingDerivedExamCount = "missing_derived_exam_count"
+        case classificationError = "classification_error"
+    }
+
+    public init(
+        manifestFileCount: Int = 0,
+        missingFileCount: Int = 0,
+        derivedAssignmentCount: Int = 0,
+        missingDerivedAssignmentCount: Int = 0,
+        derivedExamCount: Int = 0,
+        missingDerivedExamCount: Int = 0,
+        classificationError: String = ""
+    ) {
+        self.manifestFileCount = manifestFileCount
+        self.missingFileCount = missingFileCount
+        self.derivedAssignmentCount = derivedAssignmentCount
+        self.missingDerivedAssignmentCount = missingDerivedAssignmentCount
+        self.derivedExamCount = derivedExamCount
+        self.missingDerivedExamCount = missingDerivedExamCount
+        self.classificationError = classificationError
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        manifestFileCount = container.decodeIfPresentDefault(Int.self, forKey: .manifestFileCount, default: 0)
+        missingFileCount = container.decodeIfPresentDefault(Int.self, forKey: .missingFileCount, default: 0)
+        derivedAssignmentCount = container.decodeIfPresentDefault(Int.self, forKey: .derivedAssignmentCount, default: 0)
+        missingDerivedAssignmentCount = container.decodeIfPresentDefault(Int.self, forKey: .missingDerivedAssignmentCount, default: 0)
+        derivedExamCount = container.decodeIfPresentDefault(Int.self, forKey: .derivedExamCount, default: 0)
+        missingDerivedExamCount = container.decodeIfPresentDefault(Int.self, forKey: .missingDerivedExamCount, default: 0)
+        classificationError = container.decodeIfPresentDefault(String.self, forKey: .classificationError, default: "")
+    }
+}
+
+public struct VerifyStateSummary: Decodable, Sendable, Equatable {
+    public var assignmentCount: Int
+    public var assignmentCandidateCount: Int
+    public var completedAssignmentCount: Int
+    public var assignmentRecordCount: Int
+    public var examCount: Int
+    public var examCandidateCount: Int
+    public var pastExamCount: Int
+    public var missingExamInfoCount: Int
+    public var helpdeskCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case assignmentCount = "assignment_count"
+        case assignmentCandidateCount = "assignment_candidate_count"
+        case completedAssignmentCount = "completed_assignment_count"
+        case assignmentRecordCount = "assignment_record_count"
+        case examCount = "exam_count"
+        case examCandidateCount = "exam_candidate_count"
+        case pastExamCount = "past_exam_count"
+        case missingExamInfoCount = "missing_exam_info_count"
+        case helpdeskCount = "helpdesk_count"
+    }
+
+    public init(
+        assignmentCount: Int = 0,
+        assignmentCandidateCount: Int = 0,
+        completedAssignmentCount: Int = 0,
+        assignmentRecordCount: Int = 0,
+        examCount: Int = 0,
+        examCandidateCount: Int = 0,
+        pastExamCount: Int = 0,
+        missingExamInfoCount: Int = 0,
+        helpdeskCount: Int = 0
+    ) {
+        self.assignmentCount = assignmentCount
+        self.assignmentCandidateCount = assignmentCandidateCount
+        self.completedAssignmentCount = completedAssignmentCount
+        self.assignmentRecordCount = assignmentRecordCount
+        self.examCount = examCount
+        self.examCandidateCount = examCandidateCount
+        self.pastExamCount = pastExamCount
+        self.missingExamInfoCount = missingExamInfoCount
+        self.helpdeskCount = helpdeskCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        assignmentCount = container.decodeIfPresentDefault(Int.self, forKey: .assignmentCount, default: 0)
+        assignmentCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .assignmentCandidateCount, default: 0)
+        completedAssignmentCount = container.decodeIfPresentDefault(Int.self, forKey: .completedAssignmentCount, default: 0)
+        assignmentRecordCount = container.decodeIfPresentDefault(Int.self, forKey: .assignmentRecordCount, default: 0)
+        examCount = container.decodeIfPresentDefault(Int.self, forKey: .examCount, default: 0)
+        examCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .examCandidateCount, default: 0)
+        pastExamCount = container.decodeIfPresentDefault(Int.self, forKey: .pastExamCount, default: 0)
+        missingExamInfoCount = container.decodeIfPresentDefault(Int.self, forKey: .missingExamInfoCount, default: 0)
+        helpdeskCount = container.decodeIfPresentDefault(Int.self, forKey: .helpdeskCount, default: 0)
+    }
+}
+
+public struct VerifyCalendarSummary: Decodable, Sendable, Equatable {
+    public var examCount: Int
+    public var helpdeskCount: Int
+    public var legacyAssignmentExists: Bool
+    public var legacyAlertExists: Bool
+    public var error: String
+    public var resultTotals: VerifyCalendarResultTotals?
+
+    enum CodingKeys: String, CodingKey {
+        case examCount = "exam_count"
+        case helpdeskCount = "helpdesk_count"
+        case legacyAssignmentExists = "legacy_assignment_exists"
+        case legacyAlertExists = "legacy_alert_exists"
+        case error
+        case resultTotals = "result_totals"
+    }
+
+    public init(
+        examCount: Int = 0,
+        helpdeskCount: Int = 0,
+        legacyAssignmentExists: Bool = false,
+        legacyAlertExists: Bool = false,
+        error: String = "",
+        resultTotals: VerifyCalendarResultTotals? = nil
+    ) {
+        self.examCount = examCount
+        self.helpdeskCount = helpdeskCount
+        self.legacyAssignmentExists = legacyAssignmentExists
+        self.legacyAlertExists = legacyAlertExists
+        self.error = error
+        self.resultTotals = resultTotals
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        examCount = container.decodeIfPresentDefault(Int.self, forKey: .examCount, default: 0)
+        helpdeskCount = container.decodeIfPresentDefault(Int.self, forKey: .helpdeskCount, default: 0)
+        legacyAssignmentExists = container.decodeIfPresentDefault(Bool.self, forKey: .legacyAssignmentExists, default: false)
+        legacyAlertExists = container.decodeIfPresentDefault(Bool.self, forKey: .legacyAlertExists, default: false)
+        error = container.decodeIfPresentDefault(String.self, forKey: .error, default: "")
+        resultTotals = try? container.decodeIfPresent(VerifyCalendarResultTotals.self, forKey: .resultTotals)
+    }
+}
+
+public struct VerifyCalendarResultTotals: Decodable, Sendable, Equatable {
+    public var exam: Int
+    public var helpdesk: Int
+
+    public init(exam: Int = 0, helpdesk: Int = 0) {
+        self.exam = exam
+        self.helpdesk = helpdesk
+    }
+}
+
+public struct VerifyRemindersSummary: Decodable, Sendable, Equatable {
+    public var assignmentActiveCount: Int
+    public var assignmentMarkerCount: Int
+    public var assignmentListExists: Bool
+    public var error: String
+
+    enum CodingKeys: String, CodingKey {
+        case assignmentActiveCount = "assignment_active_count"
+        case assignmentMarkerCount = "assignment_marker_count"
+        case assignmentListExists = "assignment_list_exists"
+        case error
+    }
+
+    public init(
+        assignmentActiveCount: Int = 0,
+        assignmentMarkerCount: Int = 0,
+        assignmentListExists: Bool = false,
+        error: String = ""
+    ) {
+        self.assignmentActiveCount = assignmentActiveCount
+        self.assignmentMarkerCount = assignmentMarkerCount
+        self.assignmentListExists = assignmentListExists
+        self.error = error
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        assignmentActiveCount = container.decodeIfPresentDefault(Int.self, forKey: .assignmentActiveCount, default: 0)
+        assignmentMarkerCount = container.decodeIfPresentDefault(Int.self, forKey: .assignmentMarkerCount, default: 0)
+        assignmentListExists = container.decodeIfPresentDefault(Bool.self, forKey: .assignmentListExists, default: false)
+        error = container.decodeIfPresentDefault(String.self, forKey: .error, default: "")
     }
 }
 

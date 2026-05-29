@@ -17,6 +17,7 @@ struct MenuBarRootView: View {
                 showingSettings: $showingSettings
             )
             CommandPanelView(model: model)
+            ExternalIntegrationStatusView(model: model)
 
             SectionPickerView(selection: $selectedSection)
                 .onChange(of: selectedSection) { _, _ in
@@ -175,6 +176,309 @@ private struct StatusChipView: View {
             .padding(.vertical, 5)
             .foregroundStyle(color)
             .background(color.opacity(0.11), in: Capsule())
+    }
+}
+
+private struct ExternalIntegrationStatusView: View {
+    @ObservedObject var model: KLMSMacModel
+    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
+
+    var body: some View {
+        let verify = model.snapshot.verifyResult
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("연동 상태", systemImage: "link")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text(summaryText(for: verify))
+                    .font(.caption2)
+                    .foregroundStyle(summaryColor(for: verify))
+                Button {
+                    Task { await model.run(.verify) }
+                } label: {
+                    Label("상태 검사", systemImage: "checkmark.seal")
+                }
+                .disabled(model.runningCommand != nil)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                IntegrationStatusTile(
+                    title: "앱 권한",
+                    systemImage: "key",
+                    value: appPermissionValue,
+                    detail: appPermissionDetail,
+                    health: appPermissionHealth
+                )
+                IntegrationStatusTile(
+                    title: "메모",
+                    systemImage: "note.text",
+                    value: notesValue(for: verify),
+                    detail: notesDetail(for: verify),
+                    health: notesHealth(for: verify)
+                )
+                IntegrationStatusTile(
+                    title: "캘린더",
+                    systemImage: "calendar",
+                    value: calendarValue(for: verify),
+                    detail: calendarDetail(for: verify),
+                    health: calendarHealth(for: verify)
+                )
+                IntegrationStatusTile(
+                    title: "미리 알림",
+                    systemImage: "checklist",
+                    value: remindersValue(for: verify),
+                    detail: remindersDetail(for: verify),
+                    health: remindersHealth(for: verify)
+                )
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var appPermissionHealth: IntegrationHealth {
+        if model.runningCommand == .doctor {
+            return .running
+        }
+        if model.permissionProbeRows.isEmpty {
+            return model.appDiagnostics.codeSigning.needsAttention ? .warning : .unknown
+        }
+        return model.permissionProbeRows.contains(where: \.isWarning) ? .warning : .ok
+    }
+
+    private var appPermissionValue: String {
+        if model.permissionProbeRows.isEmpty {
+            return model.appDiagnostics.codeSigning.needsAttention ? "권한 확인 필요" : "검사 전"
+        }
+        let warnings = model.permissionProbeRows.filter(\.isWarning).count
+        return warnings == 0 ? "권한 OK" : "\(warnings)개 확인 필요"
+    }
+
+    private var appPermissionDetail: String {
+        if let message = model.permissionStatusMessage, !message.isEmpty {
+            return message
+        }
+        return model.appDiagnostics.codeSigning.statusTitle
+    }
+
+    private func summaryText(for verify: VerifyResult?) -> String {
+        if model.runningCommand == .verify {
+            return "검사 중"
+        }
+        guard let verify else {
+            return "상태 검사 필요"
+        }
+        return verify.status.klmsLocalizedStatus
+    }
+
+    private func summaryColor(for verify: VerifyResult?) -> Color {
+        if model.runningCommand == .verify {
+            return .blue
+        }
+        guard let verify else {
+            return .secondary
+        }
+        switch verify.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "ok":
+            return .green
+        case "warn", "warning":
+            return .orange
+        case "fail", "failed", "error":
+            return .red
+        default:
+            return .secondary
+        }
+    }
+
+    private func notesHealth(for verify: VerifyResult?) -> IntegrationHealth {
+        if model.runningCommand == .verify || model.runningCommand == .noticeSync || model.runningCommand == .fullSync {
+            return .running
+        }
+        guard let verify else {
+            return .unknown
+        }
+        if hasIssue(namedWithPrefix: "notice", in: verify.checks) {
+            return .warning
+        }
+        guard let notices = verify.notices else {
+            return .unknown
+        }
+        return notices.missingCount == 0 ? .ok : .warning
+    }
+
+    private func notesValue(for verify: VerifyResult?) -> String {
+        guard let verify else {
+            return "검사 전"
+        }
+        guard let notices = verify.notices else {
+            return "요약 없음"
+        }
+        if notices.missingCount > 0 {
+            return "\(notices.missingCount)개 누락"
+        }
+        return "\(notices.renderedCount)/\(notices.digestCount)개 반영"
+    }
+
+    private func notesDetail(for verify: VerifyResult?) -> String {
+        guard let notices = verify?.notices else {
+            return "상태 검사를 누르면 KLMS 공지와 확인한 공지 반영 상태를 확인합니다."
+        }
+        let candidates = "시험 후보 \(notices.examCandidateCount) · 과제 후보 \(notices.assignmentCandidateCount)"
+        if notices.missingExamCandidateCount > 0 || notices.missingAssignmentCandidateCount > 0 {
+            return "\(candidates) · 후보 누락 \(notices.missingExamCandidateCount + notices.missingAssignmentCandidateCount)"
+        }
+        return candidates
+    }
+
+    private func calendarHealth(for verify: VerifyResult?) -> IntegrationHealth {
+        if model.runningCommand == .verify || model.runningCommand == .coreSync || model.runningCommand == .fullSync {
+            return .running
+        }
+        guard let verify else {
+            return .unknown
+        }
+        if hasIssue(namedWithPrefix: "calendar", in: verify.checks) {
+            return .warning
+        }
+        guard let calendar = verify.calendar else {
+            return .unknown
+        }
+        return calendar.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .ok : .warning
+    }
+
+    private func calendarValue(for verify: VerifyResult?) -> String {
+        guard let calendar = verify?.calendar else {
+            return "검사 전"
+        }
+        if !calendar.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "오류"
+        }
+        return "시험 \(calendar.examCount) · 헬프 \(calendar.helpdeskCount)"
+    }
+
+    private func calendarDetail(for verify: VerifyResult?) -> String {
+        guard let calendar = verify?.calendar else {
+            return "시험과 헬프데스크 일정이 캘린더와 맞는지 확인합니다."
+        }
+        if let totals = calendar.resultTotals {
+            return "최근 반영 결과: 시험 \(totals.exam) · 헬프 \(totals.helpdesk)"
+        }
+        return "이전 캘린더 잔재: \(calendar.legacyAssignmentExists || calendar.legacyAlertExists ? "있음" : "없음")"
+    }
+
+    private func remindersHealth(for verify: VerifyResult?) -> IntegrationHealth {
+        if model.runningCommand == .verify || model.runningCommand == .coreSync || model.runningCommand == .fullSync {
+            return .running
+        }
+        guard let verify else {
+            return .unknown
+        }
+        if hasIssue(namedWithPrefix: "reminders", in: verify.checks) {
+            return .warning
+        }
+        guard let reminders = verify.reminders else {
+            return .unknown
+        }
+        if !reminders.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .warning
+        }
+        return reminders.assignmentListExists ? .ok : .warning
+    }
+
+    private func remindersValue(for verify: VerifyResult?) -> String {
+        guard let reminders = verify?.reminders else {
+            return "검사 전"
+        }
+        if !reminders.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "오류"
+        }
+        return "\(reminders.assignmentActiveCount)개 활성"
+    }
+
+    private func remindersDetail(for verify: VerifyResult?) -> String {
+        guard let reminders = verify?.reminders else {
+            return "과제가 미리 알림 목록과 맞는지 확인합니다."
+        }
+        return "마커 \(reminders.assignmentMarkerCount)개 · 목록 \(reminders.assignmentListExists ? "있음" : "없음")"
+    }
+
+    private func hasIssue(namedWithPrefix prefix: String, in checks: [VerifyCheck]) -> Bool {
+        checks.contains { check in
+            check.name.hasPrefix(prefix)
+                && ["fail", "failed", "error", "warn", "warning"].contains(
+                    check.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                )
+        }
+    }
+}
+
+private enum IntegrationHealth {
+    case ok
+    case warning
+    case unknown
+    case running
+
+    var label: String {
+        switch self {
+        case .ok:
+            "정상"
+        case .warning:
+            "확인 필요"
+        case .unknown:
+            "미확인"
+        case .running:
+            "검사 중"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .ok:
+            .green
+        case .warning:
+            .orange
+        case .unknown:
+            .secondary
+        case .running:
+            .blue
+        }
+    }
+}
+
+private struct IntegrationStatusTile: View {
+    var title: String
+    var systemImage: String
+    var value: String
+    var detail: String
+    var health: IntegrationHealth
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 5) {
+                Label(title, systemImage: systemImage)
+                    .font(.caption2.weight(.semibold))
+                Spacer(minLength: 4)
+                Text(health.label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(health.color)
+            }
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            Text(detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
+        .padding(8)
+        .background(health.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(health.color.opacity(0.18), lineWidth: 1)
+        }
     }
 }
 

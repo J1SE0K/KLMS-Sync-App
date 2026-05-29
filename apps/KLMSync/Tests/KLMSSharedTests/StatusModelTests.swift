@@ -373,6 +373,54 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(verify.checks.first?.message, "state mismatch")
     }
 
+    func testParsesVerifyIntegrationSummaries() throws {
+        let json = """
+        {
+          "status": "ok",
+          "notices": {
+            "digest_count": 65,
+            "rendered_count": 65,
+            "missing_count": 0,
+            "exam_candidate_count": 2,
+            "missing_exam_candidate_count": 0,
+            "assignment_candidate_count": 2,
+            "missing_assignment_candidate_count": 0
+          },
+          "state": {
+            "assignment_count": 3,
+            "exam_count": 2,
+            "helpdesk_count": 1,
+            "past_exam_count": 0,
+            "missing_exam_info_count": 0
+          },
+          "calendar": {
+            "exam_count": 2,
+            "helpdesk_count": 1,
+            "legacy_assignment_exists": false,
+            "legacy_alert_exists": false,
+            "error": "",
+            "result_totals": {"exam": 2, "helpdesk": 1}
+          },
+          "reminders": {
+            "assignment_active_count": 3,
+            "assignment_marker_count": 3,
+            "assignment_list_exists": true,
+            "error": ""
+          },
+          "checks": []
+        }
+        """
+
+        let verify = try JSONDecoder().decode(VerifyResult.self, from: Data(json.utf8))
+
+        XCTAssertEqual(verify.notices?.renderedCount, 65)
+        XCTAssertEqual(verify.notices?.examCandidateCount, 2)
+        XCTAssertEqual(verify.state?.assignmentCount, 3)
+        XCTAssertEqual(verify.calendar?.resultTotals?.exam, 2)
+        XCTAssertEqual(verify.reminders?.assignmentActiveCount, 3)
+        XCTAssertEqual(verify.reminders?.assignmentListExists, true)
+    }
+
     func testVerifyManifestIssueExplainsFileSyncMismatch() throws {
         let json = """
         {
