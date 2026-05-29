@@ -105,6 +105,32 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
 
             self.assertEqual(result.stdout.strip(), "1:1:0:1:0:0:0.012:300:0")
 
+    def test_runtime_override_path_environment_overrides_config_file(self) -> None:
+        common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = root / "config.env"
+            config.write_text(
+                'OVERRIDES_JSON_PATH="/tmp/config-manual-assignment-overrides.json"\n',
+                encoding="utf-8",
+            )
+
+            app_overrides = root / "canonical" / "manual_assignment_overrides.json"
+            script = f"""
+            source {common}
+            export OVERRIDES_JSON_PATH={app_overrides}
+            klms_init_context {root / "run_all_full.sh"} {config}
+            print -- "$OVERRIDES_JSON_PATH"
+            """
+            result = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.stdout.strip(), str(app_overrides))
+
     def test_readonly_entrypoints_default_to_installed_data_dir_from_source_checkout(self) -> None:
         common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
         with tempfile.TemporaryDirectory() as tmp:
@@ -164,6 +190,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('KLMS_LOGIN_STATUS_REUSE_SECONDS": "21600"', app_model)
         self.assertIn('KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS": "0"', app_model)
         self.assertIn('KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED": "1"', app_model)
+        self.assertIn('"OVERRIDES_JSON_PATH": paths.overridesURL.path', app_model)
         self.assertIn('KAIKEY_AUTHENTICATED_RECHECK_SECONDS": "1"', app_model)
         self.assertIn('KAIKEY_AUTH_CHECK_SECONDS": "1.2"', app_model)
         self.assertIn('KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS": "60"', app_model)
