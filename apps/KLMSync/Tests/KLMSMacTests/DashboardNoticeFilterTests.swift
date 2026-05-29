@@ -2,6 +2,11 @@ import XCTest
 @testable import KLMSMac
 
 final class DashboardNoticeFilterTests: XCTestCase {
+    func testDashboardDetailKindIncludesFullFileList() {
+        XCTAssertEqual(DashboardDetailKind.files.title, "파일 목록")
+        XCTAssertTrue(DashboardDetailKind.allCases.contains(.files))
+    }
+
     func testAllCategoryShowsHiddenNoticesInsideHiddenOnlyArchive() {
         XCTAssertTrue(
             NoticeListCategory.all.matches(

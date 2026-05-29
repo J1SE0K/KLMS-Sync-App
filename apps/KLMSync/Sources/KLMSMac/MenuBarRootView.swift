@@ -1061,6 +1061,7 @@ private struct DashboardSummaryView: View {
                 Metric("완료 기록", completedAssignmentCount, detail: .assignmentRecords),
                 Metric("과제 후보", assignmentCandidateCount, detail: .assignmentCandidates),
                 Metric("시험 후보", examCandidateCount, detail: .examCandidates),
+                Metric("파일 목록", snapshot.courseFileManifest.count, detail: .files),
                 Metric("삭제된 파일", prunedCount, detail: .pruned),
                 Metric("보관함", hiddenCount, detail: .hidden),
             ].filter { $0.value > 0 }
@@ -1450,7 +1451,7 @@ private struct PreviewPanelView: View {
 
 private struct FilesPanelView: View {
     @ObservedObject var model: KLMSMacModel
-    @State private var selectedDetail = DashboardDetailKind.newFiles
+    @State private var selectedDetail = DashboardDetailKind.files
 
     private var snapshot: EngineSnapshot {
         model.snapshot
@@ -1460,7 +1461,7 @@ private struct FilesPanelView: View {
         SectionBox(title: "파일") {
             if let preview = snapshot.filePreview {
                 MetricGrid(metrics: [
-                    Metric("파일 목록", preview.manifestCount),
+                    Metric("파일 목록", preview.manifestCount, detail: .files),
                     Metric("실제 파일", preview.actualFileCount),
                     Metric("새 URL", preview.newURLCount, detail: .newFiles),
                     Metric("이동", preview.movedCount),

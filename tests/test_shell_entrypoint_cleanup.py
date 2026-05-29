@@ -524,6 +524,21 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertNotIn('Text("전체").tag("full")', file_picker)
         self.assertNotIn('configToggle("강제 재다운로드"', settings)
 
+    def test_mac_app_exposes_full_file_manifest_list(self) -> None:
+        menu = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
+        detail = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "DashboardDetailView.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('Metric("파일 목록", snapshot.courseFileManifest.count, detail: .files)', menu)
+        self.assertIn('Metric("파일 목록", preview.manifestCount, detail: .files)', menu)
+        self.assertIn("@State private var selectedDetail = DashboardDetailKind.files", menu)
+        self.assertIn("case files", detail)
+        self.assertIn("FileManifestListView(filters: filters, model: model)", detail)
+        self.assertIn("model.snapshot.courseFileManifest.compactMap", detail)
+
     def test_safari_automation_uses_background_windows_by_default(self) -> None:
         fetch_text = (PROJECT_DIR / "src" / "js" / "fetch_pages_with_safari.js").read_text(
             encoding="utf-8"
