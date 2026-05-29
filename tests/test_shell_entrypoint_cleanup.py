@@ -72,6 +72,11 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
                         'NOTICE_COLLAPSE_NOTICE_ITEMS="0"',
                         'NOTICE_NATIVE_ALWAYS_CAPTURE_STATE="1"',
                         'NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY="0"',
+                        'NOTICE_NATIVE_POST_RENDER_VERIFY="1"',
+                        'NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED="1"',
+                        'NOTICE_NATIVE_SELECTION_SETTLE_SECONDS="1.0"',
+                        'KLMS_LOGIN_STATUS_REUSE_SECONDS="900"',
+                        'KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS="150"',
                     ]
                 ),
                 encoding="utf-8",
@@ -83,8 +88,13 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
             export NOTICE_COLLAPSE_NOTICE_ITEMS=1
             export NOTICE_NATIVE_ALWAYS_CAPTURE_STATE=0
             export NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY=1
+            export NOTICE_NATIVE_POST_RENDER_VERIFY=0
+            export NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED=0
+            export NOTICE_NATIVE_SELECTION_SETTLE_SECONDS=0.012
+            export KLMS_LOGIN_STATUS_REUSE_SECONDS=300
+            export KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS=0
             klms_init_context {root / "sync_klms_notice.sh"} {config}
-            print -- "$NOTICE_COLLAPSE_COURSES:$NOTICE_COLLAPSE_NOTICE_ITEMS:$NOTICE_NATIVE_ALWAYS_CAPTURE_STATE:$NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY"
+            print -- "$NOTICE_COLLAPSE_COURSES:$NOTICE_COLLAPSE_NOTICE_ITEMS:$NOTICE_NATIVE_ALWAYS_CAPTURE_STATE:$NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY:$NOTICE_NATIVE_POST_RENDER_VERIFY:$NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED:$NOTICE_NATIVE_SELECTION_SETTLE_SECONDS:$KLMS_LOGIN_STATUS_REUSE_SECONDS:$KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS"
             """
             result = subprocess.run(
                 ["/bin/zsh", "-c", script],
@@ -93,7 +103,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
                 text=True,
             )
 
-            self.assertEqual(result.stdout.strip(), "1:1:0:1")
+            self.assertEqual(result.stdout.strip(), "1:1:0:1:0:0:0.012:300:0")
 
     def test_readonly_entrypoints_default_to_installed_data_dir_from_source_checkout(self) -> None:
         common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
@@ -135,30 +145,55 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("KLMS_LOGIN_STATUS_REUSE_SECONDS", text)
         self.assertIn("klms_recent_login_status_ok", text)
         self.assertIn('[[ -s "$CACHE_DIR/dashboard.json" ]]', text)
-        self.assertIn('fast_tab_state" != "login_required"', text)
+        self.assertIn('"${KLMS_APP_RUN:-0}" == "1"', text)
+        self.assertIn('if klms_recent_login_status_ok; then', text)
         self.assertIn('KLMS_LOGIN_STATUS_REUSE_SECONDS="900"', config)
 
-    def test_app_run_skips_redundant_login_preflight_checks(self) -> None:
+    def test_app_run_forces_login_preflight_for_sync_buttons(self) -> None:
         common = (PROJECT_DIR / "src" / "sh" / "klms_common.sh").read_text(encoding="utf-8")
         app_model = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
         ).read_text(encoding="utf-8")
+        app_entry = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacApp.swift"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('KLMS_LOGIN_ASSIST_ENABLED": "1"', app_model)
         self.assertIn('KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": "1"', app_model)
+        self.assertIn('KLMS_FORCE_LOGIN_PREFLIGHT": "1"', app_model)
+        self.assertIn('KLMS_LOGIN_STATUS_REUSE_SECONDS": "21600"', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS": "0"', app_model)
+        self.assertIn('KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED": "1"', app_model)
+        self.assertIn('KAIKEY_AUTHENTICATED_RECHECK_SECONDS": "1"', app_model)
+        self.assertIn('KAIKEY_AUTH_CHECK_SECONDS": "1.2"', app_model)
+        self.assertIn('KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS": "60"', app_model)
         self.assertNotIn("KLMS_LOGIN_ALWAYS_ASSIST_ENABLED", app_model)
         self.assertIn('"${KLMS_APP_RUN:-0}" == "1"', common)
+        self.assertIn('"$force_login_preflight" != "1"', common)
+        self.assertIn('if [[ "$fast_tab_state" == "authenticated" ]]', common)
+        self.assertIn('klms_recent_login_status_ok', common)
         self.assertIn("KLMS_PARENT_LOGIN_ASSIST_READY", common)
         self.assertIn("KLMS_LOGIN_ASSIST_READY=1", common)
         self.assertIn('KLMS_USE_EXISTING_DASHBOARD="${KLMS_LOGIN_PREFETCH_READY:-0}"', common)
         self.assertIn('KLMS_PARENT_LOGIN_PREFLIGHT_READY="${KLMS_LOGIN_PREFETCH_READY:-0}"', common)
+        self.assertIn("startRunningCommandStatusPoll", app_model)
+        self.assertIn("loginStatusWasConfirmed", app_model)
+        self.assertIn("configurePassiveSnapshotRefresh", app_model)
+        self.assertIn("passiveSnapshotRefreshIntervalNanoseconds", app_model)
+        self.assertIn("showLoginTransition: true", app_model)
+        self.assertIn("EngineSnapshotStore(paths: self.paths).load()", app_model)
+        self.assertIn("cancelCommandBeforeTermination", app_model)
+        self.assertIn("applicationShouldTerminate", app_entry)
+        self.assertIn(".terminateLater", app_entry)
         self.assertNotIn("KLMS_LOGIN_ALWAYS_ASSIST_ENABLED", common)
 
-    def test_app_run_trusts_successful_login_assist_without_dashboard_preflight(self) -> None:
+    def test_forced_app_login_preflight_ignores_recent_cache(self) -> None:
         common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            marker = root / "fetch-called"
             (root / "src" / "python").mkdir(parents=True)
+            (root / "src" / "python" / "klms_sync_v2").mkdir(parents=True)
             (root / "src" / "js").mkdir(parents=True)
             (root / "src" / "sh").mkdir(parents=True)
             (root / "config.env").write_text(
@@ -166,20 +201,109 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
                     [
                         'KLMS_LOGIN_ASSIST_ENABLED="1"',
                         'KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="1"',
+                        'KLMS_LOGIN_FAST_TAB_CHECK_ENABLED="0"',
                     ]
                 ),
                 encoding="utf-8",
             )
+            (root / "src" / "python" / "fetch_pages_backend.py").write_text(
+                f"""
+import json
+import sys
+from pathlib import Path
+
+Path({str(marker)!r}).write_text("1", encoding="utf-8")
+out = next(arg.split("=", 1)[1] for arg in sys.argv if arg.startswith("--out="))
+with open(out, "w", encoding="utf-8") as handle:
+    json.dump([{{"url": "https://klms.kaist.ac.kr/my/", "title": "강의 현황", "html": ""}}], handle)
+print("fetch-ok")
+""".lstrip(),
+                encoding="utf-8",
+            )
+            (root / "src" / "python" / "klms_sync_v2" / "__init__.py").write_text("", encoding="utf-8")
+            (root / "src" / "python" / "klms_sync_v2" / "cli.py").write_text(
+                """
+import json
+
+print(json.dumps({"status": "ok"}))
+""".lstrip(),
+                encoding="utf-8",
+            )
+
+            script = f"""
+            source {common}
+            export PYTHONPATH={root / "src" / "python"}
+            export KLMS_APP_RUN=1
+            export KLMS_FORCE_LOGIN_PREFLIGHT=1
+            export KLMS_LOGIN_STATUS_REUSE_SECONDS=21600
+            klms_init_context {root / "run_all_full.sh"} {root / "config.env"}
+            mkdir -p "$CACHE_DIR"
+            print -- '{{"checked_at_epoch":'$(date +%s)',"logged_in":true}}' > "$KLMS_LOGIN_STATUS_PATH"
+            print -- '[{{"url":"https://klms.kaist.ac.kr/my/","title":"강의 현황","html":""}}]' > "$CACHE_DIR/dashboard.json"
+            klms_require_login
+            print -- "$KLMS_LOGIN_PREFETCH_READY"
+            """
+            result = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertTrue(marker.exists(), result.stdout + result.stderr)
+            self.assertEqual(result.stdout.strip().splitlines()[-1], "1")
+            self.assertIn("preflight start", result.stderr)
+
+    def test_app_run_checks_dashboard_before_login_assist(self) -> None:
+        common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src" / "python").mkdir(parents=True)
+            (root / "src" / "python" / "klms_sync_v2").mkdir(parents=True)
+            (root / "src" / "js").mkdir(parents=True)
+            (root / "src" / "sh").mkdir(parents=True)
+            (root / "config.env").write_text(
+                "\n".join(
+                    [
+                        'KLMS_LOGIN_ASSIST_ENABLED="1"',
+                        'KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="1"',
+                        'KLMS_LOGIN_FAST_TAB_CHECK_ENABLED="0"',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (root / "src" / "python" / "fetch_pages_backend.py").write_text(
+                """
+import json
+import sys
+
+out = next(arg.split("=", 1)[1] for arg in sys.argv if arg.startswith("--out="))
+with open(out, "w", encoding="utf-8") as handle:
+    json.dump([{"url": "https://klms.kaist.ac.kr/my/", "title": "강의 현황", "html": ""}], handle)
+print("fetch-ok")
+""".lstrip(),
+                encoding="utf-8",
+            )
+            (root / "src" / "python" / "klms_sync_v2" / "__init__.py").write_text("", encoding="utf-8")
+            (root / "src" / "python" / "klms_sync_v2" / "cli.py").write_text(
+                """
+import json
+
+print(json.dumps({"status": "ok"}))
+""".lstrip(),
+                encoding="utf-8",
+            )
+            assist_marker = root / "assist-called"
             helper = root / "kaikey_auto_login.sh"
             helper.write_text(
-                "#!/bin/zsh\nprint -- 'status=ok stage=authenticated'\n",
+                f"#!/bin/zsh\nprint -r -- called > {assist_marker}\nprint -- 'status=ok stage=authenticated'\n",
                 encoding="utf-8",
             )
             helper.chmod(0o755)
 
             script = f"""
             source {common}
-            export PYTHONPATH={PROJECT_DIR / "src" / "python"}
+            export PYTHONPATH={root / "src" / "python"}
             export KLMS_APP_RUN=1
             klms_init_context {root / "run_all_full.sh"} {root / "config.env"}
             klms_require_login
@@ -192,9 +316,8 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
                 text=True,
             )
 
-            self.assertIn("status=ok stage=authenticated", result.stdout)
-            self.assertEqual(result.stdout.strip().splitlines()[-1], "0:1")
-            self.assertNotIn("klms-login-preflight", result.stdout + result.stderr)
+            self.assertFalse(assist_marker.exists(), result.stdout + result.stderr)
+            self.assertEqual(result.stdout.strip().splitlines()[-1], "1:0")
             self.assertNotIn("KLMS 로그인이 풀린", result.stdout + result.stderr)
 
     def test_app_run_stops_when_login_assist_fails(self) -> None:
@@ -202,6 +325,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "src" / "python").mkdir(parents=True)
+            (root / "src" / "python" / "klms_sync_v2").mkdir(parents=True)
             (root / "src" / "js").mkdir(parents=True)
             (root / "src" / "sh").mkdir(parents=True)
             (root / "config.env").write_text(
@@ -210,8 +334,30 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
                         'KLMS_LOGIN_ASSIST_ENABLED="1"',
                         'KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="1"',
                         'KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE="0"',
+                        'KLMS_LOGIN_FAST_TAB_CHECK_ENABLED="0"',
                     ]
                 ),
+                encoding="utf-8",
+            )
+            (root / "src" / "python" / "fetch_pages_backend.py").write_text(
+                """
+import json
+import sys
+
+out = next(arg.split("=", 1)[1] for arg in sys.argv if arg.startswith("--out="))
+with open(out, "w", encoding="utf-8") as handle:
+    json.dump([{"url": "https://sso.kaist.ac.kr/login", "title": "Single Sign On", "html": ""}], handle)
+print("fetch-login")
+""".lstrip(),
+                encoding="utf-8",
+            )
+            (root / "src" / "python" / "klms_sync_v2" / "__init__.py").write_text("", encoding="utf-8")
+            (root / "src" / "python" / "klms_sync_v2" / "cli.py").write_text(
+                """
+import json
+
+print(json.dumps({"status": "login_required", "message": "login required"}))
+""".lstrip(),
                 encoding="utf-8",
             )
             helper = root / "kaikey_auto_login.sh"
@@ -223,7 +369,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
 
             script = f"""
             source {common}
-            export PYTHONPATH={PROJECT_DIR / "src" / "python"}
+            export PYTHONPATH={root / "src" / "python"}
             export KLMS_APP_RUN=1
             klms_init_context {root / "run_all_full.sh"} {root / "config.env"}
             klms_require_login
@@ -316,6 +462,9 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('"$ALL_WEEK_COURSE_CHANGED_COUNT" == "0"', text)
         self.assertIn('"$FILE_SEED_URL_LIST_CHANGED" == "0"', text)
         self.assertIn("deep file page fetch skipped reason=no-course-or-url-change", text)
+        self.assertIn("TRACKED_FILE_MISSING_COUNT", text)
+        self.assertIn("restore-missing-files-from-manifest", text)
+        self.assertNotIn("EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then\n  FILE_DEEP_FETCH_SKIPPED=1", text)
 
     def test_mac_app_files_sync_is_incremental_by_default(self) -> None:
         model = (
@@ -328,6 +477,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('"FILE_REFRESH_MODE": "auto"', model)
         self.assertIn('"FILE_FORCE_DOWNLOAD": "0"', model)
         self.assertIn('"FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": "1"', model)
+        self.assertIn('"FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS": "21600"', model)
         self.assertIn('Picker("파일 탐색 모드"', settings)
         self.assertIn('allowedValues: ["auto", "quick"]', settings)
         file_picker = settings.split('Picker("파일 탐색 모드"', 1)[1].split("}", 1)[0]
@@ -388,6 +538,8 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("LOGIN_PROMPT_DIGITS_FILE", text)
         self.assertIn('[[ "$auth_digits" == "$last_auth_digits" ]]', text)
         self.assertIn("login-prompt suppressed cooldown=%ss digits=%s", text)
+        self.assertIn("KAIST 인증 번호: ([0-9][0-9])", text)
+        self.assertNotIn("digits=([0-9][0-9])", text)
 
     def test_cleanup_tracked_downloads_can_preserve_archive_destinations(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "cleanup_tracked_downloads.js").read_text(
@@ -481,6 +633,9 @@ if (!cases.every((item) => looksLikeLoginPage(item))) {
 }
 if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", html: "<a href=\"/login/logout.php\">logout</a>" })) {
   throw new Error("authenticated logout page was classified as login");
+}
+if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=2", title: "CS.30000_2026_1 : Notice", html: "<h2>공지</h2><div>비밀번호 입력</div><input type=\"password\">" })) {
+  throw new Error("authenticated notice article password modal was classified as login");
 }
 """
         subprocess.run(
@@ -617,7 +772,7 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/my/", title: "KLMS", htm
         self.assertIn("notifyAuthCompletionIfNeeded()", model)
         self.assertIn("currentAuthStatusMessageForRemote", model)
         self.assertIn("status.authStatusMessage = authStatusMessage", model)
-        self.assertIn('phase != "failed"', model)
+        self.assertIn('phase == "running"', model)
         self.assertIn("status.loginRequired = false", model)
         self.assertIn('content.title = "KLMS 인증 완료"', model)
         self.assertIn('content.body = "로그인 인증이 완료됐습니다. 동기화를 계속 진행합니다."', model)

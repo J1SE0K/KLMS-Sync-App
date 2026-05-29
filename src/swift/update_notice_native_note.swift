@@ -4143,21 +4143,39 @@ func noticeDisplayModeName(_ mode: NoticeDisplayMode) -> String {
 }
 
 func shouldCollapseNoticeCourses(_ plan: RenderPlan) -> Bool {
-    collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty
+    initialNoticeCollapseEnabled && collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty
 }
 
 func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool {
-    collapseNoticeItemsEnabled && !plan.renderedNotices.isEmpty
+    initialNoticeCollapseEnabled && collapseNoticeItemsEnabled && !plan.renderedNotices.isEmpty
 }
 
 func shouldCollapseNoticeSections(_ plan: RenderPlan) -> Bool {
-    plan.mode == .primary
+    initialNoticeCollapseEnabled
+        && plan.mode == .primary
+        && collapseNoticeSectionsEnabled
         && (
-            collapseNoticeSectionsEnabled
-            || !plan.importantHeadingLineIndexes.isEmpty
+            !plan.importantHeadingLineIndexes.isEmpty
             || !plan.freshHeadingLineIndexes.isEmpty
             || !plan.unreadHeadingLineIndexes.isEmpty
         )
+}
+
+func shouldStyleNoticeSections(_ plan: RenderPlan) -> Bool {
+    plan.mode == .primary
+        && (
+            !plan.importantHeadingLineIndexes.isEmpty
+            || !plan.freshHeadingLineIndexes.isEmpty
+            || !plan.unreadHeadingLineIndexes.isEmpty
+        )
+}
+
+func shouldStyleNoticeCourses(_ plan: RenderPlan) -> Bool {
+    !plan.courseHeadingLineIndexes.isEmpty
+}
+
+func shouldStyleNoticeItems(_ plan: RenderPlan) -> Bool {
+    !plan.renderedNotices.isEmpty
 }
 
 func shouldApplyCollapsibleGroupStyle(_ plan: RenderPlan) -> Bool {
@@ -4165,9 +4183,9 @@ func shouldApplyCollapsibleGroupStyle(_ plan: RenderPlan) -> Bool {
         return false
     }
     return uiStyleMenuFormattingEnabled
-        || shouldCollapseNoticeSections(plan)
-        || shouldCollapseNoticeCourses(plan)
-        || shouldCollapseNoticeItems(plan)
+        || shouldStyleNoticeSections(plan)
+        || shouldStyleNoticeCourses(plan)
+        || shouldStyleNoticeItems(plan)
 }
 
 func isDocumentHeaderLineIndex(_ index: Int, plan: RenderPlan) -> Bool {
@@ -4406,6 +4424,8 @@ func renderNativeNoteOnce(
     let effectiveCollapseCoursesEnabled = shouldCollapseNoticeCourses(plan)
     let effectiveCollapseNoticeItemsEnabled = shouldCollapseNoticeItems(plan)
     let effectiveCollapseSectionsEnabled = shouldCollapseNoticeSections(plan)
+    let effectiveStyleCoursesEnabled = shouldStyleNoticeCourses(plan)
+    let effectiveStyleNoticeItemsEnabled = shouldStyleNoticeItems(plan)
     let effectiveCollapsibleGroupStyleFormattingEnabled = shouldApplyCollapsibleGroupStyle(plan)
     timingLog("render_body_start note=\(noteTitle)")
     renderBodyLines(
@@ -4767,7 +4787,7 @@ func renderNativeNoteOnce(
             applyStyle(heading, menuItems: noticeTitleStyleMenuItems, fallbackToBold: true)
         }
 
-        if effectiveCollapseCoursesEnabled {
+        if effectiveStyleCoursesEnabled {
             for (offset, index) in plan.courseHeadingLineIndexes.enumerated() {
                 let fallback = plan.courseHeadingRanges[offset]
                 applyStyle(
@@ -4778,7 +4798,7 @@ func renderNativeNoteOnce(
             }
         }
 
-        if effectiveCollapseNoticeItemsEnabled {
+        if effectiveStyleNoticeItemsEnabled {
             for notice in plan.renderedNotices {
                 let titleRange = lineRange(notice.sectionLineIndex, fallback: notice.sectionRange)
                 applyStyle(titleRange, menuItems: noticeSubheadingStyleMenuItems, fallbackToBold: true)
@@ -4961,6 +4981,13 @@ func renderNativeNote(
     )
     if firstPass.issues.isEmpty {
         return firstPass.collapsedSections
+    }
+    if !conservativeRenderFallbackEnabled {
+        let preview = firstPass.issues.prefix(8).joined(separator: " | ")
+        fail(
+            "Detected unexpected checklist layout in \(noteTitle) after chunked render; "
+                + "line-by-line conservative render is disabled: \(preview)"
+        )
     }
 
     debugLog(

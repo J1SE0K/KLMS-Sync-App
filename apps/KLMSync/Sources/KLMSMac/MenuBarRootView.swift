@@ -124,6 +124,9 @@ private struct QuickStatusStripView: View {
             return model.currentPhaseText ?? "실행 중"
         }
         if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "최근 실행 중단됨"
+            }
             return result.succeeded ? "최근 실행 성공" : "최근 실행 실패"
         }
         if let report = model.snapshot.syncReport {
@@ -137,6 +140,9 @@ private struct QuickStatusStripView: View {
             return "arrow.triangle.2.circlepath"
         }
         if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "stop.circle.fill"
+            }
             return result.succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
         }
         return model.snapshot.syncReport == nil ? "circle.dashed" : "doc.text.magnifyingglass"
@@ -147,6 +153,9 @@ private struct QuickStatusStripView: View {
             return .blue
         }
         if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return .secondary
+            }
             return result.succeeded ? .green : .orange
         }
         return model.snapshot.syncReport == nil ? .secondary : .blue
@@ -415,6 +424,8 @@ private struct HeaderView: View {
 private struct CommandOutputPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var showingFullOutput = false
+    private static let maxRenderedOutputCharacters = 80_000
+    private static let trimmedOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
     var body: some View {
         let output = commandOutput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -434,7 +445,7 @@ private struct CommandOutputPanelView: View {
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     } label: {
-                        Text("전체 원본 로그")
+                        Text("최근 원본 로그")
                             .font(.caption)
                     }
                 }
@@ -444,9 +455,15 @@ private struct CommandOutputPanelView: View {
 
     private var commandOutput: String {
         if !model.liveCommandOutput.isEmpty {
-            return model.liveCommandOutput.klmsDisplayText
+            return Self.boundedOutput(model.liveCommandOutput.klmsDisplayText)
         }
-        return model.lastCommandResult?.combinedOutput.klmsDisplayText ?? ""
+        guard let result = model.lastCommandResult else {
+            return ""
+        }
+        let output = result.wasCancelled
+            ? result.combinedOutput.klmsDisplayText.klmsRedactingAuthDigitsForDisplay
+            : result.combinedOutput.klmsDisplayText
+        return Self.boundedOutput(output)
     }
 
     private var commandStatusText: String {
@@ -454,6 +471,9 @@ private struct CommandOutputPanelView: View {
             return "\(command.displayName) 실행 중"
         }
         if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "\(result.invocation.command.displayName) · 중단됨"
+            }
             return "\(result.invocation.command.displayName) · 종료 코드 \(result.exitCode)"
         }
         return "대기 중"
@@ -464,6 +484,9 @@ private struct CommandOutputPanelView: View {
             return .blue
         }
         if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return .secondary
+            }
             return result.succeeded ? Color.secondary : Color.orange
         }
         return .secondary
@@ -479,6 +502,14 @@ private struct CommandOutputPanelView: View {
 
     private func outputLineCount(_ output: String) -> Int {
         output.split(whereSeparator: \.isNewline).count
+    }
+
+    private static func boundedOutput(_ text: String) -> String {
+        guard text.count > maxRenderedOutputCharacters else {
+            return text
+        }
+        let suffixLength = max(0, maxRenderedOutputCharacters - trimmedOutputPrefix.count)
+        return trimmedOutputPrefix + String(text.suffix(suffixLength))
     }
 }
 
@@ -528,14 +559,19 @@ private struct DiagnosticCommandLogPanelView: View {
         }
 
         if let result = model.lastCommandResult {
-            let output = cleaned(result.combinedOutput)
+            let rawOutput = result.wasCancelled
+                ? result.combinedOutput.klmsDisplayText.klmsRedactingAuthDigitsForDisplay
+                : result.combinedOutput
+            let output = cleaned(rawOutput)
             if !output.isEmpty {
                 return DiagnosticLogSource(
                     title: "\(result.invocation.command.displayName) 마지막 실행 로그",
-                    detail: "\(result.startedAt.formatted(date: .numeric, time: .standard)) 시작 · 종료 코드 \(result.exitCode)",
-                    systemImage: result.succeeded ? "doc.text" : "exclamationmark.triangle",
+                    detail: result.wasCancelled
+                        ? "\(result.startedAt.formatted(date: .numeric, time: .standard)) 시작 · 사용자가 중단함"
+                        : "\(result.startedAt.formatted(date: .numeric, time: .standard)) 시작 · 종료 코드 \(result.exitCode)",
+                    systemImage: result.wasCancelled ? "stop.circle" : (result.succeeded ? "doc.text" : "exclamationmark.triangle"),
                     text: output,
-                    isWarning: !result.succeeded
+                    isWarning: !result.succeeded && !result.wasCancelled
                 )
             }
         }
@@ -577,14 +613,24 @@ private struct DiagnosticCommandLogPanelView: View {
         DiagnosticLogSource(
             title: "\(titlePrefix) · \(record.command.displayName) · \(record.statusText)",
             detail: "\(record.startedAt.formatted(date: .numeric, time: .standard)) 시작 · \(record.elapsedSecondsText)",
-            systemImage: record.succeeded ? "doc.text" : "exclamationmark.triangle",
+            systemImage: record.wasCancelled ? "stop.circle" : (record.succeeded ? "doc.text" : "exclamationmark.triangle"),
             text: cleaned(record.outputTail),
-            isWarning: !record.succeeded
+            isWarning: record.needsAttention
         )
     }
 
     private func cleaned(_ text: String) -> String {
-        text.klmsDisplayText.trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.boundedLogText(text.klmsDisplayText.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private static func boundedLogText(_ text: String) -> String {
+        let maxCharacters = 80_000
+        let prefix = "... 이전 로그 일부 생략됨 ...\n"
+        guard text.count > maxCharacters else {
+            return text
+        }
+        let suffixLength = max(0, maxCharacters - prefix.count)
+        return prefix + String(text.suffix(suffixLength))
     }
 
     private var doctorResultText: String {
@@ -693,25 +739,26 @@ private struct DashboardSummaryView: View {
             let snapshot = model.snapshot
             let report = snapshot.syncReport
             let state = snapshot.legacyState?.content
+            let counts = snapshot.visibleCounts
             let assignmentCandidateCount = state?.assignmentCandidates.count ?? 0
             let examCandidateCount = state?.examCandidates.count ?? 0
             let completedAssignmentCount = state?.completedAssignments.count ?? 0
             let prunedCount = report?.files.pruned ?? 0
-            let hiddenCount = DashboardHiddenMetric.count(snapshot: snapshot)
+            let hiddenCount = snapshot.hiddenSummary.total
             let visibleMetrics = [
-                Metric("과제", state?.assignments.count ?? report?.state.assignments ?? 0, detail: .assignments),
-                Metric("시험", state?.examItems.count ?? report?.state.exams ?? 0, detail: .exams),
-                Metric("헬프데스크", state?.helpDeskItems.count ?? report?.state.helpdesk ?? 0, detail: .helpDesk),
-                Metric("공지", report?.notices.total ?? snapshot.noticeDigest?.noticeCount ?? 0, detail: .notices),
-                Metric("새 파일", report?.files.newFiles ?? snapshot.downloadResult?.newFilesCopiedCount ?? 0, detail: .newFiles),
-                Metric("격리", report?.files.quarantine ?? snapshot.quarantineReport?.quarantineCount ?? 0, detail: .quarantine),
+                Metric("과제", counts.assignments, detail: .assignments),
+                Metric("시험", counts.exams, detail: .exams),
+                Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
+                Metric("공지", counts.notices, detail: .notices),
+                Metric("새 파일", counts.newFiles, detail: .newFiles),
+                Metric("격리", counts.quarantine, detail: .quarantine),
                 Metric("캘린더", (report?.calendar.created ?? 0) + (report?.calendar.updated ?? 0) + (report?.calendar.deleted ?? 0), detail: .calendar),
             ] + [
                 Metric("완료 기록", completedAssignmentCount, detail: .assignmentRecords),
                 Metric("과제 후보", assignmentCandidateCount, detail: .assignmentCandidates),
                 Metric("시험 후보", examCandidateCount, detail: .examCandidates),
                 Metric("삭제된 파일", prunedCount, detail: .pruned),
-                Metric("숨김", hiddenCount, detail: .hidden),
+                Metric("보관함", hiddenCount, detail: .hidden),
             ].filter { $0.value > 0 }
             IssueSummaryView(issues: snapshot.issues)
             MetricGrid(metrics: visibleMetrics, selectedMetricID: selectedDetail.rawValue) { metric in
@@ -848,33 +895,6 @@ private struct NoticeMemoRowView: View {
         let title = (state.noteTitle.isEmpty ? label : state.noteTitle).klmsDisplayText
         let updated = (state.updatedAt.isEmpty ? "수정 시각 없음" : state.updatedAt).klmsDisplayText
         return "\(title) · \(state.renderedNoticeCount)건 · \(updated)"
-    }
-}
-
-private enum DashboardHiddenMetric {
-    static func count(snapshot: EngineSnapshot) -> Int {
-        let content = snapshot.legacyState?.content
-        let overrides = snapshot.manualOverrides
-        let assignmentCount = (
-            (content?.assignments ?? [])
-                + (content?.assignmentCandidates ?? [])
-                + (content?.completedAssignments ?? [])
-                + (content?.assignmentRecords ?? [])
-        )
-            .filter { overrides?.isAssignmentHidden($0) == true }
-            .reduce(into: Set<String>()) { keys, item in
-                keys.insert(item.id)
-            }
-            .count
-        let examCount = ((content?.examItems ?? []) + (content?.examCandidates ?? []))
-            .filter { overrides?.isExamHidden($0) == true }
-            .count
-        let noticeCount = (snapshot.noticeDigest?.notices ?? [])
-            .filter { snapshot.noticeUserState?.notices[$0.noticeIdentifier]?.hidden == true }
-            .count
-        let fileCount = snapshot.appUserState?.files.values.filter(\.isHiddenLike).count ?? 0
-        let quarantineCount = snapshot.appUserState?.quarantine.values.filter(\.isHiddenLike).count ?? 0
-        return assignmentCount + examCount + noticeCount + fileCount + quarantineCount
     }
 }
 
@@ -1154,8 +1174,9 @@ private struct FilesPanelView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let quarantine = snapshot.quarantineReport, quarantine.quarantineCount > 0 {
-                Text("격리 파일 \(quarantine.quarantineCount)개 · \(quarantine.quarantineRoot)")
+            let visibleFileCounts = snapshot.visibleCounts
+            if let quarantine = snapshot.quarantineReport, visibleFileCounts.quarantine > 0 {
+                Text("격리 파일 \(visibleFileCounts.quarantine)개 · \(quarantine.quarantineRoot)")
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .lineLimit(2)
@@ -1167,8 +1188,8 @@ private struct FilesPanelView: View {
                     Metric("복원", download.restoredFromArchiveCount),
                     Metric("재사용", download.reusedLoggedFileCount),
                     Metric("새 다운로드", download.freshDownloadCount, detail: .newFiles),
-                    Metric("새 파일 보관함", download.newFilesCopiedCount, detail: .newFiles),
-                    Metric("격리됨", download.quarantineCount, detail: .quarantine),
+                    Metric("새 파일 보관함", visibleFileCounts.newFiles, detail: .newFiles),
+                    Metric("격리됨", visibleFileCounts.quarantine, detail: .quarantine),
                 ], selectedMetricID: selectedDetail.rawValue) { metric in
                     if let detail = metric.detail {
                         selectedDetail = detail
@@ -1536,7 +1557,7 @@ private struct CommandHistoryRowView: View {
                 Spacer()
                 Text(record.statusText)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(record.succeeded ? .green : .orange)
+                    .foregroundStyle(statusColor)
             }
             Text("\(record.startedAt.formatted(date: .numeric, time: .standard)) · \(record.elapsedSecondsText)")
                 .font(.caption2)
@@ -1555,6 +1576,13 @@ private struct CommandHistoryRowView: View {
         }
         .padding(8)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var statusColor: Color {
+        if record.wasCancelled {
+            return .secondary
+        }
+        return record.succeeded ? .green : .orange
     }
 }
 

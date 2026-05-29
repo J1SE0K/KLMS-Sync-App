@@ -43,7 +43,7 @@ enum DashboardDetailKind: String, CaseIterable, Identifiable {
         case .calendar:
             "캘린더"
         case .hidden:
-            "숨긴 항목"
+            "보관함"
         }
     }
 }
@@ -67,7 +67,7 @@ struct DashboardDetailPanelView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if hiddenCount > 0, kind != .hidden {
-                    Text("숨김 \(hiddenCount)")
+                    Text("보관 \(hiddenCount)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -182,7 +182,7 @@ struct DashboardDetailPanelView: View {
     }
 
     private var hiddenCount: Int {
-        DashboardHiddenSummary(snapshot: model.snapshot).total
+        model.snapshot.hiddenSummary.total
     }
 }
 
@@ -243,13 +243,14 @@ private enum DashboardCourseFilter {
 
     private static func hiddenCourseOptions(snapshot: EngineSnapshot) -> [String] {
         var courses: [String] = []
-        let content = snapshot.legacyState?.content
+        let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content
         let overrides = snapshot.manualOverrides
         courses += (
             (content?.assignments ?? [])
                 + (content?.assignmentCandidates ?? [])
                 + (content?.completedAssignments ?? [])
                 + (content?.assignmentRecords ?? [])
+                + (content?.helpDeskItems ?? [])
         )
             .filter { overrides?.isAssignmentHidden($0) == true }
             .map(\.course)
@@ -259,6 +260,7 @@ private enum DashboardCourseFilter {
             snapshot.noticeUserState?.notices[$0.noticeIdentifier]?.hidden == true
         }.map(\.course)
         courses += snapshot.appUserState?.files.values.filter(\.isHiddenLike).map(\.course) ?? []
+        courses += snapshot.appUserState?.quarantine.values.filter(\.isHiddenLike).map(\.course) ?? []
         return courses
     }
 }
@@ -347,13 +349,14 @@ private enum DashboardTermFilter {
 
     private static func hiddenTerms(snapshot: EngineSnapshot) -> [AcademicTerm?] {
         var terms: [AcademicTerm?] = []
-        let content = snapshot.legacyState?.content
+        let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content
         let overrides = snapshot.manualOverrides
         terms += (
             (content?.assignments ?? [])
                 + (content?.assignmentCandidates ?? [])
                 + (content?.completedAssignments ?? [])
                 + (content?.assignmentRecords ?? [])
+                + (content?.helpDeskItems ?? [])
         )
             .filter { overrides?.isAssignmentHidden($0) == true }
             .map(\.academicTerm)
@@ -398,42 +401,6 @@ private extension DashboardDetailKind {
         default:
             false
         }
-    }
-}
-
-private struct DashboardHiddenSummary {
-    var assignments: Int
-    var exams: Int
-    var notices: Int
-    var files: Int
-    var quarantine: Int
-
-    init(snapshot: EngineSnapshot) {
-        let content = snapshot.legacyState?.content
-        let overrides = snapshot.manualOverrides
-        assignments = (
-            (content?.assignments ?? [])
-                + (content?.assignmentCandidates ?? [])
-                + (content?.completedAssignments ?? [])
-                + (content?.assignmentRecords ?? [])
-        )
-            .filter { overrides?.isAssignmentHidden($0) == true }
-            .reduce(into: Set<String>()) { keys, item in
-                keys.insert(item.id)
-            }
-            .count
-        exams = ((content?.examItems ?? []) + (content?.examCandidates ?? []))
-            .filter { overrides?.isExamHidden($0) == true }
-            .count
-        notices = (snapshot.noticeDigest?.notices ?? [])
-            .filter { snapshot.noticeUserState?.notices[$0.noticeIdentifier]?.hidden == true }
-            .count
-        files = snapshot.appUserState?.files.values.filter(\.isHiddenLike).count ?? 0
-        quarantine = snapshot.appUserState?.quarantine.values.filter(\.isHiddenLike).count ?? 0
-    }
-
-    var total: Int {
-        assignments + exams + notices + files + quarantine
     }
 }
 
@@ -903,11 +870,25 @@ private struct ExamOverrideEditor: View {
 private struct NoticeListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
-    @State private var category = NoticeListCategory.all
+    @State private var category: NoticeListCategory
+
+    init(
+        filters: DashboardDetailFilters,
+        defaultCategory: NoticeListCategory = .all,
+        model: KLMSMacModel
+    ) {
+        self.filters = filters
+        self.model = model
+        _category = State(initialValue: defaultCategory)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            NoticeCategoryPickerView(category: $category, snapshot: model.snapshot)
+            NoticeCategoryPickerView(
+                category: $category,
+                snapshot: model.snapshot,
+                hiddenOnly: filters.hiddenOnly
+            )
             noticeRows
         }
     }
@@ -952,7 +933,13 @@ private struct NoticeListView: View {
             guard filters.selectedCourse == DashboardCourseFilter.all || notice.course == filters.selectedCourse else {
                 return false
             }
-            guard category.matches(hidden: hidden, important: important, read: read, fresh: fresh) else {
+            guard category.matches(
+                hidden: hidden,
+                important: important,
+                read: read,
+                fresh: fresh,
+                hiddenOnly: filters.hiddenOnly
+            ) else {
                 return false
             }
             let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -964,7 +951,7 @@ private struct NoticeListView: View {
     }
 }
 
-private enum NoticeListCategory: String, CaseIterable, Identifiable {
+enum NoticeListCategory: String, CaseIterable, Identifiable {
     case all
     case important
     case fresh
@@ -991,20 +978,35 @@ private enum NoticeListCategory: String, CaseIterable, Identifiable {
         }
     }
 
-    func matches(hidden: Bool, important: Bool, read: Bool, fresh: Bool) -> Bool {
-        switch self {
-        case .all:
-            true
-        case .important:
-            important
-        case .fresh:
-            fresh
-        case .unread:
-            !read && !hidden
-        case .archived:
-            read && !important
-        case .hidden:
-            hidden
+    func matches(hidden: Bool, important: Bool, read: Bool, fresh: Bool, hiddenOnly: Bool = false) -> Bool {
+        if hiddenOnly {
+            switch self {
+            case .all, .hidden:
+                hidden
+            case .important:
+                important && hidden
+            case .fresh:
+                fresh && hidden
+            case .unread:
+                !read && hidden
+            case .archived:
+                read && !important && hidden
+            }
+        } else {
+            switch self {
+            case .all:
+                !hidden
+            case .important:
+                important && !hidden
+            case .fresh:
+                fresh && !hidden
+            case .unread:
+                !read && !hidden
+            case .archived:
+                read && !important && !hidden
+            case .hidden:
+                hidden
+            }
         }
     }
 }
@@ -1012,6 +1014,7 @@ private enum NoticeListCategory: String, CaseIterable, Identifiable {
 private struct NoticeCategoryPickerView: View {
     @Binding var category: NoticeListCategory
     var snapshot: EngineSnapshot
+    var hiddenOnly: Bool
 
     var body: some View {
         Picker("공지 분류", selection: $category) {
@@ -1032,7 +1035,13 @@ private struct NoticeCategoryPickerView: View {
                 ? interaction?.readAt != nil
                 : interaction?.readFingerprint == notice.fingerprint
             let fresh = notice.changeState == "new" || notice.changeState == "updated"
-            return category.matches(hidden: hidden, important: important, read: read, fresh: fresh)
+            return category.matches(
+                hidden: hidden,
+                important: important,
+                read: read,
+                fresh: fresh,
+                hiddenOnly: hiddenOnly
+            )
         }.count
     }
 }
@@ -1166,17 +1175,13 @@ private struct NewFilesListView: View {
     @ObservedObject var model: KLMSMacModel
 
     var body: some View {
-        let items = filteredItems
-        if items.isEmpty {
-            EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "새 파일이 없습니다.")
+        let files = filteredItems
+        if files.isEmpty {
+            EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 새 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "새 파일이 없습니다.")
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(items) { item in
-                    FileRowView(
-                        item: item,
-                        kind: .file,
-                        model: model
-                    )
+                ForEach(files) { item in
+                    FileRowView(item: item, kind: .file, model: model)
                 }
             }
         }
@@ -1281,7 +1286,7 @@ private struct HiddenItemsListView: View {
                 filters: filters,
                 model: model
             )
-            NoticeListView(filters: filters, model: model)
+            NoticeListView(filters: filters, defaultCategory: .hidden, model: model)
             hiddenFileRows
         }
     }
@@ -1305,21 +1310,23 @@ private struct HiddenItemsListView: View {
     }
 
     private var hiddenAssignments: [StateItem] {
-        let content = model.snapshot.legacyState?.content
+        let content = model.snapshot.rawLegacyState?.content ?? model.snapshot.legacyState?.content
         return (
             (content?.assignments ?? [])
                 + (content?.assignmentCandidates ?? [])
                 + (content?.completedAssignments ?? [])
                 + (content?.assignmentRecords ?? [])
+                + (content?.helpDeskItems ?? [])
         )
             .filter { model.snapshot.manualOverrides?.isAssignmentHidden($0) == true }
             .dedupedDashboardItems()
     }
 
     private var hiddenExams: [StateItem] {
-        let content = model.snapshot.legacyState?.content
+        let content = model.snapshot.rawLegacyState?.content ?? model.snapshot.legacyState?.content
         return ((content?.examItems ?? []) + (content?.examCandidates ?? []))
             .filter { model.snapshot.manualOverrides?.isExamHidden($0) == true }
+            .filter { !$0.isPastDashboardExamForApp }
     }
 
     private var hiddenFiles: [DashboardFileItem] {
@@ -1363,6 +1370,20 @@ private extension Array where Element == StateItem {
         return filter { item in
             seen.insert(item.id).inserted
         }
+    }
+}
+
+private extension StateItem {
+    var isPastDashboardExamForApp: Bool {
+        let normalizedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalizedCategory == "exam" || normalizedCategory == "exam_candidate" else {
+            return false
+        }
+        let rawDue = syncDue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawDue.isEmpty, let due = ISO8601DateFormatter().date(from: rawDue) else {
+            return false
+        }
+        return due < Date()
     }
 }
 

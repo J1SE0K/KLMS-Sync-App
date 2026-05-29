@@ -56,11 +56,14 @@ final class KLMSMacModel: ObservableObject {
     private let locator = EnginePayloadLocator()
     private var isBootstrapping = false
     private var remotePollingTask: Task<Void, Never>?
+    private var passiveSnapshotRefreshTask: Task<Void, Never>?
     private var localRemoteServer: LocalRemoteServer?
     private var notifiedAuthDigits = Set<String>()
     private var notifiedAuthCompletionForCurrentRun = false
+    private var authDigitsSeenForCurrentRun = false
     private var lastAuthCompletionAt: Date?
     private var authStatusClearTask: Task<Void, Never>?
+    private var runningCommandStatusPollTask: Task<Void, Never>?
     private var pasteboardClearTask: Task<Void, Never>?
     private var localRemoteFailedAuthCount = 0
     private var localRemoteBlockedUntil: Date?
@@ -71,6 +74,9 @@ final class KLMSMacModel: ObservableObject {
     private static let localRemoteTokenKey = "KLMSLocalRemoteToken"
     private static let localRemotePort: UInt16 = 18483
     private static let remotePollingIntervalNanoseconds: UInt64 = 20_000_000_000
+    private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
+    private static let liveCommandOutputMaxCharacters = 80_000
+    private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
     init() {
         remoteProcessingEnabled = UserDefaults.standard.bool(
@@ -92,7 +98,9 @@ final class KLMSMacModel: ObservableObject {
 
     deinit {
         remotePollingTask?.cancel()
+        passiveSnapshotRefreshTask?.cancel()
         pasteboardClearTask?.cancel()
+        runningCommandStatusPollTask?.cancel()
         localRemoteServer?.stop()
     }
 
@@ -111,18 +119,10 @@ final class KLMSMacModel: ObservableObject {
     }
 
     var currentAuthDigits: String? {
-        if let liveAuthDigits {
-            return liveAuthDigits
-        }
-        if let result = lastCommandResult,
-           let digits = result.authDigits,
-               Date().timeIntervalSince(result.finishedAt) <= 15 * 60 {
-            return digits
-        }
-        if authDigitsSuppressed {
+        guard runningCommand != nil, !authDigitsSuppressed else {
             return nil
         }
-        return snapshot.authDigits
+        return liveAuthDigits
     }
 
     var liveProgressLine: String? {
@@ -147,16 +147,26 @@ final class KLMSMacModel: ObservableObject {
             "KLMS_SCRIPT_NOTIFICATIONS_ENABLED": "0",
             "KLMS_LOGIN_ASSIST_ENABLED": "1",
             "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": "1",
+            "KLMS_FORCE_LOGIN_PREFLIGHT": "1",
+            "KLMS_LOGIN_STATUS_REUSE_SECONDS": "21600",
+            "KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS": "0",
+            "KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED": "1",
+            "KAIKEY_AUTHENTICATED_RECHECK_SECONDS": "1",
+            "KAIKEY_AUTH_CHECK_SECONDS": "1.2",
+            "KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS": "60",
             "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": "1",
             "NOTICE_NATIVE_STABLE_NOOP_SKIP": "1",
             "NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER": "0",
             "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER": "0",
             "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0",
+            "NOTICE_NATIVE_POST_RENDER_VERIFY": "1",
+            "NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED": "1",
+            "NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK": "0",
             "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT": "1",
             "NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT": "1",
-            "NOTICE_COLLAPSE_SECTIONS": "1",
+            "NOTICE_COLLAPSE_SECTIONS": "0",
             "NOTICE_COLLAPSE_COURSES": "1",
-            "NOTICE_COLLAPSE_NOTICE_ITEMS": "1",
+            "NOTICE_COLLAPSE_NOTICE_ITEMS": "0",
             "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS": "0",
             "NOTICE_NATIVE_BOLD_REINFORCE_LIMIT": "0",
             "NOTICE_NATIVE_VALIDATE_STYLE": "0",
@@ -168,6 +178,7 @@ final class KLMSMacModel: ObservableObject {
             "FILE_REFRESH_MODE": "auto",
             "FILE_FORCE_DOWNLOAD": "0",
             "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": "1",
+            "FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS": "21600",
         ]
     }
 
@@ -215,6 +226,7 @@ final class KLMSMacModel: ObservableObject {
             await requestAppPermissions(markAutomatic: true)
         }
         await refresh()
+        configurePassiveSnapshotRefresh()
         configureRemotePolling()
         configureLocalRemoteServer()
     }
@@ -261,10 +273,13 @@ final class KLMSMacModel: ObservableObject {
         authStatusMessage = nil
         authStatusClearTask?.cancel()
         authStatusClearTask = nil
+        runningCommandStatusPollTask?.cancel()
+        runningCommandStatusPollTask = nil
         isCancellingCommand = false
         authDigitsSuppressed = false
         notifiedAuthDigits.removeAll()
         notifiedAuthCompletionForCurrentRun = false
+        authDigitsSeenForCurrentRun = false
         lastAuthCompletionAt = nil
         if resetSnapshot {
             snapshot = EngineSnapshot()
@@ -352,8 +367,12 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func handleLocalRemoteRequest(_ request: LocalRemoteRequest) async -> LocalRemoteResponse {
+        func signed(_ response: LocalRemoteResponse) -> LocalRemoteResponse {
+            response.signed(token: localRemoteToken, request: request)
+        }
+
         guard authorizeLocalRemoteRequest(request) else {
-            return LocalRemoteResponse(ok: false, message: registerLocalRemoteAuthFailure())
+            return signed(LocalRemoteResponse(ok: false, message: registerLocalRemoteAuthFailure()))
         }
         localRemoteFailedAuthCount = 0
         localRemoteBlockedUntil = nil
@@ -361,7 +380,7 @@ final class KLMSMacModel: ObservableObject {
         case .status:
             let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
             snapshot = refreshedSnapshot
-            return LocalRemoteResponse(
+            return signed(LocalRemoteResponse(
                 ok: true,
                 message: localRemoteStatusMessage ?? "대기 중",
                 status: sanitizedRemoteStatus(
@@ -370,20 +389,20 @@ final class KLMSMacModel: ObservableObject {
                 ),
                 latestCommand: lastRemoteCommand,
                 running: runningCommand != nil
-            )
+            ))
         case .run:
             guard let kind = request.kind else {
-                return LocalRemoteResponse(ok: false, message: "실행할 명령이 없습니다.")
+                return signed(LocalRemoteResponse(ok: false, message: "실행할 명령이 없습니다."))
             }
             guard runningCommand == nil,
                   lastRemoteCommand?.status.isInFlight != true else {
-                return LocalRemoteResponse(
+                return signed(LocalRemoteResponse(
                     ok: false,
                     message: "이미 동기화가 실행 중입니다.",
                     status: sanitizedRemoteStatus(snapshot: snapshot, phase: "busy"),
                     latestCommand: lastRemoteCommand,
                     running: true
-                )
+                ))
             }
             let command = RemoteRunCommand(
                 kind: kind,
@@ -396,13 +415,13 @@ final class KLMSMacModel: ObservableObject {
             Task { [weak self] in
                 await self?.executeLocalRemoteCommand(command)
             }
-            return LocalRemoteResponse(
+            return signed(LocalRemoteResponse(
                 ok: true,
                 message: "\(kind.displayName) 실행을 시작했습니다.",
                 status: command.summary,
                 latestCommand: command,
                 running: true
-            )
+            ))
         }
     }
 
@@ -423,11 +442,11 @@ final class KLMSMacModel: ObservableObject {
 
     private func sanitizedRemoteStatus(snapshot: EngineSnapshot, phase: String) -> SanitizedRemoteStatus {
         var status = SanitizedRemoteStatus(snapshot: snapshot, phase: phase)
-        if let liveAuthDigits {
+        if phase == "running", let liveAuthDigits {
             status.loginRequired = true
             status.authDigits = liveAuthDigits
             status.authStatusMessage = nil
-        } else if phase != "failed",
+        } else if phase == "running",
                   let authStatusMessage = currentAuthStatusMessageForRemote() {
             status.loginRequired = false
             status.authDigits = nil
@@ -468,14 +487,11 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func currentAuthStatusMessageForRemote(now: Date = Date()) -> String? {
-        if let authStatusMessage {
-            return authStatusMessage
+        guard let lastAuthCompletionAt,
+              now.timeIntervalSince(lastAuthCompletionAt) <= 120 else {
+            return nil
         }
-        if let lastAuthCompletionAt,
-           now.timeIntervalSince(lastAuthCompletionAt) <= 120 {
-            return "인증 완료됨"
-        }
-        return nil
+        return authStatusMessage ?? "인증 완료됨"
     }
 
     private func copyToPasteboard(_ value: String) {
@@ -508,6 +524,25 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    private func configurePassiveSnapshotRefresh() {
+        passiveSnapshotRefreshTask?.cancel()
+        passiveSnapshotRefreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: Self.passiveSnapshotRefreshIntervalNanoseconds)
+                guard !Task.isCancelled, let self else {
+                    return
+                }
+                guard self.runningCommand == nil else {
+                    continue
+                }
+                self.reloadSnapshot(showLoginTransition: true)
+                self.commandHistory = CommandRunHistoryStore(url: self.paths.appHistoryURL).load()
+                self.latestBackup = AppDataBackupManager(paths: self.paths).latestBackup()
+                self.refreshLaunchAgentState()
+            }
+        }
+    }
+
     func refresh(clearDisplayLogs: Bool = false) async {
         if clearDisplayLogs {
             clearDisplayState(resetSnapshot: false)
@@ -520,13 +555,10 @@ final class KLMSMacModel: ObservableObject {
             }
         }
         let nextSnapshot = EngineSnapshotStore(paths: paths).load()
-        snapshot = nextSnapshot
+        applySnapshot(nextSnapshot, showLoginTransition: true)
         commandHistory = CommandRunHistoryStore(url: paths.appHistoryURL).load()
         latestBackup = AppDataBackupManager(paths: paths).latestBackup()
         refreshAppDiagnostics()
-        if nextSnapshot.authDigits == nil && liveAuthDigits == nil {
-            clearAuthNotifications()
-        }
         refreshLaunchAgentState()
     }
 
@@ -544,8 +576,13 @@ final class KLMSMacModel: ObservableObject {
         authDigitsSuppressed = false
         notifiedAuthDigits.removeAll()
         notifiedAuthCompletionForCurrentRun = false
+        authDigitsSeenForCurrentRun = false
         lastAuthCompletionAt = nil
+        let runStartedAt = Date()
+        startRunningCommandStatusPoll(startedAt: runStartedAt)
         defer {
+            runningCommandStatusPollTask?.cancel()
+            runningCommandStatusPollTask = nil
             runningCommand = nil
             isCancellingCommand = false
         }
@@ -564,13 +601,12 @@ final class KLMSMacModel: ObservableObject {
             }
             lastCommandResult = result
             commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(result)) ?? commandHistory
-            if result.loginAuthenticated {
-                await clearAuthDigitsState(showAuthenticatedMessage: true)
-            } else if let digits = result.authDigits {
-                await notifyAuthDigitsIfNeeded(digits)
+            if result.authChallengeCompleted {
+                await clearAuthDigitsState(showAuthenticatedMessage: true, confirmedAuthChallenge: true)
             }
             if result.wasCancelled {
-                errorMessage = "\(command.displayName) 중단됨"
+                await clearAuthDigitsState(showAuthenticatedMessage: false)
+                errorMessage = nil
             } else if !result.succeeded {
                 errorMessage = "\(command.displayName) 실패: 종료 코드 \(result.exitCode)"
             }
@@ -588,10 +624,23 @@ final class KLMSMacModel: ObservableObject {
         isCancellingCommand = true
         let requested = await runner.cancelCurrentCommand()
         if requested {
-            liveCommandOutput.append("\n== 사용자가 동기화 중단을 요청했습니다 ==\n")
+            appendLiveCommandOutput("\n== 사용자가 동기화 중단을 요청했습니다 ==\n")
         } else {
             isCancellingCommand = false
         }
+    }
+
+    func cancelCommandBeforeTermination() async {
+        remotePollingTask?.cancel()
+        passiveSnapshotRefreshTask?.cancel()
+        runningCommandStatusPollTask?.cancel()
+        authStatusClearTask?.cancel()
+        pasteboardClearTask?.cancel()
+        localRemoteServer?.stop()
+        guard runningCommand != nil else { return }
+        isCancellingCommand = true
+        _ = await runner.cancelCurrentCommand()
+        try? await Task.sleep(nanoseconds: 2_300_000_000)
     }
 
     func runReportRefresh() async {
@@ -1447,8 +1496,21 @@ final class KLMSMacModel: ObservableObject {
         launchAgentState = manager.state(label: manager.label(from: envDocument))
     }
 
-    private func reloadSnapshot() {
-        snapshot = EngineSnapshotStore(paths: paths).load()
+    private func reloadSnapshot(showLoginTransition: Bool = false) {
+        applySnapshot(
+            EngineSnapshotStore(paths: paths).load(),
+            showLoginTransition: showLoginTransition
+        )
+    }
+
+    private func applySnapshot(_ nextSnapshot: EngineSnapshot, showLoginTransition: Bool) {
+        _ = showLoginTransition
+        snapshot = nextSnapshot
+        if nextSnapshot.loginStatus?.loggedIn == true || liveAuthDigits == nil {
+            liveAuthDigits = nil
+            authDigitsSuppressed = true
+            clearAuthNotifications()
+        }
     }
 
     private func notifyAuthDigits(_ digits: String) async {
@@ -1478,19 +1540,33 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func handleLiveCommandOutput(_ chunk: String) async {
-        liveCommandOutput.append(chunk.klmsDisplayText)
+        appendLiveCommandOutput(chunk.klmsDisplayText)
         if let digits = KLMSCommandRunner.extractAuthDigits(from: liveCommandOutput) {
             liveAuthDigits = digits
             authStatusMessage = nil
             authStatusClearTask?.cancel()
             authStatusClearTask = nil
             authDigitsSuppressed = false
+            authDigitsSeenForCurrentRun = true
             await notifyAuthDigitsIfNeeded(digits)
         }
-        if KLMSCommandRunner.outputIndicatesAuthenticatedAfterLatestAuthDigits(liveCommandOutput) {
+        if authDigitsSeenForCurrentRun,
+           KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(liveCommandOutput) {
             await clearAuthDigitsState(showAuthenticatedMessage: true)
             return
         }
+    }
+
+    private func appendLiveCommandOutput(_ text: String) {
+        liveCommandOutput = Self.trimLiveCommandOutput(liveCommandOutput + text)
+    }
+
+    private static func trimLiveCommandOutput(_ text: String) -> String {
+        guard text.count > liveCommandOutputMaxCharacters else {
+            return text
+        }
+        let suffixLength = max(0, liveCommandOutputMaxCharacters - trimmedLiveCommandOutputPrefix.count)
+        return trimmedLiveCommandOutputPrefix + String(text.suffix(suffixLength))
     }
 
     private func notifyAuthDigitsIfNeeded(_ digits: String) async {
@@ -1509,12 +1585,43 @@ final class KLMSMacModel: ObservableObject {
         await notifyAuthCompletion()
     }
 
-    private func clearAuthDigitsState(showAuthenticatedMessage: Bool) async {
+    private func startRunningCommandStatusPoll(startedAt: Date) {
+        runningCommandStatusPollTask?.cancel()
+        runningCommandStatusPollTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled, let self, self.runningCommand != nil else {
+                    return
+                }
+                let nextSnapshot = EngineSnapshotStore(paths: self.paths).load()
+                self.snapshot = nextSnapshot
+                if self.authDigitsSeenForCurrentRun,
+                   self.loginStatusWasConfirmed(nextSnapshot.loginStatus, since: startedAt) {
+                    await self.clearAuthDigitsState(showAuthenticatedMessage: true)
+                }
+            }
+        }
+    }
+
+    private func loginStatusWasConfirmed(_ loginStatus: LoginStatus?, since startedAt: Date) -> Bool {
+        guard loginStatus?.loggedIn == true,
+              let checkedAt = loginStatus?.checkedAt else {
+            return false
+        }
+        return checkedAt >= startedAt.addingTimeInterval(-2)
+    }
+
+    private func clearAuthDigitsState(
+        showAuthenticatedMessage: Bool,
+        confirmedAuthChallenge: Bool = false
+    ) async {
         liveAuthDigits = nil
         authDigitsSuppressed = true
         clearAuthNotifications()
         notifiedAuthDigits.removeAll()
-        if showAuthenticatedMessage {
+        let shouldShowAuthenticatedMessage = showAuthenticatedMessage
+            && (authDigitsSeenForCurrentRun || confirmedAuthChallenge)
+        if shouldShowAuthenticatedMessage {
             lastAuthCompletionAt = Date()
             showTransientAuthStatus("인증 완료됨")
             await notifyAuthCompletionIfNeeded()
@@ -1537,10 +1644,36 @@ final class KLMSMacModel: ObservableObject {
     private func clearAuthNotifications() {
         let center = UNUserNotificationCenter.current()
         let identifiers = notifiedAuthDigits.map { "klms-auth-\($0)" }
-        guard !identifiers.isEmpty else {
-            return
+        if !identifiers.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: identifiers)
+            center.removeDeliveredNotifications(withIdentifiers: identifiers)
         }
-        center.removePendingNotificationRequests(withIdentifiers: identifiers)
-        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        center.getPendingNotificationRequests { requests in
+            let staleIdentifiers = requests
+                .map(\.identifier)
+                .filter(Self.isAuthDigitsNotificationIdentifier)
+            guard !staleIdentifiers.isEmpty else {
+                return
+            }
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: staleIdentifiers)
+        }
+        center.getDeliveredNotifications { notifications in
+            let staleIdentifiers = notifications
+                .map(\.request.identifier)
+                .filter(Self.isAuthDigitsNotificationIdentifier)
+            guard !staleIdentifiers.isEmpty else {
+                return
+            }
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: staleIdentifiers)
+        }
+    }
+
+    nonisolated private static func isAuthDigitsNotificationIdentifier(_ identifier: String) -> Bool {
+        let prefix = "klms-auth-"
+        guard identifier.hasPrefix(prefix) else {
+            return false
+        }
+        let suffix = identifier.dropFirst(prefix.count)
+        return suffix.count == 2 && suffix.allSatisfy(\.isNumber)
     }
 }

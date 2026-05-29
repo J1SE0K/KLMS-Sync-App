@@ -84,6 +84,26 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(timing.slowestEvents.first?.durationSecondsText, "3s")
     }
 
+    func testStaleRunningNoticeStageTimingIsMarkedInterrupted() throws {
+        let timing = StageTimingReport(
+            status: "running",
+            runStartedAt: "2026-05-29T00:00:00.000Z",
+            completedAt: "",
+            elapsedMS: 14825
+        )
+
+        let stale = timing.markingStaleRunningIfNeeded(
+            now: ISO8601DateFormatter().date(from: "2026-05-29T00:31:00Z")!
+        )
+        let fresh = timing.markingStaleRunningIfNeeded(
+            now: ISO8601DateFormatter().date(from: "2026-05-29T00:10:00Z")!
+        )
+
+        XCTAssertEqual(stale.status, "interrupted")
+        XCTAssertEqual(stale.status.klmsLocalizedStatus, "중단됨")
+        XCTAssertEqual(fresh.status, "running")
+    }
+
     func testParsesFilePreviewAndQuarantineReport() throws {
         let previewJSON = """
         {
@@ -166,7 +186,7 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(snapshot.issues.map(\.title), ["파일 17개 누락", "KLMS 로그인 필요"])
     }
 
-    func testBuildsAuthDigitsIssueFromRecentLaunchAgentLog() {
+    func testBuildsLoginIssueFromRecentLaunchAgentLogAndIgnoresStatusDigitsField() {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
@@ -183,10 +203,26 @@ final class StatusModelTests: XCTestCase {
             launchAgentLogTail: recentLog
         )
 
-        XCTAssertEqual(EngineSnapshot.extractRecentLaunchAgentAuthDigits(from: recentLog, now: now), "05")
+        XCTAssertNil(EngineSnapshot.extractRecentLaunchAgentAuthDigits(from: recentLog, now: now))
         XCTAssertTrue(EngineSnapshot.hasRecentLaunchAgentLoginPrompt(from: recentLog, now: now))
-        XCTAssertEqual(snapshot.attentionSummary, "인증 번호 05 선택 필요")
-        XCTAssertEqual(snapshot.issues.first?.detail, "휴대폰 KAIST 인증 화면에서 05를 선택하면 동기화를 계속 진행할 수 있습니다.")
+        XCTAssertNil(snapshot.authDigits)
+        XCTAssertEqual(snapshot.attentionSummary, "KLMS 로그인 필요")
+        XCTAssertEqual(snapshot.issues.first?.detail, "KLMS 로그인 보조가 실패했거나 로그인 세션이 만료되었습니다.")
+    }
+
+    func testExtractsOnlyExplicitAuthNumberOutputFromRecentLaunchAgentLog() {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let now = Date()
+        let stamp = formatter.string(from: now.addingTimeInterval(-120))
+        let recentLog = """
+        [\(stamp) KST] idle=700s exit=1 KAIST 인증 번호: 05
+        status=timeout last_status=twofactor_digits digits=57
+        """
+
+        XCTAssertEqual(EngineSnapshot.extractRecentLaunchAgentAuthDigits(from: recentLog, now: now), "05")
     }
 
     func testIgnoresStaleAuthDigitsFromLaunchAgentLog() {
@@ -256,6 +292,29 @@ final class StatusModelTests: XCTestCase {
         XCTAssertFalse(EngineSnapshot(launchAgentLogTail: log).needsAttention)
     }
 
+    func testLoggedInCacheSuppressesLaunchAgentLoginPrompt() {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let now = Date()
+        let stamp = formatter.string(from: now.addingTimeInterval(-120))
+        let log = """
+        [\(stamp) KST] login-prompt notified backend=safari open_safari=0 url=https://klms.kaist.ac.kr/my/ digits=57
+        """
+        let snapshot = EngineSnapshot(
+            loginStatus: LoginStatus(
+                checkedAtEpoch: Int(now.timeIntervalSince1970),
+                loggedIn: true
+            ),
+            launchAgentLogTail: log
+        )
+
+        XCTAssertNil(snapshot.authDigits)
+        XCTAssertFalse(snapshot.loginPromptDetected)
+        XCTAssertFalse(snapshot.needsAttention)
+    }
+
     func testParsesNoticeRenderWarningIssue() throws {
         let json = """
         {
@@ -312,5 +371,22 @@ final class StatusModelTests: XCTestCase {
 
         XCTAssertEqual(verify.checks.first?.detail, "state mismatch")
         XCTAssertEqual(verify.checks.first?.message, "state mismatch")
+    }
+
+    func testVerifyManifestIssueExplainsFileSyncMismatch() throws {
+        let json = """
+        {
+          "status": "fail",
+          "checks": [
+            {"name": "manifest_files_exist", "status": "fail", "detail": "missing=18"}
+          ]
+        }
+        """
+
+        let verify = try JSONDecoder().decode(VerifyResult.self, from: Data(json.utf8))
+        let snapshot = EngineSnapshot(verifyResult: verify)
+
+        XCTAssertEqual(snapshot.attentionSummary, "상태 검사 실패 · 파일 18개 누락")
+        XCTAssertEqual(snapshot.issues.first?.detail, "파일 manifest에는 있지만 로컬에 없는 파일이 18개 있습니다. 파일 동기화를 다시 실행하면 누락 파일을 다시 받거나 manifest를 최신 상태로 맞출 수 있습니다.")
     }
 }

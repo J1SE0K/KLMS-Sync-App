@@ -66,15 +66,21 @@ klms_init_context() {
     KLMS_LOGIN_ASSIST_ENABLED
     KLMS_LOGIN_ASSIST_MODE
     KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE
+    KLMS_FORCE_LOGIN_PREFLIGHT
+    KLMS_LOGIN_STATUS_REUSE_SECONDS
+    KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS
+    KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED
     SYNC_MODE
     FILE_REFRESH_MODE
     FILE_FORCE_DOWNLOAD
     FILE_KEEP_FRESH_DOWNLOADS
     FILE_WEEKLY_FOLDERS_ENABLED
     FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY
+    FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS
     FILE_PRESERVE_DOWNLOAD_ARCHIVE
     FILE_NEW_FILES_ROOT
     FILE_QUARANTINE_ROOT
+    NOTICE_NATIVE_NOTE_BIN_PATH
     NOTICE_COLLAPSE_SECTIONS
     NOTICE_COLLAPSE_COURSES
     NOTICE_COLLAPSE_NOTICE_ITEMS
@@ -85,6 +91,8 @@ klms_init_context() {
     NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER
     NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER
     NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT
+    NOTICE_NATIVE_POST_RENDER_VERIFY
+    NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED
     NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT
     NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT
     NOTICE_NATIVE_DISABLE_FAST_CHECKLIST_FORMAT
@@ -95,6 +103,10 @@ klms_init_context() {
     NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS
     NOTICE_NATIVE_NOTE_TIMEOUT_GRACE_SECONDS
     NOTICE_NATIVE_STYLE_BUDGET_SECONDS
+    NOTICE_NATIVE_BOLD_REINFORCE_LIMIT
+    NOTICE_NATIVE_VALIDATE_STYLE
+    NOTICE_NATIVE_SELECTION_SETTLE_SECONDS
+    NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US
     NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY
     NOTICE_NATIVE_PLAIN_TEXT_PASTE
     NOTICE_DEBUG_CAPTURE
@@ -168,6 +180,7 @@ klms_init_context() {
   KLMS_LOGIN_STATUS_PATH="${KLMS_LOGIN_STATUS_PATH:-${KLMS_LOGIN_STATUS_CACHE_PATH:-$CACHE_DIR/login_status.json}}"
   KLMS_LOGIN_STATUS_CACHE_PATH="$KLMS_LOGIN_STATUS_PATH"
   KLMS_LOGIN_FAST_TAB_CHECK_ENABLED="${KLMS_LOGIN_FAST_TAB_CHECK_ENABLED:-1}"
+  KLMS_FORCE_LOGIN_PREFLIGHT="${KLMS_FORCE_LOGIN_PREFLIGHT:-0}"
   KLMS_LOGIN_STATUS_REUSE_SECONDS="${KLMS_LOGIN_STATUS_REUSE_SECONDS:-900}"
   KLMS_LOGIN_URL="${KLMS_LOGIN_URL:-$KLMS_DASHBOARD_URL}"
   KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE="${KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE:-1}"
@@ -491,24 +504,11 @@ klms_check_login_pages() {
 
 klms_require_login() {
   local app_run_login_assist_attempted=0
+  local fast_tab_state="unknown"
+  local force_login_preflight="${KLMS_FORCE_LOGIN_PREFLIGHT:-0}"
 
   if [[ "${KLMS_PARENT_LOGIN_ASSIST_READY:-0}" == "1" ]]; then
     KLMS_LOGIN_ASSIST_READY=1
-  fi
-
-  if [[ "${KLMS_APP_RUN:-0}" == "1" ]]; then
-    klms_clear_login_status
-    if klms_login_assist_enabled; then
-      app_run_login_assist_attempted=1
-      if klms_try_login_assist; then
-        klms_write_login_status_ok
-        KLMS_LOGIN_PREFETCH_READY=0
-        KLMS_LOGIN_ASSIST_READY=1
-        return 0
-      else
-        return 1
-      fi
-    fi
   fi
 
   if [[ "${KLMS_PARENT_LOGIN_PREFLIGHT_READY:-0}" == "1" && "${KLMS_USE_EXISTING_DASHBOARD:-0}" == "1" && -s "$WORK_CACHE_DIR/dashboard.json" ]]; then
@@ -517,9 +517,22 @@ klms_require_login() {
     return 0
   fi
 
-  local fast_tab_state
   fast_tab_state="$(klms_fast_tab_login_state)"
-  if [[ "$fast_tab_state" == "login_required" && "$app_run_login_assist_attempted" != "1" ]]; then
+
+  if [[ "$force_login_preflight" != "1" && "${KLMS_APP_RUN:-0}" == "1" ]]; then
+    if klms_recent_login_status_ok; then
+      KLMS_LOGIN_PREFETCH_READY=1
+      return 0
+    fi
+    if [[ "$fast_tab_state" == "authenticated" ]]; then
+      klms_write_login_status_ok
+      KLMS_LOGIN_PREFETCH_READY=1
+      KLMS_LOGIN_ASSIST_READY=1
+      return 0
+    fi
+  fi
+
+  if [[ "$force_login_preflight" != "1" && "${KLMS_APP_RUN:-0}" != "1" && "$fast_tab_state" == "login_required" && "$app_run_login_assist_attempted" != "1" ]]; then
     klms_clear_login_status
     if ! klms_try_login_assist; then
       klms_open_login_page_if_enabled
@@ -530,12 +543,12 @@ klms_require_login() {
     KLMS_LOGIN_ASSIST_READY=1
   fi
 
-  if [[ "${KLMS_APP_RUN:-0}" != "1" && "$fast_tab_state" != "login_required" ]] && klms_recent_login_status_ok; then
+  if [[ "$force_login_preflight" != "1" && "${KLMS_APP_RUN:-0}" != "1" && "$fast_tab_state" != "login_required" ]] && klms_recent_login_status_ok; then
     KLMS_LOGIN_PREFETCH_READY=1
     return 0
   fi
 
-  if [[ "$fast_tab_state" == "unknown" && "${KLMS_LOGIN_ASSIST_EARLY_ENABLED:-1}" == "1" && "$app_run_login_assist_attempted" != "1" ]]; then
+  if [[ "${KLMS_APP_RUN:-0}" != "1" && "$fast_tab_state" == "unknown" && "${KLMS_LOGIN_ASSIST_EARLY_ENABLED:-1}" == "1" && "$app_run_login_assist_attempted" != "1" ]]; then
     klms_try_login_assist || true
   fi
 
@@ -543,6 +556,7 @@ klms_require_login() {
   local pages_json="$CACHE_DIR/dashboard.json"
 
   printf '%s\n' "$KLMS_DASHBOARD_URL" > "$url_file"
+  print -r -- "[login $(date '+%Y-%m-%d %H:%M:%S %Z')] preflight start" >&2
   (
     cd "$SCRIPT_DIR"
     /usr/bin/env python3 "$KLMS_PYTHON_DIR/fetch_pages_backend.py" \
@@ -583,6 +597,7 @@ klms_require_login() {
       return 1
     fi
   fi
+  print -r -- "[login $(date '+%Y-%m-%d %H:%M:%S %Z')] preflight finish status=ok" >&2
   KLMS_LOGIN_PREFETCH_READY=1
   return 0
 }

@@ -10,6 +10,7 @@ public struct EngineSnapshot: Sendable, Equatable {
     public var noticeStageTiming: StageTimingReport?
     public var noticeRenderState: NoticeNoteRenderState?
     public var noticeArchiveRenderState: NoticeNoteRenderState?
+    public var rawLegacyState: LegacySyncState?
     public var legacyState: LegacySyncState?
     public var manualOverrides: ManualOverridesSnapshot?
     public var noticeDigest: NoticeDigest?
@@ -33,6 +34,7 @@ public struct EngineSnapshot: Sendable, Equatable {
         noticeStageTiming: StageTimingReport? = nil,
         noticeRenderState: NoticeNoteRenderState? = nil,
         noticeArchiveRenderState: NoticeNoteRenderState? = nil,
+        rawLegacyState: LegacySyncState? = nil,
         legacyState: LegacySyncState? = nil,
         manualOverrides: ManualOverridesSnapshot? = nil,
         noticeDigest: NoticeDigest? = nil,
@@ -55,6 +57,7 @@ public struct EngineSnapshot: Sendable, Equatable {
         self.noticeStageTiming = noticeStageTiming
         self.noticeRenderState = noticeRenderState
         self.noticeArchiveRenderState = noticeArchiveRenderState
+        self.rawLegacyState = rawLegacyState
         self.legacyState = legacyState
         self.manualOverrides = manualOverrides
         self.noticeDigest = noticeDigest
@@ -73,12 +76,23 @@ public struct EngineSnapshot: Sendable, Equatable {
         !issues.isEmpty
     }
 
+    public var visibleCounts: EngineVisibleCounts {
+        EngineVisibleCounts(snapshot: self)
+    }
+
+    public var hiddenSummary: EngineHiddenSummary {
+        EngineHiddenSummary(snapshot: self)
+    }
+
     public var authDigits: String? {
-        Self.extractRecentLaunchAgentAuthDigits(from: launchAgentLogTail)
+        nil
     }
 
     public var loginPromptDetected: Bool {
-        authDigits != nil || Self.hasRecentLaunchAgentLoginPrompt(from: launchAgentLogTail)
+        guard loginStatus?.loggedIn != true else {
+            return false
+        }
+        return Self.hasRecentLaunchAgentLoginPrompt(from: launchAgentLogTail)
     }
 
     public static func extractRecentLaunchAgentAuthDigits(
@@ -86,7 +100,7 @@ public struct EngineSnapshot: Sendable, Equatable {
         now: Date = Date(),
         recentInterval: TimeInterval = 15 * 60
     ) -> String? {
-        let pattern = #"\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) KST\].*login-prompt notified.*digits=([0-9][0-9])"#
+        let pattern = #"\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) KST\].*KAIST 인증 번호:\s*([0-9][0-9])"#
         let matches = timestampedMatches(pattern: pattern, in: text)
         return matches
             .filter { isRecent($0.date, now: now, recentInterval: recentInterval) }
@@ -131,7 +145,7 @@ public struct EngineSnapshot: Sendable, Equatable {
             ))
         }
 
-        let quarantineCount = max(syncReport?.files.quarantine ?? 0, quarantineReport?.quarantineCount ?? 0)
+        let quarantineCount = visibleCounts.quarantine
         if quarantineCount > 0 {
             items.append(EngineIssue(
                 severity: .warning,
@@ -201,8 +215,8 @@ public struct EngineSnapshot: Sendable, Equatable {
                 for check in verifyIssues {
                     items.append(EngineIssue(
                         severity: check.status.issueSeverity,
-                        title: "검사 실패 · \(check.name)",
-                        detail: check.detail,
+                        title: verifyIssueTitle(for: check),
+                        detail: verifyIssueDetail(for: check),
                         sourceName: check.name
                     ))
                 }
@@ -236,6 +250,40 @@ public struct EngineSnapshot: Sendable, Equatable {
             return check.detail
         case "klms-login-cache":
             return check.detail.isEmpty ? "KLMS 로그인이 풀렸을 수 있습니다." : check.detail
+        default:
+            return check.detail
+        }
+    }
+
+    private func verifyIssueTitle(for check: VerifyCheck) -> String {
+        switch check.name {
+        case "manifest_files_exist":
+            if let missing = numericValue(named: "missing", in: check.detail) {
+                return "상태 검사 실패 · 파일 \(missing)개 누락"
+            }
+            return "상태 검사 실패 · 파일 누락"
+        case "notice_render_complete":
+            if let missing = numericValue(named: "missing", in: check.detail) {
+                return "상태 검사 실패 · 공지 \(missing)개 누락"
+            }
+            return "상태 검사 실패 · 공지 메모 불일치"
+        default:
+            return "상태 검사 실패 · \(check.name)"
+        }
+    }
+
+    private func verifyIssueDetail(for check: VerifyCheck) -> String {
+        switch check.name {
+        case "manifest_files_exist":
+            if let missing = numericValue(named: "missing", in: check.detail) {
+                return "파일 manifest에는 있지만 로컬에 없는 파일이 \(missing)개 있습니다. 파일 동기화를 다시 실행하면 누락 파일을 다시 받거나 manifest를 최신 상태로 맞출 수 있습니다."
+            }
+            return check.detail
+        case "notice_render_complete":
+            if let missing = numericValue(named: "missing", in: check.detail) {
+                return "공지 digest에는 있지만 메모 렌더 상태에 반영되지 않은 공지가 \(missing)개 있습니다. 공지 동기화를 다시 실행해 주세요."
+            }
+            return check.detail
         default:
             return check.detail
         }
@@ -330,6 +378,163 @@ public struct EngineSnapshot: Sendable, Equatable {
     }()
 }
 
+public struct EngineVisibleCounts: Sendable, Equatable {
+    public var assignments: Int
+    public var exams: Int
+    public var helpDesk: Int
+    public var notices: Int
+    public var newFiles: Int
+    public var quarantine: Int
+
+    public init(
+        assignments: Int = 0,
+        exams: Int = 0,
+        helpDesk: Int = 0,
+        notices: Int = 0,
+        newFiles: Int = 0,
+        quarantine: Int = 0
+    ) {
+        self.assignments = assignments
+        self.exams = exams
+        self.helpDesk = helpDesk
+        self.notices = notices
+        self.newFiles = newFiles
+        self.quarantine = quarantine
+    }
+
+    public init(snapshot: EngineSnapshot) {
+        let content = snapshot.legacyState?.content
+        assignments = content?.assignments.count ?? snapshot.syncReport?.state.assignments ?? 0
+        exams = content?.examItems.count ?? snapshot.syncReport?.state.exams ?? 0
+        helpDesk = content?.helpDeskItems.count ?? snapshot.syncReport?.state.helpdesk ?? 0
+        notices = Self.visibleNoticeCount(snapshot: snapshot)
+        newFiles = Self.visibleNewFileCount(snapshot: snapshot)
+        quarantine = Self.visibleQuarantineCount(snapshot: snapshot)
+    }
+
+    private static func visibleNoticeCount(snapshot: EngineSnapshot) -> Int {
+        if let digest = snapshot.noticeDigest {
+            let state = snapshot.noticeUserState?.notices ?? [:]
+            return digest.notices.filter { state[$0.noticeIdentifier]?.hidden != true }.count
+        }
+        if let report = snapshot.syncReport {
+            return max(0, report.notices.total - report.notices.ignored)
+        }
+        return 0
+    }
+
+    private static func visibleNewFileCount(snapshot: EngineSnapshot) -> Int {
+        guard let downloadResult = snapshot.downloadResult else {
+            return snapshot.syncReport?.files.newFiles ?? 0
+        }
+        return downloadResult.results.filter(\.copiedToNewFilesInbox).filter { item in
+            let manifest = snapshot.courseFileManifest.first { entry in
+                (!item.url.isEmpty && entry.url == item.url) || entry.relativePath == item.relativePath
+            }
+            let key = EngineFileInteractionKey.key(
+                url: item.url,
+                path: manifest?.absolutePath ?? "",
+                fallback: item.relativePath
+            )
+            return snapshot.appUserState?.files[key]?.isHiddenLike != true
+        }.count
+    }
+
+    private static func visibleQuarantineCount(snapshot: EngineSnapshot) -> Int {
+        guard let quarantineReport = snapshot.quarantineReport else {
+            let hidden = snapshot.appUserState?.quarantine.values.filter(\.isHiddenLike).count ?? 0
+            return max(0, (snapshot.syncReport?.files.quarantine ?? 0) - hidden)
+        }
+        return quarantineReport.records.filter { record in
+            let key = EngineFileInteractionKey.key(
+                url: record.url,
+                path: record.quarantinePath,
+                fallback: record.quarantineRelativePath
+            )
+            return snapshot.appUserState?.quarantine[key]?.isHiddenLike != true
+        }.count
+    }
+}
+
+public struct EngineHiddenSummary: Sendable, Equatable {
+    public var assignments: Int
+    public var exams: Int
+    public var notices: Int
+    public var files: Int
+    public var quarantine: Int
+
+    public init(
+        assignments: Int = 0,
+        exams: Int = 0,
+        notices: Int = 0,
+        files: Int = 0,
+        quarantine: Int = 0
+    ) {
+        self.assignments = assignments
+        self.exams = exams
+        self.notices = notices
+        self.files = files
+        self.quarantine = quarantine
+    }
+
+    public init(snapshot: EngineSnapshot) {
+        let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content
+        let overrides = snapshot.manualOverrides
+        assignments = (
+            (content?.assignments ?? [])
+                + (content?.assignmentCandidates ?? [])
+                + (content?.completedAssignments ?? [])
+                + (content?.assignmentRecords ?? [])
+                + (content?.helpDeskItems ?? [])
+        )
+            .filter { overrides?.isAssignmentHidden($0) == true }
+            .reduce(into: Set<String>()) { keys, item in
+                keys.insert(item.id)
+            }
+            .count
+        exams = ((content?.examItems ?? []) + (content?.examCandidates ?? []))
+            .filter { overrides?.isExamHidden($0) == true }
+            .filter { !Self.isPastExam($0) }
+            .reduce(into: Set<String>()) { keys, item in
+                keys.insert(item.id)
+            }
+            .count
+        notices = (snapshot.noticeDigest?.notices ?? [])
+            .filter { snapshot.noticeUserState?.notices[$0.noticeIdentifier]?.hidden == true }
+            .count
+        files = snapshot.appUserState?.files.values.filter(\.isHiddenLike).count ?? 0
+        quarantine = snapshot.appUserState?.quarantine.values.filter(\.isHiddenLike).count ?? 0
+    }
+
+    public var total: Int {
+        assignments + exams + notices + files + quarantine
+    }
+
+    private static func isPastExam(_ item: StateItem) -> Bool {
+        let normalizedCategory = item.category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalizedCategory == "exam" || normalizedCategory == "exam_candidate" else {
+            return false
+        }
+        let rawDue = item.syncDue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawDue.isEmpty, let due = ISO8601DateFormatter().date(from: rawDue) else {
+            return false
+        }
+        return due < Date()
+    }
+}
+
+private enum EngineFileInteractionKey {
+    static func key(url: String, path: String, fallback: String) -> String {
+        if !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return url
+        }
+        if !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return path
+        }
+        return fallback
+    }
+}
+
 public struct EngineIssue: Sendable, Equatable, Identifiable {
     public enum Severity: String, Sendable, Equatable {
         case warning
@@ -368,8 +573,11 @@ public struct EngineSnapshotStore: Sendable {
             }
         }
         let manualOverrides = (try? ManualOverrideStore(url: paths.overridesURL).load()) ?? ManualOverridesSnapshot()
-        let legacyState = JSONFileLoader.loadIfExists(LegacySyncState.self, from: paths.stateJSONURL)?
-            .applyingManualOverrides(manualOverrides)
+        let rawLegacyState = JSONFileLoader.loadIfExists(LegacySyncState.self, from: paths.stateJSONURL)
+        let legacyState = rawLegacyState?.applyingManualOverrides(manualOverrides)
+        let noticeStageTiming = JSONFileLoader
+            .loadIfExists(StageTimingReport.self, from: paths.noticeStageTimingURL)?
+            .markingStaleRunningIfNeeded()
 
         return EngineSnapshot(
             syncReport: JSONFileLoader.loadIfExists(SyncReport.self, from: paths.syncReportURL),
@@ -378,9 +586,10 @@ public struct EngineSnapshotStore: Sendable {
             verifyResult: JSONFileLoader.loadIfExists(VerifyResult.self, from: paths.verifyResultURL),
             loginStatus: JSONFileLoader.loadIfExists(LoginStatus.self, from: paths.loginStatusURL),
             noticeRenderStatus: JSONFileLoader.loadIfExists(NoticeRenderStatus.self, from: paths.noticeRenderErrorSummaryURL),
-            noticeStageTiming: JSONFileLoader.loadIfExists(StageTimingReport.self, from: paths.noticeStageTimingURL),
+            noticeStageTiming: noticeStageTiming,
             noticeRenderState: JSONFileLoader.loadIfExists(NoticeNoteRenderState.self, from: paths.noticeRenderStateURL),
             noticeArchiveRenderState: JSONFileLoader.loadIfExists(NoticeNoteRenderState.self, from: paths.noticeArchiveRenderStateURL),
+            rawLegacyState: rawLegacyState,
             legacyState: legacyState,
             manualOverrides: manualOverrides,
             noticeDigest: JSONFileLoader.loadIfExists(NoticeDigest.self, from: paths.noticeDigestURL),

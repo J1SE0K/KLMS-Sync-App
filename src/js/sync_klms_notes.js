@@ -1426,10 +1426,8 @@ function looksLikeLoginPage(page) {
     title.includes("single sign on") ||
     html.includes("login/ssologin.php") ||
     html.includes('name="username"') ||
-    html.includes('type="password"') ||
     html.includes("login_id_mfa") ||
-    html.includes("single sign on") ||
-    html.includes("비밀번호")
+    html.includes("single sign on")
   );
 }
 
@@ -1668,6 +1666,8 @@ function applyRuntimeConfigOverrides(config) {
     "NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER",
     "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER",
     "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
+    "NOTICE_NATIVE_POST_RENDER_VERIFY",
+    "NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK",
     "NOTICE_NATIVE_NOTE_MAX_ATTEMPTS",
     "NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS",
     "NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS",

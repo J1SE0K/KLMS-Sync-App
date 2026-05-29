@@ -20,6 +20,8 @@ public extension String {
             "대기 중"
         case "running":
             "실행 중"
+        case "interrupted", "stale":
+            "중단됨"
         case "completed":
             "완료"
         case "macunavailable", "mac_unavailable":
@@ -28,6 +30,20 @@ public extension String {
             ""
         default:
             klmsDisplayText
+        }
+    }
+
+    var klmsRedactingAuthDigitsForDisplay: String {
+        let patterns = [
+            (#"KAIST 인증 번호:\s*[0-9][0-9]"#, "KAIST 인증 번호: --"),
+            (#"digits=[0-9][0-9]"#, "digits=--"),
+        ]
+        return patterns.reduce(self) { text, item in
+            guard let regex = try? NSRegularExpression(pattern: item.0) else {
+                return text
+            }
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            return regex.stringByReplacingMatches(in: text, range: range, withTemplate: item.1)
         }
     }
 

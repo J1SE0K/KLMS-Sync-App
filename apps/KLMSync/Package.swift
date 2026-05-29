@@ -36,5 +36,9 @@ let package = Package(
                 .process("Fixtures"),
             ]
         ),
+        .testTarget(
+            name: "KLMSMacTests",
+            dependencies: ["KLMSMac"]
+        ),
     ]
 )

@@ -47,6 +47,10 @@ public struct CommandRunRecord: Codable, Sendable, Equatable, Identifiable {
         exitCode == 0
     }
 
+    public var needsAttention: Bool {
+        !succeeded && !wasCancelled
+    }
+
     public var elapsedSecondsText: String {
         TimeDisplay.secondsText(milliseconds: Int(finishedAt.timeIntervalSince(startedAt) * 1000))
     }
@@ -77,7 +81,10 @@ public struct CommandRunHistoryStore: Sendable {
         var history = (try? decoder.decode(CommandRunHistory.self, from: data)) ?? CommandRunHistory()
         history.records = history.records.map { record in
             var normalized = record
-            normalized.outputTail = record.outputTail.klmsDisplayText
+            normalized.outputTail = Self.displayOutput(record.outputTail, wasCancelled: record.wasCancelled)
+            if normalized.wasCancelled {
+                normalized.authDigits = nil
+            }
             return normalized
         }
         return history
@@ -93,8 +100,11 @@ public struct CommandRunHistoryStore: Sendable {
                 finishedAt: result.finishedAt,
                 exitCode: result.exitCode,
                 wasCancelled: result.wasCancelled,
-                authDigits: result.authDigits,
-                outputTail: Self.tail(result.combinedOutput.klmsDisplayText, maxLines: 120)
+                authDigits: result.wasCancelled ? nil : result.authDigits,
+                outputTail: Self.tail(
+                    Self.displayOutput(result.combinedOutput, wasCancelled: result.wasCancelled),
+                    maxLines: 120
+                )
             ),
             at: 0
         )
@@ -123,5 +133,10 @@ public struct CommandRunHistoryStore: Sendable {
             return text
         }
         return lines.suffix(maxLines).joined(separator: "\n")
+    }
+
+    private static func displayOutput(_ text: String, wasCancelled: Bool) -> String {
+        let displayText = text.klmsDisplayText
+        return wasCancelled ? displayText.klmsRedactingAuthDigitsForDisplay : displayText
     }
 }

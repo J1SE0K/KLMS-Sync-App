@@ -315,6 +315,8 @@ let noticeTimingEnabled = ProcessInfo.processInfo.environment["NOTICE_TIMING"] =
 let collapseNoticeSectionsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_SECTIONS"] == "1"
 let collapseNoticeCoursesEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_COURSES"] == "1"
 let collapseNoticeItemsEnabled = ProcessInfo.processInfo.environment["NOTICE_COLLAPSE_NOTICE_ITEMS"] == "1"
+let initialNoticeCollapseEnabled =
+    ProcessInfo.processInfo.environment["NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED"] != "0"
 let styleNoticeItemsAsHeadingsEnabled =
     ProcessInfo.processInfo.environment["NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS"] == "1"
 let hideHiddenNoticeItemsEnabled = ProcessInfo.processInfo.environment["NOTICE_HIDE_HIDDEN_ITEMS"] != "0"
@@ -325,6 +327,8 @@ let preformattedPasteOnlyEnabled =
     ProcessInfo.processInfo.environment["NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY"] == "1"
 let plainTextPasteEnabled =
     ProcessInfo.processInfo.environment["NOTICE_NATIVE_PLAIN_TEXT_PASTE"] == "1"
+let conservativeRenderFallbackEnabled =
+    ProcessInfo.processInfo.environment["NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK"] != "0"
 let uiCollapsibleGroupStyleFormattingEnabled =
     (
         uiStyleMenuFormattingEnabled

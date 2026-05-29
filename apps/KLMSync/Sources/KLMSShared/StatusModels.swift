@@ -362,6 +362,7 @@ public struct SlowStage: Decodable, Sendable, Equatable, Identifiable {
 
 public struct StageTimingReport: Decodable, Sendable, Equatable {
     public var status: String
+    public var runStartedAt: String
     public var completedAt: String
     public var elapsedMS: Int
     public var noticeRenderResults: [NoticeRenderResult]
@@ -369,6 +370,7 @@ public struct StageTimingReport: Decodable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case status
+        case runStartedAt = "run_started_at"
         case completedAt = "completed_at"
         case elapsedMS = "elapsed_ms"
         case noticeRenderResults = "notice_render_results"
@@ -377,12 +379,14 @@ public struct StageTimingReport: Decodable, Sendable, Equatable {
 
     public init(
         status: String = "missing",
+        runStartedAt: String = "",
         completedAt: String = "",
         elapsedMS: Int = 0,
         noticeRenderResults: [NoticeRenderResult] = [],
         slowestEvents: [SlowEvent] = []
     ) {
         self.status = status
+        self.runStartedAt = runStartedAt
         self.completedAt = completedAt
         self.elapsedMS = elapsedMS
         self.noticeRenderResults = noticeRenderResults
@@ -392,6 +396,7 @@ public struct StageTimingReport: Decodable, Sendable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         status = container.decodeIfPresentDefault(String.self, forKey: .status, default: "missing")
+        runStartedAt = container.decodeIfPresentDefault(String.self, forKey: .runStartedAt, default: "")
         completedAt = container.decodeIfPresentDefault(String.self, forKey: .completedAt, default: "")
         elapsedMS = container.decodeIfPresentDefault(Int.self, forKey: .elapsedMS, default: 0)
         noticeRenderResults = container.decodeIfPresentDefault([NoticeRenderResult].self, forKey: .noticeRenderResults, default: [])
@@ -402,6 +407,38 @@ public struct StageTimingReport: Decodable, Sendable, Equatable {
         TimeDisplay.secondsText(milliseconds: elapsedMS)
     }
 
+    public func markingStaleRunningIfNeeded(
+        now: Date = Date(),
+        maxRunningAge: TimeInterval = 30 * 60
+    ) -> StageTimingReport {
+        guard status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "running",
+              completedAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let startedAt = Self.parseDate(runStartedAt),
+              now.timeIntervalSince(startedAt) > maxRunningAge else {
+            return self
+        }
+
+        var copy = self
+        copy.status = "interrupted"
+        return copy
+    }
+
+    private static func parseDate(_ text: String) -> Date? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: trimmed) {
+            return date
+        }
+
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: trimmed)
+    }
 }
 
 public struct NoticeRenderResult: Decodable, Sendable, Equatable, Identifiable {

@@ -526,6 +526,9 @@ function nativeNoticeEnvironment(config) {
     "NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT",
     "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER",
     "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
+    "NOTICE_NATIVE_POST_RENDER_VERIFY",
+    "NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED",
+    "NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK",
     "NOTICE_NATIVE_NOTE_MAX_ATTEMPTS",
     "NOTICE_NATIVE_NOTE_RETRY_DELAY_SECONDS",
     "NOTICE_NATIVE_NOTE_TIMEOUT_SECONDS",
@@ -580,6 +583,14 @@ function nativeNoticeVerifyStableSkipFormatEnabled(nativeEnvironment) {
     nativeEnvironment,
     "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
     false
+  );
+}
+
+function nativeNoticePostRenderVerifyEnabled(nativeEnvironment) {
+  return nativeNoticeEnvironmentEnabled(
+    nativeEnvironment,
+    "NOTICE_NATIVE_POST_RENDER_VERIFY",
+    true
   );
 }
 
@@ -673,6 +684,8 @@ function updateNoticeNativeNote(
   const renderWarnings = [];
   const verifyStableSkipFormatEnabled =
     nativeNoticeVerifyStableSkipFormatEnabled(effectiveNativeEnv);
+  const postRenderVerifyEnabled =
+    nativeNoticePostRenderVerifyEnabled(effectiveNativeEnv);
   let stableComparison = null;
   let captureSucceeded = false;
 
@@ -905,7 +918,9 @@ function updateNoticeNativeNote(
         nativeCommand([...target.args, ...commonArgs], []),
         scriptDir
       );
-      const formatOutput = verifyNativeNoticeReadableFormat(target.key);
+      const formatOutput = postRenderVerifyEnabled
+        ? verifyNativeNoticeReadableFormat(target.key)
+        : "";
       results.push({
         target: target.key,
         status: "ok",
@@ -1224,8 +1239,18 @@ function noticeExpectedRenderSignature(expected, targetKey, nativeEnvironment) {
 }
 
 function noticeRenderSignatureComponents(targetKey, nativeEnvironment) {
+  const displayMode = targetKey === "archive" ? "archive" : "primary";
+  const initialCollapseEnabled =
+    nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED", true);
+  const collapseSections =
+    initialCollapseEnabled &&
+    nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_SECTIONS", false);
   const collapseCourses =
+    initialCollapseEnabled &&
     nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_COURSES", false);
+  const collapseNoticeItems =
+    initialCollapseEnabled &&
+    nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_NOTICE_ITEMS", false);
   const batchChecklist =
     nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT", false) &&
     !nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT", false);
@@ -1237,10 +1262,10 @@ function noticeRenderSignatureComponents(targetKey, nativeEnvironment) {
     !nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_DISABLE_UI_STYLE_FORMAT", false);
   return [
     NATIVE_NOTICE_RENDER_STYLE_VERSION,
-    `display_mode=${targetKey === "archive" ? "archive" : "primary"}`,
-    `collapse_sections=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_SECTIONS", false) ? "1" : "0"}`,
+    `display_mode=${displayMode}`,
+    `collapse_sections=${collapseSections ? "1" : "0"}`,
     `collapse_courses=${collapseCourses ? "1" : "0"}`,
-    `collapse_notice_items=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_NOTICE_ITEMS", false) ? "1" : "0"}`,
+    `collapse_notice_items=${collapseNoticeItems ? "1" : "0"}`,
     `style_notice_items=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS", false) ? "1" : "0"}`,
     `hide_hidden=${nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_HIDE_HIDDEN_ITEMS", true) ? "1" : "0"}`,
     `ui_style_menu=${uiStyleMenu ? "1" : "0"}`,

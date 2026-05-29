@@ -4,6 +4,7 @@ import SwiftUI
 
 @main
 struct KLMSMacApp: App {
+    @NSApplicationDelegateAdaptor(KLMSAppDelegate.self) private var appDelegate
     @StateObject private var model = KLMSMacModel()
 
     var body: some Scene {
@@ -18,6 +19,7 @@ struct KLMSMacApp: App {
                     maxHeight: .infinity
                 )
                 .task {
+                    appDelegate.model = model
                     await model.bootstrap()
                 }
         }
@@ -26,6 +28,7 @@ struct KLMSMacApp: App {
             MenuBarRootView(model: model)
                 .frame(width: KLMSWindowMetrics.menuBarWidth, height: KLMSWindowMetrics.menuBarHeight)
                 .task {
+                    appDelegate.model = model
                     await model.bootstrap()
                 }
         } label: {
@@ -37,6 +40,24 @@ struct KLMSMacApp: App {
             SettingsView(model: model)
                 .frame(width: KLMSWindowMetrics.settingsWidth, height: KLMSWindowMetrics.settingsHeight)
         }
+    }
+}
+
+@MainActor
+private final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
+    weak var model: KLMSMacModel?
+    private var terminationCleanupStarted = false
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !terminationCleanupStarted, let model, model.runningCommand != nil else {
+            return .terminateNow
+        }
+        terminationCleanupStarted = true
+        Task { @MainActor in
+            await model.cancelCommandBeforeTermination()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }
 

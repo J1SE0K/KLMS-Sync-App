@@ -125,8 +125,6 @@ prompt_login_if_needed() {
 
   if [[ "$sync_output" =~ 'KAIST 인증 번호: ([0-9][0-9])' ]]; then
     auth_digits="${match[1]}"
-  elif [[ "$sync_output" =~ 'digits=([0-9][0-9])' ]]; then
-    auth_digits="${match[1]}"
   fi
 
   if [[ "$last_prompt" == <-> ]] \

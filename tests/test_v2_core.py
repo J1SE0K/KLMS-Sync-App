@@ -792,7 +792,7 @@ class V2CoreTests(unittest.TestCase):
             self.assertEqual(status["completed_assignment_count"], 1)
             self.assertEqual(status["assignment_record_count"], 1)
 
-    def test_cli_build_note_keeps_dashboard_assignment_without_detail_page(self) -> None:
+    def test_cli_build_note_ignores_linear_algebra_dashboard_assignment(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             dashboard = tmp_dir / "dashboard.json"
@@ -854,12 +854,9 @@ class V2CoreTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn('"assignment_count": 1', result.stdout)
+            self.assertIn('"assignment_count": 0', result.stdout)
             rendered = json.loads(output_state.read_text(encoding="utf-8"))
-            assignment = rendered["content"]["assignments"][0]
-            self.assertEqual(assignment["course"], "데이터과학을 위한 선형대수학")
-            self.assertEqual(assignment["title"], "Project Submission")
-            self.assertEqual(assignment["sync_due"], "2026-06-14T23:59:00+09:00")
+            self.assertEqual(rendered["content"]["assignments"], [])
 
     def test_cli_build_note_login_page_writes_error_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -910,7 +907,7 @@ class V2CoreTests(unittest.TestCase):
             self.assertEqual(rendered["status"], "error")
             self.assertEqual(status["status"], "error")
 
-    def test_cli_check_login_status_rejects_unconfirmed_dashboard_page(self) -> None:
+    def test_cli_check_login_status_accepts_klms_non_login_page_like_legacy_app(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             pages = Path(tmp) / "dashboard.json"
             pages.write_text(
@@ -945,8 +942,44 @@ class V2CoreTests(unittest.TestCase):
             )
 
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["status"], "error")
-            self.assertEqual(payload["error"], "login_unconfirmed")
+            self.assertEqual(payload["status"], "ok")
+
+    def test_cli_check_login_status_accepts_klms_dashboard_title(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pages = Path(tmp) / "dashboard.json"
+            pages.write_text(
+                json.dumps(
+                    [
+                        {
+                            "requestedUrl": "https://klms.kaist.ac.kr/my/",
+                            "url": "https://klms.kaist.ac.kr/my/",
+                            "title": "강의 현황",
+                            "html": "",
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "check-login-status",
+                    "--pages-json",
+                    str(pages),
+                ],
+                cwd=PROJECT_DIR,
+                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "ok")
 
     def test_cli_check_login_status_rejects_sso_twofactor_page(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
