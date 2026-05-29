@@ -539,6 +539,19 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("FileManifestListView(filters: filters, model: model)", detail)
         self.assertIn("model.snapshot.courseFileManifest.compactMap", detail)
 
+    def test_mac_app_integration_status_is_collapsible(self) -> None:
+        menu = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('@AppStorage("KLMSMacIntegrationStatusExpanded") private var isExpanded = false', menu)
+        self.assertIn('isExpanded.toggle()', menu)
+        self.assertIn('help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")', menu)
+        self.assertIn("if !isExpanded", menu)
+        self.assertIn("IntegrationStatusCompactStrip(statuses: statuses)", menu)
+        self.assertIn("if isExpanded", menu)
+        self.assertIn("IntegrationStatusTile(status: status)", menu)
+
     def test_safari_automation_uses_background_windows_by_default(self) -> None:
         fetch_text = (PROJECT_DIR / "src" / "js" / "fetch_pages_with_safari.js").read_text(
             encoding="utf-8"

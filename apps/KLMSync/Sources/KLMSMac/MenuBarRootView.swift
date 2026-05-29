@@ -181,18 +181,38 @@ private struct StatusChipView: View {
 
 private struct ExternalIntegrationStatusView: View {
     @ObservedObject var model: KLMSMacModel
+    @AppStorage("KLMSMacIntegrationStatusExpanded") private var isExpanded = false
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
 
     var body: some View {
         let verify = model.snapshot.verifyResult
+        let statuses = integrationStatuses(for: verify)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Label("연동 상태", systemImage: "link")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                Text(summaryText(for: verify))
-                    .font(.caption2)
-                    .foregroundStyle(summaryColor(for: verify))
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    Label("연동 상태", systemImage: "link")
+                        .font(.caption.weight(.semibold))
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")
+
+                IntegrationSummaryBadge(
+                    text: summaryText(for: verify),
+                    color: summaryColor(for: verify)
+                )
+
+                Spacer(minLength: 8)
+
+                if !isExpanded {
+                    IntegrationStatusCompactStrip(statuses: statuses)
+                }
+
                 Button {
                     Task { await model.run(.verify) }
                 } label: {
@@ -203,39 +223,51 @@ private struct ExternalIntegrationStatusView: View {
                 .controlSize(.small)
             }
 
-            LazyVGrid(columns: columns, spacing: 8) {
-                IntegrationStatusTile(
-                    title: "앱 권한",
-                    systemImage: "key",
-                    value: appPermissionValue,
-                    detail: appPermissionDetail,
-                    health: appPermissionHealth
-                )
-                IntegrationStatusTile(
-                    title: "메모",
-                    systemImage: "note.text",
-                    value: notesValue(for: verify),
-                    detail: notesDetail(for: verify),
-                    health: notesHealth(for: verify)
-                )
-                IntegrationStatusTile(
-                    title: "캘린더",
-                    systemImage: "calendar",
-                    value: calendarValue(for: verify),
-                    detail: calendarDetail(for: verify),
-                    health: calendarHealth(for: verify)
-                )
-                IntegrationStatusTile(
-                    title: "미리 알림",
-                    systemImage: "checklist",
-                    value: remindersValue(for: verify),
-                    detail: remindersDetail(for: verify),
-                    health: remindersHealth(for: verify)
-                )
+            if isExpanded {
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(statuses) { status in
+                        IntegrationStatusTile(status: status)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, isExpanded ? 10 : 8)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func integrationStatuses(for verify: VerifyResult?) -> [IntegrationStatusSummary] {
+        [
+            IntegrationStatusSummary(
+                title: "앱 권한",
+                systemImage: "key",
+                value: appPermissionValue,
+                detail: appPermissionDetail,
+                health: appPermissionHealth
+            ),
+            IntegrationStatusSummary(
+                title: "메모",
+                systemImage: "note.text",
+                value: notesValue(for: verify),
+                detail: notesDetail(for: verify),
+                health: notesHealth(for: verify)
+            ),
+            IntegrationStatusSummary(
+                title: "캘린더",
+                systemImage: "calendar",
+                value: calendarValue(for: verify),
+                detail: calendarDetail(for: verify),
+                health: calendarHealth(for: verify)
+            ),
+            IntegrationStatusSummary(
+                title: "미리 알림",
+                systemImage: "checklist",
+                value: remindersValue(for: verify),
+                detail: remindersDetail(for: verify),
+                health: remindersHealth(for: verify)
+            ),
+        ]
     }
 
     private var appPermissionHealth: IntegrationHealth {
@@ -447,37 +479,76 @@ private enum IntegrationHealth {
     }
 }
 
-private struct IntegrationStatusTile: View {
+private struct IntegrationStatusSummary: Identifiable {
     var title: String
     var systemImage: String
     var value: String
     var detail: String
     var health: IntegrationHealth
 
+    var id: String { title }
+}
+
+private struct IntegrationSummaryBadge: View {
+    var text: String
+    var color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.10), in: Capsule())
+    }
+}
+
+private struct IntegrationStatusCompactStrip: View {
+    var statuses: [IntegrationStatusSummary]
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(statuses) { status in
+                Label(status.title, systemImage: status.systemImage)
+                    .font(.caption2.weight(.semibold))
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(status.health.color)
+                    .frame(width: 22, height: 22)
+                    .background(status.health.color.opacity(0.10), in: Circle())
+                    .help("\(status.title): \(status.value) · \(status.health.label)")
+            }
+        }
+    }
+}
+
+private struct IntegrationStatusTile: View {
+    var status: IntegrationStatusSummary
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
-                Label(title, systemImage: systemImage)
+                Label(status.title, systemImage: status.systemImage)
                     .font(.caption2.weight(.semibold))
                 Spacer(minLength: 4)
-                Text(health.label)
+                Text(status.health.label)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(health.color)
+                    .foregroundStyle(status.health.color)
             }
-            Text(value)
+            Text(status.value)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
-            Text(detail)
+            Text(status.detail)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
         .padding(8)
-        .background(health.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(status.health.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(health.color.opacity(0.18), lineWidth: 1)
+                .stroke(status.health.color.opacity(0.18), lineWidth: 1)
         }
     }
 }
