@@ -57,6 +57,10 @@ class VerifySyncStateTests(unittest.TestCase):
                 "reminders_assignment_list_exists": True,
                 "reminders_assignment_active_count": 8,
                 "reminders_assignment_marker_count": 9,
+                "reminders_issue_active_count": 1,
+                "reminders_issue_marker_count": 1,
+                "reminders_alert_active_count": 2,
+                "reminders_alert_marker_count": 2,
             },
             assignment_count=9,
         )
@@ -67,6 +71,7 @@ class VerifySyncStateTests(unittest.TestCase):
             by_name["reminders_assignment_count_matches_state"]["detail"],
             "active=8 markers=9 state=9",
         )
+        self.assertEqual(by_name["reminders_total_count_consistent"]["status"], "ok")
 
     def test_notice_file_calendar_and_reminder_coverage_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -208,6 +213,14 @@ class VerifySyncStateTests(unittest.TestCase):
                         "reminders_assignment_list_exists=true",
                         "reminders_assignment_active_count=2",
                         "reminders_assignment_marker_count=2",
+                        "reminders_issue_list_exists=true",
+                        "reminders_issue_active_count=0",
+                        "reminders_issue_marker_count=0",
+                        "reminders_alert_list_exists=true",
+                        "reminders_alert_active_count=4",
+                        "reminders_alert_marker_count=4",
+                        "reminders_total_active_count=6",
+                        "reminders_total_marker_count=6",
                     ]
                 ),
                 encoding="utf-8",
@@ -222,6 +235,9 @@ class VerifySyncStateTests(unittest.TestCase):
         self.assertEqual(checks["notice_exam_detection_covered_by_state"]["status"], "ok")
         self.assertEqual(checks["manifest_assignment_detection_covered_by_state"]["status"], "ok")
         self.assertEqual(checks["reminders_assignment_count_matches_state"]["status"], "ok")
+        self.assertEqual(payload["reminders"]["assignment_active_count"], 2)
+        self.assertEqual(payload["reminders"]["alert_active_count"], 4)
+        self.assertEqual(payload["reminders"]["total_active_count"], 6)
 
     def test_likely_exam_notice_missing_from_state_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

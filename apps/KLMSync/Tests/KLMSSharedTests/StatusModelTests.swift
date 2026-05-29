@@ -405,6 +405,14 @@ final class StatusModelTests: XCTestCase {
             "assignment_active_count": 3,
             "assignment_marker_count": 3,
             "assignment_list_exists": true,
+            "issue_active_count": 0,
+            "issue_marker_count": 0,
+            "issue_list_exists": true,
+            "alert_active_count": 6,
+            "alert_marker_count": 6,
+            "alert_list_exists": true,
+            "total_active_count": 9,
+            "total_marker_count": 9,
             "error": ""
           },
           "checks": []
@@ -418,6 +426,8 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(verify.state?.assignmentCount, 3)
         XCTAssertEqual(verify.calendar?.resultTotals?.exam, 2)
         XCTAssertEqual(verify.reminders?.assignmentActiveCount, 3)
+        XCTAssertEqual(verify.reminders?.alertActiveCount, 6)
+        XCTAssertEqual(verify.reminders?.totalActiveCount, 9)
         XCTAssertEqual(verify.reminders?.assignmentListExists, true)
     }
 

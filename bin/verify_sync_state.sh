@@ -77,6 +77,8 @@ fi
 if ! /usr/bin/osascript -l JavaScript \
   "$SCRIPT_DIR/src/js/verify_reminders_counts.js" \
   "--assignment-list=${REMINDERS_LIST_NAME:-KLMS 과제}" \
+  "--issue-list=${REMINDERS_ISSUE_LIST_NAME:-KLMS 확인 필요}" \
+  "--alert-list=${REMINDER_ALERT_LIST_NAME:-KLMS 알림}" \
   > "$REMINDERS_COUNTS_TXT" 2> "$REMINDERS_COUNTS_ERR"; then
   reminders_error="$(tr '\n' ' ' < "$REMINDERS_COUNTS_ERR" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')"
   print -r -- "reminders_error=${reminders_error:-Reminders verification unavailable.}" > "$REMINDERS_COUNTS_TXT"

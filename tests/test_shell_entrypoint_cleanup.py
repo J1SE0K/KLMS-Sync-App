@@ -730,6 +730,8 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("--exam-calendar=", text)
         self.assertIn("--helpdesk-calendar=", text)
         self.assertIn("verify_reminders_counts.js", text)
+        self.assertIn("--issue-list=", text)
+        self.assertIn("--alert-list=", text)
         self.assertIn("--reminders-lines", text)
         self.assertNotIn("summary of every event of calendar", text)
 

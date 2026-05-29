@@ -886,12 +886,28 @@ public struct VerifyRemindersSummary: Decodable, Sendable, Equatable {
     public var assignmentActiveCount: Int
     public var assignmentMarkerCount: Int
     public var assignmentListExists: Bool
+    public var issueActiveCount: Int
+    public var issueMarkerCount: Int
+    public var issueListExists: Bool
+    public var alertActiveCount: Int
+    public var alertMarkerCount: Int
+    public var alertListExists: Bool
+    public var totalActiveCount: Int
+    public var totalMarkerCount: Int
     public var error: String
 
     enum CodingKeys: String, CodingKey {
         case assignmentActiveCount = "assignment_active_count"
         case assignmentMarkerCount = "assignment_marker_count"
         case assignmentListExists = "assignment_list_exists"
+        case issueActiveCount = "issue_active_count"
+        case issueMarkerCount = "issue_marker_count"
+        case issueListExists = "issue_list_exists"
+        case alertActiveCount = "alert_active_count"
+        case alertMarkerCount = "alert_marker_count"
+        case alertListExists = "alert_list_exists"
+        case totalActiveCount = "total_active_count"
+        case totalMarkerCount = "total_marker_count"
         case error
     }
 
@@ -899,11 +915,27 @@ public struct VerifyRemindersSummary: Decodable, Sendable, Equatable {
         assignmentActiveCount: Int = 0,
         assignmentMarkerCount: Int = 0,
         assignmentListExists: Bool = false,
+        issueActiveCount: Int = 0,
+        issueMarkerCount: Int = 0,
+        issueListExists: Bool = false,
+        alertActiveCount: Int = 0,
+        alertMarkerCount: Int = 0,
+        alertListExists: Bool = false,
+        totalActiveCount: Int = 0,
+        totalMarkerCount: Int = 0,
         error: String = ""
     ) {
         self.assignmentActiveCount = assignmentActiveCount
         self.assignmentMarkerCount = assignmentMarkerCount
         self.assignmentListExists = assignmentListExists
+        self.issueActiveCount = issueActiveCount
+        self.issueMarkerCount = issueMarkerCount
+        self.issueListExists = issueListExists
+        self.alertActiveCount = alertActiveCount
+        self.alertMarkerCount = alertMarkerCount
+        self.alertListExists = alertListExists
+        self.totalActiveCount = totalActiveCount
+        self.totalMarkerCount = totalMarkerCount
         self.error = error
     }
 
@@ -912,6 +944,22 @@ public struct VerifyRemindersSummary: Decodable, Sendable, Equatable {
         assignmentActiveCount = container.decodeIfPresentDefault(Int.self, forKey: .assignmentActiveCount, default: 0)
         assignmentMarkerCount = container.decodeIfPresentDefault(Int.self, forKey: .assignmentMarkerCount, default: 0)
         assignmentListExists = container.decodeIfPresentDefault(Bool.self, forKey: .assignmentListExists, default: false)
+        issueActiveCount = container.decodeIfPresentDefault(Int.self, forKey: .issueActiveCount, default: 0)
+        issueMarkerCount = container.decodeIfPresentDefault(Int.self, forKey: .issueMarkerCount, default: 0)
+        issueListExists = container.decodeIfPresentDefault(Bool.self, forKey: .issueListExists, default: false)
+        alertActiveCount = container.decodeIfPresentDefault(Int.self, forKey: .alertActiveCount, default: 0)
+        alertMarkerCount = container.decodeIfPresentDefault(Int.self, forKey: .alertMarkerCount, default: 0)
+        alertListExists = container.decodeIfPresentDefault(Bool.self, forKey: .alertListExists, default: false)
+        totalActiveCount = container.decodeIfPresentDefault(
+            Int.self,
+            forKey: .totalActiveCount,
+            default: assignmentActiveCount + issueActiveCount + alertActiveCount
+        )
+        totalMarkerCount = container.decodeIfPresentDefault(
+            Int.self,
+            forKey: .totalMarkerCount,
+            default: assignmentMarkerCount + issueMarkerCount + alertMarkerCount
+        )
         error = container.decodeIfPresentDefault(String.self, forKey: .error, default: "")
     }
 }
