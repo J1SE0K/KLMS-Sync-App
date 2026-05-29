@@ -31,6 +31,53 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertNotNil(raw?["notice_filters"])
     }
 
+    func testManualOverrideStoreMergesMissingOverridesWithoutReplacingCanonicalValues() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("klms-dashboard-overrides-merge-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let targetURL = directory.appendingPathComponent("canonical_manual_assignment_overrides.json")
+        let sourceURL = directory.appendingPathComponent("configured_manual_assignment_overrides.json")
+        try """
+        {
+          "assignments": {
+            "https://klms.kaist.ac.kr/mod/assign/view.php?id=1": "ignored"
+          },
+          "exams": {
+            "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=1": {"status": "ignored"}
+          }
+        }
+        """.write(to: targetURL, atomically: true, encoding: .utf8)
+        try """
+        {
+          "assignments": {
+            "https://klms.kaist.ac.kr/mod/assign/view.php?id=1": "completed",
+            "https://klms.kaist.ac.kr/mod/assign/view.php?id=2": "completed"
+          },
+          "exams": {
+            "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=1": {"status": "approved"},
+            "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=2": {"status": "approved", "location": "E3"}
+          }
+        }
+        """.write(to: sourceURL, atomically: true, encoding: .utf8)
+
+        let changed = try ManualOverrideStore(url: targetURL).mergeMissingOverrides(from: sourceURL)
+        XCTAssertTrue(changed)
+
+        let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: targetURL)) as? [String: Any]
+        let assignments = raw?["assignments"] as? [String: String]
+        let exams = raw?["exams"] as? [String: [String: String]]
+
+        XCTAssertEqual(assignments?["https://klms.kaist.ac.kr/mod/assign/view.php?id=1"], "ignored")
+        XCTAssertEqual(assignments?["https://klms.kaist.ac.kr/mod/assign/view.php?id=2"], "completed")
+        XCTAssertEqual(exams?["https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=1"]?["status"], "ignored")
+        XCTAssertEqual(exams?["https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=2"]?["status"], "approved")
+        XCTAssertEqual(exams?["https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=2"]?["location"], "E3")
+    }
+
     func testManualOverrideStoreSavesExamOverrideUsingResolvableKey() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("klms-dashboard-exam-overrides-\(UUID().uuidString)", isDirectory: true)

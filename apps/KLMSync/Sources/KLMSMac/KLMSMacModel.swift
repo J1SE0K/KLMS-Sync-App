@@ -144,6 +144,7 @@ final class KLMSMacModel: ObservableObject {
             "KLMS_APP_RUN": "1",
             "NOTICE_NATIVE_NOTE_BIN_PATH": nativeNoticeHelperPath,
             "KLMS_PYTHONPATH_DIR": paths.appPythonPackagesURL.path,
+            "OVERRIDES_JSON_PATH": paths.overridesURL.path,
             "KLMS_SCRIPT_NOTIFICATIONS_ENABLED": "0",
             "KLMS_LOGIN_ASSIST_ENABLED": "1",
             "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": "1",
@@ -549,6 +550,7 @@ final class KLMSMacModel: ObservableObject {
         }
         do {
             try loadConfig()
+            try mergeConfiguredOverridesIntoCanonicalStore()
         } catch {
             if FileManager.default.fileExists(atPath: paths.configURL.path) {
                 errorMessage = error.localizedDescription
@@ -560,6 +562,20 @@ final class KLMSMacModel: ObservableObject {
         latestBackup = AppDataBackupManager(paths: paths).latestBackup()
         refreshAppDiagnostics()
         refreshLaunchAgentState()
+    }
+
+    private func mergeConfiguredOverridesIntoCanonicalStore() throws {
+        guard let configuredPath = envDocument?.value(for: "OVERRIDES_JSON_PATH"),
+              !configuredPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        let expandedPath = NSString(string: configuredPath).expandingTildeInPath
+        let configuredURL = URL(fileURLWithPath: expandedPath)
+        guard configuredURL.standardizedFileURL.path != paths.overridesURL.standardizedFileURL.path,
+              FileManager.default.fileExists(atPath: configuredURL.path) else {
+            return
+        }
+        _ = try ManualOverrideStore(url: paths.overridesURL).mergeMissingOverrides(from: configuredURL)
     }
 
     func run(_ command: KLMSEngineCommand, dryRun: Bool = false) async {
@@ -589,6 +605,7 @@ final class KLMSMacModel: ObservableObject {
 
         do {
             await installEngine(force: false, runDoctorAfterInstall: false)
+            try mergeConfiguredOverridesIntoCanonicalStore()
             let result = try await runner.run(
                 command,
                 paths: paths,

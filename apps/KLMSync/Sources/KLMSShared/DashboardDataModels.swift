@@ -169,6 +169,47 @@ public struct ManualOverrideStore: Sendable {
         self.url = url
     }
 
+    @discardableResult
+    public func mergeMissingOverrides(from sourceURL: URL) throws -> Bool {
+        guard sourceURL.standardizedFileURL.path != url.standardizedFileURL.path,
+              FileManager.default.fileExists(atPath: sourceURL.path) else {
+            return false
+        }
+        var sourceObject = try ManualOverrideStore(url: sourceURL).loadJSONObject()
+        let legacyAssignments = legacyAssignmentObject(from: sourceObject)
+        if sourceObject["assignments"] == nil, !legacyAssignments.isEmpty {
+            sourceObject = ["assignments": legacyAssignments]
+        }
+        guard !sourceObject.isEmpty else {
+            return false
+        }
+
+        var targetObject = try loadJSONObject()
+        var changed = false
+        for (key, sourceValue) in sourceObject {
+            if let sourceDictionary = sourceValue as? [String: Any] {
+                var targetDictionary = targetObject[key] as? [String: Any] ?? [:]
+                var dictionaryChanged = false
+                for (entryKey, entryValue) in sourceDictionary where targetDictionary[entryKey] == nil {
+                    targetDictionary[entryKey] = entryValue
+                    dictionaryChanged = true
+                }
+                if dictionaryChanged || targetObject[key] == nil {
+                    targetObject[key] = targetDictionary
+                    changed = true
+                }
+            } else if targetObject[key] == nil {
+                targetObject[key] = sourceValue
+                changed = true
+            }
+        }
+
+        if changed {
+            try saveJSONObject(targetObject)
+        }
+        return changed
+    }
+
     public func load() throws -> ManualOverridesSnapshot {
         let object = try loadJSONObject()
         let assignmentsSource = object["assignments"] as? [String: Any] ?? legacyAssignmentObject(from: object)
