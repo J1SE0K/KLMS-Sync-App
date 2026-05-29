@@ -7,12 +7,18 @@ const MARKER_PREFIXES = ["KLMS_SYNC_ITEM_ID:", "KLMS_ASSIGN_ID:"];
 function parseArgs(argv) {
   const args = {
     assignmentList: "KLMS 과제",
+    issueList: "KLMS 확인 필요",
+    alertList: "KLMS 알림",
   };
   const values = argv || [];
   for (let i = 0; i < values.length; i += 1) {
     const arg = String(values[i] || "");
     if (arg.startsWith("--assignment-list=")) {
       args.assignmentList = arg.slice("--assignment-list=".length);
+    } else if (arg.startsWith("--issue-list=")) {
+      args.issueList = arg.slice("--issue-list=".length);
+    } else if (arg.startsWith("--alert-list=")) {
+      args.alertList = arg.slice("--alert-list=".length);
     }
   }
   return args;
@@ -67,13 +73,33 @@ function findList(remindersApp, name) {
 function run(argv) {
   const args = parseArgs(argv);
   const remindersApp = Application("/System/Applications/Reminders.app");
-  const list = findList(remindersApp, args.assignmentList);
   const lines = [];
+  const assignment = countMarkedReminders(remindersApp, args.assignmentList);
+  const issue = countMarkedReminders(remindersApp, args.issueList);
+  const alert = countMarkedReminders(remindersApp, args.alertList);
+
+  lines.push(`reminders_assignment_list_exists=${assignment.exists ? "true" : "false"}`);
+  lines.push(`reminders_assignment_active_count=${assignment.activeCount}`);
+  lines.push(`reminders_assignment_marker_count=${assignment.markerCount}`);
+  lines.push(`reminders_issue_list_exists=${issue.exists ? "true" : "false"}`);
+  lines.push(`reminders_issue_active_count=${issue.activeCount}`);
+  lines.push(`reminders_issue_marker_count=${issue.markerCount}`);
+  lines.push(`reminders_alert_list_exists=${alert.exists ? "true" : "false"}`);
+  lines.push(`reminders_alert_active_count=${alert.activeCount}`);
+  lines.push(`reminders_alert_marker_count=${alert.markerCount}`);
+  lines.push(`reminders_total_active_count=${assignment.activeCount + issue.activeCount + alert.activeCount}`);
+  lines.push(`reminders_total_marker_count=${assignment.markerCount + issue.markerCount + alert.markerCount}`);
+  return lines.join("\n");
+}
+
+function countMarkedReminders(remindersApp, listName) {
+  const list = findList(remindersApp, listName);
   if (!list) {
-    lines.push("reminders_assignment_list_exists=false");
-    lines.push("reminders_assignment_active_count=0");
-    lines.push("reminders_assignment_marker_count=0");
-    return lines.join("\n");
+    return {
+      exists: false,
+      activeCount: 0,
+      markerCount: 0,
+    };
   }
 
   let activeCount = 0;
@@ -91,8 +117,9 @@ function run(argv) {
     }
   }
 
-  lines.push("reminders_assignment_list_exists=true");
-  lines.push(`reminders_assignment_active_count=${activeCount}`);
-  lines.push(`reminders_assignment_marker_count=${markerCount}`);
-  return lines.join("\n");
+  return {
+    exists: true,
+    activeCount,
+    markerCount,
+  };
 }

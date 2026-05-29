@@ -216,6 +216,24 @@ def live_reminder_checks(reminders: dict[str, Any], assignment_count: int) -> li
     active_count = int(reminders.get("reminders_assignment_active_count", 0) or 0)
     marker_count = int(reminders.get("reminders_assignment_marker_count", 0) or 0)
     list_exists = bool(reminders.get("reminders_assignment_list_exists", False))
+    issue_active_count = int(reminders.get("reminders_issue_active_count", 0) or 0)
+    issue_marker_count = int(reminders.get("reminders_issue_marker_count", 0) or 0)
+    alert_active_count = int(reminders.get("reminders_alert_active_count", 0) or 0)
+    alert_marker_count = int(reminders.get("reminders_alert_marker_count", 0) or 0)
+    total_active_count = int(
+        reminders.get(
+            "reminders_total_active_count",
+            active_count + issue_active_count + alert_active_count,
+        )
+        or 0
+    )
+    total_marker_count = int(
+        reminders.get(
+            "reminders_total_marker_count",
+            marker_count + issue_marker_count + alert_marker_count,
+        )
+        or 0
+    )
     return [
         ok_check("reminders_access", True, "available"),
         ok_check("reminders_assignment_list_exists", list_exists or assignment_count == 0, f"exists={list_exists}"),
@@ -223,6 +241,15 @@ def live_reminder_checks(reminders: dict[str, Any], assignment_count: int) -> li
             "reminders_assignment_count_matches_state",
             marker_count == assignment_count,
             f"active={active_count} markers={marker_count} state={assignment_count}",
+        ),
+        ok_check(
+            "reminders_total_count_consistent",
+            total_marker_count == marker_count + issue_marker_count + alert_marker_count
+            and total_active_count == active_count + issue_active_count + alert_active_count,
+            (
+                f"total_active={total_active_count} assignment={active_count} "
+                f"issue={issue_active_count} alert={alert_active_count}"
+            ),
         ),
     ]
 
@@ -528,6 +555,30 @@ def build_payload(
             "assignment_active_count": int(reminders.get("reminders_assignment_active_count", 0) or 0),
             "assignment_marker_count": int(reminders.get("reminders_assignment_marker_count", 0) or 0),
             "assignment_list_exists": bool(reminders.get("reminders_assignment_list_exists", False)),
+            "issue_active_count": int(reminders.get("reminders_issue_active_count", 0) or 0),
+            "issue_marker_count": int(reminders.get("reminders_issue_marker_count", 0) or 0),
+            "issue_list_exists": bool(reminders.get("reminders_issue_list_exists", False)),
+            "alert_active_count": int(reminders.get("reminders_alert_active_count", 0) or 0),
+            "alert_marker_count": int(reminders.get("reminders_alert_marker_count", 0) or 0),
+            "alert_list_exists": bool(reminders.get("reminders_alert_list_exists", False)),
+            "total_active_count": int(
+                reminders.get(
+                    "reminders_total_active_count",
+                    int(reminders.get("reminders_assignment_active_count", 0) or 0)
+                    + int(reminders.get("reminders_issue_active_count", 0) or 0)
+                    + int(reminders.get("reminders_alert_active_count", 0) or 0),
+                )
+                or 0
+            ),
+            "total_marker_count": int(
+                reminders.get(
+                    "reminders_total_marker_count",
+                    int(reminders.get("reminders_assignment_marker_count", 0) or 0)
+                    + int(reminders.get("reminders_issue_marker_count", 0) or 0)
+                    + int(reminders.get("reminders_alert_marker_count", 0) or 0),
+                )
+                or 0
+            ),
             "error": str(reminders.get("reminders_error", "") or ""),
         },
         "checks": checks,
@@ -577,6 +628,14 @@ def print_text(payload: dict[str, Any]) -> None:
     print(f"reminders_assignment_active_count={reminders['assignment_active_count']}")
     print(f"reminders_assignment_marker_count={reminders['assignment_marker_count']}")
     print(f"reminders_assignment_list_exists={'true' if reminders['assignment_list_exists'] else 'false'}")
+    print(f"reminders_issue_active_count={reminders['issue_active_count']}")
+    print(f"reminders_issue_marker_count={reminders['issue_marker_count']}")
+    print(f"reminders_issue_list_exists={'true' if reminders['issue_list_exists'] else 'false'}")
+    print(f"reminders_alert_active_count={reminders['alert_active_count']}")
+    print(f"reminders_alert_marker_count={reminders['alert_marker_count']}")
+    print(f"reminders_alert_list_exists={'true' if reminders['alert_list_exists'] else 'false'}")
+    print(f"reminders_total_active_count={reminders['total_active_count']}")
+    print(f"reminders_total_marker_count={reminders['total_marker_count']}")
 
 
 def main() -> int:

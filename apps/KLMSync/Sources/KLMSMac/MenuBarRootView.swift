@@ -394,14 +394,18 @@ private struct ExternalIntegrationStatusView: View {
         if !reminders.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "오류"
         }
-        return "\(reminders.assignmentActiveCount)개 활성"
+        let total = reminders.totalActiveCount
+        if total > reminders.assignmentActiveCount {
+            return "총 \(total)개"
+        }
+        return "과제 \(reminders.assignmentActiveCount)개"
     }
 
     private func remindersDetail(for verify: VerifyResult?) -> String {
         guard let reminders = verify?.reminders else {
             return "과제가 미리 알림 목록과 맞는지 확인합니다."
         }
-        return "마커 \(reminders.assignmentMarkerCount)개 · 목록 \(reminders.assignmentListExists ? "있음" : "없음")"
+        return "과제 \(reminders.assignmentActiveCount) · 확인 필요 \(reminders.issueActiveCount) · 알림 \(reminders.alertActiveCount)"
     }
 
     private func hasIssue(namedWithPrefix prefix: String, in checks: [VerifyCheck]) -> Bool {
