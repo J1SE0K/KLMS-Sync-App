@@ -10,6 +10,7 @@ enum DashboardDetailKind: String, CaseIterable, Identifiable {
     case examCandidates
     case helpDesk
     case notices
+    case files
     case newFiles
     case quarantine
     case pruned
@@ -34,6 +35,8 @@ enum DashboardDetailKind: String, CaseIterable, Identifiable {
             "헬프데스크"
         case .notices:
             "공지"
+        case .files:
+            "파일 목록"
         case .newFiles:
             "새 파일"
         case .quarantine:
@@ -140,6 +143,8 @@ struct DashboardDetailPanelView: View {
                 )
             case .notices:
                 NoticeListView(filters: filters, model: model)
+            case .files:
+                FileManifestListView(filters: filters, model: model)
             case .newFiles:
                 NewFilesListView(filters: filters, model: model)
             case .quarantine:
@@ -228,7 +233,7 @@ private enum DashboardCourseFilter {
             courses = snapshot.legacyState?.content.helpDeskItems.map(\.course) ?? []
         case .notices:
             courses = snapshot.noticeDigest?.notices.map(\.course) ?? []
-        case .newFiles:
+        case .files, .newFiles:
             courses = snapshot.courseFileManifest.map(\.course)
         case .calendar:
             courses = snapshot.calendarSyncResult?.changes.map(\.course) ?? []
@@ -323,6 +328,8 @@ private enum DashboardTermFilter {
         case .notices:
             let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
             terms = (snapshot.noticeDigest?.notices ?? []).map { $0.academicTerm(generatedAt: generatedAt) }
+        case .files:
+            terms = snapshot.courseFileManifest.map(\.academicTerm)
         case .newFiles:
             terms = newFileTerms(snapshot: snapshot)
         case .quarantine:
@@ -387,7 +394,7 @@ private enum DashboardTermFilter {
 private extension DashboardDetailKind {
     var supportsNewOnly: Bool {
         switch self {
-        case .notices, .newFiles:
+        case .notices, .files, .newFiles:
             true
         default:
             false
@@ -396,7 +403,7 @@ private extension DashboardDetailKind {
 
     var supportsRecentOnly: Bool {
         switch self {
-        case .notices, .newFiles, .quarantine:
+        case .notices, .files, .newFiles, .quarantine:
             true
         default:
             false
@@ -1212,6 +1219,57 @@ private struct NewFilesListView: View {
     }
 }
 
+private struct FileManifestListView: View {
+    var filters: DashboardDetailFilters
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        let files = filteredItems
+        if files.isEmpty {
+            EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "파일 목록이 없습니다. 파일 동기화를 한 번 실행하면 KLMS 파일 목록이 여기에 표시됩니다.")
+        } else {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(files) { item in
+                    FileRowView(item: item, kind: .file, model: model)
+                }
+            }
+        }
+    }
+
+    private var filteredItems: [DashboardFileItem] {
+        model.snapshot.courseFileManifest.compactMap { entry in
+            let key = fileKey(url: entry.url, path: entry.absolutePath, fallback: entry.relativePath)
+            let item = DashboardFileItem(
+                key: key,
+                title: fileDisplayTitle(filename: entry.filename, relativePath: entry.relativePath),
+                course: entry.course,
+                academicTerm: entry.academicTerm,
+                path: entry.absolutePath,
+                url: entry.url,
+                isRecent: isRecent(entry),
+                interaction: model.snapshot.appUserState?.files[key]
+            )
+            return item.matches(filters: filters) ? item : nil
+        }
+    }
+
+    private func isRecent(_ entry: CourseFileManifestEntry) -> Bool {
+        (model.snapshot.downloadResult?.results ?? []).contains { result in
+            let sameFile = (!result.url.isEmpty && result.url == entry.url)
+                || (!result.relativePath.isEmpty && result.relativePath == entry.relativePath)
+            guard sameFile else {
+                return false
+            }
+            return result.copiedToNewFilesInbox
+                || (!result.skippedExisting
+                    && !result.restoredFromArchive
+                    && !result.reusedLoggedFile
+                    && !result.failed
+                    && !result.quarantined)
+        }
+    }
+}
+
 private struct DashboardFileItem: Identifiable {
     var key: String
     var title: String
@@ -1231,6 +1289,7 @@ private struct DashboardFileItem: Identifiable {
     func matches(filters: DashboardDetailFilters) -> Bool {
         guard filters.showHidden || !isHidden else { return false }
         guard !filters.hiddenOnly || isHidden else { return false }
+        guard !filters.newOnly || isRecent else { return false }
         guard !filters.recentOnly || isRecent else { return false }
         guard DashboardTermFilter.matches(
             academicTerm,
@@ -1258,6 +1317,19 @@ private func fileKey(url: String, path: String, fallback: String) -> String {
         return path
     }
     return fallback
+}
+
+private func fileDisplayTitle(filename: String, relativePath: String) -> String {
+    let trimmedFilename = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmedFilename.isEmpty {
+        return trimmedFilename
+    }
+    let trimmedRelativePath = relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedRelativePath.isEmpty else {
+        return ""
+    }
+    let basename = URL(fileURLWithPath: trimmedRelativePath).lastPathComponent
+    return basename.isEmpty ? trimmedRelativePath : basename
 }
 
 private enum DashboardFileRowKind {
