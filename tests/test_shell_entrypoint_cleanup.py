@@ -420,6 +420,19 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             self.assertIn("cleanup_runtime_tmp", result.stdout)
             self.assertFalse(stale_url_list.exists())
 
+    def test_local_artifact_cleanup_preserves_private_runtime_data(self) -> None:
+        script = PROJECT_DIR / "tools" / "clean_local_artifacts.sh"
+        text = script.read_text(encoding="utf-8")
+
+        self.assertIn("runtime/tmp", text)
+        self.assertIn("apps/KLMSync/.build", text)
+        self.assertIn("notice_native_note_timing.log", text)
+        self.assertIn("runtime/state", text)
+        self.assertIn("course_files", text)
+        self.assertIn("manual overrides", text)
+        self.assertIn("Refusing to remove protected path", text)
+        self.assertNotIn("git clean", text)
+
     def test_file_refresh_prunes_archive_and_cleans_tmp_on_success(self) -> None:
         text = (PROJECT_DIR / "bin" / "refresh_course_files.sh").read_text(encoding="utf-8")
 
