@@ -167,7 +167,19 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
 
         self.assertIn("displayMode == .primary && readChecked", text)
         self.assertIn("displayMode == .archive && readChecked", text)
+        self.assertIn("preserving existing read state on unchecked capture", text)
+        self.assertNotIn("state.readFingerprint = nil", text)
+        self.assertNotIn("state.readAt = nil", text)
         self.assertIn("plaintextHash(for: currentText) != expectedPlaintextHash", text)
+
+    def test_legacy_notice_capture_does_not_clear_existing_read_state(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "capture_notice_native_state.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("state.readFingerprint = rendered.fingerprint", text)
+        self.assertNotIn("state.readFingerprint = nil", text)
+        self.assertNotIn("state.readAt = nil", text)
 
     def test_archive_capture_can_create_important_state(self) -> None:
         text = (

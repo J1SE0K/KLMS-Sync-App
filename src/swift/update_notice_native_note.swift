@@ -576,6 +576,14 @@ func boolValue(_ value: Bool?) -> Bool {
     value ?? false
 }
 
+func noticeStateIsRead(_ state: NoticeInteractionState, fingerprint: String) -> Bool {
+    let readAt = (state.readAt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if !readAt.isEmpty {
+        return true
+    }
+    return !fingerprint.isEmpty && state.readFingerprint == fingerprint
+}
+
 func loadDigest(path: String) -> NoticeDigest {
     let url = URL(fileURLWithPath: path)
     do {
@@ -3659,11 +3667,10 @@ func syncUserStateFromRenderedNote(
             if displayMode == .primary && readChecked {
                 state.readFingerprint = rendered.fingerprint
                 state.readAt = timestamp
-            } else if !readChecked && state.readFingerprint == rendered.fingerprint {
-                state.readFingerprint = nil
-                state.readAt = nil
             } else if displayMode == .archive && readChecked {
                 debugLog("notice=\(rendered.title) ignoring archive read=true capture")
+            } else if !readChecked {
+                debugLog("notice=\(rendered.title) preserving existing read state on unchecked capture")
             }
         } else {
             debugLog("notice=\(rendered.title) readChecked=nil")
@@ -3761,7 +3768,7 @@ func buildRenderPlan(
 
             let fingerprint = String(notice.fingerprint ?? "")
             let isImportant = boolValue(state.important)
-            let isRead = !fingerprint.isEmpty && state.readFingerprint == fingerprint
+            let isRead = noticeStateIsRead(state, fingerprint: fingerprint)
             let isHidden = boolValue(state.hidden)
             if isHidden && hideHiddenNoticeItemsEnabled {
                 continue
@@ -5497,7 +5504,7 @@ enum NoticeNativeNoteMain {
             if arguments.mode == "capture" {
                 let readCount = userState.notices.values.reduce(into: 0) { count, state in
                     let fingerprint = state.fingerprint ?? ""
-                    if !fingerprint.isEmpty, state.readFingerprint == fingerprint {
+                    if noticeStateIsRead(state, fingerprint: fingerprint) {
                         count += 1
                     }
                 }

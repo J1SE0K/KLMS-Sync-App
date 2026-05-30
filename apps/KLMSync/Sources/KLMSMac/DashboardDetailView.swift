@@ -921,9 +921,7 @@ private struct NoticeListView: View {
             let interaction = state[notice.noticeIdentifier]
             let hidden = interaction?.hidden == true
             let important = interaction?.important == true
-            let read = notice.fingerprint.isEmpty
-                ? interaction?.readAt != nil
-                : interaction?.readFingerprint == notice.fingerprint
+            let read = noticeReadStateMatches(interaction, fingerprint: notice.fingerprint)
             let fresh = notice.changeState == "new" || notice.changeState == "updated"
             let term = notice.academicTerm(generatedAt: generatedAt)
             guard filters.showHidden || !hidden else { return false }
@@ -956,6 +954,16 @@ private struct NoticeListView: View {
                 .localizedCaseInsensitiveContains(query)
         }
     }
+}
+
+private func noticeReadStateMatches(_ state: NoticeInteractionState?, fingerprint: String) -> Bool {
+    guard let state else {
+        return false
+    }
+    if state.readAt?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+        return true
+    }
+    return !fingerprint.isEmpty && state.readFingerprint == fingerprint
 }
 
 enum NoticeListCategory: String, CaseIterable, Identifiable {
@@ -993,7 +1001,7 @@ enum NoticeListCategory: String, CaseIterable, Identifiable {
             case .important:
                 important && hidden
             case .fresh:
-                fresh && hidden
+                fresh && !read && hidden
             case .unread:
                 !read && hidden
             case .archived:
@@ -1006,7 +1014,7 @@ enum NoticeListCategory: String, CaseIterable, Identifiable {
             case .important:
                 important && !hidden
             case .fresh:
-                fresh && !hidden
+                fresh && !read && !hidden
             case .unread:
                 !read && !hidden
             case .archived:
@@ -1038,9 +1046,7 @@ private struct NoticeCategoryPickerView: View {
             let interaction = state[notice.noticeIdentifier]
             let hidden = interaction?.hidden == true
             let important = interaction?.important == true
-            let read = notice.fingerprint.isEmpty
-                ? interaction?.readAt != nil
-                : interaction?.readFingerprint == notice.fingerprint
+            let read = noticeReadStateMatches(interaction, fingerprint: notice.fingerprint)
             let fresh = notice.changeState == "new" || notice.changeState == "updated"
             return category.matches(
                 hidden: hidden,
@@ -1171,10 +1177,7 @@ private struct NoticeRowView: View {
                 guard let state = model.snapshot.noticeUserState?.notices[notice.noticeIdentifier] else {
                     return false
                 }
-                if notice.fingerprint.isEmpty {
-                    return state.readAt != nil
-                }
-                return state.readFingerprint == notice.fingerprint
+                return noticeReadStateMatches(state, fingerprint: notice.fingerprint)
             },
             set: { value in
                 model.setNoticeRead(value, for: notice)
