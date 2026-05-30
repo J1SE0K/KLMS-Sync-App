@@ -355,6 +355,12 @@ klms_write_login_status_ok() {
 EOF
 }
 
+klms_report_already_logged_in() {
+  local source="${1:-unknown}"
+  print -r -- "status=ok stage=already_authenticated source=$source" >&2
+  print -r -- "KLMS 이미 로그인되어 있습니다." >&2
+}
+
 klms_clear_login_status() {
   rm -f "$KLMS_LOGIN_STATUS_PATH"
 }
@@ -512,6 +518,8 @@ klms_require_login() {
   local app_run_login_assist_attempted=0
   local fast_tab_state="unknown"
   local force_login_preflight="${KLMS_FORCE_LOGIN_PREFLIGHT:-0}"
+  local login_assist_completed_this_call=0
+  local already_logged_in_reported=0
 
   if [[ "${KLMS_PARENT_LOGIN_ASSIST_READY:-0}" == "1" ]]; then
     KLMS_LOGIN_ASSIST_READY=1
@@ -527,11 +535,15 @@ klms_require_login() {
 
   if [[ "$force_login_preflight" != "1" && "${KLMS_APP_RUN:-0}" == "1" ]]; then
     if klms_recent_login_status_ok; then
+      klms_report_already_logged_in "cache"
+      already_logged_in_reported=1
       KLMS_LOGIN_PREFETCH_READY=1
       return 0
     fi
     if [[ "$fast_tab_state" == "authenticated" ]]; then
       klms_write_login_status_ok
+      klms_report_already_logged_in "safari-tab"
+      already_logged_in_reported=1
       KLMS_LOGIN_PREFETCH_READY=1
       KLMS_LOGIN_ASSIST_READY=1
       return 0
@@ -545,11 +557,14 @@ klms_require_login() {
       print -r -- "KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘." >&2
       return 1
     fi
+    login_assist_completed_this_call=1
     klms_write_login_status_ok
     KLMS_LOGIN_ASSIST_READY=1
   fi
 
   if [[ "$force_login_preflight" != "1" && "${KLMS_APP_RUN:-0}" != "1" && "$fast_tab_state" != "login_required" ]] && klms_recent_login_status_ok; then
+    klms_report_already_logged_in "cache"
+    already_logged_in_reported=1
     KLMS_LOGIN_PREFETCH_READY=1
     return 0
   fi
@@ -581,6 +596,7 @@ klms_require_login() {
 
   if ! klms_check_login_pages "$pages_json" "KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘." 0; then
     if klms_try_login_assist; then
+      login_assist_completed_this_call=1
       (
         cd "$SCRIPT_DIR"
         /usr/bin/env python3 "$KLMS_PYTHON_DIR/fetch_pages_backend.py" \
@@ -602,6 +618,9 @@ klms_require_login() {
       print -r -- "${KLMS_LAST_LOGIN_ERROR_MESSAGE:-KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘.}" >&2
       return 1
     fi
+  fi
+  if [[ "$login_assist_completed_this_call" != "1" && "$already_logged_in_reported" != "1" ]]; then
+    klms_report_already_logged_in "preflight"
   fi
   print -r -- "[login $(date '+%Y-%m-%d %H:%M:%S %Z')] preflight finish status=ok" >&2
   KLMS_LOGIN_PREFETCH_READY=1

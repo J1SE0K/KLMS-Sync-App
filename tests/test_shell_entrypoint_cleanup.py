@@ -210,6 +210,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         app_entry = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacApp.swift"
         ).read_text(encoding="utf-8")
+        kaikey = (PROJECT_DIR / "bin" / "kaikey_auto_login.sh").read_text(encoding="utf-8")
 
         self.assertIn('KLMS_LOGIN_ASSIST_ENABLED": "1"', app_model)
         self.assertIn('KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": "1"', app_model)
@@ -225,6 +226,12 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('"${KLMS_APP_RUN:-0}" == "1"', common)
         self.assertIn('"$force_login_preflight" != "1"', common)
         self.assertIn('if [[ "$fast_tab_state" == "authenticated" ]]', common)
+        self.assertIn("klms_report_already_logged_in", common)
+        self.assertIn("stage=already_authenticated", common)
+        self.assertIn("KLMS 이미 로그인되어 있습니다.", common)
+        self.assertIn("outputIndicatesAlreadyAuthenticated", app_model)
+        self.assertIn('showTransientAuthStatus("이미 로그인됨")', app_model)
+        self.assertIn("stage=already_authenticated source=kaikey-safari", kaikey)
         self.assertIn('klms_recent_login_status_ok', common)
         self.assertIn("KLMS_PARENT_LOGIN_ASSIST_READY", common)
         self.assertIn("KLMS_LOGIN_ASSIST_READY=1", common)
@@ -307,6 +314,8 @@ print(json.dumps({"status": "ok"}))
             self.assertTrue(marker.exists(), result.stdout + result.stderr)
             self.assertEqual(result.stdout.strip().splitlines()[-1], "1")
             self.assertIn("preflight start", result.stderr)
+            self.assertIn("stage=already_authenticated source=preflight", result.stderr)
+            self.assertIn("KLMS 이미 로그인되어 있습니다.", result.stderr)
 
     def test_app_run_checks_dashboard_before_login_assist(self) -> None:
         common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
@@ -373,6 +382,8 @@ print(json.dumps({"status": "ok"}))
             self.assertFalse(assist_marker.exists(), result.stdout + result.stderr)
             self.assertEqual(result.stdout.strip().splitlines()[-1], "1:0")
             self.assertNotIn("KLMS 로그인이 풀린", result.stdout + result.stderr)
+            self.assertIn("stage=already_authenticated source=preflight", result.stderr)
+            self.assertIn("KLMS 이미 로그인되어 있습니다.", result.stderr)
 
     def test_app_run_stops_when_login_assist_fails(self) -> None:
         common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
@@ -917,6 +928,9 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn('content.title = "KLMS 인증 완료"', model)
         self.assertIn('content.body = "로그인 인증이 완료됐습니다. 동기화를 계속 진행합니다."', model)
         self.assertIn('showTransientAuthStatus("인증 완료됨")', model)
+        self.assertIn("notifiedAlreadyLoggedInForCurrentRun", model)
+        self.assertIn("showAlreadyLoggedInStatusIfNeeded()", model)
+        self.assertIn('showTransientAuthStatus("이미 로그인됨")', model)
         self.assertIn("clearAuthDigitsState(showAuthenticatedMessage: true)", model)
         self.assertIn("removeDeliveredNotifications(withIdentifiers: identifiers)", model)
         self.assertNotIn("removeAllPendingNotificationRequests", model)

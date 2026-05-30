@@ -150,6 +150,22 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertFalse(KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(output))
     }
 
+    func testAlreadyAuthenticatedOutputShowsLoginReadyButDoesNotCompleteAuthChallenge() {
+        let output = "status=ok stage=already_authenticated source=preflight\nKLMS 이미 로그인되어 있습니다."
+
+        XCTAssertTrue(KLMSCommandRunner.outputIndicatesAuthenticated(output))
+        XCTAssertTrue(KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(output))
+        XCTAssertFalse(KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(output))
+        XCTAssertNil(KLMSCommandRunner.extractAuthDigits(from: output))
+    }
+
+    func testAuthenticatedOutputDoesNotImplyAlreadyAuthenticated() {
+        let output = "status=ok stage=authenticated\nKLMS 로그인 보조 완료"
+
+        XCTAssertTrue(KLMSCommandRunner.outputIndicatesAuthenticated(output))
+        XCTAssertFalse(KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(output))
+    }
+
     func testOldAuthenticatedOutputDoesNotHideNewerAuthDigits() {
         let log = """
         status=ok stage=authenticated
