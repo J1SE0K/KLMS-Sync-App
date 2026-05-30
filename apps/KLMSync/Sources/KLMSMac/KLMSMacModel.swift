@@ -60,6 +60,7 @@ final class KLMSMacModel: ObservableObject {
     private var localRemoteServer: LocalRemoteServer?
     private var notifiedAuthDigits = Set<String>()
     private var notifiedAuthCompletionForCurrentRun = false
+    private var notifiedAlreadyLoggedInForCurrentRun = false
     private var authDigitsSeenForCurrentRun = false
     private var lastAuthCompletionAt: Date?
     private var authStatusClearTask: Task<Void, Never>?
@@ -280,6 +281,7 @@ final class KLMSMacModel: ObservableObject {
         authDigitsSuppressed = false
         notifiedAuthDigits.removeAll()
         notifiedAuthCompletionForCurrentRun = false
+        notifiedAlreadyLoggedInForCurrentRun = false
         authDigitsSeenForCurrentRun = false
         lastAuthCompletionAt = nil
         if resetSnapshot {
@@ -1618,6 +1620,10 @@ final class KLMSMacModel: ObservableObject {
             await clearAuthDigitsState(showAuthenticatedMessage: true)
             return
         }
+        if !authDigitsSeenForCurrentRun,
+           KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(liveCommandOutput) {
+            showAlreadyLoggedInStatusIfNeeded()
+        }
     }
 
     private func appendLiveCommandOutput(_ text: String) {
@@ -1646,6 +1652,15 @@ final class KLMSMacModel: ObservableObject {
         }
         notifiedAuthCompletionForCurrentRun = true
         await notifyAuthCompletion()
+    }
+
+    private func showAlreadyLoggedInStatusIfNeeded() {
+        guard !notifiedAlreadyLoggedInForCurrentRun else {
+            return
+        }
+        notifiedAlreadyLoggedInForCurrentRun = true
+        lastAuthCompletionAt = Date()
+        showTransientAuthStatus("이미 로그인됨")
     }
 
     private func startRunningCommandStatusPoll(startedAt: Date) {

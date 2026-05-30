@@ -177,7 +177,12 @@ while (( $(date +%s) < deadline_epoch )); do
 
   case "$step_status" in
     authenticated)
-      print -r -- "status=ok stage=authenticated"
+      if [[ "$submitted_login_this_run" != "1" && -z "$last_digits" ]]; then
+        print -r -- "status=ok stage=already_authenticated source=kaikey-safari"
+        print -r -- "KLMS 이미 로그인되어 있습니다."
+      else
+        print -r -- "status=ok stage=authenticated"
+      fi
       exit 0
       ;;
     twofactor_digits)

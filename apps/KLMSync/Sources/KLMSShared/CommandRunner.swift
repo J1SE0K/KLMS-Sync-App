@@ -230,6 +230,10 @@ public actor KLMSCommandRunner {
         latestAuthenticatedLocation(in: text) != nil
     }
 
+    public static func outputIndicatesAlreadyAuthenticated(_ text: String) -> Bool {
+        latestAlreadyAuthenticatedLocation(in: text) != nil
+    }
+
     public static func outputIndicatesAuthenticatedAfterLatestAuthDigits(_ text: String) -> Bool {
         guard let authenticatedLocation = latestAuthenticatedLocation(in: text) else {
             return false
@@ -249,10 +253,24 @@ public actor KLMSCommandRunner {
 
     public static func latestAuthenticatedLocation(in text: String) -> Int? {
         let markers = [
+            "status=ok stage=already_authenticated",
             "status=ok stage=authenticated",
             "status=authenticated",
             "KLMS 로그인 보조 완료",
+            "KLMS 이미 로그인되어 있습니다.",
         ]
+        return latestMarkerLocation(in: text, markers: markers)
+    }
+
+    private static func latestAlreadyAuthenticatedLocation(in text: String) -> Int? {
+        let markers = [
+            "status=ok stage=already_authenticated",
+            "KLMS 이미 로그인되어 있습니다.",
+        ]
+        return latestMarkerLocation(in: text, markers: markers)
+    }
+
+    private static func latestMarkerLocation(in text: String, markers: [String]) -> Int? {
         let nsText = text as NSString
         var latestLocation: Int?
         for marker in markers {
