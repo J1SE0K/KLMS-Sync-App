@@ -1127,9 +1127,7 @@ private struct DashboardSummaryView: View {
                 Metric("공지", counts.notices, detail: .notices),
                 Metric("새 파일", counts.newFiles, detail: .newFiles),
                 Metric("캘린더", (report?.calendar.created ?? 0) + (report?.calendar.updated ?? 0) + (report?.calendar.deleted ?? 0), detail: .calendar),
-            ] + [
                 Metric("격리", counts.quarantine, detail: .quarantine),
-            ].filter { $0.value > 0 } + [
                 Metric("완료 기록", completedAssignmentCount, detail: .assignmentRecords),
                 Metric("과제 후보", assignmentCandidateCount, detail: .assignmentCandidates),
                 Metric("시험 후보", examCandidateCount, detail: .examCandidates),
@@ -1137,13 +1135,23 @@ private struct DashboardSummaryView: View {
                 Metric("삭제된 파일", prunedCount, detail: .pruned),
                 Metric("보관함", hiddenCount, detail: .hidden),
             ].filter { $0.value > 0 }
+            let activeDetail = visibleMetrics.first { $0.detail == selectedDetail }?.detail
+                ?? visibleMetrics.first?.detail
             IssueSummaryView(issues: snapshot.issues)
-            MetricGrid(metrics: visibleMetrics, selectedMetricID: selectedDetail.rawValue) { metric in
-                if let detail = metric.detail {
-                    selectedDetail = detail
+            if visibleMetrics.isEmpty {
+                Text("표시할 대시보드 항목이 없습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                MetricGrid(metrics: visibleMetrics, selectedMetricID: activeDetail?.rawValue) { metric in
+                    if let detail = metric.detail {
+                        selectedDetail = detail
+                    }
                 }
             }
-            DashboardDetailPanelView(kind: selectedDetail, model: model)
+            if let activeDetail {
+                DashboardDetailPanelView(kind: activeDetail, model: model)
+            }
 
             NoticeMemoStatusView(model: model)
             SlowestWorkView(report: report)
