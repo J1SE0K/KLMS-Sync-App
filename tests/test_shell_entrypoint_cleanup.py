@@ -156,6 +156,33 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
 
             self.assertEqual(result.stdout.strip().splitlines(), [str(installed), str(installed)])
 
+    def test_sync_entrypoints_default_to_installed_data_dir_from_source_checkout(self) -> None:
+        common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            installed = Path(tmp) / "installed"
+            (source / "apps" / "KLMSync").mkdir(parents=True)
+            (source / "src").mkdir()
+            (source / "bin").mkdir()
+            (installed / "runtime").mkdir(parents=True)
+
+            script = f"""
+            source {common}
+            export KLMS_INSTALLED_DATA_DIR={installed}
+            export KLMS_SHARED_SYNC_LOCK_ROOT={installed}/runtime/automation
+            klms_init_context {source}/refresh_course_files.sh
+            print -- "$KLMS_DATA_DIR"
+            print -- "$RUNTIME_DIR"
+            """
+            result = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.stdout.strip().splitlines(), [str(installed), str(installed / "runtime")])
+
     def test_readonly_entrypoints_use_data_runtime_paths(self) -> None:
         for script_name in ["verify_sync_state.sh", "sync_report.sh", "doctor.sh"]:
             with self.subTest(script=script_name):
@@ -475,6 +502,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("FILE_DOWNLOAD_ARCHIVE_ROOT", text)
         self.assertIn("FILE_NEW_FILES_ROOT", text)
         self.assertIn("FILE_QUARANTINE_ROOT", text)
+        self.assertIn('OUTPUT_ROOT="${FILE_OUTPUT_ROOT:-$KLMS_DATA_DIR/course_files}"', text)
         self.assertIn('"$NEW_FILES_ROOT"', text)
         self.assertIn('"$QUARANTINE_ROOT"', text)
         self.assertNotIn('$HOME/Downloads/KLMS Files', text)
@@ -505,6 +533,14 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("TRACKED_FILE_MISSING_COUNT", text)
         self.assertIn("restore-missing-files-from-manifest", text)
         self.assertNotIn("EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then\n  FILE_DEEP_FETCH_SKIPPED=1", text)
+
+    def test_doctor_reports_app_course_files_and_runtime_download_staging(self) -> None:
+        text = (PROJECT_DIR / "src" / "python" / "doctor.py").read_text(encoding="utf-8")
+
+        self.assertIn('course_files_root = data_dir / "course_files"', text)
+        self.assertIn('runtime_staging_root = runtime_dir / "tmp" / "files" / "downloads"', text)
+        self.assertIn("~/Downloads is not used by default", text)
+        self.assertNotIn('Path.home() / "Downloads" / "KLMS Files"', text)
 
     def test_mac_app_files_sync_is_incremental_by_default(self) -> None:
         model = (

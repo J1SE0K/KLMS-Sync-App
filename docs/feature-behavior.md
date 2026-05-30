@@ -46,7 +46,7 @@
 
 ## 파일 정리
 
-`refresh_course_files.sh`는 첨부파일 manifest를 만든 뒤 정리본을 `course_files`에 유지한다. 다운로드 staging은 기본적으로 `runtime/tmp/files/downloads` 아래에서만 쓰고 `~/Downloads`에는 KLMS 폴더를 만들지 않는다.
+`refresh_course_files.sh`는 첨부파일 manifest를 만든 뒤 정리본을 `$KLMS_DATA_DIR/course_files`에 유지한다. 앱과 자동 실행의 canonical 위치는 `~/Library/Application Support/KLMSNotesSync/course_files`다. 다운로드 staging은 기본적으로 `runtime/tmp/files/downloads` 아래에서만 쓰고 `~/Downloads`에는 KLMS 폴더를 만들지 않는다.
 
 기본 구조:
 

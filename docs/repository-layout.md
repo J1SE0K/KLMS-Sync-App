@@ -48,9 +48,12 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 | `config.env` | 개인 실행 설정 |
 | `manual_assignment_overrides.json` | 과제/시험 수동 override |
 | `runtime/` | cache, state, logs, tmp, telemetry |
-| `course_files/` | 과목별 파일 정리본 |
+| `course_files/` | 레포에서 예전 CLI 실행으로 생길 수 있는 로컬 파일 정리본. 앱 기준 canonical 위치는 `~/Library/Application Support/KLMSNotesSync/course_files` |
 | `course_transcripts/`, `course_videos/` | 강의 자료 수집 산출물 |
 | `~/Library/Application Support/KLMSNotesSync` | LaunchAgent 설치본, 인증 state, 자동 실행 runtime |
+
+앱과 자동 실행의 파일 정리본은 `~/Library/Application Support/KLMSNotesSync/course_files` 하나를 canonical로 쓴다.
+레포 안의 `course_files/`는 이전 source checkout 실행 산출물이라 앱 데이터가 정상이라면 정리해도 된다.
 
 `runtime/cache/*/stage_timings.json`에는 stage별 소요 시간과 병목 후보가 남는다. 레포에서 실행한
 `verify_sync_state.sh`, `doctor.sh`, `sync_report.sh`는 기본적으로 앱 설치본 runtime을 확인한다.
