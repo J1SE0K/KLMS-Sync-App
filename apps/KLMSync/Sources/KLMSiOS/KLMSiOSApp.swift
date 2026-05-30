@@ -26,6 +26,7 @@ final class CompanionModel: ObservableObject {
     @Published var userAlert: UserAlert?
     @Published var isRefreshing = false
     @Published var isSubmitting = false
+    @Published var lastRefreshAt: Date?
     @Published var localHost: String {
         didSet { UserDefaults.standard.set(localHost, forKey: Self.localHostKey) }
     }
@@ -110,6 +111,12 @@ final class CompanionModel: ObservableObject {
         latestDisplayStatus?.isInFlight == true
     }
 
+    var canCancelRunningCommand: Bool {
+        localRemoteConfigured
+            && !isSubmitting
+            && (hasInFlightRequest || status.phase == "running")
+    }
+
     var shouldShowAuthCompletion: Bool {
         hasAuthCompletionStatus
             && latestDisplayStatus?.isTerminal != true
@@ -184,11 +191,36 @@ final class CompanionModel: ObservableObject {
                 try await cloudStore.create(command)
                 recentCommands.insert(command, at: 0)
                 status = command.summary
+                lastRefreshAt = Date()
                 errorMessage = ""
                 await refreshRecent()
             } else {
                 errorMessage = remoteAvailabilityMessage
             }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func cancelRunningCommand() async {
+        guard let localRemoteClient else {
+            errorMessage = "실행 중단은 같은 Wi-Fi의 Mac 로컬 연결에서만 사용할 수 있습니다."
+            return
+        }
+        guard hasInFlightRequest || status.phase == "running" else {
+            errorMessage = "중단할 실행이 없습니다."
+            return
+        }
+        isSubmitting = true
+        defer {
+            isSubmitting = false
+        }
+        do {
+            let response = try await localRemoteClient.cancelRunningCommand()
+            apply(response)
+            connectionMessage = response.message.isEmpty ? "실행 중단을 요청했습니다." : response.message
+            connectionSucceeded = true
+            errorMessage = ""
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -210,6 +242,7 @@ final class CompanionModel: ObservableObject {
                 if let latest = commands.first {
                     status = latest.summary
                 }
+                lastRefreshAt = Date()
                 errorMessage = ""
             } else {
                 errorMessage = ""
@@ -277,6 +310,15 @@ final class CompanionModel: ObservableObject {
         #endif
     }
 
+    func clearLocalConnectionInfo() {
+        localHost = ""
+        localPortText = "\(LocalRemoteConnectionInfo.defaultPort)"
+        localToken = ""
+        connectionMessage = "연결 정보를 지웠습니다."
+        connectionSucceeded = nil
+        errorMessage = ""
+    }
+
     func pollRecentCommands() async {
         while !Task.isCancelled {
             await refreshRecent()
@@ -292,6 +334,7 @@ final class CompanionModel: ObservableObject {
     private func apply(_ response: LocalRemoteResponse) {
         let previousAuthStatusMessage = status.authStatusMessage
         status = response.status
+        lastRefreshAt = Date()
         if let authStatusMessage = response.status.authStatusMessage, !authStatusMessage.isEmpty {
             if authStatusMessage != lastAuthSuccessAlertMessage || previousAuthStatusMessage == nil {
                 userAlert = UserAlert(title: "인증 완료", message: authStatusMessage)
@@ -326,31 +369,102 @@ struct CompanionRootView: View {
     @StateObject private var model = CompanionModel()
 
     var body: some View {
+        TabView {
+            CompanionStatusScreen(model: model)
+                .tabItem {
+                    Label("상태", systemImage: "gauge")
+                }
+            CompanionRunScreen(model: model)
+                .tabItem {
+                    Label("실행", systemImage: "play.circle")
+                }
+            CompanionConnectionScreen(model: model)
+                .tabItem {
+                    Label("연결", systemImage: "macbook.and.iphone")
+                }
+            CompanionHistoryScreen(model: model)
+                .tabItem {
+                    Label("기록", systemImage: "clock.arrow.circlepath")
+                }
+        }
+        .task {
+            await model.pollRecentCommands()
+        }
+        .alert(item: $model.userAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("확인"))
+            )
+        }
+    }
+}
+
+private struct CompanionStatusScreen: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        CompanionScreenContainer(title: "상태", model: model) {
+            RemoteStatusHeader(model: model)
+            RemoteAttentionStack(model: model)
+            RemoteCommandPanel(model: model, compact: true)
+            RecentRemoteCommandsView(commands: Array(model.recentCommands.prefix(3)), compact: true)
+        }
+    }
+}
+
+private struct CompanionRunScreen: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        CompanionScreenContainer(title: "실행", model: model) {
+            RemoteAttentionStack(model: model)
+            RemoteCommandPanel(model: model, compact: false)
+            RemoteDiagnosticPanel(model: model)
+            InfoBanner(message: "iPhone은 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Mac이 켜져 있고 같은 Wi-Fi에 있어야 합니다.")
+        }
+    }
+}
+
+private struct CompanionConnectionScreen: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        CompanionScreenContainer(title: "Mac 연결", model: model) {
+            LocalConnectionPanel(model: model)
+            if !model.localRemoteConfigured {
+                InfoBanner(message: model.remoteAvailabilityMessage)
+            }
+            RemotePrivacyNote()
+        }
+    }
+}
+
+private struct CompanionHistoryScreen: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        CompanionScreenContainer(title: "요청 기록", model: model) {
+            RemoteAttentionStack(model: model)
+            RecentRemoteCommandsView(commands: model.recentCommands, compact: false)
+        }
+    }
+}
+
+private struct CompanionScreenContainer<Content: View>: View {
+    var title: String
+    @ObservedObject var model: CompanionModel
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    RemoteStatusHeader(model: model)
-                    LocalConnectionPanel(model: model)
-                    if !model.localRemoteConfigured {
-                        InfoBanner(message: model.remoteAvailabilityMessage)
-                    }
-                    if let message = model.loginAttentionMessage {
-                        LoginAttentionBanner(message: message)
-                    }
-                    if let message = model.authSuccessMessage {
-                        AuthSuccessBanner(message: message)
-                    }
-                    RemoteCommandPanel(model: model)
-                    RecentRemoteCommandsView(commands: model.recentCommands)
-                    RemotePrivacyNote()
-
-                    if !model.errorMessage.isEmpty {
-                        ErrorBanner(message: model.errorMessage)
-                    }
+                    content()
                 }
                 .padding()
             }
-            .navigationTitle("KLMS Sync")
+            .navigationTitle(title)
             .toolbar {
                 Button {
                     Task {
@@ -364,15 +478,23 @@ struct CompanionRootView: View {
             .refreshable {
                 await model.refreshRecent()
             }
-            .task {
-                await model.pollRecentCommands()
+        }
+    }
+}
+
+private struct RemoteAttentionStack: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let message = model.loginAttentionMessage {
+                LoginAttentionBanner(message: message)
             }
-            .alert(item: $model.userAlert) { alert in
-                Alert(
-                    title: Text(alert.title),
-                    message: Text(alert.message),
-                    dismissButton: .default(Text("확인"))
-                )
+            if let message = model.authSuccessMessage {
+                AuthSuccessBanner(message: message)
+            }
+            if !model.errorMessage.isEmpty {
+                ErrorBanner(message: model.errorMessage)
             }
         }
     }
@@ -380,27 +502,58 @@ struct CompanionRootView: View {
 
 private struct LocalConnectionPanel: View {
     @ObservedObject var model: CompanionModel
+    @State private var showConnectionFields = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Mac 연결")
-                .font(.headline)
-            TextField("Mac 주소 예: 192.168.0.10 또는 192.168.0.10:18483", text: $model.localHost)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
             HStack(spacing: 8) {
-                TextField("포트", text: $model.localPortText)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .frame(maxWidth: 90)
-                TextField("토큰", text: $model.localToken)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                Image(systemName: model.localRemoteConfigured ? "checkmark.circle.fill" : "link.badge.plus")
+                    .foregroundStyle(model.localRemoteConfigured ? .green : .secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Mac 연결")
+                        .font(.headline)
+                    Text(model.localRemoteConfigured ? "연결 정보가 저장되어 있습니다." : "Mac 앱에서 복사한 연결 정보를 붙여넣어 주세요.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
             }
-            Button {
-                model.pasteLocalConnectionInfo()
+
+            DisclosureGroup(isExpanded: $showConnectionFields) {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Mac 주소 예: 192.168.0.10:18483", text: $model.localHost)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    SecureField("토큰", text: $model.localToken)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    Text("포트는 주소에 없으면 \(model.localPortText)를 사용합니다.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 8)
             } label: {
-                Label("복사한 연결 정보 붙여넣기", systemImage: "doc.on.clipboard")
-                    .frame(maxWidth: .infinity)
+                Text("연결 정보")
+                    .font(.subheadline.weight(.semibold))
             }
-            .buttonStyle(.bordered)
+
+            HStack(spacing: 8) {
+                Button {
+                    model.pasteLocalConnectionInfo()
+                } label: {
+                    Label("붙여넣기", systemImage: "doc.on.clipboard")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    model.clearLocalConnectionInfo()
+                } label: {
+                    Label("지우기", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!model.localRemoteConfigured && model.localHost.isEmpty && model.localToken.isEmpty)
+            }
+
             HStack(spacing: 8) {
                 Button {
                     Task {
@@ -410,7 +563,7 @@ private struct LocalConnectionPanel: View {
                     Label("연결 확인", systemImage: "antenna.radiowaves.left.and.right")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
                 .disabled(model.isRefreshing)
 
                 Button {
@@ -424,6 +577,7 @@ private struct LocalConnectionPanel: View {
                 .buttonStyle(.bordered)
                 .disabled(!model.localRemoteConfigured || model.isSubmitting || model.hasInFlightRequest)
             }
+
             if !model.connectionMessage.isEmpty {
                 ConnectionNoticeBanner(
                     message: model.connectionMessage,
@@ -502,6 +656,9 @@ private struct RemoteStatusHeader: View {
                     Text(model.statusLine)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    Text(statusMetadata)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             }
@@ -511,7 +668,9 @@ private struct RemoteStatusHeader: View {
                 RemoteMetricTile("시험", model.status.exams, systemImage: "calendar")
                 RemoteMetricTile("공지", model.status.notices, systemImage: "note.text")
                 RemoteMetricTile("파일", model.status.newFiles, systemImage: "folder")
-                RemoteMetricTile("격리", model.status.quarantine, systemImage: "exclamationmark.triangle")
+                if model.status.quarantine > 0 {
+                    RemoteMetricTile("격리", model.status.quarantine, systemImage: "exclamationmark.triangle")
+                }
                 RemoteMetricTile("헬프데스크", model.status.helpDesk, systemImage: "person.2")
             }
         }
@@ -539,6 +698,14 @@ private struct RemoteStatusHeader: View {
             return "대기 중"
         }
         return "\(latest.kind.displayName) · \(status.displayName)"
+    }
+
+    private var statusMetadata: String {
+        let phase = model.status.phase.klmsRemotePhaseName
+        if let lastRefreshAt = model.lastRefreshAt {
+            return "\(phase) · \(lastRefreshAt.formatted(date: .omitted, time: .shortened)) 갱신"
+        }
+        return phase
     }
 
     private var statusImage: String {
@@ -620,6 +787,7 @@ private struct RemoteMetricTile: View {
 
 private struct RemoteCommandPanel: View {
     @ObservedObject var model: CompanionModel
+    var compact: Bool
 
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 8),
@@ -627,13 +795,37 @@ private struct RemoteCommandPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Mac에 실행 요청")
-                .font(.headline)
+            HStack {
+                Text("Mac에 실행 요청")
+                    .font(.headline)
+                Spacer()
+                if model.hasInFlightRequest || model.status.phase == "running" {
+                    Label("실행 중", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                }
+            }
             LazyVGrid(columns: columns, spacing: 8) {
                 commandButton(.fullSync)
                 commandButton(.coreSync)
                 commandButton(.noticeSync)
                 commandButton(.filesSync)
+            }
+            if model.canCancelRunningCommand {
+                Button(role: .destructive) {
+                    Task {
+                        await model.cancelRunningCommand()
+                    }
+                } label: {
+                    Label("현재 동기화 중단", systemImage: "stop.fill")
+                        .frame(maxWidth: .infinity, minHeight: 42)
+                }
+                .buttonStyle(.bordered)
+            }
+            if compact {
+                Text("세부 진단과 요약 갱신은 실행 탭에서 할 수 있습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -653,13 +845,62 @@ private struct RemoteCommandPanel: View {
     }
 }
 
-private struct RecentRemoteCommandsView: View {
-    var commands: [RemoteRunCommand]
+private struct RemoteDiagnosticPanel: View {
+    @ObservedObject var model: CompanionModel
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 150), spacing: 8),
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("최근 요청")
+            Text("점검")
                 .font(.headline)
+            LazyVGrid(columns: columns, spacing: 8) {
+                diagnosticButton(.doctor)
+                diagnosticButton(.report)
+            }
+        }
+    }
+
+    private func diagnosticButton(_ kind: RemoteCommandKind) -> some View {
+        Button {
+            Task {
+                await model.createCommand(kind)
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Label(kind.displayName, systemImage: kind.engineCommand.systemImage)
+                    .font(.subheadline.weight(.semibold))
+                Text(kind.engineCommand.shortDescription)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, minHeight: 58)
+        }
+        .buttonStyle(.bordered)
+        .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
+    }
+}
+
+private struct RecentRemoteCommandsView: View {
+    var commands: [RemoteRunCommand]
+    var compact: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(compact ? "최근 요청" : "최근 요청 기록")
+                    .font(.headline)
+                Spacer()
+                if compact, !commands.isEmpty {
+                    Text("최근 \(commands.count)개")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             if commands.isEmpty {
                 Text("아직 요청 기록이 없습니다.")
                     .foregroundStyle(.secondary)
@@ -670,7 +911,7 @@ private struct RecentRemoteCommandsView: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(commands) { command in
-                        RemoteCommandRow(command: command)
+                        RemoteCommandRow(command: command, compact: compact)
                     }
                 }
             }
@@ -680,6 +921,7 @@ private struct RecentRemoteCommandsView: View {
 
 private struct RemoteCommandRow: View {
     var command: RemoteRunCommand
+    var compact: Bool
 
     var body: some View {
         HStack(spacing: 12) {
@@ -692,6 +934,12 @@ private struct RemoteCommandRow: View {
                 Text(command.updatedAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if !compact {
+                    Text(summaryText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 3) {
@@ -736,6 +984,15 @@ private struct RemoteCommandRow: View {
         case .failed, .macUnavailable:
             .orange
         }
+    }
+
+    private var summaryText: String {
+        [
+            "과제 \(command.summary.assignments)",
+            "시험 \(command.summary.exams)",
+            "공지 \(command.summary.notices)",
+            "파일 \(command.summary.newFiles)",
+        ].joined(separator: " · ")
     }
 }
 
@@ -808,5 +1065,26 @@ private struct LoginAttentionBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.orange.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private extension String {
+    var klmsRemotePhaseName: String {
+        switch trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "running":
+            "실행 중"
+        case "completed":
+            "완료"
+        case "failed":
+            "실패"
+        case "busy":
+            "Mac 실행 중"
+        case "idle":
+            "대기 중"
+        case "":
+            "상태 없음"
+        default:
+            self
+        }
     }
 }

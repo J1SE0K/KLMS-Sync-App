@@ -919,6 +919,30 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("persistLocalToken", ios_app)
         self.assertIn("UIPasteboard.general.string = \"\"", ios_app)
 
+    def test_ios_companion_has_tabbed_remote_control_and_cancel(self) -> None:
+        shared = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSShared" / "RemoteCommandModels.swift"
+        ).read_text(encoding="utf-8")
+        model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+        ios_app = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("case cancel", shared)
+        self.assertIn("cancelRunningCommand() async throws", shared)
+        self.assertIn("case .cancel:", model)
+        self.assertIn("await cancelRunningCommand()", model)
+        self.assertIn("TabView", ios_app)
+        self.assertIn("CompanionStatusScreen", ios_app)
+        self.assertIn("CompanionRunScreen", ios_app)
+        self.assertIn("CompanionConnectionScreen", ios_app)
+        self.assertIn("CompanionHistoryScreen", ios_app)
+        self.assertIn("현재 동기화 중단", ios_app)
+        self.assertIn("SecureField(\"토큰\"", ios_app)
+        self.assertIn("clearLocalConnectionInfo", ios_app)
+
     def test_app_notice_renderer_uses_bundled_signed_helper(self) -> None:
         model = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"

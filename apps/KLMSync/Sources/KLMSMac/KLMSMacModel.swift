@@ -423,6 +423,35 @@ final class KLMSMacModel: ObservableObject {
                 latestCommand: command,
                 running: true
             ))
+        case .cancel:
+            guard runningCommand != nil else {
+                return signed(LocalRemoteResponse(
+                    ok: false,
+                    message: "중단할 동기화가 없습니다.",
+                    status: sanitizedRemoteStatus(snapshot: snapshot, phase: "idle"),
+                    latestCommand: lastRemoteCommand,
+                    running: false
+                ))
+            }
+            await cancelRunningCommand()
+            let message = "실행 중단을 요청했습니다."
+            localRemoteStatusMessage = message
+            remoteProcessingStatusMessage = message
+            let currentKind = RemoteCommandKind(engineCommand: runningCommand) ?? .fullSync
+            var cancellingCommand = lastRemoteCommand?.status.isInFlight == true
+                ? lastRemoteCommand ?? RemoteRunCommand(kind: currentKind)
+                : RemoteRunCommand(kind: currentKind)
+            cancellingCommand.status = .running
+            cancellingCommand.updatedAt = Date()
+            cancellingCommand.summary = sanitizedRemoteStatus(snapshot: snapshot, phase: "running")
+            lastRemoteCommand = cancellingCommand
+            return signed(LocalRemoteResponse(
+                ok: true,
+                message: message,
+                status: sanitizedRemoteStatus(snapshot: snapshot, phase: "running"),
+                latestCommand: cancellingCommand,
+                running: true
+            ))
         }
     }
 
