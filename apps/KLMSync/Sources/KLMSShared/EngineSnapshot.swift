@@ -579,6 +579,11 @@ public struct EngineSnapshotStore: Sendable {
             .loadIfExists(StageTimingReport.self, from: paths.noticeStageTimingURL)?
             .markingStaleRunningIfNeeded()
 
+        let courseFileManifest = Self.mergingLocalCourseFiles(
+            into: JSONFileLoader.loadIfExists([CourseFileManifestEntry].self, from: paths.courseFileManifestURL) ?? [],
+            courseFilesRoot: paths.courseFilesURL
+        )
+
         return EngineSnapshot(
             syncReport: JSONFileLoader.loadIfExists(SyncReport.self, from: paths.syncReportURL),
             calendarSyncResult: JSONFileLoader.loadIfExists(CalendarSyncResult.self, from: paths.calendarSyncResultURL),
@@ -597,7 +602,7 @@ public struct EngineSnapshotStore: Sendable {
             appUserState: try? AppUserStateStore(url: paths.appUserStateURL).load(),
             filePreview: JSONFileLoader.loadIfExists(FileSyncPreview.self, from: paths.filePreviewURL),
             downloadResult: JSONFileLoader.loadIfExists(CourseFileDownloadResult.self, from: paths.downloadResultURL),
-            courseFileManifest: JSONFileLoader.loadIfExists([CourseFileManifestEntry].self, from: paths.courseFileManifestURL) ?? [],
+            courseFileManifest: courseFileManifest,
             quarantineReport: JSONFileLoader.loadIfExists(QuarantineReport.self, from: paths.quarantineReportURL),
             cleanupResult: JSONFileLoader.loadIfExists(CleanupResult.self, from: paths.cleanupResultURL),
             dryRunReports: dryRuns,
@@ -605,6 +610,65 @@ public struct EngineSnapshotStore: Sendable {
                 from: tailText(paths.launchAgentLogURL, maxBytes: 16_384)
             )
         )
+    }
+
+    static func mergingLocalCourseFiles(
+        into manifest: [CourseFileManifestEntry],
+        courseFilesRoot: URL,
+        fileManager: FileManager = .default
+    ) -> [CourseFileManifestEntry] {
+        guard let enumerator = fileManager.enumerator(
+            at: courseFilesRoot,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else {
+            return manifest
+        }
+
+        var knownRelativePaths = Set(manifest.map { normalizedPathKey($0.relativePath) })
+        var courseByFolder: [String: String] = [:]
+        for entry in manifest {
+            guard let folder = firstPathComponent(entry.relativePath), !entry.course.isEmpty else {
+                continue
+            }
+            courseByFolder[normalizedPathKey(folder)] = entry.course
+        }
+
+        var localOnly: [CourseFileManifestEntry] = []
+        for case let fileURL as URL in enumerator {
+            guard !fileURL.lastPathComponent.hasPrefix("."),
+                  (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  let relativePath = relativePath(from: courseFilesRoot, to: fileURL) else {
+                continue
+            }
+            let normalizedRelativePath = normalizedPathKey(relativePath)
+            guard !knownRelativePaths.contains(normalizedRelativePath) else {
+                continue
+            }
+            knownRelativePaths.insert(normalizedRelativePath)
+
+            let components = relativePath
+                .split(separator: "/", omittingEmptySubsequences: true)
+                .map(String.init)
+            let folderCourse = components.first ?? ""
+            let bucket = components.dropFirst().first ?? ""
+            let course = courseByFolder[normalizedPathKey(folderCourse)] ?? folderCourse
+            let modifiedAt = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+                .map(formatLocalCourseFileDate) ?? ""
+
+            localOnly.append(CourseFileManifestEntry(
+                filename: fileURL.lastPathComponent,
+                relativePath: relativePath,
+                course: course,
+                absolutePath: fileURL.path,
+                localDownloadedAt: modifiedAt,
+                bucket: bucket
+            ))
+        }
+
+        return manifest + localOnly.sorted { lhs, rhs in
+            lhs.relativePath.localizedStandardCompare(rhs.relativePath) == .orderedAscending
+        }
     }
 
     private func tailText(_ url: URL, maxBytes: Int) -> String {
@@ -619,6 +683,32 @@ public struct EngineSnapshotStore: Sendable {
         try? handle.seek(toOffset: offset)
         let data = (try? handle.readToEnd()) ?? Data()
         return data.klmsDecodedDisplayText
+    }
+
+    private static func relativePath(from root: URL, to fileURL: URL) -> String? {
+        let rootPath = root.standardizedFileURL.path
+        let filePath = fileURL.standardizedFileURL.path
+        let prefix = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        guard filePath.hasPrefix(prefix) else {
+            return nil
+        }
+        return String(filePath.dropFirst(prefix.count))
+    }
+
+    private static func firstPathComponent(_ path: String) -> String? {
+        path.split(separator: "/", omittingEmptySubsequences: true).first.map(String.init)
+    }
+
+    private static func normalizedPathKey(_ value: String) -> String {
+        (value as NSString).precomposedStringWithCanonicalMapping
+    }
+
+    private static func formatLocalCourseFileDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm KST"
+        return formatter.string(from: date)
     }
 }
 

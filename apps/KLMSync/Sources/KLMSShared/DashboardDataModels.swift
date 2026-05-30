@@ -877,6 +877,26 @@ public struct CourseFileManifestEntry: Decodable, Sendable, Equatable, Identifia
         url.isEmpty ? relativePath : url
     }
 
+    public init(
+        filename: String = "",
+        relativePath: String = "",
+        url: String = "",
+        sourceURL: String = "",
+        course: String = "",
+        absolutePath: String = "",
+        localDownloadedAt: String = "",
+        bucket: String = ""
+    ) {
+        self.filename = filename
+        self.relativePath = relativePath
+        self.url = url
+        self.sourceURL = sourceURL
+        self.course = course
+        self.absolutePath = absolutePath
+        self.localDownloadedAt = localDownloadedAt
+        self.bucket = bucket
+    }
+
     enum CodingKeys: String, CodingKey {
         case filename
         case relativePath = "relative_path"
