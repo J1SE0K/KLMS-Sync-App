@@ -1288,6 +1288,7 @@ private struct NewFilesListView: View {
                 academicTerm: manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]),
                 path: manifest?.absolutePath ?? "",
                 sortPath: item.relativePath,
+                bucket: manifest?.bucket ?? fileBucket(from: item.relativePath),
                 url: item.url,
                 isRecent: true,
                 recencyText: manifest?.localDownloadedAt ?? "",
@@ -1335,6 +1336,7 @@ private struct FileManifestListView: View {
                 academicTerm: entry.academicTerm,
                 path: entry.absolutePath,
                 sortPath: entry.relativePath,
+                bucket: entry.bucket,
                 url: entry.url,
                 isRecent: isRecent(entry),
                 recencyText: entry.localDownloadedAt,
@@ -1369,6 +1371,7 @@ private struct DashboardFileItem: Identifiable {
     var academicTerm: AcademicTerm?
     var path: String
     var sortPath: String
+    var bucket: String
     var url: String
     var isRecent: Bool
     var recencyText: String
@@ -1406,6 +1409,7 @@ private struct DashboardFileItem: Identifiable {
 
 private enum DashboardFileSortOption: String, CaseIterable, Identifiable {
     case course
+    case kind
     case name
     case path
     case recent
@@ -1416,6 +1420,8 @@ private enum DashboardFileSortOption: String, CaseIterable, Identifiable {
         switch self {
         case .course:
             "과목"
+        case .kind:
+            "종류"
         case .name:
             "파일명"
         case .path:
@@ -1490,6 +1496,8 @@ private extension DashboardFileItem {
         switch option {
         case .course:
             [course.normalizedFileSortKey, title.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
+        case .kind:
+            [fileKindLabel.normalizedFileSortKey, course.normalizedFileSortKey, title.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
         case .name:
             [title.normalizedFileSortKey, course.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
         case .path:
@@ -1512,6 +1520,8 @@ private extension DashboardFileSortOption {
         switch self {
         case .course:
             "과목명, 파일명 순서로 정렬"
+        case .kind:
+            "공지 첨부, 과제 첨부, 강의 자료 같은 파일 종류별로 정렬"
         case .name:
             "파일명 순서로 정렬"
         case .path:
@@ -1542,6 +1552,13 @@ private func fileSortPath(from path: String) -> String {
         return String(trimmed[range.upperBound...])
     }
     return trimmed
+}
+
+private func fileBucket(from path: String) -> String {
+    let components = fileSortPath(from: path)
+        .split(separator: "/", omittingEmptySubsequences: true)
+        .map(String.init)
+    return components.count >= 2 ? components[1] : ""
 }
 
 private extension String {
@@ -1643,6 +1660,7 @@ private struct HiddenItemsListView: View {
                 academicTerm: item.academicTerm,
                 path: item.path,
                 sortPath: fileSortPath(from: item.path),
+                bucket: fileBucket(from: item.path),
                 url: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
@@ -1662,6 +1680,7 @@ private struct HiddenItemsListView: View {
                 academicTerm: item.academicTerm,
                 path: item.path,
                 sortPath: fileSortPath(from: item.path),
+                bucket: "quarantine",
                 url: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
@@ -1735,6 +1754,7 @@ private struct QuarantineListView: View {
                 ),
                 path: record.quarantinePath,
                 sortPath: record.quarantineRelativePath,
+                bucket: "quarantine",
                 url: record.url,
                 isRecent: true,
                 recencyText: "",
@@ -1792,6 +1812,7 @@ private struct PrunedListView: View {
                 academicTerm: term,
                 path: action.path,
                 sortPath: fileSortPath(from: action.path),
+                bucket: fileBucket(from: action.path),
                 url: "",
                 isRecent: false,
                 recencyText: "",
@@ -1815,6 +1836,9 @@ private struct FileRowView: View {
                         Text(item.title.isEmpty ? "(파일명 없음)" : item.title)
                             .font(.caption.weight(.semibold))
                             .lineLimit(2)
+                        Label(item.fileKindLabel, systemImage: item.fileKindIcon)
+                            .font(.caption2)
+                            .foregroundStyle(item.fileKindColor)
                         if item.isRecent {
                             Label("최근", systemImage: "sparkle")
                                 .font(.caption2)
@@ -1931,6 +1955,63 @@ private struct FileRowView: View {
             url: item.url,
             bucket: kind == .quarantine ? .quarantine : .files
         )
+    }
+}
+
+private extension DashboardFileItem {
+    var fileKindLabel: String {
+        switch bucket.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "board-attachments":
+            "공지 첨부"
+        case "assignment-attachments":
+            "과제 첨부"
+        case "resources":
+            "강의 자료"
+        case "folders":
+            "폴더 자료"
+        case "page-attachments":
+            "페이지 첨부"
+        case "quarantine":
+            "격리"
+        case "deleted":
+            "삭제 기록"
+        case "":
+            "기타 파일"
+        default:
+            bucket
+        }
+    }
+
+    var fileKindIcon: String {
+        switch bucket.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "board-attachments":
+            "megaphone"
+        case "assignment-attachments":
+            "checklist"
+        case "resources":
+            "books.vertical"
+        case "folders":
+            "folder"
+        case "quarantine":
+            "exclamationmark.triangle"
+        default:
+            "doc"
+        }
+    }
+
+    var fileKindColor: Color {
+        switch bucket.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "board-attachments":
+            .purple
+        case "assignment-attachments":
+            .green
+        case "resources", "folders":
+            .blue
+        case "quarantine":
+            .orange
+        default:
+            .secondary
+        }
     }
 }
 
