@@ -42,6 +42,26 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
     public var displayName: String {
         engineCommand.displayName
     }
+
+    public init?(engineCommand: KLMSEngineCommand?) {
+        guard let engineCommand else { return nil }
+        switch engineCommand {
+        case .fullSync:
+            self = .fullSync
+        case .coreSync:
+            self = .coreSync
+        case .noticeSync:
+            self = .noticeSync
+        case .filesSync:
+            self = .filesSync
+        case .doctor:
+            self = .doctor
+        case .report:
+            self = .report
+        case .verify, .v2BuildState:
+            return nil
+        }
+    }
 }
 
 public enum RemoteCommandStatus: String, Codable, Sendable {
@@ -395,6 +415,7 @@ public enum LocalRemoteTokenStore {
 public enum LocalRemoteAction: String, Codable, Sendable {
     case status
     case run
+    case cancel
 }
 
 public struct LocalRemoteRequest: Codable, Sendable, Equatable {
@@ -652,6 +673,10 @@ public struct LocalRemoteClient: Sendable {
 
     public func run(_ kind: RemoteCommandKind) async throws -> LocalRemoteResponse {
         try await send(LocalRemoteRequest(token: token, action: .run, kind: kind))
+    }
+
+    public func cancelRunningCommand() async throws -> LocalRemoteResponse {
+        try await send(LocalRemoteRequest(token: token, action: .cancel))
     }
 
     private func send(_ request: LocalRemoteRequest) async throws -> LocalRemoteResponse {

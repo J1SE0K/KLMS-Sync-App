@@ -160,6 +160,34 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(info?.token, "337TY82EXTX2")
     }
 
+    func testRemoteCommandKindMapsFromEngineCommands() {
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .fullSync), .fullSync)
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .coreSync), .coreSync)
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .noticeSync), .noticeSync)
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .filesSync), .filesSync)
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .doctor), .doctor)
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .report), .report)
+        XCTAssertNil(RemoteCommandKind(engineCommand: .verify))
+        XCTAssertNil(RemoteCommandKind(engineCommand: .v2BuildState))
+    }
+
+    func testLocalRemoteCancelRequestIsSignedAndAuthorized() throws {
+        let request = LocalRemoteRequest(
+            token: "ABCD2345",
+            action: .cancel,
+            nonce: "cancel-nonce-1",
+            issuedAt: Date(timeIntervalSince1970: 1_779_788_400)
+        )
+        let requestData = try JSONEncoder.klmsLocalRemote.encode(request)
+        let decodedRequest = try JSONDecoder.klmsLocalRemote.decode(LocalRemoteRequest.self, from: requestData)
+
+        XCTAssertEqual(decodedRequest.action, .cancel)
+        XCTAssertNil(decodedRequest.kind)
+        XCTAssertTrue(decodedRequest.isAuthorized(token: "ABCD2345", now: Date(timeIntervalSince1970: 1_779_788_401)))
+        XCTAssertFalse(decodedRequest.isAuthorized(token: "WRONG2345", now: Date(timeIntervalSince1970: 1_779_788_401)))
+        XCTAssertFalse(String(data: requestData, encoding: .utf8)?.contains("ABCD2345") ?? true)
+    }
+
     func testLocalRemoteRequestAndResponseRoundTrip() throws {
         let request = LocalRemoteRequest(
             token: "ABCD2345",
