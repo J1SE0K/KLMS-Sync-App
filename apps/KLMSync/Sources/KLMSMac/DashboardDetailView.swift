@@ -1194,6 +1194,7 @@ private struct NewFilesListView: View {
                         FileRowView(item: item, kind: .file, model: model)
                     }
                 }
+                .id(sortOption.rawValue)
             }
         }
     }
@@ -1210,8 +1211,10 @@ private struct NewFilesListView: View {
                 course: manifest?.course ?? "",
                 academicTerm: manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]),
                 path: manifest?.absolutePath ?? "",
+                sortPath: item.relativePath,
                 url: item.url,
                 isRecent: true,
+                recencyText: manifest?.localDownloadedAt ?? "",
                 interaction: interaction(for: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath)
             )
             return file.matches(filters: filters) ? file : nil
@@ -1240,6 +1243,7 @@ private struct FileManifestListView: View {
                         FileRowView(item: item, kind: .file, model: model)
                     }
                 }
+                .id(sortOption.rawValue)
             }
         }
     }
@@ -1253,8 +1257,10 @@ private struct FileManifestListView: View {
                 course: entry.course,
                 academicTerm: entry.academicTerm,
                 path: entry.absolutePath,
+                sortPath: entry.relativePath,
                 url: entry.url,
                 isRecent: isRecent(entry),
+                recencyText: entry.localDownloadedAt,
                 interaction: model.snapshot.appUserState?.files[key]
             )
             return item.matches(filters: filters) ? item : nil
@@ -1284,8 +1290,10 @@ private struct DashboardFileItem: Identifiable {
     var course: String
     var academicTerm: AcademicTerm?
     var path: String
+    var sortPath: String
     var url: String
     var isRecent: Bool
+    var recencyText: String
     var interaction: FileInteractionState?
 
     var id: String { key }
@@ -1347,14 +1355,21 @@ private struct FileSortPickerView: View {
             Text("정렬")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Picker("파일 정렬", selection: $selection) {
+            HStack(spacing: 4) {
                 ForEach(DashboardFileSortOption.allCases) { option in
-                    Text(option.title).tag(option)
+                    Button {
+                        selection = option
+                    } label: {
+                        Text(option.title)
+                            .font(.caption.weight(selection == option ? .semibold : .regular))
+                            .frame(minWidth: 42)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(selection == option ? .accentColor : .secondary)
+                    .help(option.helpText)
                 }
             }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 320)
             Spacer(minLength: 0)
         }
     }
@@ -1363,6 +1378,16 @@ private struct FileSortPickerView: View {
 private extension Array where Element == DashboardFileItem {
     func sorted(by option: DashboardFileSortOption) -> [DashboardFileItem] {
         sorted { lhs, rhs in
+            if option == .recent {
+                if lhs.isRecent != rhs.isRecent {
+                    return lhs.isRecent && !rhs.isRecent
+                }
+                let leftRecency = lhs.recencySortText
+                let rightRecency = rhs.recencySortText
+                if leftRecency != rightRecency {
+                    return leftRecency.localizedStandardCompare(rightRecency) == .orderedDescending
+                }
+            }
             let leftKeys = lhs.sortKeys(for: option)
             let rightKeys = rhs.sortKeys(for: option)
             for (left, right) in zip(leftKeys, rightKeys) {
@@ -1380,13 +1405,35 @@ private extension DashboardFileItem {
     func sortKeys(for option: DashboardFileSortOption) -> [String] {
         switch option {
         case .course:
-            [course, title, path, url]
+            [course.normalizedFileSortKey, title.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
         case .name:
-            [title, course, path, url]
+            [title.normalizedFileSortKey, course.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
         case .path:
-            [path.isEmpty ? title : path, title, course, url]
+            [(sortPath.isEmpty ? title : sortPath).normalizedFileSortKey, title.normalizedFileSortKey, course.normalizedFileSortKey, url]
         case .recent:
-            [isRecent ? "0" : "1", course, title, path, url]
+            [course.normalizedFileSortKey, title.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
+        }
+    }
+
+    var recencySortText: String {
+        if !recencyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return recencyText
+        }
+        return isRecent ? "9999-12-31 23:59 KST" : "0000-00-00 00:00 KST"
+    }
+}
+
+private extension DashboardFileSortOption {
+    var helpText: String {
+        switch self {
+        case .course:
+            "과목명, 파일명 순서로 정렬"
+        case .name:
+            "파일명 순서로 정렬"
+        case .path:
+            "KLMS 상대 경로 순서로 정렬"
+        case .recent:
+            "최근 다운로드/변경 항목을 먼저 정렬"
         }
     }
 }
@@ -1399,6 +1446,25 @@ private func fileKey(url: String, path: String, fallback: String) -> String {
         return path
     }
     return fallback
+}
+
+private func fileSortPath(from path: String) -> String {
+    let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return "" }
+    if let range = trimmed.range(of: "/course_files/") {
+        return String(trimmed[range.upperBound...])
+    }
+    if let range = trimmed.range(of: "course_files/") {
+        return String(trimmed[range.upperBound...])
+    }
+    return trimmed
+}
+
+private extension String {
+    var normalizedFileSortKey: String {
+        folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "ko_KR"))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 private func fileDisplayTitle(filename: String, relativePath: String) -> String {
@@ -1492,8 +1558,10 @@ private struct HiddenItemsListView: View {
                 course: item.course,
                 academicTerm: item.academicTerm,
                 path: item.path,
+                sortPath: fileSortPath(from: item.path),
                 url: item.url,
                 isRecent: item.trashedAt != nil,
+                recencyText: item.updatedAt,
                 interaction: item
             )
             return file.matches(filters: filters) ? file : nil
@@ -1509,8 +1577,10 @@ private struct HiddenItemsListView: View {
                 course: item.course,
                 academicTerm: item.academicTerm,
                 path: item.path,
+                sortPath: fileSortPath(from: item.path),
                 url: item.url,
                 isRecent: item.trashedAt != nil,
+                recencyText: item.updatedAt,
                 interaction: item
             )
             return file.matches(filters: filters) ? file : nil
@@ -1562,6 +1632,7 @@ private struct QuarantineListView: View {
                         )
                     }
                 }
+                .id(sortOption.rawValue)
             }
         }
     }
@@ -1579,8 +1650,10 @@ private struct QuarantineListView: View {
                     dateTexts: [record.quarantinePath, record.quarantineRelativePath]
                 ),
                 path: record.quarantinePath,
+                sortPath: record.quarantineRelativePath,
                 url: record.url,
                 isRecent: true,
+                recencyText: "",
                 interaction: model.snapshot.appUserState?.quarantine[key]
             )
             return item.matches(filters: filters) ? item : nil
@@ -1609,6 +1682,7 @@ private struct PrunedListView: View {
                         )
                     }
                 }
+                .id(sortOption.rawValue)
             }
         }
     }
@@ -1633,8 +1707,10 @@ private struct PrunedListView: View {
                 course: action.action,
                 academicTerm: term,
                 path: action.path,
+                sortPath: fileSortPath(from: action.path),
                 url: "",
                 isRecent: false,
+                recencyText: "",
                 interaction: nil
             )
         }

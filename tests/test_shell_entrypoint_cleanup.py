@@ -552,6 +552,12 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("private struct FileSortPickerView", detail)
         self.assertGreaterEqual(detail.count("FileSortPickerView(selection: $sortOption)"), 4)
         self.assertGreaterEqual(detail.count(".sorted(by: sortOption)"), 4)
+        self.assertIn("selection = option", detail)
+        self.assertIn(".id(sortOption.rawValue)", detail)
+        self.assertIn("sortPath: entry.relativePath", detail)
+        self.assertIn("recencyText: entry.localDownloadedAt", detail)
+        self.assertIn("localizedStandardCompare(rightRecency) == .orderedDescending", detail)
+        self.assertIn("fileSortPath(from:", detail)
 
     def test_mac_app_integration_status_is_collapsible(self) -> None:
         menu = (
