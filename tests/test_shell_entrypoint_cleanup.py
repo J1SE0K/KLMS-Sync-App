@@ -539,6 +539,20 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("FileManifestListView(filters: filters, model: model)", detail)
         self.assertIn("model.snapshot.courseFileManifest.compactMap", detail)
 
+    def test_mac_app_file_lists_have_sort_controls(self) -> None:
+        detail = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "DashboardDetailView.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("private enum DashboardFileSortOption", detail)
+        self.assertIn('"과목"', detail)
+        self.assertIn('"파일명"', detail)
+        self.assertIn('"경로"', detail)
+        self.assertIn('"최근"', detail)
+        self.assertIn("private struct FileSortPickerView", detail)
+        self.assertGreaterEqual(detail.count("FileSortPickerView(selection: $sortOption)"), 4)
+        self.assertGreaterEqual(detail.count(".sorted(by: sortOption)"), 4)
+
     def test_mac_app_integration_status_is_collapsible(self) -> None:
         menu = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
