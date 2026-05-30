@@ -407,6 +407,7 @@ private struct CompanionStatusScreen: View {
         CompanionScreenContainer(title: "상태", model: model) {
             RemoteStatusHeader(model: model)
             RemoteAttentionStack(model: model)
+            RemoteChangeSummaryPanel(status: model.status)
             RemoteCommandPanel(model: model, compact: true)
             RecentRemoteCommandsView(commands: Array(model.recentCommands.prefix(3)), compact: true)
         }
@@ -420,6 +421,7 @@ private struct CompanionRunScreen: View {
         CompanionScreenContainer(title: "실행", model: model) {
             RemoteAttentionStack(model: model)
             RemoteCommandPanel(model: model, compact: false)
+            RemoteChangeSummaryPanel(status: model.status)
             RemoteDiagnosticPanel(model: model)
             InfoBanner(message: "iPhone은 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Mac이 켜져 있고 같은 Wi-Fi 또는 개인 VPN으로 연결되어 있어야 합니다.")
         }
@@ -668,9 +670,12 @@ private struct RemoteStatusHeader: View {
                 RemoteMetricTile("과제", model.status.assignments, systemImage: "checklist")
                 RemoteMetricTile("시험", model.status.exams, systemImage: "calendar")
                 RemoteMetricTile("공지", model.status.notices, systemImage: "note.text")
-                RemoteMetricTile("파일", model.status.newFiles, systemImage: "folder")
+                RemoteMetricTile("새 파일", model.status.newFiles, systemImage: "folder.badge.plus")
                 if model.status.quarantine > 0 {
                     RemoteMetricTile("격리", model.status.quarantine, systemImage: "exclamationmark.triangle")
+                }
+                if model.status.calendarChangeTotal > 0 {
+                    RemoteMetricTile("캘린더", model.status.calendarChangeTotal, systemImage: "calendar.badge.clock")
                 }
                 RemoteMetricTile("헬프데스크", model.status.helpDesk, systemImage: "person.2")
             }
@@ -782,6 +787,96 @@ private struct RemoteMetricTile: View {
         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
         .padding(.horizontal, 10)
         .background(.quinary)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct RemoteChangeSummaryPanel: View {
+    var status: SanitizedRemoteStatus
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 150), spacing: 8),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("변경 요약")
+                    .font(.headline)
+                Spacer()
+                Text(status.phase.klmsRemotePhaseName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                RemoteSummaryCard(
+                    title: "공지",
+                    systemImage: "megaphone",
+                    tint: .purple,
+                    lines: [
+                        "표시 \(status.notices)",
+                        "새 \(status.noticeNew)",
+                        "수정 \(status.noticeUpdated)",
+                        status.noticeIgnored > 0 ? "보관 \(status.noticeIgnored)" : nil,
+                    ]
+                )
+                RemoteSummaryCard(
+                    title: "파일",
+                    systemImage: "folder",
+                    tint: .blue,
+                    lines: [
+                        status.fileTotal > 0 ? "전체 \(status.fileTotal)" : nil,
+                        "새 \(status.newFiles)",
+                        status.fileCleanupTotal > 0 ? "정리 \(status.fileCleanupTotal)" : nil,
+                        status.quarantine > 0 ? "격리 \(status.quarantine)" : nil,
+                    ]
+                )
+                RemoteSummaryCard(
+                    title: "캘린더",
+                    systemImage: "calendar",
+                    tint: .green,
+                    lines: [
+                        "생성 \(status.calendarCreated)",
+                        "수정 \(status.calendarUpdated)",
+                        "삭제 \(status.calendarDeleted)",
+                    ]
+                )
+            }
+        }
+        .padding(12)
+        .background(.quinary)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct RemoteSummaryCard: View {
+    var title: String
+    var systemImage: String
+    var tint: Color
+    var lines: [String?]
+
+    private var displayLines: [String] {
+        let values = lines.compactMap { value in
+            value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        }
+        return values.isEmpty ? ["변경 없음"] : values
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(displayLines.joined(separator: " · "))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
+        .padding(10)
+        .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
@@ -988,12 +1083,19 @@ private struct RemoteCommandRow: View {
     }
 
     private var summaryText: String {
-        [
+        var parts = [
             "과제 \(command.summary.assignments)",
             "시험 \(command.summary.exams)",
             "공지 \(command.summary.notices)",
-            "파일 \(command.summary.newFiles)",
-        ].joined(separator: " · ")
+            "새 파일 \(command.summary.newFiles)",
+        ]
+        if command.summary.calendarChangeTotal > 0 {
+            parts.append("캘린더 \(command.summary.calendarChangeTotal)")
+        }
+        if command.summary.quarantine > 0 {
+            parts.append("격리 \(command.summary.quarantine)")
+        }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -1089,6 +1191,10 @@ private struct LoginAttentionBanner: View {
 }
 
 private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+
     var klmsRemotePhaseName: String {
         switch trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "running":
