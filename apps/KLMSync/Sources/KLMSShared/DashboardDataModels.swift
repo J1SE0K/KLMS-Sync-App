@@ -871,6 +871,9 @@ public struct CourseFileManifestEntry: Decodable, Sendable, Equatable, Identifia
     public var course: String
     public var absolutePath: String
     public var localDownloadedAt: String
+    public var klmsTimestamp: String
+    public var klmsTimestampEpoch: Int?
+    public var klmsTimestampText: String
     public var bucket: String
 
     public var id: String {
@@ -885,6 +888,9 @@ public struct CourseFileManifestEntry: Decodable, Sendable, Equatable, Identifia
         course: String = "",
         absolutePath: String = "",
         localDownloadedAt: String = "",
+        klmsTimestamp: String = "",
+        klmsTimestampEpoch: Int? = nil,
+        klmsTimestampText: String = "",
         bucket: String = ""
     ) {
         self.filename = filename
@@ -894,6 +900,9 @@ public struct CourseFileManifestEntry: Decodable, Sendable, Equatable, Identifia
         self.course = course
         self.absolutePath = absolutePath
         self.localDownloadedAt = localDownloadedAt
+        self.klmsTimestamp = klmsTimestamp
+        self.klmsTimestampEpoch = klmsTimestampEpoch
+        self.klmsTimestampText = klmsTimestampText
         self.bucket = bucket
     }
 
@@ -905,6 +914,9 @@ public struct CourseFileManifestEntry: Decodable, Sendable, Equatable, Identifia
         case course
         case absolutePath = "absolute_path"
         case localDownloadedAt = "local_downloaded_at"
+        case klmsTimestamp = "klms_timestamp"
+        case klmsTimestampEpoch = "klms_timestamp_epoch"
+        case klmsTimestampText = "klms_timestamp_text"
         case bucket
     }
 
@@ -917,6 +929,9 @@ public struct CourseFileManifestEntry: Decodable, Sendable, Equatable, Identifia
         course = container.decodeIfPresentDefault(String.self, forKey: .course, default: "")
         absolutePath = container.decodeIfPresentDefault(String.self, forKey: .absolutePath, default: "")
         localDownloadedAt = container.decodeIfPresentDefault(String.self, forKey: .localDownloadedAt, default: "")
+        klmsTimestamp = container.decodeIfPresentDefault(String.self, forKey: .klmsTimestamp, default: "")
+        klmsTimestampEpoch = (try? container.decodeIfPresent(Int.self, forKey: .klmsTimestampEpoch)) ?? nil
+        klmsTimestampText = container.decodeIfPresentDefault(String.self, forKey: .klmsTimestampText, default: "")
         bucket = container.decodeIfPresentDefault(String.self, forKey: .bucket, default: "")
     }
 }
