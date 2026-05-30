@@ -25,7 +25,7 @@ COMPACT_IGNORED_COURSE_NAMES = {
 }
 GENERIC_COURSE_NAMES = {"강의실 메인", "course home"}
 IGNORED_ACTIVITY_IDS: set[str] = set()
-COURSE_MATERIAL_BUCKETS = {"folders", "resources"}
+COURSE_MATERIAL_BUCKETS = {"folders", "resources", "board-attachments"}
 MANIFEST_SOURCE_ENTRY_STYLE_VERSION = "2026-05-08-resource-section-source-title-v2"
 INVALID_FS_CHARS = r'[:/\n\r\t]'
 COURSEBOARD_INLINE_MEDIA_SELECTOR = (
@@ -800,11 +800,14 @@ def determine_source_title(
     page: dict[str, Any], soup: BeautifulSoup, activity_lookup: dict[str, dict[str, str]]
 ) -> str:
     requested_url = page.get("requestedUrl") or page.get("url") or ""
+    subject = soup.select_one(".courseboard_view .subject h3")
+    if subject and is_courseboard_article(requested_url):
+        return normalize_whitespace(subject.get_text(" ", strip=True))
+
     identifier = query_id(requested_url)
     if identifier and identifier in activity_lookup and activity_lookup[identifier].get("title"):
         return activity_lookup[identifier]["title"]
 
-    subject = soup.select_one(".courseboard_view .subject h3")
     if subject:
         return normalize_whitespace(subject.get_text(" ", strip=True))
 

@@ -1103,6 +1103,44 @@ private struct NoticeRowView: View {
                     .textSelection(.enabled)
             }
 
+            let attachments = attachmentDisplays
+            if !attachments.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("첨부 파일")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach(attachments) { attachment in
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: attachment.path.isEmpty ? "paperclip" : "doc")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(attachment.name.klmsDisplayText)
+                                    .font(.caption2)
+                                    .lineLimit(2)
+                                if !attachment.path.isEmpty {
+                                    Text(attachment.path.klmsDisplayText)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                            Spacer(minLength: 6)
+                            if !attachment.path.isEmpty {
+                                Button {
+                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: attachment.path)])
+                                } label: {
+                                    Image(systemName: "folder")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Finder에서 보기")
+                            }
+                        }
+                    }
+                }
+            }
+
             HStack {
                 Toggle("읽음", isOn: readBinding)
                 Toggle("중요", isOn: importantBinding)
@@ -1174,6 +1212,44 @@ private struct NoticeRowView: View {
             return Color.blue.opacity(0.08)
         }
         return Color(nsColor: .controlBackgroundColor)
+    }
+
+    private var attachmentDisplays: [NoticeAttachmentDisplay] {
+        if !notice.attachmentItems.isEmpty {
+            return notice.attachmentItems.map { item in
+                let path = item.absolutePath.trimmingCharacters(in: .whitespacesAndNewlines)
+                let relativePath = item.relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+                let fallbackName = path.isEmpty ? relativePath : URL(fileURLWithPath: path).lastPathComponent
+                let name = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                return NoticeAttachmentDisplay(
+                    name: name.isEmpty ? (fallbackName.isEmpty ? "(이름 없음)" : fallbackName) : name,
+                    path: path,
+                    fallbackKey: relativePath
+                )
+            }
+        }
+
+        var seen = Set<String>()
+        return notice.attachments.compactMap { rawName in
+            let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return nil }
+            let key = name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            guard seen.insert(key).inserted else { return nil }
+            return NoticeAttachmentDisplay(name: name, path: "", fallbackKey: key)
+        }
+    }
+}
+
+private struct NoticeAttachmentDisplay: Identifiable {
+    var name: String
+    var path: String
+    var fallbackKey: String
+
+    var id: String {
+        if !path.isEmpty {
+            return path
+        }
+        return fallbackKey.isEmpty ? name : fallbackKey
     }
 }
 

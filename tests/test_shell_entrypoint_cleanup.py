@@ -585,6 +585,10 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("case files", detail)
         self.assertIn("FileManifestListView(filters: filters, model: model)", detail)
         self.assertIn("model.snapshot.courseFileManifest.compactMap", detail)
+        self.assertIn("NoticeAttachmentDisplay", detail)
+        self.assertIn('Text("첨부 파일")', detail)
+        self.assertIn("notice.attachmentItems.map", detail)
+        self.assertIn("NSWorkspace.shared.activateFileViewerSelecting", detail)
 
     def test_mac_app_file_lists_have_sort_controls(self) -> None:
         detail = (
