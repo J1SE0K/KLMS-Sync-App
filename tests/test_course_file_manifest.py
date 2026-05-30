@@ -82,6 +82,66 @@ class CourseFileManifestTests(unittest.TestCase):
         )
         self.assertEqual(_state["layout"], {"weekly_folders_enabled": True})
 
+    def test_notice_article_attachments_are_included_as_board_attachments(self) -> None:
+        course_page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=100001&section=0",
+            "title": "강좌: Example Course",
+            "html": """
+            <html><body>
+              <div role="main">
+                <a href="https://klms.kaist.ac.kr/mod/courseboard/view.php?id=300001">공지</a>
+              </div>
+            </body></html>
+            """,
+        }
+        notice_article_page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=300001&bwid=400001",
+            "title": "EX.100_2026_1 : Notice",
+            "html": """
+            <html><body>
+              <nav>
+                <a href="https://klms.kaist.ac.kr/course/view.php?id=100001">Example Course</a>
+              </nav>
+              <div class="courseboard_view">
+                <div class="subject"><h3>Final Notice</h3></div>
+                <div class="info"><span>2026년 5월 29일(금요일) 오전 9:00</span></div>
+                <div class="files">
+                  <ul class="files">
+                    <li>
+                      <a href="https://klms.kaist.ac.kr/pluginfile.php/1/mod_courseboard/attachment/400001/final-guide.pdf?forcedownload=1">final-guide.pdf</a>
+                    </li>
+                  </ul>
+                </div>
+                <div class="content">시험 안내입니다.</div>
+              </div>
+            </body></html>
+            """,
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            course_pages_json = tmp_path / "course_pages.json"
+            pages_json = tmp_path / "pages.json"
+            course_pages_json.write_text(json.dumps([course_page]), encoding="utf-8")
+            pages_json.write_text(json.dumps([notice_article_page]), encoding="utf-8")
+
+            manifest, _state = build_course_file_manifest.build_manifest(
+                course_pages_json=course_pages_json,
+                page_sets=[pages_json],
+                output_root=tmp_path / "course_files",
+            )
+
+        self.assertEqual(len(manifest), 1)
+        self.assertEqual(manifest[0]["course"], "Example Course")
+        self.assertEqual(manifest[0]["bucket"], "board-attachments")
+        self.assertEqual(manifest[0]["source_title"], "Final Notice")
+        self.assertEqual(manifest[0]["filename"], "final-guide.pdf")
+        self.assertEqual(
+            manifest[0]["relative_path"],
+            "Example Course/board-attachments/Final Notice/final-guide.pdf",
+        )
+        self.assertEqual(manifest[0]["klms_timestamp_source"], "courseboard-article")
+
     def test_weekly_folders_can_be_disabled(self) -> None:
         course_page = {
             "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=100001&section=0",
