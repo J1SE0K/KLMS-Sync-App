@@ -1180,15 +1180,19 @@ private struct NoticeRowView: View {
 private struct NewFilesListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
+    @State private var sortOption = DashboardFileSortOption.recent
 
     var body: some View {
         let files = filteredItems
         if files.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 새 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "새 파일이 없습니다.")
         } else {
-            LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(files) { item in
-                    FileRowView(item: item, kind: .file, model: model)
+            VStack(alignment: .leading, spacing: 8) {
+                FileSortPickerView(selection: $sortOption)
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(files.sorted(by: sortOption)) { item in
+                        FileRowView(item: item, kind: .file, model: model)
+                    }
                 }
             }
         }
@@ -1222,15 +1226,19 @@ private struct NewFilesListView: View {
 private struct FileManifestListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
+    @State private var sortOption = DashboardFileSortOption.course
 
     var body: some View {
         let files = filteredItems
         if files.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "파일 목록이 없습니다. 파일 동기화를 한 번 실행하면 KLMS 파일 목록이 여기에 표시됩니다.")
         } else {
-            LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(files) { item in
-                    FileRowView(item: item, kind: .file, model: model)
+            VStack(alignment: .leading, spacing: 8) {
+                FileSortPickerView(selection: $sortOption)
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(files.sorted(by: sortOption)) { item in
+                        FileRowView(item: item, kind: .file, model: model)
+                    }
                 }
             }
         }
@@ -1306,6 +1314,80 @@ private struct DashboardFileItem: Identifiable {
         return [academicTerm?.displayName ?? "", title, course, path, url]
             .joined(separator: " ")
             .localizedCaseInsensitiveContains(query)
+    }
+}
+
+private enum DashboardFileSortOption: String, CaseIterable, Identifiable {
+    case course
+    case name
+    case path
+    case recent
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .course:
+            "과목"
+        case .name:
+            "파일명"
+        case .path:
+            "경로"
+        case .recent:
+            "최근"
+        }
+    }
+}
+
+private struct FileSortPickerView: View {
+    @Binding var selection: DashboardFileSortOption
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("정렬")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Picker("파일 정렬", selection: $selection) {
+                ForEach(DashboardFileSortOption.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 320)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private extension Array where Element == DashboardFileItem {
+    func sorted(by option: DashboardFileSortOption) -> [DashboardFileItem] {
+        sorted { lhs, rhs in
+            let leftKeys = lhs.sortKeys(for: option)
+            let rightKeys = rhs.sortKeys(for: option)
+            for (left, right) in zip(leftKeys, rightKeys) {
+                let comparison = left.localizedStandardCompare(right)
+                if comparison != .orderedSame {
+                    return comparison == .orderedAscending
+                }
+            }
+            return lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
+        }
+    }
+}
+
+private extension DashboardFileItem {
+    func sortKeys(for option: DashboardFileSortOption) -> [String] {
+        switch option {
+        case .course:
+            [course, title, path, url]
+        case .name:
+            [title, course, path, url]
+        case .path:
+            [path.isEmpty ? title : path, title, course, url]
+        case .recent:
+            [isRecent ? "0" : "1", course, title, path, url]
+        }
     }
 }
 
@@ -1462,19 +1544,23 @@ private extension StateItem {
 private struct QuarantineListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
+    @State private var sortOption = DashboardFileSortOption.name
 
     var body: some View {
         let records = filteredItems
         if records.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 격리 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "격리 파일이 없습니다.")
         } else {
-            LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(records) { item in
-                    FileRowView(
-                        item: item,
-                        kind: .quarantine,
-                        model: model
-                    )
+            VStack(alignment: .leading, spacing: 8) {
+                FileSortPickerView(selection: $sortOption)
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(records.sorted(by: sortOption)) { item in
+                        FileRowView(
+                            item: item,
+                            kind: .quarantine,
+                            model: model
+                        )
+                    }
                 }
             }
         }
@@ -1505,45 +1591,52 @@ private struct QuarantineListView: View {
 private struct PrunedListView: View {
     var filters: DashboardDetailFilters
     var snapshot: EngineSnapshot
+    @State private var sortOption = DashboardFileSortOption.path
 
     var body: some View {
-        let deleted = filteredActions
+        let deleted = filteredItems
         if deleted.isEmpty {
             EmptyDetailText(text: "삭제된 파일 기록이 없습니다.")
         } else {
-            LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(deleted) { action in
-                    FileRowView(
-                        item: DashboardFileItem(
-                            key: action.path,
-                            title: action.path,
-                            course: action.action,
-                            academicTerm: AcademicTerm.infer(title: action.path, dateTexts: [action.path]),
-                            path: action.path,
-                            url: "",
-                            isRecent: false,
-                            interaction: nil
-                        ),
-                        kind: .pruned,
-                        model: nil
-                    )
+            VStack(alignment: .leading, spacing: 8) {
+                FileSortPickerView(selection: $sortOption)
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(deleted.sorted(by: sortOption)) { item in
+                        FileRowView(
+                            item: item,
+                            kind: .pruned,
+                            model: nil
+                        )
+                    }
                 }
             }
         }
     }
 
-    private var filteredActions: [CleanupAction] {
-        (snapshot.cleanupResult?.actions.filter { $0.action == "deleted" } ?? []).filter { action in
+    private var filteredItems: [DashboardFileItem] {
+        (snapshot.cleanupResult?.actions.filter { $0.action == "deleted" } ?? []).compactMap { action in
             let term = AcademicTerm.infer(title: action.path, dateTexts: [action.path])
             guard DashboardTermFilter.matches(
                 term,
                 selectedYear: filters.selectedYear,
                 selectedSemester: filters.selectedSemester
             ) else {
-                return false
+                return nil
             }
             let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            return query.isEmpty || [term?.displayName ?? "", action.path].joined(separator: " ").localizedCaseInsensitiveContains(query)
+            guard query.isEmpty || [term?.displayName ?? "", action.path].joined(separator: " ").localizedCaseInsensitiveContains(query) else {
+                return nil
+            }
+            return DashboardFileItem(
+                key: action.path,
+                title: action.path,
+                course: action.action,
+                academicTerm: term,
+                path: action.path,
+                url: "",
+                isRecent: false,
+                interaction: nil
+            )
         }
     }
 }
