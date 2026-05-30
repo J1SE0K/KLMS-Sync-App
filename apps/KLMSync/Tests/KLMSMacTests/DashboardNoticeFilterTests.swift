@@ -46,4 +46,23 @@ final class DashboardNoticeFilterTests: XCTestCase {
             )
         )
     }
+
+    func testFreshNoticeCategoryExcludesAlreadyReadItems() {
+        XCTAssertTrue(
+            NoticeListCategory.fresh.matches(
+                hidden: false,
+                important: false,
+                read: false,
+                fresh: true
+            )
+        )
+        XCTAssertFalse(
+            NoticeListCategory.fresh.matches(
+                hidden: false,
+                important: false,
+                read: true,
+                fresh: true
+            )
+        )
+    }
 }

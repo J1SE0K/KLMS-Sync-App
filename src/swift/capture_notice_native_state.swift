@@ -607,9 +607,6 @@ for rendered in renderState.renderedNotices {
         if readChecked {
             state.readFingerprint = rendered.fingerprint
             state.readAt = digest.generatedAt
-        } else if state.readFingerprint == rendered.fingerprint {
-            state.readFingerprint = nil
-            state.readAt = nil
         }
     }
 
@@ -631,7 +628,8 @@ writeJSON(userState, path: arguments.noticeStatePath)
 
 let readCount = userState.notices.values.reduce(into: 0) { count, state in
     let fingerprint = state.fingerprint ?? ""
-    if !fingerprint.isEmpty, state.readFingerprint == fingerprint {
+    let readAt = (state.readAt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if !readAt.isEmpty || (!fingerprint.isEmpty && state.readFingerprint == fingerprint) {
         count += 1
     }
 }
