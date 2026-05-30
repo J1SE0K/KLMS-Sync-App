@@ -70,8 +70,9 @@ final class RemoteCommandModelTests: XCTestCase {
         let report = SyncReport(
             status: "ok",
             state: .init(assignments: 2, exams: 4, helpdesk: 1),
-            notices: .init(total: 63, new: 7, updated: 0, ignored: 0),
-            files: .init(total: 72, newFiles: 3, quarantine: 1, pruned: 0, archivePruned: 0)
+            notices: .init(total: 63, new: 7, updated: 2, ignored: 4),
+            files: .init(total: 72, newFiles: 3, quarantine: 1, pruned: 5, archivePruned: 6),
+            calendar: .init(created: 8, updated: 9, deleted: 10)
         )
         let doctor = DoctorResult(
             status: "fail",
@@ -91,9 +92,20 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(status.assignments, 2)
         XCTAssertEqual(status.exams, 4)
         XCTAssertEqual(status.helpDesk, 1)
-        XCTAssertEqual(status.notices, 63)
+        XCTAssertEqual(status.notices, 59)
+        XCTAssertEqual(status.noticeNew, 7)
+        XCTAssertEqual(status.noticeUpdated, 2)
+        XCTAssertEqual(status.noticeIgnored, 4)
+        XCTAssertEqual(status.fileTotal, 72)
         XCTAssertEqual(status.newFiles, 3)
         XCTAssertEqual(status.quarantine, 1)
+        XCTAssertEqual(status.filePruned, 5)
+        XCTAssertEqual(status.fileArchivePruned, 6)
+        XCTAssertEqual(status.calendarCreated, 8)
+        XCTAssertEqual(status.calendarUpdated, 9)
+        XCTAssertEqual(status.calendarDeleted, 10)
+        XCTAssertEqual(status.calendarChangeTotal, 27)
+        XCTAssertEqual(status.fileCleanupTotal, 11)
         XCTAssertEqual(status.phase, "completed")
         XCTAssertTrue(status.loginRequired)
         XCTAssertNil(status.authDigits)
@@ -110,6 +122,9 @@ final class RemoteCommandModelTests: XCTestCase {
 
         XCTAssertEqual(status.assignments, 1)
         XCTAssertEqual(status.phase, "idle")
+        XCTAssertEqual(status.noticeNew, 0)
+        XCTAssertEqual(status.fileTotal, 0)
+        XCTAssertEqual(status.calendarCreated, 0)
         XCTAssertFalse(status.loginRequired)
         XCTAssertNil(status.authDigits)
         XCTAssertNil(status.authStatusMessage)
@@ -119,6 +134,17 @@ final class RemoteCommandModelTests: XCTestCase {
         let status = SanitizedRemoteStatus(
             assignments: 1,
             exams: 2,
+            notices: 5,
+            noticeNew: 1,
+            noticeUpdated: 2,
+            noticeIgnored: 3,
+            fileTotal: 9,
+            newFiles: 4,
+            filePruned: 5,
+            fileArchivePruned: 6,
+            calendarCreated: 7,
+            calendarUpdated: 8,
+            calendarDeleted: 9,
             phase: "running",
             authStatusMessage: "인증 완료됨"
         )
@@ -128,6 +154,17 @@ final class RemoteCommandModelTests: XCTestCase {
 
         XCTAssertEqual(decoded.assignments, 1)
         XCTAssertEqual(decoded.exams, 2)
+        XCTAssertEqual(decoded.notices, 5)
+        XCTAssertEqual(decoded.noticeNew, 1)
+        XCTAssertEqual(decoded.noticeUpdated, 2)
+        XCTAssertEqual(decoded.noticeIgnored, 3)
+        XCTAssertEqual(decoded.fileTotal, 9)
+        XCTAssertEqual(decoded.newFiles, 4)
+        XCTAssertEqual(decoded.filePruned, 5)
+        XCTAssertEqual(decoded.fileArchivePruned, 6)
+        XCTAssertEqual(decoded.calendarCreated, 7)
+        XCTAssertEqual(decoded.calendarUpdated, 8)
+        XCTAssertEqual(decoded.calendarDeleted, 9)
         XCTAssertEqual(decoded.phase, "running")
         XCTAssertFalse(decoded.loginRequired)
         XCTAssertNil(decoded.authDigits)

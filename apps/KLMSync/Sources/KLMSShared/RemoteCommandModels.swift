@@ -156,8 +156,17 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
     public var exams: Int
     public var helpDesk: Int
     public var notices: Int
+    public var noticeNew: Int
+    public var noticeUpdated: Int
+    public var noticeIgnored: Int
+    public var fileTotal: Int
     public var newFiles: Int
     public var quarantine: Int
+    public var filePruned: Int
+    public var fileArchivePruned: Int
+    public var calendarCreated: Int
+    public var calendarUpdated: Int
+    public var calendarDeleted: Int
     public var phase: String
     public var loginRequired: Bool
     public var authDigits: String?
@@ -168,8 +177,17 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         case exams
         case helpDesk
         case notices
+        case noticeNew
+        case noticeUpdated
+        case noticeIgnored
+        case fileTotal
         case newFiles
         case quarantine
+        case filePruned
+        case fileArchivePruned
+        case calendarCreated
+        case calendarUpdated
+        case calendarDeleted
         case phase
         case loginRequired
         case authDigits
@@ -181,8 +199,17 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         exams: Int = 0,
         helpDesk: Int = 0,
         notices: Int = 0,
+        noticeNew: Int = 0,
+        noticeUpdated: Int = 0,
+        noticeIgnored: Int = 0,
+        fileTotal: Int = 0,
         newFiles: Int = 0,
         quarantine: Int = 0,
+        filePruned: Int = 0,
+        fileArchivePruned: Int = 0,
+        calendarCreated: Int = 0,
+        calendarUpdated: Int = 0,
+        calendarDeleted: Int = 0,
         phase: String = "",
         loginRequired: Bool = false,
         authDigits: String? = nil,
@@ -192,8 +219,17 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         self.exams = exams
         self.helpDesk = helpDesk
         self.notices = notices
+        self.noticeNew = noticeNew
+        self.noticeUpdated = noticeUpdated
+        self.noticeIgnored = noticeIgnored
+        self.fileTotal = fileTotal
         self.newFiles = newFiles
         self.quarantine = quarantine
+        self.filePruned = filePruned
+        self.fileArchivePruned = fileArchivePruned
+        self.calendarCreated = calendarCreated
+        self.calendarUpdated = calendarUpdated
+        self.calendarDeleted = calendarDeleted
         self.phase = phase
         self.loginRequired = loginRequired
         self.authDigits = authDigits
@@ -206,8 +242,17 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         exams = counts.exams
         helpDesk = counts.helpDesk
         notices = counts.notices
+        noticeNew = snapshot.syncReport?.notices.new ?? 0
+        noticeUpdated = snapshot.syncReport?.notices.updated ?? 0
+        noticeIgnored = snapshot.syncReport?.notices.ignored ?? 0
+        fileTotal = snapshot.syncReport?.files.total ?? 0
         newFiles = counts.newFiles
         quarantine = counts.quarantine
+        filePruned = snapshot.syncReport?.files.pruned ?? 0
+        fileArchivePruned = snapshot.syncReport?.files.archivePruned ?? 0
+        calendarCreated = snapshot.syncReport?.calendar.created ?? 0
+        calendarUpdated = snapshot.syncReport?.calendar.updated ?? 0
+        calendarDeleted = snapshot.syncReport?.calendar.deleted ?? 0
         self.phase = phase
         authDigits = nil
         authStatusMessage = nil
@@ -225,12 +270,29 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         exams = container.decodeIfPresentDefault(Int.self, forKey: .exams, default: 0)
         helpDesk = container.decodeIfPresentDefault(Int.self, forKey: .helpDesk, default: 0)
         notices = container.decodeIfPresentDefault(Int.self, forKey: .notices, default: 0)
+        noticeNew = container.decodeIfPresentDefault(Int.self, forKey: .noticeNew, default: 0)
+        noticeUpdated = container.decodeIfPresentDefault(Int.self, forKey: .noticeUpdated, default: 0)
+        noticeIgnored = container.decodeIfPresentDefault(Int.self, forKey: .noticeIgnored, default: 0)
+        fileTotal = container.decodeIfPresentDefault(Int.self, forKey: .fileTotal, default: 0)
         newFiles = container.decodeIfPresentDefault(Int.self, forKey: .newFiles, default: 0)
         quarantine = container.decodeIfPresentDefault(Int.self, forKey: .quarantine, default: 0)
+        filePruned = container.decodeIfPresentDefault(Int.self, forKey: .filePruned, default: 0)
+        fileArchivePruned = container.decodeIfPresentDefault(Int.self, forKey: .fileArchivePruned, default: 0)
+        calendarCreated = container.decodeIfPresentDefault(Int.self, forKey: .calendarCreated, default: 0)
+        calendarUpdated = container.decodeIfPresentDefault(Int.self, forKey: .calendarUpdated, default: 0)
+        calendarDeleted = container.decodeIfPresentDefault(Int.self, forKey: .calendarDeleted, default: 0)
         phase = container.decodeIfPresentDefault(String.self, forKey: .phase, default: "")
         loginRequired = container.decodeIfPresentDefault(Bool.self, forKey: .loginRequired, default: false)
         authDigits = try container.decodeIfPresent(String.self, forKey: .authDigits)
         authStatusMessage = try container.decodeIfPresent(String.self, forKey: .authStatusMessage)
+    }
+
+    public var calendarChangeTotal: Int {
+        calendarCreated + calendarUpdated + calendarDeleted
+    }
+
+    public var fileCleanupTotal: Int {
+        filePruned + fileArchivePruned
     }
 }
 
@@ -891,8 +953,17 @@ public final class CloudKitCommandStore: RemoteCommandStore, @unchecked Sendable
         record["exams"] = NSNumber(value: command.summary.exams)
         record["helpDesk"] = NSNumber(value: command.summary.helpDesk)
         record["notices"] = NSNumber(value: command.summary.notices)
+        record["noticeNew"] = NSNumber(value: command.summary.noticeNew)
+        record["noticeUpdated"] = NSNumber(value: command.summary.noticeUpdated)
+        record["noticeIgnored"] = NSNumber(value: command.summary.noticeIgnored)
+        record["fileTotal"] = NSNumber(value: command.summary.fileTotal)
         record["newFiles"] = NSNumber(value: command.summary.newFiles)
         record["quarantine"] = NSNumber(value: command.summary.quarantine)
+        record["filePruned"] = NSNumber(value: command.summary.filePruned)
+        record["fileArchivePruned"] = NSNumber(value: command.summary.fileArchivePruned)
+        record["calendarCreated"] = NSNumber(value: command.summary.calendarCreated)
+        record["calendarUpdated"] = NSNumber(value: command.summary.calendarUpdated)
+        record["calendarDeleted"] = NSNumber(value: command.summary.calendarDeleted)
         record["phase"] = command.summary.phase as NSString
         if let authStatusMessage = command.summary.authStatusMessage {
             record["authStatusMessage"] = authStatusMessage as NSString
@@ -921,8 +992,17 @@ public final class CloudKitCommandStore: RemoteCommandStore, @unchecked Sendable
                 exams: (record["exams"] as? NSNumber)?.intValue ?? 0,
                 helpDesk: (record["helpDesk"] as? NSNumber)?.intValue ?? 0,
                 notices: (record["notices"] as? NSNumber)?.intValue ?? 0,
+                noticeNew: (record["noticeNew"] as? NSNumber)?.intValue ?? 0,
+                noticeUpdated: (record["noticeUpdated"] as? NSNumber)?.intValue ?? 0,
+                noticeIgnored: (record["noticeIgnored"] as? NSNumber)?.intValue ?? 0,
+                fileTotal: (record["fileTotal"] as? NSNumber)?.intValue ?? 0,
                 newFiles: (record["newFiles"] as? NSNumber)?.intValue ?? 0,
                 quarantine: (record["quarantine"] as? NSNumber)?.intValue ?? 0,
+                filePruned: (record["filePruned"] as? NSNumber)?.intValue ?? 0,
+                fileArchivePruned: (record["fileArchivePruned"] as? NSNumber)?.intValue ?? 0,
+                calendarCreated: (record["calendarCreated"] as? NSNumber)?.intValue ?? 0,
+                calendarUpdated: (record["calendarUpdated"] as? NSNumber)?.intValue ?? 0,
+                calendarDeleted: (record["calendarDeleted"] as? NSNumber)?.intValue ?? 0,
                 phase: (record["phase"] as? String) ?? "",
                 authStatusMessage: record["authStatusMessage"] as? String
             )
