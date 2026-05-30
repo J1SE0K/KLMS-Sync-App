@@ -1215,6 +1215,7 @@ private struct NewFilesListView: View {
                 url: item.url,
                 isRecent: true,
                 recencyText: manifest?.localDownloadedAt ?? "",
+                klmsTimestampEpoch: manifest?.klmsTimestampEpoch,
                 interaction: interaction(for: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath)
             )
             return file.matches(filters: filters) ? file : nil
@@ -1261,6 +1262,7 @@ private struct FileManifestListView: View {
                 url: entry.url,
                 isRecent: isRecent(entry),
                 recencyText: entry.localDownloadedAt,
+                klmsTimestampEpoch: entry.klmsTimestampEpoch,
                 interaction: model.snapshot.appUserState?.files[key]
             )
             return item.matches(filters: filters) ? item : nil
@@ -1294,6 +1296,7 @@ private struct DashboardFileItem: Identifiable {
     var url: String
     var isRecent: Bool
     var recencyText: String
+    var klmsTimestampEpoch: Int? = nil
     var interaction: FileInteractionState?
 
     var id: String { key }
@@ -1379,6 +1382,11 @@ private extension Array where Element == DashboardFileItem {
     func sorted(by option: DashboardFileSortOption) -> [DashboardFileItem] {
         sorted { lhs, rhs in
             if option == .recent {
+                let leftKLMSTimestamp = lhs.klmsTimestampEpoch ?? Int.min
+                let rightKLMSTimestamp = rhs.klmsTimestampEpoch ?? Int.min
+                if leftKLMSTimestamp != rightKLMSTimestamp {
+                    return leftKLMSTimestamp > rightKLMSTimestamp
+                }
                 if lhs.isRecent != rhs.isRecent {
                     return lhs.isRecent && !rhs.isRecent
                 }
@@ -1433,7 +1441,7 @@ private extension DashboardFileSortOption {
         case .path:
             "KLMS 상대 경로 순서로 정렬"
         case .recent:
-            "최근 다운로드/변경 항목을 먼저 정렬"
+            "KLMS 등록 시각이 최신인 파일을 먼저 정렬"
         }
     }
 }

@@ -2,6 +2,32 @@ import XCTest
 @testable import KLMSShared
 
 final class DashboardDataModelTests: XCTestCase {
+    func testCourseFileManifestDecodesKLMSTimestampForLatestSort() throws {
+        let payload = """
+        [
+          {
+            "filename": "자료.pdf",
+            "relative_path": "Course/resources/자료.pdf",
+            "url": "https://klms.kaist.ac.kr/mod/resource/view.php?id=1",
+            "source_url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=10",
+            "course": "Course",
+            "absolute_path": "/tmp/자료.pdf",
+            "local_downloaded_at": "2026-05-30 10:00 KST",
+            "klms_timestamp": "2026-05-29T09:00:00+09:00",
+            "klms_timestamp_epoch": 1779984000,
+            "klms_timestamp_text": "2026-05-29 09:00",
+            "bucket": "assignment-attachments"
+          }
+        ]
+        """.data(using: .utf8)!
+
+        let entries = try JSONDecoder().decode([CourseFileManifestEntry].self, from: payload)
+
+        XCTAssertEqual(entries.first?.klmsTimestamp, "2026-05-29T09:00:00+09:00")
+        XCTAssertEqual(entries.first?.klmsTimestampEpoch, 1_779_984_000)
+        XCTAssertEqual(entries.first?.klmsTimestampText, "2026-05-29 09:00")
+    }
+
     func testEngineSnapshotStoreMergesLocalCourseFilesMissingFromManifest() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("klms-dashboard-file-merge-\(UUID().uuidString)", isDirectory: true)
