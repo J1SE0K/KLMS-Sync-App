@@ -948,6 +948,43 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("현재 동기화 중단", ios_app)
         self.assertIn("SecureField(\"토큰\"", ios_app)
         self.assertIn("clearLocalConnectionInfo", ios_app)
+        self.assertIn("개인 VPN", ios_app)
+        self.assertIn("RemoteConnectionOptionsNote", ios_app)
+
+    def test_ios_project_has_app_icon_asset_catalog(self) -> None:
+        project = (
+            PROJECT_DIR
+            / "apps"
+            / "KLMSync"
+            / "Xcode"
+            / "KLMSiOS"
+            / "KLMSiOS.xcodeproj"
+            / "project.pbxproj"
+        ).read_text(encoding="utf-8")
+        generator = (PROJECT_DIR / "tools" / "generate_klms_ios_xcode_project.py").read_text(
+            encoding="utf-8"
+        )
+        icon_generator = (PROJECT_DIR / "tools" / "generate_klms_app_icon.py").read_text(
+            encoding="utf-8"
+        )
+        app_icon = (
+            PROJECT_DIR
+            / "apps"
+            / "KLMSync"
+            / "Xcode"
+            / "KLMSiOS"
+            / "KLMSiOS"
+            / "Assets.xcassets"
+            / "AppIcon.appiconset"
+            / "Contents.json"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon", project)
+        self.assertIn("Assets.xcassets in Resources", project)
+        self.assertIn("ASSET_CATALOG", generator)
+        self.assertIn("write_ios_appiconset", icon_generator)
+        self.assertIn('"Icon-60@3x.png"', app_icon)
+        self.assertIn('"ios-marketing"', app_icon)
 
     def test_app_notice_renderer_uses_bundled_signed_helper(self) -> None:
         model = (
