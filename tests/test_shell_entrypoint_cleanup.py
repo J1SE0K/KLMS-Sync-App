@@ -552,6 +552,20 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("if isExpanded", menu)
         self.assertIn("IntegrationStatusTile(status: status)", menu)
 
+    def test_mac_app_hides_zero_quarantine_metrics(self) -> None:
+        menu = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertRegex(
+            menu,
+            r'Metric\("격리", counts\.quarantine, detail: \.quarantine\),\s*\]\.filter \{ \$0\.value > 0 \}',
+        )
+        self.assertRegex(
+            menu,
+            r'Metric\("격리됨", visibleFileCounts\.quarantine, detail: \.quarantine\),\s*\]\.filter \{ \$0\.value > 0 \}',
+        )
+
     def test_safari_automation_uses_background_windows_by_default(self) -> None:
         fetch_text = (PROJECT_DIR / "src" / "js" / "fetch_pages_with_safari.js").read_text(
             encoding="utf-8"

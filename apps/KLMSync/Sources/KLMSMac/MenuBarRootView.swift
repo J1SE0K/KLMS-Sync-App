@@ -1126,9 +1126,10 @@ private struct DashboardSummaryView: View {
                 Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
                 Metric("공지", counts.notices, detail: .notices),
                 Metric("새 파일", counts.newFiles, detail: .newFiles),
-                Metric("격리", counts.quarantine, detail: .quarantine),
                 Metric("캘린더", (report?.calendar.created ?? 0) + (report?.calendar.updated ?? 0) + (report?.calendar.deleted ?? 0), detail: .calendar),
             ] + [
+                Metric("격리", counts.quarantine, detail: .quarantine),
+            ].filter { $0.value > 0 } + [
                 Metric("완료 기록", completedAssignmentCount, detail: .assignmentRecords),
                 Metric("과제 후보", assignmentCandidateCount, detail: .assignmentCandidates),
                 Metric("시험 후보", examCandidateCount, detail: .examCandidates),
@@ -1565,8 +1566,9 @@ private struct FilesPanelView: View {
                     Metric("재사용", download.reusedLoggedFileCount),
                     Metric("새 다운로드", download.freshDownloadCount, detail: .newFiles),
                     Metric("새 파일 보관함", visibleFileCounts.newFiles, detail: .newFiles),
+                ] + [
                     Metric("격리됨", visibleFileCounts.quarantine, detail: .quarantine),
-                ], selectedMetricID: selectedDetail.rawValue) { metric in
+                ].filter { $0.value > 0 }, selectedMetricID: selectedDetail.rawValue) { metric in
                     if let detail = metric.detail {
                         selectedDetail = detail
                     }
