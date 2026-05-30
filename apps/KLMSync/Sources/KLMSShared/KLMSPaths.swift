@@ -37,6 +37,10 @@ public struct KLMSPaths: Sendable, Equatable {
         engineRoot.appendingPathComponent("runtime", isDirectory: true)
     }
 
+    public var courseFilesURL: URL {
+        engineRoot.appendingPathComponent("course_files", isDirectory: true)
+    }
+
     public var cacheURL: URL {
         runtimeURL.appendingPathComponent("cache", isDirectory: true)
     }

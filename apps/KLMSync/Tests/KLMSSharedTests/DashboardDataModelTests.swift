@@ -2,6 +2,95 @@ import XCTest
 @testable import KLMSShared
 
 final class DashboardDataModelTests: XCTestCase {
+    func testEngineSnapshotStoreMergesLocalCourseFilesMissingFromManifest() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("klms-dashboard-file-merge-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let paths = KLMSPaths(engineRoot: directory)
+        try FileManager.default.createDirectory(at: paths.cacheURL, withIntermediateDirectories: true)
+        let courseRoot = paths.courseFilesURL
+        let existingFile = courseRoot.appendingPathComponent("Course/resources/1주차/Existing.pdf")
+        let localOnlyFile = courseRoot.appendingPathComponent("Course/resources/2주차/Local Only.pdf")
+        let hiddenSystemFile = courseRoot.appendingPathComponent("Course/resources/.DS_Store")
+        for url in [existingFile, localOnlyFile, hiddenSystemFile] {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try Data("file".utf8).write(to: url)
+        }
+        try writeManifest(
+            [
+                [
+                    "filename": "Existing.pdf",
+                    "relative_path": "Course/resources/1주차/Existing.pdf",
+                    "url": "https://klms.kaist.ac.kr/mod/resource/view.php?id=1",
+                    "source_url": "https://klms.kaist.ac.kr/course/view.php?id=1",
+                    "course": "Course",
+                    "absolute_path": existingFile.path,
+                    "local_downloaded_at": "2026-05-30 00:00 KST",
+                    "bucket": "resources",
+                ],
+            ],
+            to: paths.courseFileManifestURL
+        )
+
+        let snapshot = EngineSnapshotStore(paths: paths).load()
+
+        XCTAssertEqual(snapshot.courseFileManifest.count, 2)
+        XCTAssertTrue(snapshot.courseFileManifest.contains { $0.relativePath == "Course/resources/1주차/Existing.pdf" })
+        let localOnly = try XCTUnwrap(snapshot.courseFileManifest.first {
+            $0.relativePath == "Course/resources/2주차/Local Only.pdf"
+        })
+        XCTAssertEqual(localOnly.filename, "Local Only.pdf")
+        XCTAssertEqual(localOnly.course, "Course")
+        XCTAssertEqual(localOnly.bucket, "resources")
+        XCTAssertTrue(localOnly.absolutePath.hasSuffix("/Course/resources/2주차/Local Only.pdf"))
+        XCTAssertFalse(snapshot.courseFileManifest.contains { $0.filename == ".DS_Store" })
+    }
+
+    func testEngineSnapshotStoreDoesNotDuplicateLocalFileWithDifferentUnicodeNormalization() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("klms-dashboard-file-normalization-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let paths = KLMSPaths(engineRoot: directory)
+        try FileManager.default.createDirectory(at: paths.cacheURL, withIntermediateDirectories: true)
+        let composedRelativePath = "카페/resources/1주차/자료.pdf"
+        let decomposedRelativePath = (composedRelativePath as NSString).decomposedStringWithCanonicalMapping
+        let localFile = paths.courseFilesURL.appendingPathComponent(decomposedRelativePath)
+        try FileManager.default.createDirectory(
+            at: localFile.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("file".utf8).write(to: localFile)
+        try writeManifest(
+            [
+                [
+                    "filename": "자료.pdf",
+                    "relative_path": composedRelativePath,
+                    "url": "https://klms.kaist.ac.kr/mod/resource/view.php?id=2",
+                    "source_url": "https://klms.kaist.ac.kr/course/view.php?id=2",
+                    "course": "카페",
+                    "absolute_path": localFile.path,
+                    "local_downloaded_at": "2026-05-30 00:00 KST",
+                    "bucket": "resources",
+                ],
+            ],
+            to: paths.courseFileManifestURL
+        )
+
+        let snapshot = EngineSnapshotStore(paths: paths).load()
+
+        XCTAssertEqual(snapshot.courseFileManifest.count, 1)
+        XCTAssertEqual(snapshot.courseFileManifest.first?.relativePath, composedRelativePath)
+    }
+
     func testManualOverrideStoreUpdatesKnownSectionsAndPreservesOtherSections() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("klms-dashboard-overrides-\(UUID().uuidString)", isDirectory: true)
@@ -588,5 +677,10 @@ final class DashboardDataModelTests: XCTestCase {
           "fingerprint": "\(title)-fingerprint"
         }
         """.utf8))
+    }
+
+    private func writeManifest(_ payload: [[String: Any]], to url: URL) throws {
+        let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: url)
     }
 }
