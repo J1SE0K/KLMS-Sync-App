@@ -27,13 +27,20 @@ tools/build_klms_mac_app.sh
 
 The bundle is written to `~/Applications/KLMS Sync.app` by default. The build script injects the current engine code into the app resource bundle as `EnginePayload`; private runtime data stays in `~/Library/Application Support/KLMSNotesSync` and is preserved by the installer. Set `DIST_DIR=/path/to/output` when a different output directory is needed.
 
-CloudKit signing is opt-in for local builds. A Mac or iPhone app with iCloud entitlements needs a matching Apple Developer App ID, provisioning profile, and iCloud container; Apple Personal Team/free Apple ID signing does not support the iCloud capability. Adding the entitlement without that provisioning can make the app fail to launch. The default iPhone entitlement file is intentionally empty so the app can run on a free account with remote buttons disabled. After the CloudKit container is ready, build the Mac app with `ENABLE_CLOUDKIT_ENTITLEMENT=1 ICLOUD_CONTAINER_IDENTIFIER=iCloud.<your.container> tools/build_klms_mac_app.sh`, enable the same iCloud container on the iPhone target, and add `KLMS_ENABLE_CLOUDKIT` to the iPhone target's Swift active compilation conditions.
+CloudKit signing is opt-in for local builds. A Mac or iPhone app with iCloud entitlements needs a matching Apple Developer App ID, provisioning profile, and iCloud container; Apple Personal Team/free Apple ID signing does not support the iCloud capability. Adding the entitlement without that provisioning can make the app fail to launch. The default iPhone entitlement file is intentionally empty so the app can run on a free account with local-network remote control. After the CloudKit container is ready, build the Mac app with `ENABLE_CLOUDKIT_ENTITLEMENT=1 ICLOUD_CONTAINER_IDENTIFIER=iCloud.<your.container> tools/build_klms_mac_app.sh`, enable the same iCloud container on the iPhone target, and add `KLMS_ENABLE_CLOUDKIT` to the iPhone target's Swift active compilation conditions.
 
 ## iPhone companion
 
-The iPhone app only creates `RunCommand` records and reads sanitized status counts. It does not scrape KLMS, does not receive raw logs, and does not store KLMS URLs, `config.env`, Kaikey state, or local file paths in CloudKit.
+The iPhone app only creates remote requests and reads sanitized status counts. It does not scrape KLMS, does not receive raw logs, and does not store KLMS URLs, `config.env`, Kaikey state, or local file paths.
 
-On the Mac app, turn on `iPhone 요청 자동 처리` from the command panel or Settings > iPhone. The Mac app polls CloudKit every 20 seconds while it is running, marks old pending requests as `Mac 응답 없음`, and executes only one sync command at a time.
+For a free Apple ID, use local-network remote control:
+
+- Turn on local remote control in the Mac app.
+- Copy the Mac connection info into the iPhone app.
+- Keep both devices on the same Wi-Fi, or put both devices on the same private VPN and enter the Mac VPN address.
+- Do not expose the raw local remote port to the public internet.
+
+For CloudKit mode, turn on `iPhone 요청 자동 처리` from the Mac app command panel or Settings > iPhone. The Mac app polls CloudKit every 20 seconds while it is running, marks old pending requests as `Mac 응답 없음`, and executes only one sync command at a time.
 
 The checked-in iPhone Xcode project is generated at:
 
@@ -67,7 +74,7 @@ For an actual iPhone device build with a free Apple ID, configure the generated 
 - your Personal Team;
 - no iCloud capability.
 
-This launches the companion UI with remote execution disabled. For CloudKit remote execution, configure the target with a paid Apple Developer team and:
+This launches the companion UI with local-network remote execution available. For CloudKit remote execution, configure the target with a paid Apple Developer team and:
 
 - bundle identifier matched to the same Apple developer team as the Mac app;
 - iCloud capability enabled with CloudKit;

@@ -15,6 +15,7 @@ RESOURCE_DIR = ROOT / "apps" / "KLMSync" / "Resources"
 PNG_PATH = RESOURCE_DIR / "AppIcon.png"
 ICONSET_DIR = RESOURCE_DIR / "AppIcon.iconset"
 ICNS_PATH = RESOURCE_DIR / "AppIcon.icns"
+IOS_APPICON_DIR = ROOT / "apps" / "KLMSync" / "Xcode" / "KLMSiOS" / "KLMSiOS" / "Assets.xcassets" / "AppIcon.appiconset"
 SCALE = 4
 SIZE = 1024
 W = SIZE * SCALE
@@ -227,8 +228,43 @@ def write_iconset(master: Image.Image) -> None:
         "icon_512x512.png": 512,
         "icon_512x512@2x.png": 1024,
     }
+    for path in ICONSET_DIR.glob("*.png"):
+        if path.name not in sizes:
+            path.unlink()
     for filename, size in sizes.items():
         master.resize((size, size), Image.Resampling.LANCZOS).save(ICONSET_DIR / filename)
+
+
+def write_ios_appiconset(master: Image.Image) -> None:
+    IOS_APPICON_DIR.mkdir(parents=True, exist_ok=True)
+    sizes = {
+        "Icon-20@2x.png": 40,
+        "Icon-20@3x.png": 60,
+        "Icon-29@2x.png": 58,
+        "Icon-29@3x.png": 87,
+        "Icon-40@2x.png": 80,
+        "Icon-40@3x.png": 120,
+        "Icon-60@2x.png": 120,
+        "Icon-60@3x.png": 180,
+        "Icon-20-ipad.png": 20,
+        "Icon-20-ipad@2x.png": 40,
+        "Icon-29-ipad.png": 29,
+        "Icon-29-ipad@2x.png": 58,
+        "Icon-40-ipad.png": 40,
+        "Icon-40-ipad@2x.png": 80,
+        "Icon-76-ipad.png": 76,
+        "Icon-76-ipad@2x.png": 152,
+        "Icon-83.5-ipad@2x.png": 167,
+        "Icon-1024.png": 1024,
+    }
+    for filename, size in sizes.items():
+        master.resize((size, size), Image.Resampling.LANCZOS).save(IOS_APPICON_DIR / filename)
+
+
+def make_opaque(master: Image.Image) -> Image.Image:
+    background = vertical_gradient((SIZE, SIZE), rgba("#126a68"), rgba("#071d26"))
+    background.alpha_composite(master.convert("RGBA"))
+    return background.convert("RGB")
 
 
 def write_icns() -> None:
@@ -253,9 +289,10 @@ def write_icns() -> None:
 
 def main() -> None:
     RESOURCE_DIR.mkdir(parents=True, exist_ok=True)
-    master = make_master_icon()
+    master = make_opaque(make_master_icon())
     master.save(PNG_PATH)
     write_iconset(master)
+    write_ios_appiconset(master)
 
     iconutil = shutil.which("iconutil")
     if iconutil:

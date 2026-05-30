@@ -19,6 +19,7 @@
 		64147424957CACF294C32996 /* RemoteCommandModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */; };
 		0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6709D4B7C4D5248C468873FD /* StateModels.swift */; };
 		FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C3A8268D3376FED887FD75 /* StatusModels.swift */; };
+		8C008ECF6427B421D48ABBC8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BD43412BD4EE806E31C12F0E /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,7 @@
 		6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteCommandModels.swift"; path = "../../Sources/KLMSShared/RemoteCommandModels.swift"; sourceTree = "<group>"; };
 		6709D4B7C4D5248C468873FD /* StateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StateModels.swift"; path = "../../Sources/KLMSShared/StateModels.swift"; sourceTree = "<group>"; };
 		11C3A8268D3376FED887FD75 /* StatusModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StatusModels.swift"; path = "../../Sources/KLMSShared/StatusModels.swift"; sourceTree = "<group>"; };
+		BD43412BD4EE806E31C12F0E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = KLMSiOS/Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,6 +57,7 @@
 			isa = PBXGroup;
 			children = (
 				332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */,
+				BD43412BD4EE806E31C12F0E /* Assets.xcassets */,
 			);
 			name = KLMSiOS;
 			sourceTree = "<group>";
@@ -138,7 +141,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		C02F1309AF4906C92F1EAD44 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		C02F1309AF4906C92F1EAD44 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (8C008ECF6427B421D48ABBC8 /* Assets.xcassets in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -281,6 +284,7 @@
 		A45358D7F57D12409C956205 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "../../Config/KLMSiOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
@@ -289,7 +293,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KLMS Sync가 같은 Wi-Fi의 Mac 앱에 동기화 실행 요청을 보내기 위해 로컬 네트워크를 사용합니다.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KLMS Sync가 같은 Wi-Fi 또는 개인 VPN의 Mac 앱에 동기화 실행 요청을 보내기 위해 로컬 네트워크를 사용합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -313,6 +317,7 @@
 		7A3CC3E65B4BE81911CE6871 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "../../Config/KLMSiOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
@@ -321,7 +326,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KLMS Sync가 같은 Wi-Fi의 Mac 앱에 동기화 실행 요청을 보내기 위해 로컬 네트워크를 사용합니다.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KLMS Sync가 같은 Wi-Fi 또는 개인 VPN의 Mac 앱에 동기화 실행 요청을 보내기 위해 로컬 네트워크를 사용합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

@@ -22,6 +22,7 @@ PBXPROJ = PROJECT_DIR / "project.pbxproj"
 SCHEME = PROJECT_DIR / "xcshareddata" / "xcschemes" / "KLMSiOS.xcscheme"
 
 IOS_SOURCE = APP_ROOT / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
+ASSET_CATALOG = PROJECT_ROOT / "KLMSiOS" / "Assets.xcassets"
 SHARED_SOURCES = [
     "AcademicTerm.swift",
     "DashboardDataModels.swift",
@@ -53,6 +54,8 @@ def main() -> int:
         APP_ROOT / "Sources" / "KLMSShared" / name for name in SHARED_SOURCES
     ]
     missing = [path for path in source_paths if not path.exists()]
+    if not ASSET_CATALOG.exists():
+        missing.append(ASSET_CATALOG)
     if missing:
         for path in missing:
             print(f"missing source: {path}")
@@ -68,6 +71,8 @@ def main() -> int:
     frameworks_phase_id = oid("phase:frameworks")
     resources_phase_id = oid("phase:resources")
     product_ref_id = oid("product:KLMSIPhone.app")
+    asset_catalog_ref_id = oid("file:KLMSiOS/Assets.xcassets")
+    asset_catalog_build_id = oid("build:KLMSiOS/Assets.xcassets")
     project_config_list_id = oid("config-list:project")
     target_config_list_id = oid("config-list:target")
     project_debug_id = oid("config:project:debug")
@@ -88,6 +93,7 @@ def main() -> int:
         for rel, name, ref_id, _ in file_refs
         if "Sources/KLMSiOS" in rel.as_posix()
     ]
+    ios_children.append(f"\t\t\t\t{asset_catalog_ref_id} /* Assets.xcassets */,")
     shared_children = [
         f"\t\t\t\t{ref_id} /* {name} */,"
         for rel, name, ref_id, _ in file_refs
@@ -106,6 +112,10 @@ def main() -> int:
             f"\t\t{build_id} /* {name} in Sources */ = "
             f"{{isa = PBXBuildFile; fileRef = {ref_id} /* {name} */; }};"
         )
+    objects.append(
+        f"\t\t{asset_catalog_build_id} /* Assets.xcassets in Resources */ = "
+        f"{{isa = PBXBuildFile; fileRef = {asset_catalog_ref_id} /* Assets.xcassets */; }};"
+    )
     objects.append("/* End PBXBuildFile section */")
 
     objects.append("")
@@ -121,6 +131,11 @@ def main() -> int:
             f"{{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
             f"name = {quote(name)}; path = {quote(rel.as_posix())}; sourceTree = \"<group>\"; }};"
         )
+    objects.append(
+        f"\t\t{asset_catalog_ref_id} /* Assets.xcassets */ = "
+        "{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; "
+        "path = KLMSiOS/Assets.xcassets; sourceTree = \"<group>\"; };"
+    )
     objects.append("/* End PBXFileReference section */")
 
     objects.append("")
@@ -237,7 +252,8 @@ def main() -> int:
     objects.append("/* Begin PBXResourcesBuildPhase section */")
     objects.append(
         f"\t\t{resources_phase_id} /* Resources */ = "
-        "{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); "
+        "{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ("
+        f"{asset_catalog_build_id} /* Assets.xcassets in Resources */,); "
         "runOnlyForDeploymentPostprocessing = 0; };"
     )
     objects.append("/* End PBXResourcesBuildPhase section */")
@@ -302,6 +318,7 @@ def main() -> int:
         "SWIFT_VERSION": "6.0",
     }
     target_common = {
+        "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
         "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
         "CODE_SIGN_ENTITLEMENTS": "\"../../Config/KLMSiOS.entitlements\"",
         "CODE_SIGN_STYLE": "Automatic",
@@ -310,7 +327,7 @@ def main() -> int:
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_KEY_CFBundleDisplayName": "\"KLMS Sync\"",
         "INFOPLIST_KEY_LSApplicationCategoryType": "\"public.app-category.productivity\"",
-        "INFOPLIST_KEY_NSLocalNetworkUsageDescription": "\"KLMS Sync가 같은 Wi-Fi의 Mac 앱에 동기화 실행 요청을 보내기 위해 로컬 네트워크를 사용합니다.\"",
+        "INFOPLIST_KEY_NSLocalNetworkUsageDescription": "\"KLMS Sync가 같은 Wi-Fi 또는 개인 VPN의 Mac 앱에 동기화 실행 요청을 보내기 위해 로컬 네트워크를 사용합니다.\"",
         "INFOPLIST_KEY_UIApplicationSceneManifest_Generation": "YES",
         "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents": "YES",
         "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",

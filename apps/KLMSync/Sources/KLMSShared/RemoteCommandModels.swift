@@ -645,7 +645,7 @@ public enum LocalRemoteClientError: LocalizedError, Sendable {
         case .emptyToken:
             "Mac 앱에 표시된 토큰을 입력해 주세요."
         case let .connectionFailed(message):
-            "\(message.isEmpty ? "Mac 앱에 연결하지 못했습니다." : message) 같은 Wi-Fi에 연결되어 있는지, Mac 앱이 켜져 있는지, iOS 로컬 네트워크 권한을 허용했는지 확인해 주세요."
+            "\(message.isEmpty ? "Mac 앱에 연결하지 못했습니다." : message) 같은 Wi-Fi 또는 개인 VPN에 연결되어 있는지, Mac 앱이 켜져 있는지, iOS 로컬 네트워크 권한을 허용했는지 확인해 주세요."
         case .invalidResponse:
             "Mac 앱 응답을 인증하거나 해석하지 못했습니다."
         case let .serverRejected(message):

@@ -73,7 +73,7 @@ final class CompanionModel: ObservableObject {
 
     var remoteAvailabilityMessage: String {
         if localRemoteClient == nil {
-            return "Mac 앱에서 로컬 원격 제어를 켠 뒤, 표시되는 Mac 주소와 토큰을 입력해 주세요."
+            return "Mac 앱에서 로컬 원격 제어를 켠 뒤, 같은 Wi-Fi 또는 개인 VPN 주소와 토큰을 입력해 주세요."
         }
         return ""
     }
@@ -204,7 +204,7 @@ final class CompanionModel: ObservableObject {
 
     func cancelRunningCommand() async {
         guard let localRemoteClient else {
-            errorMessage = "실행 중단은 같은 Wi-Fi의 Mac 로컬 연결에서만 사용할 수 있습니다."
+            errorMessage = "실행 중단은 같은 Wi-Fi 또는 개인 VPN의 Mac 로컬 연결에서만 사용할 수 있습니다."
             return
         }
         guard hasInFlightRequest || status.phase == "running" else {
@@ -421,7 +421,7 @@ private struct CompanionRunScreen: View {
             RemoteAttentionStack(model: model)
             RemoteCommandPanel(model: model, compact: false)
             RemoteDiagnosticPanel(model: model)
-            InfoBanner(message: "iPhone은 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Mac이 켜져 있고 같은 Wi-Fi에 있어야 합니다.")
+            InfoBanner(message: "iPhone은 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Mac이 켜져 있고 같은 Wi-Fi 또는 개인 VPN으로 연결되어 있어야 합니다.")
         }
     }
 }
@@ -436,6 +436,7 @@ private struct CompanionConnectionScreen: View {
                 InfoBanner(message: model.remoteAvailabilityMessage)
             }
             RemotePrivacyNote()
+            RemoteConnectionOptionsNote()
         }
     }
 }
@@ -1001,7 +1002,26 @@ private struct RemotePrivacyNote: View {
         VStack(alignment: .leading, spacing: 6) {
             Label("원격 요청은 로컬 토큰으로 보호", systemImage: "lock")
                 .font(.subheadline.weight(.semibold))
-            Text("무료 계정 빌드는 같은 Wi-Fi의 Mac 앱에 직접 요청합니다. KLMS URL, 로그, config.env, 파일 경로는 iPhone에 저장하지 않습니다.")
+            Text("무료 계정 빌드는 같은 Wi-Fi 또는 개인 VPN의 Mac 앱에 직접 요청합니다. KLMS URL, 로그, config.env, 파일 경로는 iPhone에 저장하지 않습니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quinary)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct RemoteConnectionOptionsNote: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("원격 연결 방법", systemImage: "network")
+                .font(.subheadline.weight(.semibold))
+            Text("가장 안정적인 방식은 같은 Wi-Fi에서 Mac 앱의 연결 정보를 붙여넣는 것입니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("밖에서도 쓰려면 Mac과 iPhone을 같은 개인 VPN에 넣고, Mac의 VPN 주소를 입력하면 됩니다. 포트포워딩처럼 인터넷에 직접 여는 방식은 권장하지 않습니다.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
