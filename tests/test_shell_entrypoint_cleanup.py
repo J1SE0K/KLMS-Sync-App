@@ -566,15 +566,15 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("if isExpanded", menu)
         self.assertIn("IntegrationStatusTile(status: status)", menu)
 
-    def test_mac_app_hides_zero_quarantine_metrics(self) -> None:
+    def test_mac_app_hides_zero_dashboard_metrics_and_detail(self) -> None:
         menu = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertRegex(
-            menu,
-            r'Metric\("격리", counts\.quarantine, detail: \.quarantine\),\s*\]\.filter \{ \$0\.value > 0 \}',
-        )
+        self.assertIn("].filter { $0.value > 0 }", menu)
+        self.assertIn("let activeDetail = visibleMetrics.first { $0.detail == selectedDetail }?.detail", menu)
+        self.assertIn('Text("표시할 대시보드 항목이 없습니다.")', menu)
+        self.assertIn("DashboardDetailPanelView(kind: activeDetail, model: model)", menu)
         self.assertRegex(
             menu,
             r'Metric\("격리됨", visibleFileCounts\.quarantine, detail: \.quarantine\),\s*\]\.filter \{ \$0\.value > 0 \}',
