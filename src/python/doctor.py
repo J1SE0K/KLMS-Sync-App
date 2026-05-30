@@ -92,8 +92,10 @@ def build_result(script_dir: Path, config: Path, cache_dir: Path, state_json: Pa
         found = shutil.which(name)
         checks.append(check(f"executable:{name}", "ok" if found else "fail", found or "not found"))
 
-    swift_cache = script_dir / "runtime" / "tmp" / "doctor" / "swift-module-cache"
-    clang_cache = script_dir / "runtime" / "tmp" / "doctor" / "clang-module-cache"
+    runtime_dir = cache_dir.parent
+    data_dir = runtime_dir.parent
+    swift_cache = runtime_dir / "tmp" / "doctor" / "swift-module-cache"
+    clang_cache = runtime_dir / "tmp" / "doctor" / "clang-module-cache"
     try:
         swift_cache.mkdir(parents=True, exist_ok=True)
         clang_cache.mkdir(parents=True, exist_ok=True)
@@ -115,9 +117,23 @@ def build_result(script_dir: Path, config: Path, cache_dir: Path, state_json: Pa
     else:
         checks.append(check("file-manifest", "warn", "manifest missing or empty"))
 
-    downloads_root = Path.home() / "Downloads" / "KLMS Files"
-    detail = str(downloads_root) if downloads_root.exists() else f"{downloads_root} (created when new files exist)"
-    checks.append(check("downloads-inbox", "ok", detail))
+    course_files_root = data_dir / "course_files"
+    checks.append(
+        check(
+            "course-files",
+            "ok" if course_files_root.exists() else "warn",
+            str(course_files_root),
+        )
+    )
+    runtime_staging_root = runtime_dir / "tmp" / "files" / "downloads"
+    new_files_root = runtime_staging_root / "KLMS New Files"
+    checks.append(
+        check(
+            "downloads-inbox",
+            "ok",
+            f"{new_files_root} (runtime staging; ~/Downloads is not used by default)",
+        )
+    )
     checks.append(check("state-json", "ok" if state_json.exists() else "warn", str(state_json)))
     checks.append(dashboard_login_cache_check_from_cache(cache_dir))
     for scope in ("core", "notice", "files"):

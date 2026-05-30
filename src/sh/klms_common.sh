@@ -73,6 +73,9 @@ klms_init_context() {
     OVERRIDES_JSON_PATH
     SYNC_MODE
     FILE_REFRESH_MODE
+    FILE_OUTPUT_ROOT
+    FILE_DOWNLOAD_WORK_ROOT
+    FILE_DOWNLOAD_ARCHIVE_ROOT
     FILE_FORCE_DOWNLOAD
     FILE_KEEP_FRESH_DOWNLOADS
     FILE_WEEKLY_FOLDERS_ENABLED
@@ -132,7 +135,9 @@ klms_init_context() {
   export LANG LC_ALL LC_CTYPE PYTHONIOENCODING PYTHONUTF8
 
   SCRIPT_DIR="$(cd "$(dirname "$entry_path")" && pwd)"
-  KLMS_DATA_DIR="${KLMS_DATA_DIR:-$SCRIPT_DIR}"
+  if [[ -z "${KLMS_DATA_DIR:-}" ]]; then
+    KLMS_DATA_DIR="$(klms_default_readonly_data_dir "$SCRIPT_DIR")"
+  fi
   KLMS_SRC_DIR="$SCRIPT_DIR/src"
   KLMS_SH_DIR="$KLMS_SRC_DIR/sh"
   KLMS_JS_DIR="$KLMS_SRC_DIR/js"
