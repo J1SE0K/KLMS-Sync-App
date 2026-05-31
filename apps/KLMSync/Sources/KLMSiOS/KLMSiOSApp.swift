@@ -137,9 +137,6 @@ final class CompanionModel: ObservableObject {
     }
 
     var loginAttentionMessage: String? {
-        if let authDigits = status.authDigits {
-            return "KAIST 인증 번호 \(authDigits)를 휴대폰 인증 화면에서 선택하면 Mac 동기화가 계속됩니다."
-        }
         if status.loginRequired {
             return "KLMS 로그인이 풀렸을 수 있습니다. Mac에서 Safari KLMS 로그인을 완료한 뒤 다시 확인해 주세요."
         }
@@ -176,7 +173,8 @@ final class CompanionModel: ObservableObject {
                 errorMessage = remoteAvailabilityMessage
             }
         } catch {
-            errorMessage = error.localizedDescription
+            guard !isCancellationError(error) else { return }
+            errorMessage = userFacingMessage(for: error)
         }
     }
 
@@ -208,12 +206,15 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
             await refreshRecent()
         } catch {
-            errorMessage = error.localizedDescription
-            userAlert = UserAlert(title: "요청 실패", message: error.localizedDescription)
+            guard !isCancellationError(error) else { return }
+            let message = userFacingMessage(for: error)
+            errorMessage = message
+            userAlert = UserAlert(title: "요청 실패", message: message)
         }
     }
 
     func refreshRecent() async {
+        guard !isRefreshing else { return }
         isRefreshing = true
         defer {
             isRefreshing = false
@@ -236,7 +237,8 @@ final class CompanionModel: ObservableObject {
                 errorMessage = ""
             }
         } catch {
-            errorMessage = error.localizedDescription
+            guard !isCancellationError(error) else { return }
+            errorMessage = userFacingMessage(for: error)
         }
     }
 
@@ -268,7 +270,8 @@ final class CompanionModel: ObservableObject {
             errorMessage = ""
             userAlert = UserAlert(title: "서버 연결 완료", message: message)
         } catch {
-            let message = error.localizedDescription
+            guard !isCancellationError(error) else { return }
+            let message = userFacingMessage(for: error)
             connectionMessage = message
             connectionSucceeded = false
             errorMessage = message
@@ -331,6 +334,35 @@ final class CompanionModel: ObservableObject {
         if let latestCommand = response.latestCommand {
             recentCommands = [latestCommand]
         }
+    }
+
+    private func isCancellationError(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        if let urlError = error as? URLError {
+            return urlError.code == .cancelled
+        }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+
+    private func userFacingMessage(for error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost:
+                return "인터넷 연결을 확인해 주세요."
+            case .timedOut:
+                return "서버 응답 시간이 초과됐습니다. 잠시 뒤 다시 시도해 주세요."
+            case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                return "서버 주소를 찾지 못했습니다. 연결 설정의 서버 주소를 확인해 주세요."
+            case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateNotYetValid:
+                return "서버 보안 연결을 확인하지 못했습니다. HTTPS 주소와 인증서를 확인해 주세요."
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
     }
 
     private static func persistServerToken(_ token: String) {
@@ -399,6 +431,7 @@ private struct CompanionStatusScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: "상태", model: model) {
+            RemoteAttentionStack(model: model)
             RemoteStatusHeader(
                 model: model,
                 selectedCategory: $selectedDashboardCategory
@@ -409,7 +442,6 @@ private struct CompanionStatusScreen: View {
                 items: model.syncItems,
                 onSelect: { selectedSyncItem = $0 }
             )
-            RemoteAttentionStack(model: model)
             RemoteChangeSummaryPanel(status: model.status)
             ServerSyncDataPanel(items: model.syncItems, onSelect: { selectedSyncItem = $0 })
             RemoteCommandPanel(model: model, compact: true)
@@ -496,6 +528,9 @@ private struct RemoteAttentionStack: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let authDigits = model.status.authDigits {
+                AuthCodeHero(digits: authDigits)
+            }
             if let message = model.loginAttentionMessage {
                 LoginAttentionBanner(message: message)
             }
@@ -783,6 +818,15 @@ private struct RemoteStatusHeader: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
+                if model.isRefreshing {
+                    Label("갱신 중", systemImage: "arrow.clockwise")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(statusColor.opacity(0.12))
+                        .clipShape(Capsule())
+                }
             }
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
@@ -800,11 +844,11 @@ private struct RemoteStatusHeader: View {
             }
         }
         .padding(16)
-        .background(.background)
+        .background(statusBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(.quaternary, lineWidth: 1)
+                .stroke(statusColor.opacity(0.22), lineWidth: 1)
         )
     }
 
@@ -874,6 +918,9 @@ private struct RemoteStatusHeader: View {
     }
 
     private var statusColor: Color {
+        if model.status.authDigits != nil {
+            return .orange
+        }
         if model.status.loginRequired {
             return .orange
         }
@@ -889,6 +936,28 @@ private struct RemoteStatusHeader: View {
             return .orange
         case nil:
             return .secondary
+        }
+    }
+
+    private var statusBackground: Color {
+        if model.status.authDigits != nil {
+            return Color.orange.opacity(0.10)
+        }
+        if model.status.loginRequired {
+            return Color.orange.opacity(0.08)
+        }
+        if model.shouldShowAuthCompletion {
+            return Color.green.opacity(0.08)
+        }
+        switch model.latestDisplayStatus {
+        case .pending, .running:
+            return Color.blue.opacity(0.08)
+        case .completed:
+            return Color.green.opacity(0.06)
+        case .failed, .macUnavailable:
+            return Color.orange.opacity(0.08)
+        case nil:
+            return Color.secondary.opacity(0.06)
         }
     }
 }
@@ -1878,6 +1947,49 @@ private struct AuthSuccessBanner: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.green.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct AuthCodeHero: View {
+    var digits: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "key.fill")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(Color.orange)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("KAIST 인증 번호")
+                        .font(.headline)
+                    Text("휴대폰 인증 화면에서 같은 번호를 선택하세요.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            Text(digits)
+                .font(.system(size: 58, weight: .black, design: .rounded))
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, minHeight: 88)
+                .foregroundStyle(.orange)
+                .background(Color.orange.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityLabel("KAIST 인증 번호 \(digits)")
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 
