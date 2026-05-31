@@ -17,6 +17,9 @@ const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_COMMANDS = 100;
 const MAX_ITEM_ACTIONS = 200;
 const MAX_SYNC_ITEMS = 2_000;
+const STALE_PENDING_COMMAND_MS = 60 * 60 * 1000;
+const STALE_RUNNING_COMMAND_MS = 2 * 60 * 1000;
+const STALE_PENDING_ITEM_ACTION_MS = 60 * 60 * 1000;
 
 if (!TOKEN) {
   console.error("KLMS_RELAY_TOKEN is required.");
@@ -84,7 +87,7 @@ async function route(request, response) {
     return;
   }
 
-  expireStalePendingCommands();
+  expireStaleCommands();
   expireStalePendingItemActions();
 
   if (request.method === "GET" && url.pathname === "/v1/status") {
@@ -133,7 +136,7 @@ async function route(request, response) {
       sendJSON(response, 400, { error: "missing command kind" });
       return;
     }
-    if (state.commands.some((item) => ["pending", "running"].includes(item.status))) {
+    if (state.commands.some(commandBlocksNewRequest)) {
       sendJSON(response, 409, { error: "already running or pending" });
       return;
     }
@@ -263,7 +266,7 @@ function relayResponse() {
 
 function normalizeCommand(raw, fallbackStatus) {
   const now = new Date().toISOString();
-  const id = String(raw.id || crypto.randomUUID());
+  const id = String(raw.id || crypto.randomUUID()).toLowerCase();
   return {
     id,
     kind: String(raw.kind || ""),
@@ -278,7 +281,7 @@ function normalizeCommand(raw, fallbackStatus) {
 
 function normalizeItemAction(raw, fallbackStatus) {
   const now = new Date().toISOString();
-  const id = String(raw.id || crypto.randomUUID());
+  const id = String(raw.id || crypto.randomUUID()).toLowerCase();
   return {
     id,
     action: String(raw.action || ""),
@@ -336,11 +339,23 @@ function upsertItemAction(action) {
     .slice(0, MAX_ITEM_ACTIONS);
 }
 
-function expireStalePendingCommands() {
+function commandBlocksNewRequest(command) {
+  if (command.status === "pending") {
+    return true;
+  }
+  return command.status === "running" && state.running;
+}
+
+function expireStaleCommands() {
   const now = Date.now();
   let changed = false;
   for (const command of state.commands) {
-    if (command.status === "pending" && now - Date.parse(command.createdAt) > 60 * 60 * 1000) {
+    if (command.status === "pending" && ageMs(command.createdAt, now) > STALE_PENDING_COMMAND_MS) {
+      command.status = "macUnavailable";
+      command.updatedAt = new Date().toISOString();
+      command.summary = normalizeStatus(command.summary || state.status, "macUnavailable");
+      changed = true;
+    } else if (command.status === "running" && !state.running && ageMs(command.updatedAt, now) > STALE_RUNNING_COMMAND_MS) {
       command.status = "macUnavailable";
       command.updatedAt = new Date().toISOString();
       command.summary = normalizeStatus(command.summary || state.status, "macUnavailable");
@@ -363,7 +378,7 @@ function expireStalePendingItemActions() {
   const now = Date.now();
   let changed = false;
   for (const action of state.itemActions) {
-    if (action.status === "pending" && now - Date.parse(action.createdAt) > 60 * 60 * 1000) {
+    if (action.status === "pending" && ageMs(action.createdAt, now) > STALE_PENDING_ITEM_ACTION_MS) {
       action.status = "macUnavailable";
       action.updatedAt = new Date().toISOString();
       action.message = "Mac 앱이 제한 시간 안에 처리하지 않았습니다.";
@@ -377,6 +392,14 @@ function expireStalePendingItemActions() {
       console.error(error);
     }
   }
+}
+
+function ageMs(timestamp, now) {
+  const parsed = Date.parse(timestamp || "");
+  if (!Number.isFinite(parsed)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return now - parsed;
 }
 
 function authorized(request) {
@@ -472,19 +495,22 @@ function initDatabase() {
 }
 
 function loadState() {
-  const commands = db.prepare(`
+  const commands = deduplicateByID(db.prepare(`
     SELECT id, kind, status, created_at, updated_at, last_exit_code, login_required, summary_json
     FROM commands
     ORDER BY updated_at DESC
     LIMIT ?
-  `).all(MAX_COMMANDS).map(rowToCommand);
-  const latestCommand = parseJSON(getMeta("latestCommand"), null) || commands[0] || null;
-  const itemActions = db.prepare(`
+  `).all(MAX_COMMANDS * 2).map(rowToCommand), MAX_COMMANDS);
+  const storedLatestCommand = parseJSON(getMeta("latestCommand"), null);
+  const latestCommand = storedLatestCommand
+    ? normalizeCommand(storedLatestCommand, storedLatestCommand.status || "pending")
+    : commands[0] || null;
+  const itemActions = deduplicateByID(db.prepare(`
     SELECT id, action, item_id, item_kind, item_title, status, created_at, updated_at, message
     FROM item_actions
     ORDER BY updated_at DESC
     LIMIT ?
-  `).all(MAX_ITEM_ACTIONS).map(rowToItemAction);
+  `).all(MAX_ITEM_ACTIONS * 2).map(rowToItemAction), MAX_ITEM_ACTIONS);
   return {
     status: normalizeStatus(parseJSON(getMeta("status"), defaultStatus)),
     latestCommand,
@@ -494,6 +520,23 @@ function loadState() {
     message: getMeta("message") || "서버 준비됨",
     updatedAt: getMeta("updatedAt") || new Date().toISOString(),
   };
+}
+
+function deduplicateByID(items, limit) {
+  const seen = new Set();
+  return items
+    .slice()
+    .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+    .filter((item) => {
+      const id = String(item.id || "").toLowerCase();
+      if (!id || seen.has(id)) {
+        return false;
+      }
+      item.id = id;
+      seen.add(id);
+      return true;
+    })
+    .slice(0, limit);
 }
 
 function saveState() {

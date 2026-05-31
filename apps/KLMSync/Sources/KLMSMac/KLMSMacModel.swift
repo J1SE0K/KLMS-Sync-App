@@ -1600,6 +1600,12 @@ final class KLMSMacModel: ObservableObject {
             lastRemoteCommand = completed
             serverRelayStatusMessage = "최근 서버 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
             remoteProcessingStatusMessage = serverRelayStatusMessage
+            try await store.publishStatus(
+                completed.summary,
+                latestCommand: completed,
+                running: false,
+                message: serverRelayStatusMessage ?? ""
+            )
         } catch {
             serverRelayStatusMessage = "서버 요청 확인 실패: \(error.localizedDescription)"
             if !silent {
