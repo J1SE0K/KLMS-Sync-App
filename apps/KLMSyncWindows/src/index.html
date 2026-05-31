@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KLMS Sync</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">K</div>
+          <div>
+            <h1>KLMS Sync</h1>
+            <p>Windows Companion</p>
+          </div>
+        </div>
+
+        <section class="panel connection-panel">
+          <div class="panel-heading">
+            <h2>서버 연결</h2>
+            <span id="connectionState" class="status-pill muted">대기</span>
+          </div>
+          <label>
+            서버 주소
+            <input id="relayURL" type="url" placeholder="https://sync.example.com 또는 http://192.168.x.x:18484">
+          </label>
+          <label>
+            토큰
+            <input id="relayToken" type="password" placeholder="처음 연결하거나 바꿀 때만 입력">
+          </label>
+          <textarea id="connectionPaste" rows="4" placeholder="Mac 앱에서 복사한 서버 연결 정보를 붙여넣기"></textarea>
+          <div class="button-row">
+            <button id="parseConnectionButton" class="secondary">붙여넣기 읽기</button>
+            <button id="saveConnectionButton">저장</button>
+          </div>
+          <button id="checkConnectionButton" class="wide secondary">연결 확인</button>
+          <p id="connectionHint" class="hint">토큰은 OS 암호화 저장소에 보관합니다.</p>
+        </section>
+
+        <section class="panel commands-panel">
+          <div class="panel-heading">
+            <h2>원격 실행</h2>
+          </div>
+          <div id="commandButtons" class="command-grid"></div>
+        </section>
+      </aside>
+
+      <main class="content">
+        <header class="topbar">
+          <div>
+            <p id="phaseLabel" class="eyebrow">상태 없음</p>
+            <h2 id="statusTitle">서버 연결을 확인해 주세요</h2>
+            <p id="statusSubtitle">Mac 앱이 릴레이를 통해 상태와 항목 목록을 올리면 여기에서 확인합니다.</p>
+          </div>
+          <div class="topbar-actions">
+            <button id="refreshButton">새로고침</button>
+            <button id="copyStateButton" class="secondary">상태 복사</button>
+          </div>
+        </header>
+
+        <section id="attentionBanner" class="attention hidden"></section>
+
+        <section id="dashboardCards" class="dashboard-grid"></section>
+
+        <section class="workspace">
+          <div class="list-pane panel">
+            <div class="list-toolbar">
+              <div>
+                <h2 id="listTitle">전체 항목</h2>
+                <p id="listCount" class="hint">0개</p>
+              </div>
+              <select id="sortSelect" aria-label="정렬">
+                <option value="recent">최신 순</option>
+                <option value="course">과목 순</option>
+                <option value="title">제목 순</option>
+                <option value="kind">종류 순</option>
+              </select>
+            </div>
+            <input id="searchInput" class="search" type="search" placeholder="과목, 제목, 내용 검색">
+            <div id="itemList" class="item-list"></div>
+          </div>
+
+          <div class="detail-pane panel">
+            <div id="itemDetail" class="empty-detail">
+              <h2>항목을 선택하세요</h2>
+              <p>대시보드 카드나 왼쪽 목록을 누르면 상세와 처리 버튼이 표시됩니다.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel history-panel">
+          <div class="panel-heading">
+            <h2>최근 요청</h2>
+          </div>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

@@ -97,6 +97,13 @@ iPhone 앱:
 3. `서버 연결 확인`을 누른다.
 4. `실행` 탭에서 원하는 동기화를 요청한다.
 
+Windows 앱:
+
+1. `apps/KLMSyncWindows`에서 앱을 실행한다.
+2. Mac 앱에서 복사한 서버 연결 정보를 붙여넣는다.
+3. `붙여넣기 읽기`, `저장`, `연결 확인`을 누른다.
+4. 대시보드에서 항목을 열고 읽음/중요/숨김 같은 항목 처리를 요청한다.
+
 Mac 앱은 켜져 있어야 하며, 서버 요청을 polling해서 한 번에 하나씩 실행한다.
 
 Mac 앱은 상태를 올릴 때 과제, 시험, 공지, 파일 목록도 같이 `/v1/sync-data`에 올린다. iPhone 앱은 서버 연결이 설정되어 있으면 상태 화면에서 이 목록을 읽어 보여준다.
@@ -114,5 +121,7 @@ Mac 앱은 상태를 올릴 때 과제, 시험, 공지, 파일 목록도 같이 
 - `PUT /v1/commands/:id`: Mac 앱이 실행 상태 갱신.
 - `POST /v1/sync-data`: Mac 앱이 sanitized 과제/시험/공지/파일 목록 게시.
 - `GET /v1/sync-data?kind=exam&limit=50`: iPhone/Windows/Web 클라이언트가 목록 조회.
+- `POST /v1/item-actions`: iPhone/Windows/Web 클라이언트가 항목 처리 요청 생성.
+- `GET /v1/item-actions/recent?limit=10`: 최근 항목 처리 요청 조회.
 
 `kind` 값은 현재 `assignment`, `completedAssignment`, `assignmentCandidate`, `exam`, `examCandidate`, `helpDesk`, `notice`, `file`을 쓴다.

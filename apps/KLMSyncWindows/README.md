@@ -1,0 +1,47 @@
+# KLMS Sync Windows
+
+Windows companion app for the KLMS Sync server relay.
+
+이 앱은 KLMS를 직접 긁지 않는다. 서버 릴레이에 저장된 sanitized 상태와 항목 목록을 읽고, 실행 요청과 항목 처리 요청만 만든다. 실제 KLMS 동기화, Notes, Calendar, Reminders 반영은 Mac 앱이 처리한다.
+
+## 기능
+
+- 서버 릴레이 URL/토큰 저장
+- 대시보드 카운트 확인
+- 과제, 시험, 공지, 파일 목록 검색/정렬
+- 항목 상세 확인
+- 공지 읽음/중요 ON/OFF 토글
+- 과제 완료/숨김, 시험 후보 확정/무시, 파일 숨김 요청
+- 전체/과제/공지/파일/진단 원격 실행 요청
+- 최근 요청 상태 확인
+
+## 개발 실행
+
+Windows에서:
+
+```powershell
+cd apps\KLMSyncWindows
+npm install
+npm start
+```
+
+설치 파일 빌드:
+
+```powershell
+npm run dist:win
+```
+
+## 연결
+
+1. Mac에서 KLMS Sync 앱을 켠다.
+2. 서버 릴레이를 켜고 연결 정보를 복사한다.
+3. Windows 앱의 서버 연결 칸에 붙여넣는다.
+4. `붙여넣기 읽기`, `저장`, `연결 확인` 순서로 누른다.
+
+HTTP는 `localhost`, 사설 IP, `.local` 주소에서만 허용한다. 외부에서 쓰는 공개 주소는 HTTPS여야 한다.
+
+## 보안
+
+- 토큰은 Electron main process에서만 읽고 renderer에는 저장하지 않는다.
+- Windows에서는 Electron `safeStorage`를 통해 OS 암호화 저장소를 사용한다.
+- 서버에는 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로를 올리지 않는다.

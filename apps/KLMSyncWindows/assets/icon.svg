@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="KLMS Sync">
+  <defs>
+    <linearGradient id="bg" x1="42" y1="36" x2="218" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2459C8"/>
+      <stop offset="1" stop-color="#20A77C"/>
+    </linearGradient>
+    <linearGradient id="fold" x1="80" y1="72" x2="180" y2="186" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCEBFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="22" y="22" width="212" height="212" rx="46" fill="url(#bg)"/>
+  <path d="M78 69h77l33 34v84H78V69z" fill="url(#fold)"/>
+  <path d="M155 69v34h33" fill="#BFD5FF"/>
+  <path d="M97 118h70M97 143h54M97 168h64" stroke="#2459C8" stroke-width="11" stroke-linecap="round"/>
+  <path d="M56 125c0-40 32-72 72-72 17 0 33 6 45 16" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round"/>
+  <path d="M176 58l2 29-28-8" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M200 131c0 40-32 72-72 72-18 0-34-7-47-17" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round"/>
+  <path d="M80 198l-2-29 28 8" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -45,6 +45,8 @@ iPhone companion 타깃은 같은 package의 `KLMSiOS`에 있다. 무료 Apple I
 
 집 밖에서도 쓰려면 HTTPS 서버 릴레이를 사용할 수 있다. 서버는 SQLite DB에 실행 요청, sanitized 요약 상태, 과제/시험/공지/파일 목록을 저장하고, Mac 앱이 서버를 polling해서 실제 동기화를 실행한다. 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로는 올리지 않는다. 자세한 설정은 [docs/server-relay.md](./docs/server-relay.md)를 참고한다.
 
+Windows companion 앱은 [apps/KLMSyncWindows](./apps/KLMSyncWindows)에 있다. Windows 앱은 서버 릴레이를 통해 상태와 항목 목록을 읽고, 공지 읽음/중요 토글이나 원격 실행 요청을 보낸다. KLMS scraping과 macOS Notes/Calendar/Reminders 반영은 계속 Mac 앱이 담당한다.
+
 Mac에서 릴레이 서버를 자동 실행하려면:
 
 ```sh
