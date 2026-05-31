@@ -39,6 +39,7 @@ struct MenuBarRootView: View {
                         case .files:
                             FilesPanelView(model: model)
                         case .logs:
+                            DiagnosticToolsPanelView(model: model)
                             DiagnosticCommandLogPanelView(model: model)
                             DoctorPanelView(snapshot: model.snapshot)
                             AppDiagnosticsPanelView(model: model)
@@ -888,6 +889,87 @@ private struct CommandOutputPanelView: View {
     }
 }
 
+private struct DiagnosticToolsPanelView: View {
+    @ObservedObject var model: KLMSMacModel
+    private let columns = [GridItem(.adaptive(minimum: 170), spacing: 8)]
+
+    var body: some View {
+        SectionBox(title: "점검 도구") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("동기화를 실행하지 않고 상태를 확인하거나, 앱 대시보드용 보조 파일만 갱신합니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    diagnosticButton(.verify)
+                    diagnosticButton(.doctor)
+                    diagnosticButton(.report)
+                    diagnosticButton(.v2BuildState)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("iPhone 연결 설정은 설정 패널에서 관리합니다.", systemImage: "iphone.and.arrow.forward")
+                        .font(.caption.weight(.semibold))
+                    if model.localRemoteEnabled {
+                        Text("로컬 원격 제어 실행 중: \(model.localRemotePrimaryEndpoint)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    } else {
+                        Text("iPhone에서 Mac을 제어하려면 설정 > iPhone에서 로컬 원격 제어를 켜고 주소와 토큰을 복사하세요.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if model.serverRelayEnabled {
+                        Text(model.serverRelayStatusMessage ?? "서버 릴레이 대기 중")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if model.appDiagnostics.codeSigning.cloudKitEntitled {
+                        Text(model.remoteProcessingStatusMessage ?? "CloudKit 원격 요청 처리는 설정에서 켜고 끌 수 있습니다.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quinary)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    private func diagnosticButton(_ command: KLMSEngineCommand) -> some View {
+        Button {
+            Task {
+                await model.run(command)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(command.displayName, systemImage: command.systemImage)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Text(command.shortDescription)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.bordered)
+        .disabled(model.runningCommand != nil)
+        .help(command.shortDescription)
+        .accessibilityLabel(command.displayName)
+        .accessibilityHint(command.shortDescription)
+    }
+}
+
 private struct DiagnosticCommandLogPanelView: View {
     @ObservedObject var model: KLMSMacModel
 
@@ -1285,9 +1367,7 @@ private struct NoticeMemoRowView: View {
 
 private struct CommandPanelView: View {
     @ObservedObject var model: KLMSMacModel
-    @State private var showingAdvancedTools = false
     private let commandColumns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
-    private let toolColumns = [GridItem(.adaptive(minimum: 140), spacing: 8)]
 
     var body: some View {
         SectionBox(title: "바로 실행") {
@@ -1298,136 +1378,6 @@ private struct CommandPanelView: View {
                     commandButton(.noticeSync)
                     commandButton(.filesSync)
                 }
-
-                DisclosureGroup(isExpanded: $showingAdvancedTools) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        LazyVGrid(columns: toolColumns, spacing: 8) {
-                            commandButton(.verify)
-                            commandButton(.doctor)
-                            commandButton(.report)
-                            commandButton(.v2BuildState)
-                        }
-                        Toggle(
-                            "로컬 iPhone 원격 제어",
-                            isOn: Binding(
-                                get: { model.localRemoteEnabled },
-                                set: { model.setLocalRemoteEnabled($0) }
-                            )
-                        )
-                        .toggleStyle(.switch)
-                        .help("같은 Wi-Fi의 iPhone 앱에서 이 Mac으로 직접 실행 요청을 보낼 수 있게 합니다.")
-                        .accessibilityHint("같은 Wi-Fi의 iPhone 앱에서 이 Mac으로 직접 실행 요청을 보낼 수 있게 합니다.")
-
-                        if model.localRemoteEnabled {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(model.localRemoteStatusMessage ?? "로컬 원격 제어 준비 중")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                HStack(spacing: 8) {
-                                    Text("주소: \(model.localRemotePrimaryEndpoint)")
-                                        .font(.caption.monospaced())
-                                        .textSelection(.enabled)
-                                    Spacer(minLength: 4)
-                                    Button {
-                                        model.copyLocalRemoteEndpoint()
-                                    } label: {
-                                        Label("주소 복사", systemImage: "doc.on.doc")
-                                            .labelStyle(.iconOnly)
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help("이 주소를 복사합니다.")
-                                }
-                                HStack(spacing: 8) {
-                                    Text("토큰: \(model.localRemoteToken)")
-                                        .font(.caption.monospaced())
-                                        .textSelection(.enabled)
-                                    Spacer(minLength: 4)
-                                    Button {
-                                        model.copyLocalRemoteToken()
-                                    } label: {
-                                        Label("토큰 복사", systemImage: "doc.on.doc")
-                                            .labelStyle(.iconOnly)
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help("iPhone 앱에 입력할 토큰을 복사합니다.")
-                                    Button {
-                                        model.regenerateLocalRemoteToken()
-                                    } label: {
-                                        Label("토큰 재생성", systemImage: "arrow.triangle.2.circlepath")
-                                            .labelStyle(.iconOnly)
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help("기존 iPhone 연결 토큰을 폐기하고 새 토큰을 만듭니다.")
-                                }
-                                Button {
-                                    model.copyLocalRemoteConnectionInfo()
-                                } label: {
-                                    Label("주소와 토큰 복사", systemImage: "doc.on.clipboard")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.quinary)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-
-                        Toggle(
-                            "CloudKit iPhone 요청 자동 처리",
-                            isOn: Binding(
-                                get: { model.remoteProcessingEnabled },
-                                set: { model.setRemoteProcessingEnabled($0) }
-                            )
-                        )
-                        .toggleStyle(.switch)
-                        .disabled(!model.appDiagnostics.codeSigning.cloudKitEntitled)
-                        .help("켜두면 Mac 앱이 CloudKit의 iPhone 실행 요청을 주기적으로 확인해 실행합니다.")
-                        .accessibilityHint("켜두면 Mac 앱이 CloudKit의 iPhone 실행 요청을 주기적으로 확인해 실행합니다.")
-
-                        Button {
-                            Task {
-                                await model.processRemoteCommands(silent: false)
-                            }
-                        } label: {
-                            Label(
-                                model.isCheckingRemoteCommands ? "iPhone 요청 확인 중" : "iPhone 요청 지금 확인",
-                                systemImage: "iphone.radiowaves.left.and.right"
-                            )
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(
-                            model.runningCommand != nil
-                                || model.isCheckingRemoteCommands
-                                || !model.appDiagnostics.codeSigning.cloudKitEntitled
-                        )
-                        .help("iPhone companion이 CloudKit에 올린 실행 요청을 Mac에서 바로 확인합니다.")
-                        .accessibilityLabel("iPhone 요청 지금 확인")
-                        .accessibilityHint("iPhone companion이 CloudKit에 올린 실행 요청을 Mac에서 바로 확인합니다.")
-
-                        if let remote = model.lastRemoteCommand {
-                            Text("최근 iPhone 요청: \(remote.kind.displayName) · \(remote.status.displayName)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        if let message = model.remoteProcessingStatusMessage {
-                            Text(message)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        if !model.appDiagnostics.codeSigning.cloudKitEntitled {
-                            Text("iPhone 원격 요청은 CloudKit entitlement/provisioning 설정 후 사용할 수 있습니다.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.top, 6)
-                } label: {
-                    Label("점검 도구", systemImage: "slider.horizontal.3")
-                        .font(.caption.weight(.semibold))
-                }
-                .foregroundStyle(.secondary)
             }
 
             if let command = model.runningCommand {

@@ -40,6 +40,10 @@ final class KLMSMacModel: ObservableObject {
     @Published var localRemoteToken: String
     @Published var localRemoteStatusMessage: String?
     @Published var isLocalRemoteServerRunning = false
+    @Published var serverRelayEnabled: Bool
+    @Published var serverRelayURL: String
+    @Published var serverRelayToken: String
+    @Published var serverRelayStatusMessage: String?
     @Published var permissionStatusMessage: String?
     @Published var permissionProbeRows: [KLMSPermissionProbeRow] = []
     @Published var runningCommand: KLMSEngineCommand?
@@ -56,6 +60,7 @@ final class KLMSMacModel: ObservableObject {
     private let locator = EnginePayloadLocator()
     private var isBootstrapping = false
     private var remotePollingTask: Task<Void, Never>?
+    private var serverRelayPollingTask: Task<Void, Never>?
     private var passiveSnapshotRefreshTask: Task<Void, Never>?
     private var localRemoteServer: LocalRemoteServer?
     private var notifiedAuthDigits = Set<String>()
@@ -69,12 +74,17 @@ final class KLMSMacModel: ObservableObject {
     private var localRemoteFailedAuthCount = 0
     private var localRemoteBlockedUntil: Date?
     private var localRemoteRecentNonces: [String: Date] = [:]
+    private var serverRelayLastStatusPublishAt: Date?
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
     private static let remoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
     private static let localRemoteEnabledKey = "KLMSLocalRemoteEnabled"
     private static let localRemoteTokenKey = "KLMSLocalRemoteToken"
+    private static let serverRelayEnabledKey = "KLMSServerRelayEnabled"
+    private static let serverRelayURLKey = "KLMSServerRelayURL"
+    private static let serverRelayTokenKey = "KLMSServerRelayToken"
     private static let localRemotePort: UInt16 = 18483
     private static let remotePollingIntervalNanoseconds: UInt64 = 20_000_000_000
+    private static let serverRelayPollingIntervalNanoseconds: UInt64 = 5_000_000_000
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
     private static let liveCommandOutputMaxCharacters = 80_000
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
@@ -84,6 +94,8 @@ final class KLMSMacModel: ObservableObject {
             forKey: Self.remoteProcessingEnabledKey
         )
         localRemoteEnabled = UserDefaults.standard.bool(forKey: Self.localRemoteEnabledKey)
+        serverRelayEnabled = UserDefaults.standard.bool(forKey: Self.serverRelayEnabledKey)
+        serverRelayURL = UserDefaults.standard.string(forKey: Self.serverRelayURLKey) ?? ""
         if let token = LocalRemoteTokenStore.load(account: "mac")
             ?? UserDefaults.standard.string(forKey: Self.localRemoteTokenKey),
            !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -95,10 +107,20 @@ final class KLMSMacModel: ObservableObject {
             localRemoteToken = token
             LocalRemoteTokenStore.save(token, account: "mac")
         }
+        if let token = LocalRemoteTokenStore.load(account: "server-relay-mac")
+            ?? UserDefaults.standard.string(forKey: Self.serverRelayTokenKey),
+           !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            serverRelayToken = token
+            LocalRemoteTokenStore.save(token, account: "server-relay-mac")
+            UserDefaults.standard.removeObject(forKey: Self.serverRelayTokenKey)
+        } else {
+            serverRelayToken = ""
+        }
     }
 
     deinit {
         remotePollingTask?.cancel()
+        serverRelayPollingTask?.cancel()
         passiveSnapshotRefreshTask?.cancel()
         pasteboardClearTask?.cancel()
         runningCommandStatusPollTask?.cancel()
@@ -205,6 +227,18 @@ final class KLMSMacModel: ObservableObject {
         """
     }
 
+    var serverRelayConfigured: Bool {
+        (try? makeServerRelayStore()) != nil
+    }
+
+    var serverRelayConnectionInfoText: String {
+        """
+        KLMS Sync 서버 연결 정보
+        서버 주소: \(serverRelayURL)
+        토큰: \(serverRelayToken)
+        """
+    }
+
     var nativeNoticeHelperPath: String {
         let nestedHelper = Bundle.main.bundleURL
             .appendingPathComponent("Contents/Helpers/KLMSNoticeNativeNote.app/Contents/MacOS/KLMSNoticeNativeNote")
@@ -230,6 +264,7 @@ final class KLMSMacModel: ObservableObject {
         await refresh()
         configurePassiveSnapshotRefresh()
         configureRemotePolling()
+        configureServerRelayPolling()
         configureLocalRemoteServer()
     }
 
@@ -267,7 +302,7 @@ final class KLMSMacModel: ObservableObject {
     func clearDisplayState(resetSnapshot: Bool) {
         errorMessage = nil
         lastCommandResult = nil
-        if !remoteProcessingEnabled {
+        if !remoteProcessingEnabled && !serverRelayEnabled {
             lastRemoteCommand = nil
         }
         liveCommandOutput = ""
@@ -344,6 +379,52 @@ final class KLMSMacModel: ObservableObject {
     func copyLocalRemoteConnectionInfo() {
         copyToPasteboard(localRemoteConnectionInfoText)
         localRemoteStatusMessage = "iPhone 연결 정보를 복사했습니다."
+    }
+
+    func setServerRelayEnabled(_ enabled: Bool) {
+        serverRelayEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.serverRelayEnabledKey)
+        configureServerRelayPolling()
+        if enabled {
+            guard serverRelayConfigured else {
+                serverRelayStatusMessage = "서버 주소와 토큰을 먼저 입력해 주세요."
+                return
+            }
+            serverRelayStatusMessage = "서버 릴레이 자동 처리가 켜졌습니다."
+            Task {
+                await publishServerRelayStatusIfNeeded(force: true)
+                await processServerRelayCommands(silent: true)
+            }
+        } else {
+            serverRelayStatusMessage = "서버 릴레이 자동 처리가 꺼졌습니다."
+        }
+    }
+
+    func setServerRelayURL(_ value: String) {
+        serverRelayURL = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        UserDefaults.standard.set(serverRelayURL, forKey: Self.serverRelayURLKey)
+        if serverRelayEnabled {
+            configureServerRelayPolling()
+        }
+    }
+
+    func setServerRelayToken(_ value: String) {
+        serverRelayToken = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        LocalRemoteTokenStore.save(serverRelayToken, account: "server-relay-mac")
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayTokenKey)
+        if serverRelayEnabled {
+            configureServerRelayPolling()
+        }
+    }
+
+    func copyServerRelayConnectionInfo() {
+        copyToPasteboard(serverRelayConnectionInfoText)
+        serverRelayStatusMessage = "서버 연결 정보를 복사했습니다."
+    }
+
+    func copyServerRelayToken() {
+        copyToPasteboard(serverRelayToken)
+        serverRelayStatusMessage = "서버 토큰을 복사했습니다."
     }
 
     private func configureLocalRemoteServer() {
@@ -556,6 +637,165 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    private func configureServerRelayPolling() {
+        serverRelayPollingTask?.cancel()
+        serverRelayPollingTask = nil
+        guard serverRelayEnabled else {
+            return
+        }
+        guard serverRelayConfigured else {
+            serverRelayStatusMessage = "서버 주소와 토큰을 먼저 입력해 주세요."
+            return
+        }
+        serverRelayPollingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.processServerRelayCommands(silent: true)
+                try? await Task.sleep(nanoseconds: Self.serverRelayPollingIntervalNanoseconds)
+            }
+        }
+    }
+
+    private func makeServerRelayStore() throws -> ServerRelayCommandStore {
+        try ServerRelayCommandStore(urlText: serverRelayURL, token: serverRelayToken)
+    }
+
+    private func publishServerRelayStatusIfNeeded(force: Bool = false) async {
+        guard serverRelayEnabled else {
+            return
+        }
+        let now = Date()
+        if !force,
+           let serverRelayLastStatusPublishAt,
+           now.timeIntervalSince(serverRelayLastStatusPublishAt) < 5 {
+            return
+        }
+        do {
+            let store = try makeServerRelayStore()
+            let status = sanitizedRemoteStatus(
+                snapshot: snapshot,
+                phase: runningCommand == nil ? "idle" : "running"
+            )
+            if var command = lastRemoteCommand, command.status.isInFlight {
+                command.summary = status
+                command.updatedAt = now
+                command.loginRequired = status.loginRequired
+                lastRemoteCommand = command
+                try await store.update(command)
+            } else {
+                try await store.publishStatus(
+                    status,
+                    latestCommand: lastRemoteCommand,
+                    running: runningCommand != nil,
+                    message: serverRelayStatusMessage ?? ""
+                )
+            }
+            try await store.publishSyncData(serverRelaySyncData(from: snapshot))
+            serverRelayLastStatusPublishAt = now
+            serverRelayStatusMessage = runningCommand == nil ? "서버 상태 갱신 완료" : "서버에 실행 상태 갱신 중"
+        } catch {
+            serverRelayStatusMessage = "서버 상태 갱신 실패: \(error.localizedDescription)"
+        }
+    }
+
+    private func serverRelaySyncData(from snapshot: EngineSnapshot) -> ServerRelaySyncData {
+        let generatedAt = snapshot.legacyState?.generatedAt
+            ?? snapshot.rawLegacyState?.generatedAt
+            ?? snapshot.noticeDigest?.generatedAt
+            ?? snapshot.calendarSyncResult?.generatedAt
+            ?? ServerRelaySyncItem.isoTimestamp()
+        let updatedAt = ServerRelaySyncItem.isoTimestamp()
+        var items: [ServerRelaySyncItem] = []
+
+        if let content = snapshot.legacyState?.content ?? snapshot.rawLegacyState?.content {
+            items += content.assignments.map {
+                serverRelaySyncItem(kind: "assignment", item: $0, status: $0.recordStatus.nilIfBlank ?? "진행 중", updatedAt: updatedAt)
+            }
+            items += content.completedAssignments.map {
+                serverRelaySyncItem(kind: "completedAssignment", item: $0, status: "완료", updatedAt: updatedAt)
+            }
+            items += content.assignmentCandidates.map {
+                serverRelaySyncItem(kind: "assignmentCandidate", item: $0, status: "과제 후보", updatedAt: updatedAt)
+            }
+            items += content.examItems.filter { !isPastExam($0) }.map {
+                serverRelaySyncItem(kind: "exam", item: $0, status: "시험", updatedAt: updatedAt)
+            }
+            items += content.examCandidates.filter { !isPastExam($0) }.map {
+                serverRelaySyncItem(kind: "examCandidate", item: $0, status: "시험 후보", updatedAt: updatedAt)
+            }
+            items += content.helpDeskItems.map {
+                serverRelaySyncItem(kind: "helpDesk", item: $0, status: "헬프데스크", updatedAt: updatedAt)
+            }
+        }
+
+        items += snapshot.noticeDigest?.notices.map {
+            ServerRelaySyncItem(
+                id: ServerRelaySyncItem.stableID(
+                    kind: "notice",
+                    parts: [$0.noticeIdentifier, $0.fingerprint, $0.course, $0.title, $0.postedAt]
+                ),
+                kind: "notice",
+                course: $0.course,
+                title: $0.title,
+                timestamp: $0.postedAt,
+                status: $0.changeState,
+                detail: $0.summary.nilIfBlank ?? $0.excerpt,
+                attachmentCount: max($0.attachmentItems.count, $0.attachments.count),
+                updatedAt: updatedAt
+            )
+        } ?? []
+
+        items += snapshot.courseFileManifest.map {
+            ServerRelaySyncItem(
+                id: ServerRelaySyncItem.stableID(
+                    kind: "file",
+                    parts: [$0.url, $0.sourceURL, $0.relativePath, $0.filename, $0.course]
+                ),
+                kind: "file",
+                course: $0.course,
+                title: $0.filename,
+                timestamp: $0.klmsTimestamp.nilIfBlank ?? $0.klmsTimestampText.nilIfBlank ?? $0.localDownloadedAt,
+                status: $0.bucket,
+                detail: $0.klmsTimestampText,
+                updatedAt: updatedAt
+            )
+        }
+
+        return ServerRelaySyncData(generatedAt: generatedAt, items: items)
+    }
+
+    private func serverRelaySyncItem(
+        kind: String,
+        item: StateItem,
+        status: String,
+        updatedAt: String
+    ) -> ServerRelaySyncItem {
+        ServerRelaySyncItem(
+            id: ServerRelaySyncItem.stableID(
+                kind: kind,
+                parts: [item.url, item.course, item.title, item.syncDue, item.due]
+            ),
+            kind: kind,
+            course: item.course,
+            title: item.title,
+            timestamp: item.syncDue.nilIfBlank ?? item.due.nilIfBlank ?? item.syncStart,
+            status: status,
+            detail: item.coverageSummary.nilIfBlank ?? item.location.nilIfBlank ?? item.submission,
+            updatedAt: updatedAt
+        )
+    }
+
+    private func isPastExam(_ item: StateItem) -> Bool {
+        let normalizedCategory = item.category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalizedCategory == "exam" || normalizedCategory == "exam_candidate" else {
+            return false
+        }
+        let rawDue = item.syncDue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawDue.isEmpty, let due = ISO8601DateFormatter().date(from: rawDue) else {
+            return false
+        }
+        return due < Date()
+    }
+
     private func configurePassiveSnapshotRefresh() {
         passiveSnapshotRefreshTask?.cancel()
         passiveSnapshotRefreshTask = Task { @MainActor [weak self] in
@@ -627,11 +867,15 @@ final class KLMSMacModel: ObservableObject {
         lastAuthCompletionAt = nil
         let runStartedAt = Date()
         startRunningCommandStatusPoll(startedAt: runStartedAt)
+        await publishServerRelayStatusIfNeeded(force: true)
         defer {
             runningCommandStatusPollTask?.cancel()
             runningCommandStatusPollTask = nil
             runningCommand = nil
             isCancellingCommand = false
+            Task { @MainActor [weak self] in
+                await self?.publishServerRelayStatusIfNeeded(force: true)
+            }
         }
 
         do {
@@ -697,6 +941,7 @@ final class KLMSMacModel: ObservableObject {
 
     func cancelCommandBeforeTermination() async {
         remotePollingTask?.cancel()
+        serverRelayPollingTask?.cancel()
         passiveSnapshotRefreshTask?.cancel()
         runningCommandStatusPollTask?.cancel()
         authStatusClearTask?.cancel()
@@ -1107,6 +1352,86 @@ final class KLMSMacModel: ObservableObject {
             errorMessage = remoteProcessingStatusMessage
         }
         #endif
+    }
+
+    func processServerRelayCommands(silent: Bool = false) async {
+        guard serverRelayEnabled else {
+            return
+        }
+        guard runningCommand == nil else {
+            await publishServerRelayStatusIfNeeded()
+            return
+        }
+        guard !isCheckingRemoteCommands else {
+            return
+        }
+        isCheckingRemoteCommands = true
+        defer {
+            isCheckingRemoteCommands = false
+        }
+        do {
+            let store = try makeServerRelayStore()
+            try await store.publishStatus(
+                sanitizedRemoteStatus(snapshot: snapshot, phase: "idle"),
+                latestCommand: lastRemoteCommand,
+                running: false,
+                message: serverRelayStatusMessage ?? ""
+            )
+            let pending = try await store.fetchPending()
+            let now = Date()
+            var commandToRun: RemoteRunCommand?
+            for command in pending {
+                if command.isStaleForExecution(now: now) {
+                    var stale = command
+                    stale.status = .macUnavailable
+                    stale.updatedAt = now
+                    stale.summary = sanitizedRemoteStatus(
+                        snapshot: snapshot,
+                        phase: stale.status.rawValue
+                    )
+                    try? await store.update(stale)
+                    lastRemoteCommand = stale
+                    continue
+                }
+                commandToRun = command
+                break
+            }
+            guard let command = commandToRun else {
+                serverRelayStatusMessage = "대기 중인 서버 요청이 없습니다."
+                if !silent {
+                    errorMessage = serverRelayStatusMessage
+                }
+                return
+            }
+
+            var running = command
+            running.status = .running
+            running.updatedAt = Date()
+            running.summary = sanitizedRemoteStatus(snapshot: snapshot, phase: "running")
+            try await store.update(running)
+            lastRemoteCommand = running
+            serverRelayStatusMessage = "서버 요청 처리 중: \(running.kind.displayName)"
+            remoteProcessingStatusMessage = serverRelayStatusMessage
+
+            await run(command.kind.engineCommand)
+            let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
+            var completed = running
+            completed.status = lastCommandResult?.succeeded == true ? .completed : .failed
+            completed.updatedAt = Date()
+            completed.lastExitCode = lastCommandResult.map { Int($0.exitCode) }
+            completed.summary = sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: completed.status.rawValue)
+            completed.loginRequired = lastCommandResult?.requiresLoginApproval == true || completed.summary.loginRequired
+            try await store.update(completed)
+            try await store.publishSyncData(serverRelaySyncData(from: refreshedSnapshot))
+            lastRemoteCommand = completed
+            serverRelayStatusMessage = "최근 서버 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
+            remoteProcessingStatusMessage = serverRelayStatusMessage
+        } catch {
+            serverRelayStatusMessage = "서버 요청 확인 실패: \(error.localizedDescription)"
+            if !silent {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private func loadConfig() throws {
@@ -1614,15 +1939,18 @@ final class KLMSMacModel: ObservableObject {
             authDigitsSuppressed = false
             authDigitsSeenForCurrentRun = true
             await notifyAuthDigitsIfNeeded(digits)
+            await publishServerRelayStatusIfNeeded(force: true)
         }
         if authDigitsSeenForCurrentRun,
            KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(liveCommandOutput) {
             await clearAuthDigitsState(showAuthenticatedMessage: true)
+            await publishServerRelayStatusIfNeeded(force: true)
             return
         }
         if !authDigitsSeenForCurrentRun,
            KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(liveCommandOutput) {
             showAlreadyLoggedInStatusIfNeeded()
+            await publishServerRelayStatusIfNeeded(force: true)
         }
     }
 
@@ -1753,5 +2081,12 @@ final class KLMSMacModel: ObservableObject {
         }
         let suffix = identifier.dropFirst(prefix.count)
         return suffix.count == 2 && suffix.allSatisfy(\.isNumber)
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

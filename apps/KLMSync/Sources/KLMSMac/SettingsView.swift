@@ -119,6 +119,48 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
+                Divider()
+
+                Toggle(
+                    "서버 릴레이 사용",
+                    isOn: Binding(
+                        get: { model.serverRelayEnabled },
+                        set: { model.setServerRelayEnabled($0) }
+                    )
+                )
+                TextField(
+                    "서버 주소",
+                    text: Binding(
+                        get: { model.serverRelayURL },
+                        set: { model.setServerRelayURL($0) }
+                    )
+                )
+                SecureField(
+                    "서버 토큰",
+                    text: Binding(
+                        get: { model.serverRelayToken },
+                        set: { model.setServerRelayToken($0) }
+                    )
+                )
+                LabeledContent("서버 상태") {
+                    Text(model.serverRelayStatusMessage ?? "대기 중")
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button("서버 연결 정보 복사") {
+                        model.copyServerRelayConnectionInfo()
+                    }
+                    Button("서버 토큰 복사") {
+                        model.copyServerRelayToken()
+                    }
+                    .disabled(model.serverRelayToken.isEmpty)
+                }
+                Text("집 밖에서도 쓰려면 서버 주소는 HTTPS여야 합니다. 서버에는 실행 요청과 요약 숫자만 저장하고 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Divider()
+
                 LabeledContent("CloudKit 권한") {
                     Text(model.appDiagnostics.codeSigning.cloudKitEntitled ? "설정됨" : "설정 필요")
                         .foregroundStyle(model.appDiagnostics.codeSigning.cloudKitEntitled ? Color.secondary : Color.orange)

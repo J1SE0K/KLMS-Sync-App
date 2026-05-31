@@ -43,6 +43,14 @@ tools/build_klms_mac_app.sh
 
 iPhone companion 타깃은 같은 package의 `KLMSiOS`에 있다. 무료 Apple ID에서는 CloudKit 대신 같은 Wi-Fi의 Mac 앱에 직접 연결하는 로컬 원격 제어를 쓴다. Mac 앱에서 `로컬 iPhone 원격 제어`를 켜고 표시되는 `주소`, `포트`, `토큰`을 iPhone 앱에 입력하면 iPhone에서 전체/과제/공지/파일 동기화 실행 요청과 상태 확인을 보낼 수 있다. 실제 KLMS scraping과 macOS 앱 연동은 항상 Mac 앱이 담당하고, iPhone에는 KLMS URL, 원본 로그, `config.env`, 파일 경로를 저장하지 않는다.
 
+집 밖에서도 쓰려면 HTTPS 서버 릴레이를 사용할 수 있다. 서버는 SQLite DB에 실행 요청, sanitized 요약 상태, 과제/시험/공지/파일 목록을 저장하고, Mac 앱이 서버를 polling해서 실제 동기화를 실행한다. 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로는 올리지 않는다. 자세한 설정은 [docs/server-relay.md](./docs/server-relay.md)를 참고한다.
+
+Mac에서 릴레이 서버를 자동 실행하려면:
+
+```sh
+tools/install_klms_relay_agent.sh install
+```
+
 iPhone용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodeproj`에 생성되어 있고, `tools/build_klms_ios_sim.sh`로 simulator SDK 컴파일을 확인한다. 첫 연결 때 iPhone의 로컬 네트워크 권한과 macOS 방화벽의 수신 연결 허용이 필요할 수 있다. 유료 Apple Developer 팀과 iCloud container/provisioning이 있으면 CloudKit 원격 요청도 선택적으로 사용할 수 있지만, 기본 경로는 로컬 원격 제어다.
 
 ## 실행 파일

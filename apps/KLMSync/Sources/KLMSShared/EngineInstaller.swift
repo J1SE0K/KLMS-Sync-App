@@ -136,6 +136,7 @@ public struct EnginePayloadLocator: Sendable {
             rootURL.appendingPathComponent("src", isDirectory: true),
             rootURL.appendingPathComponent("bin", isDirectory: true),
             rootURL.appendingPathComponent("examples", isDirectory: true),
+            rootURL.appendingPathComponent("tools", isDirectory: true),
             rootURL.appendingPathComponent("runtime/python-packages", isDirectory: true),
         ]
 
@@ -243,7 +244,7 @@ public struct EngineInstaller {
         try fileManager.createDirectory(at: versionURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         var copied: [String] = []
-        for directory in ["src", "bin", "examples", "docs"] {
+        for directory in ["src", "bin", "examples", "docs", "tools"] {
             let source = payload.rootURL.appendingPathComponent(directory, isDirectory: true)
             guard fileManager.fileExists(atPath: source.path) else { continue }
             let target = destination.appendingPathComponent(directory, isDirectory: true)

@@ -197,6 +197,58 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(info?.token, "337TY82EXTX2")
     }
 
+    func testServerRelayConnectionInfoParsesCopiedConnectionText() {
+        let text = """
+        KLMS Sync 서버 연결 정보
+        서버 주소: https://klms-sync.example.com/relay/
+        토큰: relay-token-123
+        """
+
+        let info = ServerRelayConnectionInfo.parse(urlText: text)
+
+        XCTAssertEqual(info?.baseURL.absoluteString, "https://klms-sync.example.com/relay")
+        XCTAssertEqual(info?.token, "relay-token-123")
+    }
+
+    func testServerRelayCommandStoreRejectsPublicHTTPByDefault() {
+        XCTAssertThrowsError(
+            try ServerRelayCommandStore(urlText: "http://example.com", token: "token")
+        ) { error in
+            guard case ServerRelayClientError.insecureURL("example.com") = error else {
+                return XCTFail("unexpected error: \(error)")
+            }
+        }
+    }
+
+    func testServerRelayCommandStoreAllowsPrivateHTTPForDevelopment() throws {
+        let store = try ServerRelayCommandStore(urlText: "http://127.0.0.1:18484", token: "token")
+
+        XCTAssertEqual(store.baseURL.absoluteString, "http://127.0.0.1:18484")
+    }
+
+    func testServerRelaySyncDataRoundTripWithoutRawURLs() throws {
+        let item = ServerRelaySyncItem(
+            id: ServerRelaySyncItem.stableID(kind: "notice", parts: ["https://klms.example/private/notice"]),
+            kind: "notice",
+            course: "영미 단편소설",
+            title: "기말고사 안내",
+            timestamp: "2026-05-31T10:00:00Z",
+            status: "new",
+            detail: "시험 범위 공지",
+            attachmentCount: 1,
+            updatedAt: "2026-05-31T10:01:00Z"
+        )
+        let data = ServerRelaySyncData(generatedAt: "2026-05-31T10:01:00Z", items: [item])
+
+        let encoded = try JSONEncoder.klmsLocalRemote.encode(data)
+        let rawJSON = String(data: encoded, encoding: .utf8) ?? ""
+        let decoded = try JSONDecoder.klmsLocalRemote.decode(ServerRelaySyncData.self, from: encoded)
+
+        XCTAssertEqual(decoded.generatedAt, "2026-05-31T10:01:00Z")
+        XCTAssertEqual(decoded.items, [item])
+        XCTAssertFalse(rawJSON.contains("https://klms.example/private/notice"))
+    }
+
     func testRemoteCommandKindMapsFromEngineCommands() {
         XCTAssertEqual(RemoteCommandKind(engineCommand: .fullSync), .fullSync)
         XCTAssertEqual(RemoteCommandKind(engineCommand: .coreSync), .coreSync)

@@ -40,6 +40,14 @@ For a free Apple ID, use local-network remote control:
 - Keep both devices on the same Wi-Fi, or put both devices on the same private VPN and enter the Mac VPN address.
 - Do not expose the raw local remote port to the public internet.
 
+For use away from the same network, run the HTTPS relay server documented in `docs/server-relay.md`, then enter the relay URL and token in both apps. The relay uses SQLite and stores command/status metadata plus sanitized assignment, exam, notice, and file list rows. KLMS scraping and macOS app integrations still run on the Mac, and raw logs, KLMS URLs, `config.env`, Kaikey state, and absolute local file paths are not uploaded.
+
+On the Mac worker, install the relay as a LaunchAgent with:
+
+```sh
+tools/install_klms_relay_agent.sh install
+```
+
 For CloudKit mode, turn on `iPhone 요청 자동 처리` from the Mac app command panel or Settings > iPhone. The Mac app polls CloudKit every 20 seconds while it is running, marks old pending requests as `Mac 응답 없음`, and executes only one sync command at a time.
 
 The checked-in iPhone Xcode project is generated at:

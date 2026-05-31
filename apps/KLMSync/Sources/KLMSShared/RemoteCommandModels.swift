@@ -716,6 +716,451 @@ public enum LocalRemoteClientError: LocalizedError, Sendable {
     }
 }
 
+public struct ServerRelayConnectionInfo: Sendable, Equatable {
+    public var baseURL: URL
+    public var token: String
+
+    public init(baseURL: URL, token: String) {
+        self.baseURL = baseURL
+        self.token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public static func parse(
+        urlText: String,
+        tokenText: String = ""
+    ) -> ServerRelayConnectionInfo? {
+        let rawURLText = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawTokenText = tokenText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let combinedText = [rawURLText, rawTokenText]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        let extractedURL = labeledValue(in: combinedText, labels: ["서버 주소", "서버", "Relay URL", "Server URL", "URL"])
+            ?? firstURL(in: combinedText)
+            ?? rawURLText
+        let extractedToken = rawTokenText.isEmpty
+            ? labeledValue(in: combinedText, labels: ["토큰", "Token", "Relay Token", "Server Token"])
+            : rawTokenText
+        guard let baseURL = normalizedBaseURL(extractedURL),
+              let token = extractedToken?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
+            return nil
+        }
+        return ServerRelayConnectionInfo(baseURL: baseURL, token: token)
+    }
+
+    private static func labeledValue(in text: String, labels: [String]) -> String? {
+        for rawLine in text.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.isEmpty else { continue }
+            for label in labels {
+                guard let range = line.range(of: "\(label):", options: [.caseInsensitive]) else {
+                    continue
+                }
+                let value = line[range.upperBound...]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty {
+                    return value
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func firstURL(in text: String) -> String? {
+        let pattern = #"https?://[^\s]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
+        guard let match = regex.firstMatch(in: text, range: range) else {
+            return nil
+        }
+        return nsText.substring(with: match.range)
+    }
+
+    private static func normalizedBaseURL(_ value: String) -> URL? {
+        var text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        if !text.contains("://") {
+            text = "https://\(text)"
+        }
+        guard var components = URLComponents(string: text),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "https" || scheme == "http",
+              components.host?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return nil
+        }
+        components.scheme = scheme
+        let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.path = path.isEmpty ? "" : "/\(path)"
+        components.query = nil
+        components.fragment = nil
+        guard let url = components.url else { return nil }
+        return url
+    }
+}
+
+public enum ServerRelayClientError: LocalizedError, Sendable {
+    case emptyURL
+    case emptyToken
+    case insecureURL(String)
+    case invalidURL
+    case invalidResponse
+    case serverRejected(Int, String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .emptyURL:
+            "서버 주소를 입력해 주세요."
+        case .emptyToken:
+            "서버 토큰을 입력해 주세요."
+        case let .insecureURL(host):
+            "\(host)은 HTTPS가 아닙니다. 외부 접속용 서버는 HTTPS 주소를 사용해야 합니다."
+        case .invalidURL:
+            "서버 주소 형식이 올바르지 않습니다."
+        case .invalidResponse:
+            "서버 응답을 해석하지 못했습니다."
+        case let .serverRejected(_, message):
+            message.isEmpty ? "서버 요청이 실패했습니다." : message
+        }
+    }
+}
+
+public struct ServerRelayCommandListResponse: Codable, Sendable, Equatable {
+    public var commands: [RemoteRunCommand]
+    public var status: SanitizedRemoteStatus
+    public var latestCommand: RemoteRunCommand?
+    public var running: Bool
+
+    public init(
+        commands: [RemoteRunCommand] = [],
+        status: SanitizedRemoteStatus = SanitizedRemoteStatus(),
+        latestCommand: RemoteRunCommand? = nil,
+        running: Bool = false
+    ) {
+        self.commands = commands
+        self.status = status
+        self.latestCommand = latestCommand
+        self.running = running
+    }
+}
+
+public struct ServerRelayStatusUpdate: Codable, Sendable, Equatable {
+    public var status: SanitizedRemoteStatus
+    public var latestCommand: RemoteRunCommand?
+    public var running: Bool
+    public var message: String
+
+    public init(
+        status: SanitizedRemoteStatus,
+        latestCommand: RemoteRunCommand? = nil,
+        running: Bool = false,
+        message: String = ""
+    ) {
+        self.status = status
+        self.latestCommand = latestCommand
+        self.running = running
+        self.message = message
+    }
+}
+
+public struct ServerRelaySyncData: Codable, Sendable, Equatable {
+    public var generatedAt: String
+    public var items: [ServerRelaySyncItem]
+
+    public init(generatedAt: String = "", items: [ServerRelaySyncItem] = []) {
+        self.generatedAt = generatedAt
+        self.items = items
+    }
+}
+
+public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var kind: String
+    public var course: String
+    public var title: String
+    public var timestamp: String
+    public var status: String
+    public var detail: String
+    public var attachmentCount: Int
+    public var updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case kind
+        case course
+        case title
+        case timestamp
+        case status
+        case detail
+        case attachmentCount
+        case updatedAt
+    }
+
+    public init(
+        id: String,
+        kind: String,
+        course: String = "",
+        title: String,
+        timestamp: String = "",
+        status: String = "",
+        detail: String = "",
+        attachmentCount: Int = 0,
+        updatedAt: String = ServerRelaySyncItem.isoTimestamp()
+    ) {
+        self.id = id
+        self.kind = kind
+        self.course = course
+        self.title = title
+        self.timestamp = timestamp
+        self.status = status
+        self.detail = detail
+        self.attachmentCount = attachmentCount
+        self.updatedAt = updatedAt
+    }
+
+    public static func stableID(kind: String, parts: [String]) -> String {
+        let payload = ([kind] + parts)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .joined(separator: "\u{1F}")
+        #if canImport(CryptoKit)
+        let digest = SHA256.hash(data: Data(payload.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+        #else
+        return payload
+        #endif
+    }
+
+    public static func isoTimestamp(date: Date = Date()) -> String {
+        ISO8601DateFormatter().string(from: date)
+    }
+}
+
+public struct ServerRelayCommandStore: RemoteCommandStore {
+    public var baseURL: URL
+    public var token: String
+    public var allowsInsecureHTTP: Bool
+
+    public init(
+        baseURL: URL,
+        token: String,
+        allowsInsecureHTTP: Bool = false
+    ) throws {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            throw ServerRelayClientError.emptyToken
+        }
+        self.baseURL = Self.normalizedBaseURL(baseURL)
+        self.token = trimmedToken
+        self.allowsInsecureHTTP = allowsInsecureHTTP
+        try validateURL()
+    }
+
+    public init(
+        urlText: String,
+        token: String,
+        allowsInsecureHTTP: Bool = false
+    ) throws {
+        guard let info = ServerRelayConnectionInfo.parse(urlText: urlText, tokenText: token) else {
+            if urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw ServerRelayClientError.emptyURL
+            }
+            if token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw ServerRelayClientError.emptyToken
+            }
+            throw ServerRelayClientError.invalidURL
+        }
+        try self.init(
+            baseURL: info.baseURL,
+            token: info.token,
+            allowsInsecureHTTP: allowsInsecureHTTP
+        )
+    }
+
+    public func create(_ command: RemoteRunCommand) async throws {
+        let _: RemoteRunCommand = try await send(
+            method: "POST",
+            path: "/v1/commands",
+            body: command
+        )
+    }
+
+    public func fetchPending() async throws -> [RemoteRunCommand] {
+        let response: ServerRelayCommandListResponse = try await send(
+            method: "GET",
+            path: "/v1/commands/pending"
+        )
+        return response.commands
+    }
+
+    public func fetchRecent(limit: Int = 10) async throws -> [RemoteRunCommand] {
+        let response: ServerRelayCommandListResponse = try await send(
+            method: "GET",
+            path: "/v1/commands/recent",
+            queryItems: [URLQueryItem(name: "limit", value: "\(limit)")]
+        )
+        return response.commands
+    }
+
+    public func update(_ command: RemoteRunCommand) async throws {
+        let _: RemoteRunCommand = try await send(
+            method: "PUT",
+            path: "/v1/commands/\(command.id.uuidString)",
+            body: command
+        )
+    }
+
+    public func fetchStatusResponse() async throws -> LocalRemoteResponse {
+        try await send(method: "GET", path: "/v1/status")
+    }
+
+    public func publishStatus(
+        _ status: SanitizedRemoteStatus,
+        latestCommand: RemoteRunCommand?,
+        running: Bool,
+        message: String = ""
+    ) async throws {
+        let update = ServerRelayStatusUpdate(
+            status: status,
+            latestCommand: latestCommand,
+            running: running,
+            message: message
+        )
+        let _: LocalRemoteResponse = try await send(
+            method: "POST",
+            path: "/v1/status",
+            body: update
+        )
+    }
+
+    public func publishSyncData(_ syncData: ServerRelaySyncData) async throws {
+        let _: ServerRelaySyncData = try await send(
+            method: "POST",
+            path: "/v1/sync-data",
+            body: syncData
+        )
+    }
+
+    public func fetchSyncData(kind: String? = nil, limit: Int = 250) async throws -> ServerRelaySyncData {
+        var queryItems = [URLQueryItem(name: "limit", value: "\(limit)")]
+        if let kind, !kind.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            queryItems.append(URLQueryItem(name: "kind", value: kind))
+        }
+        return try await send(
+            method: "GET",
+            path: "/v1/sync-data",
+            queryItems: queryItems
+        )
+    }
+
+    private func send<T: Decodable>(
+        method: String,
+        path: String,
+        queryItems: [URLQueryItem] = []
+    ) async throws -> T {
+        try await send(method: method, path: path, queryItems: queryItems, bodyData: nil)
+    }
+
+    private func send<T: Decodable, Body: Encodable>(
+        method: String,
+        path: String,
+        queryItems: [URLQueryItem] = [],
+        body: Body
+    ) async throws -> T {
+        let bodyData = try JSONEncoder.klmsLocalRemote.encode(body)
+        return try await send(method: method, path: path, queryItems: queryItems, bodyData: bodyData)
+    }
+
+    private func send<T: Decodable>(
+        method: String,
+        path: String,
+        queryItems: [URLQueryItem],
+        bodyData: Data?
+    ) async throws -> T {
+        var request = URLRequest(url: endpoint(path, queryItems: queryItems))
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let bodyData {
+            request.httpBody = bodyData
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ServerRelayClientError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let message = (try? JSONDecoder.klmsLocalRemote.decode(ServerRelayErrorResponse.self, from: data))?.error
+                ?? String(data: data, encoding: .utf8)
+                ?? ""
+            throw ServerRelayClientError.serverRejected(httpResponse.statusCode, message)
+        }
+        do {
+            return try JSONDecoder.klmsLocalRemote.decode(T.self, from: data)
+        } catch {
+            throw ServerRelayClientError.invalidResponse
+        }
+    }
+
+    private func endpoint(_ path: String, queryItems: [URLQueryItem]) -> URL {
+        let trimmedPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var url = baseURL
+        for component in trimmedPath.split(separator: "/") {
+            url.appendPathComponent(String(component))
+        }
+        guard !queryItems.isEmpty,
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url
+        }
+        components.queryItems = queryItems
+        return components.url ?? url
+    }
+
+    private func validateURL() throws {
+        guard let scheme = baseURL.scheme?.lowercased(), !scheme.isEmpty,
+              let host = baseURL.host, !host.isEmpty else {
+            throw ServerRelayClientError.invalidURL
+        }
+        guard scheme == "https" || allowsInsecureHTTP || Self.isPrivateHost(host) else {
+            throw ServerRelayClientError.insecureURL(host)
+        }
+    }
+
+    private static func normalizedBaseURL(_ url: URL) -> URL {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let path = (components?.path ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components?.path = path.isEmpty ? "" : "/\(path)"
+        components?.query = nil
+        components?.fragment = nil
+        return components?.url ?? url
+    }
+
+    private static func isPrivateHost(_ host: String) -> Bool {
+        let lowered = host.lowercased()
+        if lowered == "localhost" || lowered.hasSuffix(".local") {
+            return true
+        }
+        let octets = lowered.split(separator: ".").compactMap { Int($0) }
+        guard octets.count == 4 else {
+            return false
+        }
+        if octets[0] == 10 || octets[0] == 127 {
+            return true
+        }
+        if octets[0] == 192 && octets[1] == 168 {
+            return true
+        }
+        if octets[0] == 172 && (16...31).contains(octets[1]) {
+            return true
+        }
+        return false
+    }
+}
+
+private struct ServerRelayErrorResponse: Decodable {
+    var error: String
+}
+
 #if canImport(Network)
 public struct LocalRemoteClient: Sendable {
     public var host: String
