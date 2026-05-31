@@ -84,6 +84,8 @@ For an actual iPhone device build with a free Apple ID, configure the generated 
 - your Personal Team;
 - no iCloud capability.
 
+The checked-in Xcode project intentionally uses generic signing values. Keep your real Team ID, bundle identifier, provisioning profile, relay URL, and relay token as local Xcode/app settings only. Do not commit those values; commit only setup steps and `.example` templates.
+
 This launches the companion UI with local-network remote execution available. For CloudKit remote execution, configure the target with a paid Apple Developer team and:
 
 - bundle identifier matched to the same Apple developer team as the Mac app;

@@ -10,6 +10,7 @@ Use this checklist before pushing the repository to a public GitHub repo.
 - `runtime/`, `course_files/`, `course_transcripts/`, and `course_videos/` are ignored.
 - QR screenshots, cookies, logs, launchd plists, and downloaded KLMS files are not tracked.
 - One-off scripts containing a real semester, course, student, assistant, or submission dataset are not tracked.
+- Real relay URLs, relay tokens, Cloudflare account IDs, Cloudflare API tokens, Apple Team IDs, bundle IDs containing a personal name/account, and device identifiers are local only. Commit placeholders and setup steps instead.
 
 ## Scans
 

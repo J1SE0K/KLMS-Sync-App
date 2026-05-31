@@ -980,6 +980,32 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("requestAuthorization(options: [.alert, .sound])", ios_app)
         self.assertIn("klms-report-refresh-", ios_app)
 
+    def test_public_project_uses_generic_connection_and_signing_values(self) -> None:
+        ios_project = (
+            PROJECT_DIR
+            / "apps"
+            / "KLMSync"
+            / "Xcode"
+            / "KLMSiOS"
+            / "KLMSiOS.xcodeproj"
+            / "project.pbxproj"
+        ).read_text(encoding="utf-8")
+        windows_package = (
+            PROJECT_DIR / "apps" / "KLMSyncWindows" / "package.json"
+        ).read_text(encoding="utf-8")
+        remote_models = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSShared" / "RemoteCommandModels.swift"
+        ).read_text(encoding="utf-8")
+        combined = "\n".join([ios_project, windows_package, remote_models])
+
+        self.assertIn('DEVELOPMENT_TEAM = "";', ios_project)
+        self.assertIn("PRODUCT_BUNDLE_IDENTIFIER = com.local.KLMSync.iOS;", ios_project)
+        self.assertIn('"appId": "com.local.klmssync.windows"', windows_package)
+        self.assertIn('"com.local.KLMSync.localRemoteToken"', remote_models)
+        self.assertNotIn("com." + "jiseok", combined)
+        self.assertNotIn("VCT" + "W5T" + "9B4K", combined)
+        self.assertNotIn("gs" + "36212js", combined)
+
     def test_local_remote_security_avoids_bearer_token_requests(self) -> None:
         shared = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSShared" / "RemoteCommandModels.swift"
