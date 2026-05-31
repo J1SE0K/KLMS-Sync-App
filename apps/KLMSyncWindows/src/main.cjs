@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, safeStorage, shell } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
@@ -47,6 +47,11 @@ function registerIPC() {
     const saved = await saveConfigFromRenderer(config || {});
     return configForRenderer(saved);
   });
+  ipcMain.handle("config:clear", async () => {
+    await clearConfig();
+    return configForRenderer({});
+  });
+  ipcMain.handle("clipboard:readText", async () => clipboard.readText("clipboard"));
   ipcMain.handle("relay:request", async (_event, request) => relayRequest(request || {}));
   ipcMain.handle("shell:openExternal", async (_event, target) => {
     if (typeof target === "string" && /^https?:\/\//i.test(target)) {
@@ -75,6 +80,16 @@ async function readConfigFile() {
 async function writeConfigFile(config) {
   await fs.mkdir(path.dirname(configPath()), { recursive: true });
   await fs.writeFile(configPath(), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+async function clearConfig() {
+  try {
+    await fs.rm(configPath(), { force: true });
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
 }
 
 async function loadConfigForRenderer() {

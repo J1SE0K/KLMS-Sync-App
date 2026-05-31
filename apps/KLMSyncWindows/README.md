@@ -7,8 +7,12 @@ Windows companion app for the KLMS Sync server relay.
 ## 기능
 
 - 서버 릴레이 URL/토큰 저장
+- Mac 앱에서 복사한 Cloudflare 릴레이 연결 정보를 클립보드에서 바로 읽기
 - 대시보드 카운트 확인
 - 과제, 시험, 공지, 파일 목록 검색/정렬
+- 숨김/무시 항목은 전체에서 제외하고 보관함에서 별도 확인
+- 파일 목록은 KLMS 등록 시각 기준 최신 순, 서버 갱신 순, 과목/제목/종류 순 정렬
+- 캘린더 생성/수정/삭제 요약 확인
 - 항목 상세 확인
 - 공지 읽음/중요 ON/OFF 토글
 - 과제 완료/숨김, 시험 후보 확정/무시, 파일 숨김 요청
@@ -35,12 +39,12 @@ npm run dist:win
 
 1. Mac에서 KLMS Sync 앱을 켠다.
 2. 서버 릴레이를 켜고 연결 정보를 복사한다.
-3. Windows 앱의 서버 연결 칸에 붙여넣는다.
-4. `붙여넣기 읽기`, `저장`, `연결 확인` 순서로 누른다.
+3. Windows 앱에서 `클립보드`, `저장 후 연결 확인` 순서로 누른다.
+4. 연결됨 상태가 뜨면 대시보드 카드나 항목 목록을 눌러 상세를 확인한다.
 
 HTTP는 `localhost`, 사설 IP, `.local` 주소에서만 허용한다. 외부에서 쓰는 공개 주소는 HTTPS여야 한다.
 
-같은 네트워크 밖에서 쓰려면 `deploy/relay` 템플릿으로 HTTPS 릴레이를 띄운 뒤 Mac 앱과 Windows 앱에 같은 서버 주소/토큰을 넣는다. Windows 앱은 Mac에 직접 접속하지 않고 서버 DB에 요청을 남기며, Mac 앱이 polling해서 실제 동기화를 실행한다.
+같은 네트워크 밖에서 쓰려면 `deploy/cloudflare-worker`의 Cloudflare Workers + D1 릴레이를 띄운 뒤 Mac 앱, iPhone 앱, Windows 앱에 같은 서버 주소/토큰을 넣는다. Windows 앱은 Mac에 직접 접속하지 않고 서버 DB에 요청을 남기며, Mac 앱이 polling해서 실제 동기화를 실행한다.
 
 ## 보안
 

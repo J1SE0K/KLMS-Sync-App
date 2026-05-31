@@ -1,0 +1,10 @@
+name = "klms-sync-relay"
+main = "src/worker.mjs"
+compatibility_date = "2026-05-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "RELAY_DB"
+database_name = "klms-sync-relay"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"

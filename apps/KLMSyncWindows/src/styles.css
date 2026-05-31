@@ -48,6 +48,12 @@ button.secondary {
   color: var(--text);
 }
 
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
 button.wide {
   width: 100%;
 }
@@ -204,6 +210,10 @@ label {
   gap: 8px;
 }
 
+.button-row.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .command-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -242,11 +252,20 @@ label {
 .attention {
   margin-bottom: 16px;
   padding: 13px 14px;
-  border: 1px solid rgba(201, 106, 20, 0.35);
   border-radius: 8px;
+  font-weight: 750;
+}
+
+.attention.warn {
+  border: 1px solid rgba(201, 106, 20, 0.35);
   background: #fff7ed;
   color: #7d3b0b;
-  font-weight: 750;
+}
+
+.attention.success {
+  border: 1px solid rgba(22, 132, 95, 0.28);
+  background: #edfdf5;
+  color: #0f5e45;
 }
 
 .hidden {
@@ -484,6 +503,13 @@ label {
   display: grid;
   gap: 8px;
   margin-top: 10px;
+}
+
+.history-section-title {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .history-row {

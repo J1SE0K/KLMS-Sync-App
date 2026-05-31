@@ -8,6 +8,14 @@
 iPhone/Windows/Web -> HTTPS 서버 릴레이 + SQLite DB -> Mac 앱 polling -> KLMS 동기화 실행
 ```
 
+0원 유지가 최우선이면 Cloudflare Workers + D1 배포판을 쓴다.
+
+```text
+iPhone/Windows/Web -> Cloudflare Worker + D1 -> Mac 앱 polling -> KLMS 동기화 실행
+```
+
+Cloudflare용 구현은 [deploy/cloudflare-worker](../deploy/cloudflare-worker)에 있다. 기존 앱 API와 같아서 배포 후 서버 주소와 토큰만 바꾸면 된다.
+
 서버에는 다음만 저장한다.
 
 - 실행 요청 종류: 전체, 과제/시험, 공지, 파일, 진단, 요약 갱신

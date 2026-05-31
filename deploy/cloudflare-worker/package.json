@@ -1,0 +1,19 @@
+{
+  "name": "klms-sync-cloudflare-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/worker.mjs",
+    "test": "node test/smoke.mjs",
+    "setup": "zsh ./setup_cloudflare_relay.sh",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:create": "wrangler d1 create klms-sync-relay",
+    "d1:migrate:local": "wrangler d1 migrations apply klms-sync-relay --local",
+    "d1:migrate": "wrangler d1 migrations apply klms-sync-relay --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.18.0"
+  }
+}

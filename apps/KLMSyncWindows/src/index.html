@@ -31,12 +31,16 @@
             <input id="relayToken" type="password" placeholder="처음 연결하거나 바꿀 때만 입력">
           </label>
           <textarea id="connectionPaste" rows="4" placeholder="Mac 앱에서 복사한 서버 연결 정보를 붙여넣기"></textarea>
-          <div class="button-row">
+          <div class="button-row three">
+            <button id="pasteClipboardButton" class="secondary">클립보드</button>
             <button id="parseConnectionButton" class="secondary">붙여넣기 읽기</button>
             <button id="saveConnectionButton">저장</button>
           </div>
-          <button id="checkConnectionButton" class="wide secondary">연결 확인</button>
-          <p id="connectionHint" class="hint">집 밖에서는 VPS/터널의 HTTPS 릴레이 주소를 쓰세요. 토큰은 OS 암호화 저장소에 보관합니다.</p>
+          <div class="button-row">
+            <button id="checkConnectionButton" class="wide secondary">저장 후 연결 확인</button>
+            <button id="clearConnectionButton" class="wide ghost">연결 지우기</button>
+          </div>
+          <p id="connectionHint" class="hint">Cloudflare Workers 릴레이 주소와 토큰을 넣습니다. Windows 앱은 KLMS를 직접 읽지 않고 서버 DB의 요약 상태와 항목만 봅니다.</p>
         </section>
 
         <section class="panel commands-panel">
@@ -72,7 +76,8 @@
                 <p id="listCount" class="hint">0개</p>
               </div>
               <select id="sortSelect" aria-label="정렬">
-                <option value="recent">최신 순</option>
+                <option value="recent">KLMS 최신 순</option>
+                <option value="updated">서버 갱신 순</option>
                 <option value="course">과목 순</option>
                 <option value="title">제목 순</option>
                 <option value="kind">종류 순</option>
