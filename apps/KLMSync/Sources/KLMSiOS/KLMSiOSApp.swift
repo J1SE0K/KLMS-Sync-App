@@ -522,6 +522,7 @@ struct CompanionRootView: View {
 private struct CompanionStatusScreen: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedDashboardCategory: DashboardMetricCategory = .assignments
+    @State private var selectedSyncItem: ServerRelaySyncItem?
 
     var body: some View {
         CompanionScreenContainer(title: "상태", model: model) {
@@ -532,13 +533,17 @@ private struct CompanionStatusScreen: View {
             DashboardMetricDetailPanel(
                 category: selectedDashboardCategory,
                 status: model.status,
-                items: model.syncItems
+                items: model.syncItems,
+                onSelect: { selectedSyncItem = $0 }
             )
             RemoteAttentionStack(model: model)
             RemoteChangeSummaryPanel(status: model.status)
-            ServerSyncDataPanel(items: model.syncItems)
+            ServerSyncDataPanel(items: model.syncItems, onSelect: { selectedSyncItem = $0 })
             RemoteCommandPanel(model: model, compact: true)
             RecentRemoteCommandsView(commands: Array(model.recentCommands.prefix(3)), compact: true)
+        }
+        .sheet(item: $selectedSyncItem) { item in
+            ServerSyncItemDetailView(item: item, model: model)
         }
     }
 }
@@ -1154,6 +1159,7 @@ private struct DashboardMetricDetailPanel: View {
     var category: DashboardMetricCategory
     var status: SanitizedRemoteStatus
     var items: [ServerRelaySyncItem]
+    var onSelect: (ServerRelaySyncItem) -> Void = { _ in }
 
     private var filteredItems: [ServerRelaySyncItem] {
         items.filter { category.includes($0) }
@@ -1184,7 +1190,13 @@ private struct DashboardMetricDetailPanel: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(visibleItems) { item in
-                        ServerSyncDataRow(item: item)
+                        Button {
+                            onSelect(item)
+                        } label: {
+                            ServerSyncDataRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("항목 상세를 엽니다.")
                     }
                     if filteredItems.count > visibleItems.count {
                         Text("외 \(filteredItems.count - visibleItems.count)개")
@@ -1340,6 +1352,7 @@ private struct RemoteSummaryCard: View {
 
 private struct ServerSyncDataPanel: View {
     var items: [ServerRelaySyncItem]
+    var onSelect: (ServerRelaySyncItem) -> Void = { _ in }
     @State private var isExpanded = true
 
     private var visibleItems: [ServerRelaySyncItem] {
@@ -1351,7 +1364,13 @@ private struct ServerSyncDataPanel: View {
             DisclosureGroup(isExpanded: $isExpanded) {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(visibleItems) { item in
-                        ServerSyncDataRow(item: item)
+                        Button {
+                            onSelect(item)
+                        } label: {
+                            ServerSyncDataRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("항목 상세를 엽니다.")
                     }
                     if items.count > visibleItems.count {
                         Text("외 \(items.count - visibleItems.count)개")
@@ -1373,6 +1392,186 @@ private struct ServerSyncDataPanel: View {
             .padding(12)
             .background(.quinary)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+}
+
+private struct ServerSyncItemDetailView: View {
+    var item: ServerRelaySyncItem
+    @ObservedObject var model: CompanionModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    header
+                    detailFields
+                    actionPanel
+                    InfoBanner(message: "iPhone에서 보내는 요청은 Mac 앱이 받아서 실행합니다. 항목 자체 수정은 다음 서버 액션 API 단계에서 Mac의 override 파일에 안전하게 반영하도록 분리합니다.")
+                }
+                .padding()
+            }
+            .navigationTitle("상세")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("닫기") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(kindName, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(item.title.isEmpty ? "제목 없음" : item.title)
+                .font(.title3.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            if !item.course.isEmpty {
+                Text(item.course)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(tint.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var detailFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            DetailFieldRow(title: "상태", value: item.status)
+            DetailFieldRow(title: "시간", value: item.timestamp)
+            DetailFieldRow(title: "세부 내용", value: item.detail)
+            DetailFieldRow(title: "첨부", value: item.attachmentCount > 0 ? "\(item.attachmentCount)개" : "")
+            DetailFieldRow(title: "서버 갱신", value: item.updatedAt)
+            DetailFieldRow(title: "식별자", value: item.id)
+        }
+        .padding(12)
+        .background(.quinary)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var actionPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("원격 실행")
+                .font(.headline)
+            Button {
+                Task {
+                    await model.createCommand(relevantCommand)
+                }
+            } label: {
+                Label("\(relevantCommand.displayName) 요청", systemImage: relevantCommand.engineCommand.systemImage)
+                    .frame(maxWidth: .infinity, minHeight: 42)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
+
+            Button {
+                Task {
+                    await model.refreshRecent()
+                }
+            } label: {
+                Label("상태 새로고침", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity, minHeight: 42)
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.isRefreshing)
+        }
+    }
+
+    private var relevantCommand: RemoteCommandKind {
+        switch item.kind {
+        case "notice":
+            .noticeSync
+        case "file":
+            .filesSync
+        case "assignment", "completedAssignment", "assignmentCandidate", "exam", "examCandidate", "helpDesk":
+            .coreSync
+        default:
+            .fullSync
+        }
+    }
+
+    private var kindName: String {
+        switch item.kind {
+        case "assignment":
+            "과제"
+        case "completedAssignment":
+            "완료 과제"
+        case "assignmentCandidate":
+            "과제 후보"
+        case "exam":
+            "시험"
+        case "examCandidate":
+            "시험 후보"
+        case "helpDesk":
+            "헬프데스크"
+        case "notice":
+            "공지"
+        case "file":
+            "파일"
+        default:
+            item.kind
+        }
+    }
+
+    private var systemImage: String {
+        switch item.kind {
+        case "assignment", "completedAssignment", "assignmentCandidate":
+            "checklist"
+        case "exam", "examCandidate":
+            "calendar"
+        case "notice":
+            "note.text"
+        case "file":
+            "doc"
+        case "helpDesk":
+            "person.2"
+        default:
+            "circle"
+        }
+    }
+
+    private var tint: Color {
+        switch item.kind {
+        case "assignment", "completedAssignment", "assignmentCandidate":
+            .orange
+        case "exam", "examCandidate":
+            .green
+        case "notice":
+            .purple
+        case "file":
+            .blue
+        case "helpDesk":
+            .teal
+        default:
+            .secondary
+        }
+    }
+}
+
+private struct DetailFieldRow: View {
+    var title: String
+    var value: String
+
+    var body: some View {
+        if let displayValue = value.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(displayValue)
+                    .font(.subheadline)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
