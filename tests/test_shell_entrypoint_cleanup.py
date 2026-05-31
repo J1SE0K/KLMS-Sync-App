@@ -959,6 +959,27 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertNotIn("if let authStatusMessage = status.authStatusMessage {\n            return authStatusMessage\n        }\n        if status.loginRequired", ios_app)
         self.assertIn("? 2_000_000_000", ios_app)
 
+    def test_ios_companion_notifies_report_refresh_result(self) -> None:
+        ios_app = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("import UserNotifications", ios_app)
+        self.assertIn("KLMSCompanionNotificationDelegate", ios_app)
+        self.assertIn("willPresent notification", ios_app)
+        self.assertIn("trackedReportNotificationCommandIDs", ios_app)
+        self.assertIn("KLMSTrackedReportNotificationCommandIDs", ios_app)
+        self.assertIn("trackReportNotificationIfNeeded(for: command)", ios_app)
+        self.assertIn("handleReportNotificationUpdates(commands)", ios_app)
+        self.assertIn("command.kind == .report", ios_app)
+        self.assertIn("displayStatus.isTerminal", ios_app)
+        self.assertIn('title = "요약 갱신 완료"', ios_app)
+        self.assertIn('title = "요약 갱신 실패"', ios_app)
+        self.assertIn('title = "요약 갱신 응답 없음"', ios_app)
+        self.assertIn("UNUserNotificationCenter.current()", ios_app)
+        self.assertIn("requestAuthorization(options: [.alert, .sound])", ios_app)
+        self.assertIn("klms-report-refresh-", ios_app)
+
     def test_local_remote_security_avoids_bearer_token_requests(self) -> None:
         shared = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSShared" / "RemoteCommandModels.swift"

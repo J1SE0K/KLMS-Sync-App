@@ -3,8 +3,25 @@ import SwiftUI
 #if canImport(KLMSShared)
 import KLMSShared
 #endif
+#if canImport(UserNotifications)
+import UserNotifications
+#endif
 #if canImport(UIKit)
 import UIKit
+#endif
+
+#if canImport(UserNotifications)
+private final class KLMSCompanionNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+    static let shared = KLMSCompanionNotificationDelegate()
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .list, .sound])
+    }
+}
 #endif
 
 @main
@@ -36,19 +53,25 @@ final class CompanionModel: ObservableObject {
     }
 
     private var lastAuthSuccessAlertMessage = ""
+    private var trackedReportNotificationCommandIDs = Set<UUID>()
 
     private static let deprecatedLocalHostKey = "KLMSLocalRemoteHost"
     private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
     private static let deprecatedLocalTokenKey = "KLMSLocalRemoteToken"
     private static let serverURLKey = "KLMSServerRelayURL"
     private static let serverTokenKey = "KLMSServerRelayToken"
+    private static let trackedReportNotificationCommandIDsKey = "KLMSTrackedReportNotificationCommandIDs"
 
     init() {
+        #if canImport(UserNotifications)
+        UNUserNotificationCenter.current().delegate = KLMSCompanionNotificationDelegate.shared
+        #endif
         let storedServerToken = LocalRemoteTokenStore.load(account: "server-relay-ios")
             ?? UserDefaults.standard.string(forKey: Self.serverTokenKey)
             ?? ""
         serverURL = UserDefaults.standard.string(forKey: Self.serverURLKey) ?? ""
         serverToken = storedServerToken
+        trackedReportNotificationCommandIDs = Self.loadTrackedReportNotificationCommandIDs()
         Self.persistServerToken(storedServerToken)
         Self.clearDeprecatedLocalConnectionInfo()
     }
@@ -164,6 +187,7 @@ final class CompanionModel: ObservableObject {
                 var command = RemoteRunCommand(kind: kind)
                 command.summary = status
                 try await serverRelayStore.create(command)
+                trackReportNotificationIfNeeded(for: command)
                 recentCommands.insert(command, at: 0)
                 status = command.summary
                 lastRefreshAt = Date()
@@ -227,6 +251,7 @@ final class CompanionModel: ObservableObject {
                 syncItems = try await serverRelayStore.fetchSyncData(limit: 120).items
                 if !commands.isEmpty {
                     recentCommands = commands
+                    handleReportNotificationUpdates(commands)
                     if let latest = commands.first {
                         status = latest.summary
                     }
@@ -333,7 +358,93 @@ final class CompanionModel: ObservableObject {
         }
         if let latestCommand = response.latestCommand {
             recentCommands = [latestCommand]
+            handleReportNotificationUpdates([latestCommand])
         }
+    }
+
+    private func trackReportNotificationIfNeeded(for command: RemoteRunCommand) {
+        guard command.kind == .report else {
+            return
+        }
+        trackedReportNotificationCommandIDs.insert(command.id)
+        persistTrackedReportNotificationCommandIDs()
+    }
+
+    private func handleReportNotificationUpdates(_ commands: [RemoteRunCommand]) {
+        for command in commands {
+            notifyReportRefreshResultIfNeeded(command)
+        }
+    }
+
+    private func notifyReportRefreshResultIfNeeded(_ command: RemoteRunCommand) {
+        guard command.kind == .report,
+              trackedReportNotificationCommandIDs.contains(command.id) else {
+            return
+        }
+        let displayStatus = command.displayStatus()
+        guard displayStatus.isTerminal else {
+            return
+        }
+        trackedReportNotificationCommandIDs.remove(command.id)
+        persistTrackedReportNotificationCommandIDs()
+        postReportRefreshNotification(command: command, displayStatus: displayStatus)
+    }
+
+    private func postReportRefreshNotification(
+        command: RemoteRunCommand,
+        displayStatus: RemoteCommandStatus
+    ) {
+        #if canImport(UserNotifications)
+        let title: String
+        let body: String
+        switch displayStatus {
+        case .completed:
+            title = "요약 갱신 완료"
+            body = "대시보드 요약이 갱신됐습니다. 과제 \(command.summary.assignments)개 · 시험 \(command.summary.exams)개 · 새 파일 \(command.summary.newFiles)개"
+        case .failed:
+            title = "요약 갱신 실패"
+            if let lastExitCode = command.lastExitCode {
+                body = "Mac 앱에서 요약 갱신이 실패했습니다. 종료 코드 \(lastExitCode). 기록 탭에서 오류를 확인해 주세요."
+            } else {
+                body = "Mac 앱에서 요약 갱신이 실패했습니다. 기록 탭에서 오류를 확인해 주세요."
+            }
+        case .macUnavailable:
+            title = "요약 갱신 응답 없음"
+            body = "Mac 앱이 요약 갱신 요청에 응답하지 않았습니다. Mac 앱의 서버 릴레이 상태를 확인해 주세요."
+        case .pending, .running:
+            return
+        }
+
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            guard granted else {
+                return
+            }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            let request = UNNotificationRequest(
+                identifier: "klms-report-refresh-\(command.id.uuidString)",
+                content: content,
+                trigger: nil
+            )
+            try? await center.add(request)
+        }
+        #endif
+    }
+
+    private func persistTrackedReportNotificationCommandIDs() {
+        UserDefaults.standard.set(
+            trackedReportNotificationCommandIDs.map(\.uuidString).sorted(),
+            forKey: Self.trackedReportNotificationCommandIDsKey
+        )
+    }
+
+    private static func loadTrackedReportNotificationCommandIDs() -> Set<UUID> {
+        let values = UserDefaults.standard.stringArray(forKey: trackedReportNotificationCommandIDsKey) ?? []
+        return Set(values.compactMap(UUID.init(uuidString:)))
     }
 
     private func isCancellationError(_ error: Error) -> Bool {
