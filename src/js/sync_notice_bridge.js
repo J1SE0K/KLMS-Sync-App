@@ -1038,8 +1038,10 @@ function noticeNativeRenderComparison(
     (!primary.matches || !archive.matches) &&
     primary.styleVersionMatches &&
     archive.styleVersionMatches &&
-    noticeRenderVisibleKeys(primaryRenderState, archiveRenderState).join("\n") ===
-      expectedNoticeVisibleKeys(expected).join("\n");
+    renderStateNoticeKeys(primaryRenderState).join("\n") ===
+      expectedNoticeKeys(expected.primary).join("\n") &&
+    renderStateNoticeKeys(archiveRenderState).join("\n") ===
+      expectedNoticeKeys(expected.archive).join("\n");
   return {
     canCompare: true,
     expected,
@@ -1096,7 +1098,7 @@ function expectedNoticeNativeRenderState(digest, userState, nativeEnvironment) {
       const fingerprint = String(notice.fingerprint || "");
       const state = userState.notices[noticeId] || {};
       const isImportant = state.important === true;
-      const isRead = Boolean(fingerprint) && state.read_fingerprint === fingerprint;
+      const isRead = noticeInteractionStateIsRead(state, fingerprint);
       const isHidden = state.hidden === true;
       if (hideHidden && isHidden) {
         return;
@@ -1132,6 +1134,13 @@ function expectedNoticeNativeRenderState(digest, userState, nativeEnvironment) {
   const groupedPrimary = [...primaryImportant, ...primaryFresh, ...primaryUnread];
   const primary = groupedPrimary.length > 0 ? groupedPrimary : primaryAllVisible;
   return { primary, archive, total };
+}
+
+function noticeInteractionStateIsRead(state, fingerprint) {
+  if (String(state && state.read_at || "").trim()) {
+    return true;
+  }
+  return Boolean(fingerprint) && String(state && state.read_fingerprint || "") === fingerprint;
 }
 
 function renderStateMatchesExpected(renderState, expected) {
@@ -1274,20 +1283,6 @@ function noticeRenderSignatureComponents(targetKey, nativeEnvironment) {
     `batch_checklist=${batchChecklist ? "1" : "0"}`,
     `fast_batch_checklist=${fastBatchChecklist ? "1" : "0"}`,
   ];
-}
-
-function noticeRenderVisibleKeys(primaryRenderState, archiveRenderState) {
-  return [
-    ...renderStateNoticeKeys(primaryRenderState),
-    ...renderStateNoticeKeys(archiveRenderState),
-  ].sort();
-}
-
-function expectedNoticeVisibleKeys(expected) {
-  return [
-    ...expectedNoticeKeys(expected.primary),
-    ...expectedNoticeKeys(expected.archive),
-  ].sort();
 }
 
 function renderStateNoticeKeys(renderState) {

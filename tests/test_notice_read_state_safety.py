@@ -909,6 +909,7 @@ function extractFunction(name) {
 
 eval([
   extractFunction("expectedNoticeNativeRenderState"),
+  extractFunction("noticeInteractionStateIsRead"),
   extractFunction("nativeNoticeEnvironmentEnabled"),
   extractFunction("nativeNoticeEnvironmentValue"),
   extractFunction("noticeIdentifierForDigestNotice"),
@@ -982,6 +983,7 @@ function extractFunction(name) {
 
 eval([
   extractFunction("expectedNoticeNativeRenderState"),
+  extractFunction("noticeInteractionStateIsRead"),
   extractFunction("nativeNoticeEnvironmentEnabled"),
   extractFunction("nativeNoticeEnvironmentValue"),
   extractFunction("noticeIdentifierForDigestNotice"),
@@ -1024,6 +1026,196 @@ console.log(JSON.stringify({
         self.assertEqual(
             result.stdout.strip(),
             '{"primary":["read-1","read-2"],"primaryChecked":[true,true],"archive":["read-1","read-2"]}',
+        )
+
+    def test_notice_read_at_survives_fingerprint_drift_for_native_expected_state(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not available")
+        script = r"""
+const fs = require("fs");
+const path = "src/js/sync_notice_bridge.js";
+const source = fs.readFileSync(path, "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+eval([
+  extractFunction("expectedNoticeNativeRenderState"),
+  extractFunction("noticeInteractionStateIsRead"),
+  extractFunction("nativeNoticeEnvironmentEnabled"),
+  extractFunction("nativeNoticeEnvironmentValue"),
+  extractFunction("noticeIdentifierForDigestNotice"),
+  extractFunction("oneLineText"),
+].join("\n"));
+
+const digest = {
+  courses: [
+    {
+      course: "Course A",
+      notices: [
+        { url: "read-1", fingerprint: "fp-current", change_state: "new" },
+        { url: "unread-1", fingerprint: "fp-unread", change_state: "stable" },
+      ],
+    },
+  ],
+};
+const userState = {
+  notices: {
+    "read-1": { read_at: "2026-06-01T00:00:00+09:00", read_fingerprint: "fp-old" },
+  },
+};
+
+const expected = expectedNoticeNativeRenderState(digest, userState);
+console.log(JSON.stringify({
+  primary: expected.primary.map((notice) => notice.notice_id),
+  archive: expected.archive.map((notice) => notice.notice_id),
+  archiveChecked: expected.archive.map((notice) => notice.should_check_read),
+}));
+"""
+        result = subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(
+            result.stdout.strip(),
+            '{"primary":["unread-1"],"archive":["read-1"],"archiveChecked":[true]}',
+        )
+
+    def test_notice_state_only_defer_does_not_hide_target_moves(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not available")
+        script = r"""
+const fs = require("fs");
+const path = "src/js/sync_notice_bridge.js";
+const source = fs.readFileSync(path, "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+const NATIVE_NOTICE_RENDER_STYLE_VERSION = "test-style";
+function stableHash(text) {
+  return `hash:${text}`;
+}
+const files = {};
+function fileExists(path) {
+  return Object.prototype.hasOwnProperty.call(files, path);
+}
+function readText(path) {
+  return files[path];
+}
+
+eval([
+  extractFunction("noticeNativeRenderComparison"),
+  extractFunction("loadNoticeUserState"),
+  extractFunction("noticeDigestHasFreshNotices"),
+  extractFunction("expectedNoticeNativeRenderState"),
+  extractFunction("noticeInteractionStateIsRead"),
+  extractFunction("compareRenderStateToExpected"),
+  extractFunction("noticeExpectedRenderSignature"),
+  extractFunction("noticeRenderSignatureComponents"),
+  extractFunction("nativeNoticeEnvironmentEnabled"),
+  extractFunction("nativeNoticeEnvironmentValue"),
+  extractFunction("renderStateNoticeKeys"),
+  extractFunction("expectedNoticeKeys"),
+  extractFunction("noticeIdentifierForDigestNotice"),
+  extractFunction("oneLineText"),
+].join("\n"));
+
+const digest = {
+  generated_at: "2026-06-01T00:00:00+09:00",
+  new_count: 0,
+  updated_count: 0,
+  courses: [
+    {
+      course: "Course A",
+      notices: [
+        { url: "read-1", fingerprint: "fp-read", change_state: "stable" },
+        { url: "unread-1", fingerprint: "fp-unread", change_state: "stable" },
+      ],
+    },
+  ],
+};
+const userState = {
+  notices: {
+    "read-1": { read_at: "2026-06-01T00:00:00+09:00", read_fingerprint: "fp-read" },
+  },
+};
+const stalePrimaryRenderState = {
+  style_version: NATIVE_NOTICE_RENDER_STYLE_VERSION,
+  render_signature: "old-primary-signature",
+  rendered_notices: [
+    { notice_id: "read-1", fingerprint: "fp-read", should_check_read: false, should_check_important: false },
+    { notice_id: "unread-1", fingerprint: "fp-unread", should_check_read: false, should_check_important: false },
+  ],
+};
+const staleArchiveRenderState = {
+  style_version: NATIVE_NOTICE_RENDER_STYLE_VERSION,
+  render_signature: "old-archive-signature",
+  rendered_notices: [],
+};
+files["/digest.json"] = JSON.stringify(digest);
+files["/notice_user_state.json"] = JSON.stringify(userState);
+files["/primary_render_state.json"] = JSON.stringify(stalePrimaryRenderState);
+files["/archive_render_state.json"] = JSON.stringify(staleArchiveRenderState);
+
+const comparison = noticeNativeRenderComparison(
+  "/digest.json",
+  "/notice_user_state.json",
+  "/primary_render_state.json",
+  "/archive_render_state.json",
+  []
+);
+console.log(JSON.stringify({
+  stateOnlyDiff: comparison.stateOnlyDiff,
+  primary: comparison.expected.primary.map((notice) => notice.notice_id),
+  archive: comparison.expected.archive.map((notice) => notice.notice_id),
+}));
+"""
+        result = subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(
+            result.stdout.strip(),
+            '{"stateOnlyDiff":false,"primary":["unread-1"],"archive":["read-1"]}',
         )
 
     def test_notice_render_noop_ignores_generated_timestamp_only(self) -> None:

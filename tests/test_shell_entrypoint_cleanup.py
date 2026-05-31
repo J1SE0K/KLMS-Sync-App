@@ -978,13 +978,12 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("public func isAuthorized(", shared)
         self.assertIn("token: String", shared)
         self.assertNotIn("public var token: String\n    public var action", shared)
-        self.assertIn("LocalRemoteTokenStore.load(account: \"mac\")", model)
-        self.assertIn("LocalRemoteTokenStore.save(token, account: \"mac\")", model)
-        self.assertIn("registerLocalRemoteAuthFailure", model)
-        self.assertIn("localRemoteRecentNonces", model)
+        self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-mac\")", model)
+        self.assertIn("LocalRemoteTokenStore.save(token, account: \"server-relay-mac\")", model)
+        self.assertIn("UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)", model)
         self.assertIn("pasteboardClearTask", model)
-        self.assertIn("LocalRemoteTokenStore.load(account: \"ios\")", ios_app)
-        self.assertIn("persistLocalToken", ios_app)
+        self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-ios\")", ios_app)
+        self.assertIn("persistServerToken", ios_app)
         self.assertIn("UIPasteboard.general.string = \"\"", ios_app)
 
     def test_ios_companion_has_tabbed_remote_control_and_cancel(self) -> None:
@@ -1000,18 +999,18 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
 
         self.assertIn("case cancel", shared)
         self.assertIn("cancelRunningCommand() async throws", shared)
-        self.assertIn("case .cancel:", model)
-        self.assertIn("await cancelRunningCommand()", model)
+        self.assertIn("func cancelRunningCommand() async", model)
+        self.assertIn("서버 릴레이에서는 아직 실행 중단을 지원하지 않습니다.", ios_app)
         self.assertIn("TabView", ios_app)
         self.assertIn("CompanionStatusScreen", ios_app)
         self.assertIn("CompanionRunScreen", ios_app)
         self.assertIn("CompanionConnectionScreen", ios_app)
         self.assertIn("CompanionHistoryScreen", ios_app)
         self.assertIn("현재 동기화 중단", ios_app)
-        self.assertIn("SecureField(\"토큰\"", ios_app)
-        self.assertIn("clearLocalConnectionInfo", ios_app)
-        self.assertIn("개인 VPN", ios_app)
-        self.assertIn("RemoteConnectionOptionsNote", ios_app)
+        self.assertIn("SecureField(\"서버 토큰\"", ios_app)
+        self.assertIn("clearServerRelayConnectionInfo", ios_app)
+        self.assertIn("Cloudflare 서버 릴레이", ios_app)
+        self.assertIn("RemotePrivacyNote", ios_app)
 
     def test_ios_project_has_app_icon_asset_catalog(self) -> None:
         project = (
