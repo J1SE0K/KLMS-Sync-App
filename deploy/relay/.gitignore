@@ -1,0 +1,6 @@
+.env
+.env.cloudflare
+*.backup
+*.sqlite
+*.sqlite-*
+*.log

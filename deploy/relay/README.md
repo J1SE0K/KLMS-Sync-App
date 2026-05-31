@@ -19,27 +19,27 @@ Mac이 실제 KLMS, Notes, Calendar, Reminders 작업을 실행한다. 서버는
 
 ```sh
 cd deploy/relay
-cp relay.env.example .env
-openssl rand -hex 32
+./init_env.sh sync.example.com
 ```
 
-`.env`를 수정한다.
-
-```sh
-KLMS_RELAY_DOMAIN=sync.example.com
-KLMS_RELAY_TOKEN=<openssl 출력값>
-```
+출력된 토큰을 저장해 둔다. Mac, iPhone, Windows 앱에 같은 토큰을 넣어야 한다.
 
 5. 서버를 실행한다.
 
 ```sh
-docker compose up -d --build
+./deploy.sh
 ```
 
 6. 확인한다.
 
 ```sh
-curl -fsS https://sync.example.com/healthz
+./status.sh
+```
+
+Docker가 없다면 Ubuntu VPS에서 먼저 실행한다.
+
+```sh
+./bootstrap_ubuntu.sh
 ```
 
 ## 앱 연결값
@@ -77,10 +77,17 @@ Mac, iPhone, Windows에 모두 같은 값을 넣는다.
 repo를 갱신한 뒤:
 
 ```sh
-docker compose up -d --build
+cd deploy/relay
+./deploy.sh
 ```
 
 DB volume은 유지된다.
+
+DB 백업:
+
+```sh
+./backup_db.sh
+```
 
 ## 방식 2: Cloudflare Tunnel
 
