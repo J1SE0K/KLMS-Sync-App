@@ -633,10 +633,10 @@ private struct NextActionPanelView: View {
     }
 
     private var nextAction: NextAction? {
-        if model.runningCommand != nil {
+        if let command = model.runningCommand {
             return NextAction(
                 kind: .showRunningLog,
-                title: "동기화가 진행 중입니다",
+                title: "\(command.displayName) 실행 중입니다",
                 detail: model.currentPhaseText.map { "현재 단계: \($0)" } ?? "실시간 로그에서 진행 상황을 확인할 수 있습니다.",
                 buttonTitle: "로그 보기",
                 buttonImage: "text.alignleft",
@@ -911,25 +911,14 @@ private struct DiagnosticToolsPanelView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("iPhone 연결 설정은 설정 패널에서 관리합니다.", systemImage: "iphone.and.arrow.forward")
+                    Label("iPhone 연결은 서버 릴레이로 처리합니다.", systemImage: "iphone.and.arrow.forward")
                         .font(.caption.weight(.semibold))
-                    if model.localRemoteEnabled {
-                        Text("로컬 원격 제어 실행 중: \(model.localRemotePrimaryEndpoint)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    } else {
-                        Text("iPhone에서 Mac을 제어하려면 설정 > iPhone에서 로컬 원격 제어를 켜고 주소와 토큰을 복사하세요.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                     if model.serverRelayEnabled {
                         Text(model.serverRelayStatusMessage ?? "서버 릴레이 대기 중")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                    }
-                    if model.appDiagnostics.codeSigning.cloudKitEntitled {
-                        Text(model.remoteProcessingStatusMessage ?? "CloudKit 원격 요청 처리는 설정에서 켜고 끌 수 있습니다.")
+                    } else {
+                        Text("설정 > iPhone 서버 릴레이에서 서버 주소와 토큰을 입력하고 릴레이를 켜 주세요.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

@@ -1,7 +1,6 @@
 import Foundation
 import ApplicationServices
 import AppKit
-import Darwin
 import EventKit
 import KLMSShared
 import SwiftUI
@@ -33,13 +32,8 @@ final class KLMSMacModel: ObservableObject {
     @Published var installResult: EngineInstallResult?
     @Published var lastCommandResult: KLMSCommandResult?
     @Published var lastRemoteCommand: RemoteRunCommand?
-    @Published var remoteProcessingEnabled: Bool
     @Published var remoteProcessingStatusMessage: String?
     @Published var isCheckingRemoteCommands = false
-    @Published var localRemoteEnabled: Bool
-    @Published var localRemoteToken: String
-    @Published var localRemoteStatusMessage: String?
-    @Published var isLocalRemoteServerRunning = false
     @Published var serverRelayEnabled: Bool
     @Published var serverRelayURL: String
     @Published var serverRelayToken: String
@@ -59,10 +53,8 @@ final class KLMSMacModel: ObservableObject {
     private let installer = EngineInstaller()
     private let locator = EnginePayloadLocator()
     private var isBootstrapping = false
-    private var remotePollingTask: Task<Void, Never>?
     private var serverRelayPollingTask: Task<Void, Never>?
     private var passiveSnapshotRefreshTask: Task<Void, Never>?
-    private var localRemoteServer: LocalRemoteServer?
     private var notifiedAuthDigits = Set<String>()
     private var notifiedAuthCompletionForCurrentRun = false
     private var notifiedAlreadyLoggedInForCurrentRun = false
@@ -71,42 +63,26 @@ final class KLMSMacModel: ObservableObject {
     private var authStatusClearTask: Task<Void, Never>?
     private var runningCommandStatusPollTask: Task<Void, Never>?
     private var pasteboardClearTask: Task<Void, Never>?
-    private var localRemoteFailedAuthCount = 0
-    private var localRemoteBlockedUntil: Date?
-    private var localRemoteRecentNonces: [String: Date] = [:]
     private var serverRelayLastStatusPublishAt: Date?
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
-    private static let remoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
-    private static let localRemoteEnabledKey = "KLMSLocalRemoteEnabled"
-    private static let localRemoteTokenKey = "KLMSLocalRemoteToken"
+    private static let deprecatedRemoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
+    private static let deprecatedLocalRemoteEnabledKey = "KLMSLocalRemoteEnabled"
+    private static let deprecatedLocalRemoteTokenKey = "KLMSLocalRemoteToken"
     private static let serverRelayEnabledKey = "KLMSServerRelayEnabled"
     private static let serverRelayURLKey = "KLMSServerRelayURL"
     private static let serverRelayTokenKey = "KLMSServerRelayToken"
-    private static let localRemotePort: UInt16 = 18483
-    private static let remotePollingIntervalNanoseconds: UInt64 = 20_000_000_000
     private static let serverRelayPollingIntervalNanoseconds: UInt64 = 5_000_000_000
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
     private static let liveCommandOutputMaxCharacters = 80_000
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
     init() {
-        remoteProcessingEnabled = UserDefaults.standard.bool(
-            forKey: Self.remoteProcessingEnabledKey
-        )
-        localRemoteEnabled = UserDefaults.standard.bool(forKey: Self.localRemoteEnabledKey)
+        UserDefaults.standard.removeObject(forKey: Self.deprecatedRemoteProcessingEnabledKey)
+        UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteEnabledKey)
         serverRelayEnabled = UserDefaults.standard.bool(forKey: Self.serverRelayEnabledKey)
         serverRelayURL = UserDefaults.standard.string(forKey: Self.serverRelayURLKey) ?? ""
-        if let token = LocalRemoteTokenStore.load(account: "mac")
-            ?? UserDefaults.standard.string(forKey: Self.localRemoteTokenKey),
-           !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            localRemoteToken = token
-            LocalRemoteTokenStore.save(token, account: "mac")
-            UserDefaults.standard.removeObject(forKey: Self.localRemoteTokenKey)
-        } else {
-            let token = Self.makeLocalRemoteToken()
-            localRemoteToken = token
-            LocalRemoteTokenStore.save(token, account: "mac")
-        }
+        LocalRemoteTokenStore.delete(account: "mac")
+        UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)
         if let token = LocalRemoteTokenStore.load(account: "server-relay-mac")
             ?? UserDefaults.standard.string(forKey: Self.serverRelayTokenKey),
            !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -119,12 +95,10 @@ final class KLMSMacModel: ObservableObject {
     }
 
     deinit {
-        remotePollingTask?.cancel()
         serverRelayPollingTask?.cancel()
         passiveSnapshotRefreshTask?.cancel()
         pasteboardClearTask?.cancel()
         runningCommandStatusPollTask?.cancel()
-        localRemoteServer?.stop()
     }
 
     var menuBarSystemImage: String {
@@ -206,27 +180,6 @@ final class KLMSMacModel: ObservableObject {
         ]
     }
 
-    var localRemotePort: UInt16 {
-        Self.localRemotePort
-    }
-
-    var localRemoteEndpointHints: [String] {
-        localRemotePrimaryEndpoint == "이 Mac의 IP:\(Self.localRemotePort)" ? [] : [localRemotePrimaryEndpoint]
-    }
-
-    var localRemotePrimaryEndpoint: String {
-        Self.localIPv4Addresses().first.map { "\($0):\(Self.localRemotePort)" }
-            ?? "이 Mac의 IP:\(Self.localRemotePort)"
-    }
-
-    var localRemoteConnectionInfoText: String {
-        """
-        KLMS Sync iPhone 연결 정보
-        Mac 주소: \(localRemotePrimaryEndpoint)
-        토큰: \(localRemoteToken)
-        """
-    }
-
     var serverRelayConfigured: Bool {
         (try? makeServerRelayStore()) != nil
     }
@@ -263,9 +216,7 @@ final class KLMSMacModel: ObservableObject {
         }
         await refresh()
         configurePassiveSnapshotRefresh()
-        configureRemotePolling()
         configureServerRelayPolling()
-        configureLocalRemoteServer()
     }
 
     var shouldRequestPermissionsAfterInstall: Bool {
@@ -302,7 +253,7 @@ final class KLMSMacModel: ObservableObject {
     func clearDisplayState(resetSnapshot: Bool) {
         errorMessage = nil
         lastCommandResult = nil
-        if !remoteProcessingEnabled && !serverRelayEnabled {
+        if !serverRelayEnabled {
             lastRemoteCommand = nil
         }
         liveCommandOutput = ""
@@ -323,62 +274,6 @@ final class KLMSMacModel: ObservableObject {
             snapshot = EngineSnapshot()
             launchAgentState = nil
         }
-    }
-
-    func setRemoteProcessingEnabled(_ enabled: Bool) {
-        if enabled, !appDiagnostics.codeSigning.cloudKitEntitled {
-            remoteProcessingEnabled = false
-            UserDefaults.standard.set(false, forKey: Self.remoteProcessingEnabledKey)
-            remoteProcessingStatusMessage = "CloudKit 권한이 없어 iPhone 요청 자동 처리를 켤 수 없습니다."
-            errorMessage = "iPhone 원격 요청은 Apple Developer iCloud container/provisioning 설정 후 사용할 수 있습니다."
-            return
-        }
-        remoteProcessingEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: Self.remoteProcessingEnabledKey)
-        configureRemotePolling()
-        if enabled {
-            remoteProcessingStatusMessage = "iPhone 요청 자동 처리가 켜졌습니다."
-            Task {
-                await processRemoteCommands(silent: true)
-            }
-        } else {
-            remoteProcessingStatusMessage = "iPhone 요청 자동 처리가 꺼졌습니다."
-        }
-    }
-
-    func setLocalRemoteEnabled(_ enabled: Bool) {
-        localRemoteEnabled = enabled
-        UserDefaults.standard.set(enabled, forKey: Self.localRemoteEnabledKey)
-        configureLocalRemoteServer()
-    }
-
-    func regenerateLocalRemoteToken() {
-        let token = Self.makeLocalRemoteToken()
-        localRemoteToken = token
-        LocalRemoteTokenStore.save(token, account: "mac")
-        UserDefaults.standard.removeObject(forKey: Self.localRemoteTokenKey)
-        localRemoteFailedAuthCount = 0
-        localRemoteBlockedUntil = nil
-        localRemoteRecentNonces.removeAll()
-        if localRemoteEnabled {
-            configureLocalRemoteServer()
-        }
-    }
-
-    func copyLocalRemoteEndpoint(_ endpoint: String? = nil) {
-        let value = endpoint ?? localRemotePrimaryEndpoint
-        copyToPasteboard(value)
-        localRemoteStatusMessage = "Mac 주소를 복사했습니다: \(value)"
-    }
-
-    func copyLocalRemoteToken() {
-        copyToPasteboard(localRemoteToken)
-        localRemoteStatusMessage = "토큰을 복사했습니다."
-    }
-
-    func copyLocalRemoteConnectionInfo() {
-        copyToPasteboard(localRemoteConnectionInfoText)
-        localRemoteStatusMessage = "iPhone 연결 정보를 복사했습니다."
     }
 
     func setServerRelayEnabled(_ enabled: Bool) {
@@ -427,130 +322,50 @@ final class KLMSMacModel: ObservableObject {
         serverRelayStatusMessage = "서버 토큰을 복사했습니다."
     }
 
-    private func configureLocalRemoteServer() {
-        localRemoteServer?.stop()
-        localRemoteServer = nil
-        isLocalRemoteServerRunning = false
-        guard localRemoteEnabled else {
-            localRemoteStatusMessage = "로컬 원격 제어가 꺼져 있습니다."
+    func pasteServerRelayConnectionInfo() {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              let connectionInfo = ServerRelayConnectionInfo.parse(urlText: text) else {
+            serverRelayStatusMessage = "클립보드에서 서버 주소와 토큰을 찾지 못했습니다."
+            errorMessage = serverRelayStatusMessage
             return
         }
-        let server = LocalRemoteServer(port: Self.localRemotePort) { [weak self] request in
-            await self?.handleLocalRemoteRequest(request)
-                ?? LocalRemoteResponse(ok: false, message: "Mac 앱이 준비되지 않았습니다.")
+        setServerRelayURL(connectionInfo.baseURL.absoluteString)
+        setServerRelayToken(connectionInfo.token)
+        if NSPasteboard.general.string(forType: .string) == text {
+            NSPasteboard.general.clearContents()
         }
+        serverRelayStatusMessage = "서버 연결 정보를 붙여넣었습니다. 연결 확인을 눌러 주세요."
+        errorMessage = nil
+    }
+
+    func checkServerRelayConnection(enableOnSuccess: Bool = false) async {
+        serverRelayStatusMessage = "서버 연결 확인 중..."
         do {
-            try server.start()
-            localRemoteServer = server
-            isLocalRemoteServerRunning = true
-            localRemoteStatusMessage = "로컬 원격 제어 실행 중: \(localRemotePrimaryEndpoint)"
-        } catch {
-            localRemoteStatusMessage = "로컬 원격 제어 시작 실패: \(error.localizedDescription)"
-            errorMessage = localRemoteStatusMessage
-        }
-    }
-
-    private func handleLocalRemoteRequest(_ request: LocalRemoteRequest) async -> LocalRemoteResponse {
-        func signed(_ response: LocalRemoteResponse) -> LocalRemoteResponse {
-            response.signed(token: localRemoteToken, request: request)
-        }
-
-        guard authorizeLocalRemoteRequest(request) else {
-            return signed(LocalRemoteResponse(ok: false, message: registerLocalRemoteAuthFailure()))
-        }
-        localRemoteFailedAuthCount = 0
-        localRemoteBlockedUntil = nil
-        switch request.action {
-        case .status:
-            let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
-            snapshot = refreshedSnapshot
-            return signed(LocalRemoteResponse(
-                ok: true,
-                message: localRemoteStatusMessage ?? "대기 중",
-                status: sanitizedRemoteStatus(
-                    snapshot: refreshedSnapshot,
-                    phase: runningCommand == nil ? "idle" : "running"
-                ),
-                latestCommand: lastRemoteCommand,
-                running: runningCommand != nil
-            ))
-        case .run:
-            guard let kind = request.kind else {
-                return signed(LocalRemoteResponse(ok: false, message: "실행할 명령이 없습니다."))
-            }
-            guard runningCommand == nil,
-                  lastRemoteCommand?.status.isInFlight != true else {
-                return signed(LocalRemoteResponse(
-                    ok: false,
-                    message: "이미 동기화가 실행 중입니다.",
-                    status: sanitizedRemoteStatus(snapshot: snapshot, phase: "busy"),
-                    latestCommand: lastRemoteCommand,
-                    running: true
-                ))
-            }
-            let command = RemoteRunCommand(
-                kind: kind,
-                status: .running,
-                summary: sanitizedRemoteStatus(snapshot: snapshot, phase: "running")
+            let store = try makeServerRelayStore()
+            _ = try await store.fetchStatusResponse()
+            let status = sanitizedRemoteStatus(
+                snapshot: snapshot,
+                phase: runningCommand == nil ? "idle" : "running"
             )
-            lastRemoteCommand = command
-            remoteProcessingStatusMessage = "로컬 iPhone 요청 처리 중: \(kind.displayName)"
-            localRemoteStatusMessage = "로컬 iPhone 요청 처리 중: \(kind.displayName)"
-            Task { [weak self] in
-                await self?.executeLocalRemoteCommand(command)
+            try await store.publishStatus(
+                status,
+                latestCommand: lastRemoteCommand,
+                running: runningCommand != nil,
+                message: "Mac 앱 연결 확인 완료"
+            )
+            try await store.publishSyncData(serverRelaySyncData(from: snapshot))
+            serverRelayLastStatusPublishAt = Date()
+            if enableOnSuccess && !serverRelayEnabled {
+                setServerRelayEnabled(true)
             }
-            return signed(LocalRemoteResponse(
-                ok: true,
-                message: "\(kind.displayName) 실행을 시작했습니다.",
-                status: command.summary,
-                latestCommand: command,
-                running: true
-            ))
-        case .cancel:
-            guard runningCommand != nil else {
-                return signed(LocalRemoteResponse(
-                    ok: false,
-                    message: "중단할 동기화가 없습니다.",
-                    status: sanitizedRemoteStatus(snapshot: snapshot, phase: "idle"),
-                    latestCommand: lastRemoteCommand,
-                    running: false
-                ))
-            }
-            await cancelRunningCommand()
-            let message = "실행 중단을 요청했습니다."
-            localRemoteStatusMessage = message
-            remoteProcessingStatusMessage = message
-            let currentKind = RemoteCommandKind(engineCommand: runningCommand) ?? .fullSync
-            var cancellingCommand = lastRemoteCommand?.status.isInFlight == true
-                ? lastRemoteCommand ?? RemoteRunCommand(kind: currentKind)
-                : RemoteRunCommand(kind: currentKind)
-            cancellingCommand.status = .running
-            cancellingCommand.updatedAt = Date()
-            cancellingCommand.summary = sanitizedRemoteStatus(snapshot: snapshot, phase: "running")
-            lastRemoteCommand = cancellingCommand
-            return signed(LocalRemoteResponse(
-                ok: true,
-                message: message,
-                status: sanitizedRemoteStatus(snapshot: snapshot, phase: "running"),
-                latestCommand: cancellingCommand,
-                running: true
-            ))
+            serverRelayStatusMessage = enableOnSuccess || serverRelayEnabled
+                ? "서버 릴레이 연결 완료 · 요청 처리 켜짐"
+                : "서버 릴레이 연결 완료 · 사용을 켜면 iPhone/Windows 요청을 처리합니다."
+            errorMessage = nil
+        } catch {
+            serverRelayStatusMessage = "서버 연결 실패: \(error.localizedDescription)"
+            errorMessage = serverRelayStatusMessage
         }
-    }
-
-    private func executeLocalRemoteCommand(_ command: RemoteRunCommand) async {
-        await run(command.kind.engineCommand)
-        let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
-        var completed = command
-        completed.status = lastCommandResult?.succeeded == true ? .completed : .failed
-        completed.updatedAt = Date()
-        completed.lastExitCode = lastCommandResult.map { Int($0.exitCode) }
-        completed.summary = sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: completed.status.rawValue)
-        completed.loginRequired = lastCommandResult?.requiresLoginApproval == true || completed.summary.loginRequired
-        lastRemoteCommand = completed
-        let message = "최근 로컬 iPhone 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
-        localRemoteStatusMessage = message
-        remoteProcessingStatusMessage = message
     }
 
     private func sanitizedRemoteStatus(snapshot: EngineSnapshot, phase: String) -> SanitizedRemoteStatus {
@@ -566,37 +381,6 @@ final class KLMSMacModel: ObservableObject {
             status.authStatusMessage = authStatusMessage
         }
         return status
-    }
-
-    private func authorizeLocalRemoteRequest(_ request: LocalRemoteRequest, now: Date = Date()) -> Bool {
-        if let localRemoteBlockedUntil, localRemoteBlockedUntil > now {
-            return false
-        }
-        guard request.isAuthorized(token: localRemoteToken, now: now) else {
-            return false
-        }
-        localRemoteRecentNonces = localRemoteRecentNonces.filter { _, seenAt in
-            now.timeIntervalSince(seenAt) <= 120
-        }
-        guard localRemoteRecentNonces[request.nonce] == nil else {
-            return false
-        }
-        localRemoteRecentNonces[request.nonce] = now
-        return true
-    }
-
-    private func registerLocalRemoteAuthFailure(now: Date = Date()) -> String {
-        if let localRemoteBlockedUntil, localRemoteBlockedUntil > now {
-            let remaining = max(1, Int(ceil(localRemoteBlockedUntil.timeIntervalSince(now))))
-            return "인증 실패가 많아 \(remaining)초 뒤 다시 시도해 주세요."
-        }
-        localRemoteFailedAuthCount += 1
-        if localRemoteFailedAuthCount >= 5 {
-            let delay = min(120, 15 * (localRemoteFailedAuthCount - 4))
-            localRemoteBlockedUntil = now.addingTimeInterval(TimeInterval(delay))
-            return "인증 실패가 많아 \(delay)초 동안 로컬 원격 요청을 막았습니다."
-        }
-        return "원격 요청 인증에 실패했습니다."
     }
 
     private func currentAuthStatusMessageForRemote(now: Date = Date()) -> String? {
@@ -620,20 +404,6 @@ final class KLMSMacModel: ObservableObject {
                 NSPasteboard.general.clearContents()
             }
             self?.pasteboardClearTask = nil
-        }
-    }
-
-    private func configureRemotePolling() {
-        remotePollingTask?.cancel()
-        remotePollingTask = nil
-        guard remoteProcessingEnabled else {
-            return
-        }
-        remotePollingTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.processRemoteCommands(silent: true)
-                try? await Task.sleep(nanoseconds: Self.remotePollingIntervalNanoseconds)
-            }
         }
     }
 
@@ -1095,13 +865,11 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func cancelCommandBeforeTermination() async {
-        remotePollingTask?.cancel()
         serverRelayPollingTask?.cancel()
         passiveSnapshotRefreshTask?.cancel()
         runningCommandStatusPollTask?.cancel()
         authStatusClearTask?.cancel()
         pasteboardClearTask?.cancel()
-        localRemoteServer?.stop()
         guard runningCommand != nil else { return }
         isCancellingCommand = true
         _ = await runner.cancelCurrentCommand()
@@ -1426,89 +1194,6 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    func processRemoteCommands(silent: Bool = false) async {
-        #if canImport(CloudKit)
-        guard appDiagnostics.codeSigning.cloudKitEntitled else {
-            remoteProcessingStatusMessage = "CloudKit 권한이 없어 iPhone 요청을 확인할 수 없습니다."
-            if !silent {
-                errorMessage = "iPhone 원격 요청은 Apple Developer iCloud container/provisioning 설정 후 사용할 수 있습니다."
-            }
-            return
-        }
-        guard runningCommand == nil else {
-            if !silent {
-                remoteProcessingStatusMessage = "동기화 실행 중에는 iPhone 요청을 처리하지 않습니다."
-            }
-            return
-        }
-        guard !isCheckingRemoteCommands else {
-            return
-        }
-        isCheckingRemoteCommands = true
-        defer {
-            isCheckingRemoteCommands = false
-        }
-        do {
-            let store = CloudKitCommandStore()
-            let pending = try await store.fetchPending()
-            let now = Date()
-            var commandToRun: RemoteRunCommand?
-            for command in pending {
-                if command.isStaleForExecution(now: now) {
-                    var stale = command
-                    stale.status = .macUnavailable
-                    stale.updatedAt = now
-                    stale.summary = sanitizedRemoteStatus(
-                        snapshot: snapshot,
-                        phase: stale.status.rawValue
-                    )
-                    try? await store.update(stale)
-                    lastRemoteCommand = stale
-                    continue
-                }
-                commandToRun = command
-                break
-            }
-            guard let command = commandToRun else {
-                remoteProcessingStatusMessage = "대기 중인 iPhone 요청이 없습니다."
-                if !silent {
-                    errorMessage = remoteProcessingStatusMessage
-                }
-                return
-            }
-            var running = command
-            running.status = .running
-            running.updatedAt = Date()
-            running.summary = sanitizedRemoteStatus(snapshot: snapshot, phase: "running")
-            try await store.update(running)
-            lastRemoteCommand = running
-            remoteProcessingStatusMessage = "\(running.kind.displayName) 요청 처리 중"
-
-            await run(command.kind.engineCommand)
-            let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
-            var completed = running
-            completed.status = lastCommandResult?.succeeded == true ? .completed : .failed
-            completed.updatedAt = Date()
-            completed.lastExitCode = lastCommandResult.map { Int($0.exitCode) }
-            completed.summary = sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: completed.status.rawValue)
-            completed.loginRequired = lastCommandResult?.requiresLoginApproval == true || completed.summary.loginRequired
-            try await store.update(completed)
-            lastRemoteCommand = completed
-            remoteProcessingStatusMessage = "최근 iPhone 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
-        } catch {
-            remoteProcessingStatusMessage = "iPhone 요청 확인 실패: \(error.localizedDescription)"
-            if !silent {
-                errorMessage = error.localizedDescription
-            }
-        }
-        #else
-        remoteProcessingStatusMessage = "CloudKit을 사용할 수 없는 빌드입니다."
-        if !silent {
-            errorMessage = remoteProcessingStatusMessage
-        }
-        #endif
-    }
-
     func processServerRelayCommands(silent: Bool = false) async {
         guard serverRelayEnabled else {
             return
@@ -1642,13 +1327,6 @@ final class KLMSMacModel: ObservableObject {
             payloadVersion: payload?.version
         )
         appDiagnostics = diagnostics
-        if remoteProcessingEnabled, !diagnostics.codeSigning.cloudKitEntitled {
-            remoteProcessingEnabled = false
-            UserDefaults.standard.set(false, forKey: Self.remoteProcessingEnabledKey)
-            remotePollingTask?.cancel()
-            remotePollingTask = nil
-            remoteProcessingStatusMessage = "CloudKit 권한이 없어 iPhone 요청 자동 처리를 껐습니다."
-        }
     }
 
     private func openSystemSettingsPane(_ text: String) {
@@ -1656,95 +1334,6 @@ final class KLMSMacModel: ObservableObject {
             return
         }
         NSWorkspace.shared.open(url)
-    }
-
-    private static func makeLocalRemoteToken() -> String {
-        let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
-        return String((0..<12).map { _ in alphabet.randomElement() ?? "K" })
-    }
-
-    private struct LocalIPv4AddressCandidate {
-        var interfaceName: String
-        var address: String
-    }
-
-    private static func localIPv4Addresses() -> [String] {
-        var candidates: [LocalIPv4AddressCandidate] = []
-        var interfaces: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&interfaces) == 0, let first = interfaces else {
-            return []
-        }
-        defer { freeifaddrs(interfaces) }
-
-        for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
-            let interface = pointer.pointee
-            let flags = Int32(interface.ifa_flags)
-            guard flags & IFF_UP != 0,
-                  flags & IFF_LOOPBACK == 0,
-                  let address = interface.ifa_addr,
-                  address.pointee.sa_family == UInt8(AF_INET) else {
-                continue
-            }
-            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            let result = getnameinfo(
-                address,
-                socklen_t(address.pointee.sa_len),
-                &hostname,
-                socklen_t(hostname.count),
-                nil,
-                0,
-                NI_NUMERICHOST
-            )
-            guard result == 0 else { continue }
-            let ipBytes = hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-            let ip = String(decoding: ipBytes, as: UTF8.self)
-            guard !ip.isEmpty, !ip.hasPrefix("169.254.") else {
-                continue
-            }
-            let rawName = interface.ifa_name.map { String(cString: $0) } ?? ""
-            candidates.append(LocalIPv4AddressCandidate(interfaceName: rawName, address: ip))
-        }
-
-        var seen = Set<String>()
-        return candidates
-            .sorted { lhs, rhs in localIPv4AddressPriority(lhs) < localIPv4AddressPriority(rhs) }
-            .compactMap { candidate in
-                guard seen.insert(candidate.address).inserted else {
-                    return nil
-                }
-                return candidate.address
-            }
-    }
-
-    private static func localIPv4AddressPriority(_ candidate: LocalIPv4AddressCandidate) -> Int {
-        let name = candidate.interfaceName
-        let interfaceRank: Int
-        if name == "en0" || name == "en1" {
-            interfaceRank = 0
-        } else if name.hasPrefix("en") {
-            interfaceRank = 1
-        } else if name.hasPrefix("bridge") {
-            interfaceRank = 4
-        } else if name.hasPrefix("utun") || name.hasPrefix("awdl") || name.hasPrefix("llw") {
-            interfaceRank = 8
-        } else {
-            interfaceRank = 3
-        }
-        return interfaceRank * 10 + localIPv4AddressRangeRank(candidate.address)
-    }
-
-    private static func localIPv4AddressRangeRank(_ address: String) -> Int {
-        if address.hasPrefix("192.168.") {
-            return 0
-        }
-        if address.hasPrefix("10.") {
-            return 1
-        }
-        let parts = address.split(separator: ".").compactMap { Int($0) }
-        if parts.count == 4, parts[0] == 172, (16...31).contains(parts[1]) {
-            return 2
-        }
-        return 3
     }
 
     private static func requestAccessibilityPermissionPrompt() -> Bool {

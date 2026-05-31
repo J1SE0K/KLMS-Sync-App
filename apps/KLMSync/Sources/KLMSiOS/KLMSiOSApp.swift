@@ -28,15 +28,6 @@ final class CompanionModel: ObservableObject {
     @Published var isRefreshing = false
     @Published var isSubmitting = false
     @Published var lastRefreshAt: Date?
-    @Published var localHost: String {
-        didSet { UserDefaults.standard.set(localHost, forKey: Self.localHostKey) }
-    }
-    @Published var localPortText: String {
-        didSet { UserDefaults.standard.set(localPortText, forKey: Self.localPortKey) }
-    }
-    @Published var localToken: String {
-        didSet { Self.persistLocalToken(localToken) }
-    }
     @Published var serverURL: String {
         didSet { UserDefaults.standard.set(serverURL, forKey: Self.serverURLKey) }
     }
@@ -45,45 +36,25 @@ final class CompanionModel: ObservableObject {
     }
 
     private var lastAuthSuccessAlertMessage = ""
-    private let cloudStore: (any RemoteCommandStore)?
 
-    private static let localHostKey = "KLMSLocalRemoteHost"
-    private static let localPortKey = "KLMSLocalRemotePort"
-    private static let localTokenKey = "KLMSLocalRemoteToken"
+    private static let deprecatedLocalHostKey = "KLMSLocalRemoteHost"
+    private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
+    private static let deprecatedLocalTokenKey = "KLMSLocalRemoteToken"
     private static let serverURLKey = "KLMSServerRelayURL"
     private static let serverTokenKey = "KLMSServerRelayToken"
 
-    init(store: (any RemoteCommandStore)? = nil) {
-        let storedLocalToken = LocalRemoteTokenStore.load(account: "ios")
-            ?? UserDefaults.standard.string(forKey: Self.localTokenKey)
-            ?? ""
+    init() {
         let storedServerToken = LocalRemoteTokenStore.load(account: "server-relay-ios")
             ?? UserDefaults.standard.string(forKey: Self.serverTokenKey)
             ?? ""
-        localHost = UserDefaults.standard.string(forKey: Self.localHostKey) ?? ""
-        localPortText = UserDefaults.standard.string(forKey: Self.localPortKey) ?? "18483"
-        localToken = storedLocalToken
         serverURL = UserDefaults.standard.string(forKey: Self.serverURLKey) ?? ""
         serverToken = storedServerToken
-        Self.persistLocalToken(storedLocalToken)
         Self.persistServerToken(storedServerToken)
-        if let store {
-            cloudStore = store
-            return
-        }
-        #if canImport(CloudKit) && KLMS_ENABLE_CLOUDKIT
-        cloudStore = CloudKitCommandStore()
-        #else
-        cloudStore = nil
-        #endif
+        Self.clearDeprecatedLocalConnectionInfo()
     }
 
     var isRemoteAvailable: Bool {
-        localRemoteClient != nil || serverRelayStore != nil || cloudStore != nil
-    }
-
-    var localRemoteConfigured: Bool {
-        localRemoteClient != nil
+        serverRelayStore != nil
     }
 
     var serverRelayConfigured: Bool {
@@ -91,35 +62,14 @@ final class CompanionModel: ObservableObject {
     }
 
     var remoteAvailabilityMessage: String {
-        if localRemoteClient == nil && serverRelayStore == nil {
-            return "Mac 앱에서 로컬 원격 제어를 켜거나, HTTPS 서버 릴레이 주소와 토큰을 입력해 주세요."
+        if serverRelayStore == nil {
+            return "Mac 앱과 iPhone 앱에 같은 HTTPS 서버 릴레이 주소와 토큰을 입력해 주세요."
         }
         return ""
     }
 
-    private var localRemoteClient: LocalRemoteClient? {
-        #if canImport(Network)
-        guard let connectionInfo = localConnectionInfo,
-              let token = connectionInfo.token,
-              !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-        return LocalRemoteClient(host: connectionInfo.host, port: connectionInfo.port, token: token)
-        #else
-        return nil
-        #endif
-    }
-
     private var serverRelayStore: ServerRelayCommandStore? {
         try? ServerRelayCommandStore(urlText: serverURL, token: serverToken)
-    }
-
-    private var localConnectionInfo: LocalRemoteConnectionInfo? {
-        LocalRemoteConnectionInfo.parse(
-            hostText: localHost,
-            portText: localPortText,
-            tokenText: localToken
-        )
     }
 
     var latestCommand: RemoteRunCommand? {
@@ -135,9 +85,7 @@ final class CompanionModel: ObservableObject {
     }
 
     var canCancelRunningCommand: Bool {
-        localRemoteConfigured
-            && !isSubmitting
-            && (hasInFlightRequest || status.phase == "running")
+        false
     }
 
     var shouldShowAuthCompletion: Bool {
@@ -168,14 +116,24 @@ final class CompanionModel: ObservableObject {
         case .pending:
             return "\(latestCommand.kind.displayName) 요청을 Mac이 확인하기를 기다리는 중"
         case .running:
-            return "Mac에서 \(latestCommand.kind.displayName) 실행 중"
+            return "Mac에서 \(latestCommand.kind.displayName) 처리 중"
         case .completed:
             return "최근 요청 완료: \(latestCommand.kind.displayName)"
         case .failed:
             return "최근 요청 실패: \(latestCommand.kind.displayName)"
         case .macUnavailable:
-            return "Mac 앱 응답 없음. Mac에서 로컬 원격 제어를 켜야 합니다."
+            return "Mac 앱 응답 없음. Mac에서 서버 릴레이가 켜져 있는지 확인해 주세요."
         }
+    }
+
+    var activeRequestLabel: String {
+        if let latestCommand, latestDisplayStatus?.isInFlight == true {
+            return "\(latestCommand.kind.displayName) 처리 중"
+        }
+        if status.phase == "running" {
+            return "요청 처리 중"
+        }
+        return "요청 처리 중"
     }
 
     var loginAttentionMessage: String? {
@@ -205,22 +163,10 @@ final class CompanionModel: ObservableObject {
             isSubmitting = false
         }
         do {
-            if let localRemoteClient {
-                let response = try await localRemoteClient.run(kind)
-                apply(response)
-                errorMessage = ""
-            } else if let serverRelayStore {
+            if let serverRelayStore {
                 var command = RemoteRunCommand(kind: kind)
                 command.summary = status
                 try await serverRelayStore.create(command)
-                recentCommands.insert(command, at: 0)
-                status = command.summary
-                lastRefreshAt = Date()
-                errorMessage = ""
-                await refreshRecent()
-            } else if let cloudStore {
-                let command = RemoteRunCommand(kind: kind)
-                try await cloudStore.create(command)
                 recentCommands.insert(command, at: 0)
                 status = command.summary
                 lastRefreshAt = Date()
@@ -235,27 +181,7 @@ final class CompanionModel: ObservableObject {
     }
 
     func cancelRunningCommand() async {
-        guard let localRemoteClient else {
-            errorMessage = "실행 중단은 같은 Wi-Fi 또는 개인 VPN의 Mac 로컬 연결에서만 사용할 수 있습니다."
-            return
-        }
-        guard hasInFlightRequest || status.phase == "running" else {
-            errorMessage = "중단할 실행이 없습니다."
-            return
-        }
-        isSubmitting = true
-        defer {
-            isSubmitting = false
-        }
-        do {
-            let response = try await localRemoteClient.cancelRunningCommand()
-            apply(response)
-            connectionMessage = response.message.isEmpty ? "실행 중단을 요청했습니다." : response.message
-            connectionSucceeded = true
-            errorMessage = ""
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        errorMessage = "서버 릴레이에서는 아직 실행 중단을 지원하지 않습니다."
     }
 
     func createItemAction(_ actionKind: ServerRelayItemActionKind, item: ServerRelaySyncItem) async {
@@ -293,11 +219,7 @@ final class CompanionModel: ObservableObject {
             isRefreshing = false
         }
         do {
-            if let localRemoteClient {
-                let response = try await localRemoteClient.fetchStatus()
-                apply(response)
-                errorMessage = ""
-            } else if let serverRelayStore {
+            if let serverRelayStore {
                 let response = try await serverRelayStore.fetchStatusResponse()
                 apply(response)
                 let commands = try await serverRelayStore.fetchRecent(limit: 8)
@@ -310,54 +232,11 @@ final class CompanionModel: ObservableObject {
                 }
                 lastRefreshAt = Date()
                 errorMessage = ""
-            } else if let cloudStore {
-                let commands = try await cloudStore.fetchRecent(limit: 8)
-                recentCommands = commands
-                if let latest = commands.first {
-                    status = latest.summary
-                }
-                lastRefreshAt = Date()
-                errorMessage = ""
             } else {
                 errorMessage = ""
             }
         } catch {
             errorMessage = error.localizedDescription
-        }
-    }
-
-    func checkLocalConnection() async {
-        connectionMessage = "Mac 연결을 확인하는 중..."
-        connectionSucceeded = nil
-        errorMessage = ""
-        isRefreshing = true
-        defer {
-            isRefreshing = false
-        }
-
-        guard let localRemoteClient else {
-            let message = remoteAvailabilityMessage
-            connectionMessage = message
-            connectionSucceeded = false
-            errorMessage = message
-            userAlert = UserAlert(title: "연결 확인 실패", message: message)
-            return
-        }
-
-        do {
-            let response = try await localRemoteClient.fetchStatus()
-            apply(response)
-            let message = "Mac 앱과 연결됐습니다."
-            connectionMessage = message
-            connectionSucceeded = true
-            errorMessage = ""
-            userAlert = UserAlert(title: "연결 확인 완료", message: message)
-        } catch {
-            let message = error.localizedDescription
-            connectionMessage = message
-            connectionSucceeded = false
-            errorMessage = message
-            userAlert = UserAlert(title: "연결 확인 실패", message: message)
         }
     }
 
@@ -397,29 +276,6 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    func pasteLocalConnectionInfo() {
-        #if canImport(UIKit)
-        guard let text = UIPasteboard.general.string,
-              let connectionInfo = LocalRemoteConnectionInfo.parse(hostText: text) else {
-            errorMessage = "붙여넣은 텍스트에서 Mac 주소와 토큰을 찾지 못했습니다."
-            return
-        }
-        localHost = "\(connectionInfo.host):\(connectionInfo.port)"
-        localPortText = "\(connectionInfo.port)"
-        if let token = connectionInfo.token {
-            localToken = token
-        }
-        if UIPasteboard.general.string == text {
-            UIPasteboard.general.string = ""
-        }
-        connectionMessage = "연결 정보를 붙여넣었습니다. 이제 연결 확인을 눌러 주세요."
-        connectionSucceeded = nil
-        errorMessage = ""
-        #else
-        errorMessage = "이 빌드는 클립보드 붙여넣기를 사용할 수 없습니다."
-        #endif
-    }
-
     func pasteServerRelayConnectionInfo() {
         #if canImport(UIKit)
         guard let text = UIPasteboard.general.string,
@@ -438,15 +294,6 @@ final class CompanionModel: ObservableObject {
         #else
         errorMessage = "이 빌드는 클립보드 붙여넣기를 사용할 수 없습니다."
         #endif
-    }
-
-    func clearLocalConnectionInfo() {
-        localHost = ""
-        localPortText = "\(LocalRemoteConnectionInfo.defaultPort)"
-        localToken = ""
-        connectionMessage = "연결 정보를 지웠습니다."
-        connectionSucceeded = nil
-        errorMessage = ""
     }
 
     func clearServerRelayConnectionInfo() {
@@ -486,16 +333,6 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    private static func persistLocalToken(_ token: String) {
-        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedToken.isEmpty {
-            LocalRemoteTokenStore.delete(account: "ios")
-        } else {
-            LocalRemoteTokenStore.save(trimmedToken, account: "ios")
-        }
-        UserDefaults.standard.removeObject(forKey: Self.localTokenKey)
-    }
-
     private static func persistServerToken(_ token: String) {
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedToken.isEmpty {
@@ -504,6 +341,13 @@ final class CompanionModel: ObservableObject {
             LocalRemoteTokenStore.save(trimmedToken, account: "server-relay-ios")
         }
         UserDefaults.standard.removeObject(forKey: Self.serverTokenKey)
+    }
+
+    private static func clearDeprecatedLocalConnectionInfo() {
+        UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalHostKey)
+        UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalPortKey)
+        UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalTokenKey)
+        LocalRemoteTokenStore.delete(account: "ios")
     }
 }
 
@@ -586,7 +430,7 @@ private struct CompanionRunScreen: View {
             RemoteCommandPanel(model: model, compact: false)
             RemoteChangeSummaryPanel(status: model.status)
             RemoteDiagnosticPanel(model: model)
-            InfoBanner(message: "iPhone은 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Mac이 켜져 있고 같은 Wi-Fi 또는 개인 VPN으로 연결되어 있어야 합니다.")
+            InfoBanner(message: "iPhone은 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Cloudflare 서버 릴레이를 쓰면 같은 Wi‑Fi가 아니어도 요청을 보낼 수 있지만, 실제 동기화는 Mac 앱이 켜져 있어야 실행됩니다.")
         }
     }
 }
@@ -595,14 +439,12 @@ private struct CompanionConnectionScreen: View {
     @ObservedObject var model: CompanionModel
 
     var body: some View {
-        CompanionScreenContainer(title: "Mac 연결", model: model) {
-            LocalConnectionPanel(model: model)
+        CompanionScreenContainer(title: "서버 연결", model: model) {
             ServerRelayConnectionPanel(model: model)
-            if !model.localRemoteConfigured && !model.serverRelayConfigured {
+            if !model.serverRelayConfigured {
                 InfoBanner(message: model.remoteAvailabilityMessage)
             }
             RemotePrivacyNote()
-            RemoteConnectionOptionsNote()
         }
     }
 }
@@ -667,100 +509,6 @@ private struct RemoteAttentionStack: View {
     }
 }
 
-private struct LocalConnectionPanel: View {
-    @ObservedObject var model: CompanionModel
-    @State private var showConnectionFields = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: model.localRemoteConfigured ? "checkmark.circle.fill" : "link.badge.plus")
-                    .foregroundStyle(model.localRemoteConfigured ? .green : .secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Mac 연결")
-                        .font(.headline)
-                    Text(model.localRemoteConfigured ? "연결 정보가 저장되어 있습니다." : "Mac 앱에서 복사한 연결 정보를 붙여넣어 주세요.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-
-            DisclosureGroup(isExpanded: $showConnectionFields) {
-                VStack(alignment: .leading, spacing: 8) {
-                    TextField("Mac 주소 예: 192.168.0.10:18483", text: $model.localHost)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    SecureField("토큰", text: $model.localToken)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    Text("포트는 주소에 없으면 \(model.localPortText)를 사용합니다.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 8)
-            } label: {
-                Text("연결 정보")
-                    .font(.subheadline.weight(.semibold))
-            }
-
-            HStack(spacing: 8) {
-                Button {
-                    model.pasteLocalConnectionInfo()
-                } label: {
-                    Label("붙여넣기", systemImage: "doc.on.clipboard")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-
-                Button(role: .destructive) {
-                    model.clearLocalConnectionInfo()
-                } label: {
-                    Label("지우기", systemImage: "trash")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!model.localRemoteConfigured && model.localHost.isEmpty && model.localToken.isEmpty)
-            }
-
-            HStack(spacing: 8) {
-                Button {
-                    Task {
-                        await model.checkLocalConnection()
-                    }
-                } label: {
-                    Label("연결 확인", systemImage: "antenna.radiowaves.left.and.right")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(model.isRefreshing)
-
-                Button {
-                    Task {
-                        await model.createCommand(.doctor)
-                    }
-                } label: {
-                    Label("로그인 확인", systemImage: "person.crop.circle.badge.questionmark")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!model.localRemoteConfigured || model.isSubmitting || model.hasInFlightRequest)
-            }
-
-            if !model.connectionMessage.isEmpty {
-                ConnectionNoticeBanner(
-                    message: model.connectionMessage,
-                    succeeded: model.connectionSucceeded
-                )
-            }
-            Text("처음 연결할 때 iOS의 로컬 네트워크 권한 알림이 뜨면 허용해야 합니다.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .background(.quinary)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
 private struct ServerRelayConnectionPanel: View {
     @ObservedObject var model: CompanionModel
     @State private var showConnectionFields = false
@@ -773,7 +521,7 @@ private struct ServerRelayConnectionPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("서버 릴레이")
                         .font(.headline)
-                    Text(model.serverRelayConfigured ? "서버 연결 정보가 저장되어 있습니다." : "집 밖에서도 쓰려면 HTTPS 서버 주소와 토큰을 입력해 주세요.")
+                    Text(model.serverRelayConfigured ? "서버 연결 정보가 저장되어 있습니다." : "Cloudflare 릴레이 연결 정보를 붙여넣어 주세요.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -786,7 +534,7 @@ private struct ServerRelayConnectionPanel: View {
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                     SecureField("서버 토큰", text: $model.serverToken)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                    Text("공개 인터넷에서 쓰는 서버는 HTTPS여야 합니다.")
+                    Text("Mac 앱에도 같은 서버 주소와 토큰이 저장되어 있어야 합니다.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -815,16 +563,29 @@ private struct ServerRelayConnectionPanel: View {
                 .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
             }
 
-            Button {
-                Task {
-                    await model.checkServerRelayConnection()
+            HStack(spacing: 8) {
+                Button {
+                    Task {
+                        await model.checkServerRelayConnection()
+                    }
+                } label: {
+                    Label("서버 연결 확인", systemImage: "network")
+                        .frame(maxWidth: .infinity)
                 }
-            } label: {
-                Label("서버 연결 확인", systemImage: "network")
-                    .frame(maxWidth: .infinity)
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isRefreshing)
+
+                Button {
+                    Task {
+                        await model.createCommand(.report)
+                    }
+                } label: {
+                    Label("요약 갱신", systemImage: "arrow.triangle.2.circlepath")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!model.serverRelayConfigured || model.isSubmitting || model.hasInFlightRequest)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(model.isRefreshing)
         }
         .padding(12)
         .background(.quinary)
@@ -1859,7 +1620,7 @@ private struct RemoteCommandPanel: View {
                     .font(.headline)
                 Spacer()
                 if model.hasInFlightRequest || model.status.phase == "running" {
-                    Label("실행 중", systemImage: "arrow.triangle.2.circlepath")
+                    Label(model.activeRequestLabel, systemImage: "arrow.triangle.2.circlepath")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.blue)
                 }
@@ -2065,28 +1826,9 @@ private struct RemoteCommandRow: View {
 private struct RemotePrivacyNote: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("원격 요청은 로컬 토큰으로 보호", systemImage: "lock")
+            Label("원격 요청은 서버 릴레이 토큰으로 보호", systemImage: "lock")
                 .font(.subheadline.weight(.semibold))
-            Text("같은 Wi-Fi에서는 Mac 앱에 직접 요청하고, 밖에서는 HTTPS 서버 릴레이를 사용할 수 있습니다. KLMS URL, 원본 로그, config.env, 파일 경로는 iPhone이나 서버에 저장하지 않습니다.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quinary)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-private struct RemoteConnectionOptionsNote: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("원격 연결 방법", systemImage: "network")
-                .font(.subheadline.weight(.semibold))
-            Text("가장 안정적인 방식은 같은 Wi-Fi에서 Mac 앱의 연결 정보를 붙여넣는 것입니다.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text("밖에서도 쓰려면 HTTPS 서버 릴레이를 쓰거나, Mac과 iPhone을 같은 개인 VPN에 넣고 Mac의 VPN 주소를 입력하면 됩니다. Mac 포트를 인터넷에 직접 여는 방식은 권장하지 않습니다.")
+            Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태만 보관합니다. KLMS URL, 원본 로그, config.env, 파일 경로는 iPhone이나 서버에 저장하지 않습니다.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -2161,7 +1903,7 @@ private extension String {
     var klmsRemotePhaseName: String {
         switch trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "running":
-            "실행 중"
+            "요청 처리 중"
         case "completed":
             "완료"
         case "failed":

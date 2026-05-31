@@ -72,55 +72,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("iPhone") {
-                Toggle(
-                    "로컬 원격 제어",
-                    isOn: Binding(
-                        get: { model.localRemoteEnabled },
-                        set: { model.setLocalRemoteEnabled($0) }
-                    )
-                )
-                LabeledContent("로컬 상태") {
-                    Text(model.localRemoteStatusMessage ?? "대기 중")
-                        .foregroundStyle(.secondary)
-                }
-                if model.localRemoteEnabled {
-                    LabeledContent("Mac 주소") {
-                        HStack(spacing: 6) {
-                            Text(model.localRemotePrimaryEndpoint)
-                                .font(.caption.monospaced())
-                                .textSelection(.enabled)
-                            Button("복사") {
-                                model.copyLocalRemoteEndpoint()
-                            }
-                            .font(.caption)
-                        }
-                    }
-                    LabeledContent("토큰") {
-                        HStack {
-                            Text(model.localRemoteToken)
-                                .font(.caption.monospaced())
-                                .textSelection(.enabled)
-                            Button("복사") {
-                                model.copyLocalRemoteToken()
-                            }
-                            Button("재생성") {
-                                model.regenerateLocalRemoteToken()
-                            }
-                        }
-                    }
-                    LabeledContent("연결 정보") {
-                        Button("주소와 토큰 복사") {
-                            model.copyLocalRemoteConnectionInfo()
-                        }
-                    }
-                }
-                Text("무료 Apple ID에서는 이 로컬 원격 제어를 사용합니다. iPhone과 Mac이 같은 Wi-Fi에 있어야 하며, iPhone 앱에 Mac 주소와 토큰을 입력합니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Divider()
-
+            Section("iPhone 서버 릴레이") {
                 Toggle(
                     "서버 릴레이 사용",
                     isOn: Binding(
@@ -146,44 +98,36 @@ struct SettingsView: View {
                     Text(model.serverRelayStatusMessage ?? "대기 중")
                         .foregroundStyle(.secondary)
                 }
-                HStack {
-                    Button("서버 연결 정보 복사") {
-                        model.copyServerRelayConnectionInfo()
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Button("붙여넣기") {
+                            model.pasteServerRelayConnectionInfo()
+                        }
+                        Button("연결 확인") {
+                            Task {
+                                await model.checkServerRelayConnection()
+                            }
+                        }
+                        .disabled(!model.serverRelayConfigured)
+                        Button("확인 후 켜기") {
+                            Task {
+                                await model.checkServerRelayConnection(enableOnSuccess: true)
+                            }
+                        }
+                        .disabled(!model.serverRelayConfigured)
                     }
-                    Button("서버 토큰 복사") {
-                        model.copyServerRelayToken()
-                    }
-                    .disabled(model.serverRelayToken.isEmpty)
-                }
-                Text("집 밖에서도 쓰려면 서버 주소는 HTTPS여야 합니다. 서버에는 실행 요청과 요약 숫자만 저장하고 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Divider()
-
-                LabeledContent("CloudKit 권한") {
-                    Text(model.appDiagnostics.codeSigning.cloudKitEntitled ? "설정됨" : "설정 필요")
-                        .foregroundStyle(model.appDiagnostics.codeSigning.cloudKitEntitled ? Color.secondary : Color.orange)
-                }
-                Toggle(
-                    "CloudKit 요청 자동 처리",
-                    isOn: Binding(
-                        get: { model.remoteProcessingEnabled },
-                        set: { model.setRemoteProcessingEnabled($0) }
-                    )
-                )
-                .disabled(!model.appDiagnostics.codeSigning.cloudKitEntitled)
-                LabeledContent("처리 상태") {
-                    Text(model.remoteProcessingStatusMessage ?? "대기 중")
-                        .foregroundStyle(.secondary)
-                }
-                if let remote = model.lastRemoteCommand {
-                    LabeledContent("최근 요청") {
-                        Text("\(remote.kind.displayName) · \(remote.status.displayName)")
-                            .foregroundStyle(.secondary)
+                    HStack {
+                        Button("서버 연결 정보 복사") {
+                            model.copyServerRelayConnectionInfo()
+                        }
+                        .disabled(!model.serverRelayConfigured)
+                        Button("서버 토큰 복사") {
+                            model.copyServerRelayToken()
+                        }
+                        .disabled(model.serverRelayToken.isEmpty)
                     }
                 }
-                Text("CloudKit은 유료 Apple Developer 팀과 iCloud container/provisioning이 있을 때만 사용합니다.")
+                Text("Cloudflare Workers 릴레이 연결 정보는 여기서 붙여넣습니다. Mac에서 서버 릴레이 사용을 켜 두면 iPhone/Windows가 같은 서버 주소와 토큰으로 요청을 보낼 수 있습니다. 서버에는 실행 요청과 요약 숫자만 저장하고 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
