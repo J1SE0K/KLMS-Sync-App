@@ -727,8 +727,10 @@ final class KLMSMacModel: ObservableObject {
             }
         }
 
+        let noticeUserState = snapshot.noticeUserState?.notices ?? [:]
         items += snapshot.noticeDigest?.notices.map {
-            ServerRelaySyncItem(
+            let interaction = noticeUserState[$0.noticeIdentifier]
+            return ServerRelaySyncItem(
                 id: serverRelayNoticeSyncItemID($0),
                 kind: "notice",
                 course: $0.course,
@@ -737,7 +739,10 @@ final class KLMSMacModel: ObservableObject {
                 status: $0.changeState,
                 detail: $0.summary.nilIfBlank ?? $0.excerpt,
                 attachmentCount: max($0.attachmentItems.count, $0.attachments.count),
-                updatedAt: updatedAt
+                updatedAt: updatedAt,
+                isRead: serverRelayNoticeIsRead(interaction, fingerprint: $0.fingerprint),
+                isImportant: interaction?.important == true,
+                isHidden: interaction?.hidden == true
             )
         } ?? []
 
@@ -750,7 +755,8 @@ final class KLMSMacModel: ObservableObject {
                 timestamp: $0.klmsTimestamp.nilIfBlank ?? $0.klmsTimestampText.nilIfBlank ?? $0.localDownloadedAt,
                 status: $0.bucket,
                 detail: $0.klmsTimestampText,
-                updatedAt: updatedAt
+                updatedAt: updatedAt,
+                isHidden: snapshot.appUserState?.files[serverRelayFileUserStateKey($0)]?.isHiddenLike == true
             )
         }
 
@@ -902,6 +908,16 @@ final class KLMSMacModel: ObservableObject {
             kind: "notice",
             parts: [notice.noticeIdentifier, notice.fingerprint, notice.course, notice.title, notice.postedAt]
         )
+    }
+
+    private func serverRelayNoticeIsRead(_ state: NoticeInteractionState?, fingerprint: String) -> Bool {
+        guard let state else {
+            return false
+        }
+        if state.readAt?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return true
+        }
+        return !fingerprint.isEmpty && state.readFingerprint == fingerprint
     }
 
     private func serverRelayFileSyncItemID(_ entry: CourseFileManifestEntry) -> String {

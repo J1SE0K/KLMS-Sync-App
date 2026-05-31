@@ -236,7 +236,9 @@ final class RemoteCommandModelTests: XCTestCase {
             status: "new",
             detail: "시험 범위 공지",
             attachmentCount: 1,
-            updatedAt: "2026-05-31T10:01:00Z"
+            updatedAt: "2026-05-31T10:01:00Z",
+            isRead: true,
+            isImportant: true
         )
         let data = ServerRelaySyncData(generatedAt: "2026-05-31T10:01:00Z", items: [item])
 
@@ -246,7 +248,32 @@ final class RemoteCommandModelTests: XCTestCase {
 
         XCTAssertEqual(decoded.generatedAt, "2026-05-31T10:01:00Z")
         XCTAssertEqual(decoded.items, [item])
+        XCTAssertTrue(decoded.items[0].isRead)
+        XCTAssertTrue(decoded.items[0].isImportant)
+        XCTAssertFalse(decoded.items[0].isHidden)
         XCTAssertFalse(rawJSON.contains("https://klms.example/private/notice"))
+    }
+
+    func testServerRelaySyncItemDecodesOlderPayloadWithoutInteractionFlags() throws {
+        let payload = """
+        {
+          "id": "notice-1",
+          "kind": "notice",
+          "course": "영미 단편소설",
+          "title": "기말고사 안내",
+          "timestamp": "2026-05-31T10:00:00Z",
+          "status": "new",
+          "detail": "시험 범위 공지",
+          "attachmentCount": 1,
+          "updatedAt": "2026-05-31T10:01:00Z"
+        }
+        """.data(using: .utf8)!
+
+        let item = try JSONDecoder.klmsLocalRemote.decode(ServerRelaySyncItem.self, from: payload)
+
+        XCTAssertFalse(item.isRead)
+        XCTAssertFalse(item.isImportant)
+        XCTAssertFalse(item.isHidden)
     }
 
     func testRemoteCommandKindMapsFromEngineCommands() {

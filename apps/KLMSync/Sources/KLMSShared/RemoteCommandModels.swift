@@ -884,6 +884,9 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
     public var detail: String
     public var attachmentCount: Int
     public var updatedAt: String
+    public var isRead: Bool
+    public var isImportant: Bool
+    public var isHidden: Bool
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -895,6 +898,9 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
         case detail
         case attachmentCount
         case updatedAt
+        case isRead
+        case isImportant
+        case isHidden
     }
 
     public init(
@@ -906,7 +912,10 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
         status: String = "",
         detail: String = "",
         attachmentCount: Int = 0,
-        updatedAt: String = ServerRelaySyncItem.isoTimestamp()
+        updatedAt: String = ServerRelaySyncItem.isoTimestamp(),
+        isRead: Bool = false,
+        isImportant: Bool = false,
+        isHidden: Bool = false
     ) {
         self.id = id
         self.kind = kind
@@ -917,6 +926,25 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
         self.detail = detail
         self.attachmentCount = attachmentCount
         self.updatedAt = updatedAt
+        self.isRead = isRead
+        self.isImportant = isImportant
+        self.isHidden = isHidden
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        kind = try container.decode(String.self, forKey: .kind)
+        course = try container.decodeIfPresent(String.self, forKey: .course) ?? ""
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp) ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        detail = try container.decodeIfPresent(String.self, forKey: .detail) ?? ""
+        attachmentCount = try container.decodeIfPresent(Int.self, forKey: .attachmentCount) ?? 0
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt) ?? ServerRelaySyncItem.isoTimestamp()
+        isRead = try container.decodeIfPresent(Bool.self, forKey: .isRead) ?? false
+        isImportant = try container.decodeIfPresent(Bool.self, forKey: .isImportant) ?? false
+        isHidden = try container.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
     }
 
     public static func stableID(kind: String, parts: [String]) -> String {

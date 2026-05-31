@@ -1475,6 +1475,10 @@ private struct ServerSyncItemDetailView: View {
     private var detailFields: some View {
         VStack(alignment: .leading, spacing: 10) {
             DetailFieldRow(title: "상태", value: item.status)
+            if item.kind == "notice" {
+                DetailFieldRow(title: "읽음", value: item.isRead ? "읽음" : "읽지 않음")
+                DetailFieldRow(title: "중요", value: item.isImportant ? "중요" : "일반")
+            }
             DetailFieldRow(title: "시간", value: item.timestamp)
             DetailFieldRow(title: "세부 내용", value: item.detail)
             DetailFieldRow(title: "첨부", value: item.attachmentCount > 0 ? "\(item.attachmentCount)개" : "")
@@ -1491,18 +1495,44 @@ private struct ServerSyncItemDetailView: View {
             if !itemActions.isEmpty {
                 Text("항목 처리")
                     .font(.headline)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
-                    ForEach(itemActions) { action in
-                        Button {
-                            Task {
-                                await model.createItemAction(action, item: item)
+                if item.kind == "notice" {
+                    VStack(spacing: 8) {
+                        RemoteItemToggleButton(
+                            title: "읽음",
+                            isOn: item.isRead,
+                            onText: "ON · 읽음 처리됨",
+                            offText: "OFF · 읽지 않음",
+                            systemImage: item.isRead ? "checkmark.circle.fill" : "circle",
+                            action: item.isRead ? .noticeUnread : .noticeRead,
+                            item: item,
+                            model: model
+                        )
+                        RemoteItemToggleButton(
+                            title: "중요",
+                            isOn: item.isImportant,
+                            onText: "ON · 중요 공지",
+                            offText: "OFF · 일반 공지",
+                            systemImage: item.isImportant ? "star.fill" : "star",
+                            action: item.isImportant ? .noticeUnimportant : .noticeImportant,
+                            item: item,
+                            model: model
+                        )
+                    }
+                }
+                if !regularItemActions.isEmpty {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
+                        ForEach(regularItemActions) { action in
+                            Button {
+                                Task {
+                                    await model.createItemAction(action, item: item)
+                                }
+                            } label: {
+                                Text(action.displayName)
+                                    .frame(maxWidth: .infinity, minHeight: 38)
                             }
-                        } label: {
-                            Text(action.displayName)
-                                .frame(maxWidth: .infinity, minHeight: 38)
+                            .buttonStyle(.bordered)
+                            .disabled(!model.serverRelayConfigured || model.isSubmitting)
                         }
-                        .buttonStyle(.bordered)
-                        .disabled(!model.serverRelayConfigured || model.isSubmitting)
                     }
                 }
                 if !model.serverRelayConfigured {
@@ -1549,12 +1579,16 @@ private struct ServerSyncItemDetailView: View {
         case "exam":
             [.examRestore, .examIgnore]
         case "notice":
-            [.noticeRead, .noticeUnread, .noticeImportant, .noticeUnimportant, .noticeHide]
+            [item.isHidden ? .noticeUnhide : .noticeHide]
         case "file":
-            [.fileHide, .fileUnhide]
+            [item.isHidden ? .fileUnhide : .fileHide]
         default:
             []
         }
+    }
+
+    private var regularItemActions: [ServerRelayItemActionKind] {
+        itemActions
     }
 
     private var relevantCommand: RemoteCommandKind {
@@ -1648,6 +1682,55 @@ private struct DetailFieldRow: View {
     }
 }
 
+private struct RemoteItemToggleButton: View {
+    var title: String
+    var isOn: Bool
+    var onText: String
+    var offText: String
+    var systemImage: String
+    var action: ServerRelayItemActionKind
+    var item: ServerRelaySyncItem
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        Button {
+            Task {
+                await model.createItemAction(action, item: item)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(isOn ? onText : offText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Text(isOn ? "ON" : "OFF")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(isOn ? Color.white : Color.secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(isOn ? Color.accentColor : Color.secondary.opacity(0.14))
+                    .clipShape(Capsule())
+            }
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.bordered)
+        .tint(isOn ? .accentColor : .secondary)
+        .disabled(!model.serverRelayConfigured || model.isSubmitting)
+        .accessibilityLabel("\(title) \(isOn ? "켜짐" : "꺼짐")")
+        .accessibilityHint("누르면 \(action.displayName) 요청을 보냅니다.")
+    }
+}
+
 private struct ServerSyncDataRow: View {
     var item: ServerRelaySyncItem
 
@@ -1692,6 +1775,12 @@ private struct ServerSyncDataRow: View {
         }
         if item.attachmentCount > 0 {
             parts.append("첨부 \(item.attachmentCount)")
+        }
+        if item.kind == "notice" {
+            parts.append(item.isRead ? "읽음" : "안 읽음")
+            if item.isImportant {
+                parts.append("중요")
+            }
         }
         if !item.detail.isEmpty {
             parts.append(item.detail)

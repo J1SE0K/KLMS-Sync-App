@@ -662,7 +662,23 @@ function normalizeSyncItem(raw) {
     detail: String(raw.detail || "").trim(),
     attachmentCount: Number.isFinite(Number(raw.attachmentCount)) ? Number(raw.attachmentCount) : 0,
     updatedAt: String(raw.updatedAt || now),
+    isRead: normalizeBoolean(raw.isRead),
+    isImportant: normalizeBoolean(raw.isImportant),
+    isHidden: normalizeBoolean(raw.isHidden),
   };
+}
+
+function normalizeBoolean(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  if (typeof value === "string") {
+    return ["1", "true", "yes", "y", "on"].includes(value.trim().toLowerCase());
+  }
+  return false;
 }
 
 function replaceSyncItems(items, generatedAt) {
