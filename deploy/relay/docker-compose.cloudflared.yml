@@ -1,0 +1,33 @@
+services:
+  relay:
+    build:
+      context: ../..
+      dockerfile: deploy/relay/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.cloudflare
+    environment:
+      KLMS_RELAY_HOST: 0.0.0.0
+      KLMS_RELAY_PORT: 18484
+      KLMS_RELAY_DB: /data/klms-sync-relay.sqlite
+    expose:
+      - "18484"
+    volumes:
+      - relay-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18484/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      relay:
+        condition: service_healthy
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+
+volumes:
+  relay-data:

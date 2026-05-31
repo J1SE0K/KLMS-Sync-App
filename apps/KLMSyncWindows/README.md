@@ -40,6 +40,8 @@ npm run dist:win
 
 HTTP는 `localhost`, 사설 IP, `.local` 주소에서만 허용한다. 외부에서 쓰는 공개 주소는 HTTPS여야 한다.
 
+같은 네트워크 밖에서 쓰려면 `deploy/relay` 템플릿으로 HTTPS 릴레이를 띄운 뒤 Mac 앱과 Windows 앱에 같은 서버 주소/토큰을 넣는다. Windows 앱은 Mac에 직접 접속하지 않고 서버 DB에 요청을 남기며, Mac 앱이 polling해서 실제 동기화를 실행한다.
+
 ## 보안
 
 - 토큰은 Electron main process에서만 읽고 renderer에는 저장하지 않는다.

@@ -81,6 +81,36 @@ iPhone에서 외부 접속하려면 서버 주소는 HTTPS여야 한다. 권장 
 
 Mac 포트를 인터넷에 직접 열지 않는다.
 
+바로 배포하려면 [deploy/relay](../deploy/relay)를 쓴다. Docker Compose가 `klms_relay_server.mjs`, SQLite volume, Caddy HTTPS reverse proxy를 같이 띄운다.
+
+```sh
+cd deploy/relay
+cp relay.env.example .env
+openssl rand -hex 32
+# .env에 KLMS_RELAY_DOMAIN, KLMS_RELAY_TOKEN 입력
+docker compose up -d --build
+```
+
+이 경우 앱 연결값은 아래처럼 통일한다.
+
+```text
+서버 주소: https://sync.example.com
+토큰: <KLMS_RELAY_TOKEN>
+```
+
+서브패스를 쓰고 싶으면 `https://sync.example.com/relay`도 지원한다.
+
+VPS 없이 Cloudflare Tunnel을 쓸 수도 있다.
+
+```sh
+cd deploy/relay
+cp relay.cloudflare.env.example .env.cloudflare
+# .env.cloudflare에 KLMS_RELAY_TOKEN, CLOUDFLARE_TUNNEL_TOKEN 입력
+docker compose -f docker-compose.cloudflared.yml up -d --build
+```
+
+Cloudflare Public hostname의 서비스 대상은 `http://relay:18484`로 둔다.
+
 ## 앱 연결
 
 Mac 앱:
@@ -104,7 +134,7 @@ Windows 앱:
 3. `붙여넣기 읽기`, `저장`, `연결 확인`을 누른다.
 4. 대시보드에서 항목을 열고 읽음/중요/숨김 같은 항목 처리를 요청한다.
 
-Mac 앱은 켜져 있어야 하며, 서버 요청을 polling해서 한 번에 하나씩 실행한다.
+Mac 앱은 켜져 있어야 하며, 서버 요청을 polling해서 한 번에 하나씩 실행한다. Windows와 iPhone은 Mac과 같은 네트워크에 있을 필요가 없다. 대신 Mac 앱, Windows 앱, iPhone 앱이 모두 같은 HTTPS 서버 릴레이 주소와 토큰을 사용해야 한다.
 
 Mac 앱은 상태를 올릴 때 과제, 시험, 공지, 파일 목록도 같이 `/v1/sync-data`에 올린다. iPhone 앱은 서버 연결이 설정되어 있으면 상태 화면에서 이 목록을 읽어 보여준다.
 

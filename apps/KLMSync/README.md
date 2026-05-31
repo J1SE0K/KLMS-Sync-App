@@ -42,7 +42,7 @@ For a free Apple ID, use local-network remote control:
 
 For use away from the same network, run the HTTPS relay server documented in `docs/server-relay.md`, then enter the relay URL and token in both apps. The relay uses SQLite and stores command/status metadata plus sanitized assignment, exam, notice, and file list rows. KLMS scraping and macOS app integrations still run on the Mac, and raw logs, KLMS URLs, `config.env`, Kaikey state, and absolute local file paths are not uploaded.
 
-The Windows companion lives in `apps/KLMSyncWindows`. It uses the same relay API as the iPhone app and can read the dashboard, browse sanitized item lists, toggle notice read/important state, and create remote sync requests.
+The Windows companion lives in `apps/KLMSyncWindows`. It uses the same relay API as the iPhone app and can read the dashboard, browse sanitized item lists, toggle notice read/important state, and create remote sync requests. For use outside the same network, deploy the HTTPS relay template in `deploy/relay` and point the Mac, iPhone, and Windows apps to the same relay URL and token.
 
 On the Mac worker, install the relay as a LaunchAgent with:
 

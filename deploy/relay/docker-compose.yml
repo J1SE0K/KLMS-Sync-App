@@ -1,0 +1,43 @@
+services:
+  relay:
+    build:
+      context: ../..
+      dockerfile: deploy/relay/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      KLMS_RELAY_HOST: 0.0.0.0
+      KLMS_RELAY_PORT: 18484
+      KLMS_RELAY_DB: /data/klms-sync-relay.sqlite
+    expose:
+      - "18484"
+    volumes:
+      - relay-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18484/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      relay:
+        condition: service_healthy
+    environment:
+      KLMS_RELAY_DOMAIN: ${KLMS_RELAY_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  relay-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,21 @@
+{$KLMS_RELAY_DOMAIN} {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+  }
+
+  handle /healthz {
+    reverse_proxy relay:18484
+  }
+
+  handle_path /relay/* {
+    reverse_proxy relay:18484
+  }
+
+  handle {
+    reverse_proxy relay:18484
+  }
+}

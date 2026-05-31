@@ -1,0 +1,6 @@
+*
+!deploy
+!deploy/relay
+!deploy/relay/**
+!tools
+!tools/klms_relay_server.mjs
