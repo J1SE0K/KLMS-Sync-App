@@ -521,10 +521,19 @@ struct CompanionRootView: View {
 
 private struct CompanionStatusScreen: View {
     @ObservedObject var model: CompanionModel
+    @State private var selectedDashboardCategory: DashboardMetricCategory = .assignments
 
     var body: some View {
         CompanionScreenContainer(title: "상태", model: model) {
-            RemoteStatusHeader(model: model)
+            RemoteStatusHeader(
+                model: model,
+                selectedCategory: $selectedDashboardCategory
+            )
+            DashboardMetricDetailPanel(
+                category: selectedDashboardCategory,
+                status: model.status,
+                items: model.syncItems
+            )
             RemoteAttentionStack(model: model)
             RemoteChangeSummaryPanel(status: model.status)
             ServerSyncDataPanel(items: model.syncItems)
@@ -831,8 +840,131 @@ private struct ConnectionNoticeBanner: View {
     }
 }
 
+private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
+    case assignments
+    case exams
+    case notices
+    case files
+    case quarantine
+    case calendar
+    case helpDesk
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .assignments:
+            "과제"
+        case .exams:
+            "시험"
+        case .notices:
+            "공지"
+        case .files:
+            "파일"
+        case .quarantine:
+            "격리"
+        case .calendar:
+            "캘린더"
+        case .helpDesk:
+            "헬프데스크"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .assignments:
+            "checklist"
+        case .exams:
+            "calendar"
+        case .notices:
+            "note.text"
+        case .files:
+            "folder.badge.plus"
+        case .quarantine:
+            "exclamationmark.triangle"
+        case .calendar:
+            "calendar.badge.clock"
+        case .helpDesk:
+            "person.2"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .assignments:
+            .orange
+        case .exams, .calendar:
+            .green
+        case .notices:
+            .purple
+        case .files:
+            .blue
+        case .quarantine:
+            .red
+        case .helpDesk:
+            .teal
+        }
+    }
+
+    func value(from status: SanitizedRemoteStatus) -> Int {
+        switch self {
+        case .assignments:
+            status.assignments
+        case .exams:
+            status.exams
+        case .notices:
+            status.notices
+        case .files:
+            status.newFiles
+        case .quarantine:
+            status.quarantine
+        case .calendar:
+            status.calendarChangeTotal
+        case .helpDesk:
+            status.helpDesk
+        }
+    }
+
+    func includes(_ item: ServerRelaySyncItem) -> Bool {
+        switch self {
+        case .assignments:
+            item.kind == "assignment"
+        case .exams:
+            item.kind == "exam"
+        case .notices:
+            item.kind == "notice"
+        case .files:
+            item.kind == "file"
+        case .helpDesk:
+            item.kind == "helpDesk"
+        case .quarantine, .calendar:
+            false
+        }
+    }
+
+    var emptyMessage: String {
+        switch self {
+        case .assignments:
+            "서버 DB에 올라온 진행 중 과제가 없습니다."
+        case .exams:
+            "서버 DB에 올라온 예정 시험이 없습니다."
+        case .notices:
+            "서버 DB에 올라온 공지 목록이 없습니다."
+        case .files:
+            "서버 DB에 올라온 파일 목록이 없습니다."
+        case .quarantine:
+            "격리 파일 상세는 아직 Mac 앱 파일 화면에서 확인해야 합니다."
+        case .calendar:
+            "캘린더 변경 상세는 Mac 앱의 캘린더 변경 화면에서 확인해야 합니다."
+        case .helpDesk:
+            "서버 DB에 올라온 헬프데스크 일정이 없습니다."
+        }
+    }
+}
+
 private struct RemoteStatusHeader: View {
     @ObservedObject var model: CompanionModel
+    @Binding var selectedCategory: DashboardMetricCategory
 
     private let columns = [
         GridItem(.adaptive(minimum: 96), spacing: 8),
@@ -859,17 +991,17 @@ private struct RemoteStatusHeader: View {
             }
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                RemoteMetricTile("과제", model.status.assignments, systemImage: "checklist")
-                RemoteMetricTile("시험", model.status.exams, systemImage: "calendar")
-                RemoteMetricTile("공지", model.status.notices, systemImage: "note.text")
-                RemoteMetricTile("새 파일", model.status.newFiles, systemImage: "folder.badge.plus")
+                metricTile(.assignments)
+                metricTile(.exams)
+                metricTile(.notices)
+                metricTile(.files, label: "새 파일")
                 if model.status.quarantine > 0 {
-                    RemoteMetricTile("격리", model.status.quarantine, systemImage: "exclamationmark.triangle")
+                    metricTile(.quarantine)
                 }
                 if model.status.calendarChangeTotal > 0 {
-                    RemoteMetricTile("캘린더", model.status.calendarChangeTotal, systemImage: "calendar.badge.clock")
+                    metricTile(.calendar)
                 }
-                RemoteMetricTile("헬프데스크", model.status.helpDesk, systemImage: "person.2")
+                metricTile(.helpDesk)
             }
         }
         .padding(16)
@@ -879,6 +1011,20 @@ private struct RemoteStatusHeader: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(.quaternary, lineWidth: 1)
         )
+    }
+
+    private func metricTile(
+        _ category: DashboardMetricCategory,
+        label: String? = nil
+    ) -> some View {
+        RemoteMetricTile(
+            label ?? category.title,
+            category.value(from: model.status),
+            systemImage: category.systemImage,
+            isSelected: selectedCategory == category
+        ) {
+            selectedCategory = category
+        }
     }
 
     private var statusTitle: String {
@@ -956,29 +1102,148 @@ private struct RemoteMetricTile: View {
     var label: String
     var value: Int
     var systemImage: String
+    var isSelected: Bool
+    var action: () -> Void
 
-    init(_ label: String, _ value: Int, systemImage: String) {
+    init(
+        _ label: String,
+        _ value: Int,
+        systemImage: String,
+        isSelected: Bool = false,
+        action: @escaping () -> Void = {}
+    ) {
         self.label = label
         self.value = value
         self.systemImage = systemImage
+        self.isSelected = isSelected
+        self.action = action
     }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(value)")
-                    .font(.headline.monospacedDigit())
-                Text(label)
-                    .font(.caption)
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(value)")
+                        .font(.headline.monospacedDigit())
+                        .foregroundStyle(.primary)
+                    Text(label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .padding(.horizontal, 10)
+            .background(isSelected ? Color.blue.opacity(0.10) : Color.secondary.opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.blue.opacity(0.45) : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label) \(value)개")
+    }
+}
+
+private struct DashboardMetricDetailPanel: View {
+    var category: DashboardMetricCategory
+    var status: SanitizedRemoteStatus
+    var items: [ServerRelaySyncItem]
+
+    private var filteredItems: [ServerRelaySyncItem] {
+        items.filter { category.includes($0) }
+    }
+
+    private var visibleItems: [ServerRelaySyncItem] {
+        Array(filteredItems.prefix(8))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label(category.title, systemImage: category.systemImage)
+                    .font(.headline)
+                    .foregroundStyle(category.tint)
+                Spacer(minLength: 0)
+                Text("\(category.value(from: status))개")
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
+
+            if category == .calendar {
+                calendarSummary
+            } else if category == .quarantine {
+                quarantineSummary
+            } else if filteredItems.isEmpty {
+                emptyState
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(visibleItems) { item in
+                        ServerSyncDataRow(item: item)
+                    }
+                    if filteredItems.count > visibleItems.count {
+                        Text("외 \(filteredItems.count - visibleItems.count)개")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 2)
+                    }
+                }
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .padding(12)
+        .background(category.tint.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(category.tint.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    private var calendarSummary: some View {
+        HStack(spacing: 8) {
+            DashboardCountPill(title: "생성", value: status.calendarCreated, tint: category.tint)
+            DashboardCountPill(title: "수정", value: status.calendarUpdated, tint: category.tint)
+            DashboardCountPill(title: "삭제", value: status.calendarDeleted, tint: category.tint)
+        }
+    }
+
+    private var quarantineSummary: some View {
+        Text(category.emptyMessage)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var emptyState: some View {
+        Text(category.emptyMessage)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct DashboardCountPill: View {
+    var title: String
+    var value: Int
+    var tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(value)")
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(.primary)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
         .padding(.horizontal, 10)
-        .background(.quinary)
+        .background(tint.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
