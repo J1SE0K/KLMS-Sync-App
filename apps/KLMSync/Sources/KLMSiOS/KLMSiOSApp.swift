@@ -258,6 +258,35 @@ final class CompanionModel: ObservableObject {
         }
     }
 
+    func createItemAction(_ actionKind: ServerRelayItemActionKind, item: ServerRelaySyncItem) async {
+        guard let serverRelayStore else {
+            errorMessage = "항목 상태 변경은 서버 릴레이 연결에서만 사용할 수 있습니다."
+            userAlert = UserAlert(title: "요청 실패", message: errorMessage)
+            return
+        }
+        isSubmitting = true
+        defer {
+            isSubmitting = false
+        }
+        do {
+            let action = ServerRelayItemAction(
+                action: actionKind,
+                itemID: item.id,
+                itemKind: item.kind,
+                itemTitle: item.title
+            )
+            try await serverRelayStore.createItemAction(action)
+            connectionMessage = "\(actionKind.displayName) 요청을 보냈습니다."
+            connectionSucceeded = true
+            errorMessage = ""
+            userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
+            await refreshRecent()
+        } catch {
+            errorMessage = error.localizedDescription
+            userAlert = UserAlert(title: "요청 실패", message: error.localizedDescription)
+        }
+    }
+
     func refreshRecent() async {
         isRefreshing = true
         defer {
@@ -1408,7 +1437,7 @@ private struct ServerSyncItemDetailView: View {
                     header
                     detailFields
                     actionPanel
-                    InfoBanner(message: "iPhone에서 보내는 요청은 Mac 앱이 받아서 실행합니다. 항목 자체 수정은 다음 서버 액션 API 단계에서 Mac의 override 파일에 안전하게 반영하도록 분리합니다.")
+                    InfoBanner(message: "항목 처리 요청은 서버에 대기열로 올라가고, Mac 앱이 받아서 기존 override/state 파일에 반영합니다.")
                 }
                 .padding()
             }
@@ -1459,6 +1488,30 @@ private struct ServerSyncItemDetailView: View {
 
     private var actionPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !itemActions.isEmpty {
+                Text("항목 처리")
+                    .font(.headline)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
+                    ForEach(itemActions) { action in
+                        Button {
+                            Task {
+                                await model.createItemAction(action, item: item)
+                            }
+                        } label: {
+                            Text(action.displayName)
+                                .frame(maxWidth: .infinity, minHeight: 38)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!model.serverRelayConfigured || model.isSubmitting)
+                    }
+                }
+                if !model.serverRelayConfigured {
+                    Text("항목 처리 요청은 서버 릴레이 연결에서만 사용할 수 있습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Text("원격 실행")
                 .font(.headline)
             Button {
@@ -1482,6 +1535,25 @@ private struct ServerSyncItemDetailView: View {
             }
             .buttonStyle(.bordered)
             .disabled(model.isRefreshing)
+        }
+    }
+
+    private var itemActions: [ServerRelayItemActionKind] {
+        switch item.kind {
+        case "assignment", "assignmentCandidate":
+            [.assignmentComplete, .assignmentHide]
+        case "completedAssignment":
+            [.assignmentRestore, .assignmentHide]
+        case "examCandidate":
+            [.examPromote, .examIgnore]
+        case "exam":
+            [.examRestore, .examIgnore]
+        case "notice":
+            [.noticeRead, .noticeUnread, .noticeImportant, .noticeUnimportant, .noticeHide]
+        case "file":
+            [.fileHide, .fileUnhide]
+        default:
+            []
         }
     }
 

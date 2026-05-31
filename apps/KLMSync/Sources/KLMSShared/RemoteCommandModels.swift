@@ -936,6 +936,126 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, Identifiable {
+    case assignmentComplete
+    case assignmentRestore
+    case assignmentHide
+    case assignmentUnhide
+    case examPromote
+    case examIgnore
+    case examRestore
+    case noticeRead
+    case noticeUnread
+    case noticeImportant
+    case noticeUnimportant
+    case noticeHide
+    case noticeUnhide
+    case fileHide
+    case fileUnhide
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .assignmentComplete:
+            "과제 완료"
+        case .assignmentRestore:
+            "과제 복구"
+        case .assignmentHide:
+            "과제 숨김"
+        case .assignmentUnhide:
+            "과제 숨김 해제"
+        case .examPromote:
+            "시험으로 확정"
+        case .examIgnore:
+            "시험 아님"
+        case .examRestore:
+            "시험 복구"
+        case .noticeRead:
+            "공지 읽음"
+        case .noticeUnread:
+            "공지 읽지 않음"
+        case .noticeImportant:
+            "공지 중요"
+        case .noticeUnimportant:
+            "공지 중요 해제"
+        case .noticeHide:
+            "공지 숨김"
+        case .noticeUnhide:
+            "공지 숨김 해제"
+        case .fileHide:
+            "파일 숨김"
+        case .fileUnhide:
+            "파일 숨김 해제"
+        }
+    }
+}
+
+public enum ServerRelayItemActionStatus: String, Codable, Sendable {
+    case pending
+    case running
+    case completed
+    case failed
+    case macUnavailable
+
+    public var displayName: String {
+        switch self {
+        case .pending:
+            "대기 중"
+        case .running:
+            "처리 중"
+        case .completed:
+            "완료"
+        case .failed:
+            "실패"
+        case .macUnavailable:
+            "Mac 응답 없음"
+        }
+    }
+}
+
+public struct ServerRelayItemAction: Codable, Sendable, Equatable, Identifiable {
+    public var id: UUID
+    public var action: ServerRelayItemActionKind
+    public var itemID: String
+    public var itemKind: String
+    public var itemTitle: String
+    public var status: ServerRelayItemActionStatus
+    public var createdAt: Date
+    public var updatedAt: Date
+    public var message: String
+
+    public init(
+        id: UUID = UUID(),
+        action: ServerRelayItemActionKind,
+        itemID: String,
+        itemKind: String,
+        itemTitle: String = "",
+        status: ServerRelayItemActionStatus = .pending,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        message: String = ""
+    ) {
+        self.id = id
+        self.action = action
+        self.itemID = itemID
+        self.itemKind = itemKind
+        self.itemTitle = itemTitle
+        self.status = status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.message = message
+    }
+}
+
+public struct ServerRelayItemActionListResponse: Codable, Sendable, Equatable {
+    public var actions: [ServerRelayItemAction]
+
+    public init(actions: [ServerRelayItemAction] = []) {
+        self.actions = actions
+    }
+}
+
 public struct ServerRelayCommandStore: RemoteCommandStore {
     public var baseURL: URL
     public var token: String
@@ -1050,6 +1170,39 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
             method: "GET",
             path: "/v1/sync-data",
             queryItems: queryItems
+        )
+    }
+
+    public func createItemAction(_ action: ServerRelayItemAction) async throws {
+        let _: ServerRelayItemAction = try await send(
+            method: "POST",
+            path: "/v1/item-actions",
+            body: action
+        )
+    }
+
+    public func fetchPendingItemActions() async throws -> [ServerRelayItemAction] {
+        let response: ServerRelayItemActionListResponse = try await send(
+            method: "GET",
+            path: "/v1/item-actions/pending"
+        )
+        return response.actions
+    }
+
+    public func fetchRecentItemActions(limit: Int = 20) async throws -> [ServerRelayItemAction] {
+        let response: ServerRelayItemActionListResponse = try await send(
+            method: "GET",
+            path: "/v1/item-actions/recent",
+            queryItems: [URLQueryItem(name: "limit", value: "\(limit)")]
+        )
+        return response.actions
+    }
+
+    public func updateItemAction(_ action: ServerRelayItemAction) async throws {
+        let _: ServerRelayItemAction = try await send(
+            method: "PUT",
+            path: "/v1/item-actions/\(action.id.uuidString)",
+            body: action
         )
     }
 

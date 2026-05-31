@@ -15,6 +15,7 @@ const DB_PATH = process.env.KLMS_RELAY_DB
   : path.join(os.homedir(), ".local", "state", "klms-sync-relay.sqlite");
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_COMMANDS = 100;
+const MAX_ITEM_ACTIONS = 200;
 const MAX_SYNC_ITEMS = 2_000;
 
 if (!TOKEN) {
@@ -84,6 +85,7 @@ async function route(request, response) {
   }
 
   expireStalePendingCommands();
+  expireStalePendingItemActions();
 
   if (request.method === "GET" && url.pathname === "/v1/status") {
     sendJSON(response, 200, relayResponse());
@@ -183,6 +185,53 @@ async function route(request, response) {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/v1/item-actions") {
+    const body = await readJSON(request);
+    const action = normalizeItemAction(body, "pending");
+    if (!action.action || !action.itemID || !action.itemKind) {
+      sendJSON(response, 400, { error: "missing item action target" });
+      return;
+    }
+    upsertItemAction(action);
+    state.message = `${displayItemActionName(action.action)} 요청 대기 중`;
+    state.updatedAt = new Date().toISOString();
+    await saveState();
+    sendJSON(response, 201, action);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/v1/item-actions/pending") {
+    sendJSON(response, 200, itemActionListResponse(
+      state.itemActions
+        .filter((action) => action.status === "pending")
+        .sort((lhs, rhs) => Date.parse(lhs.createdAt) - Date.parse(rhs.createdAt))
+    ));
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/v1/item-actions/recent") {
+    const limit = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get("limit") || "20", 10) || 20));
+    sendJSON(response, 200, itemActionListResponse(
+      state.itemActions
+        .slice()
+        .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+        .slice(0, limit)
+    ));
+    return;
+  }
+
+  const itemActionMatch = url.pathname.match(/^\/v1\/item-actions\/([0-9a-fA-F-]+)$/);
+  if (request.method === "PUT" && itemActionMatch) {
+    const body = await readJSON(request);
+    const action = normalizeItemAction({ ...body, id: itemActionMatch[1] }, body.status || "pending");
+    upsertItemAction(action);
+    state.message = `${displayItemActionName(action.action)} · ${displayStatus(action.status)}`;
+    state.updatedAt = new Date().toISOString();
+    await saveState();
+    sendJSON(response, 200, action);
+    return;
+  }
+
   sendJSON(response, 404, { error: "not found" });
 }
 
@@ -193,6 +242,10 @@ function commandListResponse(commands) {
     latestCommand: state.latestCommand || commands[0] || null,
     running: Boolean(state.running),
   };
+}
+
+function itemActionListResponse(actions) {
+  return { actions };
 }
 
 function relayResponse() {
@@ -220,6 +273,22 @@ function normalizeCommand(raw, fallbackStatus) {
     lastExitCode: Number.isInteger(raw.lastExitCode) ? raw.lastExitCode : null,
     loginRequired: Boolean(raw.loginRequired),
     summary: normalizeStatus(raw.summary || defaultStatus, raw.status || fallbackStatus),
+  };
+}
+
+function normalizeItemAction(raw, fallbackStatus) {
+  const now = new Date().toISOString();
+  const id = String(raw.id || crypto.randomUUID());
+  return {
+    id,
+    action: String(raw.action || ""),
+    itemID: String(raw.itemID || raw.itemId || ""),
+    itemKind: String(raw.itemKind || ""),
+    itemTitle: String(raw.itemTitle || ""),
+    status: String(raw.status || fallbackStatus),
+    createdAt: raw.createdAt || now,
+    updatedAt: raw.updatedAt || now,
+    message: String(raw.message || ""),
   };
 }
 
@@ -259,6 +328,14 @@ function upsertCommand(command) {
     .slice(0, MAX_COMMANDS);
 }
 
+function upsertItemAction(action) {
+  state.itemActions = state.itemActions.filter((item) => item.id !== action.id);
+  state.itemActions.unshift(action);
+  state.itemActions = state.itemActions
+    .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+    .slice(0, MAX_ITEM_ACTIONS);
+}
+
 function expireStalePendingCommands() {
   const now = Date.now();
   let changed = false;
@@ -274,6 +351,26 @@ function expireStalePendingCommands() {
     state.latestCommand = state.commands
       .slice()
       .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))[0] || null;
+    try {
+      saveState();
+    } catch (error) {
+      console.error(error);
+    }
+  }
+}
+
+function expireStalePendingItemActions() {
+  const now = Date.now();
+  let changed = false;
+  for (const action of state.itemActions) {
+    if (action.status === "pending" && now - Date.parse(action.createdAt) > 60 * 60 * 1000) {
+      action.status = "macUnavailable";
+      action.updatedAt = new Date().toISOString();
+      action.message = "Mac 앱이 제한 시간 안에 처리하지 않았습니다.";
+      changed = true;
+    }
+  }
+  if (changed) {
     try {
       saveState();
     } catch (error) {
@@ -340,6 +437,21 @@ function initDatabase() {
       ON commands(updated_at DESC);
     CREATE INDEX IF NOT EXISTS commands_status_created_at_idx
       ON commands(status, created_at ASC);
+    CREATE TABLE IF NOT EXISTS item_actions (
+      id TEXT PRIMARY KEY,
+      action TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      item_kind TEXT NOT NULL,
+      item_title TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      message TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS item_actions_status_created_at_idx
+      ON item_actions(status, created_at ASC);
+    CREATE INDEX IF NOT EXISTS item_actions_updated_at_idx
+      ON item_actions(updated_at DESC);
     CREATE TABLE IF NOT EXISTS sync_items (
       id TEXT PRIMARY KEY,
       kind TEXT NOT NULL,
@@ -367,10 +479,17 @@ function loadState() {
     LIMIT ?
   `).all(MAX_COMMANDS).map(rowToCommand);
   const latestCommand = parseJSON(getMeta("latestCommand"), null) || commands[0] || null;
+  const itemActions = db.prepare(`
+    SELECT id, action, item_id, item_kind, item_title, status, created_at, updated_at, message
+    FROM item_actions
+    ORDER BY updated_at DESC
+    LIMIT ?
+  `).all(MAX_ITEM_ACTIONS).map(rowToItemAction);
   return {
     status: normalizeStatus(parseJSON(getMeta("status"), defaultStatus)),
     latestCommand,
     commands,
+    itemActions,
     running: getMeta("running") === "true",
     message: getMeta("message") || "서버 준비됨",
     updatedAt: getMeta("updatedAt") || new Date().toISOString(),
@@ -401,6 +520,25 @@ function saveState() {
         Number.isInteger(command.lastExitCode) ? command.lastExitCode : null,
         command.loginRequired ? 1 : 0,
         JSON.stringify(normalizeStatus(command.summary || defaultStatus, command.status))
+      );
+    }
+    db.prepare("DELETE FROM item_actions").run();
+    const insertItemAction = db.prepare(`
+      INSERT INTO item_actions (
+        id, action, item_id, item_kind, item_title, status, created_at, updated_at, message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const action of state.itemActions.slice(0, MAX_ITEM_ACTIONS)) {
+      insertItemAction.run(
+        action.id,
+        action.action,
+        action.itemID,
+        action.itemKind,
+        action.itemTitle,
+        action.status,
+        action.createdAt,
+        action.updatedAt,
+        action.message
       );
     }
     db.exec("COMMIT");
@@ -444,6 +582,20 @@ function rowToCommand(row) {
     lastExitCode: Number.isInteger(row.last_exit_code) ? row.last_exit_code : null,
     loginRequired: Boolean(row.login_required),
     summary: parseJSON(row.summary_json, defaultStatus),
+  }, row.status || "pending");
+}
+
+function rowToItemAction(row) {
+  return normalizeItemAction({
+    id: row.id,
+    action: row.action,
+    itemID: row.item_id,
+    itemKind: row.item_kind,
+    itemTitle: row.item_title,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    message: row.message,
   }, row.status || "pending");
 }
 
@@ -528,6 +680,43 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
     updatedAt: getMeta("syncDataUpdatedAt") || "",
     items: rows.map((row) => parseJSON(row.payload_json, null)).filter(Boolean),
   };
+}
+
+function displayItemActionName(action) {
+  switch (action) {
+    case "assignmentComplete":
+      return "과제 완료";
+    case "assignmentRestore":
+      return "과제 복구";
+    case "assignmentHide":
+      return "과제 숨김";
+    case "assignmentUnhide":
+      return "과제 숨김 해제";
+    case "examPromote":
+      return "시험 확정";
+    case "examIgnore":
+      return "시험 아님";
+    case "examRestore":
+      return "시험 복구";
+    case "noticeRead":
+      return "공지 읽음";
+    case "noticeUnread":
+      return "공지 읽지 않음";
+    case "noticeImportant":
+      return "공지 중요";
+    case "noticeUnimportant":
+      return "공지 중요 해제";
+    case "noticeHide":
+      return "공지 숨김";
+    case "noticeUnhide":
+      return "공지 숨김 해제";
+    case "fileHide":
+      return "파일 숨김";
+    case "fileUnhide":
+      return "파일 숨김 해제";
+    default:
+      return action || "항목 처리";
+  }
 }
 
 function displayCommandName(kind) {

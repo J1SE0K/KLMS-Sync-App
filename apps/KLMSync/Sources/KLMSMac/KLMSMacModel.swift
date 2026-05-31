@@ -729,10 +729,7 @@ final class KLMSMacModel: ObservableObject {
 
         items += snapshot.noticeDigest?.notices.map {
             ServerRelaySyncItem(
-                id: ServerRelaySyncItem.stableID(
-                    kind: "notice",
-                    parts: [$0.noticeIdentifier, $0.fingerprint, $0.course, $0.title, $0.postedAt]
-                ),
+                id: serverRelayNoticeSyncItemID($0),
                 kind: "notice",
                 course: $0.course,
                 title: $0.title,
@@ -746,10 +743,7 @@ final class KLMSMacModel: ObservableObject {
 
         items += snapshot.courseFileManifest.map {
             ServerRelaySyncItem(
-                id: ServerRelaySyncItem.stableID(
-                    kind: "file",
-                    parts: [$0.url, $0.sourceURL, $0.relativePath, $0.filename, $0.course]
-                ),
+                id: serverRelayFileSyncItemID($0),
                 kind: "file",
                 course: $0.course,
                 title: $0.filename,
@@ -770,10 +764,7 @@ final class KLMSMacModel: ObservableObject {
         updatedAt: String
     ) -> ServerRelaySyncItem {
         ServerRelaySyncItem(
-            id: ServerRelaySyncItem.stableID(
-                kind: kind,
-                parts: [item.url, item.course, item.title, item.syncDue, item.due]
-            ),
+            id: serverRelayStateSyncItemID(kind: kind, item: item),
             kind: kind,
             course: item.course,
             title: item.title,
@@ -781,6 +772,154 @@ final class KLMSMacModel: ObservableObject {
             status: status,
             detail: item.coverageSummary.nilIfBlank ?? item.location.nilIfBlank ?? item.submission,
             updatedAt: updatedAt
+        )
+    }
+
+    private func applyServerRelayItemAction(_ action: ServerRelayItemAction) throws -> String {
+        switch action.action {
+        case .assignmentComplete:
+            let item = try serverRelayStateItem(for: action)
+            try ManualOverrideStore(url: paths.overridesURL).saveAssignmentStatus(
+                "completed",
+                for: item,
+                currentKey: snapshot.manualOverrides?.assignmentOverrideKey(for: item)
+            )
+        case .assignmentRestore, .assignmentUnhide:
+            let item = try serverRelayStateItem(for: action)
+            try ManualOverrideStore(url: paths.overridesURL).saveAssignmentStatus(
+                "",
+                for: item,
+                currentKey: snapshot.manualOverrides?.assignmentOverrideKey(for: item)
+            )
+        case .assignmentHide:
+            let item = try serverRelayStateItem(for: action)
+            try ManualOverrideStore(url: paths.overridesURL).saveAssignmentStatus(
+                "ignored",
+                for: item,
+                currentKey: snapshot.manualOverrides?.assignmentOverrideKey(for: item)
+            )
+        case .examPromote:
+            let item = try serverRelayStateItem(for: action)
+            var override = snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride()
+            override.status = "approved"
+            try ManualOverrideStore(url: paths.overridesURL).saveExamOverride(
+                override,
+                for: item,
+                currentKey: snapshot.manualOverrides?.examOverrideKey(for: item)
+            )
+        case .examIgnore:
+            let item = try serverRelayStateItem(for: action)
+            var override = snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride()
+            override.status = "ignored"
+            try ManualOverrideStore(url: paths.overridesURL).saveExamOverride(
+                override,
+                for: item,
+                currentKey: snapshot.manualOverrides?.examOverrideKey(for: item)
+            )
+        case .examRestore:
+            let item = try serverRelayStateItem(for: action)
+            try ManualOverrideStore(url: paths.overridesURL).saveExamOverride(
+                ExamOverride(),
+                for: item,
+                currentKey: snapshot.manualOverrides?.examOverrideKey(for: item)
+            )
+        case .noticeRead:
+            try NoticeUserStateStore(url: paths.noticeUserStateURL).setRead(true, notice: try serverRelayNotice(for: action))
+        case .noticeUnread:
+            try NoticeUserStateStore(url: paths.noticeUserStateURL).setRead(false, notice: try serverRelayNotice(for: action))
+        case .noticeImportant:
+            try NoticeUserStateStore(url: paths.noticeUserStateURL).setImportant(true, notice: try serverRelayNotice(for: action))
+        case .noticeUnimportant:
+            try NoticeUserStateStore(url: paths.noticeUserStateURL).setImportant(false, notice: try serverRelayNotice(for: action))
+        case .noticeHide:
+            try NoticeUserStateStore(url: paths.noticeUserStateURL).setHidden(true, notice: try serverRelayNotice(for: action))
+        case .noticeUnhide:
+            try NoticeUserStateStore(url: paths.noticeUserStateURL).setHidden(false, notice: try serverRelayNotice(for: action))
+        case .fileHide:
+            try setServerRelayFileHidden(true, for: try serverRelayFile(for: action))
+        case .fileUnhide:
+            try setServerRelayFileHidden(false, for: try serverRelayFile(for: action))
+        }
+        reloadSnapshot()
+        return "\(action.action.displayName) 반영 완료"
+    }
+
+    private func serverRelayStateItem(for action: ServerRelayItemAction) throws -> StateItem {
+        guard let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content else {
+            throw serverRelayItemActionError("현재 상태 파일에서 과제/시험 데이터를 찾지 못했습니다.")
+        }
+        let groups: [(String, [StateItem])] = [
+            ("assignment", content.assignments),
+            ("completedAssignment", content.completedAssignments),
+            ("assignmentCandidate", content.assignmentCandidates),
+            ("exam", content.examItems),
+            ("examCandidate", content.examCandidates),
+            ("helpDesk", content.helpDeskItems),
+        ]
+        for (kind, items) in groups {
+            for item in items where serverRelayStateSyncItemID(kind: kind, item: item) == action.itemID {
+                return item
+            }
+        }
+        throw serverRelayItemActionError("대상 항목을 현재 상태에서 찾지 못했습니다: \(action.itemTitle)")
+    }
+
+    private func serverRelayNotice(for action: ServerRelayItemAction) throws -> NoticeDigestEntry {
+        for notice in snapshot.noticeDigest?.notices ?? [] where serverRelayNoticeSyncItemID(notice) == action.itemID {
+            return notice
+        }
+        throw serverRelayItemActionError("대상 공지를 현재 공지 목록에서 찾지 못했습니다: \(action.itemTitle)")
+    }
+
+    private func serverRelayFile(for action: ServerRelayItemAction) throws -> CourseFileManifestEntry {
+        for file in snapshot.courseFileManifest where serverRelayFileSyncItemID(file) == action.itemID {
+            return file
+        }
+        throw serverRelayItemActionError("대상 파일을 현재 파일 목록에서 찾지 못했습니다: \(action.itemTitle)")
+    }
+
+    private func setServerRelayFileHidden(_ hidden: Bool, for entry: CourseFileManifestEntry) throws {
+        try AppUserStateStore(url: paths.appUserStateURL).setHidden(
+            hidden,
+            key: serverRelayFileUserStateKey(entry),
+            title: entry.filename.nilIfBlank ?? entry.relativePath,
+            course: entry.course,
+            path: entry.absolutePath,
+            url: entry.url.nilIfBlank ?? entry.sourceURL,
+            bucket: .files
+        )
+    }
+
+    private func serverRelayStateSyncItemID(kind: String, item: StateItem) -> String {
+        ServerRelaySyncItem.stableID(
+            kind: kind,
+            parts: [item.url, item.course, item.title, item.syncDue, item.due]
+        )
+    }
+
+    private func serverRelayNoticeSyncItemID(_ notice: NoticeDigestEntry) -> String {
+        ServerRelaySyncItem.stableID(
+            kind: "notice",
+            parts: [notice.noticeIdentifier, notice.fingerprint, notice.course, notice.title, notice.postedAt]
+        )
+    }
+
+    private func serverRelayFileSyncItemID(_ entry: CourseFileManifestEntry) -> String {
+        ServerRelaySyncItem.stableID(
+            kind: "file",
+            parts: [entry.url, entry.sourceURL, entry.relativePath, entry.filename, entry.course]
+        )
+    }
+
+    private func serverRelayFileUserStateKey(_ entry: CourseFileManifestEntry) -> String {
+        entry.url.nilIfBlank ?? entry.absolutePath.nilIfBlank ?? entry.relativePath
+    }
+
+    private func serverRelayItemActionError(_ message: String) -> NSError {
+        NSError(
+            domain: "KLMSync.ServerRelayItemAction",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: message]
         )
     }
 
@@ -1377,6 +1516,41 @@ final class KLMSMacModel: ObservableObject {
                 running: false,
                 message: serverRelayStatusMessage ?? ""
             )
+            let pendingActions = try await store.fetchPendingItemActions()
+            if let action = pendingActions.first {
+                var runningAction = action
+                runningAction.status = .running
+                runningAction.updatedAt = Date()
+                runningAction.message = "\(action.action.displayName) 처리 중"
+                try await store.updateItemAction(runningAction)
+
+                var completedAction = runningAction
+                do {
+                    completedAction.message = try applyServerRelayItemAction(runningAction)
+                    completedAction.status = .completed
+                } catch {
+                    completedAction.message = error.localizedDescription
+                    completedAction.status = .failed
+                }
+                completedAction.updatedAt = Date()
+                try await store.updateItemAction(completedAction)
+
+                let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
+                snapshot = refreshedSnapshot
+                try await store.publishStatus(
+                    sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: "idle"),
+                    latestCommand: lastRemoteCommand,
+                    running: false,
+                    message: completedAction.message
+                )
+                try await store.publishSyncData(serverRelaySyncData(from: refreshedSnapshot))
+                serverRelayStatusMessage = "\(completedAction.action.displayName) · \(completedAction.status.displayName)"
+                remoteProcessingStatusMessage = serverRelayStatusMessage
+                if !silent, completedAction.status == .failed {
+                    errorMessage = completedAction.message
+                }
+                return
+            }
             let pending = try await store.fetchPending()
             let now = Date()
             var commandToRun: RemoteRunCommand?
