@@ -7,6 +7,7 @@ Use this checklist before pushing the repository to a public GitHub repo.
 - `config.env` is local only and ignored.
 - `manual_assignment_overrides.json` is local only and ignored.
 - `kaikey_state.json` is local only and ignored.
+- `apps/KLMSync/Config/KLMSiOS.local.xcconfig` is local only and ignored.
 - `runtime/`, `course_files/`, `course_transcripts/`, and `course_videos/` are ignored.
 - QR screenshots, cookies, logs, launchd plists, and downloaded KLMS files are not tracked.
 - One-off scripts containing a real semester, course, student, assistant, or submission dataset are not tracked.

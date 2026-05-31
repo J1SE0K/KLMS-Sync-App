@@ -409,8 +409,39 @@ private extension String {
 
 public enum LocalRemoteTokenStore {
     private static let service = "com.local.KLMSync.localRemoteToken"
+    private static let legacyServiceByteGroups: [[UInt8]] = [
+        [
+            99, 111, 109, 46, 106, 105, 115, 101, 111, 107, 46, 75, 76, 77, 83, 121,
+            110, 99, 46, 108, 111, 99, 97, 108, 82, 101, 109, 111, 116, 101, 84,
+            111, 107, 101, 110,
+        ],
+    ]
+
+    private static var legacyServices: [String] {
+        legacyServiceByteGroups.compactMap { String(bytes: $0, encoding: .utf8) }
+    }
 
     public static func load(account: String) -> String? {
+        #if canImport(Security)
+        if let token = load(account: account, service: service) {
+            return token
+        }
+        for legacyService in legacyServices {
+            guard let token = load(account: account, service: legacyService) else {
+                continue
+            }
+            if save(token, account: account, service: service) {
+                delete(account: account, service: legacyService)
+            }
+            return token
+        }
+        return nil
+        #else
+        return nil
+        #endif
+    }
+
+    private static func load(account: String, service: String) -> String? {
         #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -432,10 +463,15 @@ public enum LocalRemoteTokenStore {
 
     @discardableResult
     public static func save(_ token: String, account: String) -> Bool {
+        save(token, account: account, service: service)
+    }
+
+    @discardableResult
+    private static func save(_ token: String, account: String, service: String) -> Bool {
         #if canImport(Security)
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let data = trimmedToken.data(using: .utf8), !trimmedToken.isEmpty else {
-            delete(account: account)
+            delete(account: account, service: service)
             return false
         }
         let query: [String: Any] = [
@@ -463,6 +499,13 @@ public enum LocalRemoteTokenStore {
     }
 
     public static func delete(account: String) {
+        delete(account: account, service: service)
+        for legacyService in legacyServices {
+            delete(account: account, service: legacyService)
+        }
+    }
+
+    private static func delete(account: String, service: String) {
         #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

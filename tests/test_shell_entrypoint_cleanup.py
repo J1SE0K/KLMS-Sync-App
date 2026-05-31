@@ -996,12 +996,27 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         remote_models = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSShared" / "RemoteCommandModels.swift"
         ).read_text(encoding="utf-8")
-        combined = "\n".join([ios_project, windows_package, remote_models])
+        ios_defaults = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Config" / "KLMSiOS.defaults.xcconfig"
+        ).read_text(encoding="utf-8")
+        gitignore = (PROJECT_DIR / ".gitignore").read_text(encoding="utf-8")
+        generator = (PROJECT_DIR / "tools" / "generate_klms_ios_xcode_project.py").read_text(
+            encoding="utf-8"
+        )
+        combined = "\n".join([ios_project, windows_package, remote_models, ios_defaults, generator])
 
-        self.assertIn('DEVELOPMENT_TEAM = "";', ios_project)
-        self.assertIn("PRODUCT_BUNDLE_IDENTIFIER = com.local.KLMSync.iOS;", ios_project)
+        self.assertIn("KLMSiOS.defaults.xcconfig", ios_project)
+        self.assertIn('DEVELOPMENT_TEAM = "$(KLMS_IOS_DEVELOPMENT_TEAM)";', ios_project)
+        self.assertIn('PRODUCT_BUNDLE_IDENTIFIER = "$(KLMS_IOS_BUNDLE_IDENTIFIER)";', ios_project)
+        self.assertIn("KLMS_IOS_DEVELOPMENT_TEAM =", ios_defaults)
+        self.assertIn("KLMS_IOS_BUNDLE_IDENTIFIER = com.local.KLMSync.iOS", ios_defaults)
+        self.assertIn('#include? "KLMSiOS.local.xcconfig"', ios_defaults)
+        self.assertIn("apps/KLMSync/Config/KLMSiOS.local.xcconfig", gitignore)
         self.assertIn('"appId": "com.local.klmssync.windows"', windows_package)
         self.assertIn('"com.local.KLMSync.localRemoteToken"', remote_models)
+        self.assertIn("legacyServiceByteGroups", remote_models)
+        self.assertIn("save(token, account: account, service: service)", remote_models)
+        self.assertIn("delete(account: account, service: legacyService)", remote_models)
         self.assertNotIn("com." + "jiseok", combined)
         self.assertNotIn("VCT" + "W5T" + "9B4K", combined)
         self.assertNotIn("gs" + "36212js", combined)

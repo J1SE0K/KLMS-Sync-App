@@ -5,6 +5,7 @@ config.env
 manual_assignment_overrides.json
 kaikey_state.json
 *.local
+apps/KLMSync/Config/KLMSiOS.local.xcconfig
 
 # MFA/cookie/session artifacts
 qr-screenshot*

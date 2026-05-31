@@ -23,6 +23,7 @@ SCHEME = PROJECT_DIR / "xcshareddata" / "xcschemes" / "KLMSiOS.xcscheme"
 
 IOS_SOURCE = APP_ROOT / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
 ASSET_CATALOG = PROJECT_ROOT / "KLMSiOS" / "Assets.xcassets"
+DEFAULT_XCCONFIG = APP_ROOT / "Config" / "KLMSiOS.defaults.xcconfig"
 SHARED_SOURCES = [
     "AcademicTerm.swift",
     "DashboardDataModels.swift",
@@ -56,6 +57,8 @@ def main() -> int:
     missing = [path for path in source_paths if not path.exists()]
     if not ASSET_CATALOG.exists():
         missing.append(ASSET_CATALOG)
+    if not DEFAULT_XCCONFIG.exists():
+        missing.append(DEFAULT_XCCONFIG)
     if missing:
         for path in missing:
             print(f"missing source: {path}")
@@ -73,6 +76,8 @@ def main() -> int:
     product_ref_id = oid("product:KLMSIPhone.app")
     asset_catalog_ref_id = oid("file:KLMSiOS/Assets.xcassets")
     asset_catalog_build_id = oid("build:KLMSiOS/Assets.xcassets")
+    default_xcconfig_rel = Path(os.path.relpath(DEFAULT_XCCONFIG, PROJECT_ROOT))
+    default_xcconfig_ref_id = oid(f"file:{default_xcconfig_rel}")
     project_config_list_id = oid("config-list:project")
     target_config_list_id = oid("config-list:target")
     project_debug_id = oid("config:project:debug")
@@ -94,6 +99,7 @@ def main() -> int:
         if "Sources/KLMSiOS" in rel.as_posix()
     ]
     ios_children.append(f"\t\t\t\t{asset_catalog_ref_id} /* Assets.xcassets */,")
+    ios_children.append(f"\t\t\t\t{default_xcconfig_ref_id} /* KLMSiOS.defaults.xcconfig */,")
     shared_children = [
         f"\t\t\t\t{ref_id} /* {name} */,"
         for rel, name, ref_id, _ in file_refs
@@ -135,6 +141,12 @@ def main() -> int:
         f"\t\t{asset_catalog_ref_id} /* Assets.xcassets */ = "
         "{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; "
         "path = KLMSiOS/Assets.xcassets; sourceTree = \"<group>\"; };"
+    )
+    objects.append(
+        f"\t\t{default_xcconfig_ref_id} /* KLMSiOS.defaults.xcconfig */ = "
+        "{isa = PBXFileReference; lastKnownFileType = text.xcconfig; "
+        f"name = KLMSiOS.defaults.xcconfig; path = {quote(default_xcconfig_rel.as_posix())}; "
+        "sourceTree = \"<group>\"; };"
     )
     objects.append("/* End PBXFileReference section */")
 
@@ -323,7 +335,7 @@ def main() -> int:
         "CODE_SIGN_ENTITLEMENTS": "\"../../Config/KLMSiOS.entitlements\"",
         "CODE_SIGN_STYLE": "Automatic",
         "CURRENT_PROJECT_VERSION": "1",
-        "DEVELOPMENT_TEAM": "\"\"",
+        "DEVELOPMENT_TEAM": "\"$(KLMS_IOS_DEVELOPMENT_TEAM)\"",
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_KEY_CFBundleDisplayName": "\"KLMS Sync\"",
         "INFOPLIST_KEY_LSApplicationCategoryType": "\"public.app-category.productivity\"",
@@ -336,7 +348,7 @@ def main() -> int:
         "IPHONEOS_DEPLOYMENT_TARGET": "17.0",
         "LD_RUNPATH_SEARCH_PATHS": "\"$(inherited) @executable_path/Frameworks\"",
         "MARKETING_VERSION": "0.1.0",
-        "PRODUCT_BUNDLE_IDENTIFIER": "com.local.KLMSync.iOS",
+        "PRODUCT_BUNDLE_IDENTIFIER": "\"$(KLMS_IOS_BUNDLE_IDENTIFIER)\"",
         "PRODUCT_NAME": "\"$(TARGET_NAME)\"",
         "SUPPORTED_PLATFORMS": "\"iphoneos iphonesimulator\"",
         "SUPPORTS_MACCATALYST": "NO",
@@ -388,10 +400,16 @@ def main() -> int:
         (target_debug_id, "Debug", target_debug),
         (target_release_id, "Release", target_release),
     ]:
+        base_config = (
+            f"\t\t\tbaseConfigurationReference = {default_xcconfig_ref_id} /* KLMSiOS.defaults.xcconfig */;\n"
+            if config_id in {target_debug_id, target_release_id}
+            else ""
+        )
         objects.append(
             f"\t\t{config_id} /* {name} */ = {{\n"
             "\t\t\tisa = XCBuildConfiguration;\n"
-            "\t\t\tbuildSettings = {\n"
+            + base_config
+            + "\t\t\tbuildSettings = {\n"
             + settings_block(settings)
             + "\n\t\t\t};\n"
             f"\t\t\tname = {name};\n"

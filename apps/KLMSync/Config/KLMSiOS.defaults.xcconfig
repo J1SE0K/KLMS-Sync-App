@@ -1,0 +1,4 @@
+KLMS_IOS_DEVELOPMENT_TEAM =
+KLMS_IOS_BUNDLE_IDENTIFIER = com.local.KLMSync.iOS
+
+#include? "KLMSiOS.local.xcconfig"

@@ -37,6 +37,7 @@
 		6709D4B7C4D5248C468873FD /* StateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StateModels.swift"; path = "../../Sources/KLMSShared/StateModels.swift"; sourceTree = "<group>"; };
 		11C3A8268D3376FED887FD75 /* StatusModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StatusModels.swift"; path = "../../Sources/KLMSShared/StatusModels.swift"; sourceTree = "<group>"; };
 		BD43412BD4EE806E31C12F0E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = KLMSiOS/Assets.xcassets; sourceTree = "<group>"; };
+		2D53DFCE95E91B1FE0160F53 /* KLMSiOS.defaults.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = KLMSiOS.defaults.xcconfig; path = "../../Config/KLMSiOS.defaults.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,6 +59,7 @@
 			children = (
 				332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */,
 				BD43412BD4EE806E31C12F0E /* Assets.xcassets */,
+				2D53DFCE95E91B1FE0160F53 /* KLMSiOS.defaults.xcconfig */,
 			);
 			name = KLMSiOS;
 			sourceTree = "<group>";
@@ -283,13 +285,14 @@
 		};
 		A45358D7F57D12409C956205 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2D53DFCE95E91B1FE0160F53 /* KLMSiOS.defaults.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "../../Config/KLMSiOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = "$(KLMS_IOS_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -302,7 +305,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.local.KLMSync.iOS;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KLMS_IOS_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -316,13 +319,14 @@
 		};
 		7A3CC3E65B4BE81911CE6871 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2D53DFCE95E91B1FE0160F53 /* KLMSiOS.defaults.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "../../Config/KLMSiOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = "$(KLMS_IOS_DEVELOPMENT_TEAM)";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -335,7 +339,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.local.KLMSync.iOS;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KLMS_IOS_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
