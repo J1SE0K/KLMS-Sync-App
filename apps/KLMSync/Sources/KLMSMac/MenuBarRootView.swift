@@ -918,7 +918,7 @@ private struct DiagnosticToolsPanelView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("설정 > iPhone 서버 릴레이에서 서버 주소와 토큰을 입력하고 릴레이를 켜 주세요.")
+                        Text("설정 > iPhone 서버 릴레이에서 서버 주소와 Mac worker 토큰을 입력하고 릴레이를 켜 주세요.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

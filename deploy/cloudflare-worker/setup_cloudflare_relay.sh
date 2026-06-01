@@ -7,7 +7,8 @@ cd "$SCRIPT_DIR"
 
 WORKER_NAME="${KLMS_CLOUDFLARE_WORKER_NAME:-klms-sync-relay}"
 DB_NAME="${KLMS_CLOUDFLARE_D1_NAME:-klms-sync-relay}"
-TOKEN_FILE="${KLMS_CLOUDFLARE_TOKEN_FILE:-$SCRIPT_DIR/.relay-token}"
+CLIENT_TOKEN_FILE="${KLMS_CLOUDFLARE_CLIENT_TOKEN_FILE:-$SCRIPT_DIR/.relay-client-token}"
+WORKER_TOKEN_FILE="${KLMS_CLOUDFLARE_WORKER_TOKEN_FILE:-$SCRIPT_DIR/.relay-worker-token}"
 WRANGLER_TOML="$SCRIPT_DIR/wrangler.toml"
 CLOUDFLARE_ENV_FILE="${KLMS_CLOUDFLARE_ENV_FILE:-$SCRIPT_DIR/.cloudflare.env}"
 ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
@@ -199,24 +200,41 @@ ensure_database() {
   print -- "wrangler.toml database_id 적용됨: $database_id"
 }
 
-ensure_token() {
-  local token="${RELAY_TOKEN:-}"
-  if [[ -z "$token" && -f "$TOKEN_FILE" ]]; then
-    token="$(tr -d '\n\r[:space:]' < "$TOKEN_FILE")"
+read_or_create_token() {
+  local env_name="$1"
+  local file="$2"
+  local label="$3"
+  local token
+  eval "token=\"\${$env_name:-}\""
+  if [[ -z "$token" && -f "$file" ]]; then
+    token="$(tr -d '\n\r[:space:]' < "$file")"
   fi
   if [[ -z "$token" ]]; then
     token="$(openssl rand -hex 32)"
     umask 077
-    print -r -- "$token" > "$TOKEN_FILE"
-    print -- "새 토큰 생성됨: $TOKEN_FILE"
+    print -r -- "$token" > "$file"
+    print -u2 -- "새 ${label} 토큰 생성됨: $file"
   else
     umask 077
-    print -r -- "$token" > "$TOKEN_FILE"
-    print -- "기존 토큰 사용: $TOKEN_FILE"
+    print -r -- "$token" > "$file"
+    print -u2 -- "기존 ${label} 토큰 사용: $file"
+  fi
+  print -r -- "$token"
+}
+
+ensure_tokens() {
+  local client_token worker_token
+  client_token="$(read_or_create_token RELAY_CLIENT_TOKEN "$CLIENT_TOKEN_FILE" "client")"
+  worker_token="$(read_or_create_token RELAY_WORKER_TOKEN "$WORKER_TOKEN_FILE" "worker")"
+  if [[ "$client_token" == "$worker_token" ]]; then
+    print -u2 -- "RELAY_CLIENT_TOKEN and RELAY_WORKER_TOKEN must be different."
+    exit 64
   fi
 
-  print -- "Cloudflare secret RELAY_TOKEN 적용 중..."
-  printf "%s" "$token" | npx wrangler secret put RELAY_TOKEN
+  print -- "Cloudflare secret RELAY_CLIENT_TOKEN 적용 중..."
+  printf "%s" "$client_token" | npx wrangler secret put RELAY_CLIENT_TOKEN
+  print -- "Cloudflare secret RELAY_WORKER_TOKEN 적용 중..."
+  printf "%s" "$worker_token" | npx wrangler secret put RELAY_WORKER_TOKEN
 }
 
 deploy_worker() {
@@ -244,9 +262,10 @@ deploy_worker() {
   print
   print -- "배포 완료."
   print -- "서버 주소: $worker_url"
-  print -- "토큰 파일: $TOKEN_FILE"
+  print -- "클라이언트 토큰 파일: $CLIENT_TOKEN_FILE"
+  print -- "Mac worker 토큰 파일: $WORKER_TOKEN_FILE"
   print
-  print -- "이 값을 Mac/iPhone/Windows 앱의 서버 릴레이 설정에 똑같이 넣으면 돼."
+  print -- "iPhone/Windows에는 client token을, Mac 앱에는 worker token을 넣어."
 }
 
 ensure_dependencies
@@ -254,5 +273,5 @@ ensure_login
 ensure_account_id
 ensure_workers_dev_subdomain
 ensure_database
-ensure_token
+ensure_tokens
 deploy_worker

@@ -9,7 +9,8 @@ import path from "node:path";
 
 const HOST = process.env.KLMS_RELAY_HOST || "127.0.0.1";
 const PORT = Number.parseInt(process.env.KLMS_RELAY_PORT || "18484", 10);
-const TOKEN = (process.env.KLMS_RELAY_TOKEN || "").trim();
+const CLIENT_TOKEN = (process.env.KLMS_RELAY_CLIENT_TOKEN || "").trim();
+const WORKER_TOKEN = (process.env.KLMS_RELAY_WORKER_TOKEN || "").trim();
 const DB_PATH = process.env.KLMS_RELAY_DB
   ? expandHome(process.env.KLMS_RELAY_DB)
   : path.join(os.homedir(), ".local", "state", "klms-sync-relay.sqlite");
@@ -21,8 +22,12 @@ const STALE_PENDING_COMMAND_MS = 60 * 60 * 1000;
 const STALE_RUNNING_COMMAND_MS = 2 * 60 * 1000;
 const STALE_PENDING_ITEM_ACTION_MS = 60 * 60 * 1000;
 
-if (!TOKEN) {
-  console.error("KLMS_RELAY_TOKEN is required.");
+if (!CLIENT_TOKEN || !WORKER_TOKEN) {
+  console.error("KLMS_RELAY_CLIENT_TOKEN and KLMS_RELAY_WORKER_TOKEN are required.");
+  process.exit(64);
+}
+if (CLIENT_TOKEN === WORKER_TOKEN) {
+  console.error("KLMS_RELAY_CLIENT_TOKEN and KLMS_RELAY_WORKER_TOKEN must be different.");
   process.exit(64);
 }
 if (!Number.isInteger(PORT) || PORT <= 0 || PORT > 65535) {
@@ -82,20 +87,24 @@ async function route(request, response) {
     sendJSON(response, 404, { error: "not found" });
     return;
   }
-  if (!authorized(request)) {
-    sendJSON(response, 401, { error: "unauthorized" });
-    return;
-  }
-
-  expireStaleCommands();
-  expireStalePendingItemActions();
-
   if (request.method === "GET" && url.pathname === "/v1/status") {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     sendJSON(response, 200, relayResponse());
     return;
   }
 
   if (request.method === "POST" && url.pathname === "/v1/status") {
+    if (!authorized(request, "worker")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     const body = await readJSON(request);
     state.status = normalizeStatus(body.status || body);
     state.running = Boolean(body.running);
@@ -112,6 +121,12 @@ async function route(request, response) {
   }
 
   if (request.method === "GET" && url.pathname === "/v1/sync-data") {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     const kind = (url.searchParams.get("kind") || "").trim();
     const limit = Math.max(1, Math.min(
       MAX_SYNC_ITEMS,
@@ -122,6 +137,12 @@ async function route(request, response) {
   }
 
   if (request.method === "POST" && url.pathname === "/v1/sync-data") {
+    if (!authorized(request, "worker")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     const body = await readJSON(request);
     const items = Array.isArray(body.items) ? body.items.map(normalizeSyncItem).filter(Boolean) : [];
     replaceSyncItems(items, body.generatedAt);
@@ -130,6 +151,12 @@ async function route(request, response) {
   }
 
   if (request.method === "POST" && url.pathname === "/v1/commands") {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     const body = await readJSON(request);
     const command = normalizeCommand(body, "pending");
     if (!command.kind) {
@@ -154,6 +181,12 @@ async function route(request, response) {
   }
 
   if (request.method === "GET" && url.pathname === "/v1/commands/pending") {
+    if (!authorized(request, "worker")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     sendJSON(response, 200, commandListResponse(
       state.commands
         .filter((command) => command.status === "pending")
@@ -163,6 +196,12 @@ async function route(request, response) {
   }
 
   if (request.method === "GET" && url.pathname === "/v1/commands/recent") {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     const limit = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get("limit") || "10", 10) || 10));
     sendJSON(response, 200, commandListResponse(
       state.commands
@@ -175,6 +214,12 @@ async function route(request, response) {
 
   const commandMatch = url.pathname.match(/^\/v1\/commands\/([0-9a-fA-F-]+)$/);
   if (request.method === "PUT" && commandMatch) {
+    if (!authorized(request, "worker")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     const body = await readJSON(request);
     const command = normalizeCommand({ ...body, id: commandMatch[1] }, body.status || "pending");
     upsertCommand(command);
@@ -189,6 +234,12 @@ async function route(request, response) {
   }
 
   if (request.method === "POST" && url.pathname === "/v1/item-actions") {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     const body = await readJSON(request);
     const action = normalizeItemAction(body, "pending");
     if (!action.action || !action.itemID || !action.itemKind) {
@@ -204,6 +255,12 @@ async function route(request, response) {
   }
 
   if (request.method === "GET" && url.pathname === "/v1/item-actions/pending") {
+    if (!authorized(request, "worker")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     sendJSON(response, 200, itemActionListResponse(
       state.itemActions
         .filter((action) => action.status === "pending")
@@ -213,6 +270,12 @@ async function route(request, response) {
   }
 
   if (request.method === "GET" && url.pathname === "/v1/item-actions/recent") {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     const limit = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get("limit") || "20", 10) || 20));
     sendJSON(response, 200, itemActionListResponse(
       state.itemActions
@@ -225,6 +288,12 @@ async function route(request, response) {
 
   const itemActionMatch = url.pathname.match(/^\/v1\/item-actions\/([0-9a-fA-F-]+)$/);
   if (request.method === "PUT" && itemActionMatch) {
+    if (!authorized(request, "worker")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStaleCommands();
+    expireStalePendingItemActions();
     const body = await readJSON(request);
     const action = normalizeItemAction({ ...body, id: itemActionMatch[1] }, body.status || "pending");
     upsertItemAction(action);
@@ -402,14 +471,21 @@ function ageMs(timestamp, now) {
   return now - parsed;
 }
 
-function authorized(request) {
+function authorized(request, role) {
   const header = request.headers.authorization || "";
   const match = /^Bearer\s+(.+)$/i.exec(header);
   if (!match) {
     return false;
   }
-  const expected = Buffer.from(TOKEN);
   const actual = Buffer.from(match[1].trim());
+  if (role === "client" && tokenMatches(actual, CLIENT_TOKEN)) {
+    return true;
+  }
+  return tokenMatches(actual, WORKER_TOKEN);
+}
+
+function tokenMatches(actual, expectedToken) {
+  const expected = Buffer.from(expectedToken);
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 

@@ -1015,7 +1015,7 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn('"appId": "com.local.klmssync.windows"', windows_package)
         self.assertIn('"com.local.KLMSync.localRemoteToken"', remote_models)
         self.assertIn("legacyServiceByteGroups", remote_models)
-        self.assertIn("save(token, account: account, service: service)", remote_models)
+        self.assertIn("backend.save(trimmedToken, account: account, service: service)", remote_models)
         self.assertIn("delete(account: account, service: legacyService)", remote_models)
         self.assertNotIn("com." + "jiseok", combined)
         self.assertNotIn("VCT" + "W5T" + "9B4K", combined)
@@ -1041,7 +1041,11 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("token: String", shared)
         self.assertNotIn("public var token: String\n    public var action", shared)
         self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-mac\")", model)
-        self.assertIn("LocalRemoteTokenStore.save(token, account: \"server-relay-mac\")", model)
+        self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-client-mac\")", model)
+        self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-worker-mac\")", model)
+        self.assertIn("LocalRemoteTokenStore.save(serverRelayClientToken, account: \"server-relay-client-mac\")", model)
+        self.assertIn("LocalRemoteTokenStore.save(serverRelayWorkerToken, account: \"server-relay-worker-mac\")", model)
+        self.assertIn("LocalRemoteTokenStore.delete(account: \"server-relay-mac\")", model)
         self.assertIn("UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)", model)
         self.assertIn("pasteboardClearTask", model)
         self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-ios\")", ios_app)
@@ -1069,10 +1073,38 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("CompanionConnectionScreen", ios_app)
         self.assertIn("CompanionHistoryScreen", ios_app)
         self.assertIn("현재 동기화 중단", ios_app)
-        self.assertIn("SecureField(\"서버 토큰\"", ios_app)
+        self.assertIn("SecureField(\"클라이언트 토큰\"", ios_app)
         self.assertIn("clearServerRelayConnectionInfo", ios_app)
         self.assertIn("Cloudflare 서버 릴레이", ios_app)
         self.assertIn("RemotePrivacyNote", ios_app)
+
+    def test_server_relay_uses_role_scoped_tokens(self) -> None:
+        node_relay = (PROJECT_DIR / "tools" / "klms_relay_server.mjs").read_text(encoding="utf-8")
+        worker = (PROJECT_DIR / "deploy" / "cloudflare-worker" / "src" / "worker.mjs").read_text(
+            encoding="utf-8"
+        )
+        installer = (PROJECT_DIR / "tools" / "install_klms_relay_agent.sh").read_text(
+            encoding="utf-8"
+        )
+        windows_main = (PROJECT_DIR / "apps" / "KLMSyncWindows" / "src" / "main.cjs").read_text(
+            encoding="utf-8"
+        )
+
+        for source in (node_relay, worker):
+            self.assertIn("CLIENT_TOKEN", source)
+            self.assertIn("WORKER_TOKEN", source)
+            self.assertIn("client", source)
+            self.assertIn("worker", source)
+        self.assertIn("must be different", node_relay)
+        self.assertIn("client !== worker", worker)
+
+        self.assertIn("KLMS_RELAY_CLIENT_TOKEN", installer)
+        self.assertIn("KLMS_RELAY_WORKER_TOKEN", installer)
+        self.assertIn("--show-token", installer)
+        self.assertIn("전체 토큰을 보려면", installer)
+        self.assertIn("throw new Error(\"Windows 보안 저장소를 사용할 수 없어 클라이언트 토큰을 저장하지 않았습니다.\")", windows_main)
+        self.assertIn("return \"\";", windows_main)
+        self.assertNotIn("return token;\n}", windows_main)
 
     def test_ios_project_has_app_icon_asset_catalog(self) -> None:
         project = (

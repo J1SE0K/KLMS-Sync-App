@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import worker from "../src/worker.mjs";
 
-const token = "test-token";
+const clientToken = "test-client-token";
+const workerToken = "test-worker-token";
 let env;
 
 async function runSmoke() {
   env = {
-    RELAY_TOKEN: token,
+    RELAY_CLIENT_TOKEN: clientToken,
+    RELAY_WORKER_TOKEN: workerToken,
     RELAY_DB: new FakeD1(),
   };
 
@@ -23,6 +25,22 @@ async function runSmoke() {
     assert.equal(payload.status.phase, "idle");
   }
 
+  {
+    const response = await request("/v1/status", { method: "POST", body: { phase: "running" }, role: "client" });
+    assert.equal(response.status, 401);
+  }
+
+  {
+    const response = await request("/v1/commands/pending", { role: "client" });
+    assert.equal(response.status, 401);
+  }
+
+  await expectJSON("/v1/status", {
+    status: { assignments: 1, phase: "idle" },
+    running: false,
+    message: "worker status",
+  }, { method: "POST", role: "worker" });
+
   const createdCommand = await expectJSON("/v1/commands", {
     kind: "fullSync",
     status: "pending",
@@ -32,7 +50,7 @@ async function runSmoke() {
   assert.equal(createdCommand.status, "pending");
 
   {
-    const payload = await expectJSON("/v1/commands/pending");
+    const payload = await expectJSON("/v1/commands/pending", undefined, { role: "worker" });
     assert.equal(payload.commands.length, 1);
     assert.equal(payload.commands[0].id, createdCommand.id);
   }
@@ -42,7 +60,7 @@ async function runSmoke() {
     status: "completed",
     updatedAt: new Date().toISOString(),
     summary: { assignments: 3, phase: "completed" },
-  }, { method: "PUT" });
+  }, { method: "PUT", role: "worker" });
 
   await expectJSON("/v1/sync-data", {
     generatedAt: "2026-05-31T00:00:00Z",
@@ -70,7 +88,7 @@ async function runSmoke() {
         updatedAt: "2026-05-31T00:00:01Z",
       },
     ],
-  }, { method: "POST" });
+  }, { method: "POST", role: "worker" });
 
   {
     const payload = await expectJSON("/v1/sync-data?kind=exam&limit=10");
@@ -87,7 +105,7 @@ async function runSmoke() {
   assert.equal(action.status, "pending");
 
   {
-    const payload = await expectJSON("/relay/v1/item-actions/pending");
+    const payload = await expectJSON("/relay/v1/item-actions/pending", undefined, { role: "worker" });
     assert.equal(payload.actions.length, 1);
     assert.equal(payload.actions[0].itemID, "notice-1");
   }
@@ -101,10 +119,10 @@ async function expectJSON(path, body, options = {}) {
   return response.json();
 }
 
-function request(path, { method = "GET", body, auth = true } = {}) {
+function request(path, { method = "GET", body, auth = true, role = "client" } = {}) {
   const headers = new Headers({ Accept: "application/json" });
   if (auth) {
-    headers.set("Authorization", `Bearer ${token}`);
+    headers.set("Authorization", `Bearer ${role === "worker" ? workerToken : clientToken}`);
   }
   if (body != null && method !== "GET") {
     headers.set("Content-Type", "application/json");

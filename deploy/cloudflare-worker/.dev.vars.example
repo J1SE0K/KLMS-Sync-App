@@ -1,2 +1,3 @@
-RELAY_TOKEN=replace-with-a-random-token
+RELAY_CLIENT_TOKEN=replace-with-client-random-token
+RELAY_WORKER_TOKEN=replace-with-worker-random-token
 RELAY_PATH_PREFIX=

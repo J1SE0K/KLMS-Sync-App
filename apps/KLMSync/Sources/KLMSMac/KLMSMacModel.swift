@@ -36,7 +36,8 @@ final class KLMSMacModel: ObservableObject {
     @Published var isCheckingRemoteCommands = false
     @Published var serverRelayEnabled: Bool
     @Published var serverRelayURL: String
-    @Published var serverRelayToken: String
+    @Published var serverRelayClientToken: String
+    @Published var serverRelayWorkerToken: String
     @Published var serverRelayStatusMessage: String?
     @Published var permissionStatusMessage: String?
     @Published var permissionProbeRows: [KLMSPermissionProbeRow] = []
@@ -70,7 +71,9 @@ final class KLMSMacModel: ObservableObject {
     private static let deprecatedLocalRemoteTokenKey = "KLMSLocalRemoteToken"
     private static let serverRelayEnabledKey = "KLMSServerRelayEnabled"
     private static let serverRelayURLKey = "KLMSServerRelayURL"
-    private static let serverRelayTokenKey = "KLMSServerRelayToken"
+    private static let serverRelayClientTokenKey = "KLMSServerRelayClientToken"
+    private static let serverRelayWorkerTokenKey = "KLMSServerRelayWorkerToken"
+    private static let deprecatedServerRelayTokenKey = "KLMSServerRelayToken"
     private static let serverRelayPollingIntervalNanoseconds: UInt64 = 5_000_000_000
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
     private static let liveCommandOutputMaxCharacters = 80_000
@@ -83,15 +86,25 @@ final class KLMSMacModel: ObservableObject {
         serverRelayURL = UserDefaults.standard.string(forKey: Self.serverRelayURLKey) ?? ""
         LocalRemoteTokenStore.delete(account: "mac")
         UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)
-        if let token = LocalRemoteTokenStore.load(account: "server-relay-mac")
-            ?? UserDefaults.standard.string(forKey: Self.serverRelayTokenKey),
-           !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            serverRelayToken = token
-            LocalRemoteTokenStore.save(token, account: "server-relay-mac")
-            UserDefaults.standard.removeObject(forKey: Self.serverRelayTokenKey)
-        } else {
-            serverRelayToken = ""
+        let legacyToken = LocalRemoteTokenStore.load(account: "server-relay-mac")
+            ?? UserDefaults.standard.string(forKey: Self.deprecatedServerRelayTokenKey)
+        let clientToken = LocalRemoteTokenStore.load(account: "server-relay-client-mac")
+            ?? UserDefaults.standard.string(forKey: Self.serverRelayClientTokenKey)
+        let workerToken = LocalRemoteTokenStore.load(account: "server-relay-worker-mac")
+            ?? UserDefaults.standard.string(forKey: Self.serverRelayWorkerTokenKey)
+            ?? legacyToken
+        serverRelayClientToken = clientToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        serverRelayWorkerToken = workerToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !serverRelayClientToken.isEmpty {
+            LocalRemoteTokenStore.save(serverRelayClientToken, account: "server-relay-client-mac")
         }
+        if !serverRelayWorkerToken.isEmpty {
+            LocalRemoteTokenStore.save(serverRelayWorkerToken, account: "server-relay-worker-mac")
+        }
+        LocalRemoteTokenStore.delete(account: "server-relay-mac")
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
+        UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)
     }
 
     deinit {
@@ -188,7 +201,7 @@ final class KLMSMacModel: ObservableObject {
         """
         KLMS Sync 서버 연결 정보
         서버 주소: \(serverRelayURL)
-        토큰: \(serverRelayToken)
+        클라이언트 토큰: \(serverRelayClientToken)
         """
     }
 
@@ -282,7 +295,7 @@ final class KLMSMacModel: ObservableObject {
         configureServerRelayPolling()
         if enabled {
             guard serverRelayConfigured else {
-                serverRelayStatusMessage = "서버 주소와 토큰을 먼저 입력해 주세요."
+                serverRelayStatusMessage = "서버 주소와 Mac worker 토큰을 먼저 입력해 주세요."
                 return
             }
             serverRelayStatusMessage = "서버 릴레이 자동 처리가 켜졌습니다."
@@ -303,10 +316,19 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    func setServerRelayToken(_ value: String) {
-        serverRelayToken = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        LocalRemoteTokenStore.save(serverRelayToken, account: "server-relay-mac")
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayTokenKey)
+    func setServerRelayClientToken(_ value: String) {
+        serverRelayClientToken = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        LocalRemoteTokenStore.save(serverRelayClientToken, account: "server-relay-client-mac")
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
+        if serverRelayEnabled {
+            configureServerRelayPolling()
+        }
+    }
+
+    func setServerRelayWorkerToken(_ value: String) {
+        serverRelayWorkerToken = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        LocalRemoteTokenStore.save(serverRelayWorkerToken, account: "server-relay-worker-mac")
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
         if serverRelayEnabled {
             configureServerRelayPolling()
         }
@@ -317,24 +339,37 @@ final class KLMSMacModel: ObservableObject {
         serverRelayStatusMessage = "서버 연결 정보를 복사했습니다."
     }
 
-    func copyServerRelayToken() {
-        copyToPasteboard(serverRelayToken)
-        serverRelayStatusMessage = "서버 토큰을 복사했습니다."
+    func copyServerRelayClientToken() {
+        copyToPasteboard(serverRelayClientToken)
+        serverRelayStatusMessage = "클라이언트 토큰을 복사했습니다."
     }
 
     func pasteServerRelayConnectionInfo() {
         guard let text = NSPasteboard.general.string(forType: .string),
               let connectionInfo = ServerRelayConnectionInfo.parse(urlText: text) else {
-            serverRelayStatusMessage = "클립보드에서 서버 주소와 토큰을 찾지 못했습니다."
+            serverRelayStatusMessage = "클립보드에서 서버 주소와 클라이언트 토큰을 찾지 못했습니다."
             errorMessage = serverRelayStatusMessage
             return
         }
         setServerRelayURL(connectionInfo.baseURL.absoluteString)
-        setServerRelayToken(connectionInfo.token)
+        let clientToken = ServerRelayConnectionInfo.labeledToken(
+            in: text,
+            labels: ServerRelayConnectionInfo.clientTokenLabels + ServerRelayConnectionInfo.legacyTokenLabels
+        ) ?? connectionInfo.token
+        let workerToken = ServerRelayConnectionInfo.labeledToken(
+            in: text,
+            labels: ServerRelayConnectionInfo.workerTokenLabels
+        )
+        setServerRelayClientToken(clientToken)
+        if let workerToken {
+            setServerRelayWorkerToken(workerToken)
+        }
         if NSPasteboard.general.string(forType: .string) == text {
             NSPasteboard.general.clearContents()
         }
-        serverRelayStatusMessage = "서버 연결 정보를 붙여넣었습니다. 연결 확인을 눌러 주세요."
+        serverRelayStatusMessage = workerToken == nil && serverRelayWorkerToken.isEmpty
+            ? "클라이언트 토큰은 붙여넣었습니다. Mac worker 토큰도 입력해 주세요."
+            : "서버 연결 정보를 붙여넣었습니다. 연결 확인을 눌러 주세요."
         errorMessage = nil
     }
 
@@ -414,7 +449,7 @@ final class KLMSMacModel: ObservableObject {
             return
         }
         guard serverRelayConfigured else {
-            serverRelayStatusMessage = "서버 주소와 토큰을 먼저 입력해 주세요."
+            serverRelayStatusMessage = "서버 주소와 Mac worker 토큰을 먼저 입력해 주세요."
             return
         }
         serverRelayPollingTask = Task { [weak self] in
@@ -426,7 +461,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func makeServerRelayStore() throws -> ServerRelayCommandStore {
-        try ServerRelayCommandStore(urlText: serverRelayURL, token: serverRelayToken)
+        try ServerRelayCommandStore(urlText: serverRelayURL, token: serverRelayWorkerToken)
     }
 
     private func publishServerRelayStatusIfNeeded(force: Bool = false) async {

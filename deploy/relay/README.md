@@ -22,7 +22,7 @@ cd deploy/relay
 ./init_env.sh sync.example.com
 ```
 
-출력된 토큰을 저장해 둔다. Mac, iPhone, Windows 앱에 같은 토큰을 넣어야 한다.
+출력된 토큰을 저장해 둔다. iPhone/Windows에는 클라이언트 토큰을 넣고, Mac 앱에는 Mac worker 토큰을 넣는다.
 
 5. 서버를 실행한다.
 
@@ -44,24 +44,26 @@ Docker가 없다면 Ubuntu VPS에서 먼저 실행한다.
 
 ## 앱 연결값
 
-Mac, iPhone, Windows에 모두 같은 값을 넣는다.
+iPhone/Windows에는 아래 값을 넣는다.
 
 ```text
 서버 주소: https://sync.example.com
-토큰: <KLMS_RELAY_TOKEN>
+클라이언트 토큰: <KLMS_RELAY_CLIENT_TOKEN>
 ```
 
 서브패스로 분리하고 싶으면 Caddyfile이 `/relay/*`도 지원하므로 아래 주소도 된다.
 
 ```text
 서버 주소: https://sync.example.com/relay
-토큰: <KLMS_RELAY_TOKEN>
+클라이언트 토큰: <KLMS_RELAY_CLIENT_TOKEN>
 ```
+
+Mac 앱에는 같은 서버 주소와 `<KLMS_RELAY_WORKER_TOKEN>`을 입력한다.
 
 ## Mac 쪽 조건
 
 - Mac 앱에서 `서버 릴레이 사용`을 켠다.
-- 서버 주소와 토큰을 입력한다.
+- 서버 주소와 Mac worker 토큰을 입력한다.
 - Mac 앱이 켜져 있어야 Windows/iPhone 요청을 가져가 실행한다.
 - Mac이 잠자기 상태면 요청은 서버 DB에 남고, Mac이 깨어난 뒤 처리된다.
 
@@ -69,7 +71,7 @@ Mac, iPhone, Windows에 모두 같은 값을 넣는다.
 
 - 외부 공개 주소는 HTTPS만 쓴다.
 - Mac의 로컬 포트를 인터넷에 직접 열지 않는다.
-- 토큰을 바꾸면 모든 앱에 새 토큰을 다시 입력한다.
+- 토큰을 바꾸면 클라이언트 앱에는 새 클라이언트 토큰을, Mac 앱에는 새 worker 토큰을 다시 입력한다.
 - SQLite DB는 Docker volume `relay-data`에 저장된다.
 
 ## 업데이트
@@ -113,7 +115,8 @@ openssl rand -hex 32
 `.env.cloudflare`를 수정한다.
 
 ```sh
-KLMS_RELAY_TOKEN=<openssl 출력값>
+KLMS_RELAY_CLIENT_TOKEN=<client openssl 출력값>
+KLMS_RELAY_WORKER_TOKEN=<worker openssl 출력값>
 CLOUDFLARE_TUNNEL_TOKEN=<Cloudflare tunnel token>
 ```
 
@@ -127,7 +130,7 @@ docker compose -f docker-compose.cloudflared.yml up -d --build
 
 ```text
 서버 주소: https://sync.example.com
-토큰: <KLMS_RELAY_TOKEN>
+클라이언트 토큰: <KLMS_RELAY_CLIENT_TOKEN>
 ```
 
-Cloudflare Tunnel 방식은 포트를 열지 않아도 된다. 다만 터널을 실행하는 Mac/서버가 꺼져 있으면 Windows/iPhone 요청은 처리되지 않는다.
+Mac 앱에는 같은 서버 주소와 `<KLMS_RELAY_WORKER_TOKEN>`을 넣는다. Cloudflare Tunnel 방식은 포트를 열지 않아도 된다. 다만 터널을 실행하는 Mac/서버가 꺼져 있으면 Windows/iPhone 요청은 처리되지 않는다.

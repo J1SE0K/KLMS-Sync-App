@@ -110,21 +110,24 @@ async function saveConfigFromRenderer(input) {
   validateRelayURL(relayURL);
   const token = String(input.token || "").trim();
   const previous = await readConfigFile();
+  if (!token && previous.token && !previous.tokenEncrypted) {
+    throw new Error("저장된 클라이언트 토큰이 안전하게 암호화되어 있지 않습니다. 토큰을 다시 입력해 주세요.");
+  }
   const saved = {
     ...previous,
     relayURL,
     token: token ? encodeToken(token) : previous.token || "",
-    tokenEncrypted: token ? safeStorage.isEncryptionAvailable() : Boolean(previous.tokenEncrypted)
+    tokenEncrypted: token ? true : Boolean(previous.tokenEncrypted)
   };
   await writeConfigFile(saved);
   return saved;
 }
 
 function encodeToken(token) {
-  if (safeStorage.isEncryptionAvailable()) {
-    return safeStorage.encryptString(token).toString("base64");
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Windows 보안 저장소를 사용할 수 없어 클라이언트 토큰을 저장하지 않았습니다.");
   }
-  return token;
+  return safeStorage.encryptString(token).toString("base64");
 }
 
 function decodeToken(config) {
@@ -139,7 +142,7 @@ function decodeToken(config) {
       return "";
     }
   }
-  return token;
+  return "";
 }
 
 async function relayRequest(request) {

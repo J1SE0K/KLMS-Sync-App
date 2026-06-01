@@ -86,7 +86,7 @@ final class CompanionModel: ObservableObject {
 
     var remoteAvailabilityMessage: String {
         if serverRelayStore == nil {
-            return "Mac 앱과 iPhone 앱에 같은 HTTPS 서버 릴레이 주소와 토큰을 입력해 주세요."
+            return "HTTPS 서버 릴레이 주소와 iPhone/Windows용 클라이언트 토큰을 입력해 주세요."
         }
         return ""
     }
@@ -277,7 +277,7 @@ final class CompanionModel: ObservableObject {
         }
 
         guard let serverRelayStore else {
-            let message = "서버 주소와 토큰을 입력해 주세요."
+            let message = "서버 주소와 클라이언트 토큰을 입력해 주세요."
             connectionMessage = message
             connectionSucceeded = false
             errorMessage = message
@@ -308,11 +308,14 @@ final class CompanionModel: ObservableObject {
         #if canImport(UIKit)
         guard let text = UIPasteboard.general.string,
               let connectionInfo = ServerRelayConnectionInfo.parse(urlText: text) else {
-            errorMessage = "붙여넣은 텍스트에서 서버 주소와 토큰을 찾지 못했습니다."
+            errorMessage = "붙여넣은 텍스트에서 서버 주소와 클라이언트 토큰을 찾지 못했습니다."
             return
         }
         serverURL = connectionInfo.baseURL.absoluteString
-        serverToken = connectionInfo.token
+        serverToken = ServerRelayConnectionInfo.labeledToken(
+            in: text,
+            labels: ServerRelayConnectionInfo.clientTokenLabels + ServerRelayConnectionInfo.legacyTokenLabels
+        ) ?? connectionInfo.token
         if UIPasteboard.general.string == text {
             UIPasteboard.general.string = ""
         }
@@ -678,9 +681,9 @@ private struct ServerRelayConnectionPanel: View {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("서버 주소 예: https://klms-sync.example.com", text: $model.serverURL)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                    SecureField("서버 토큰", text: $model.serverToken)
+                    SecureField("클라이언트 토큰", text: $model.serverToken)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                    Text("Mac 앱에도 같은 서버 주소와 토큰이 저장되어 있어야 합니다.")
+                    Text("Mac 앱에는 같은 서버 주소와 별도 Mac worker 토큰이 저장되어 있어야 합니다.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -2006,7 +2009,7 @@ private struct RemoteCommandRow: View {
 private struct RemotePrivacyNote: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("원격 요청은 서버 릴레이 토큰으로 보호", systemImage: "lock")
+            Label("원격 요청은 클라이언트 토큰으로 보호", systemImage: "lock")
                 .font(.subheadline.weight(.semibold))
             Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태만 보관합니다. KLMS URL, 원본 로그, config.env, 파일 경로는 iPhone이나 서버에 저장하지 않습니다.")
                 .font(.caption)

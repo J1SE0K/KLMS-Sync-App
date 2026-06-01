@@ -1,7 +1,7 @@
 # KLMS Sync Cloudflare Relay
 
 Cloudflare Workers + D1로 KLMS Sync 서버 릴레이를 운영하는 배포판이다.
-Mac/iPhone/Windows 앱은 기존 서버 릴레이 API를 그대로 쓰기 때문에, 배포 후 서버 주소와 토큰만 바꾸면 된다.
+Mac/iPhone/Windows 앱은 기존 서버 릴레이 API를 그대로 쓰기 때문에, 배포 후 서버 주소와 클라이언트/worker 토큰만 바꾸면 된다.
 
 구조:
 
@@ -29,12 +29,12 @@ npm run setup
 - Cloudflare 로그인 확인
 - D1 DB 생성/조회
 - `wrangler.toml`의 `database_id` 적용
-- 릴레이 토큰 생성 및 Cloudflare secret 등록
+- 클라이언트/worker 릴레이 토큰 생성 및 Cloudflare secret 등록
 - D1 migration 적용
 - Worker 배포
 - `/healthz` 연결 확인
 
-토큰은 로컬의 `.relay-token`에 저장된다. 이 파일은 git에 올리지 않는다.
+토큰은 로컬의 `.relay-client-token`, `.relay-worker-token`에 저장된다. 이 파일들은 git에 올리지 않는다.
 
 Codex 안에서는 `wrangler login` 브라우저 인증이 non-interactive로 막힐 수 있어서, Cloudflare API token 방식이 가장 안정적이다.
 
@@ -74,19 +74,21 @@ database_id = "여기에-붙여넣기"
 
 ## 3. 토큰 설정
 
-토큰을 만든다.
+토큰을 두 개 만든다. 클라이언트 토큰은 iPhone/Windows/Web 요청용이고, worker 토큰은 Mac 앱이 요청을 처리하고 상태를 올릴 때만 쓴다.
 
 ```sh
-openssl rand -hex 32
+CLIENT_TOKEN="$(openssl rand -hex 32)"
+WORKER_TOKEN="$(openssl rand -hex 32)"
 ```
 
 Worker secret에 저장한다.
 
 ```sh
-npx wrangler secret put RELAY_TOKEN
+printf "%s" "$CLIENT_TOKEN" | npx wrangler secret put RELAY_CLIENT_TOKEN
+printf "%s" "$WORKER_TOKEN" | npx wrangler secret put RELAY_WORKER_TOKEN
 ```
 
-프롬프트가 나오면 위 토큰을 붙여넣는다.
+수동 입력 프롬프트를 쓰는 경우에도 secret 이름은 `RELAY_CLIENT_TOKEN`, `RELAY_WORKER_TOKEN`이다.
 
 ## 4. DB migration 적용
 
@@ -116,8 +118,10 @@ curl -fsS https://klms-sync-relay.<cloudflare-account>.workers.dev/healthz
 
 ```text
 서버 주소: https://klms-sync-relay.<cloudflare-account>.workers.dev
-토큰: <RELAY_TOKEN>
+클라이언트 토큰: <RELAY_CLIENT_TOKEN>
 ```
+
+Mac 앱에는 같은 서버 주소와 `<RELAY_WORKER_TOKEN>`을 입력한다.
 
 ## 로컬 테스트
 
@@ -125,7 +129,7 @@ curl -fsS https://klms-sync-relay.<cloudflare-account>.workers.dev/healthz
 
 ```sh
 cp .dev.vars.example .dev.vars
-# .dev.vars의 RELAY_TOKEN 수정
+# .dev.vars의 RELAY_CLIENT_TOKEN, RELAY_WORKER_TOKEN 수정
 npx wrangler d1 migrations apply klms-sync-relay --local
 npx wrangler dev
 ```
@@ -134,7 +138,7 @@ npx wrangler dev
 
 ```sh
 curl -fsS http://127.0.0.1:8787/healthz
-curl -fsS -H "Authorization: Bearer <RELAY_TOKEN>" http://127.0.0.1:8787/v1/status
+curl -fsS -H "Authorization: Bearer <RELAY_CLIENT_TOKEN>" http://127.0.0.1:8787/v1/status
 ```
 
 ## 앱에서 쓰는 API
@@ -142,18 +146,8 @@ curl -fsS -H "Authorization: Bearer <RELAY_TOKEN>" http://127.0.0.1:8787/v1/stat
 기존 Node/SQLite 릴레이와 동일하다.
 
 - `GET /healthz`
-- `GET /v1/status`
-- `POST /v1/status`
-- `POST /v1/commands`
-- `GET /v1/commands/pending`
-- `GET /v1/commands/recent?limit=8`
-- `PUT /v1/commands/:id`
-- `POST /v1/sync-data`
-- `GET /v1/sync-data?kind=exam&limit=50`
-- `POST /v1/item-actions`
-- `GET /v1/item-actions/pending`
-- `GET /v1/item-actions/recent?limit=10`
-- `PUT /v1/item-actions/:id`
+- 클라이언트/worker: `GET /v1/status`, `POST /v1/commands`, `GET /v1/commands/recent?limit=8`, `GET /v1/sync-data?kind=exam&limit=50`, `POST /v1/item-actions`, `GET /v1/item-actions/recent?limit=10`
+- worker 전용: `POST /v1/status`, `GET /v1/commands/pending`, `PUT /v1/commands/:id`, `POST /v1/sync-data`, `GET /v1/item-actions/pending`, `PUT /v1/item-actions/:id`
 
 ## 무료 티어에 맞춘 내부 저장 방식
 

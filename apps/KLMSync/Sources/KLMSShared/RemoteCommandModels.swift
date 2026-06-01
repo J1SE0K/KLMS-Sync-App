@@ -407,41 +407,17 @@ private extension String {
     }
 }
 
-public enum LocalRemoteTokenStore {
-    private static let service = "com.local.KLMSync.localRemoteToken"
-    private static let legacyServiceByteGroups: [[UInt8]] = [
-        [
-            99, 111, 109, 46, 106, 105, 115, 101, 111, 107, 46, 75, 76, 77, 83, 121,
-            110, 99, 46, 108, 111, 99, 97, 108, 82, 101, 109, 111, 116, 101, 84,
-            111, 107, 101, 110,
-        ],
-    ]
+protocol LocalRemoteTokenKeychainBackend {
+    func load(account: String, service: String) -> String?
 
-    private static var legacyServices: [String] {
-        legacyServiceByteGroups.compactMap { String(bytes: $0, encoding: .utf8) }
-    }
+    @discardableResult
+    func save(_ token: String, account: String, service: String) -> Bool
 
-    public static func load(account: String) -> String? {
-        #if canImport(Security)
-        if let token = load(account: account, service: service) {
-            return token
-        }
-        for legacyService in legacyServices {
-            guard let token = load(account: account, service: legacyService) else {
-                continue
-            }
-            if save(token, account: account, service: service) {
-                delete(account: account, service: legacyService)
-            }
-            return token
-        }
-        return nil
-        #else
-        return nil
-        #endif
-    }
+    func delete(account: String, service: String)
+}
 
-    private static func load(account: String, service: String) -> String? {
+private struct SecurityLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychainBackend {
+    func load(account: String, service: String) -> String? {
         #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -455,22 +431,16 @@ public enum LocalRemoteTokenStore {
               let data = item as? Data else {
             return nil
         }
-        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        return String(data: data, encoding: .utf8)
         #else
         return nil
         #endif
     }
 
     @discardableResult
-    public static func save(_ token: String, account: String) -> Bool {
-        save(token, account: account, service: service)
-    }
-
-    @discardableResult
-    private static func save(_ token: String, account: String, service: String) -> Bool {
+    func save(_ token: String, account: String, service: String) -> Bool {
         #if canImport(Security)
-        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = trimmedToken.data(using: .utf8), !trimmedToken.isEmpty else {
+        guard let data = token.data(using: .utf8), !token.isEmpty else {
             delete(account: account, service: service)
             return false
         }
@@ -498,14 +468,7 @@ public enum LocalRemoteTokenStore {
         #endif
     }
 
-    public static func delete(account: String) {
-        delete(account: account, service: service)
-        for legacyService in legacyServices {
-            delete(account: account, service: legacyService)
-        }
-    }
-
-    private static func delete(account: String, service: String) {
+    func delete(account: String, service: String) {
         #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -514,6 +477,89 @@ public enum LocalRemoteTokenStore {
         ]
         SecItemDelete(query as CFDictionary)
         #endif
+    }
+}
+
+public enum LocalRemoteTokenStore {
+    private static let service = "com.local.KLMSync.localRemoteToken"
+    private static let legacyServiceByteGroups: [[UInt8]] = [
+        [
+            99, 111, 109, 46, 106, 105, 115, 101, 111, 107, 46, 75, 76, 77, 83, 121,
+            110, 99, 46, 108, 111, 99, 97, 108, 82, 101, 109, 111, 116, 101, 84,
+            111, 107, 101, 110,
+        ],
+    ]
+
+    private static var legacyServices: [String] {
+        legacyServiceByteGroups.compactMap { String(bytes: $0, encoding: .utf8) }
+    }
+
+    static var serviceForTesting: String {
+        service
+    }
+
+    static var legacyServicesForTesting: [String] {
+        legacyServices
+    }
+
+    public static func load(account: String) -> String? {
+        load(account: account, backend: SecurityLocalRemoteTokenKeychainBackend())
+    }
+
+    static func load(account: String, backend: LocalRemoteTokenKeychainBackend) -> String? {
+        if let token = normalizedToken(backend.load(account: account, service: service)) {
+            return token
+        }
+        for legacyService in legacyServices {
+            guard let token = normalizedToken(backend.load(account: account, service: legacyService)) else {
+                continue
+            }
+            if save(token, account: account, service: service, backend: backend) {
+                backend.delete(account: account, service: legacyService)
+            }
+            return token
+        }
+        return nil
+    }
+
+    @discardableResult
+    public static func save(_ token: String, account: String) -> Bool {
+        save(
+            token,
+            account: account,
+            service: service,
+            backend: SecurityLocalRemoteTokenKeychainBackend()
+        )
+    }
+
+    @discardableResult
+    static func save(
+        _ token: String,
+        account: String,
+        service: String,
+        backend: LocalRemoteTokenKeychainBackend
+    ) -> Bool {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            backend.delete(account: account, service: service)
+            return false
+        }
+        return backend.save(trimmedToken, account: account, service: service)
+    }
+
+    public static func delete(account: String) {
+        delete(account: account, backend: SecurityLocalRemoteTokenKeychainBackend())
+    }
+
+    static func delete(account: String, backend: LocalRemoteTokenKeychainBackend) {
+        backend.delete(account: account, service: service)
+        for legacyService in legacyServices {
+            backend.delete(account: account, service: legacyService)
+        }
+    }
+
+    private static func normalizedToken(_ token: String?) -> String? {
+        token?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 }
 
@@ -781,13 +827,41 @@ public struct ServerRelayConnectionInfo: Sendable, Equatable {
             ?? firstURL(in: combinedText)
             ?? rawURLText
         let extractedToken = rawTokenText.isEmpty
-            ? labeledValue(in: combinedText, labels: ["토큰", "Token", "Relay Token", "Server Token"])
+            ? labeledToken(in: combinedText, labels: Self.clientTokenLabels + Self.legacyTokenLabels)
             : rawTokenText
         guard let baseURL = normalizedBaseURL(extractedURL),
               let token = extractedToken?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
             return nil
         }
         return ServerRelayConnectionInfo(baseURL: baseURL, token: token)
+    }
+
+    public static let clientTokenLabels = [
+        "클라이언트 토큰",
+        "Client Token",
+        "Client Relay Token",
+        "iPhone 토큰",
+        "Windows 토큰",
+    ]
+
+    public static let workerTokenLabels = [
+        "Mac worker 토큰",
+        "Worker Token",
+        "Worker Relay Token",
+        "Mac 토큰",
+    ]
+
+    public static let legacyTokenLabels = [
+        "토큰",
+        "Token",
+        "Relay Token",
+        "Server Token",
+    ]
+
+    public static func labeledToken(in text: String, labels: [String]) -> String? {
+        labeledValue(in: text, labels: labels)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
     }
 
     private static func labeledValue(in text: String, labels: [String]) -> String? {

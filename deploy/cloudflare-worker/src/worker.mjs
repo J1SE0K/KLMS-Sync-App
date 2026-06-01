@@ -42,7 +42,6 @@ export default {
 };
 
 async function route(request, env) {
-  const db = database(env);
   const url = new URL(request.url);
   const pathname = normalizedPath(url.pathname, env);
 
@@ -50,7 +49,7 @@ async function route(request, env) {
     return sendJSON(200, {
       ok: true,
       storage: "cloudflare-d1",
-      configured: Boolean(relayToken(env)),
+      configured: relayTokens(env).configured,
     });
   }
 
@@ -61,10 +60,15 @@ async function route(request, env) {
   if (!pathname.startsWith("/v1/")) {
     return sendJSON(404, { error: "not found" });
   }
-  if (!(await authorized(request, env))) {
+  const requiredRole = requiredRoleFor(request.method, pathname);
+  if (!requiredRole) {
+    return sendJSON(404, { error: "not found" });
+  }
+  if (!(await authorized(request, env, requiredRole))) {
     return sendJSON(401, { error: "unauthorized" });
   }
 
+  const db = database(env);
   await ensureSchema(db);
   let state = await loadState(db);
   if (await expireStaleRecords(db, state)) {
@@ -72,10 +76,16 @@ async function route(request, env) {
   }
 
   if (request.method === "GET" && pathname === "/v1/status") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     return sendJSON(200, relayResponse(state));
   }
 
   if (request.method === "POST" && pathname === "/v1/status") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const body = await readJSON(request);
     const now = new Date().toISOString();
     state.status = normalizeStatus(body.status || body);
@@ -92,12 +102,18 @@ async function route(request, env) {
   }
 
   if (request.method === "GET" && pathname === "/v1/sync-data") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const kind = (url.searchParams.get("kind") || "").trim();
     const limit = boundedInt(url.searchParams.get("limit"), 250, 1, MAX_SYNC_ITEMS);
     return sendJSON(200, await syncDataResponse(db, { kind, limit }));
   }
 
   if (request.method === "POST" && pathname === "/v1/sync-data") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const body = await readJSON(request);
     const items = Array.isArray(body.items)
       ? body.items.map(normalizeSyncItem).filter(Boolean).slice(0, MAX_SYNC_ITEMS)
@@ -107,6 +123,9 @@ async function route(request, env) {
   }
 
   if (request.method === "POST" && pathname === "/v1/commands") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const body = await readJSON(request);
     const command = normalizeCommand(body, "pending");
     if (!command.kind) {
@@ -128,12 +147,18 @@ async function route(request, env) {
   }
 
   if (request.method === "GET" && pathname === "/v1/commands/pending") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     return sendJSON(200, commandListResponse(state, state.commands
       .filter((command) => command.status === "pending")
       .sort((lhs, rhs) => Date.parse(lhs.createdAt) - Date.parse(rhs.createdAt))));
   }
 
   if (request.method === "GET" && pathname === "/v1/commands/recent") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const limit = boundedInt(url.searchParams.get("limit"), 10, 1, 50);
     return sendJSON(200, commandListResponse(state, state.commands
       .slice()
@@ -143,6 +168,9 @@ async function route(request, env) {
 
   const commandMatch = pathname.match(/^\/v1\/commands\/([0-9a-fA-F-]+)$/);
   if (request.method === "PUT" && commandMatch) {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const body = await readJSON(request);
     const command = normalizeCommand({ ...body, id: commandMatch[1] }, body.status || "pending");
     await upsertCommand(db, command);
@@ -156,6 +184,9 @@ async function route(request, env) {
   }
 
   if (request.method === "POST" && pathname === "/v1/item-actions") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const body = await readJSON(request);
     const action = normalizeItemAction(body, "pending");
     if (!action.action || !action.itemID || !action.itemKind) {
@@ -169,12 +200,18 @@ async function route(request, env) {
   }
 
   if (request.method === "GET" && pathname === "/v1/item-actions/pending") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     return sendJSON(200, itemActionListResponse(state.itemActions
       .filter((action) => action.status === "pending")
       .sort((lhs, rhs) => Date.parse(lhs.createdAt) - Date.parse(rhs.createdAt))));
   }
 
   if (request.method === "GET" && pathname === "/v1/item-actions/recent") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const limit = boundedInt(url.searchParams.get("limit"), 20, 1, 50);
     return sendJSON(200, itemActionListResponse(state.itemActions
       .slice()
@@ -184,6 +221,9 @@ async function route(request, env) {
 
   const itemActionMatch = pathname.match(/^\/v1\/item-actions\/([0-9a-fA-F-]+)$/);
   if (request.method === "PUT" && itemActionMatch) {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const body = await readJSON(request);
     const action = normalizeItemAction({ ...body, id: itemActionMatch[1] }, body.status || "pending");
     await upsertItemAction(db, action);
@@ -196,6 +236,22 @@ async function route(request, env) {
   return sendJSON(404, { error: "not found" });
 }
 
+function requiredRoleFor(method, pathname) {
+  if (method === "GET" && pathname === "/v1/status") return "client";
+  if (method === "POST" && pathname === "/v1/status") return "worker";
+  if (method === "GET" && pathname === "/v1/sync-data") return "client";
+  if (method === "POST" && pathname === "/v1/sync-data") return "worker";
+  if (method === "POST" && pathname === "/v1/commands") return "client";
+  if (method === "GET" && pathname === "/v1/commands/pending") return "worker";
+  if (method === "GET" && pathname === "/v1/commands/recent") return "client";
+  if (method === "PUT" && /^\/v1\/commands\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
+  if (method === "POST" && pathname === "/v1/item-actions") return "client";
+  if (method === "GET" && pathname === "/v1/item-actions/pending") return "worker";
+  if (method === "GET" && pathname === "/v1/item-actions/recent") return "client";
+  if (method === "PUT" && /^\/v1\/item-actions\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
+  return null;
+}
+
 function database(env) {
   if (!env?.RELAY_DB) {
     throw new Error("RELAY_DB D1 binding is required.");
@@ -203,13 +259,19 @@ function database(env) {
   return env.RELAY_DB;
 }
 
-function relayToken(env) {
-  return String(env?.RELAY_TOKEN || env?.KLMS_RELAY_TOKEN || "").trim();
+function relayTokens(env) {
+  const client = String(env?.RELAY_CLIENT_TOKEN || env?.KLMS_RELAY_CLIENT_TOKEN || "").trim();
+  const worker = String(env?.RELAY_WORKER_TOKEN || env?.KLMS_RELAY_WORKER_TOKEN || "").trim();
+  return {
+    client,
+    worker,
+    configured: Boolean(client && worker && client !== worker),
+  };
 }
 
-async function authorized(request, env) {
-  const token = relayToken(env);
-  if (!token) {
+async function authorized(request, env, role) {
+  const tokens = relayTokens(env);
+  if (!tokens.configured) {
     return false;
   }
   const header = request.headers.get("Authorization") || "";
@@ -217,7 +279,11 @@ async function authorized(request, env) {
   if (!match) {
     return false;
   }
-  return constantTimeEqual(token, match[1].trim());
+  const actual = match[1].trim();
+  if (role === "client" && await constantTimeEqual(tokens.client, actual)) {
+    return true;
+  }
+  return constantTimeEqual(tokens.worker, actual);
 }
 
 async function constantTimeEqual(expected, actual) {

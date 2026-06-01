@@ -179,12 +179,13 @@ function parseConnectionText() {
   if (parsed.token) {
     $("relayToken").value = parsed.token;
   }
-  toast(parsed.url && parsed.token ? "연결 정보를 읽었습니다." : "주소나 토큰을 찾지 못했습니다.");
+  toast(parsed.url && parsed.token ? "연결 정보를 읽었습니다." : "주소나 클라이언트 토큰을 찾지 못했습니다.");
 }
 
 function parseConnectionInfo(text) {
   const url = text.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || "";
-  const token = text.match(/(?:토큰|token)\s*[:=]\s*([A-Za-z0-9._-]{12,})/i)?.[1]
+  const token = text.match(/(?:클라이언트\s*토큰|client\s*(?:relay\s*)?token|iphone\s*토큰|windows\s*토큰)\s*[:=]\s*([A-Za-z0-9._-]{12,})/i)?.[1]
+    || text.match(/(?:토큰|token)\s*[:=]\s*([A-Za-z0-9._-]{12,})/i)?.[1]
     || text.match(/\b([a-f0-9]{48,128})\b/i)?.[1]
     || "";
   return {

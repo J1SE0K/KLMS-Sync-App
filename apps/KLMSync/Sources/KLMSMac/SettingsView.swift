@@ -88,10 +88,17 @@ struct SettingsView: View {
                     )
                 )
                 SecureField(
-                    "서버 토큰",
+                    "클라이언트 토큰",
                     text: Binding(
-                        get: { model.serverRelayToken },
-                        set: { model.setServerRelayToken($0) }
+                        get: { model.serverRelayClientToken },
+                        set: { model.setServerRelayClientToken($0) }
+                    )
+                )
+                SecureField(
+                    "Mac worker 토큰",
+                    text: Binding(
+                        get: { model.serverRelayWorkerToken },
+                        set: { model.setServerRelayWorkerToken($0) }
                     )
                 )
                 LabeledContent("서버 상태") {
@@ -120,14 +127,14 @@ struct SettingsView: View {
                         Button("서버 연결 정보 복사") {
                             model.copyServerRelayConnectionInfo()
                         }
-                        .disabled(!model.serverRelayConfigured)
-                        Button("서버 토큰 복사") {
-                            model.copyServerRelayToken()
+                        .disabled(model.serverRelayURL.isEmpty || model.serverRelayClientToken.isEmpty)
+                        Button("클라이언트 토큰 복사") {
+                            model.copyServerRelayClientToken()
                         }
-                        .disabled(model.serverRelayToken.isEmpty)
+                        .disabled(model.serverRelayClientToken.isEmpty)
                     }
                 }
-                Text("Cloudflare Workers 릴레이 연결 정보는 여기서 붙여넣습니다. Mac에서 서버 릴레이 사용을 켜 두면 iPhone/Windows가 같은 서버 주소와 토큰으로 요청을 보낼 수 있습니다. 서버에는 실행 요청과 요약 숫자만 저장하고 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
+                Text("Cloudflare Workers 릴레이 연결 정보는 여기서 붙여넣습니다. iPhone/Windows에는 클라이언트 토큰만 넣고, Mac 앱에는 요청을 처리하는 worker 토큰도 넣습니다. 서버에는 실행 요청과 요약 숫자만 저장하고 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

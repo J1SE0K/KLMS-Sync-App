@@ -6,7 +6,7 @@ Windows companion app for the KLMS Sync server relay.
 
 ## 기능
 
-- 서버 릴레이 URL/토큰 저장
+- 서버 릴레이 URL/클라이언트 토큰 저장
 - Mac 앱에서 복사한 Cloudflare 릴레이 연결 정보를 클립보드에서 바로 읽기
 - 대시보드 카운트 확인
 - 과제, 시험, 공지, 파일 목록 검색/정렬
@@ -44,10 +44,10 @@ npm run dist:win
 
 HTTP는 `localhost`, 사설 IP, `.local` 주소에서만 허용한다. 외부에서 쓰는 공개 주소는 HTTPS여야 한다.
 
-같은 네트워크 밖에서 쓰려면 `deploy/cloudflare-worker`의 Cloudflare Workers + D1 릴레이를 띄운 뒤 Mac 앱, iPhone 앱, Windows 앱에 같은 서버 주소/토큰을 넣는다. Windows 앱은 Mac에 직접 접속하지 않고 서버 DB에 요청을 남기며, Mac 앱이 polling해서 실제 동기화를 실행한다.
+같은 네트워크 밖에서 쓰려면 `deploy/cloudflare-worker`의 Cloudflare Workers + D1 릴레이를 띄운 뒤 Windows/iPhone에는 클라이언트 토큰을, Mac 앱에는 Mac worker 토큰을 넣는다. Windows 앱은 Mac에 직접 접속하지 않고 서버 DB에 요청을 남기며, Mac 앱이 polling해서 실제 동기화를 실행한다.
 
 ## 보안
 
-- 토큰은 Electron main process에서만 읽고 renderer에는 저장하지 않는다.
-- Windows에서는 Electron `safeStorage`를 통해 OS 암호화 저장소를 사용한다.
+- 클라이언트 토큰은 Electron main process에서만 읽고 renderer에는 저장하지 않는다.
+- Windows에서는 Electron `safeStorage`를 통해 OS 암호화 저장소를 사용하고, 암호화 저장소가 없으면 토큰을 저장하지 않는다.
 - 서버에는 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로를 올리지 않는다.

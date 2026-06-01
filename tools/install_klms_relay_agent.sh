@@ -3,6 +3,10 @@
 set -euo pipefail
 
 ACTION="${1:-install}"
+SHOW_TOKEN=0
+if [[ "${2:-}" == "--show-token" ]]; then
+  SHOW_TOKEN=1
+fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENGINE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_SUPPORT="${KLMS_RELAY_APP_SUPPORT:-$HOME/Library/Application Support/KLMSNotesSync}"
@@ -23,7 +27,7 @@ AGENT_WORKING_DIR="${KLMS_RELAY_WORKING_DIR:-$APP_SUPPORT}"
 case "$ACTION" in
   install|uninstall|status|print-config) ;;
   *)
-    print -u2 -- "Usage: $0 [install|uninstall|status|print-config]"
+  print -u2 -- "Usage: $0 [install|uninstall|status|print-config] [--show-token]"
     exit 64
     ;;
 esac
@@ -72,14 +76,16 @@ shell_quote() {
 
 write_env_file() {
   local node_bin="$1"
-  local token="$2"
+  local client_token="$2"
+  local worker_token="$3"
 
   mkdir -p "$RELAY_DIR" "$LOG_DIR"
   umask 077
   cat > "$ENV_FILE" <<EOF
 KLMS_RELAY_HOST=$DEFAULT_HOST
 KLMS_RELAY_PORT=$DEFAULT_PORT
-KLMS_RELAY_TOKEN=$token
+KLMS_RELAY_CLIENT_TOKEN=$client_token
+KLMS_RELAY_WORKER_TOKEN=$worker_token
 KLMS_RELAY_DB=$(shell_quote "$DEFAULT_DB")
 KLMS_RELAY_NODE=$(shell_quote "$node_bin")
 KLMS_RELAY_SERVER_SCRIPT=$(shell_quote "$SERVER_SCRIPT")
@@ -142,17 +148,39 @@ health_url() {
 }
 
 print_config() {
-  local token
-  token="$(read_existing_env_value KLMS_RELAY_TOKEN || true)"
+  local client_token worker_token
+  client_token="$(read_existing_env_value KLMS_RELAY_CLIENT_TOKEN || true)"
+  worker_token="$(read_existing_env_value KLMS_RELAY_WORKER_TOKEN || true)"
   print -r -- "서버 주소: http://$DEFAULT_HOST:$DEFAULT_PORT"
-  if [[ -n "$token" ]]; then
-    print -r -- "토큰: $token"
+  if [[ -n "$client_token" ]]; then
+    print -r -- "클라이언트 토큰: $(display_token "$client_token")"
   else
-    print -r -- "토큰: relay.env 생성 전"
+    print -r -- "클라이언트 토큰: relay.env 생성 전"
+  fi
+  if [[ -n "$worker_token" ]]; then
+    print -r -- "Mac worker 토큰: $(display_token "$worker_token")"
+  else
+    print -r -- "Mac worker 토큰: relay.env 생성 전"
   fi
   print -r -- "DB: $DEFAULT_DB"
   print -r -- "환경 파일: $ENV_FILE"
   print -r -- "LaunchAgent: $PLIST_DST"
+  if [[ "$SHOW_TOKEN" != "1" ]]; then
+    print -r -- "전체 토큰을 보려면: $0 print-config --show-token"
+  fi
+}
+
+display_token() {
+  local token="$1"
+  if [[ "$SHOW_TOKEN" == "1" ]]; then
+    print -r -- "$token"
+    return
+  fi
+  if (( ${#token} <= 12 )); then
+    print -r -- "저장됨"
+    return
+  fi
+  print -r -- "${token[1,6]}...${token[-4,-1]}"
 }
 
 install_agent() {
@@ -169,14 +197,23 @@ install_agent() {
   fi
   install_tool_files
 
-  local existing_token token
-  existing_token="$(read_existing_env_value KLMS_RELAY_TOKEN || true)"
-  token="${KLMS_RELAY_TOKEN:-$existing_token}"
-  if [[ -z "$token" ]]; then
-    token="$(generate_token)"
+  local existing_client_token existing_worker_token client_token worker_token
+  existing_client_token="$(read_existing_env_value KLMS_RELAY_CLIENT_TOKEN || true)"
+  existing_worker_token="$(read_existing_env_value KLMS_RELAY_WORKER_TOKEN || true)"
+  client_token="${KLMS_RELAY_CLIENT_TOKEN:-$existing_client_token}"
+  worker_token="${KLMS_RELAY_WORKER_TOKEN:-$existing_worker_token}"
+  if [[ -z "$client_token" ]]; then
+    client_token="$(generate_token)"
+  fi
+  if [[ -z "$worker_token" ]]; then
+    worker_token="$(generate_token)"
+  fi
+  if [[ "$client_token" == "$worker_token" ]]; then
+    print -u2 -- "KLMS_RELAY_CLIENT_TOKEN and KLMS_RELAY_WORKER_TOKEN must be different."
+    exit 64
   fi
 
-  write_env_file "$node_bin" "$token"
+  write_env_file "$node_bin" "$client_token" "$worker_token"
   write_plist
 
   launchctl bootout "$GUI_DOMAIN" "$PLIST_DST" >/dev/null 2>&1 || true
