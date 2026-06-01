@@ -50,6 +50,7 @@ const state = {
   items: [],
   recentCommands: [],
   recentActions: [],
+  recentFileAccess: [],
   selectedKind: "all",
   selectedItemId: "",
   sort: "recent",
@@ -211,16 +212,18 @@ async function refreshAll(options = {}) {
       updateConnectionState("확인 중", "muted");
     }
     await window.klmsWindows.relayRequest({ path: "/healthz" });
-    const [statusResponse, commandResponse, syncData, actionResponse] = await Promise.all([
+    const [statusResponse, commandResponse, syncData, actionResponse, fileAccessResponse] = await Promise.all([
       window.klmsWindows.relayRequest({ path: "/v1/status" }),
       window.klmsWindows.relayRequest({ path: "/v1/commands/recent?limit=8" }),
       window.klmsWindows.relayRequest({ path: "/v1/sync-data?limit=2000" }),
-      window.klmsWindows.relayRequest({ path: "/v1/item-actions/recent?limit=10" })
+      window.klmsWindows.relayRequest({ path: "/v1/item-actions/recent?limit=10" }),
+      window.klmsWindows.relayRequest({ path: "/v1/file-access/recent?limit=20" })
     ]);
     applyStatus(statusResponse);
     state.recentCommands = commandResponse.commands || [];
     state.items = syncData.items || [];
     state.recentActions = actionResponse.actions || [];
+    state.recentFileAccess = fileAccessResponse.requests || [];
     updateConnectionState("연결됨", "ok");
     if (options.check) {
       toast("서버 릴레이와 연결됐습니다.");
@@ -258,7 +261,10 @@ function stopAutoRefresh() {
 
 function nextRefreshDelay() {
   const phase = state.running ? "running" : state.status.phase || "idle";
-  return isInFlightStatus(phase) || isInFlightStatus(state.latestCommand?.status) || state.status.authDigits
+  return isInFlightStatus(phase)
+    || isInFlightStatus(state.latestCommand?.status)
+    || state.recentFileAccess.some((request) => isInFlightStatus(request.status))
+    || state.status.authDigits
     ? 2000
     : 10000;
 }
@@ -302,6 +308,31 @@ async function createItemAction(action, item) {
     });
     applyOptimisticItemAction(action, item);
     toast(`${actionLabel(action)} 요청을 보냈습니다.`);
+    await refreshAll({ quiet: true });
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function createFileAccess(item) {
+  if (item.kind !== "file") {
+    showError(new Error("파일 항목만 열기 링크를 요청할 수 있습니다."));
+    return;
+  }
+  try {
+    setBusy(true);
+    await window.klmsWindows.relayRequest({
+      path: "/v1/file-access",
+      method: "POST",
+      body: {
+        itemID: item.id,
+        itemKind: item.kind,
+        itemTitle: item.title
+      }
+    });
+    toast("Mac에 파일 열기 링크를 요청했습니다.");
     await refreshAll({ quiet: true });
   } catch (error) {
     showError(error);
@@ -456,6 +487,7 @@ function renderDetail() {
     $("itemDetail").innerHTML = "<h2>항목을 선택하세요</h2><p>대시보드 카드나 왼쪽 목록을 누르면 상세와 처리 버튼이 표시됩니다.</p>";
     return;
   }
+  const fileAccess = item.kind === "file" ? latestFileAccess(item) : null;
   $("itemDetail").className = "detail-card";
   $("itemDetail").innerHTML = `
     <div class="detail-header">
@@ -477,13 +509,33 @@ function renderDetail() {
       <h3>항목 처리</h3>
       <div class="action-grid" id="detailActions"></div>
     </div>
+    ${item.kind === "file" ? `
+      <div class="action-section">
+        <h3>파일 열기</h3>
+        ${fileAccess ? `<p class="hint"><strong>${escapeHTML(commandStatusLabel(fileAccess.status))}</strong> · ${escapeHTML(fileAccessDescription(fileAccess))}</p>` : `<p class="hint">Mac이 보관 중인 course_files 원본을 임시 서버 링크로 준비할 수 있습니다.</p>`}
+        <div class="action-grid">
+          ${fileAccess && isDownloadAvailable(fileAccess) ? `<button id="openFileAccessButton">다운로드 열기</button>` : ""}
+          <button class="secondary" id="requestFileAccessButton" ${fileAccess && isInFlightStatus(fileAccess.status) ? "disabled" : ""}>Mac에 파일 링크 요청</button>
+        </div>
+      </div>
+    ` : ""}
     <div class="action-section">
       <h3>관련 동기화</h3>
       <button id="detailSyncButton">${commandLabel(relevantCommand(item.kind))} 요청</button>
-      ${item.kind === "file" ? `<p class="hint">Windows 앱은 KLMS 파일 원본을 직접 내려받지 않습니다. 파일 동기화 요청을 보내면 Mac 앱이 Safari 로그인 세션으로 파일 목록과 다운로드 상태를 갱신합니다.</p>` : ""}
+      ${item.kind === "file" ? `<p class="hint">Windows는 KLMS에 직접 로그인하지 않습니다. 파일 열기 요청을 보내면 Mac이 로컬 파일 원본을 임시 업로드하고, 만료된 링크와 서버 기록은 자동 정리됩니다.</p>` : ""}
     </div>
   `;
   $("detailSyncButton").addEventListener("click", () => createCommand(relevantCommand(item.kind)));
+  if (item.kind === "file") {
+    const requestButton = $("requestFileAccessButton");
+    if (requestButton) {
+      requestButton.addEventListener("click", () => createFileAccess(item));
+    }
+    const openButton = $("openFileAccessButton");
+    if (openButton && fileAccess?.downloadURL) {
+      openButton.addEventListener("click", () => window.klmsWindows.openExternal(fileAccess.downloadURL));
+    }
+  }
   renderDetailActions(item);
 }
 
@@ -528,6 +580,15 @@ function renderHistory() {
     row.innerHTML = `<div><strong>${escapeHTML(actionLabel(action.action))}</strong><div class="meta">${escapeHTML([action.itemTitle, action.updatedAt || action.createdAt, action.message].filter(Boolean).join(" · "))}</div></div><span class="status-pill ${commandStatusClass(action.status)}">${escapeHTML(commandStatusLabel(action.status))}</span>`;
     return row;
   }));
+  if (state.recentFileAccess.length) {
+    rows.push(historySectionTitle("파일 열기"));
+  }
+  rows.push(...state.recentFileAccess.map((request) => {
+    const row = document.createElement("div");
+    row.className = "history-row";
+    row.innerHTML = `<div><strong>${escapeHTML(request.itemTitle || "파일")}</strong><div class="meta">${escapeHTML([request.updatedAt || request.createdAt, fileAccessDescription(request)].filter(Boolean).join(" · "))}</div></div><span class="status-pill ${commandStatusClass(request.status)}">${escapeHTML(commandStatusLabel(request.status))}</span>`;
+    return row;
+  }));
   if (!rows.length) {
     $("historyList").innerHTML = `<div class="empty-list">최근 요청이 없습니다.</div>`;
   } else {
@@ -563,6 +624,36 @@ function currentItems() {
     return calendarItems();
   }
   return state.items;
+}
+
+function latestFileAccess(item) {
+  return state.recentFileAccess
+    .filter((request) => request.itemID === item.id)
+    .sort((lhs, rhs) => compareTimestamp(rhs.updatedAt, lhs.updatedAt) || compareTimestamp(rhs.createdAt, lhs.createdAt))[0] || null;
+}
+
+function isDownloadAvailable(request) {
+  if (!request || request.status !== "completed" || !request.downloadURL) {
+    return false;
+  }
+  if (!request.expiresAt) {
+    return true;
+  }
+  return Date.parse(request.expiresAt) > Date.now();
+}
+
+function fileAccessDescription(request) {
+  const parts = [];
+  if (request.expiresAt && isDownloadAvailable(request)) {
+    parts.push(`만료 ${new Date(request.expiresAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`);
+  }
+  if (Number.isFinite(Number(request.sizeBytes)) && Number(request.sizeBytes) > 0) {
+    parts.push(formatBytes(Number(request.sizeBytes)));
+  }
+  if (request.message) {
+    parts.push(request.message);
+  }
+  return parts.join(" · ") || "Mac 처리 상태를 기다리는 중입니다.";
 }
 
 function matchesKind(item, kind) {
@@ -951,6 +1042,20 @@ function calendarChangeTotal(status) {
 
 function fileCleanupTotal(status) {
   return Number(status.filePruned || 0) + Number(status.fileArchivePruned || 0);
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
 function isInFlightStatus(status) {

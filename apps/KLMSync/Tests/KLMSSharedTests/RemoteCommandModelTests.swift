@@ -210,6 +210,33 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(decoded.authStatusMessage, "인증 완료됨")
     }
 
+    func testServerRelayFileAccessRequestRoundTrip() throws {
+        let expiresAt = Date(timeIntervalSince1970: 4_102_444_800)
+        let request = ServerRelayFileAccessRequest(
+            itemID: "file-1",
+            itemKind: "file",
+            itemTitle: "기말 정리.pdf",
+            status: .completed,
+            message: "파일 링크 준비 완료",
+            downloadURL: "https://relay.example/v1/file-access/id/download?ticket=abc",
+            expiresAt: expiresAt,
+            sizeBytes: 1_024
+        )
+
+        let data = try JSONEncoder.klmsLocalRemote.encode(request)
+        let decoded = try JSONDecoder.klmsLocalRemote.decode(ServerRelayFileAccessRequest.self, from: data)
+
+        XCTAssertEqual(decoded.itemID, "file-1")
+        XCTAssertEqual(decoded.itemKind, "file")
+        XCTAssertEqual(decoded.itemTitle, "기말 정리.pdf")
+        XCTAssertEqual(decoded.status, .completed)
+        XCTAssertEqual(decoded.message, "파일 링크 준비 완료")
+        XCTAssertEqual(decoded.downloadURL, "https://relay.example/v1/file-access/id/download?ticket=abc")
+        XCTAssertEqual(decoded.expiresAt, expiresAt)
+        XCTAssertEqual(decoded.sizeBytes, 1_024)
+        XCTAssertTrue(decoded.isDownloadAvailable)
+    }
+
     func testLocalRemoteConnectionInfoParsesCopiedMacConnectionText() {
         let text = """
         KLMS Sync iPhone 연결 정보
