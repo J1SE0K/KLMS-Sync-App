@@ -195,24 +195,32 @@ private struct ExternalIntegrationStatusView: View {
                         isExpanded.toggle()
                     }
                 } label: {
-                    Label("연동 상태", systemImage: "link")
-                        .font(.caption.weight(.semibold))
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2.weight(.semibold))
+                    HStack(spacing: 8) {
+                        Label("연동 상태", systemImage: "link")
+                            .font(.caption.weight(.semibold))
+
+                        IntegrationSummaryBadge(
+                            text: summaryText(for: verify),
+                            color: summaryColor(for: verify)
+                        )
+
+                        Spacer(minLength: 8)
+
+                        if !isExpanded {
+                            IntegrationStatusCompactStrip(statuses: statuses)
+                        }
+
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")
-
-                IntegrationSummaryBadge(
-                    text: summaryText(for: verify),
-                    color: summaryColor(for: verify)
-                )
-
-                Spacer(minLength: 8)
-
-                if !isExpanded {
-                    IntegrationStatusCompactStrip(statuses: statuses)
-                }
 
                 Button {
                     Task { await model.run(.verify) }

@@ -339,6 +339,11 @@ final class KLMSMacModel: ObservableObject {
         serverRelayStatusMessage = "서버 연결 정보를 복사했습니다."
     }
 
+    func copyServerRelayURL() {
+        copyToPasteboard(serverRelayURL)
+        serverRelayStatusMessage = "서버 주소를 복사했습니다."
+    }
+
     func copyServerRelayClientToken() {
         copyToPasteboard(serverRelayClientToken)
         serverRelayStatusMessage = "클라이언트 토큰을 복사했습니다."

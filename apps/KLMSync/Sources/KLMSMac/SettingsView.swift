@@ -124,6 +124,10 @@ struct SettingsView: View {
                         .disabled(!model.serverRelayConfigured)
                     }
                     HStack {
+                        Button("주소 복사") {
+                            model.copyServerRelayURL()
+                        }
+                        .disabled(model.serverRelayURL.isEmpty)
                         Button("서버 연결 정보 복사") {
                             model.copyServerRelayConnectionInfo()
                         }

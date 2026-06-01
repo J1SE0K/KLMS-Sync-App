@@ -54,6 +54,7 @@ final class CompanionModel: ObservableObject {
 
     private var lastAuthSuccessAlertMessage = ""
     private var trackedReportNotificationCommandIDs = Set<UUID>()
+    private var pasteboardClearTask: Task<Void, Never>?
 
     private static let deprecatedLocalHostKey = "KLMSLocalRemoteHost"
     private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
@@ -327,12 +328,69 @@ final class CompanionModel: ObservableObject {
         #endif
     }
 
+    func copyServerRelayURL() {
+        guard !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "복사할 서버 주소가 없습니다."
+            return
+        }
+        copyToPasteboard(serverURL, clearAfterSeconds: nil)
+        connectionMessage = "서버 주소를 복사했습니다."
+        connectionSucceeded = true
+        errorMessage = ""
+    }
+
+    func copyServerRelayClientToken() {
+        guard !serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "복사할 클라이언트 토큰이 없습니다."
+            return
+        }
+        copyToPasteboard(serverToken, clearAfterSeconds: 60)
+        connectionMessage = "클라이언트 토큰을 복사했습니다. 60초 뒤 클립보드에서 지웁니다."
+        connectionSucceeded = true
+        errorMessage = ""
+    }
+
+    func copyServerRelayConnectionInfo() {
+        guard !serverURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "복사할 서버 주소와 클라이언트 토큰이 없습니다."
+            return
+        }
+        let text = """
+        KLMS Sync 서버 연결 정보
+        서버 주소: \(serverURL)
+        클라이언트 토큰: \(serverToken)
+        """
+        copyToPasteboard(text, clearAfterSeconds: 60)
+        connectionMessage = "서버 주소와 클라이언트 토큰을 복사했습니다. 60초 뒤 클립보드에서 지웁니다."
+        connectionSucceeded = true
+        errorMessage = ""
+    }
+
     func clearServerRelayConnectionInfo() {
         serverURL = ""
         serverToken = ""
         connectionMessage = "서버 연결 정보를 지웠습니다."
         connectionSucceeded = nil
         errorMessage = ""
+    }
+
+    private func copyToPasteboard(_ value: String, clearAfterSeconds: UInt64?) {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = value
+        pasteboardClearTask?.cancel()
+        guard let clearAfterSeconds else { return }
+        pasteboardClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: clearAfterSeconds * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            if UIPasteboard.general.string == value {
+                UIPasteboard.general.string = ""
+            }
+            self?.pasteboardClearTask = nil
+        }
+        #else
+        errorMessage = "이 빌드는 클립보드 복사를 사용할 수 없습니다."
+        #endif
     }
 
     func pollRecentCommands() async {
@@ -677,7 +735,31 @@ private struct ServerRelayConnectionPanel: View {
                 Spacer(minLength: 0)
             }
 
-            DisclosureGroup(isExpanded: $showConnectionFields) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    showConnectionFields.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Label("서버 정보", systemImage: "link")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 8)
+                    Text(model.serverRelayConfigured ? "저장됨" : "미설정")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(model.serverRelayConfigured ? .green : .secondary)
+                    Image(systemName: showConnectionFields ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.background, in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(showConnectionFields ? "서버 정보 접기" : "서버 정보 펼치기")
+
+            if showConnectionFields {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("서버 주소 예: https://klms-sync.example.com", text: $model.serverURL)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
@@ -688,9 +770,6 @@ private struct ServerRelayConnectionPanel: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 8)
-            } label: {
-                Text("서버 정보")
-                    .font(.subheadline.weight(.semibold))
             }
 
             HStack(spacing: 8) {
@@ -711,6 +790,35 @@ private struct ServerRelayConnectionPanel: View {
                 .buttonStyle(.bordered)
                 .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
             }
+
+            HStack(spacing: 8) {
+                Button {
+                    model.copyServerRelayURL()
+                } label: {
+                    Label("주소 복사", systemImage: "link")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(model.serverURL.isEmpty)
+
+                Button {
+                    model.copyServerRelayClientToken()
+                } label: {
+                    Label("토큰 복사", systemImage: "key")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(model.serverToken.isEmpty)
+            }
+
+            Button {
+                model.copyServerRelayConnectionInfo()
+            } label: {
+                Label("주소+토큰 복사", systemImage: "doc.on.doc")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.serverURL.isEmpty || model.serverToken.isEmpty)
 
             HStack(spacing: 8) {
                 Button {
