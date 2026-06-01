@@ -1,5 +1,7 @@
 .dev.vars
 .cloudflare.env
 .relay-token
+.relay-client-token
+.relay-worker-token
 .worker-url
 wrangler.local.toml
