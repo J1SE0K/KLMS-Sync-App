@@ -270,6 +270,15 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(store.baseURL.absoluteString, "http://127.0.0.1:18484")
     }
 
+    func testServerRelayUnauthorizedErrorExplainsTokenMismatch() throws {
+        let error = ServerRelayClientError.serverRejected(401, "unauthorized")
+
+        XCTAssertEqual(
+            error.errorDescription,
+            "서버 인증 실패: 서버 주소와 클라이언트/워커 토큰이 최신 값인지 확인해 주세요."
+        )
+    }
+
     func testLocalRemoteTokenStoreMigratesLegacyKeychainToken() throws {
         let account = "server-relay-ios"
         let currentService = LocalRemoteTokenStore.serviceForTesting

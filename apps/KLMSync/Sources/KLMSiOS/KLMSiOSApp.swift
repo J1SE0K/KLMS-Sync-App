@@ -541,10 +541,14 @@ final class CompanionModel: ObservableObject {
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedToken.isEmpty {
             LocalRemoteTokenStore.delete(account: "server-relay-ios")
-        } else {
-            LocalRemoteTokenStore.save(trimmedToken, account: "server-relay-ios")
+            UserDefaults.standard.removeObject(forKey: Self.serverTokenKey)
+            return
         }
-        UserDefaults.standard.removeObject(forKey: Self.serverTokenKey)
+        if LocalRemoteTokenStore.save(trimmedToken, account: "server-relay-ios") {
+            UserDefaults.standard.removeObject(forKey: Self.serverTokenKey)
+        } else {
+            UserDefaults.standard.set(trimmedToken, forKey: Self.serverTokenKey)
+        }
     }
 
     private static func clearDeprecatedLocalConnectionInfo() {

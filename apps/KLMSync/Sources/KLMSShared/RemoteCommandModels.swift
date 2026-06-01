@@ -928,17 +928,20 @@ public enum ServerRelayClientError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .emptyURL:
-            "서버 주소를 입력해 주세요."
+            return "서버 주소를 입력해 주세요."
         case .emptyToken:
-            "서버 토큰을 입력해 주세요."
+            return "서버 토큰을 입력해 주세요."
         case let .insecureURL(host):
-            "\(host)은 HTTPS가 아닙니다. 외부 접속용 서버는 HTTPS 주소를 사용해야 합니다."
+            return "\(host)은 HTTPS가 아닙니다. 외부 접속용 서버는 HTTPS 주소를 사용해야 합니다."
         case .invalidURL:
-            "서버 주소 형식이 올바르지 않습니다."
+            return "서버 주소 형식이 올바르지 않습니다."
         case .invalidResponse:
-            "서버 응답을 해석하지 못했습니다."
-        case let .serverRejected(_, message):
-            message.isEmpty ? "서버 요청이 실패했습니다." : message
+            return "서버 응답을 해석하지 못했습니다."
+        case let .serverRejected(statusCode, message):
+            if statusCode == 401 {
+                return "서버 인증 실패: 서버 주소와 클라이언트/워커 토큰이 최신 값인지 확인해 주세요."
+            }
+            return message.isEmpty ? "서버 요청이 실패했습니다." : message
         }
     }
 }

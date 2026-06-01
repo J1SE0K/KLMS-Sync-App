@@ -183,7 +183,9 @@ async function relayRequest(request) {
       }
     }
     if (!response.ok) {
-      const message = payload && payload.error ? payload.error : `서버 요청 실패 (${response.status})`;
+      const message = response.status === 401
+        ? "서버 인증 실패: 서버 주소와 클라이언트 토큰이 최신 값인지 확인해 주세요."
+        : payload && payload.error ? payload.error : `서버 요청 실패 (${response.status})`;
       const error = new Error(message);
       error.status = response.status;
       throw error;

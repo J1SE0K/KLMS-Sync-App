@@ -95,16 +95,41 @@ final class KLMSMacModel: ObservableObject {
             ?? legacyToken
         serverRelayClientToken = clientToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         serverRelayWorkerToken = workerToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !serverRelayClientToken.isEmpty {
-            LocalRemoteTokenStore.save(serverRelayClientToken, account: "server-relay-client-mac")
+        let clientTokenSaved = Self.persistRelayToken(
+            serverRelayClientToken,
+            account: "server-relay-client-mac",
+            defaultsKey: Self.serverRelayClientTokenKey
+        )
+        let workerTokenSaved = Self.persistRelayToken(
+            serverRelayWorkerToken,
+            account: "server-relay-worker-mac",
+            defaultsKey: Self.serverRelayWorkerTokenKey
+        )
+        if serverRelayClientToken.isEmpty || clientTokenSaved {
+            UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
         }
-        if !serverRelayWorkerToken.isEmpty {
-            LocalRemoteTokenStore.save(serverRelayWorkerToken, account: "server-relay-worker-mac")
+        if serverRelayWorkerToken.isEmpty || workerTokenSaved {
+            LocalRemoteTokenStore.delete(account: "server-relay-mac")
+            UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
+            UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)
         }
-        LocalRemoteTokenStore.delete(account: "server-relay-mac")
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
-        UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)
+    }
+
+    @discardableResult
+    private static func persistRelayToken(_ token: String, account: String, defaultsKey: String) -> Bool {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            LocalRemoteTokenStore.delete(account: account)
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+            return true
+        }
+        let saved = LocalRemoteTokenStore.save(trimmedToken, account: account)
+        if saved {
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+        } else {
+            UserDefaults.standard.set(trimmedToken, forKey: defaultsKey)
+        }
+        return saved
     }
 
     deinit {
@@ -318,8 +343,11 @@ final class KLMSMacModel: ObservableObject {
 
     func setServerRelayClientToken(_ value: String) {
         serverRelayClientToken = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        LocalRemoteTokenStore.save(serverRelayClientToken, account: "server-relay-client-mac")
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
+        Self.persistRelayToken(
+            serverRelayClientToken,
+            account: "server-relay-client-mac",
+            defaultsKey: Self.serverRelayClientTokenKey
+        )
         if serverRelayEnabled {
             configureServerRelayPolling()
         }
@@ -327,8 +355,11 @@ final class KLMSMacModel: ObservableObject {
 
     func setServerRelayWorkerToken(_ value: String) {
         serverRelayWorkerToken = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        LocalRemoteTokenStore.save(serverRelayWorkerToken, account: "server-relay-worker-mac")
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
+        Self.persistRelayToken(
+            serverRelayWorkerToken,
+            account: "server-relay-worker-mac",
+            defaultsKey: Self.serverRelayWorkerTokenKey
+        )
         if serverRelayEnabled {
             configureServerRelayPolling()
         }
