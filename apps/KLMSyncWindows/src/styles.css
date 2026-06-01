@@ -602,6 +602,10 @@ label {
   margin-bottom: 10px;
 }
 
+.notice-category-row {
+  margin-bottom: 10px;
+}
+
 .check-control {
   display: inline-flex;
   grid-auto-flow: column;

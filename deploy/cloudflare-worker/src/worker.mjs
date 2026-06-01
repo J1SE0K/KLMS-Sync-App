@@ -839,10 +839,14 @@ function displayCommandName(kind) {
       return "공지 메모";
     case "filesSync":
       return "파일 동기화";
+    case "verify":
+      return "상태 검사";
     case "doctor":
       return "권한/환경 진단";
     case "report":
       return "요약 갱신";
+    case "v2BuildState":
+      return "상태 파일 재생성";
     default:
       return kind || "요청";
   }

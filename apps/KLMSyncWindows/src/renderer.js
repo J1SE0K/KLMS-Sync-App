@@ -29,6 +29,15 @@ const fileDetailOptions = [
   { key: "pruned", label: "삭제 예정" }
 ];
 
+const noticeCategoryOptions = [
+  { key: "all", label: "전체" },
+  { key: "important", label: "중요" },
+  { key: "fresh", label: "새 공지" },
+  { key: "unread", label: "읽지 않음" },
+  { key: "archived", label: "확인함" },
+  { key: "hidden", label: "숨김" }
+];
+
 const dashboardKinds = [
   { key: "all", label: "전체", get: (_status, items) => visibleItems(items).length },
   { key: "assignment", label: "과제", get: (status) => status.assignments },
@@ -83,6 +92,7 @@ const state = {
   sort: "recent",
   fileSort: "course",
   selectedFileDetail: "files",
+  noticeCategory: "all",
   query: "",
   selectedYear: "all",
   selectedSemester: "all",
@@ -271,6 +281,7 @@ async function clearConnection() {
     state.selectedSection = "settings";
     state.selectedKind = "all";
     state.selectedItemId = "";
+    state.noticeCategory = "all";
     state.selectedYear = "all";
     state.selectedSemester = "all";
     state.selectedCourse = "all";
@@ -750,6 +761,7 @@ function resetFilters() {
   state.selectedYear = "all";
   state.selectedSemester = "all";
   state.selectedCourse = "all";
+  state.noticeCategory = "all";
   state.showHidden = false;
   state.newOnly = false;
   state.recentOnly = false;
@@ -771,6 +783,7 @@ function resetDisplayState() {
   state.recentActions = [];
   state.selectedKind = "all";
   state.selectedItemId = "";
+  state.noticeCategory = "all";
   resetFilters();
   renderAll();
   toast("화면 표시 상태를 초기화했습니다.");
@@ -857,6 +870,7 @@ function renderDashboard() {
 }
 
 function renderItems() {
+  renderNoticeCategoryControls();
   const items = filteredItems();
   $("listTitle").textContent = kindTitle(state.selectedKind);
   $("listCount").textContent = `${items.length}개`;
@@ -879,6 +893,40 @@ function renderItems() {
     });
     return button;
   }));
+}
+
+function renderNoticeCategoryControls() {
+  const container = $("noticeCategoryControls");
+  if (!container) {
+    return;
+  }
+  if (state.selectedKind !== "notice") {
+    container.classList.add("hidden");
+    return;
+  }
+  if (!noticeCategoryOptions.some((option) => option.key === state.noticeCategory)) {
+    state.noticeCategory = "all";
+  }
+  const counts = noticeCategoryCounts();
+  container.classList.remove("hidden");
+  container.innerHTML = `
+    <div class="segmented-controls" aria-label="공지 분류">
+      ${noticeCategoryOptions.map((option) => `
+        <button class="${option.key === state.noticeCategory ? "active" : ""}" data-notice-category="${escapeHTML(option.key)}">
+          ${escapeHTML(option.label)} ${counts[option.key] || 0}
+        </button>
+      `).join("")}
+    </div>
+  `;
+  container.querySelectorAll("[data-notice-category]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.noticeCategory = button.dataset.noticeCategory;
+      state.selectedItemId = "";
+      renderFilters();
+      renderItems();
+      renderDetail();
+    });
+  });
 }
 
 function renderDetail() {
@@ -1437,7 +1485,14 @@ function emptyInlineHTML(text) {
 }
 
 function hasActiveFilters() {
-  return state.selectedYear !== "all" || state.selectedSemester !== "all" || state.selectedCourse !== "all" || state.newOnly || state.recentOnly || state.showHidden || Boolean(state.query.trim());
+  return state.selectedYear !== "all"
+    || state.selectedSemester !== "all"
+    || state.selectedCourse !== "all"
+    || (state.selectedKind === "notice" && state.noticeCategory !== "all")
+    || state.newOnly
+    || state.recentOnly
+    || state.showHidden
+    || Boolean(state.query.trim());
 }
 
 function activeFilterText() {
@@ -1450,6 +1505,10 @@ function activeFilterText() {
   }
   if (state.selectedCourse !== "all") {
     filters.push(state.selectedCourse);
+  }
+  if (state.selectedKind === "notice" && state.noticeCategory !== "all") {
+    const category = noticeCategoryOptions.find((option) => option.key === state.noticeCategory);
+    filters.push(`공지: ${category?.label || state.noticeCategory}`);
   }
   if (state.newOnly) {
     filters.push("새 항목");
@@ -1505,16 +1564,33 @@ function filteredItems() {
   return currentItems()
     .filter((item) => matchesKind(item, state.selectedKind))
     .filter((item) => matchesDashboardFilters(item))
+    .filter(matchesNoticeCategory)
     .filter((item) => {
       if (!query) {
         return true;
       }
-      return [item.kind, item.course, itemTermLabel(item), item.title, item.timestamp, item.status, item.detail, itemURL(item), itemPath(item)]
-        .join(" ")
+      return itemSearchText(item)
         .toLowerCase()
         .includes(query);
     })
     .sort(compareItems);
+}
+
+function noticeCategoryCounts() {
+  const query = state.query.trim().toLowerCase();
+  const counts = Object.fromEntries(noticeCategoryOptions.map((option) => [option.key, 0]));
+  state.items
+    .filter((item) => item.kind === "notice")
+    .filter((item) => matchesDashboardFilters(item))
+    .filter((item) => !query || itemSearchText(item).toLowerCase().includes(query))
+    .forEach((item) => {
+      for (const option of noticeCategoryOptions) {
+        if (noticeMatchesCategory(item, option.key)) {
+          counts[option.key] += 1;
+        }
+      }
+    });
+  return counts;
 }
 
 function currentItems() {
@@ -1548,6 +1624,9 @@ function matchesKind(item, kind) {
   }
   if (kind === "helpDesk") {
     return hiddenAllowed(item) && item.kind === "helpDesk";
+  }
+  if (kind === "notice") {
+    return (hiddenAllowed(item) || state.noticeCategory === "hidden") && item.kind === "notice";
   }
   if (kind === "newFiles") {
     return hiddenAllowed(item) && item.kind === "file" && isNewItem(item);
@@ -1585,6 +1664,35 @@ function matchesDashboardFilters(item) {
 
 function hiddenAllowed(item) {
   return state.showHidden || !item.isHidden;
+}
+
+function matchesNoticeCategory(item) {
+  if (state.selectedKind !== "notice") {
+    return true;
+  }
+  return noticeMatchesCategory(item, state.noticeCategory);
+}
+
+function noticeMatchesCategory(item, category) {
+  const hidden = Boolean(item.isHidden);
+  const read = Boolean(item.isRead);
+  const important = Boolean(item.isImportant);
+  const fresh = isNewItem(item);
+  switch (category) {
+    case "important":
+      return important && !hidden;
+    case "fresh":
+      return fresh && !read && !hidden;
+    case "unread":
+      return !read && !hidden;
+    case "archived":
+      return read && !important && !hidden;
+    case "hidden":
+      return hidden;
+    case "all":
+    default:
+      return !hidden;
+  }
 }
 
 function compareItems(lhs, rhs) {
@@ -1683,6 +1791,11 @@ function isRecentItem(item) {
   }
   const newest = Math.max(...dates);
   return Date.now() - newest <= 14 * 24 * 60 * 60 * 1000;
+}
+
+function itemSearchText(item) {
+  return [item.kind, item.course, itemTermLabel(item), item.title, item.timestamp, item.status, item.detail, itemURL(item), itemPath(item)]
+    .join(" ");
 }
 
 function itemTermLabel(item) {
