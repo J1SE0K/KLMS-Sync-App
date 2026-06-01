@@ -249,13 +249,10 @@ final class CompanionModel: ObservableObject {
                 let response = try await serverRelayStore.fetchStatusResponse()
                 apply(response)
                 let commands = try await serverRelayStore.fetchRecent(limit: 8)
-                syncItems = try await serverRelayStore.fetchSyncData(limit: 120).items
+                syncItems = try await serverRelayStore.fetchSyncData(limit: 2000).items
                 if !commands.isEmpty {
                     recentCommands = commands
                     handleReportNotificationUpdates(commands)
-                    if let latest = commands.first {
-                        status = latest.summary
-                    }
                 }
                 lastRefreshAt = Date()
                 errorMessage = ""
@@ -289,7 +286,7 @@ final class CompanionModel: ObservableObject {
         do {
             let response = try await serverRelayStore.fetchStatusResponse()
             apply(response)
-            syncItems = try await serverRelayStore.fetchSyncData(limit: 120).items
+            syncItems = try await serverRelayStore.fetchSyncData(limit: 2000).items
             let message = "서버 릴레이와 연결됐습니다."
             connectionMessage = message
             connectionSucceeded = true
@@ -603,6 +600,7 @@ struct CompanionRootView: View {
 private struct CompanionStatusScreen: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedDashboardCategory: DashboardMetricCategory = .assignments
+    @State private var selectedDashboardRoute: DashboardMetricCategory?
     @State private var selectedSyncItem: ServerRelaySyncItem?
 
     var body: some View {
@@ -610,8 +608,20 @@ private struct CompanionStatusScreen: View {
             RemoteAttentionStack(model: model)
             RemoteStatusHeader(
                 model: model,
-                selectedCategory: $selectedDashboardCategory
+                selectedCategory: $selectedDashboardCategory,
+                onCategoryTap: { category in
+                    selectedDashboardCategory = category
+                    selectedDashboardRoute = category
+                }
             )
+            .navigationDestination(item: $selectedDashboardRoute) { category in
+                DashboardCategoryDetailScreen(
+                    category: category,
+                    status: model.status,
+                    items: model.syncItems,
+                    onSelect: { selectedSyncItem = $0 }
+                )
+            }
             DashboardMetricDetailPanel(
                 category: selectedDashboardCategory,
                 status: model.status,
@@ -971,7 +981,7 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
         case .notices:
             status.notices
         case .files:
-            status.newFiles
+            status.fileTotal
         case .quarantine:
             status.quarantine
         case .calendar:
@@ -1021,6 +1031,7 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
 private struct RemoteStatusHeader: View {
     @ObservedObject var model: CompanionModel
     @Binding var selectedCategory: DashboardMetricCategory
+    var onCategoryTap: (DashboardMetricCategory) -> Void = { _ in }
 
     private let columns = [
         GridItem(.adaptive(minimum: 96), spacing: 8),
@@ -1059,7 +1070,7 @@ private struct RemoteStatusHeader: View {
                 metricTile(.assignments)
                 metricTile(.exams)
                 metricTile(.notices)
-                metricTile(.files, label: "새 파일")
+                metricTile(.files)
                 if model.status.quarantine > 0 {
                     metricTile(.quarantine)
                 }
@@ -1089,6 +1100,7 @@ private struct RemoteStatusHeader: View {
             isSelected: selectedCategory == category
         ) {
             selectedCategory = category
+            onCategoryTap(category)
         }
     }
 
@@ -1324,6 +1336,134 @@ private struct DashboardMetricDetailPanel: View {
     }
 }
 
+private struct DashboardCategoryDetailScreen: View {
+    var category: DashboardMetricCategory
+    var status: SanitizedRemoteStatus
+    var items: [ServerRelaySyncItem]
+    var onSelect: (ServerRelaySyncItem) -> Void
+    @State private var query = ""
+
+    private var filteredItems: [ServerRelaySyncItem] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return items
+            .filter { category.includes($0) }
+            .filter { item in
+                guard !query.isEmpty else { return true }
+                return [
+                    item.course,
+                    item.title,
+                    item.timestamp,
+                    item.status,
+                    item.detail,
+                ]
+                .joined(separator: " ")
+                .localizedCaseInsensitiveContains(query)
+            }
+            .sorted { lhs, rhs in
+                if lhs.timestamp != rhs.timestamp {
+                    return lhs.timestamp > rhs.timestamp
+                }
+                if lhs.updatedAt != rhs.updatedAt {
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                DashboardCategorySummaryRow(category: category, status: status, itemCount: filteredItems.count)
+            }
+
+            if category == .calendar {
+                Section("캘린더 변경") {
+                    DashboardCalendarChangeRow(title: "생성", value: status.calendarCreated)
+                    DashboardCalendarChangeRow(title: "수정", value: status.calendarUpdated)
+                    DashboardCalendarChangeRow(title: "삭제", value: status.calendarDeleted)
+                }
+            } else if category == .quarantine {
+                Section {
+                    Text(category.emptyMessage)
+                        .foregroundStyle(.secondary)
+                }
+            } else if filteredItems.isEmpty {
+                Section {
+                    Text(category.emptyMessage)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Section("\(filteredItems.count)개") {
+                    ForEach(filteredItems) { item in
+                        Button {
+                            onSelect(item)
+                        } label: {
+                            ServerSyncDataRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .navigationTitle(category.title)
+        .searchable(text: $query, prompt: "\(category.title) 검색")
+    }
+}
+
+private struct DashboardCategorySummaryRow: View {
+    var category: DashboardMetricCategory
+    var status: SanitizedRemoteStatus
+    var itemCount: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: category.systemImage)
+                .font(.title3)
+                .foregroundStyle(category.tint)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(category.title)
+                    .font(.headline)
+                Text(summaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("\(category.value(from: status))")
+                .font(.title3.monospacedDigit().weight(.semibold))
+        }
+    }
+
+    private var summaryText: String {
+        switch category {
+        case .files:
+            "서버 DB 파일 \(status.fileTotal)개 · 새 파일 \(status.newFiles)개"
+        case .notices:
+            "새 \(status.noticeNew)개 · 수정 \(status.noticeUpdated)개"
+        case .calendar:
+            "생성 \(status.calendarCreated) · 수정 \(status.calendarUpdated) · 삭제 \(status.calendarDeleted)"
+        default:
+            "상세 목록 \(itemCount)개"
+        }
+    }
+}
+
+private struct DashboardCalendarChangeRow: View {
+    var title: String
+    var value: Int
+
+    var body: some View {
+        if value > 0 {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(value)개")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 private struct DashboardCountPill: View {
     var title: String
     var value: Int
@@ -1493,7 +1633,7 @@ private struct ServerSyncItemDetailView: View {
                     header
                     detailFields
                     actionPanel
-                    InfoBanner(message: "항목 처리 요청은 서버에 대기열로 올라가고, Mac 앱이 받아서 기존 override/state 파일에 반영합니다.")
+                    InfoBanner(message: detailHelpMessage)
                 }
                 .padding()
             }
@@ -1622,6 +1762,13 @@ private struct ServerSyncItemDetailView: View {
             .buttonStyle(.bordered)
             .disabled(model.isRefreshing)
         }
+    }
+
+    private var detailHelpMessage: String {
+        if item.kind == "file" {
+            return "iPhone은 KLMS 파일 원본을 직접 내려받지 않습니다. 파일 동기화 요청을 보내면 Mac 앱이 Safari 로그인 세션으로 파일 목록과 다운로드 상태를 갱신합니다."
+        }
+        return "항목 처리 요청은 서버에 대기열로 올라가고, Mac 앱이 받아서 기존 override/state 파일에 반영합니다."
     }
 
     private var itemActions: [ServerRelayItemActionKind] {

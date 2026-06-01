@@ -58,6 +58,7 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+let refreshTimer = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
@@ -65,7 +66,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderAll();
   await loadConfig();
   if (state.configured) {
-    await refreshAll({ quiet: true });
+    await refreshAll({ quiet: true, auto: true });
   }
 });
 
@@ -150,6 +151,7 @@ async function clearConnection() {
     state.recentActions = [];
     state.selectedKind = "all";
     state.selectedItemId = "";
+    stopAutoRefresh();
     updateConnectionState("대기", "muted");
     renderAll();
     toast("Windows 앱의 서버 연결 정보를 지웠습니다.");
@@ -196,11 +198,18 @@ function parseConnectionInfo(text) {
 
 async function refreshAll(options = {}) {
   if (!state.configured && !options.check) {
+    stopAutoRefresh();
+    return;
+  }
+  if (options.auto && state.busy) {
+    scheduleAutoRefresh(2000);
     return;
   }
   try {
-    setBusy(true);
-    updateConnectionState("확인 중", "muted");
+    if (!options.auto) {
+      setBusy(true);
+      updateConnectionState("확인 중", "muted");
+    }
     await window.klmsWindows.relayRequest({ path: "/healthz" });
     const [statusResponse, commandResponse, syncData, actionResponse] = await Promise.all([
       window.klmsWindows.relayRequest({ path: "/v1/status" }),
@@ -223,8 +232,35 @@ async function refreshAll(options = {}) {
       showError(error);
     }
   } finally {
-    setBusy(false);
+    if (!options.auto) {
+      setBusy(false);
+    }
+    scheduleAutoRefresh();
   }
+}
+
+function scheduleAutoRefresh(delay = nextRefreshDelay()) {
+  stopAutoRefresh();
+  if (!state.configured) {
+    return;
+  }
+  refreshTimer = window.setTimeout(() => {
+    refreshAll({ quiet: true, auto: true });
+  }, delay);
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    window.clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
+}
+
+function nextRefreshDelay() {
+  const phase = state.running ? "running" : state.status.phase || "idle";
+  return isInFlightStatus(phase) || isInFlightStatus(state.latestCommand?.status) || state.status.authDigits
+    ? 2000
+    : 10000;
 }
 
 function applyStatus(payload) {
@@ -378,7 +414,7 @@ function renderDashboard() {
       button.innerHTML = `<span>${card.label}</span><strong>${card.get(state.status, state.items)}</strong><span>${cardDetail(card.key)}</span>`;
       button.addEventListener("click", () => {
         state.selectedKind = card.key;
-        state.selectedItemId = "";
+        state.selectedItemId = filteredItems()[0]?.id || "";
         renderDashboard();
         renderItems();
         renderDetail();
@@ -444,6 +480,7 @@ function renderDetail() {
     <div class="action-section">
       <h3>관련 동기화</h3>
       <button id="detailSyncButton">${commandLabel(relevantCommand(item.kind))} 요청</button>
+      ${item.kind === "file" ? `<p class="hint">Windows 앱은 KLMS 파일 원본을 직접 내려받지 않습니다. 파일 동기화 요청을 보내면 Mac 앱이 Safari 로그인 세션으로 파일 목록과 다운로드 상태를 갱신합니다.</p>` : ""}
     </div>
   `;
   $("detailSyncButton").addEventListener("click", () => createCommand(relevantCommand(item.kind)));
