@@ -17,8 +17,10 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
     case coreSync
     case noticeSync
     case filesSync
+    case verify
     case doctor
     case report
+    case v2BuildState
 
     public var id: String { rawValue }
 
@@ -32,10 +34,14 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
             .noticeSync
         case .filesSync:
             .filesSync
+        case .verify:
+            .verify
         case .doctor:
             .doctor
         case .report:
             .report
+        case .v2BuildState:
+            .v2BuildState
         }
     }
 
@@ -54,12 +60,14 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
             self = .noticeSync
         case .filesSync:
             self = .filesSync
+        case .verify:
+            self = .verify
         case .doctor:
             self = .doctor
         case .report:
             self = .report
-        case .verify, .v2BuildState:
-            return nil
+        case .v2BuildState:
+            self = .v2BuildState
         }
     }
 }

@@ -385,8 +385,8 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(RemoteCommandKind(engineCommand: .filesSync), .filesSync)
         XCTAssertEqual(RemoteCommandKind(engineCommand: .doctor), .doctor)
         XCTAssertEqual(RemoteCommandKind(engineCommand: .report), .report)
-        XCTAssertNil(RemoteCommandKind(engineCommand: .verify))
-        XCTAssertNil(RemoteCommandKind(engineCommand: .v2BuildState))
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .verify), .verify)
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .v2BuildState), .v2BuildState)
     }
 
     func testLocalRemoteCancelRequestIsSignedAndAuthorized() throws {

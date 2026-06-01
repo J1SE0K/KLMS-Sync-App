@@ -4,103 +4,177 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>KLMS Sync</title>
+    <script>
+      (() => {
+        try {
+          const saved = localStorage.getItem("klms-theme");
+          const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme = saved || (prefersDark ? "dark" : "light");
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">
-          <div class="brand-mark">K</div>
-          <div>
-            <h1>KLMS Sync</h1>
-            <p>Windows Companion</p>
-          </div>
-        </div>
-
-        <section class="panel connection-panel">
-          <div class="panel-heading">
-            <h2>서버 연결</h2>
-            <span id="connectionState" class="status-pill muted">대기</span>
-          </div>
-          <label>
-            서버 주소
-            <input id="relayURL" type="url" placeholder="https://sync.example.com 또는 http://192.168.x.x:18484">
-          </label>
-          <label>
-            클라이언트 토큰
-            <input id="relayToken" type="password" placeholder="처음 연결하거나 바꿀 때만 입력">
-          </label>
-          <textarea id="connectionPaste" rows="4" placeholder="Mac 앱에서 복사한 서버 연결 정보를 붙여넣기"></textarea>
-          <div class="button-row three">
-            <button id="pasteClipboardButton" class="secondary">클립보드</button>
-            <button id="parseConnectionButton" class="secondary">붙여넣기 읽기</button>
-            <button id="saveConnectionButton">저장</button>
-          </div>
-          <div class="button-row">
-            <button id="checkConnectionButton" class="wide secondary">저장 후 연결 확인</button>
-            <button id="clearConnectionButton" class="wide ghost">연결 지우기</button>
-          </div>
-          <p id="connectionHint" class="hint">Cloudflare Workers 릴레이 주소와 클라이언트 토큰을 넣습니다. Windows 앱은 KLMS를 직접 읽지 않고 서버 DB의 요약 상태와 항목만 봅니다.</p>
-        </section>
-
-        <section class="panel commands-panel">
-          <div class="panel-heading">
-            <h2>원격 실행</h2>
-          </div>
-          <div id="commandButtons" class="command-grid"></div>
-        </section>
-      </aside>
-
-      <main class="content">
+      <main class="mac-panel">
         <header class="topbar">
-          <div>
+          <div class="brand-mark">K</div>
+          <div class="topbar-copy">
             <p id="phaseLabel" class="eyebrow">상태 없음</p>
-            <h2 id="statusTitle">서버 연결을 확인해 주세요</h2>
+            <h1 id="statusTitle">서버 연결을 확인해 주세요</h1>
             <p id="statusSubtitle">Mac 앱이 릴레이를 통해 상태와 항목 목록을 올리면 여기에서 확인합니다.</p>
           </div>
           <div class="topbar-actions">
+            <button id="themeToggleButton" class="secondary theme-toggle" aria-pressed="false">다크모드</button>
             <button id="refreshButton">새로고침</button>
             <button id="copyStateButton" class="secondary">상태 복사</button>
           </div>
         </header>
 
+        <section id="quickStatusStrip" class="quick-strip"></section>
         <section id="attentionBanner" class="attention hidden"></section>
+        <section id="nextActionPanel" class="next-action-panel"></section>
 
-        <section id="dashboardCards" class="dashboard-grid"></section>
+        <section class="section-box command-box">
+          <div class="section-heading">
+            <h2>원격 실행</h2>
+            <span class="hint">Mac 앱이 릴레이 요청을 받아 실제 동기화를 실행합니다.</span>
+          </div>
+          <div id="commandButtons" class="command-grid"></div>
+        </section>
 
-        <section class="workspace">
-          <div class="list-pane panel">
-            <div class="list-toolbar">
-              <div>
-                <h2 id="listTitle">전체 항목</h2>
-                <p id="listCount" class="hint">0개</p>
+        <section class="section-box integration-box">
+          <div class="section-heading">
+            <h2>연동 상태</h2>
+            <button id="verifyFromIntegrationButton" class="secondary compact">상태 검사 요청</button>
+          </div>
+          <div id="integrationCards" class="integration-grid"></div>
+        </section>
+
+        <nav class="section-tabs" aria-label="섹션">
+          <button class="section-tab active" data-section="dashboard">대시보드</button>
+          <button class="section-tab" data-section="preview">미리보기</button>
+          <button class="section-tab" data-section="files">파일</button>
+          <button class="section-tab" data-section="logs">진단</button>
+          <button class="section-tab" data-section="settings">설정</button>
+        </nav>
+
+        <section id="dashboardSection" class="app-section active">
+          <section id="dashboardCards" class="dashboard-grid"></section>
+
+          <section class="workspace">
+            <div class="list-pane section-box">
+              <div class="list-toolbar">
+                <div>
+                  <h2 id="listTitle">전체 항목</h2>
+                  <p id="listCount" class="hint">0개</p>
+                </div>
+                <select id="sortSelect" aria-label="정렬">
+                  <option value="recent">KLMS 최신 순</option>
+                  <option value="updated">서버 갱신 순</option>
+                  <option value="course">과목 순</option>
+                  <option value="title">제목 순</option>
+                  <option value="kind">종류 순</option>
+                </select>
               </div>
-              <select id="sortSelect" aria-label="정렬">
-                <option value="recent">KLMS 최신 순</option>
-                <option value="updated">서버 갱신 순</option>
-                <option value="course">과목 순</option>
-                <option value="title">제목 순</option>
-                <option value="kind">종류 순</option>
-              </select>
+              <div class="filter-bar">
+                <select id="yearSelect" aria-label="년도">
+                  <option value="all">전체 년도</option>
+                </select>
+                <select id="semesterSelect" aria-label="학기">
+                  <option value="all">전체 학기</option>
+                </select>
+                <select id="courseSelect" aria-label="과목">
+                  <option value="all">전체 과목</option>
+                </select>
+                <label class="check-control">
+                  <input id="newOnlyToggle" type="checkbox">
+                  새 항목
+                </label>
+                <label class="check-control">
+                  <input id="recentOnlyToggle" type="checkbox">
+                  최근
+                </label>
+                <label class="check-control">
+                  <input id="showHiddenToggle" type="checkbox">
+                  숨김
+                </label>
+                <button id="resetFiltersButton" class="ghost compact">필터 초기화</button>
+              </div>
+              <input id="searchInput" class="search" type="search" placeholder="년도, 학기, 과목, 제목, 내용 검색">
+              <div id="itemList" class="item-list"></div>
             </div>
-            <input id="searchInput" class="search" type="search" placeholder="과목, 제목, 내용 검색">
-            <div id="itemList" class="item-list"></div>
-          </div>
 
-          <div class="detail-pane panel">
-            <div id="itemDetail" class="empty-detail">
-              <h2>항목을 선택하세요</h2>
-              <p>대시보드 카드나 왼쪽 목록을 누르면 상세와 처리 버튼이 표시됩니다.</p>
+            <div class="detail-pane section-box">
+              <div id="itemDetail" class="empty-detail">
+                <h2>항목을 선택하세요</h2>
+                <p>왼쪽 목록에서 상세와 처리 버튼을 확인합니다.</p>
+              </div>
             </div>
-          </div>
+          </section>
+          <div id="dashboardCommandOutput" class="section-stack"></div>
         </section>
 
-        <section class="panel history-panel">
-          <div class="panel-heading">
-            <h2>최근 요청</h2>
-          </div>
-          <div id="historyList" class="history-list"></div>
+        <section id="previewSection" class="app-section">
+          <div id="previewPanel" class="section-stack"></div>
+          <div id="previewCommandOutput" class="section-stack"></div>
         </section>
+
+        <section id="filesSection" class="app-section">
+          <div id="filesPanel" class="section-stack"></div>
+        </section>
+
+        <section id="logsSection" class="app-section">
+          <div id="diagnosticsPanel" class="section-stack"></div>
+          <div id="loginPanel" class="section-stack"></div>
+          <div id="appDiagnosticsPanel" class="section-stack"></div>
+          <section class="section-box history-panel">
+            <div class="section-heading">
+              <h2>최근 요청</h2>
+            </div>
+            <div id="historyList" class="history-list"></div>
+          </section>
+        </section>
+
+        <section id="settingsSection" class="app-section">
+          <section class="section-box connection-panel">
+            <div class="section-heading">
+              <h2>서버 릴레이</h2>
+              <span id="connectionState" class="status-pill muted">대기</span>
+            </div>
+            <div class="settings-grid">
+              <label>
+                서버 주소
+                <input id="relayURL" type="url" placeholder="https://sync.example.com 또는 http://192.168.x.x:18484">
+              </label>
+              <label>
+                클라이언트 토큰
+                <input id="relayToken" type="password" placeholder="처음 연결하거나 바꿀 때만 입력">
+              </label>
+            </div>
+            <textarea id="connectionPaste" rows="3" placeholder="Mac 앱에서 복사한 서버 연결 정보"></textarea>
+            <div class="button-row settings-actions">
+              <button id="pasteClipboardButton" class="secondary">붙여넣기</button>
+              <button id="parseConnectionButton" class="secondary">읽기</button>
+              <button id="saveConnectionButton">저장</button>
+              <button id="checkConnectionButton" class="secondary">연결 확인</button>
+              <button id="clearConnectionButton" class="ghost">지우기</button>
+            </div>
+            <p id="connectionHint" class="hint">Mac 앱의 설정 > iPhone 서버 릴레이와 같은 역할입니다. Cloudflare Workers/VPS 릴레이 주소와 클라이언트 토큰을 저장합니다. Windows 앱은 KLMS를 직접 읽지 않고 서버 DB의 요약 상태와 항목 처리 요청만 다룹니다.</p>
+          </section>
+
+          <div id="settingsMirrorPanel" class="section-stack"></div>
+        </section>
+
+        <footer class="footer-actions">
+          <button id="footerRefreshButton" class="secondary">새로고침</button>
+          <button id="footerResetButton" class="ghost">화면 초기화</button>
+          <span class="footer-spacer"></span>
+          <button id="footerSettingsButton" class="secondary">설정</button>
+        </footer>
       </main>
     </div>
 

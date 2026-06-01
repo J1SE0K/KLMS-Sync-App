@@ -1,20 +1,47 @@
-const commands = [
-  { kind: "fullSync", label: "전체 동기화", icon: "↻" },
-  { kind: "coreSync", label: "과제/시험", icon: "✓" },
-  { kind: "noticeSync", label: "공지 메모", icon: "⌑" },
-  { kind: "filesSync", label: "파일 동기화", icon: "□" },
-  { kind: "report", label: "요약 갱신", icon: "↺" },
-  { kind: "doctor", label: "진단", icon: "!" }
+const syncCommands = [
+  { kind: "fullSync", label: "전체", iconClass: "icon-sync", tone: "blue" },
+  { kind: "coreSync", label: "과제/시험", iconClass: "icon-check", tone: "green" },
+  { kind: "noticeSync", label: "공지", iconClass: "icon-notice", tone: "purple" },
+  { kind: "filesSync", label: "파일", iconClass: "icon-file", tone: "orange" }
+];
+
+const diagnosticCommands = [
+  { kind: "verify", label: "상태 검사", iconClass: "icon-check", tone: "green" },
+  { kind: "doctor", label: "권한/환경 진단", iconClass: "icon-alert", tone: "red" },
+  { kind: "report", label: "요약 갱신", iconClass: "icon-report", tone: "blue" },
+  { kind: "v2BuildState", label: "상태 파일 재생성", iconClass: "icon-sync", tone: "purple" }
+];
+
+const unknownSemesterLabel = "학기 미확인";
+
+const fileSortOptions = [
+  { key: "course", label: "과목" },
+  { key: "kind", label: "종류" },
+  { key: "name", label: "파일명" },
+  { key: "path", label: "경로" },
+  { key: "recent", label: "최근" }
+];
+
+const fileDetailOptions = [
+  { key: "files", label: "파일 목록" },
+  { key: "newFiles", label: "새 파일" },
+  { key: "quarantine", label: "격리" },
+  { key: "pruned", label: "삭제 예정" }
 ];
 
 const dashboardKinds = [
   { key: "all", label: "전체", get: (_status, items) => visibleItems(items).length },
   { key: "assignment", label: "과제", get: (status) => status.assignments },
+  { key: "completedAssignment", label: "완료 기록", get: (_status, items) => countItems(items, "completedAssignment") },
+  { key: "assignmentCandidate", label: "과제 후보", get: (_status, items) => countItems(items, "assignmentCandidate") },
   { key: "exam", label: "시험", get: (status) => status.exams },
+  { key: "examCandidate", label: "시험 후보", get: (_status, items) => countItems(items, "examCandidate") },
+  { key: "helpDesk", label: "헬프데스크", get: (status, items) => status.helpDesk || countItems(items, "helpDesk") },
   { key: "notice", label: "공지", get: (status) => status.notices },
   { key: "file", label: "파일", get: (status) => status.fileTotal },
   { key: "newFiles", label: "새 파일", get: (status) => status.newFiles },
   { key: "quarantine", label: "격리", get: (status) => status.quarantine },
+  { key: "pruned", label: "삭제된 파일", get: (status) => fileCleanupTotal(status) },
   { key: "calendar", label: "캘린더", get: (status) => calendarChangeTotal(status) },
   { key: "hidden", label: "보관함", get: (_status, items) => items.filter((item) => item.isHidden).length }
 ];
@@ -50,16 +77,27 @@ const state = {
   items: [],
   recentCommands: [],
   recentActions: [],
+  selectedSection: "dashboard",
   selectedKind: "all",
   selectedItemId: "",
   sort: "recent",
+  fileSort: "course",
+  selectedFileDetail: "files",
   query: "",
+  selectedYear: "all",
+  selectedSemester: "all",
+  selectedCourse: "all",
+  showHidden: false,
+  newOnly: false,
+  recentOnly: false,
+  theme: "light",
   busy: false
 };
 
 const $ = (id) => document.getElementById(id);
 
 document.addEventListener("DOMContentLoaded", async () => {
+  initTheme();
   bindEvents();
   renderCommands();
   renderAll();
@@ -77,14 +115,96 @@ function bindEvents() {
   $("parseConnectionButton").addEventListener("click", parseConnectionText);
   $("refreshButton").addEventListener("click", () => refreshAll());
   $("copyStateButton").addEventListener("click", copyState);
+  $("themeToggleButton").addEventListener("click", toggleTheme);
+  $("verifyFromIntegrationButton").addEventListener("click", () => createCommand("verify"));
+  $("footerRefreshButton").addEventListener("click", () => refreshAll());
+  $("footerResetButton").addEventListener("click", resetDisplayState);
+  $("footerSettingsButton").addEventListener("click", () => setSection("settings"));
+  document.querySelectorAll(".section-tab").forEach((button) => {
+    button.addEventListener("click", () => setSection(button.dataset.section));
+  });
+  $("yearSelect").addEventListener("change", (event) => {
+    state.selectedYear = event.target.value;
+    state.selectedItemId = "";
+    renderFilters();
+    renderDashboard();
+    renderItems();
+    renderDetail();
+  });
+  $("semesterSelect").addEventListener("change", (event) => {
+    state.selectedSemester = event.target.value;
+    state.selectedItemId = "";
+    renderFilters();
+    renderDashboard();
+    renderItems();
+    renderDetail();
+  });
+  $("courseSelect").addEventListener("change", (event) => {
+    state.selectedCourse = event.target.value;
+    state.selectedItemId = "";
+    renderFilters();
+    renderDashboard();
+    renderItems();
+    renderDetail();
+  });
+  $("newOnlyToggle").addEventListener("change", (event) => {
+    state.newOnly = event.target.checked;
+    state.selectedItemId = "";
+    renderFilters();
+    renderItems();
+    renderDetail();
+  });
+  $("recentOnlyToggle").addEventListener("change", (event) => {
+    state.recentOnly = event.target.checked;
+    state.selectedItemId = "";
+    renderFilters();
+    renderItems();
+    renderDetail();
+  });
+  $("showHiddenToggle").addEventListener("change", (event) => {
+    state.showHidden = event.target.checked;
+    state.selectedItemId = "";
+    renderFilters();
+    renderDashboard();
+    renderItems();
+    renderDetail();
+  });
+  $("resetFiltersButton").addEventListener("click", resetFilters);
   $("searchInput").addEventListener("input", (event) => {
     state.query = event.target.value;
+    renderFilters();
     renderItems();
   });
   $("sortSelect").addEventListener("change", (event) => {
     state.sort = event.target.value;
     renderItems();
   });
+}
+
+function initTheme() {
+  const theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  applyTheme(theme, { persist: false });
+}
+
+function toggleTheme() {
+  applyTheme(state.theme === "dark" ? "light" : "dark");
+}
+
+function applyTheme(theme, options = {}) {
+  state.theme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = state.theme;
+  const button = $("themeToggleButton");
+  if (button) {
+    button.textContent = state.theme === "dark" ? "라이트모드" : "다크모드";
+    button.setAttribute("aria-pressed", String(state.theme === "dark"));
+  }
+  if (options.persist !== false) {
+    try {
+      localStorage.setItem("klms-theme", state.theme);
+    } catch {
+      // Theme persistence is optional; the UI still updates without it.
+    }
+  }
 }
 
 async function loadConfig() {
@@ -148,8 +268,17 @@ async function clearConnection() {
     state.items = [];
     state.recentCommands = [];
     state.recentActions = [];
+    state.selectedSection = "settings";
     state.selectedKind = "all";
     state.selectedItemId = "";
+    state.selectedYear = "all";
+    state.selectedSemester = "all";
+    state.selectedCourse = "all";
+    state.showHidden = false;
+    state.newOnly = false;
+    state.recentOnly = false;
+    state.query = "";
+    $("searchInput").value = "";
     updateConnectionState("대기", "muted");
     renderAll();
     toast("Windows 앱의 서버 연결 정보를 지웠습니다.");
@@ -328,17 +457,43 @@ function applyOptimisticItemAction(action, item) {
 
 function renderAll() {
   renderHeader();
+  renderQuickStatus();
+  renderNextAction();
+  renderIntegration();
+  renderSections();
+  renderFilters();
   renderDashboard();
   renderItems();
   renderDetail();
+  renderPreview();
+  renderFilesPanel();
+  renderDiagnostics();
+  renderLoginPanel();
+  renderAppDiagnostics();
+  renderCommandOutputPanels();
+  renderSettingsMirror();
   renderHistory();
 }
 
+function setSection(section) {
+  state.selectedSection = section || "dashboard";
+  renderSections();
+}
+
+function renderSections() {
+  document.querySelectorAll(".section-tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.section === state.selectedSection);
+  });
+  document.querySelectorAll(".app-section").forEach((section) => {
+    section.classList.toggle("active", section.id === `${state.selectedSection}Section`);
+  });
+}
+
 function renderCommands() {
-  $("commandButtons").replaceChildren(...commands.map((command) => {
+  $("commandButtons").replaceChildren(...syncCommands.map((command) => {
     const button = document.createElement("button");
-    button.className = "secondary";
-    button.textContent = `${command.icon} ${command.label}`;
+    button.className = `command-button tone-${command.tone}`;
+    button.innerHTML = `<span class="command-icon ${escapeHTML(command.iconClass)}" aria-hidden="true"></span><span>${escapeHTML(command.label)}</span>`;
     button.addEventListener("click", () => createCommand(command.kind));
     return button;
   }));
@@ -367,6 +522,319 @@ function renderHeader() {
     banner.classList.add("success");
     banner.classList.remove("hidden");
   }
+}
+
+function renderQuickStatus() {
+  const phase = state.running ? "running" : state.status.phase || "idle";
+  const chips = [
+    {
+      label: state.configured ? "릴레이 연결 저장됨" : "릴레이 연결 필요",
+      klass: state.configured ? "ok" : "muted"
+    },
+    {
+      label: state.running ? "Mac 실행 중" : latestRunChipText(),
+      klass: state.running ? "warn" : latestRunChipClass()
+    },
+    {
+      label: `공지 새 ${state.status.noticeNew} · 수정 ${state.status.noticeUpdated}`,
+      klass: (state.status.noticeNew + state.status.noticeUpdated) > 0 ? "blue" : "muted"
+    },
+    {
+      label: `파일 새 ${state.status.newFiles} · 정리 ${fileCleanupTotal(state.status)}`,
+      klass: (state.status.newFiles + fileCleanupTotal(state.status)) > 0 ? "green" : "muted"
+    },
+    {
+      label: `캘린더 변경 ${calendarChangeTotal(state.status)}`,
+      klass: calendarChangeTotal(state.status) > 0 ? "purple" : "muted"
+    }
+  ];
+  if (state.status.loginRequired || state.status.authDigits) {
+    chips.unshift({
+      label: state.status.authDigits ? `KAIST 인증 ${state.status.authDigits}` : "KLMS 로그인 필요",
+      klass: "warn"
+    });
+  }
+  $("quickStatusStrip").replaceChildren(...chips.map((chip) => {
+    const element = document.createElement("span");
+    element.className = `quick-chip ${chip.klass}`;
+    element.textContent = chip.label;
+    return element;
+  }));
+}
+
+function renderNextAction() {
+  const panel = $("nextActionPanel");
+  const action = nextAction();
+  panel.className = `next-action-panel ${action.tone}`;
+  panel.innerHTML = `
+    <div>
+      <strong>${escapeHTML(action.title)}</strong>
+      <p>${escapeHTML(action.detail)}</p>
+    </div>
+    <button class="${action.secondary ? "secondary" : ""}" id="nextActionButton">${escapeHTML(action.button)}</button>
+  `;
+  $("nextActionButton").addEventListener("click", action.run);
+}
+
+function nextAction() {
+  if (!state.configured) {
+    return {
+      tone: "warn",
+      title: "서버 릴레이 연결 필요",
+      detail: "Mac 앱 설정에서 복사한 서버 주소와 토큰을 설정에 붙여넣어야 Windows에서 같은 상태를 볼 수 있습니다.",
+      button: "설정 열기",
+      run: () => setSection("settings")
+    };
+  }
+  if (state.status.authDigits) {
+    return {
+      tone: "warn",
+      title: `KAIST 인증 번호 ${state.status.authDigits}`,
+      detail: "Mac에서 Safari/Kaikey 인증을 완료하면 Windows 대시보드가 자동으로 최신 상태를 받습니다.",
+      button: "상태 갱신",
+      run: () => refreshAll()
+    };
+  }
+  if (state.status.loginRequired) {
+    return {
+      tone: "warn",
+      title: "KLMS 로그인이 필요합니다",
+      detail: "Mac 앱에서 Safari 로그인을 확인해야 실제 동기화가 계속됩니다.",
+      button: "진단 요청",
+      run: () => createCommand("doctor")
+    };
+  }
+  if (state.latestCommand?.status === "failed" || state.latestCommand?.status === "macUnavailable") {
+    return {
+      tone: "fail",
+      title: `${commandLabel(state.latestCommand.kind)} ${commandStatusLabel(state.latestCommand.status)}`,
+      detail: state.message || "Mac 앱 상태, 서버 토큰, 자동 실행 상태를 확인해야 합니다.",
+      button: "진단 보기",
+      run: () => setSection("logs")
+    };
+  }
+  if (state.running || state.latestCommand?.status === "running") {
+    return {
+      tone: "info",
+      title: "Mac에서 동기화 실행 중",
+      detail: state.message || latestCommandText() || "요청을 처리하는 동안 항목 목록이 갱신될 수 있습니다.",
+      button: "새로고침",
+      run: () => refreshAll()
+    };
+  }
+  return {
+    tone: "ok",
+    title: "원격 실행 준비됨",
+    detail: `현재 표시 항목 ${visibleItems(state.items).length}개 · 최근 요청 ${state.recentCommands.length}개`,
+    button: "전체 동기화",
+    run: () => createCommand("fullSync")
+  };
+}
+
+function renderIntegration() {
+  const cards = integrationStatuses().map((status) => {
+    const element = document.createElement("div");
+    element.className = `integration-card ${status.health}`;
+    element.innerHTML = `
+      <div class="integration-top">
+        <strong>${escapeHTML(status.title)}</strong>
+        <span>${escapeHTML(status.label)}</span>
+      </div>
+      <div class="integration-value">${escapeHTML(status.value)}</div>
+      <p>${escapeHTML(status.detail)}</p>
+    `;
+    return element;
+  });
+  $("integrationCards").replaceChildren(...cards);
+}
+
+function integrationStatuses() {
+  const commandStatus = state.latestCommand?.status || state.status.phase || "idle";
+  return [
+    {
+      title: "서버 릴레이",
+      label: state.configured ? "정상" : "미설정",
+      value: state.configured ? "연결 정보 저장됨" : "설정 필요",
+      detail: state.configured ? "Cloudflare/VPS 릴레이를 통해 Mac과 Windows가 같은 서버 DB를 봅니다." : "설정 탭에서 서버 주소와 토큰을 저장하세요.",
+      health: state.configured ? "ok" : "unknown"
+    },
+    {
+      title: "Mac 실행기",
+      label: commandStatusLabel(commandStatus),
+      value: state.running ? "실행 중" : latestRunChipText(),
+      detail: "실제 KLMS scraping, Notes, Calendar, Reminders 반영은 Mac 앱이 처리합니다.",
+      health: state.running ? "running" : commandStatusClass(commandStatus)
+    },
+    {
+      title: "메모",
+      label: state.status.noticeNew + state.status.noticeUpdated > 0 ? "변경 있음" : "대기",
+      value: `공지 ${state.status.notices}개`,
+      detail: `새 공지 ${state.status.noticeNew} · 수정 ${state.status.noticeUpdated} · 무시 ${state.status.noticeIgnored}`,
+      health: state.status.noticeNew + state.status.noticeUpdated > 0 ? "warn" : "unknown"
+    },
+    {
+      title: "캘린더",
+      label: calendarChangeTotal(state.status) > 0 ? "변경 있음" : "대기",
+      value: `변경 ${calendarChangeTotal(state.status)}개`,
+      detail: `생성 ${state.status.calendarCreated} · 수정 ${state.status.calendarUpdated} · 삭제 ${state.status.calendarDeleted}`,
+      health: calendarChangeTotal(state.status) > 0 ? "ok" : "unknown"
+    },
+    {
+      title: "미리 알림",
+      label: state.status.assignments > 0 ? "항목 있음" : "대기",
+      value: `과제 ${state.status.assignments}개`,
+      detail: `완료 기록 ${countItems(state.items, "completedAssignment")} · 과제 후보 ${countItems(state.items, "assignmentCandidate")}`,
+      health: state.status.assignments > 0 ? "ok" : "unknown"
+    },
+    {
+      title: "파일",
+      label: state.status.quarantine > 0 ? "확인 필요" : "대기",
+      value: `파일 ${state.status.fileTotal}개`,
+      detail: `새 파일 ${state.status.newFiles} · 격리 ${state.status.quarantine} · 정리 ${fileCleanupTotal(state.status)}`,
+      health: state.status.quarantine > 0 ? "warn" : "ok"
+    }
+  ];
+}
+
+function renderFilters() {
+  const years = yearOptions();
+  renderSelectOptions(
+    $("yearSelect"),
+    [{ value: "all", label: "전체 년도" }, ...years.map((year) => ({ value: year, label: `${year}년` }))],
+    state.selectedYear
+  );
+  const semesters = semesterOptions();
+  renderSelectOptions(
+    $("semesterSelect"),
+    [{ value: "all", label: "전체 학기" }, ...semesters.map((semester) => ({ value: semester, label: semester }))],
+    state.selectedSemester
+  );
+  const courses = courseOptions();
+  renderSelectOptions(
+    $("courseSelect"),
+    [{ value: "all", label: "전체 과목" }, ...courses.map((course) => ({ value: course, label: course }))],
+    state.selectedCourse
+  );
+  $("yearSelect").disabled = years.length === 0;
+  $("semesterSelect").disabled = semesters.length === 0;
+  $("courseSelect").disabled = courses.length === 0;
+  $("newOnlyToggle").checked = state.newOnly;
+  $("recentOnlyToggle").checked = state.recentOnly;
+  $("showHiddenToggle").checked = state.showHidden;
+  $("resetFiltersButton").hidden = !hasActiveFilters();
+}
+
+function renderSelectOptions(select, options, selectedValue) {
+  const values = new Set(options.map((option) => option.value));
+  const selected = values.has(selectedValue) ? selectedValue : "all";
+  if (selected !== selectedValue) {
+    if (select.id === "yearSelect") {
+      state.selectedYear = selected;
+    } else if (select.id === "semesterSelect") {
+      state.selectedSemester = selected;
+    } else if (select.id === "courseSelect") {
+      state.selectedCourse = selected;
+    }
+  }
+  select.replaceChildren(...options.map((option) => {
+    const element = document.createElement("option");
+    element.value = option.value;
+    element.textContent = option.label;
+    element.selected = option.value === selected;
+    return element;
+  }));
+}
+
+function resetFilters() {
+  state.query = "";
+  state.selectedYear = "all";
+  state.selectedSemester = "all";
+  state.selectedCourse = "all";
+  state.showHidden = false;
+  state.newOnly = false;
+  state.recentOnly = false;
+  state.selectedItemId = "";
+  $("searchInput").value = "";
+  renderFilters();
+  renderDashboard();
+  renderItems();
+  renderDetail();
+}
+
+function resetDisplayState() {
+  state.status = { ...defaultStatus };
+  state.latestCommand = null;
+  state.running = false;
+  state.message = "";
+  state.items = [];
+  state.recentCommands = [];
+  state.recentActions = [];
+  state.selectedKind = "all";
+  state.selectedItemId = "";
+  resetFilters();
+  renderAll();
+  toast("화면 표시 상태를 초기화했습니다.");
+}
+
+function courseOptions() {
+  return [...new Set(state.items
+    .filter(matchesSelectedTerm)
+    .map(normalizedCourseName)
+    .filter(Boolean))]
+    .sort((lhs, rhs) => lhs.localeCompare(rhs, "ko"));
+}
+
+function yearOptions() {
+  return [...new Set(state.items.map(itemTermParts).map((term) => term.year).filter(Boolean))]
+    .sort((lhs, rhs) => rhs.localeCompare(lhs, "ko"));
+}
+
+function semesterOptions() {
+  const terms = state.items
+    .filter(matchesSelectedYear)
+    .map(itemTermParts)
+  const known = [...new Set(terms.map((term) => term.semester).filter(Boolean))]
+    .sort(compareSemesterLabels);
+  return terms.some(isUnknownTerm) ? [...known, unknownSemesterLabel] : known;
+}
+
+function matchesSelectedYear(item) {
+  const term = itemTermParts(item);
+  return state.selectedYear === "all" || term.year === state.selectedYear;
+}
+
+function matchesSelectedSemester(item) {
+  if (state.selectedSemester === "all") {
+    return true;
+  }
+  const term = itemTermParts(item);
+  if (state.selectedSemester === unknownSemesterLabel) {
+    return isUnknownTerm(term);
+  }
+  return term.semester === state.selectedSemester;
+}
+
+function matchesSelectedTerm(item) {
+  return matchesSelectedYear(item) && matchesSelectedSemester(item);
+}
+
+function isUnknownTerm(term) {
+  return !term.year || !term.semester;
+}
+
+function normalizedCourseName(item) {
+  return String(item.course || "").trim();
+}
+
+function latestRunChipText() {
+  if (!state.latestCommand) {
+    return "첫 실행 전";
+  }
+  return `${commandLabel(state.latestCommand.kind)} ${commandStatusLabel(state.latestCommand.status)}`;
+}
+
+function latestRunChipClass() {
+  return commandStatusClass(state.latestCommand?.status);
 }
 
 function renderDashboard() {
@@ -417,9 +885,11 @@ function renderDetail() {
   const item = currentItems().find((candidate) => candidate.id === state.selectedItemId);
   if (!item) {
     $("itemDetail").className = "empty-detail";
-    $("itemDetail").innerHTML = "<h2>항목을 선택하세요</h2><p>대시보드 카드나 왼쪽 목록을 누르면 상세와 처리 버튼이 표시됩니다.</p>";
+    $("itemDetail").innerHTML = "<h2>항목을 선택하세요</h2><p>왼쪽 목록에서 상세와 처리 버튼을 확인합니다.</p>";
     return;
   }
+  const url = itemURL(item);
+  const pathText = itemPath(item);
   $("itemDetail").className = "detail-card";
   $("itemDetail").innerHTML = `
     <div class="detail-header">
@@ -432,10 +902,17 @@ function renderDetail() {
       ${fieldHTML("상태", item.status)}
       ${fieldHTML("시간", item.timestamp)}
       ${fieldHTML("과목", item.course)}
+      ${fieldHTML("학기", itemTermLabel(item))}
       ${fieldHTML("첨부", item.attachmentCount > 0 ? `${item.attachmentCount}개` : "")}
       ${fieldHTML("서버 갱신", item.updatedAt)}
+      ${fieldHTML("경로", pathText, true)}
+      ${fieldHTML("URL", url, true)}
       ${fieldHTML("세부 내용", item.detail, true)}
       ${fieldHTML("식별자", item.id, true)}
+    </div>
+    <div class="action-section">
+      <h3>열기/복사</h3>
+      <div class="action-grid" id="detailUtilityActions"></div>
     </div>
     <div class="action-section">
       <h3>항목 처리</h3>
@@ -447,7 +924,26 @@ function renderDetail() {
     </div>
   `;
   $("detailSyncButton").addEventListener("click", () => createCommand(relevantCommand(item.kind)));
+  renderDetailUtilities(item, url);
   renderDetailActions(item);
+}
+
+function renderDetailUtilities(item, url) {
+  const container = $("detailUtilityActions");
+  if (!container) {
+    return;
+  }
+  const actions = [
+    url ? { title: "KLMS 열기", run: () => window.klmsWindows.openExternal(url) } : null,
+    { title: "상세 복사", run: () => copyItemDetail(item) }
+  ].filter(Boolean);
+  container.replaceChildren(...actions.map((action) => {
+    const button = document.createElement("button");
+    button.className = "secondary";
+    button.textContent = action.title;
+    button.addEventListener("click", action.run);
+    return button;
+  }));
 }
 
 function renderDetailActions(item) {
@@ -469,6 +965,505 @@ function renderDetailActions(item) {
     button.addEventListener("click", () => createItemAction(action.action, item));
     return button;
   }));
+}
+
+function renderPreview() {
+  const items = previewItems();
+  $("previewPanel").innerHTML = `
+    <section class="section-box">
+      <div class="section-heading">
+        <h2>미리보기</h2>
+        <span class="hint">Mac 앱의 미리보기 섹션처럼 다음 실행에서 확인할 항목을 서버 DB 기준으로 모아봅니다.</span>
+      </div>
+      <div class="dashboard-grid compact-grid">
+        ${previewMetricHTML("과제/시험", state.status.assignments + state.status.exams + state.status.helpDesk, "과제, 시험, 헬프데스크")}
+        ${previewMetricHTML("공지 변경", state.status.noticeNew + state.status.noticeUpdated, "새 공지와 수정 공지")}
+        ${previewMetricHTML("파일 변경", state.status.newFiles + state.status.quarantine + fileCleanupTotal(state.status), "새 파일, 격리, 정리")}
+        ${previewMetricHTML("캘린더 변경", calendarChangeTotal(state.status), "생성, 수정, 삭제")}
+      </div>
+      <div class="button-row preview-actions">
+        <button id="previewReportButton" class="secondary">요약 갱신 요청</button>
+        <button id="previewFullSyncButton">전체 동기화 요청</button>
+      </div>
+    </section>
+    <section class="section-box">
+      <div class="section-heading">
+        <h2>검토할 항목</h2>
+        <span class="hint">${items.length}개</span>
+      </div>
+      <div class="preview-list">${items.length ? items.map(previewRowHTML).join("") : emptyInlineHTML("검토할 항목이 없습니다.")}</div>
+    </section>
+  `;
+  $("previewReportButton").addEventListener("click", () => createCommand("report"));
+  $("previewFullSyncButton").addEventListener("click", () => createCommand("fullSync"));
+}
+
+function renderFilesPanel() {
+  const rawFiles = fileDetailRows("files", { filtered: false });
+  const rawNewFiles = fileDetailRows("newFiles", { filtered: false });
+  const rawQuarantine = fileDetailRows("quarantine", { filtered: false });
+  const rawPruned = fileDetailRows("pruned", { filtered: false });
+  const selectedDetail = fileDetailOptions.some((option) => option.key === state.selectedFileDetail)
+    ? state.selectedFileDetail
+    : "files";
+  state.selectedFileDetail = selectedDetail;
+  const selectedRows = sortedFileItems(fileDetailRows(selectedDetail, { filtered: true })).slice(0, 120);
+  const selectedLabel = fileDetailOptions.find((option) => option.key === selectedDetail)?.label || "파일 목록";
+  $("filesPanel").innerHTML = `
+    <section class="section-box">
+      <div class="section-heading">
+        <h2>파일</h2>
+        <span class="hint">Mac 파일 섹션처럼 파일 목록, 새 파일, 격리, 삭제 예정 항목을 나눠 봅니다.</span>
+      </div>
+      <div class="dashboard-grid compact-grid">
+        ${fileMetricHTML("파일 목록", state.status.fileTotal || rawFiles.length, "files")}
+        ${fileMetricHTML("실제 파일", rawFiles.length, "files")}
+        ${fileMetricHTML("새 URL", state.status.newFiles || rawNewFiles.length, "newFiles")}
+        ${fileMetricHTML("이동", countFileText(rawFiles, /moved|migrated|이동/i), "files")}
+        ${fileMetricHTML("새로 받을 파일", state.status.newFiles || rawNewFiles.length, "newFiles")}
+        ${fileMetricHTML("삭제 예정", fileCleanupTotal(state.status) || rawPruned.length, "pruned")}
+        ${fileMetricHTML("형식 불일치", countFileText(rawFiles, /type.?mismatch|format|형식|불일치/i), "files")}
+      </div>
+      <div class="dashboard-grid compact-grid file-secondary-grid">
+        ${previewMetricHTML("이미 있음", countFileText(rawFiles, /skipped|existing|이미|존재/i), "Mac 다운로드 결과")}
+        ${previewMetricHTML("복원", countFileText(rawFiles.concat(rawPruned), /restored|restore|복원/i), "아카이브/상태 복원")}
+        ${previewMetricHTML("재사용", countFileText(rawFiles, /reused|reuse|재사용/i), "기존 로그 파일 재사용")}
+        ${fileMetricHTML("새 다운로드", state.status.newFiles || rawNewFiles.length, "newFiles")}
+        ${fileMetricHTML("새 파일 보관함", state.status.newFiles || rawNewFiles.length, "newFiles")}
+        ${fileMetricHTML("격리됨", state.status.quarantine || rawQuarantine.length, "quarantine")}
+      </div>
+      <div class="dashboard-grid compact-grid file-secondary-grid">
+        ${fileMetricHTML("삭제", state.status.filePruned || rawPruned.length, "pruned")}
+        ${previewMetricHTML("새 파일 유지", countFileText(rawPruned, /kept-fresh|유지/i), "정리 제외")}
+        ${previewMetricHTML("보존", countFileText(rawPruned, /preserved|preserve|보존/i), "보존 처리")}
+        ${previewMetricHTML("복원", countFileText(rawPruned, /restored|restore|복원/i), "정리 중 복원")}
+      </div>
+      <div class="button-row preview-actions">
+        <button id="filesSyncButton">파일 동기화 요청</button>
+        <button id="filesReportButton" class="secondary">요약 갱신 요청</button>
+      </div>
+    </section>
+    <section class="section-box">
+      <div class="section-heading">
+        <h2>${escapeHTML(selectedLabel)}</h2>
+        <span class="hint">${selectedRows.length}개 · ${escapeHTML(activeFilterText())}</span>
+      </div>
+      <div class="file-control-row">
+        <div class="segmented-controls" aria-label="파일 세부 항목">
+          ${fileDetailOptions.map((option) => `
+            <button class="${option.key === selectedDetail ? "active" : ""}" data-file-detail="${escapeHTML(option.key)}">${escapeHTML(option.label)}</button>
+          `).join("")}
+        </div>
+        <div class="sort-controls" aria-label="파일 정렬">
+          <span>정렬</span>
+          ${fileSortOptions.map((option) => `
+            <button class="${option.key === state.fileSort ? "active" : ""}" data-file-sort="${escapeHTML(option.key)}">${escapeHTML(option.label)}</button>
+          `).join("")}
+        </div>
+      </div>
+      <div class="preview-list">${selectedRows.length ? selectedRows.map(fileRowHTML).join("") : emptyInlineHTML(fileEmptyText(selectedDetail))}</div>
+    </section>
+  `;
+  $("filesSyncButton").addEventListener("click", () => createCommand("filesSync"));
+  $("filesReportButton").addEventListener("click", () => createCommand("report"));
+  document.querySelectorAll("[data-file-detail]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedFileDetail = button.dataset.fileDetail;
+      renderFilesPanel();
+    });
+  });
+  document.querySelectorAll("[data-file-sort]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.fileSort = button.dataset.fileSort;
+      renderFilesPanel();
+    });
+  });
+}
+
+function renderDiagnostics() {
+  $("diagnosticsPanel").innerHTML = `
+    <section class="section-box">
+      <div class="section-heading">
+        <h2>진단 도구</h2>
+        <span class="hint">Mac 앱의 상태 검사, 진단, 요약, 상태 재생성을 원격 요청으로 실행합니다.</span>
+      </div>
+      <div class="diagnostic-grid">
+        ${diagnosticCardHTML("서버 연결", state.configured ? "저장됨" : "미설정", state.configured ? "Windows에 릴레이 주소와 토큰이 저장되어 있습니다." : "설정 탭에서 연결 정보를 저장해야 합니다.", state.configured ? "ok" : "warn")}
+        ${diagnosticCardHTML("Mac 응답", state.running ? "실행 중" : commandStatusLabel(state.latestCommand?.status), state.message || latestCommandText() || "최근 원격 요청 상태가 없습니다.", state.latestCommand?.status === "failed" ? "fail" : state.running ? "running" : "unknown")}
+        ${diagnosticCardHTML("로그인", state.status.loginRequired ? "필요" : state.status.authDigits ? "인증 대기" : "대기", state.status.authStatusMessage || "로그인/인증 상태는 Mac 앱이 KLMS 페이지를 확인해 갱신합니다.", (state.status.loginRequired || state.status.authDigits) ? "warn" : "unknown")}
+        ${diagnosticCardHTML("항목 처리", `${state.recentActions.length}개 기록`, "공지 읽음/중요, 과제 완료, 시험 확정, 파일 숨김 요청의 최근 상태입니다.", state.recentActions.some((item) => item.status === "failed") ? "fail" : "ok")}
+      </div>
+      <div id="diagnosticCommandButtons" class="command-grid diagnostic-command-grid"></div>
+      <div class="button-row preview-actions">
+        <button id="diagnosticRefreshButton" class="secondary">새로고침</button>
+      </div>
+    </section>
+  `;
+  $("diagnosticCommandButtons").replaceChildren(...diagnosticCommands.map((command) => {
+    const button = document.createElement("button");
+    button.className = `command-button tone-${command.tone}`;
+    button.innerHTML = `<span class="command-icon ${escapeHTML(command.iconClass)}" aria-hidden="true"></span><span>${escapeHTML(command.label)}</span>`;
+    button.addEventListener("click", () => createCommand(command.kind));
+    return button;
+  }));
+  $("diagnosticRefreshButton").addEventListener("click", () => refreshAll());
+}
+
+function renderLoginPanel() {
+  const stateLabel = state.status.authDigits
+    ? `KAIST 인증 번호 ${state.status.authDigits}`
+    : state.status.loginRequired
+      ? "KLMS 로그인 필요"
+      : "로그인 상태 대기";
+  const detail = state.status.authStatusMessage
+    || (state.status.authDigits
+      ? "Mac에서 Safari/Kaikey 인증을 완료하면 Windows가 다음 상태를 받습니다."
+      : state.status.loginRequired
+        ? "Mac 앱에서 Safari 로그인을 확인해야 KLMS 동기화가 계속됩니다."
+        : "Mac 앱이 KLMS 페이지를 확인하면 로그인 상태가 여기에 표시됩니다.");
+  const health = state.status.authDigits || state.status.loginRequired ? "warn" : "unknown";
+  $("loginPanel").innerHTML = `
+    <section class="section-box">
+      <div class="section-heading">
+        <h2>로그인</h2>
+        <span class="hint">Mac LoginPanel의 원격 상태</span>
+      </div>
+      <div class="diagnostic-grid">
+        ${diagnosticCardHTML("KLMS/Safari", stateLabel, detail, health)}
+        ${diagnosticCardHTML("KAIST 인증", state.status.authDigits ? "입력 대기" : "대기", state.status.authDigits ? "인증 번호를 Mac에서 처리해야 합니다." : "추가 인증 요청이 없습니다.", health)}
+        ${diagnosticCardHTML("로그인 보조", "Mac 전용", "브라우저 자동화와 계정 저장은 Mac 앱에서 처리하고 Windows는 상태만 표시합니다.", "unknown")}
+      </div>
+      <div class="button-row preview-actions">
+        <button id="loginDoctorButton">진단 요청</button>
+        <button id="loginRefreshButton" class="secondary">새로고침</button>
+      </div>
+    </section>
+  `;
+  $("loginDoctorButton").addEventListener("click", () => createCommand("doctor"));
+  $("loginRefreshButton").addEventListener("click", () => refreshAll());
+}
+
+function renderAppDiagnostics() {
+  const checks = [
+    diagnosticCardHTML("Windows 앱", "정상", "렌더러, 동적 버튼, 섹션 전환을 현재 코드 기준으로 초기화합니다.", "ok"),
+    diagnosticCardHTML("릴레이 설정", state.configured ? "저장됨" : "미설정", state.configured ? "서버 주소와 토큰이 저장되어 있습니다." : "설정 탭에서 Mac 앱의 릴레이 정보를 붙여넣으세요.", state.configured ? "ok" : "warn"),
+    diagnosticCardHTML("서버 데이터", `${state.items.length}개 항목`, `명령 ${state.recentCommands.length}개 · 항목 처리 ${state.recentActions.length}개`, state.items.length ? "ok" : "unknown"),
+    diagnosticCardHTML("표시 필터", activeFilterText(), "년도, 학기, 과목, 새 항목, 최근, 숨김 표시 상태입니다.", hasActiveFilters() ? "running" : "unknown"),
+    diagnosticCardHTML("Mac 권한", "원격 진단", "Notes, Calendar, Reminders, Safari, 자동화 권한은 Mac 앱에서 검사합니다.", "unknown")
+  ].join("");
+  $("appDiagnosticsPanel").innerHTML = `
+    <section class="section-box">
+      <div class="section-heading">
+        <h2>앱 진단</h2>
+        <span class="hint">Mac AppDiagnosticsPanel에 해당하는 Windows 점검</span>
+      </div>
+      <div class="diagnostic-grid">${checks}</div>
+      <div class="button-row preview-actions">
+        <button id="appDiagnosticsCopyButton" class="secondary">상태 복사</button>
+        <button id="appDiagnosticsDoctorButton">진단 요청</button>
+      </div>
+    </section>
+  `;
+  $("appDiagnosticsCopyButton").addEventListener("click", copyState);
+  $("appDiagnosticsDoctorButton").addEventListener("click", () => createCommand("doctor"));
+}
+
+function renderCommandOutputPanels() {
+  const html = commandOutputHTML();
+  $("dashboardCommandOutput").innerHTML = html;
+  $("previewCommandOutput").innerHTML = html;
+}
+
+function commandOutputHTML() {
+  const latest = state.latestCommand;
+  const rows = [
+    { label: "최근 명령", value: latest ? commandLabel(latest.kind) : "요청 없음" },
+    { label: "명령 상태", value: latest ? commandStatusLabel(latest.status) : "대기" },
+    { label: "Mac 실행", value: state.running ? "실행 중" : latestRunChipText() },
+    { label: "서버 메시지", value: state.message || latestCommandText() || "표시할 메시지가 없습니다." },
+    { label: "최근 갱신", value: latest?.updatedAt || latest?.createdAt || "기록 없음" }
+  ];
+  return `
+    <section class="section-box command-output-panel">
+      <div class="section-heading">
+        <h2>명령 출력</h2>
+        <span class="hint">Mac CommandOutputPanel과 같은 최근 실행 요약</span>
+      </div>
+      <div class="output-grid">
+        ${rows.map((row) => `
+          <div class="output-row">
+            <span>${escapeHTML(row.label)}</span>
+            <strong>${escapeHTML(row.value)}</strong>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderSettingsMirror() {
+  $("settingsMirrorPanel").innerHTML = `
+    <section class="section-box">
+      <div class="section-heading">
+        <h2>Mac 설정 미러</h2>
+        <span class="hint">Windows에서 직접 바꿀 수 없는 Mac 전용 설정은 역할과 원격 대응을 보여줍니다.</span>
+      </div>
+      <div class="settings-mirror-grid">
+        ${settingsMirrorHTML("설치", "엔진 위치, 앱 내 엔진 버전, 코드 서명, 엔진 다시 설치", "Windows에서는 표시만 가능하며 실제 설치/서명은 Mac 앱에서 처리합니다.")}
+        ${settingsMirrorHTML("로그인", "KAIST 아이디, 로그인 보조, Kaikey 자동, 백그라운드 실행", "로그인 문제는 진단 요청과 상태 배너로 확인합니다.")}
+        ${settingsMirrorHTML("실행", "자동 실행, 동기화 주기, Safari 백그라운드 창, 빠른/전체 모드", "Windows는 full/core/notice/files/verify/doctor/report/v2BuildState 원격 요청을 생성합니다.")}
+        ${settingsMirrorHTML("iPhone 서버 릴레이", "공유 서버 주소, 토큰, 상태 확인, 원격 요청 큐", "Windows 설정 탭의 서버 릴레이가 이 설정과 같은 역할을 합니다.")}
+        ${settingsMirrorHTML("파일", "새 파일 보관함, 격리 폴더, 주차/출처 폴더, 아카이브 보관", "서버가 받은 sanitized 파일 목록과 숨김/복구 요청을 표시합니다.")}
+        ${settingsMirrorHTML("공지", "공지 메모명, 확인한 공지 메모명, 읽음/중요 체크리스트", "공지 읽음/중요/숨김 상태를 항목 처리 요청으로 Mac에 보냅니다.")}
+        ${settingsMirrorHTML("기타", "백업, 권한 열기, 로그 폴더, 자동화/손쉬운 사용 권한", "Windows에서는 직접 열 수 없고 Mac 진단 요청으로 상태를 확인합니다.")}
+      </div>
+    </section>
+  `;
+}
+
+function previewItems() {
+  return state.items.filter((item) => {
+    if (item.isHidden) {
+      return false;
+    }
+    return ["assignment", "assignmentCandidate", "exam", "examCandidate", "helpDesk", "notice", "file", "quarantine"].includes(item.kind)
+      && (isNewItem(item) || isRecentItem(item) || item.kind.includes("Candidate") || item.kind === "quarantine");
+  }).slice(0, 80);
+}
+
+function previewMetricHTML(label, value, detail) {
+  return `<div class="metric-card static"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong><span>${escapeHTML(detail)}</span></div>`;
+}
+
+function fileMetricHTML(label, value, detail) {
+  return `
+    <button class="metric-card ${state.selectedFileDetail === detail ? "active" : ""}" data-file-detail="${escapeHTML(detail)}">
+      <span>${escapeHTML(label)}</span>
+      <strong>${escapeHTML(value)}</strong>
+      <span>${escapeHTML(fileDetailOptions.find((option) => option.key === detail)?.label || "")}</span>
+    </button>
+  `;
+}
+
+function previewRowHTML(item) {
+  return `
+    <div class="preview-row">
+      <div class="badges">${badgesHTML(item)}</div>
+      <strong>${escapeHTML(item.title || "제목 없음")}</strong>
+      <p>${escapeHTML(itemMeta(item))}</p>
+    </div>
+  `;
+}
+
+function fileRowHTML(item) {
+  const path = fileSortPathFromItem(item);
+  const metadata = [
+    itemTermLabel(item),
+    item.course,
+    item.status || kindTitle(item.kind),
+    item.timestamp,
+    path && path !== item.title ? path : ""
+  ].filter(Boolean).join(" · ");
+  return `
+    <div class="preview-row file-row">
+      <div class="badges">${badgesHTML(item)}</div>
+      <strong>${escapeHTML(fileDisplayTitle(item))}</strong>
+      <p>${escapeHTML(metadata || "세부 정보 없음")}</p>
+      ${item.detail ? `<p>${escapeHTML(item.detail)}</p>` : ""}
+    </div>
+  `;
+}
+
+function fileDetailRows(detail, options = {}) {
+  let rows = [];
+  if (detail === "newFiles") {
+    rows = state.items.filter((item) => item.kind === "file" && isNewFileItem(item));
+  } else if (detail === "quarantine") {
+    rows = state.items.filter((item) => item.kind === "quarantine");
+    if (!rows.length && state.status.quarantine > 0) {
+      rows = [syntheticQuarantineItem()];
+    }
+  } else if (detail === "pruned") {
+    rows = prunedItems();
+  } else {
+    rows = state.items.filter((item) => item.kind === "file");
+  }
+  return options.filtered ? rows.filter(matchesFilePanelFilters) : rows;
+}
+
+function syntheticQuarantineItem() {
+  const updatedAt = state.latestCommand?.updatedAt || "";
+  return {
+    id: "quarantine-summary",
+    kind: "quarantine",
+    course: "파일 격리",
+    title: "격리 파일",
+    timestamp: updatedAt,
+    status: `${state.status.quarantine}개`,
+    detail: "Mac 파일 동기화 결과에 격리 항목이 있습니다.",
+    updatedAt
+  };
+}
+
+function matchesFilePanelFilters(item) {
+  if (!hiddenAllowed(item)) {
+    return false;
+  }
+  if (!matchesSelectedYear(item) || !matchesSelectedSemester(item)) {
+    return false;
+  }
+  if (state.selectedCourse !== "all" && normalizedCourseName(item) !== state.selectedCourse) {
+    return false;
+  }
+  if (state.newOnly && !isNewItem(item)) {
+    return false;
+  }
+  if (state.recentOnly && !isRecentItem(item)) {
+    return false;
+  }
+  const query = state.query.trim().toLowerCase();
+  if (!query) {
+    return true;
+  }
+  return [item.kind, kindTitle(item.kind), item.course, itemTermLabel(item), item.title, item.status, item.detail, fileSortPathFromItem(item), item.id]
+    .join(" ")
+    .toLowerCase()
+    .includes(query);
+}
+
+function sortedFileItems(items) {
+  return [...items].sort(compareFileItems);
+}
+
+function compareFileItems(lhs, rhs) {
+  if (state.fileSort === "recent") {
+    const lhsRecent = isNewItem(lhs) || isRecentItem(lhs);
+    const rhsRecent = isNewItem(rhs) || isRecentItem(rhs);
+    if (lhsRecent !== rhsRecent) {
+      return lhsRecent ? -1 : 1;
+    }
+    return compareTimestamp(rhs.timestamp, lhs.timestamp)
+      || compareTimestamp(rhs.updatedAt, lhs.updatedAt)
+      || compareText(fileDisplayTitle(lhs), fileDisplayTitle(rhs));
+  }
+  if (state.fileSort === "kind") {
+    return compareText(fileKindLabel(lhs), fileKindLabel(rhs))
+      || compareText(lhs.course, rhs.course)
+      || compareText(fileDisplayTitle(lhs), fileDisplayTitle(rhs));
+  }
+  if (state.fileSort === "name") {
+    return compareText(fileDisplayTitle(lhs), fileDisplayTitle(rhs))
+      || compareText(lhs.course, rhs.course)
+      || compareText(fileSortPathFromItem(lhs), fileSortPathFromItem(rhs));
+  }
+  if (state.fileSort === "path") {
+    return compareText(fileSortPathFromItem(lhs), fileSortPathFromItem(rhs))
+      || compareText(fileDisplayTitle(lhs), fileDisplayTitle(rhs))
+      || compareText(lhs.course, rhs.course);
+  }
+  return compareText(lhs.course, rhs.course)
+    || compareText(fileDisplayTitle(lhs), fileDisplayTitle(rhs))
+    || compareText(fileSortPathFromItem(lhs), fileSortPathFromItem(rhs));
+}
+
+function isNewFileItem(item) {
+  return isNewItem(item) || /new|fresh|download|다운로드|보관함|새 파일/i.test(fileSearchText(item));
+}
+
+function fileKindLabel(item) {
+  return item.status || kindTitle(item.kind);
+}
+
+function fileDisplayTitle(item) {
+  const title = String(item.title || "").trim();
+  if (title) {
+    return title;
+  }
+  const path = fileSortPathFromItem(item);
+  if (!path) {
+    return "제목 없음";
+  }
+  return path.split(/[\\/]/).filter(Boolean).pop() || path;
+}
+
+function fileSortPathFromItem(item) {
+  return itemPath(item) || String(item.id || "").trim() || String(item.title || "").trim();
+}
+
+function fileSearchText(item) {
+  return [item.kind, item.course, item.title, item.status, item.detail, item.timestamp, item.updatedAt, fileSortPathFromItem(item), item.id]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function countFileText(items, pattern) {
+  return items.filter((item) => pattern.test(fileSearchText(item))).length;
+}
+
+function fileEmptyText(detail) {
+  if (detail === "newFiles") {
+    return "새 파일이 없습니다.";
+  }
+  if (detail === "quarantine") {
+    return "격리 파일이 없습니다.";
+  }
+  if (detail === "pruned") {
+    return "삭제 예정 또는 삭제 기록이 없습니다.";
+  }
+  return "파일 목록이 없습니다.";
+}
+
+function diagnosticCardHTML(title, value, detail, health) {
+  return `
+    <div class="diagnostic-card ${health}">
+      <strong>${escapeHTML(title)}: ${escapeHTML(value || "상태 없음")}</strong>
+      <p>${escapeHTML(detail)}</p>
+    </div>
+  `;
+}
+
+function settingsMirrorHTML(title, value, detail) {
+  return `
+    <div class="settings-mirror-card">
+      <strong>${escapeHTML(title)}</strong>
+      <p>${escapeHTML(value)}</p>
+      <span>${escapeHTML(detail)}</span>
+    </div>
+  `;
+}
+
+function emptyInlineHTML(text) {
+  return `<div class="empty-list">${escapeHTML(text)}</div>`;
+}
+
+function hasActiveFilters() {
+  return state.selectedYear !== "all" || state.selectedSemester !== "all" || state.selectedCourse !== "all" || state.newOnly || state.recentOnly || state.showHidden || Boolean(state.query.trim());
+}
+
+function activeFilterText() {
+  const filters = [];
+  if (state.selectedYear !== "all") {
+    filters.push(`${state.selectedYear}년`);
+  }
+  if (state.selectedSemester !== "all") {
+    filters.push(state.selectedSemester);
+  }
+  if (state.selectedCourse !== "all") {
+    filters.push(state.selectedCourse);
+  }
+  if (state.newOnly) {
+    filters.push("새 항목");
+  }
+  if (state.recentOnly) {
+    filters.push("최근");
+  }
+  if (state.showHidden) {
+    filters.push("숨김 포함");
+  }
+  if (state.query.trim()) {
+    filters.push(`검색: ${state.query.trim()}`);
+  }
+  return filters.length ? filters.join(" · ") : "필터 없음";
 }
 
 function renderHistory() {
@@ -509,11 +1504,12 @@ function filteredItems() {
   const query = state.query.trim().toLowerCase();
   return currentItems()
     .filter((item) => matchesKind(item, state.selectedKind))
+    .filter((item) => matchesDashboardFilters(item))
     .filter((item) => {
       if (!query) {
         return true;
       }
-      return [item.kind, item.course, item.title, item.timestamp, item.status, item.detail]
+      return [item.kind, item.course, itemTermLabel(item), item.title, item.timestamp, item.status, item.detail, itemURL(item), itemPath(item)]
         .join(" ")
         .toLowerCase()
         .includes(query);
@@ -525,24 +1521,42 @@ function currentItems() {
   if (state.selectedKind === "calendar") {
     return calendarItems();
   }
+  if (state.selectedKind === "pruned") {
+    return prunedItems();
+  }
   return state.items;
 }
 
 function matchesKind(item, kind) {
   if (kind === "all") {
-    return !item.isHidden;
+    return state.showHidden || !item.isHidden;
   }
   if (kind === "assignment") {
-    return !item.isHidden && ["assignment", "completedAssignment", "assignmentCandidate"].includes(item.kind);
+    return hiddenAllowed(item) && item.kind === "assignment";
+  }
+  if (kind === "completedAssignment") {
+    return hiddenAllowed(item) && item.kind === "completedAssignment";
+  }
+  if (kind === "assignmentCandidate") {
+    return hiddenAllowed(item) && item.kind === "assignmentCandidate";
   }
   if (kind === "exam") {
-    return !item.isHidden && ["exam", "examCandidate"].includes(item.kind);
+    return hiddenAllowed(item) && item.kind === "exam";
+  }
+  if (kind === "examCandidate") {
+    return hiddenAllowed(item) && item.kind === "examCandidate";
+  }
+  if (kind === "helpDesk") {
+    return hiddenAllowed(item) && item.kind === "helpDesk";
   }
   if (kind === "newFiles") {
-    return !item.isHidden && item.kind === "file" && /new|fresh|새/i.test(`${item.status} ${item.detail}`);
+    return hiddenAllowed(item) && item.kind === "file" && isNewItem(item);
   }
   if (kind === "quarantine") {
-    return item.kind === "quarantine";
+    return hiddenAllowed(item) && item.kind === "quarantine";
+  }
+  if (kind === "pruned") {
+    return item.kind === "pruned";
   }
   if (kind === "calendar") {
     return item.kind === "calendar";
@@ -550,7 +1564,27 @@ function matchesKind(item, kind) {
   if (kind === "hidden") {
     return item.isHidden;
   }
-  return !item.isHidden && item.kind === kind;
+  return hiddenAllowed(item) && item.kind === kind;
+}
+
+function matchesDashboardFilters(item) {
+  if (!matchesSelectedYear(item) || !matchesSelectedSemester(item)) {
+    return false;
+  }
+  if (state.selectedCourse !== "all" && normalizedCourseName(item) !== state.selectedCourse) {
+    return false;
+  }
+  if (state.newOnly && !isNewItem(item)) {
+    return false;
+  }
+  if (state.recentOnly && !isRecentItem(item)) {
+    return false;
+  }
+  return true;
+}
+
+function hiddenAllowed(item) {
+  return state.showHidden || !item.isHidden;
 }
 
 function compareItems(lhs, rhs) {
@@ -604,6 +1638,151 @@ function calendarItems() {
     }
   ];
   return rows.filter((item) => Number.parseInt(item.status, 10) > 0);
+}
+
+function prunedItems() {
+  const updatedAt = state.latestCommand?.updatedAt || "";
+  return [
+    {
+      id: "pruned-active",
+      kind: "pruned",
+      course: "파일 정리",
+      title: "삭제된 파일",
+      timestamp: updatedAt,
+      status: `${state.status.filePruned}개`,
+      detail: "최근 파일 동기화에서 더 이상 추적하지 않아 정리된 파일입니다.",
+      updatedAt
+    },
+    {
+      id: "pruned-archive",
+      kind: "pruned",
+      course: "파일 정리",
+      title: "아카이브 정리",
+      timestamp: updatedAt,
+      status: `${state.status.fileArchivePruned}개`,
+      detail: "최근 파일 동기화에서 정리된 아카이브 항목입니다.",
+      updatedAt
+    }
+  ].filter((item) => Number.parseInt(item.status, 10) > 0);
+}
+
+function countItems(items, kind) {
+  return items.filter((item) => item.kind === kind && !item.isHidden).length;
+}
+
+function isNewItem(item) {
+  return /new|fresh|새|신규|updated|수정/i.test(`${item.status} ${item.detail}`);
+}
+
+function isRecentItem(item) {
+  const dates = [item.updatedAt, item.timestamp]
+    .map((value) => Date.parse(String(value || "")))
+    .filter(Number.isFinite);
+  if (!dates.length) {
+    return isNewItem(item);
+  }
+  const newest = Math.max(...dates);
+  return Date.now() - newest <= 14 * 24 * 60 * 60 * 1000;
+}
+
+function itemTermLabel(item) {
+  const explicit = item.academicTerm?.displayName || item.academicTerm || item.term || item.semester || "";
+  if (explicit) {
+    return String(explicit);
+  }
+  const haystack = [item.course, item.title, item.timestamp, item.detail, itemPath(item)].join(" ");
+  const match = haystack.match(/\b(20\d{2})\s*[-_/ ]?\s*(spring|fall|summer|winter|봄|가을|여름|겨울|1학기|2학기)\b/i);
+  if (!match) {
+    const inferred = inferAcademicTermFromDates([item.timestamp, item.updatedAt]);
+    return inferred ? `${inferred.year}년 ${inferred.semester}` : "";
+  }
+  return `${match[1]}년 ${normalizeSemesterLabel(match[2])}`;
+}
+
+function itemTermParts(item) {
+  const label = itemTermLabel(item);
+  const haystack = [label, item.course, item.title, item.timestamp, item.detail, itemPath(item)].join(" ");
+  const year = haystack.match(/\b(20\d{2})\b/)?.[1] || "";
+  const semester = normalizeSemesterLabel(
+    haystack.match(/(봄학기|가을학기|여름학기|겨울학기|1학기|2학기|spring|fall|summer|winter|봄|가을|여름|겨울)/i)?.[1] || ""
+  );
+  return { year, semester };
+}
+
+function normalizeSemesterLabel(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+  if (["spring", "봄", "봄학기", "1학기"].includes(normalized)) {
+    return "봄학기";
+  }
+  if (["fall", "autumn", "가을", "가을학기", "2학기"].includes(normalized)) {
+    return "가을학기";
+  }
+  if (["summer", "여름", "여름학기"].includes(normalized)) {
+    return "여름학기";
+  }
+  if (["winter", "겨울", "겨울학기"].includes(normalized)) {
+    return "겨울학기";
+  }
+  return value;
+}
+
+function compareSemesterLabels(lhs, rhs) {
+  const order = new Map([
+    ["봄학기", 0],
+    ["여름학기", 1],
+    ["가을학기", 2],
+    ["겨울학기", 3]
+  ]);
+  return (order.get(lhs) ?? 99) - (order.get(rhs) ?? 99) || lhs.localeCompare(rhs, "ko");
+}
+
+function inferAcademicTermFromDates(values) {
+  for (const value of values) {
+    const parsed = parseLooseDate(value);
+    if (!parsed) {
+      continue;
+    }
+    if (parsed.month >= 3 && parsed.month <= 8) {
+      return { year: String(parsed.year), semester: "봄학기" };
+    }
+    if (parsed.month >= 9 && parsed.month <= 12) {
+      return { year: String(parsed.year), semester: "가을학기" };
+    }
+    if (parsed.month >= 1 && parsed.month <= 2) {
+      return { year: String(parsed.year - 1), semester: "가을학기" };
+    }
+  }
+  return null;
+}
+
+function parseLooseDate(value) {
+  const text = String(value || "");
+  if (!text.trim()) {
+    return null;
+  }
+  const explicit = text.match(/\b(20\d{2})\D{0,3}(1[0-2]|0?[1-9])\D{0,3}([0-3]?\d)?/);
+  if (explicit) {
+    return {
+      year: Number.parseInt(explicit[1], 10),
+      month: Number.parseInt(explicit[2], 10)
+    };
+  }
+  const date = new Date(text);
+  if (!Number.isNaN(date.getTime())) {
+    return { year: date.getFullYear(), month: date.getMonth() + 1 };
+  }
+  return null;
+}
+
+function itemURL(item) {
+  return String(item.url || item.klmsURL || item.klmsUrl || item.link || "").trim();
+}
+
+function itemPath(item) {
+  return String(item.path || item.relativePath || item.filePath || "").trim();
 }
 
 function detailActions(item) {
@@ -667,7 +1846,7 @@ function relevantCommand(kind) {
   if (kind === "notice") {
     return "noticeSync";
   }
-  if (kind === "file") {
+  if (["file", "newFiles", "quarantine", "pruned"].includes(kind)) {
     return "filesSync";
   }
   if (["assignment", "completedAssignment", "assignmentCandidate", "exam", "examCandidate", "helpDesk"].includes(kind)) {
@@ -715,11 +1894,26 @@ function cardDetail(key) {
   if (key === "notice") {
     return `새 ${state.status.noticeNew} · 수정 ${state.status.noticeUpdated}`;
   }
+  if (key === "completedAssignment") {
+    return "완료/복구 관리";
+  }
+  if (key === "assignmentCandidate") {
+    return "후보 확인";
+  }
+  if (key === "examCandidate") {
+    return "확정/무시";
+  }
+  if (key === "helpDesk") {
+    return "상담/지원 일정";
+  }
   if (key === "calendar") {
     return `생성 ${state.status.calendarCreated} · 수정 ${state.status.calendarUpdated} · 삭제 ${state.status.calendarDeleted}`;
   }
   if (key === "file") {
     return `새 ${state.status.newFiles} · 정리 ${fileCleanupTotal(state.status)}`;
+  }
+  if (key === "pruned") {
+    return `파일 ${state.status.filePruned} · 아카이브 ${state.status.fileArchivePruned}`;
   }
   if (key === "quarantine") {
     return "확인 필요";
@@ -767,6 +1961,7 @@ function kindTitle(kind) {
     file: "파일",
     newFiles: "새 파일",
     quarantine: "격리",
+    pruned: "삭제된 파일",
     calendar: "캘린더",
     hidden: "보관함"
   }[kind] || kind;
@@ -778,8 +1973,10 @@ function commandLabel(kind) {
     coreSync: "과제/시험",
     noticeSync: "공지 메모",
     filesSync: "파일 동기화",
+    verify: "상태 검사",
     report: "요약 갱신",
-    doctor: "진단"
+    doctor: "권한/환경 진단",
+    v2BuildState: "상태 파일 재생성"
   }[kind] || kind;
 }
 
@@ -858,6 +2055,21 @@ async function copyState() {
   }, null, 2);
   await navigator.clipboard.writeText(text);
   toast("현재 상태를 복사했습니다.");
+}
+
+async function copyItemDetail(item) {
+  const text = [
+    item.title || "제목 없음",
+    item.course ? `과목: ${item.course}` : "",
+    item.timestamp ? `시간: ${item.timestamp}` : "",
+    item.status ? `상태: ${item.status}` : "",
+    item.detail ? `내용: ${item.detail}` : "",
+    itemURL(item) ? `URL: ${itemURL(item)}` : "",
+    itemPath(item) ? `경로: ${itemPath(item)}` : "",
+    `ID: ${item.id}`
+  ].filter(Boolean).join("\n");
+  await navigator.clipboard.writeText(text);
+  toast("항목 상세를 복사했습니다.");
 }
 
 function showError(error) {
