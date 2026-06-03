@@ -725,6 +725,30 @@ final class KLMSMacModel: ObservableObject {
         throw serverRelayItemActionError("대상 파일을 현재 파일 목록에서 찾지 못했습니다: \(action.itemTitle)")
     }
 
+    private func serverRelayFile(forFileAccess request: ServerRelayFileAccessRequest) throws -> CourseFileManifestEntry {
+        for file in snapshot.courseFileManifest where serverRelayFileSyncItemID(file) == request.itemID {
+            return file
+        }
+        throw serverRelayItemActionError("대상 파일을 현재 파일 목록에서 찾지 못했습니다: \(request.itemTitle)")
+    }
+
+    private func serverRelayLocalFileURL(for entry: CourseFileManifestEntry) throws -> URL {
+        var candidates: [URL] = []
+        if let absolutePath = entry.absolutePath.nilIfBlank {
+            candidates.append(URL(fileURLWithPath: absolutePath))
+        }
+        if let relativePath = entry.relativePath.nilIfBlank {
+            candidates.append(paths.courseFilesURL.appendingPathComponent(relativePath))
+        }
+        for candidate in candidates {
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), !isDirectory.boolValue {
+                return candidate
+            }
+        }
+        throw serverRelayItemActionError("Mac 로컬 course_files에서 파일 원본을 찾지 못했습니다: \(entry.filename.nilIfBlank ?? entry.relativePath)")
+    }
+
     private func setServerRelayFileHidden(_ hidden: Bool, for entry: CourseFileManifestEntry) throws {
         try AppUserStateStore(url: paths.appUserStateURL).setHidden(
             hidden,
@@ -1288,6 +1312,44 @@ final class KLMSMacModel: ObservableObject {
                 running: false,
                 message: serverRelayStatusMessage ?? ""
             )
+            let pendingFileRequests = try await store.fetchPendingFileAccessRequests()
+            if let fileRequest = pendingFileRequests.first {
+                var runningRequest = fileRequest
+                runningRequest.status = .running
+                runningRequest.updatedAt = Date()
+                runningRequest.message = "Mac에서 파일을 준비하는 중"
+                try await store.updateFileAccessRequest(runningRequest)
+
+                do {
+                    let entry = try serverRelayFile(forFileAccess: runningRequest)
+                    let fileURL = try serverRelayLocalFileURL(for: entry)
+                    let uploaded = try await store.uploadFileAccessRequest(
+                        runningRequest,
+                        fileURL: fileURL,
+                        filename: entry.filename.nilIfBlank ?? fileURL.lastPathComponent
+                    )
+                    serverRelayStatusMessage = "파일 링크 준비 완료: \(uploaded.itemTitle)"
+                    remoteProcessingStatusMessage = serverRelayStatusMessage
+                    try await store.publishStatus(
+                        sanitizedRemoteStatus(snapshot: snapshot, phase: "idle"),
+                        latestCommand: lastRemoteCommand,
+                        running: false,
+                        message: serverRelayStatusMessage ?? ""
+                    )
+                } catch {
+                    var failedRequest = runningRequest
+                    failedRequest.status = .failed
+                    failedRequest.updatedAt = Date()
+                    failedRequest.message = error.localizedDescription
+                    try await store.updateFileAccessRequest(failedRequest)
+                    serverRelayStatusMessage = "파일 링크 준비 실패: \(error.localizedDescription)"
+                    remoteProcessingStatusMessage = serverRelayStatusMessage
+                    if !silent {
+                        errorMessage = failedRequest.message
+                    }
+                }
+                return
+            }
             let pendingActions = try await store.fetchPendingItemActions()
             if let action = pendingActions.first {
                 var runningAction = action

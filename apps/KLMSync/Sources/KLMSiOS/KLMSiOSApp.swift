@@ -36,6 +36,7 @@ struct KLMSiOSApp: App {
 @MainActor
 final class CompanionModel: ObservableObject {
     @Published var recentCommands: [RemoteRunCommand] = []
+    @Published var recentFileAccessRequests: [ServerRelayFileAccessRequest] = []
     @Published var syncItems: [ServerRelaySyncItem] = []
     @Published var status = SanitizedRemoteStatus()
     @Published var errorMessage = ""
@@ -106,6 +107,7 @@ final class CompanionModel: ObservableObject {
 
     var hasInFlightRequest: Bool {
         latestDisplayStatus?.isInFlight == true
+            || recentFileAccessRequests.contains { $0.status.isInFlight }
     }
 
     var canCancelRunningCommand: Bool {
@@ -238,6 +240,63 @@ final class CompanionModel: ObservableObject {
         }
     }
 
+    func createFileAccessRequest(item: ServerRelaySyncItem) async {
+        guard item.kind == "file" else {
+            errorMessage = "파일 항목만 열기 링크를 요청할 수 있습니다."
+            return
+        }
+        guard let serverRelayStore else {
+            errorMessage = "파일 열기는 서버 릴레이 연결에서만 사용할 수 있습니다."
+            userAlert = UserAlert(title: "요청 실패", message: errorMessage)
+            return
+        }
+        isSubmitting = true
+        defer {
+            isSubmitting = false
+        }
+        do {
+            let request = ServerRelayFileAccessRequest(
+                itemID: item.id,
+                itemKind: item.kind,
+                itemTitle: item.title
+            )
+            let created = try await serverRelayStore.createFileAccessRequest(request)
+            recentFileAccessRequests.insert(created, at: 0)
+            connectionMessage = "Mac에 파일 열기 링크를 요청했습니다."
+            connectionSucceeded = true
+            errorMessage = ""
+            userAlert = UserAlert(title: "파일 요청 완료", message: "Mac이 로컬 파일을 임시 업로드하면 열기 버튼이 표시됩니다.")
+            await refreshRecent()
+        } catch {
+            guard !isCancellationError(error) else { return }
+            let message = userFacingMessage(for: error)
+            errorMessage = message
+            userAlert = UserAlert(title: "파일 요청 실패", message: message)
+        }
+    }
+
+    func openFileAccessRequest(_ request: ServerRelayFileAccessRequest) {
+        guard let urlText = request.downloadURL,
+              let url = URL(string: urlText),
+              request.isDownloadAvailable else {
+            errorMessage = "파일 링크가 아직 준비되지 않았거나 만료되었습니다."
+            userAlert = UserAlert(title: "파일 열기 실패", message: errorMessage)
+            return
+        }
+        #if canImport(UIKit)
+        UIApplication.shared.open(url)
+        #else
+        errorMessage = "이 빌드는 외부 URL 열기를 사용할 수 없습니다."
+        #endif
+    }
+
+    func latestFileAccessRequest(for item: ServerRelaySyncItem) -> ServerRelayFileAccessRequest? {
+        recentFileAccessRequests
+            .filter { $0.itemID == item.id }
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .first
+    }
+
     func refreshRecent() async {
         guard !isRefreshing else { return }
         isRefreshing = true
@@ -249,13 +308,11 @@ final class CompanionModel: ObservableObject {
                 let response = try await serverRelayStore.fetchStatusResponse()
                 apply(response)
                 let commands = try await serverRelayStore.fetchRecent(limit: 8)
-                syncItems = try await serverRelayStore.fetchSyncData(limit: 120).items
+                syncItems = try await serverRelayStore.fetchSyncData(limit: 2000).items
+                recentFileAccessRequests = try await serverRelayStore.fetchRecentFileAccessRequests(limit: 20)
                 if !commands.isEmpty {
                     recentCommands = commands
                     handleReportNotificationUpdates(commands)
-                    if let latest = commands.first {
-                        status = latest.summary
-                    }
                 }
                 lastRefreshAt = Date()
                 errorMessage = ""
@@ -289,7 +346,8 @@ final class CompanionModel: ObservableObject {
         do {
             let response = try await serverRelayStore.fetchStatusResponse()
             apply(response)
-            syncItems = try await serverRelayStore.fetchSyncData(limit: 120).items
+            syncItems = try await serverRelayStore.fetchSyncData(limit: 2000).items
+            recentFileAccessRequests = try await serverRelayStore.fetchRecentFileAccessRequests(limit: 20)
             let message = "서버 릴레이와 연결됐습니다."
             connectionMessage = message
             connectionSucceeded = true
@@ -603,6 +661,7 @@ struct CompanionRootView: View {
 private struct CompanionStatusScreen: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedDashboardCategory: DashboardMetricCategory = .assignments
+    @State private var selectedDashboardRoute: DashboardMetricCategory?
     @State private var selectedSyncItem: ServerRelaySyncItem?
 
     var body: some View {
@@ -610,8 +669,20 @@ private struct CompanionStatusScreen: View {
             RemoteAttentionStack(model: model)
             RemoteStatusHeader(
                 model: model,
-                selectedCategory: $selectedDashboardCategory
+                selectedCategory: $selectedDashboardCategory,
+                onCategoryTap: { category in
+                    selectedDashboardCategory = category
+                    selectedDashboardRoute = category
+                }
             )
+            .navigationDestination(item: $selectedDashboardRoute) { category in
+                DashboardCategoryDetailScreen(
+                    category: category,
+                    status: model.status,
+                    items: model.syncItems,
+                    onSelect: { selectedSyncItem = $0 }
+                )
+            }
             DashboardMetricDetailPanel(
                 category: selectedDashboardCategory,
                 status: model.status,
@@ -971,7 +1042,7 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
         case .notices:
             status.notices
         case .files:
-            status.newFiles
+            status.fileTotal
         case .quarantine:
             status.quarantine
         case .calendar:
@@ -1021,6 +1092,7 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
 private struct RemoteStatusHeader: View {
     @ObservedObject var model: CompanionModel
     @Binding var selectedCategory: DashboardMetricCategory
+    var onCategoryTap: (DashboardMetricCategory) -> Void = { _ in }
 
     private let columns = [
         GridItem(.adaptive(minimum: 96), spacing: 8),
@@ -1059,7 +1131,7 @@ private struct RemoteStatusHeader: View {
                 metricTile(.assignments)
                 metricTile(.exams)
                 metricTile(.notices)
-                metricTile(.files, label: "새 파일")
+                metricTile(.files)
                 if model.status.quarantine > 0 {
                     metricTile(.quarantine)
                 }
@@ -1089,6 +1161,7 @@ private struct RemoteStatusHeader: View {
             isSelected: selectedCategory == category
         ) {
             selectedCategory = category
+            onCategoryTap(category)
         }
     }
 
@@ -1324,6 +1397,134 @@ private struct DashboardMetricDetailPanel: View {
     }
 }
 
+private struct DashboardCategoryDetailScreen: View {
+    var category: DashboardMetricCategory
+    var status: SanitizedRemoteStatus
+    var items: [ServerRelaySyncItem]
+    var onSelect: (ServerRelaySyncItem) -> Void
+    @State private var query = ""
+
+    private var filteredItems: [ServerRelaySyncItem] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return items
+            .filter { category.includes($0) }
+            .filter { item in
+                guard !query.isEmpty else { return true }
+                return [
+                    item.course,
+                    item.title,
+                    item.timestamp,
+                    item.status,
+                    item.detail,
+                ]
+                .joined(separator: " ")
+                .localizedCaseInsensitiveContains(query)
+            }
+            .sorted { lhs, rhs in
+                if lhs.timestamp != rhs.timestamp {
+                    return lhs.timestamp > rhs.timestamp
+                }
+                if lhs.updatedAt != rhs.updatedAt {
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                DashboardCategorySummaryRow(category: category, status: status, itemCount: filteredItems.count)
+            }
+
+            if category == .calendar {
+                Section("캘린더 변경") {
+                    DashboardCalendarChangeRow(title: "생성", value: status.calendarCreated)
+                    DashboardCalendarChangeRow(title: "수정", value: status.calendarUpdated)
+                    DashboardCalendarChangeRow(title: "삭제", value: status.calendarDeleted)
+                }
+            } else if category == .quarantine {
+                Section {
+                    Text(category.emptyMessage)
+                        .foregroundStyle(.secondary)
+                }
+            } else if filteredItems.isEmpty {
+                Section {
+                    Text(category.emptyMessage)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Section("\(filteredItems.count)개") {
+                    ForEach(filteredItems) { item in
+                        Button {
+                            onSelect(item)
+                        } label: {
+                            ServerSyncDataRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .navigationTitle(category.title)
+        .searchable(text: $query, prompt: "\(category.title) 검색")
+    }
+}
+
+private struct DashboardCategorySummaryRow: View {
+    var category: DashboardMetricCategory
+    var status: SanitizedRemoteStatus
+    var itemCount: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: category.systemImage)
+                .font(.title3)
+                .foregroundStyle(category.tint)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(category.title)
+                    .font(.headline)
+                Text(summaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("\(category.value(from: status))")
+                .font(.title3.monospacedDigit().weight(.semibold))
+        }
+    }
+
+    private var summaryText: String {
+        switch category {
+        case .files:
+            "서버 DB 파일 \(status.fileTotal)개 · 새 파일 \(status.newFiles)개"
+        case .notices:
+            "새 \(status.noticeNew)개 · 수정 \(status.noticeUpdated)개"
+        case .calendar:
+            "생성 \(status.calendarCreated) · 수정 \(status.calendarUpdated) · 삭제 \(status.calendarDeleted)"
+        default:
+            "상세 목록 \(itemCount)개"
+        }
+    }
+}
+
+private struct DashboardCalendarChangeRow: View {
+    var title: String
+    var value: Int
+
+    var body: some View {
+        if value > 0 {
+            HStack {
+                Text(title)
+                Spacer()
+                Text("\(value)개")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 private struct DashboardCountPill: View {
     var title: String
     var value: Int
@@ -1492,8 +1693,11 @@ private struct ServerSyncItemDetailView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header
                     detailFields
+                    if item.kind == "file" {
+                        fileAccessPanel
+                    }
                     actionPanel
-                    InfoBanner(message: "항목 처리 요청은 서버에 대기열로 올라가고, Mac 앱이 받아서 기존 override/state 파일에 반영합니다.")
+                    InfoBanner(message: detailHelpMessage)
                 }
                 .padding()
             }
@@ -1622,6 +1826,72 @@ private struct ServerSyncItemDetailView: View {
             .buttonStyle(.bordered)
             .disabled(model.isRefreshing)
         }
+    }
+
+    private var fileAccessPanel: some View {
+        let request = model.latestFileAccessRequest(for: item)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("파일 열기")
+                .font(.headline)
+            if let request {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(request.status.displayName)
+                            .font(.subheadline.weight(.semibold))
+                        Text(fileAccessDescription(request))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if request.isDownloadAvailable {
+                        Button {
+                            model.openFileAccessRequest(request)
+                        } label: {
+                            Label("열기", systemImage: "arrow.down.circle")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            } else {
+                Text("Mac이 보관 중인 course_files 원본을 임시 서버 링크로 준비할 수 있습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Button {
+                Task {
+                    await model.createFileAccessRequest(item: item)
+                }
+            } label: {
+                Label("Mac에 파일 링크 요청", systemImage: "link.badge.plus")
+                    .frame(maxWidth: .infinity, minHeight: 42)
+            }
+            .buttonStyle(.bordered)
+            .disabled(!model.serverRelayConfigured || model.isSubmitting || request?.status.isInFlight == true)
+        }
+        .padding(12)
+        .background(.quinary)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func fileAccessDescription(_ request: ServerRelayFileAccessRequest) -> String {
+        var parts: [String] = []
+        if let expiresAt = request.expiresAt, request.isDownloadAvailable {
+            parts.append("만료 \(expiresAt.formatted(date: .omitted, time: .shortened))")
+        }
+        if let sizeBytes = request.sizeBytes, sizeBytes > 0 {
+            parts.append(ByteCountFormatter.string(fromByteCount: Int64(sizeBytes), countStyle: .file))
+        }
+        if !request.message.isEmpty {
+            parts.append(request.message)
+        }
+        return parts.isEmpty ? "Mac 처리 상태를 기다리는 중입니다." : parts.joined(separator: " · ")
+    }
+
+    private var detailHelpMessage: String {
+        if item.kind == "file" {
+            return "iPhone은 KLMS에 직접 로그인하지 않습니다. 파일 열기 요청을 보내면 Mac이 로컬 course_files 원본을 임시 업로드하고, 만료된 링크와 서버 기록은 자동 정리됩니다."
+        }
+        return "항목 처리 요청은 서버에 대기열로 올라가고, Mac 앱이 받아서 기존 override/state 파일에 반영합니다."
     }
 
     private var itemActions: [ServerRelayItemActionKind] {
@@ -2123,7 +2393,7 @@ private struct RemotePrivacyNote: View {
         VStack(alignment: .leading, spacing: 6) {
             Label("원격 요청은 클라이언트 토큰으로 보호", systemImage: "lock")
                 .font(.subheadline.weight(.semibold))
-            Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태만 보관합니다. KLMS URL, 원본 로그, config.env, 파일 경로는 iPhone이나 서버에 저장하지 않습니다.")
+            Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태를 보관합니다. 파일 원본은 사용자가 파일 열기를 요청할 때만 Mac이 임시 업로드하고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

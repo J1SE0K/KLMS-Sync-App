@@ -10,6 +10,7 @@ async function runSmoke() {
     RELAY_CLIENT_TOKEN: clientToken,
     RELAY_WORKER_TOKEN: workerToken,
     RELAY_DB: new FakeD1(),
+    RELAY_FILES: new FakeR2(),
   };
 
   await expectJSON("/healthz", { ok: true, storage: "cloudflare-d1", configured: true }, { auth: false });
@@ -110,6 +111,46 @@ async function runSmoke() {
     assert.equal(payload.actions[0].itemID, "notice-1");
   }
 
+  const fileRequest = await expectJSON("/v1/file-access", {
+    itemID: "file-1",
+    itemKind: "file",
+    itemTitle: "기말 정리.pdf",
+  }, { method: "POST", status: 201 });
+  assert.equal(fileRequest.status, "pending");
+
+  {
+    const payload = await expectJSON("/v1/file-access/pending", undefined, { role: "worker" });
+    assert.equal(payload.requests.length, 1);
+    assert.equal(payload.requests[0].itemID, "file-1");
+  }
+
+  const uploadResponse = await request(`/v1/file-access/${fileRequest.id}/upload`, {
+    method: "PUT",
+    role: "worker",
+    rawBody: "hello file",
+    headers: {
+      "Content-Type": "text/plain",
+      "Content-Length": "10",
+      "X-KLMS-Filename": encodeURIComponent("기말 정리.pdf"),
+    },
+  });
+  assert.equal(uploadResponse.status, 200);
+  const uploaded = await uploadResponse.json();
+  assert.equal(uploaded.status, "completed");
+  assert.match(uploaded.downloadURL, /\/v1\/file-access\/.+\/download\?ticket=/);
+
+  {
+    const downloadResponse = await worker.fetch(new Request(uploaded.downloadURL), env);
+    assert.equal(downloadResponse.status, 200);
+    assert.equal(await downloadResponse.text(), "hello file");
+  }
+  {
+    await worker.fetch(new Request(uploaded.downloadURL), env);
+    await worker.fetch(new Request(uploaded.downloadURL), env);
+    const blockedResponse = await worker.fetch(new Request(uploaded.downloadURL), env);
+    assert.equal(blockedResponse.status, 429);
+  }
+
   console.log("cloudflare worker smoke ok");
 }
 
@@ -119,8 +160,11 @@ async function expectJSON(path, body, options = {}) {
   return response.json();
 }
 
-function request(path, { method = "GET", body, auth = true, role = "client" } = {}) {
+function request(path, { method = "GET", body, rawBody, headers: extraHeaders = {}, auth = true, role = "client" } = {}) {
   const headers = new Headers({ Accept: "application/json" });
+  for (const [key, value] of Object.entries(extraHeaders)) {
+    headers.set(key, value);
+  }
   if (auth) {
     headers.set("Authorization", `Bearer ${role === "worker" ? workerToken : clientToken}`);
   }
@@ -130,7 +174,7 @@ function request(path, { method = "GET", body, auth = true, role = "client" } = 
   return worker.fetch(new Request(`https://relay.example${path}`, {
     method,
     headers,
-    body: body != null && method !== "GET" ? JSON.stringify(body) : undefined,
+    body: rawBody != null ? rawBody : body != null && method !== "GET" ? JSON.stringify(body) : undefined,
   }), env);
 }
 
@@ -139,6 +183,7 @@ class FakeD1 {
     this.meta = new Map();
     this.commands = new Map();
     this.itemActions = new Map();
+    this.fileAccessRequests = new Map();
   }
 
   async exec() {
@@ -174,6 +219,9 @@ class FakeStatement {
       const value = this.db.meta.get(this.args[0]);
       return value == null ? null : { value };
     }
+    if (this.sql.includes("FROM file_access_requests")) {
+      return this.db.fileAccessRequests.get(this.args[0]) || null;
+    }
     throw new Error(`Unsupported first SQL: ${this.sql}`);
   }
 
@@ -183,6 +231,21 @@ class FakeStatement {
     }
     if (this.sql.includes("FROM item_actions")) {
       return { results: sortedRows(this.db.itemActions, this.args[0] || 400) };
+    }
+    if (this.sql.includes("FROM file_access_requests")) {
+      if (this.sql.includes("WHERE status IN")) {
+        const limit = this.args.at(-1) || 100;
+        const statuses = new Set(this.args.slice(0, -1));
+        return { results: sortedRows(this.db.fileAccessRequests, limit).filter((row) => statuses.has(row.status)) };
+      }
+      if (this.sql.includes("expires_at IS NOT NULL")) {
+        const cutoff = this.args[0];
+        return {
+          results: Array.from(this.db.fileAccessRequests.values())
+            .filter((row) => row.expires_at && row.expires_at <= cutoff),
+        };
+      }
+      return { results: sortedRows(this.db.fileAccessRequests, this.args[0] || 100) };
     }
     throw new Error(`Unsupported all SQL: ${this.sql}`);
   }
@@ -248,7 +311,90 @@ class FakeStatement {
       trimRows(this.db.itemActions, this.args[0]);
       return { success: true };
     }
+    if (this.sql.startsWith("INSERT INTO file_access_requests")) {
+      const [
+        id,
+        itemID,
+        itemKind,
+        itemTitle,
+        status,
+        createdAt,
+        updatedAt,
+        message,
+        objectKey,
+        downloadTicket,
+        expiresAt,
+        contentType,
+        sizeBytes,
+        downloadCount,
+      ] = this.args;
+      this.db.fileAccessRequests.set(id, {
+        id,
+        item_id: itemID,
+        item_kind: itemKind,
+        item_title: itemTitle,
+        status,
+        created_at: createdAt,
+        updated_at: updatedAt,
+        message,
+        object_key: objectKey,
+        download_ticket: downloadTicket,
+        expires_at: expiresAt,
+        content_type: contentType,
+        size_bytes: sizeBytes,
+        download_count: downloadCount,
+      });
+      return { success: true };
+    }
+    if (this.sql.startsWith("DELETE FROM file_access_requests")) {
+      if (this.sql.includes("expires_at IS NOT NULL")) {
+        const cutoff = this.args[0];
+        for (const [id, row] of this.db.fileAccessRequests.entries()) {
+          if (row.expires_at && row.expires_at <= cutoff) {
+            this.db.fileAccessRequests.delete(id);
+          }
+        }
+      } else {
+        trimRows(this.db.fileAccessRequests, this.args[0]);
+      }
+      return { success: true };
+    }
     throw new Error(`Unsupported run SQL: ${this.sql}`);
+  }
+}
+
+class FakeR2 {
+  constructor() {
+    this.objects = new Map();
+  }
+
+  async put(key, body, options = {}) {
+    const text = typeof body === "string"
+      ? body
+      : body instanceof ReadableStream
+        ? await new Response(body).text()
+        : body instanceof ArrayBuffer
+          ? new TextDecoder().decode(body)
+          : String(body || "");
+    this.objects.set(key, {
+      body: text,
+      httpMetadata: options.httpMetadata || {},
+    });
+  }
+
+  async get(key) {
+    const object = this.objects.get(key);
+    if (!object) {
+      return null;
+    }
+    return {
+      body: object.body,
+      httpMetadata: object.httpMetadata,
+    };
+  }
+
+  async delete(key) {
+    this.objects.delete(key);
   }
 }
 

@@ -3,8 +3,24 @@ main = "src/worker.mjs"
 compatibility_date = "2026-05-01"
 workers_dev = true
 
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+FILE_RELAY_MAX_UPLOAD_BYTES = "26214400"
+FILE_RELAY_DAILY_UPLOADS = "20"
+FILE_RELAY_DAILY_UPLOAD_BYTES = "262144000"
+FILE_RELAY_DAILY_DOWNLOADS = "100"
+FILE_RELAY_DOWNLOADS_PER_LINK = "3"
+FILE_RELAY_TTL_SECONDS = "300"
+FILE_RELAY_MAX_PENDING_REQUESTS = "20"
+
 [[d1_databases]]
 binding = "RELAY_DB"
 database_name = "klms-sync-relay"
 database_id = "REPLACE_WITH_D1_DATABASE_ID"
 migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "RELAY_FILES"
+bucket_name = "klms-sync-file-relay"

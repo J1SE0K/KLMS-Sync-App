@@ -31,7 +31,7 @@ CloudKit signing is opt-in for local builds. A Mac or iPhone app with iCloud ent
 
 ## iPhone companion
 
-The iPhone app only creates remote requests and reads sanitized status counts. It does not scrape KLMS, does not receive raw logs, and does not store KLMS URLs, `config.env`, Kaikey state, or local file paths.
+The iPhone app only creates remote requests and reads sanitized status counts. It does not scrape KLMS, does not receive raw logs, and does not store KLMS URLs, `config.env`, Kaikey state, or local file paths. When a user asks to open a file, the Mac worker uploads only that local `course_files` file to the server relay's temporary file store and the link expires automatically.
 
 For a free Apple ID, use local-network remote control:
 
@@ -40,9 +40,9 @@ For a free Apple ID, use local-network remote control:
 - Keep both devices on the same Wi-Fi, or put both devices on the same private VPN and enter the Mac VPN address.
 - Do not expose the raw local remote port to the public internet.
 
-For use away from the same network, run the HTTPS relay server documented in `docs/server-relay.md`, then enter the relay URL and token in both apps. The relay uses SQLite and stores command/status metadata plus sanitized assignment, exam, notice, and file list rows. KLMS scraping and macOS app integrations still run on the Mac, and raw logs, KLMS URLs, `config.env`, Kaikey state, and absolute local file paths are not uploaded.
+For use away from the same network, run the HTTPS relay server in `deploy/cloudflare-worker`, then enter the relay URL plus the client token in iPhone/Windows and the worker token in the Mac app. The relay stores command/status metadata plus sanitized assignment, exam, notice, and file list rows. KLMS scraping and macOS app integrations still run on the Mac, and raw logs, KLMS URLs, `config.env`, Kaikey state, and absolute local file paths are not uploaded.
 
-The Windows companion lives in `apps/KLMSyncWindows`. It uses the same relay API as the iPhone app and can read the dashboard, browse sanitized item lists, toggle notice read/important state, and create remote sync requests. For use outside the same network, deploy the HTTPS relay template in `deploy/relay` and point the Mac, iPhone, and Windows apps to the same relay URL and token.
+The Windows companion lives in `apps/KLMSyncWindows`. It uses the same relay API as the iPhone app and can read the dashboard, browse sanitized item lists, toggle notice read/important state, request temporary file links, and create remote sync requests.
 
 On the Mac worker, install the relay as a LaunchAgent with:
 

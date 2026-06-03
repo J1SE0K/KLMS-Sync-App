@@ -2,9 +2,17 @@ const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_COMMANDS = 100;
 const MAX_ITEM_ACTIONS = 200;
 const MAX_SYNC_ITEMS = 2000;
+const MAX_FILE_ACCESS_REQUESTS = 100;
+const DEFAULT_MAX_FILE_UPLOAD_BYTES = 25 * 1024 * 1024;
+const DEFAULT_DAILY_FILE_UPLOADS = 20;
+const DEFAULT_DAILY_FILE_UPLOAD_BYTES = 250 * 1024 * 1024;
+const DEFAULT_DAILY_FILE_DOWNLOADS = 100;
+const DEFAULT_FILE_DOWNLOADS_PER_LINK = 3;
 const STALE_PENDING_COMMAND_MS = 60 * 60 * 1000;
 const STALE_RUNNING_COMMAND_MS = 2 * 60 * 1000;
 const STALE_PENDING_ITEM_ACTION_MS = 60 * 60 * 1000;
+const STALE_PENDING_FILE_ACCESS_MS = 10 * 60 * 1000;
+const DEFAULT_FILE_ACCESS_TTL_MS = 5 * 60 * 1000;
 
 const defaultStatus = {
   assignments: 0,
@@ -39,6 +47,9 @@ export default {
       return sendJSON(500, { error: "server error" });
     }
   },
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(cleanupExpiredFileAccess(database(env), env));
+  },
 };
 
 async function route(request, env) {
@@ -49,6 +60,8 @@ async function route(request, env) {
     return sendJSON(200, {
       ok: true,
       storage: "cloudflare-d1",
+      fileStorage: env?.RELAY_FILES ? "cloudflare-r2" : "not-configured",
+      fileRelayLimits: publicFileAccessLimits(env),
       configured: relayTokens(env).configured,
     });
   }
@@ -60,6 +73,15 @@ async function route(request, env) {
   if (!pathname.startsWith("/v1/")) {
     return sendJSON(404, { error: "not found" });
   }
+
+  const downloadMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/download$/);
+  if (request.method === "GET" && downloadMatch) {
+    const db = database(env);
+    await ensureSchema(db);
+    await cleanupExpiredFileAccess(db, env);
+    return downloadFileAccess(db, env, request, downloadMatch[1]);
+  }
+
   const requiredRole = requiredRoleFor(request.method, pathname);
   if (!requiredRole) {
     return sendJSON(404, { error: "not found" });
@@ -70,6 +92,8 @@ async function route(request, env) {
 
   const db = database(env);
   await ensureSchema(db);
+  await cleanupExpiredFileAccess(db, env);
+  await expireStaleFileAccessRequests(db);
   let state = await loadState(db);
   if (await expireStaleRecords(db, state)) {
     state = await loadState(db);
@@ -233,6 +257,88 @@ async function route(request, env) {
     return sendJSON(200, action);
   }
 
+  if (request.method === "POST" && pathname === "/v1/file-access") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const body = await readJSON(request);
+    const fileRequest = normalizeFileAccessRequest(body, "pending");
+    if (!fileRequest.itemID || fileRequest.itemKind !== "file") {
+      return sendJSON(400, { error: "missing file target" });
+    }
+    const pendingRequests = await loadFileAccessRequests(db, {
+      statuses: ["pending", "running"],
+      order: "created",
+      limit: MAX_FILE_ACCESS_REQUESTS,
+    });
+    if (pendingRequests.length >= fileAccessLimits(env).maxPendingRequests) {
+      return sendJSON(429, { error: "file access queue limit reached" });
+    }
+    await upsertFileAccessRequest(db, fileRequest);
+    state.message = `파일 열기 요청 대기 중: ${fileRequest.itemTitle || fileRequest.itemID}`;
+    state.updatedAt = new Date().toISOString();
+    await saveMetaState(db, state);
+    return sendJSON(201, fileAccessResponseItem(fileRequest, request, env));
+  }
+
+  if (request.method === "GET" && pathname === "/v1/file-access/pending") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const limit = boundedInt(url.searchParams.get("limit"), 20, 1, MAX_FILE_ACCESS_REQUESTS);
+    return sendJSON(200, fileAccessListResponse(
+      await loadFileAccessRequests(db, {
+        statuses: ["pending"],
+        order: "created",
+        limit,
+      }),
+      request,
+      env
+    ));
+  }
+
+  if (request.method === "GET" && pathname === "/v1/file-access/recent") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const limit = boundedInt(url.searchParams.get("limit"), 20, 1, MAX_FILE_ACCESS_REQUESTS);
+    return sendJSON(200, fileAccessListResponse(
+      await loadFileAccessRequests(db, { limit }),
+      request,
+      env
+    ));
+  }
+
+  const fileAccessMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)$/);
+  if (request.method === "PUT" && fileAccessMatch) {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const body = await readJSON(request);
+    const current = await getFileAccessRequest(db, fileAccessMatch[1]);
+    if (!current) {
+      return sendJSON(404, { error: "file request not found" });
+    }
+    const fileRequest = normalizeFileAccessRequest({
+      ...current,
+      ...body,
+      id: fileAccessMatch[1],
+      itemID: body.itemID || body.itemId || current.itemID,
+      itemKind: body.itemKind || current.itemKind,
+      itemTitle: body.itemTitle || current.itemTitle,
+    }, body.status || current.status || "pending");
+    await upsertFileAccessRequest(db, fileRequest);
+    return sendJSON(200, fileAccessResponseItem(fileRequest, request, env));
+  }
+
+  const fileUploadMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/upload$/);
+  if (request.method === "PUT" && fileUploadMatch) {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    return uploadFileAccess(db, env, request, fileUploadMatch[1]);
+  }
+
   return sendJSON(404, { error: "not found" });
 }
 
@@ -249,6 +355,11 @@ function requiredRoleFor(method, pathname) {
   if (method === "GET" && pathname === "/v1/item-actions/pending") return "worker";
   if (method === "GET" && pathname === "/v1/item-actions/recent") return "client";
   if (method === "PUT" && /^\/v1\/item-actions\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
+  if (method === "POST" && pathname === "/v1/file-access") return "client";
+  if (method === "GET" && pathname === "/v1/file-access/pending") return "worker";
+  if (method === "GET" && pathname === "/v1/file-access/recent") return "client";
+  if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
+  if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F-]+\/upload$/.test(pathname)) return "worker";
   return null;
 }
 
@@ -494,6 +605,252 @@ async function trimItemActions(db) {
   `).bind(MAX_ITEM_ACTIONS).run();
 }
 
+async function loadFileAccessRequests(db, { statuses = [], order = "updated", limit = MAX_FILE_ACCESS_REQUESTS } = {}) {
+  const orderSQL = order === "created" ? "created_at ASC" : "updated_at DESC";
+  let result;
+  if (statuses.length > 0) {
+    const placeholders = statuses.map(() => "?").join(", ");
+    result = await db.prepare(`
+      SELECT id, item_id, item_kind, item_title, status, created_at, updated_at, message,
+             object_key, download_ticket, expires_at, content_type, size_bytes, download_count
+      FROM file_access_requests
+      WHERE status IN (${placeholders})
+      ORDER BY ${orderSQL}
+      LIMIT ?
+    `).bind(...statuses, limit).all();
+  } else {
+    result = await db.prepare(`
+      SELECT id, item_id, item_kind, item_title, status, created_at, updated_at, message,
+             object_key, download_ticket, expires_at, content_type, size_bytes, download_count
+      FROM file_access_requests
+      ORDER BY ${orderSQL}
+      LIMIT ?
+    `).bind(limit).all();
+  }
+  return deduplicateByID((result.results || []).map(rowToFileAccessRequest), limit);
+}
+
+async function getFileAccessRequest(db, id) {
+  const row = await db.prepare(`
+    SELECT id, item_id, item_kind, item_title, status, created_at, updated_at, message,
+           object_key, download_ticket, expires_at, content_type, size_bytes, download_count
+    FROM file_access_requests
+    WHERE id = ?
+  `).bind(String(id || "").toLowerCase()).first();
+  return row ? rowToFileAccessRequest(row) : null;
+}
+
+async function upsertFileAccessRequest(db, fileRequest) {
+  await db.prepare(`
+    INSERT INTO file_access_requests (
+      id, item_id, item_kind, item_title, status, created_at, updated_at, message,
+      object_key, download_ticket, expires_at, content_type, size_bytes, download_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      item_id = excluded.item_id,
+      item_kind = excluded.item_kind,
+      item_title = excluded.item_title,
+      status = excluded.status,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at,
+      message = excluded.message,
+      object_key = excluded.object_key,
+      download_ticket = excluded.download_ticket,
+      expires_at = excluded.expires_at,
+      content_type = excluded.content_type,
+      size_bytes = excluded.size_bytes,
+      download_count = excluded.download_count
+  `).bind(
+    fileRequest.id,
+    fileRequest.itemID,
+    fileRequest.itemKind,
+    fileRequest.itemTitle,
+    fileRequest.status,
+    fileRequest.createdAt,
+    fileRequest.updatedAt,
+    fileRequest.message,
+    fileRequest.objectKey || null,
+    fileRequest.downloadTicket || null,
+    fileRequest.expiresAt || null,
+    fileRequest.contentType || null,
+    Number.isFinite(Number(fileRequest.sizeBytes)) ? Number(fileRequest.sizeBytes) : null,
+    Number.isFinite(Number(fileRequest.downloadCount)) ? Number(fileRequest.downloadCount) : 0
+  ).run();
+  await trimFileAccessRequests(db);
+}
+
+async function trimFileAccessRequests(db) {
+  await db.prepare(`
+    DELETE FROM file_access_requests
+    WHERE object_key IS NULL
+      AND id NOT IN (
+      SELECT id FROM file_access_requests ORDER BY updated_at DESC LIMIT ?
+    )
+  `).bind(MAX_FILE_ACCESS_REQUESTS).run();
+}
+
+async function expireStaleFileAccessRequests(db) {
+  const now = Date.now();
+  const rows = await loadFileAccessRequests(db, {
+    statuses: ["pending", "running"],
+    order: "created",
+    limit: MAX_FILE_ACCESS_REQUESTS,
+  });
+  for (const fileRequest of rows) {
+    if (ageMs(fileRequest.createdAt, now) <= STALE_PENDING_FILE_ACCESS_MS) {
+      continue;
+    }
+    await upsertFileAccessRequest(db, {
+      ...fileRequest,
+      status: "macUnavailable",
+      updatedAt: new Date().toISOString(),
+      message: "Mac 앱이 제한 시간 안에 파일을 준비하지 않았습니다.",
+    });
+  }
+}
+
+async function cleanupExpiredFileAccess(db, env) {
+  const nowISO = new Date().toISOString();
+  const result = await db.prepare(`
+    SELECT id, object_key
+    FROM file_access_requests
+    WHERE expires_at IS NOT NULL
+      AND expires_at <= ?
+  `).bind(nowISO).all();
+  const rows = result.results || [];
+  for (const row of rows) {
+    if (env?.RELAY_FILES && row.object_key) {
+      try {
+        await env.RELAY_FILES.delete(row.object_key);
+      } catch (error) {
+        console.error("failed to delete expired file object", row.object_key, error);
+      }
+    }
+  }
+  if (rows.length > 0) {
+    await db.prepare(`
+      DELETE FROM file_access_requests
+      WHERE expires_at IS NOT NULL
+        AND expires_at <= ?
+    `).bind(nowISO).run();
+  }
+}
+
+async function uploadFileAccess(db, env, request, id) {
+  if (!env?.RELAY_FILES) {
+    return sendJSON(503, { error: "file relay storage is not configured" });
+  }
+  const current = await getFileAccessRequest(db, id);
+  if (!current) {
+    return sendJSON(404, { error: "file request not found" });
+  }
+  const limits = fileAccessLimits(env);
+  const contentLength = Number.parseInt(request.headers.get("content-length") || "0", 10);
+  if (!Number.isFinite(contentLength) || contentLength <= 0) {
+    return sendJSON(411, { error: "content length is required for file uploads" });
+  }
+  if (contentLength > limits.maxUploadBytes) {
+    return sendJSON(413, { error: `file too large; limit is ${limits.maxUploadBytes} bytes` });
+  }
+  const quota = await loadFileAccessQuota(db);
+  if (quota.uploadCount >= limits.dailyUploads) {
+    return sendJSON(429, { error: "daily file upload count limit reached" });
+  }
+  if (quota.uploadBytes + contentLength > limits.dailyUploadBytes) {
+    return sendJSON(429, { error: "daily file upload byte limit reached" });
+  }
+  const filename = sanitizeFilename(
+    decodeHeaderFilename(request.headers.get("x-klms-filename"))
+      || current.itemTitle
+      || "klms-file"
+  );
+  const contentType = (
+    request.headers.get("content-type")
+      || request.headers.get("x-klms-content-type")
+      || "application/octet-stream"
+  ).split(";")[0].trim() || "application/octet-stream";
+  const objectKey = `file-access/${current.id}/${crypto.randomUUID()}-${filename}`;
+  const ticket = randomToken();
+  const expiresAt = new Date(Date.now() + limits.ttlMs).toISOString();
+  const body = request.body ?? await request.arrayBuffer();
+
+  await env.RELAY_FILES.put(objectKey, body, {
+    httpMetadata: { contentType },
+    customMetadata: {
+      requestID: current.id,
+      itemID: current.itemID,
+      itemTitle: current.itemTitle,
+    },
+  });
+
+  const updated = {
+    ...current,
+    status: "completed",
+    updatedAt: new Date().toISOString(),
+    message: "파일 링크 준비 완료",
+    objectKey,
+    downloadTicket: ticket,
+    expiresAt,
+    contentType,
+    sizeBytes: contentLength,
+    downloadCount: 0,
+  };
+  await upsertFileAccessRequest(db, updated);
+  await saveFileAccessQuota(db, {
+    ...quota,
+    uploadCount: quota.uploadCount + 1,
+    uploadBytes: quota.uploadBytes + contentLength,
+  });
+  return sendJSON(200, fileAccessResponseItem(updated, request, env));
+}
+
+async function downloadFileAccess(db, env, request, id) {
+  const ticket = new URL(request.url).searchParams.get("ticket") || "";
+  const fileRequest = await getFileAccessRequest(db, id);
+  if (!fileRequest || fileRequest.status !== "completed" || !fileRequest.objectKey || !fileRequest.downloadTicket) {
+    return sendJSON(404, { error: "file link not found" });
+  }
+  if (fileRequest.downloadTicket !== ticket) {
+    return sendJSON(401, { error: "unauthorized" });
+  }
+  if (fileRequest.expiresAt && Date.parse(fileRequest.expiresAt) <= Date.now()) {
+    await cleanupExpiredFileAccess(db, env);
+    return sendJSON(410, { error: "file link expired" });
+  }
+  const limits = fileAccessLimits(env);
+  if (Number(fileRequest.downloadCount || 0) >= limits.downloadsPerLink) {
+    return sendJSON(429, { error: "file link download limit reached" });
+  }
+  const quota = await loadFileAccessQuota(db);
+  if (quota.downloadCount >= limits.dailyDownloads) {
+    return sendJSON(429, { error: "daily file download limit reached" });
+  }
+  if (!env?.RELAY_FILES) {
+    return sendJSON(503, { error: "file relay storage is not configured" });
+  }
+  const object = await env.RELAY_FILES.get(fileRequest.objectKey);
+  if (!object) {
+    return sendJSON(404, { error: "file object not found" });
+  }
+  const headers = new Headers();
+  headers.set("Cache-Control", "no-store");
+  headers.set("Content-Type", fileRequest.contentType || object.httpMetadata?.contentType || "application/octet-stream");
+  headers.set("Content-Disposition", contentDisposition(fileRequest.itemTitle || "KLMS file"));
+  if (Number.isFinite(Number(fileRequest.sizeBytes))) {
+    headers.set("Content-Length", String(Number(fileRequest.sizeBytes)));
+  }
+  await upsertFileAccessRequest(db, {
+    ...fileRequest,
+    downloadCount: Number(fileRequest.downloadCount || 0) + 1,
+    updatedAt: new Date().toISOString(),
+  });
+  await saveFileAccessQuota(db, {
+    ...quota,
+    downloadCount: quota.downloadCount + 1,
+  });
+  return new Response(object.body, { status: 200, headers });
+}
+
 async function expireStaleRecords(db, state) {
   const now = Date.now();
   const commandUpdates = [];
@@ -549,6 +906,38 @@ function itemActionListResponse(actions) {
   return { actions };
 }
 
+function fileAccessListResponse(requests, request, env) {
+  return {
+    requests: requests.map((fileRequest) => fileAccessResponseItem(fileRequest, request, env)),
+  };
+}
+
+function fileAccessResponseItem(fileRequest, request, env) {
+  const response = {
+    id: fileRequest.id,
+    itemID: fileRequest.itemID,
+    itemKind: fileRequest.itemKind,
+    itemTitle: fileRequest.itemTitle,
+    status: fileRequest.status,
+    createdAt: fileRequest.createdAt,
+    updatedAt: fileRequest.updatedAt,
+    message: fileRequest.message,
+    downloadURL: null,
+    expiresAt: fileRequest.expiresAt || null,
+    sizeBytes: Number.isFinite(Number(fileRequest.sizeBytes)) ? Number(fileRequest.sizeBytes) : null,
+    downloadCount: Number.isFinite(Number(fileRequest.downloadCount)) ? Number(fileRequest.downloadCount) : 0,
+  };
+  if (
+    fileRequest.status === "completed"
+    && fileRequest.downloadTicket
+    && fileRequest.expiresAt
+    && Date.parse(fileRequest.expiresAt) > Date.now()
+  ) {
+    response.downloadURL = downloadURLFor(fileRequest, request, env);
+  }
+  return response;
+}
+
 function relayResponse(state) {
   return {
     ok: true,
@@ -590,6 +979,31 @@ function normalizeItemAction(raw, fallbackStatus) {
     createdAt: raw.createdAt || now,
     updatedAt: raw.updatedAt || now,
     message: String(raw.message || ""),
+  };
+}
+
+function normalizeFileAccessRequest(raw, fallbackStatus) {
+  const now = new Date().toISOString();
+  const id = String(raw.id || crypto.randomUUID()).toLowerCase();
+  return {
+    id,
+    itemID: String(raw.itemID || raw.itemId || "").trim(),
+    itemKind: String(raw.itemKind || "file").trim(),
+    itemTitle: String(raw.itemTitle || "").trim(),
+    status: String(raw.status || fallbackStatus),
+    createdAt: raw.createdAt || now,
+    updatedAt: raw.updatedAt || now,
+    message: String(raw.message || ""),
+    objectKey: raw.objectKey || raw.object_key || null,
+    downloadTicket: raw.downloadTicket || raw.download_ticket || null,
+    expiresAt: raw.expiresAt || raw.expires_at || null,
+    contentType: raw.contentType || raw.content_type || null,
+    sizeBytes: Number.isFinite(Number(raw.sizeBytes ?? raw.size_bytes))
+      ? Number(raw.sizeBytes ?? raw.size_bytes)
+      : null,
+    downloadCount: Number.isFinite(Number(raw.downloadCount ?? raw.download_count))
+      ? Number(raw.downloadCount ?? raw.download_count)
+      : 0,
   };
 }
 
@@ -733,6 +1147,25 @@ function rowToItemAction(row) {
   }, row.status || "pending");
 }
 
+function rowToFileAccessRequest(row) {
+  return normalizeFileAccessRequest({
+    id: row.id,
+    itemID: row.item_id,
+    itemKind: row.item_kind,
+    itemTitle: row.item_title,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    message: row.message,
+    objectKey: row.object_key,
+    downloadTicket: row.download_ticket,
+    expiresAt: row.expires_at,
+    contentType: row.content_type,
+    sizeBytes: row.size_bytes,
+    downloadCount: row.download_count,
+  }, row.status || "pending");
+}
+
 function parseJSON(value, fallback) {
   if (typeof value !== "string" || value.trim().length === 0) {
     return fallback;
@@ -758,6 +1191,118 @@ function boundedInt(value, fallback, min, max) {
     return fallback;
   }
   return Math.max(min, Math.min(max, parsed));
+}
+
+function fileAccessLimits(env) {
+  return {
+    maxUploadBytes: boundedInt(env?.FILE_RELAY_MAX_UPLOAD_BYTES, DEFAULT_MAX_FILE_UPLOAD_BYTES, 1, 100 * 1024 * 1024),
+    dailyUploads: boundedInt(env?.FILE_RELAY_DAILY_UPLOADS, DEFAULT_DAILY_FILE_UPLOADS, 1, 1_000),
+    dailyUploadBytes: boundedInt(env?.FILE_RELAY_DAILY_UPLOAD_BYTES, DEFAULT_DAILY_FILE_UPLOAD_BYTES, 1, 10 * 1024 * 1024 * 1024),
+    dailyDownloads: boundedInt(env?.FILE_RELAY_DAILY_DOWNLOADS, DEFAULT_DAILY_FILE_DOWNLOADS, 1, 100_000),
+    downloadsPerLink: boundedInt(env?.FILE_RELAY_DOWNLOADS_PER_LINK, DEFAULT_FILE_DOWNLOADS_PER_LINK, 1, 100),
+    ttlMs: boundedInt(env?.FILE_RELAY_TTL_SECONDS, DEFAULT_FILE_ACCESS_TTL_MS / 1000, 60, 60 * 60) * 1000,
+    maxPendingRequests: boundedInt(env?.FILE_RELAY_MAX_PENDING_REQUESTS, 20, 1, MAX_FILE_ACCESS_REQUESTS),
+  };
+}
+
+function publicFileAccessLimits(env) {
+  const limits = fileAccessLimits(env);
+  return {
+    maxUploadBytes: limits.maxUploadBytes,
+    dailyUploads: limits.dailyUploads,
+    dailyUploadBytes: limits.dailyUploadBytes,
+    dailyDownloads: limits.dailyDownloads,
+    downloadsPerLink: limits.downloadsPerLink,
+    ttlSeconds: Math.floor(limits.ttlMs / 1000),
+    maxPendingRequests: limits.maxPendingRequests,
+  };
+}
+
+function quotaKeyForToday(now = new Date()) {
+  return `fileAccessQuota:${now.toISOString().slice(0, 10)}`;
+}
+
+async function loadFileAccessQuota(db) {
+  const key = quotaKeyForToday();
+  const raw = parseJSON(await getMeta(db, key), {});
+  return {
+    key,
+    uploadCount: Number.isFinite(Number(raw.uploadCount)) ? Number(raw.uploadCount) : 0,
+    uploadBytes: Number.isFinite(Number(raw.uploadBytes)) ? Number(raw.uploadBytes) : 0,
+    downloadCount: Number.isFinite(Number(raw.downloadCount)) ? Number(raw.downloadCount) : 0,
+  };
+}
+
+async function saveFileAccessQuota(db, quota) {
+  await setMetaStatement(db, quota.key || quotaKeyForToday(), JSON.stringify({
+    uploadCount: Number(quota.uploadCount || 0),
+    uploadBytes: Number(quota.uploadBytes || 0),
+    downloadCount: Number(quota.downloadCount || 0),
+    updatedAt: new Date().toISOString(),
+  })).run();
+}
+
+function downloadURLFor(fileRequest, request, env) {
+  const url = new URL(request.url);
+  url.pathname = prefixedPath(
+    `/v1/file-access/${fileRequest.id}/download`,
+    env,
+    new URL(request.url).pathname
+  );
+  url.search = "";
+  url.searchParams.set("ticket", fileRequest.downloadTicket);
+  return url.toString();
+}
+
+function prefixedPath(target, env, currentPath) {
+  const configuredPrefix = String(env?.RELAY_PATH_PREFIX || "").trim();
+  const prefixes = [configuredPrefix, "/relay"]
+    .map((prefix) => `/${String(prefix).split("/").filter(Boolean).join("/")}`)
+    .filter((prefix) => prefix !== "/");
+  for (const prefix of prefixes) {
+    if (currentPath === prefix || currentPath.startsWith(`${prefix}/`)) {
+      return `${prefix}${target}`;
+    }
+  }
+  return target;
+}
+
+function sanitizeFilename(value) {
+  const normalized = String(value || "klms-file")
+    .replace(/[\\/:*?"<>|\u0000-\u001F]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (normalized || "klms-file").slice(0, 160);
+}
+
+function decodeHeaderFilename(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function contentDisposition(filename) {
+  const safe = sanitizeFilename(filename);
+  const ascii = safe.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeRFC5987ValueChars(safe)}`;
+}
+
+function encodeRFC5987ValueChars(value) {
+  return encodeURIComponent(value)
+    .replace(/['()]/g, escape)
+    .replace(/\*/g, "%2A");
+}
+
+function randomToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function readJSON(request) {
@@ -788,7 +1333,7 @@ function baseHeaders() {
     "Cache-Control": "no-store",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-KLMS-Filename, X-KLMS-Content-Type",
   };
 }
 

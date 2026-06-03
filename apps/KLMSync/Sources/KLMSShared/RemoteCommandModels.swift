@@ -1212,6 +1212,92 @@ public struct ServerRelayItemActionListResponse: Codable, Sendable, Equatable {
     }
 }
 
+public enum ServerRelayFileAccessStatus: String, Codable, Sendable {
+    case pending
+    case running
+    case completed
+    case failed
+    case macUnavailable
+
+    public var displayName: String {
+        switch self {
+        case .pending:
+            "대기 중"
+        case .running:
+            "파일 준비 중"
+        case .completed:
+            "열기 가능"
+        case .failed:
+            "실패"
+        case .macUnavailable:
+            "Mac 응답 없음"
+        }
+    }
+
+    public var isInFlight: Bool {
+        self == .pending || self == .running
+    }
+}
+
+public struct ServerRelayFileAccessRequest: Codable, Sendable, Equatable, Identifiable {
+    public var id: UUID
+    public var itemID: String
+    public var itemKind: String
+    public var itemTitle: String
+    public var status: ServerRelayFileAccessStatus
+    public var createdAt: Date
+    public var updatedAt: Date
+    public var message: String
+    public var downloadURL: String?
+    public var expiresAt: Date?
+    public var sizeBytes: Int?
+
+    public init(
+        id: UUID = UUID(),
+        itemID: String,
+        itemKind: String = "file",
+        itemTitle: String = "",
+        status: ServerRelayFileAccessStatus = .pending,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        message: String = "",
+        downloadURL: String? = nil,
+        expiresAt: Date? = nil,
+        sizeBytes: Int? = nil
+    ) {
+        self.id = id
+        self.itemID = itemID
+        self.itemKind = itemKind
+        self.itemTitle = itemTitle
+        self.status = status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.message = message
+        self.downloadURL = downloadURL
+        self.expiresAt = expiresAt
+        self.sizeBytes = sizeBytes
+    }
+
+    public var isDownloadAvailable: Bool {
+        guard status == .completed,
+              downloadURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return false
+        }
+        if let expiresAt {
+            return expiresAt > Date()
+        }
+        return true
+    }
+}
+
+public struct ServerRelayFileAccessListResponse: Codable, Sendable, Equatable {
+    public var requests: [ServerRelayFileAccessRequest]
+
+    public init(requests: [ServerRelayFileAccessRequest] = []) {
+        self.requests = requests
+    }
+}
+
 public struct ServerRelayCommandStore: RemoteCommandStore {
     public var baseURL: URL
     public var token: String
@@ -1360,6 +1446,75 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
             path: "/v1/item-actions/\(action.id.uuidString)",
             body: action
         )
+    }
+
+    public func createFileAccessRequest(_ fileRequest: ServerRelayFileAccessRequest) async throws -> ServerRelayFileAccessRequest {
+        try await send(
+            method: "POST",
+            path: "/v1/file-access",
+            body: fileRequest
+        )
+    }
+
+    public func fetchPendingFileAccessRequests(limit: Int = 20) async throws -> [ServerRelayFileAccessRequest] {
+        let response: ServerRelayFileAccessListResponse = try await send(
+            method: "GET",
+            path: "/v1/file-access/pending",
+            queryItems: [URLQueryItem(name: "limit", value: "\(limit)")]
+        )
+        return response.requests
+    }
+
+    public func fetchRecentFileAccessRequests(limit: Int = 20) async throws -> [ServerRelayFileAccessRequest] {
+        let response: ServerRelayFileAccessListResponse = try await send(
+            method: "GET",
+            path: "/v1/file-access/recent",
+            queryItems: [URLQueryItem(name: "limit", value: "\(limit)")]
+        )
+        return response.requests
+    }
+
+    public func updateFileAccessRequest(_ fileRequest: ServerRelayFileAccessRequest) async throws {
+        let _: ServerRelayFileAccessRequest = try await send(
+            method: "PUT",
+            path: "/v1/file-access/\(fileRequest.id.uuidString)",
+            body: fileRequest
+        )
+    }
+
+    public func uploadFileAccessRequest(
+        _ fileRequest: ServerRelayFileAccessRequest,
+        fileURL: URL,
+        filename: String,
+        contentType: String = "application/octet-stream"
+    ) async throws -> ServerRelayFileAccessRequest {
+        var request = URLRequest(url: endpoint(
+            "/v1/file-access/\(fileRequest.id.uuidString)/upload",
+            queryItems: []
+        ))
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.setValue(
+            filename.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "klms-file",
+            forHTTPHeaderField: "X-KLMS-Filename"
+        )
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: fileURL)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ServerRelayClientError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let message = (try? JSONDecoder.klmsLocalRemote.decode(ServerRelayErrorResponse.self, from: data))?.error
+                ?? String(data: data, encoding: .utf8)
+                ?? ""
+            throw ServerRelayClientError.serverRejected(httpResponse.statusCode, message)
+        }
+        do {
+            return try JSONDecoder.klmsLocalRemote.decode(ServerRelayFileAccessRequest.self, from: data)
+        } catch {
+            throw ServerRelayClientError.invalidResponse
+        }
     }
 
     private func send<T: Decodable>(

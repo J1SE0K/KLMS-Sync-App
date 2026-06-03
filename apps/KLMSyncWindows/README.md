@@ -16,6 +16,7 @@ Windows companion app for the KLMS Sync server relay.
 - 항목 상세 확인
 - 공지 읽음/중요 ON/OFF 토글
 - 과제 완료/숨김, 시험 후보 확정/무시, 파일 숨김 요청
+- 파일 열기 요청: Mac이 로컬 `course_files` 원본을 임시 업로드하고 만료 링크를 제공
 - 전체/과제/공지/파일/진단 원격 실행 요청
 - 최근 요청 상태 확인
 
@@ -51,3 +52,4 @@ HTTP는 `localhost`, 사설 IP, `.local` 주소에서만 허용한다. 외부에
 - 클라이언트 토큰은 Electron main process에서만 읽고 renderer에는 저장하지 않는다.
 - Windows에서는 Electron `safeStorage`를 통해 OS 암호화 저장소를 사용하고, 암호화 저장소가 없으면 토큰을 저장하지 않는다.
 - 서버에는 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로를 올리지 않는다.
+- 파일 원본은 사용자가 파일 열기를 요청한 경우에만 임시 업로드되며, 링크 만료 후 서버 기록과 임시 파일을 정리한다.

@@ -7,6 +7,7 @@ cd "$SCRIPT_DIR"
 
 WORKER_NAME="${KLMS_CLOUDFLARE_WORKER_NAME:-klms-sync-relay}"
 DB_NAME="${KLMS_CLOUDFLARE_D1_NAME:-klms-sync-relay}"
+R2_BUCKET_NAME="${KLMS_CLOUDFLARE_R2_BUCKET:-klms-sync-file-relay}"
 CLIENT_TOKEN_FILE="${KLMS_CLOUDFLARE_CLIENT_TOKEN_FILE:-$SCRIPT_DIR/.relay-client-token}"
 WORKER_TOKEN_FILE="${KLMS_CLOUDFLARE_WORKER_TOKEN_FILE:-$SCRIPT_DIR/.relay-worker-token}"
 WRANGLER_TOML="$SCRIPT_DIR/wrangler.toml"
@@ -44,6 +45,27 @@ const next = text.replace(
 );
 if (text === next) {
   throw new Error("Could not update database_id in wrangler.toml");
+}
+fs.writeFileSync(path, next);
+NODE
+}
+
+set_r2_bucket_name() {
+  local bucket_name="$1"
+  R2_BUCKET_NAME="$bucket_name" node <<'NODE'
+const fs = require("fs");
+const path = "wrangler.toml";
+const bucketName = process.env.R2_BUCKET_NAME;
+const text = fs.readFileSync(path, "utf8");
+const next = text.replace(
+  /(binding\s*=\s*"RELAY_FILES"[\s\S]*?bucket_name\s*=\s*)"[^"]*"/,
+  `$1"${bucketName}"`
+);
+if (text === next) {
+  if (text.includes(`binding = "RELAY_FILES"`) && text.includes(`bucket_name = "${bucketName}"`)) {
+    process.exit(0);
+  }
+  throw new Error("Could not update RELAY_FILES bucket_name in wrangler.toml");
 }
 fs.writeFileSync(path, next);
 NODE
@@ -90,7 +112,7 @@ ensure_login() {
     print -u2 -- "CLOUDFLARE_API_TOKEN=여기에_붙여넣기"
     print -u2 -- ""
     print -u2 -- "권장 template: Edit Cloudflare Workers"
-    print -u2 -- "D1 DB 생성까지 자동화하려면 Account > D1 > Edit 권한도 포함해야 해."
+    print -u2 -- "D1/R2 생성까지 자동화하려면 Account > D1 > Edit, Account > R2 > Edit 권한도 포함해야 해."
     exit 78
   fi
   if npx wrangler whoami >/dev/null 2>&1; then
@@ -200,6 +222,48 @@ ensure_database() {
   print -- "wrangler.toml database_id 적용됨: $database_id"
 }
 
+ensure_r2_bucket() {
+  print -- "R2 파일 릴레이 버킷 생성/조회 중: $R2_BUCKET_NAME"
+  local list_json
+  list_json="$(npx wrangler r2 bucket list --json 2>/dev/null || true)"
+  if [[ -n "$list_json" ]]; then
+    local found
+    found="$(print -r -- "$list_json" | R2_BUCKET_NAME="$R2_BUCKET_NAME" node -e '
+const fs = require("fs");
+const input = fs.readFileSync(0, "utf8");
+let parsed;
+try {
+  parsed = JSON.parse(input);
+} catch {
+  process.exit(0);
+}
+const buckets = Array.isArray(parsed) ? parsed : parsed?.buckets || parsed?.result || [];
+const found = buckets.find((item) => item && item.name === process.env.R2_BUCKET_NAME);
+if (found) process.stdout.write(found.name);
+')"
+    if [[ "$found" == "$R2_BUCKET_NAME" ]]; then
+      set_r2_bucket_name "$R2_BUCKET_NAME"
+      print -- "R2 버킷 설정 확인됨: $R2_BUCKET_NAME"
+      return
+    fi
+  fi
+
+  local create_output
+  if ! create_output="$(npx wrangler r2 bucket create "$R2_BUCKET_NAME" 2>&1)"; then
+    print -r -- "$create_output"
+    if print -r -- "$create_output" | grep -qi "already exists"; then
+      set_r2_bucket_name "$R2_BUCKET_NAME"
+      print -- "R2 버킷이 이미 존재함: $R2_BUCKET_NAME"
+      return
+    fi
+    print -u2 -- "R2 버킷을 만들지 못했어. Cloudflare API token에 Account > Workers R2 Storage > Edit 권한이 있는지 확인해줘."
+    exit 78
+  fi
+  print -r -- "$create_output"
+  set_r2_bucket_name "$R2_BUCKET_NAME"
+  print -- "R2 버킷 생성됨: $R2_BUCKET_NAME"
+}
+
 read_or_create_token() {
   local env_name="$1"
   local file="$2"
@@ -273,5 +337,6 @@ ensure_login
 ensure_account_id
 ensure_workers_dev_subdomain
 ensure_database
+ensure_r2_bucket
 ensure_tokens
 deploy_worker
