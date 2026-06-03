@@ -106,7 +106,9 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+const trackedReportCommandIDsKey = "klms-tracked-report-command-ids";
 let refreshTimer = null;
+let trackedReportCommandIDs = loadTrackedReportCommandIDs();
 
 document.addEventListener("DOMContentLoaded", async () => {
   initTheme();
@@ -362,6 +364,7 @@ async function refreshAll(options = {}) {
     ]);
     applyStatus(statusResponse);
     state.recentCommands = commandResponse.commands || [];
+    handleReportNotificationUpdates(state.recentCommands);
     state.items = syncData.items || [];
     state.recentActions = actionResponse.actions || [];
     state.recentFileAccess = fileAccessResponse.requests || [];
@@ -420,11 +423,12 @@ function applyStatus(payload) {
 async function createCommand(kind) {
   try {
     setBusy(true);
-    await window.klmsWindows.relayRequest({
+    const command = await window.klmsWindows.relayRequest({
       path: "/v1/commands",
       method: "POST",
       body: { kind }
     });
+    trackReportNotificationIfNeeded(command);
     toast(`${commandLabel(kind)} 요청을 보냈습니다.`);
     await refreshAll({ quiet: true });
   } catch (error) {
@@ -2271,6 +2275,73 @@ function fileAccessStatusLabel(status) {
     failed: "실패",
     macUnavailable: "Mac 응답 없음"
   }[status] || status || "상태 없음";
+}
+
+function loadTrackedReportCommandIDs() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(trackedReportCommandIDsKey) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistTrackedReportCommandIDs() {
+  try {
+    localStorage.setItem(trackedReportCommandIDsKey, JSON.stringify([...trackedReportCommandIDs]));
+  } catch {
+    // Desktop notification tracking is best-effort only.
+  }
+}
+
+function trackReportNotificationIfNeeded(command) {
+  if (command?.kind !== "report" || !command.id) {
+    return;
+  }
+  trackedReportCommandIDs.add(command.id);
+  persistTrackedReportCommandIDs();
+}
+
+function handleReportNotificationUpdates(commands) {
+  for (const command of commands) {
+    notifyReportRefreshResultIfNeeded(command);
+  }
+}
+
+function notifyReportRefreshResultIfNeeded(command) {
+  if (command?.kind !== "report" || !trackedReportCommandIDs.has(command.id) || !isTerminalStatus(command.status)) {
+    return;
+  }
+  trackedReportCommandIDs.delete(command.id);
+  persistTrackedReportCommandIDs();
+
+  const title = command.status === "completed" ? "요약 갱신 완료" : "요약 갱신 실패";
+  const summary = command.summary || {};
+  const body = command.status === "completed"
+    ? `대시보드 요약이 갱신됐습니다. 과제 ${summary.assignments || 0}개 · 시험 ${summary.exams || 0}개 · 새 파일 ${summary.newFiles || 0}개`
+    : `Mac 앱에서 요약 갱신이 실패했습니다. ${command.lastExitCode != null ? `종료 코드 ${command.lastExitCode}` : commandStatusLabel(command.status)}`;
+  postDesktopNotification(title, body);
+}
+
+function postDesktopNotification(title, body) {
+  if (!("Notification" in window)) {
+    toast(`${title}: ${body}`);
+    return;
+  }
+  if (Notification.permission === "granted") {
+    new Notification(title, { body });
+    return;
+  }
+  if (Notification.permission === "denied") {
+    toast(`${title}: ${body}`);
+    return;
+  }
+  Notification.requestPermission().then((permission) => {
+    if (permission === "granted") {
+      new Notification(title, { body });
+    } else {
+      toast(`${title}: ${body}`);
+    }
+  }).catch(() => toast(`${title}: ${body}`));
 }
 
 function commandStatusClass(status) {
