@@ -24,3 +24,11 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "RELAY_FILES"
 bucket_name = "klms-sync-file-relay"
+
+[[durable_objects.bindings]]
+name = "RELAY_REALTIME"
+class_name = "RelayRealtimeRoom"
+
+[[migrations]]
+tag = "v1_realtime_room"
+new_sqlite_classes = [ "RelayRealtimeRoom" ]

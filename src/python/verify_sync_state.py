@@ -83,6 +83,39 @@ def comparable_title(value: Any) -> str:
     return text.strip()
 
 
+def notice_fallback_identifier(course: Any, notice: dict[str, Any]) -> str:
+    return (
+        f"{compact_text(course)}|"
+        f"{compact_text(notice.get('title'))}|"
+        f"{compact_text(notice.get('posted_at') or notice.get('postedAt'))}"
+    )
+
+
+def notice_article_identifier(notice: dict[str, Any]) -> str:
+    article_id = str(notice.get("article_id") or notice.get("articleId") or "").strip()
+    return f"article:{article_id}" if article_id else ""
+
+
+def notice_render_identifiers(course: Any, notice: dict[str, Any]) -> set[str]:
+    primary = notice_article_identifier(notice) or normalize_url(notice.get("url"))
+    if not primary:
+        primary = notice_fallback_identifier(course, notice)
+    identifiers = {
+        primary,
+        notice_article_identifier(notice),
+        normalize_url(notice.get("url")),
+        notice_fallback_identifier(course, notice),
+    }
+    return {identifier for identifier in identifiers if identifier}
+
+
+def normalize_notice_render_identifier(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.startswith("http://") or text.startswith("https://"):
+        return normalize_url(text)
+    return text
+
+
 def state_items(content: dict[str, Any], sections: tuple[str, ...]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for section in sections:
@@ -147,9 +180,14 @@ def classified_notice_records(
             if isinstance(item, Assignment):
                 if is_past(item.sync_due, generated_at):
                     continue
+                payload["title"] = compact_text(item.title)
+                payload["source_title"] = compact_text(notice.title)
                 assignment_records.append(payload)
             elif isinstance(item, Event) and item.category in {"exam", "exam_candidate"}:
                 if not is_past(item.sync_due, generated_at):
+                    payload["title"] = compact_text(item.title)
+                    payload["source_title"] = compact_text(notice.title)
+                    payload["sync_due"] = compact_text(item.sync_due)
                     exam_records.append(payload)
 
     return assignment_records, exam_records
@@ -270,20 +308,33 @@ def build_payload(
         manifest = []
 
     digest_urls: list[str] = []
+    digest_render_records: list[dict[str, Any]] = []
     for course in notice_digest.get("courses", []):
+        course_name = course.get("course")
         for notice in course.get("notices", []):
             url = notice.get("url")
             if url:
-                digest_urls.append(url)
+                digest_urls.append(normalize_url(url))
+            if isinstance(notice, dict):
+                digest_render_records.append(
+                    {
+                        "label": normalize_url(url) or notice_article_identifier(notice) or notice_fallback_identifier(course_name, notice),
+                        "identifiers": notice_render_identifiers(course_name, notice),
+                    }
+                )
 
     rendered_urls: set[str] = set()
     for render_state in (notice_primary, notice_archive):
         for item in render_state.get("rendered_notices", []):
-            url = item.get("notice_id")
-            if url:
-                rendered_urls.add(url)
+            identifier = normalize_notice_render_identifier(item.get("notice_id"))
+            if identifier:
+                rendered_urls.add(identifier)
 
-    missing_notice_urls = sorted(set(digest_urls) - rendered_urls)
+    missing_notice_urls = sorted(
+        record["label"]
+        for record in digest_render_records
+        if record["identifiers"].isdisjoint(rendered_urls)
+    )
 
     missing_files: list[str] = []
     for item in manifest:
@@ -326,13 +377,24 @@ def build_payload(
         record for record in classified_notice_exams if record["url"] not in ignored_exam_urls
     ]
     missing_notice_exams = [
-        record for record in notice_exam_candidates if record["url"] not in exam_urls
+        record
+        for record in notice_exam_candidates
+        if record["url"] not in exam_urls
+        and (
+            compact_text(record.get("course")),
+            comparable_title(record.get("title")),
+            compact_text(record.get("sync_due")),
+        )
+        not in event_keys
     ]
     notice_assignment_candidates = [
         record for record in classified_notice_assignments if record["url"] not in ignored_assignment_urls
     ]
     missing_notice_assignments = [
-        record for record in notice_assignment_candidates if record["url"] not in assignment_urls
+        record
+        for record in notice_assignment_candidates
+        if record["url"] not in assignment_urls
+        and (compact_text(record.get("course")), comparable_title(record.get("title"))) not in assignment_keys
     ]
 
     file_assignment_missing: list[dict[str, str]] = []

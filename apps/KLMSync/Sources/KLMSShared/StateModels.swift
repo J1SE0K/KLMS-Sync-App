@@ -310,6 +310,9 @@ private extension String {
 
 private extension StateItem {
     var dashboardIdentityKey: String {
+        if let logicalKey = dashboardAssignmentLogicalIdentityKey {
+            return logicalKey
+        }
         let url = url.trimmingCharacters(in: .whitespacesAndNewlines)
         if !url.isEmpty {
             return url
@@ -323,6 +326,20 @@ private extension StateItem {
                     .joined(separator: " ")
             }
             .joined(separator: "::")
+    }
+
+    var dashboardAssignmentLogicalIdentityKey: String? {
+        let normalizedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard normalizedCategory == "assignment" || normalizedCategory == "assignment_candidate" else {
+            return nil
+        }
+        let course = StateItem.dashboardIdentityComponent(course)
+        let title = StateItem.dashboardIdentityComponent(title)
+        let due = StateItem.dashboardIdentityComponent(syncDue.isEmpty ? due : syncDue)
+        guard !course.isEmpty, !title.isEmpty, !due.isEmpty else {
+            return nil
+        }
+        return ["assignment", course, title, due].joined(separator: "::")
     }
 
     var dashboardExamIdentityKey: String {
@@ -427,5 +444,14 @@ private extension StateItem {
             }
         }
         return false
+    }
+
+    static func dashboardIdentityComponent(_ value: String) -> String {
+        value
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .lowercased()
     }
 }

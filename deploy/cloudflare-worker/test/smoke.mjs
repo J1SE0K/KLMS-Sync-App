@@ -42,19 +42,53 @@ async function runSmoke() {
     message: "worker status",
   }, { method: "POST", role: "worker" });
 
-  const createdCommand = await expectJSON("/v1/commands", {
+  let createdCommand = await expectJSON("/v1/commands", {
     kind: "fullSync",
+    options: { updateNoticeNotes: false, dryRun: true },
     status: "pending",
     summary: { assignments: 3, phase: "pending" },
   }, { method: "POST", status: 201 });
   assert.equal(createdCommand.kind, "fullSync");
   assert.equal(createdCommand.status, "pending");
+  assert.equal(createdCommand.options.updateNoticeNotes, false);
+  assert.equal(createdCommand.options.dryRun, true);
 
   {
     const payload = await expectJSON("/v1/commands/pending", undefined, { role: "worker" });
     assert.equal(payload.commands.length, 1);
     assert.equal(payload.commands[0].id, createdCommand.id);
+    assert.equal(payload.commands[0].options.updateNoticeNotes, false);
+    assert.equal(payload.commands[0].options.dryRun, true);
   }
+
+  {
+    const missingCommandCancel = await request("/v1/cancel", {
+      method: "POST",
+      body: { message: "stop without command" },
+    });
+    assert.equal(missingCommandCancel.status, 400);
+
+    const cancel = await expectJSON("/v1/cancel", {
+      commandID: createdCommand.id,
+      message: "stop please",
+    }, { method: "POST", status: 200 });
+    assert.equal(cancel.requested, false);
+    assert.equal(cancel.commandID, null);
+    const recentAfterCancel = await expectJSON("/v1/commands/recent");
+    assert.equal(recentAfterCancel.latestCommand.id, createdCommand.id);
+    assert.equal(recentAfterCancel.latestCommand.status, "cancelled");
+    const pendingAfterCancel = await expectJSON("/v1/commands/pending", undefined, { role: "worker" });
+    assert.equal(pendingAfterCancel.commands.length, 0);
+    const pendingCancel = await expectJSON("/v1/cancel", undefined, { role: "worker" });
+    assert.equal(pendingCancel.requested, false);
+  }
+
+  createdCommand = await expectJSON("/v1/commands", {
+    kind: "fullSync",
+    options: { updateNoticeNotes: false, dryRun: true },
+    status: "pending",
+    summary: { assignments: 3, phase: "pending" },
+  }, { method: "POST", status: 201 });
 
   await expectJSON(`/v1/commands/${createdCommand.id}`, {
     ...createdCommand,
@@ -84,17 +118,65 @@ async function runSmoke() {
         title: "공지",
         timestamp: "2026-05-31 09:00",
         status: "새 공지",
-        detail: "",
+        detail: "/Users/example/private 12345 주소",
         attachmentCount: 1,
         updatedAt: "2026-05-31T00:00:01Z",
+      },
+    ],
+    dryRunReports: [
+      {
+        scope: "notice",
+        status: "ok",
+        would_create: 1,
+        would_update: 2,
+        would_delete: 0,
+      },
+    ],
+    calendarChanges: [
+      {
+        action: "created",
+        calendar: "KLMS 시험",
+        bucket: "exam",
+        title: "기말고사",
+        course: "영미 단편소설",
+        start_at: "2026-06-12 10:00",
+        location: "서울시 테스트로 123",
+        changes: ["시간 생성"],
+      },
+    ],
+    settings: [
+      {
+        key: "FILE_REFRESH_MODE",
+        title: "파일 탐색 모드",
+        value: "auto",
+        valueKind: "choice",
+        options: ["auto", "quick"],
+        editable: true,
       },
     ],
   }, { method: "POST", role: "worker" });
 
   {
+    const event = await expectJSON("/v1/events/poll?role=client&waitSeconds=0");
+    assert.equal(event.type, "changed");
+    assert.equal(event.reason, "sync-data");
+    assert.ok(Date.parse(event.updatedAt) > 0);
+  }
+
+  {
     const payload = await expectJSON("/v1/sync-data?kind=exam&limit=10");
     assert.equal(payload.items.length, 1);
     assert.equal(payload.items[0].id, "exam-1");
+  }
+  {
+    const payload = await expectJSON("/v1/sync-data?kind=notice&limit=10");
+    assert.equal(payload.items.length, 1);
+    assert.equal(payload.items[0].detail, "");
+    assert.equal(payload.dryRunReports[0].scope, "notice");
+    assert.equal(payload.calendarChanges[0].title, "기말고사");
+    assert.equal(payload.settings[0].key, "FILE_REFRESH_MODE");
+    assert.equal(payload.calendarChanges[0].url, "");
+    assert.equal(payload.calendarChanges[0].location, "");
   }
 
   const action = await expectJSON("/v1/item-actions", {
@@ -111,10 +193,30 @@ async function runSmoke() {
     assert.equal(payload.actions[0].itemID, "notice-1");
   }
 
+  const settingAction = await expectJSON("/v1/setting-actions", {
+    key: "FILE_REFRESH_MODE",
+    title: "파일 탐색 모드",
+    value: "quick",
+  }, { method: "POST", status: 201 });
+  assert.equal(settingAction.status, "pending");
+
+  {
+    const payload = await expectJSON("/v1/setting-actions/pending", undefined, { role: "worker" });
+    assert.equal(payload.actions.length, 1);
+    assert.equal(payload.actions[0].key, "FILE_REFRESH_MODE");
+  }
+
+  await expectJSON(`/v1/setting-actions/${settingAction.id}`, {
+    ...settingAction,
+    status: "completed",
+    updatedAt: new Date().toISOString(),
+    message: "saved",
+  }, { method: "PUT", role: "worker" });
+
   const fileRequest = await expectJSON("/v1/file-access", {
     itemID: "file-1",
     itemKind: "file",
-    itemTitle: "기말 정리.pdf",
+    itemTitle: "기말 정리.txt",
   }, { method: "POST", status: 201 });
   assert.equal(fileRequest.status, "pending");
 
@@ -123,6 +225,71 @@ async function runSmoke() {
     assert.equal(payload.requests.length, 1);
     assert.equal(payload.requests[0].itemID, "file-1");
   }
+  {
+    const unauthorizedInbox = await request("/v1/worker/inbox", { role: "client" });
+    assert.equal(unauthorizedInbox.status, 401);
+
+    const inbox = await expectJSON("/v1/worker/inbox", undefined, { role: "worker" });
+    assert.equal(inbox.statusResponse.ok, true);
+    assert.equal(inbox.pendingFileAccessRequests.length, 1);
+    assert.equal(inbox.pendingFileAccessRequests[0].itemID, "file-1");
+    assert.equal(inbox.pendingItemActions.length, 1);
+    assert.equal(inbox.pendingItemActions[0].itemID, "notice-1");
+    assert.equal(inbox.pendingSettingActions.length, 0);
+    assert.equal(inbox.pendingCommands.length, 0);
+    assert.equal(inbox.cancelRequest.requested, false);
+  }
+  const runningCommand = await expectJSON("/v1/commands", {
+    kind: "fullSync",
+    options: { updateNoticeNotes: false },
+    status: "pending",
+    summary: { assignments: 3, phase: "pending" },
+  }, { method: "POST", status: 201 });
+  await expectJSON(`/v1/commands/${runningCommand.id}`, {
+    ...runningCommand,
+    status: "running",
+    updatedAt: new Date().toISOString(),
+    summary: { assignments: 3, phase: "running" },
+  }, { method: "PUT", role: "worker" });
+  const runningCancel = await expectJSON("/v1/cancel", {
+    commandID: runningCommand.id,
+    message: "running command stop",
+  }, { method: "POST", status: 202 });
+  assert.equal(runningCancel.requested, true);
+  assert.equal(runningCancel.commandID, runningCommand.id);
+  {
+    const clientClear = await request("/v1/logs", { method: "DELETE" });
+    assert.equal(clientClear.status, 401);
+
+    const activeClear = await request("/v1/logs", { method: "DELETE", role: "worker" });
+    assert.equal(activeClear.status, 200);
+    const activeClearBody = await activeClear.json();
+    assert.ok(activeClearBody.commands > 0);
+    assert.equal(activeClearBody.fileAccessRequests, 0);
+    const pendingAfterActiveClear = await expectJSON("/v1/file-access/pending", undefined, { role: "worker" });
+    assert.equal(pendingAfterActiveClear.requests.length, 1);
+    const inboxAfterActiveClear = await expectJSON("/v1/worker/inbox", undefined, { role: "worker" });
+    assert.equal(inboxAfterActiveClear.cancelRequest.requested, true);
+    assert.equal(inboxAfterActiveClear.cancelRequest.commandID, runningCommand.id);
+  }
+  const workerCancel = await expectJSON("/v1/cancel", undefined, { role: "worker" });
+  assert.equal(workerCancel.requested, true);
+  assert.equal(workerCancel.commandID, runningCommand.id);
+  await expectJSON("/v1/cancel", undefined, { method: "DELETE", role: "worker" });
+  await expectJSON(`/v1/commands/${runningCommand.id}`, {
+    ...runningCommand,
+    status: "cancelled",
+    updatedAt: new Date().toISOString(),
+    summary: { assignments: 3, phase: "cancelled" },
+    message: "cancelled",
+  }, { method: "PUT", role: "worker" });
+
+  await expectJSON(`/v1/item-actions/${action.id}`, {
+    ...action,
+    status: "completed",
+    updatedAt: new Date().toISOString(),
+    message: "done",
+  }, { method: "PUT", role: "worker" });
 
   const uploadResponse = await request(`/v1/file-access/${fileRequest.id}/upload`, {
     method: "PUT",
@@ -131,7 +298,7 @@ async function runSmoke() {
     headers: {
       "Content-Type": "text/plain",
       "Content-Length": "10",
-      "X-KLMS-Filename": encodeURIComponent("기말 정리.pdf"),
+      "X-KLMS-Filename": encodeURIComponent("기말 정리.txt"),
     },
   });
   assert.equal(uploadResponse.status, 200);
@@ -140,18 +307,146 @@ async function runSmoke() {
   assert.match(uploaded.downloadURL, /\/v1\/file-access\/.+\/download\?ticket=/);
 
   {
-    const downloadResponse = await worker.fetch(new Request(uploaded.downloadURL), env);
+    const wrongTicketURL = new URL(uploaded.downloadURL);
+    wrongTicketURL.searchParams.set("ticket", "wrong-ticket");
+    const wrongTicketResponse = await worker.fetch(new Request(wrongTicketURL.toString()), env);
+    assert.equal(wrongTicketResponse.status, 401);
+    const wrongTicketHTML = await wrongTicketResponse.text();
+    assert.match(wrongTicketHTML, /권한이 없는 링크입니다/);
+    assert.doesNotMatch(wrongTicketHTML, /기말 정리.txt/);
+    assert.doesNotMatch(wrongTicketHTML, /data-download-count=/);
+
+    const pageResponse = await worker.fetch(new Request(uploaded.downloadURL), env);
+    assert.equal(pageResponse.status, 200);
+    const pageHTML = await pageResponse.text();
+    assert.match(pageHTML, /KLMS 파일 미리보기/);
+    assert.match(pageHTML, /download=1/);
+    assert.match(pageHTML, /preview=1/);
+    assert.match(pageHTML, /data-download-count="0"/);
+    assert.match(pageHTML, /data-preview-text-url/);
+
+    const previewURL = new URL(uploaded.downloadURL);
+    previewURL.searchParams.set("preview", "1");
+    const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
+    assert.equal(previewResponse.status, 200);
+    assert.match(previewResponse.headers.get("Content-Disposition"), /^inline;/);
+    assert.match(previewResponse.headers.get("Content-Type"), /^text\/plain/);
+    assert.equal(await previewResponse.text(), "hello file");
+
+    const downloadURL = new URL(uploaded.downloadURL);
+    downloadURL.searchParams.set("download", "1");
+    const downloadResponse = await worker.fetch(new Request(downloadURL.toString()), env);
     assert.equal(downloadResponse.status, 200);
     assert.equal(await downloadResponse.text(), "hello file");
   }
   {
-    await worker.fetch(new Request(uploaded.downloadURL), env);
-    await worker.fetch(new Request(uploaded.downloadURL), env);
-    const blockedResponse = await worker.fetch(new Request(uploaded.downloadURL), env);
+    const downloadURL = new URL(uploaded.downloadURL);
+    downloadURL.searchParams.set("download", "1");
+    await worker.fetch(new Request(downloadURL.toString()), env);
+    const blockedResponse = await worker.fetch(new Request(downloadURL.toString()), env);
     assert.equal(blockedResponse.status, 429);
+  }
+  {
+    const pdf = await createUploadedFile({
+      itemID: "file-pdf",
+      itemTitle: "강의자료.pdf",
+      body: "%PDF-1.4\n",
+      contentType: "application/octet-stream",
+    });
+    const previewURL = new URL(pdf.downloadURL);
+    previewURL.searchParams.set("preview", "1");
+    const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
+    assert.equal(previewResponse.status, 200);
+    assert.match(previewResponse.headers.get("Content-Type"), /^application\/pdf/);
+    assert.match(previewResponse.headers.get("Content-Disposition"), /^inline;/);
+  }
+  {
+    const png = await createUploadedFile({
+      itemID: "file-png",
+      itemTitle: "그림.png",
+      body: "not really a png",
+      contentType: "application/octet-stream",
+    });
+    const previewURL = new URL(png.downloadURL);
+    previewURL.searchParams.set("preview", "1");
+    const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
+    assert.equal(previewResponse.status, 200);
+    assert.match(previewResponse.headers.get("Content-Type"), /^image\/png/);
+    assert.match(previewResponse.headers.get("Content-Disposition"), /^inline;/);
+  }
+  {
+    const largeText = "x".repeat(600 * 1024);
+    const large = await createUploadedFile({
+      itemID: "file-large-text",
+      itemTitle: "큰 로그.txt",
+      body: largeText,
+      contentType: "text/plain",
+    });
+    const pageResponse = await worker.fetch(new Request(large.downloadURL), env);
+    assert.equal(pageResponse.status, 200);
+    const pageHTML = await pageResponse.text();
+    assert.match(pageHTML, /파일 미리보기/);
+    assert.doesNotMatch(pageHTML, /preview=1/);
+    assert.match(pageHTML, /미리보기를 생략/);
+  }
+  {
+    const beforeClearRequestLog = await expectJSON("/v1/request-log/recent");
+    assert.ok(beforeClearRequestLog.entries.length > 0);
+    const beforeClearFileRequests = await expectJSON("/v1/file-access/recent");
+    assert.ok(beforeClearFileRequests.requests.length > 0);
+
+    const requestLogClear = await expectJSON("/v1/logs?scope=requestLog", undefined, { method: "DELETE", role: "worker" });
+    assert.ok(requestLogClear.requestLogEntries > 0);
+    assert.equal(requestLogClear.fileAccessRequests, 0);
+    const requestLogAfterClear = await expectJSON("/v1/request-log/recent");
+    assert.equal(requestLogAfterClear.entries.length, 0);
+    const fileRequestsAfterRequestLogClear = await expectJSON("/v1/file-access/recent");
+    assert.ok(fileRequestsAfterRequestLogClear.requests.length > 0);
+
+    const fileAccessClear = await expectJSON("/v1/logs?scope=fileAccess", undefined, { method: "DELETE", role: "worker" });
+    assert.ok(fileAccessClear.fileAccessRequests > 0);
+    assert.equal(fileAccessClear.requestLogEntries, 0);
+    const fileRequestsAfterFileAccessClear = await expectJSON("/v1/file-access/recent");
+    assert.equal(fileRequestsAfterFileAccessClear.requests.length, 0);
+
+    const clear = await expectJSON("/v1/logs", undefined, { method: "DELETE", role: "worker" });
+    assert.ok(clear.commands > 0);
+    assert.ok(clear.itemActions > 0);
+    assert.equal(clear.fileAccessRequests, 0);
+    assert.equal(clear.requestLogEntries, 0);
+
+    const recentCommands = await expectJSON("/v1/commands/recent");
+    assert.equal(recentCommands.commands.length, 0);
+    assert.equal(recentCommands.latestCommand, null);
+    const recentFileRequests = await expectJSON("/v1/file-access/recent");
+    assert.equal(recentFileRequests.requests.length, 0);
+    const recentRequestLog = await expectJSON("/v1/request-log/recent");
+    assert.equal(recentRequestLog.entries.length, 0);
+    const syncDataAfterClear = await expectJSON("/v1/sync-data?kind=exam&limit=10");
+    assert.equal(syncDataAfterClear.items.length, 1);
   }
 
   console.log("cloudflare worker smoke ok");
+}
+
+async function createUploadedFile({ itemID, itemTitle, body, contentType }) {
+  const fileRequest = await expectJSON("/v1/file-access", {
+    itemID,
+    itemKind: "file",
+    itemTitle,
+  }, { method: "POST", status: 201 });
+  const uploadResponse = await request(`/v1/file-access/${fileRequest.id}/upload`, {
+    method: "PUT",
+    role: "worker",
+    rawBody: body,
+    headers: {
+      "Content-Type": contentType,
+      "Content-Length": String(Buffer.byteLength(body)),
+      "X-KLMS-Filename": encodeURIComponent(itemTitle),
+    },
+  });
+  assert.equal(uploadResponse.status, 200);
+  return uploadResponse.json();
 }
 
 async function expectJSON(path, body, options = {}) {
@@ -236,7 +531,12 @@ class FakeStatement {
       if (this.sql.includes("WHERE status IN")) {
         const limit = this.args.at(-1) || 100;
         const statuses = new Set(this.args.slice(0, -1));
-        return { results: sortedRows(this.db.fileAccessRequests, limit).filter((row) => statuses.has(row.status)) };
+        return {
+          results: Array.from(this.db.fileAccessRequests.values())
+            .filter((row) => statuses.has(row.status))
+            .sort((lhs, rhs) => Date.parse(rhs.updated_at) - Date.parse(lhs.updated_at))
+            .slice(0, limit),
+        };
       }
       if (this.sql.includes("expires_at IS NOT NULL")) {
         const cutoff = this.args[0];
@@ -265,6 +565,7 @@ class FakeStatement {
         lastExitCode,
         loginRequired,
         summaryJSON,
+        optionsJSON,
       ] = this.args;
       this.db.commands.set(id, {
         id,
@@ -275,11 +576,18 @@ class FakeStatement {
         last_exit_code: lastExitCode,
         login_required: loginRequired,
         summary_json: summaryJSON,
+        options_json: optionsJSON,
       });
       return { success: true };
     }
     if (this.sql.startsWith("DELETE FROM commands")) {
-      trimRows(this.db.commands, this.args[0]);
+      if (this.sql.includes("status NOT IN")) {
+        deleteTerminalRows(this.db.commands);
+      } else if (this.args.length === 0) {
+        this.db.commands.clear();
+      } else {
+        trimRows(this.db.commands, this.args[0]);
+      }
       return { success: true };
     }
     if (this.sql.startsWith("INSERT INTO item_actions")) {
@@ -308,7 +616,13 @@ class FakeStatement {
       return { success: true };
     }
     if (this.sql.startsWith("DELETE FROM item_actions")) {
-      trimRows(this.db.itemActions, this.args[0]);
+      if (this.sql.includes("status NOT IN")) {
+        deleteTerminalRows(this.db.itemActions);
+      } else if (this.args.length === 0) {
+        this.db.itemActions.clear();
+      } else {
+        trimRows(this.db.itemActions, this.args[0]);
+      }
       return { success: true };
     }
     if (this.sql.startsWith("INSERT INTO file_access_requests")) {
@@ -354,6 +668,10 @@ class FakeStatement {
             this.db.fileAccessRequests.delete(id);
           }
         }
+      } else if (this.sql.includes("status NOT IN")) {
+        deleteTerminalRows(this.db.fileAccessRequests);
+      } else if (this.args.length === 0) {
+        this.db.fileAccessRequests.clear();
       } else {
         trimRows(this.db.fileAccessRequests, this.args[0]);
       }
@@ -408,6 +726,14 @@ function trimRows(map, limit) {
   const keep = new Set(sortedRows(map, limit).map((row) => row.id));
   for (const id of map.keys()) {
     if (!keep.has(id)) {
+      map.delete(id);
+    }
+  }
+}
+
+function deleteTerminalRows(map) {
+  for (const [id, row] of map.entries()) {
+    if (row.status !== "pending" && row.status !== "running") {
       map.delete(id);
     }
   }

@@ -1,4 +1,5 @@
 const REMINDER_MARKER_PREFIX = "KLMS_SYNC_ITEM_ID:";
+const REMINDERS_DESIRED_HASH_VERSION = 2;
 const LEGACY_REMINDER_MARKER_PREFIXES = ["KLMS_ASSIGN_ID:"];
 const REMINDER_MARKER_PREFIXES = [REMINDER_MARKER_PREFIX].concat(LEGACY_REMINDER_MARKER_PREFIXES);
 const REMINDER_LIST_APPEARANCE = {
@@ -88,6 +89,7 @@ function buildRemindersDesiredHash(
   const desired = buildDesiredReminders(normalizeSyncEntries(state.content), options);
   return stableHash(
     JSON.stringify({
+      version: REMINDERS_DESIRED_HASH_VERSION,
       listName,
       issueListName,
       completedReminderRetentionDays,
@@ -174,7 +176,7 @@ function importCompletedRemindersToOverrides(stateJsonPath, overridesJsonPath, l
     return "completed-reminders=skipped state-not-syncable";
   }
 
-  const identifierToUrl = {};
+  const identifierToOverrideKeys = {};
   normalizeSyncEntries(state.content)
     .filter(
       (entry) =>
@@ -184,13 +186,22 @@ function importCompletedRemindersToOverrides(stateJsonPath, overridesJsonPath, l
         entry.category !== "help_desk"
     )
     .forEach((entry) => {
-      const identifier = reminderIdentifierForItem(entry);
-      if (identifier && entry.url) {
-        identifierToUrl[identifier] = entry.url;
+      const overrideKeys = assignmentOverrideKeysForEntry(entry);
+      if (overrideKeys.length === 0) {
+        return;
       }
+      reminderIdentifiersForItem(entry).forEach((identifier) => {
+        if (!identifier) {
+          return;
+        }
+        if (!identifierToOverrideKeys[identifier]) {
+          identifierToOverrideKeys[identifier] = new Set();
+        }
+        overrideKeys.forEach((key) => identifierToOverrideKeys[identifier].add(key));
+      });
     });
 
-  const knownIdentifiers = Object.keys(identifierToUrl);
+  const knownIdentifiers = Object.keys(identifierToOverrideKeys);
   if (knownIdentifiers.length === 0) {
     return "completed-reminders=skipped no-known-assignments";
   }
@@ -221,15 +232,17 @@ function importCompletedRemindersToOverrides(stateJsonPath, overridesJsonPath, l
   let changed = 0;
 
   completedIdentifiers.forEach((identifier) => {
-    const url = identifierToUrl[identifier];
-    if (!url) {
+    const overrideKeys = Array.from(identifierToOverrideKeys[identifier] || []);
+    if (overrideKeys.length === 0) {
       return;
     }
     imported += 1;
-    if (overrideDocument.assignments[url] !== "completed") {
-      overrideDocument.assignments[url] = "completed";
-      changed += 1;
-    }
+    overrideKeys.forEach((key) => {
+      if (overrideDocument.assignments[key] !== "completed") {
+        overrideDocument.assignments[key] = "completed";
+        changed += 1;
+      }
+    });
   });
 
   if (changed > 0) {
@@ -305,6 +318,7 @@ function syncReminderList(
   completedRetentionMs,
   options
 ) {
+  const uniqueDesiredReminders = deduplicateDesiredReminders(desiredReminders);
   if (options && options.recreateList) {
     runTelemetryEvent(
       ACTIVE_STAGE_TELEMETRY,
@@ -329,8 +343,10 @@ function syncReminderList(
   const listId = safeString(() => list.id());
   const desiredById = {};
 
-  desiredReminders.forEach((item) => {
-    desiredById[item.identifier] = item;
+  uniqueDesiredReminders.forEach((item) => {
+    reminderAliasIdentifiers(item).forEach((identifier) => {
+      desiredById[identifier] = item;
+    });
   });
 
   const existingReminders = runTelemetryEvent(
@@ -368,14 +384,15 @@ function syncReminderList(
           return;
         }
 
-        if (seenExistingIdentifiers.has(identifier)) {
+        const desired = desiredById[identifier];
+        const existingIdentity = desired ? desired.identifier : identifier;
+        if (seenExistingIdentifiers.has(existingIdentity)) {
           remindersApp.delete(reminder);
           deleted += 1;
           return;
         }
-        seenExistingIdentifiers.add(identifier);
+        seenExistingIdentifiers.add(existingIdentity);
 
-        const desired = desiredById[identifier];
         if (!desired) {
           if (shouldRetainCompletedReminder(reminder, completedRetentionMs, identifier)) {
             retainedCompleted += 1;
@@ -397,7 +414,7 @@ function syncReminderList(
           updated += 1;
         }
 
-        existingIds.add(identifier);
+        existingIds.add(desired.identifier);
       });
     }
   );
@@ -407,7 +424,7 @@ function syncReminderList(
     "reminders",
     `create-missing:${listName}`,
     () => {
-      desiredReminders.forEach((desired) => {
+      uniqueDesiredReminders.forEach((desired) => {
         if (existingIds.has(desired.identifier)) {
           return;
         }
@@ -438,7 +455,58 @@ function syncReminderList(
     }
   );
 
-  return `reminders=${listName} created=${created} updated=${updated} deleted=${deleted} retained_completed=${retainedCompleted} total=${desiredReminders.length}`;
+  return `reminders=${listName} created=${created} updated=${updated} deleted=${deleted} retained_completed=${retainedCompleted} total=${uniqueDesiredReminders.length}`;
+}
+
+function deduplicateDesiredReminders(desiredReminders) {
+  const byIdentifier = {};
+  const canonicalByAlias = {};
+  (desiredReminders || []).forEach((item) => {
+    if (!item || !item.identifier) {
+      return;
+    }
+    const aliases = reminderAliasIdentifiers(item);
+    const matchedCanonical = aliases
+      .map((identifier) => canonicalByAlias[identifier])
+      .find((identifier) => identifier && byIdentifier[identifier]);
+    const canonical = matchedCanonical || item.identifier;
+    const existing = byIdentifier[canonical];
+    const best =
+      !existing || desiredReminderCompletenessScore(item) >= desiredReminderCompletenessScore(existing)
+        ? item
+        : existing;
+    const mergedAliases = Array.from(
+      new Set(reminderAliasIdentifiers(existing).concat(aliases).filter(Boolean))
+    );
+    best.aliasIdentifiers = mergedAliases.filter((identifier) => identifier !== best.identifier);
+    if (best.identifier !== canonical) {
+      delete byIdentifier[canonical];
+    }
+    byIdentifier[best.identifier] = best;
+    reminderAliasIdentifiers(best).forEach((identifier) => {
+      canonicalByAlias[identifier] = best.identifier;
+    });
+  });
+  return Object.keys(byIdentifier)
+    .sort()
+    .map((identifier) => byIdentifier[identifier]);
+}
+
+function desiredReminderCompletenessScore(item) {
+  let score = 0;
+  if (item.dueDate) {
+    score += 8;
+  }
+  if (item.remindMeDate) {
+    score += 4;
+  }
+  if (String(item.body || "").includes("해야 할 일:")) {
+    score += 2;
+  }
+  if (String(item.body || "").includes("출처:")) {
+    score += 1;
+  }
+  return score;
 }
 
 function forgetReminderListSnapshot(reminderSnapshot, listName, list) {
@@ -613,6 +681,9 @@ function buildDesiredReminders(entries, reminderOptions) {
 
     const dueDate = parseReminderDueDate(entry.sync_due, entry.due);
     const identifier = reminderIdentifierForItem(entry);
+    const aliasIdentifiers = reminderIdentifiersForItem(entry).filter(
+      (value) => value && value !== identifier
+    );
     const titlePrefix = entry.category === "exam" ? "[시험] " : "";
     const title = entry.course
       ? `[${entry.course}] ${titlePrefix}${entry.title}`
@@ -652,6 +723,7 @@ function buildDesiredReminders(entries, reminderOptions) {
       lines.push(`${REMINDER_MARKER_PREFIX}${identifier}`);
       issues.push({
         identifier,
+        aliasIdentifiers,
         title,
         dueDate: null,
         remindMeDate: null,
@@ -665,6 +737,7 @@ function buildDesiredReminders(entries, reminderOptions) {
       lines.push(`${REMINDER_MARKER_PREFIX}${identifier}`);
       issues.push({
         identifier,
+        aliasIdentifiers,
         title,
         dueDate,
         remindMeDate: null,
@@ -677,6 +750,7 @@ function buildDesiredReminders(entries, reminderOptions) {
     const remindMeDate = buildReminderAlertDate(dueDate, options);
     active.push({
       identifier,
+      aliasIdentifiers,
       title,
       dueDate,
       remindMeDate,
@@ -688,7 +762,18 @@ function buildDesiredReminders(entries, reminderOptions) {
     }
   });
 
-  return { active, issues, alerts };
+  const uniqueActive = deduplicateDesiredReminders(active);
+  const activeIdentifiers = new Set();
+  uniqueActive.forEach((item) => {
+    reminderAliasIdentifiers(item).forEach((identifier) => activeIdentifiers.add(identifier));
+  });
+  return {
+    active: uniqueActive,
+    issues: deduplicateDesiredReminders(issues).filter(
+      (item) => !reminderAliasIdentifiers(item).some((identifier) => activeIdentifiers.has(identifier))
+    ),
+    alerts: deduplicateDesiredReminders(alerts),
+  };
 }
 
 function isCompletedAssignment(assignment) {
@@ -744,6 +829,10 @@ function normalizeSyncEntries(content) {
 }
 
 function reminderIdentifierForItem(entry) {
+  if (isAssignmentEntry(entry)) {
+    return assignmentLogicalIdentifier(entry) || syncItemBaseIdentifierFromUrl(entry.url);
+  }
+
   const baseIdentifier = syncItemBaseIdentifierFromUrl(entry.url);
   if (entry.category === "help_desk") {
     const titlePart = encodeIdentifierFragment(entry.title);
@@ -764,6 +853,84 @@ function reminderIdentifierForItem(entry) {
   const titlePart = encodeIdentifierFragment(entry.title);
   const duePart = encodeIdentifierFragment(entry.sync_due || entry.due);
   return `exam:${baseIdentifier}:${titlePart}:${duePart}`;
+}
+
+function reminderLegacyIdentifierForItem(entry) {
+  const baseIdentifier = syncItemBaseIdentifierFromUrl(entry.url);
+  if (entry.category === "help_desk") {
+    const titlePart = encodeIdentifierFragment(entry.title);
+    const duePart = encodeIdentifierFragment(entry.sync_due || entry.due);
+    return `helpdesk:${baseIdentifier}:${titlePart}:${duePart}`;
+  }
+
+  if (entry.category === "assignment_candidate") {
+    const titlePart = encodeIdentifierFragment(entry.title);
+    const duePart = encodeIdentifierFragment(entry.sync_due || entry.due);
+    return `assignment-candidate:${baseIdentifier}:${titlePart}:${duePart}`;
+  }
+
+  if (entry.category !== "exam" && entry.category !== "exam_candidate") {
+    return baseIdentifier;
+  }
+
+  const titlePart = encodeIdentifierFragment(entry.title);
+  const duePart = encodeIdentifierFragment(entry.sync_due || entry.due);
+  return `exam:${baseIdentifier}:${titlePart}:${duePart}`;
+}
+
+function reminderIdentifiersForItem(entry) {
+  return Array.from(
+    new Set([reminderIdentifierForItem(entry), reminderLegacyIdentifierForItem(entry)].filter(Boolean))
+  );
+}
+
+function reminderAliasIdentifiers(item) {
+  return Array.from(
+    new Set([item && item.identifier].concat((item && item.aliasIdentifiers) || []).filter(Boolean))
+  );
+}
+
+function isAssignmentEntry(entry) {
+  return (
+    entry &&
+    entry.category !== "exam" &&
+    entry.category !== "exam_candidate" &&
+    entry.category !== "assignment_candidate" &&
+    entry.category !== "help_desk"
+  );
+}
+
+function assignmentLogicalIdentifier(entry) {
+  if (!isAssignmentEntry(entry)) {
+    return "";
+  }
+  const coursePart = encodeIdentifierFragment(entry.course);
+  const titlePart = encodeIdentifierFragment(entry.title);
+  const duePart = encodeIdentifierFragment(entry.sync_due || entry.due);
+  if (!coursePart || !titlePart || !duePart) {
+    return "";
+  }
+  return `assignment:${coursePart}:${titlePart}:${duePart}`;
+}
+
+function assignmentOverrideKeysForEntry(entry) {
+  if (!isAssignmentEntry(entry)) {
+    return [];
+  }
+  const url = normalizeWhitespace(String(entry.url || ""));
+  const title = normalizeWhitespace(String(entry.title || ""));
+  const course = normalizeWhitespace(String(entry.course || ""));
+  const due = normalizeWhitespace(String(entry.sync_due || entry.due || ""));
+  return Array.from(
+    new Set(
+      [
+        url,
+        url && title ? `${url}::${title}` : "",
+        course && title && due ? `${course}::${title}::${due}` : "",
+        course && title ? `${course}::${title}` : "",
+      ].filter(Boolean)
+    )
+  );
 }
 
 function encodeIdentifierFragment(value) {
@@ -1000,8 +1167,12 @@ function buildStageAlertReminders(entry, identifier, title, dueDate) {
 function syncItemBaseIdentifierFromUrl(url) {
   try {
     const parsedUrl = new URL(String(url));
+    const path = String(parsedUrl.pathname || "").toLowerCase();
+    if (path.includes("/mod/courseboard/article.php")) {
+      return parsedUrl.searchParams.get("bwid") || parsedUrl.searchParams.get("id") || String(url);
+    }
     const id = parsedUrl.searchParams.get("id");
-    return id || String(url);
+    return id || parsedUrl.searchParams.get("bwid") || String(url);
   } catch (error) {
     return String(url);
   }

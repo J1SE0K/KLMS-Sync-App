@@ -77,6 +77,14 @@ public struct KLMSPaths: Sendable, Equatable {
         logsURL.appendingPathComponent("launch-agent.log")
     }
 
+    public var relayStdoutLogURL: URL {
+        logsURL.appendingPathComponent("relay.stdout.log")
+    }
+
+    public var relayStderrLogURL: URL {
+        logsURL.appendingPathComponent("relay.stderr.log")
+    }
+
     public var syncReportURL: URL {
         cacheURL.appendingPathComponent("sync_report.json")
     }

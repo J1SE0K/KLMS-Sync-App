@@ -561,15 +561,81 @@ func resolvedPlanLineRanges(
 }
 
 func noticeIdentifier(course: String, notice: NoticeDigestEntry) -> String {
-    let url = String(notice.url ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-    if !url.isEmpty {
-        return url
-    }
     let articleId = String(notice.articleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     if !articleId.isEmpty {
         return "article:\(articleId)"
     }
+    let url = String(notice.url ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if !url.isEmpty {
+        return url
+    }
     return "\(course)|\(oneLine(notice.title))|\(oneLine(notice.postedAt ?? ""))"
+}
+
+func legacyNoticeIdentifiers(course: String, notice: NoticeDigestEntry, primaryIdentifier: String) -> [String] {
+    let articleId = String(notice.articleId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    let candidates = [
+        String(notice.url ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
+        articleId.isEmpty ? "" : "article:\(articleId)",
+        "\(course)|\(oneLine(notice.title))|\(oneLine(notice.postedAt ?? ""))",
+    ]
+    var seen: Set<String> = []
+    var identifiers: [String] = []
+    for candidate in candidates {
+        guard !candidate.isEmpty, candidate != primaryIdentifier, seen.insert(candidate).inserted else {
+            continue
+        }
+        identifiers.append(candidate)
+    }
+    return identifiers
+}
+
+func noticeInteractionState(
+    userState: NoticeUserStateFile,
+    noticeId: String,
+    legacyNoticeIds: [String]
+) -> NoticeInteractionState {
+    if var state = userState.notices[noticeId] {
+        for legacyNoticeId in legacyNoticeIds {
+            if let legacyState = userState.notices[legacyNoticeId] {
+                state = mergeNoticeInteractionState(primary: state, fallback: legacyState)
+            }
+        }
+        return state
+    }
+    for legacyNoticeId in legacyNoticeIds {
+        if let state = userState.notices[legacyNoticeId] {
+            return state
+        }
+    }
+    return NoticeInteractionState()
+}
+
+func mergeNoticeInteractionState(
+    primary: NoticeInteractionState,
+    fallback: NoticeInteractionState
+) -> NoticeInteractionState {
+    var merged = primary
+    let hasReadState =
+        !(merged.readAt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        !(merged.readFingerprint ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    if !hasReadState {
+        if !(fallback.readAt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            merged.readAt = fallback.readAt
+        }
+        if !(fallback.readFingerprint ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            merged.readFingerprint = fallback.readFingerprint
+        }
+    }
+    if merged.important != true && fallback.important == true {
+        merged.important = true
+        merged.importantAt = fallback.importantAt
+    }
+    if merged.hidden != true && fallback.hidden == true {
+        merged.hidden = true
+        merged.hiddenAt = fallback.hiddenAt
+    }
+    return merged
 }
 
 func boolValue(_ value: Bool?) -> Bool {
@@ -582,6 +648,73 @@ func noticeStateIsRead(_ state: NoticeInteractionState, fingerprint: String) -> 
         return true
     }
     return !fingerprint.isEmpty && state.readFingerprint == fingerprint
+}
+
+func noticeStateHasReadState(_ state: NoticeInteractionState) -> Bool {
+    !(state.readAt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        !(state.readFingerprint ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+}
+
+func noticeStateIsImportant(_ state: NoticeInteractionState) -> Bool {
+    state.important == true
+}
+
+func renderedNoticeIDsForCapture(
+    target: String,
+    primary: NoticeRenderStateFile?,
+    archive: NoticeRenderStateFile?
+) -> Set<String> {
+    var ids: Set<String> = []
+    if target != "archive", let primary {
+        ids.formUnion(primary.renderedNotices.map(\.noticeId))
+    }
+    if target != "primary", let archive {
+        ids.formUnion(archive.renderedNotices.map(\.noticeId))
+    }
+    return ids
+}
+
+func countNoticeStates(
+    in userState: NoticeUserStateFile,
+    ids: Set<String>,
+    matching predicate: (NoticeInteractionState) -> Bool
+) -> Int {
+    ids.reduce(into: 0) { count, id in
+        if let state = userState.notices[id], predicate(state) {
+            count += 1
+        }
+    }
+}
+
+func suspiciousNoticeCaptureRegression(
+    before: NoticeUserStateFile,
+    after: NoticeUserStateFile,
+    target: String,
+    primaryRenderState: NoticeRenderStateFile?,
+    archiveRenderState: NoticeRenderStateFile?
+) -> String? {
+    let ids = renderedNoticeIDsForCapture(
+        target: target,
+        primary: primaryRenderState,
+        archive: archiveRenderState
+    )
+    guard !ids.isEmpty else {
+        return nil
+    }
+
+    let beforeRead = countNoticeStates(in: before, ids: ids, matching: noticeStateHasReadState)
+    let afterRead = countNoticeStates(in: after, ids: ids, matching: noticeStateHasReadState)
+    if beforeRead > 0 && afterRead == 0 {
+        return "suspicious read state drop before=\(beforeRead) after=0 captured_ids=\(ids.count)"
+    }
+
+    let beforeImportant = countNoticeStates(in: before, ids: ids, matching: noticeStateIsImportant)
+    let afterImportant = countNoticeStates(in: after, ids: ids, matching: noticeStateIsImportant)
+    if beforeImportant >= 3 && afterImportant == 0 {
+        return "suspicious important state drop before=\(beforeImportant) after=0 captured_ids=\(ids.count)"
+    }
+
+    return nil
 }
 
 func loadDigest(path: String) -> NoticeDigest {
@@ -3630,6 +3763,7 @@ func syncUserStateFromRenderedNote(
     let importantTrueCount = capturedBlocks.filter { $0.importantEntry?.isChecked == true }.count
     let previousImportantTrueCount = capturedBlocks.filter {
         userState.notices[$0.rendered.noticeId]?.important == true
+            || $0.rendered.shouldCheckImportant == true
     }.count
     let suspiciousImportantThreshold = max(8, capturedBlocks.count / 4)
     let suspiciousImportantJumpAllowance = max(4, capturedBlocks.count / 10)
@@ -3664,11 +3798,9 @@ func syncUserStateFromRenderedNote(
 
         if let readChecked = block.readEntry?.isChecked {
             debugLog("notice=\(rendered.title) readChecked=\(readChecked)")
-            if displayMode == .primary && readChecked {
+            if readChecked {
                 state.readFingerprint = rendered.fingerprint
                 state.readAt = timestamp
-            } else if displayMode == .archive && readChecked {
-                debugLog("notice=\(rendered.title) ignoring archive read=true capture")
             } else if !readChecked {
                 debugLog("notice=\(rendered.title) preserving existing read state on unchecked capture")
             }
@@ -3756,14 +3888,26 @@ func buildRenderPlan(
         var allVisibleCourseNotices: [DisplayNotice] = []
         for notice in courseDigest.notices {
             let noticeId = noticeIdentifier(course: courseDigest.course, notice: notice)
+            let legacyNoticeIds = legacyNoticeIdentifiers(
+                course: courseDigest.course,
+                notice: notice,
+                primaryIdentifier: noticeId
+            )
             currentNoticeIds.insert(noticeId)
 
-            var state = userState.notices[noticeId] ?? NoticeInteractionState()
+            var state = noticeInteractionState(
+                userState: userState,
+                noticeId: noticeId,
+                legacyNoticeIds: legacyNoticeIds
+            )
             state.title = notice.title
             state.course = courseDigest.course
             state.url = notice.url
             state.fingerprint = notice.fingerprint
             state.updatedAt = digest.generatedAt
+            for legacyNoticeId in legacyNoticeIds {
+                userState.notices.removeValue(forKey: legacyNoticeId)
+            }
             userState.notices[noticeId] = state
 
             let fingerprint = String(notice.fingerprint ?? "")
@@ -4472,15 +4616,15 @@ func renderNativeNoteOnce(
     )
     timingLog("checklist_format_finish note=\(noteTitle)")
 
-    let checklistFormattedText = loadCaptureText(
+    var checklistFormattedText = loadCaptureText(
         textArea: context.textArea,
         expectedTitles: plan.renderedNotices.map(\.title)
     )
-    let checklistFormattedRanges = resolvedPlanLineRanges(
+    var checklistFormattedRanges = resolvedPlanLineRanges(
         currentText: checklistFormattedText,
         bodyLines: plan.bodyLines
     )
-    let checklistResolvedNotices = checklistFormattedRanges.map {
+    var checklistResolvedNotices = checklistFormattedRanges.map {
         resolveRenderedNoticeRanges(
             lineRanges: $0,
             renderedNotices: plan.renderedNotices
@@ -4490,19 +4634,61 @@ func renderNativeNoteOnce(
         renderedNotices: plan.renderedNotices
     )
 
-    timingLog("checklist_keep_in_place_start note=\(noteTitle)")
-    ensureCheckedItemsStayInPlace(
-        context: context,
+    let checklistLayoutIssuesAfterFormat = checklistLayoutIssues(
+        textArea: context.textArea,
+        currentText: checklistFormattedText,
         resolvedNotices: checklistResolvedNotices
     )
-    timingLog("checklist_keep_in_place_finish note=\(noteTitle)")
+    if checklistLayoutIssuesAfterFormat.isEmpty {
+        timingLog("checklist_keep_in_place_skip note=\(noteTitle) reason=layout-ok")
+    } else {
+        timingLog(
+            "checklist_keep_in_place_start note=\(noteTitle) "
+                + "issues=\(checklistLayoutIssuesAfterFormat.count)"
+        )
+        ensureCheckedItemsStayInPlace(
+            context: context,
+            resolvedNotices: checklistResolvedNotices
+        )
+        timingLog("checklist_keep_in_place_finish note=\(noteTitle)")
 
-    timingLog("checklist_state_apply_start note=\(noteTitle)")
-    ensureChecklistStates(
-        context: context,
+        checklistFormattedText = loadCaptureText(
+            textArea: context.textArea,
+            expectedTitles: plan.renderedNotices.map(\.title)
+        )
+        checklistFormattedRanges = resolvedPlanLineRanges(
+            currentText: checklistFormattedText,
+            bodyLines: plan.bodyLines
+        )
+        checklistResolvedNotices = checklistFormattedRanges.map {
+            resolveRenderedNoticeRanges(
+                lineRanges: $0,
+                renderedNotices: plan.renderedNotices
+            )
+        } ?? resolveRenderedNoticeRanges(
+            currentText: checklistFormattedText,
+            renderedNotices: plan.renderedNotices
+        )
+    }
+
+    let checklistStateIssuesAfterFormat = checklistStateIssues(
+        textArea: context.textArea,
+        currentText: checklistFormattedText,
         resolvedNotices: checklistResolvedNotices
     )
-    timingLog("checklist_state_apply_finish note=\(noteTitle)")
+    if checklistStateIssuesAfterFormat.isEmpty {
+        timingLog("checklist_state_apply_skip note=\(noteTitle) reason=state-ok")
+    } else {
+        timingLog(
+            "checklist_state_apply_start note=\(noteTitle) "
+                + "issues=\(checklistStateIssuesAfterFormat.count)"
+        )
+        ensureChecklistStates(
+            context: context,
+            resolvedNotices: checklistResolvedNotices
+        )
+        timingLog("checklist_state_apply_finish note=\(noteTitle)")
+    }
 
     let styleBaseText = loadCaptureText(
         textArea: context.textArea,
@@ -4559,7 +4745,20 @@ func renderNativeNoteOnce(
         Thread.sleep(forTimeInterval: 0.06)
     }
 
+    var appliedStyleKeys = Set<String>()
+
     func applyStyle(_ range: LineRange, menuItems: [String], fallbackToBold: Bool = false) {
+        guard range.length > 0 else {
+            return
+        }
+        let styleKey = "\(range.location):\(menuItems.joined(separator: "/"))"
+        guard appliedStyleKeys.insert(styleKey).inserted else {
+            timingLog(
+                "style_apply_skip_duplicate note=\(noteTitle) "
+                    + "menu=\(menuItems.joined(separator: "/")) location=\(range.location)"
+            )
+            return
+        }
         guard styleBudgetAvailable("apply") else {
             return
         }
@@ -4848,10 +5047,24 @@ func renderNativeNoteOnce(
         renderedNotices: plan.renderedNotices
     )
 
-    ensureChecklistStates(
-        context: context,
+    let preValidationStateIssues = checklistStateIssues(
+        textArea: context.textArea,
+        currentText: currentText,
         resolvedNotices: resolvedNotices
     )
+    if preValidationStateIssues.isEmpty {
+        timingLog("checklist_state_reapply_skip note=\(noteTitle) reason=state-ok")
+    } else {
+        timingLog(
+            "checklist_state_reapply_start note=\(noteTitle) "
+                + "issues=\(preValidationStateIssues.count)"
+        )
+        ensureChecklistStates(
+            context: context,
+            resolvedNotices: resolvedNotices
+        )
+        timingLog("checklist_state_reapply_finish note=\(noteTitle)")
+    }
 
     var validationIssues: [String] = []
     var checkedStateIssues: [String] = []
@@ -5475,6 +5688,7 @@ enum NoticeNativeNoteMain {
         let archiveNoteID = arguments.archiveNoteID ?? previousArchiveRenderState?.noteID
 
         if arguments.mode == "all" || arguments.mode == "capture" {
+            let userStateBeforeCapture = userState
             if arguments.target != "archive" {
                 captureRenderedNoticeState(
                     noteTitle: arguments.noteTitle,
@@ -5498,6 +5712,15 @@ enum NoticeNativeNoteMain {
                     skipActivation: arguments.skipNoteActivation,
                     notesPID: arguments.notesPID
                 )
+            }
+            if let regression = suspiciousNoticeCaptureRegression(
+                before: userStateBeforeCapture,
+                after: userState,
+                target: arguments.target,
+                primaryRenderState: previousRenderState,
+                archiveRenderState: previousArchiveRenderState
+            ) {
+                fail("capture-failed-preserve-user-state: \(regression)")
             }
             writeJSON(userState, path: arguments.noticeStatePath)
 

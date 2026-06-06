@@ -20,8 +20,8 @@ function run(argv) {
   const stablePolls = stablePollsArg ? Number(stablePollsArg.replace("--stable-polls=", "")) : 2;
   const outPath = outArg ? outArg.replace("--out=", "") : "";
   const strategy = strategyArg ? strategyArg.replace("--strategy=", "") : "auto";
-  const backgroundWindowEnabled = envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1");
-  const reuseExistingWindowEnabled = envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0");
+  const backgroundWindowEnabled = safariBackgroundWindowEnabled();
+  const reuseExistingWindowEnabled = envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "1");
   const inlineUrls = argv.filter(
     (arg) =>
       !arg.startsWith("--wait=") &&
@@ -53,9 +53,9 @@ function run(argv) {
 
   const safari = Application("/Applications/Safari.app");
   const safariWasRunning = safeValue(() => safari.running()) === true;
-  const frontmostApp = frontmostApplicationName();
-  safari.launch();
+  const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
   if (!safariWasRunning) {
+    safari.launch();
     delay(1);
   }
   restoreFrontmostApplication(frontmostApp);
@@ -336,7 +336,7 @@ function findReusableKlmsWindow(safari, backgroundWindowEnabled) {
 }
 
 function openFetchWindow(safari, backgroundWindowEnabled) {
-  const frontmostApp = frontmostApplicationName();
+  const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
   const previousWindowIds = new Set(listWindowIds(safari));
   safari.make({ new: "document" });
   delay(0.5);
@@ -361,14 +361,14 @@ function resolveFetchTab(windowRef) {
 
 function navigateFetchTab(windowRef, tab, targetUrl) {
   try {
-    const frontmostApp = frontmostApplicationName();
+    const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
     tab.url = targetUrl;
-    if (envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1")) {
+    if (safariBackgroundWindowEnabled()) {
       prepareBackgroundWindow(windowRef);
     }
     restoreFrontmostApplication(frontmostApp);
     waitForTabUrl(tab, targetUrl, 8);
-    if (envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1")) {
+    if (safariBackgroundWindowEnabled()) {
       prepareBackgroundWindow(windowRef);
       restoreFrontmostApplication(frontmostApp);
     }
@@ -379,6 +379,12 @@ function navigateFetchTab(windowRef, tab, targetUrl) {
 
 function prepareBackgroundWindow(windowRef) {
   if (!windowRef) {
+    return;
+  }
+  if (isBackgroundWindow(windowRef)) {
+    return;
+  }
+  if (safariBackgroundWindowMode() !== "minimize") {
     return;
   }
   try {
@@ -397,6 +403,21 @@ function isBackgroundWindow(windowRef) {
   return visible === false;
 }
 
+function safariBackgroundWindowMode() {
+  const configured = envValue("KLMS_SAFARI_BACKGROUND_WINDOW_MODE").trim().toLowerCase();
+  if (configured === "offscreen") {
+    return "minimize";
+  }
+  if (["minimize", "none"].includes(configured)) {
+    return configured;
+  }
+  return "minimize";
+}
+
+function safariBackgroundWindowEnabled() {
+  return envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1") && safariBackgroundWindowMode() !== "none";
+}
+
 function frontmostApplicationName() {
   try {
     const systemEvents = Application("System Events");
@@ -408,6 +429,9 @@ function frontmostApplicationName() {
 }
 
 function restoreFrontmostApplication(appName) {
+  if (!safariRestoreFrontmostEnabled()) {
+    return;
+  }
   if (!appName || appName === "Safari") {
     return;
   }
@@ -476,6 +500,18 @@ function envValue(name) {
 function envFlag(name, defaultValue) {
   const raw = envValue(name) || String(defaultValue || "");
   return !["0", "false", "no", "off"].includes(raw.trim().toLowerCase());
+}
+
+function safariNonIntrusiveModeEnabled() {
+  return envFlag("KLMS_APP_NON_INTRUSIVE_SAFARI", "0") || envFlag("KLMS_APP_RUN", "0");
+}
+
+function safariRestoreFrontmostEnabled() {
+  const configured = envValue("KLMS_SAFARI_RESTORE_FRONTMOST_ENABLED");
+  if (configured) {
+    return envFlag("KLMS_SAFARI_RESTORE_FRONTMOST_ENABLED", "1");
+  }
+  return !safariNonIntrusiveModeEnabled();
 }
 
 function writeText(path, text) {

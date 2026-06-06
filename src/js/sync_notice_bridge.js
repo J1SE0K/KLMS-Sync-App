@@ -569,6 +569,12 @@ function nativeNoticeDefaultEnvironment(nativeEnvironment) {
   if (!nativeNoticeEnvHasKey(nativeEnvironment, "NOTICE_NATIVE_PLAIN_TEXT_PASTE")) {
     defaults.push("NOTICE_NATIVE_PLAIN_TEXT_PASTE=0");
   }
+  if (
+    !nativeNoticeEnvHasKey(nativeEnvironment, "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT") &&
+    !nativeNoticeEnvHasKey(nativeEnvironment, "NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT")
+  ) {
+    defaults.push("NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT=1");
+  }
   if (!nativeNoticeEnvHasKey(nativeEnvironment, "NOTICE_NATIVE_NOTE_MAX_ATTEMPTS")) {
     defaults.push("NOTICE_NATIVE_NOTE_MAX_ATTEMPTS=3");
   }
@@ -582,7 +588,7 @@ function nativeNoticeVerifyStableSkipFormatEnabled(nativeEnvironment) {
   return nativeNoticeEnvironmentEnabled(
     nativeEnvironment,
     "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
-    false
+    true
   );
 }
 
@@ -764,6 +770,17 @@ function updateNoticeNativeNote(
     });
     renderWarnings.push(message);
     debugStderr(message);
+    if (nativeNoticeCaptureFailureCanRenderWithPreservedState(error)) {
+      captureSucceeded = true;
+      results.push({
+        target: "capture-state-preserved",
+        status: "ok",
+        reason: "capture-failed-preserve-user-state",
+      });
+      debugStderr(
+        "native notice capture rejected suspicious state drop; rendering with preserved checklist state"
+      );
+    }
   }
 
   if (!captureSucceeded) {
@@ -941,6 +958,10 @@ function updateNoticeNativeNote(
   return { results, renderWarnings };
 }
 
+function nativeNoticeCaptureFailureCanRenderWithPreservedState(error) {
+  return /capture-failed-preserve-user-state:/i.test(String(error || ""));
+}
+
 function noticeRenderStyleVersion(renderStateJsonPath) {
   if (!renderStateJsonPath || !fileExists(renderStateJsonPath)) {
     return "";
@@ -1095,8 +1116,9 @@ function expectedNoticeNativeRenderState(digest, userState, nativeEnvironment) {
     (course.notices || []).forEach((notice) => {
       total += 1;
       const noticeId = noticeIdentifierForDigestNotice(courseName, notice);
+      const legacyNoticeIds = legacyNoticeIdentifiersForDigestNotice(courseName, notice, noticeId);
       const fingerprint = String(notice.fingerprint || "");
-      const state = userState.notices[noticeId] || {};
+      const state = noticeInteractionStateForDigestNotice(userState, noticeId, legacyNoticeIds);
       const isImportant = state.important === true;
       const isRead = noticeInteractionStateIsRead(state, fingerprint);
       const isHidden = state.hidden === true;
@@ -1261,7 +1283,7 @@ function noticeRenderSignatureComponents(targetKey, nativeEnvironment) {
     initialCollapseEnabled &&
     nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_NOTICE_ITEMS", false);
   const batchChecklist =
-    nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT", false) &&
+    nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT", true) &&
     !nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_NATIVE_DISABLE_BATCH_CHECKLIST_FORMAT", false);
   const fastBatchChecklist =
     batchChecklist &&
@@ -1303,15 +1325,83 @@ function expectedNoticeKeys(notices) {
 }
 
 function noticeIdentifierForDigestNotice(courseName, notice) {
-  const url = String(notice.url || "").trim();
-  if (url) {
-    return url;
-  }
   const articleId = String(notice.article_id || "").trim();
   if (articleId) {
     return `article:${articleId}`;
   }
+  const url = String(notice.url || "").trim();
+  if (url) {
+    return url;
+  }
   return `${courseName}|${oneLineText(notice.title)}|${oneLineText(notice.posted_at)}`;
+}
+
+function legacyNoticeIdentifiersForDigestNotice(courseName, notice, primaryIdentifier) {
+  const candidates = [
+    String(notice.url || "").trim(),
+    String(notice.article_id || "").trim() ? `article:${String(notice.article_id).trim()}` : "",
+    `${courseName}|${oneLineText(notice.title)}|${oneLineText(notice.posted_at)}`,
+  ];
+  const seen = new Set();
+  const identifiers = [];
+  candidates.forEach((item) => {
+    if (!item || item === primaryIdentifier || seen.has(item)) {
+      return;
+    }
+    seen.add(item);
+    identifiers.push(item);
+  });
+  return identifiers;
+}
+
+function noticeInteractionStateForDigestNotice(userState, noticeId, legacyNoticeIds) {
+  const notices = userState && userState.notices && typeof userState.notices === "object"
+    ? userState.notices
+    : {};
+  if (notices[noticeId]) {
+    let state = notices[noticeId];
+    for (const legacyNoticeId of legacyNoticeIds || []) {
+      if (notices[legacyNoticeId]) {
+        state = mergeNoticeInteractionState(state, notices[legacyNoticeId]);
+      }
+    }
+    return state;
+  }
+  for (const legacyNoticeId of legacyNoticeIds || []) {
+    if (notices[legacyNoticeId]) {
+      return notices[legacyNoticeId];
+    }
+  }
+  return {};
+}
+
+function mergeNoticeInteractionState(primary, fallback) {
+  const merged = { ...(primary || {}) };
+  const fallbackState = fallback || {};
+  if (
+    !String(merged.read_at || "").trim() &&
+    !String(merged.read_fingerprint || "").trim()
+  ) {
+    if (String(fallbackState.read_at || "").trim()) {
+      merged.read_at = fallbackState.read_at;
+    }
+    if (String(fallbackState.read_fingerprint || "").trim()) {
+      merged.read_fingerprint = fallbackState.read_fingerprint;
+    }
+  }
+  if (!merged.important && fallbackState.important) {
+    merged.important = true;
+    if (fallbackState.important_at) {
+      merged.important_at = fallbackState.important_at;
+    }
+  }
+  if (!merged.hidden && fallbackState.hidden) {
+    merged.hidden = true;
+    if (fallbackState.hidden_at) {
+      merged.hidden_at = fallbackState.hidden_at;
+    }
+  }
+  return merged;
 }
 
 function oneLineText(value) {

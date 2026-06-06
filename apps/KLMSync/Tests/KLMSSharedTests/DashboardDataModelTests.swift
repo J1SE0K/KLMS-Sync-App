@@ -227,6 +227,44 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertEqual(updated.content.assignmentRecords.first?.recordStatus, "completed")
     }
 
+    func testDuplicateAssignmentsWithDifferentNoticeUrlsDisplayOnce() throws {
+        let first = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1193350&bwid=432642",
+            title: "Project 3",
+            course: "데이타베이스 개론",
+            syncDue: "2026-05-31T23:59:00+09:00"
+        )
+        let second = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1193350&bwid=432643",
+            title: "Project 3",
+            course: "데이타베이스 개론",
+            syncDue: "2026-05-31T23:59:00+09:00"
+        )
+        let state = LegacySyncState(content: .init(assignments: [first, second]))
+        let updated = state.applyingManualOverrides(.init())
+
+        XCTAssertEqual(updated.content.assignments.count, 1)
+    }
+
+    func testSameCourseboardIdDifferentAssignmentsDisplaySeparately() throws {
+        let written = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
+            title: "Written Assignment 2",
+            course: "영미 단편소설",
+            syncDue: "2026-05-20T23:59:00+09:00"
+        )
+        let programming = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432002",
+            title: "Programming Assignment 2",
+            course: "영미 단편소설",
+            syncDue: "2026-05-20T23:59:00+09:00"
+        )
+        let state = LegacySyncState(content: .init(assignments: [written, programming]))
+        let updated = state.applyingManualOverrides(.init())
+
+        XCTAssertEqual(updated.content.assignments.count, 2)
+    }
+
     func testExamOverridePromotesCandidateToVisibleExamImmediately() throws {
         let item = try decodeStateItem(
             url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=8",
@@ -354,6 +392,58 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertEqual(state?.readFingerprint, "abc")
         XCTAssertEqual(state?.important, true)
         XCTAssertEqual(state?.hidden, true)
+    }
+
+    func testNoticeIdentifierPrefersStableArticleIDOverURL() throws {
+        let notice = try JSONDecoder().decode(NoticeDigestEntry.self, from: Data("""
+        {
+          "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=222&page=2&bwid=333",
+          "article_id": "435776",
+          "course": "Algorithms",
+          "title": "Notice",
+          "fingerprint": "abc"
+        }
+        """.utf8))
+
+        XCTAssertEqual(notice.noticeIdentifier, "article:435776")
+        XCTAssertEqual(notice.legacyNoticeIdentifiers.first, notice.url)
+        XCTAssertFalse(notice.legacyNoticeIdentifiers.contains(notice.noticeIdentifier))
+    }
+
+    func testNoticeUserStateMigratesLegacyURLKeyToArticleID() throws {
+        let notice = try JSONDecoder().decode(NoticeDigestEntry.self, from: Data("""
+        {
+          "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=222&page=2&bwid=333",
+          "article_id": "435776",
+          "course": "Algorithms",
+          "title": "Notice",
+          "fingerprint": "abc"
+        }
+        """.utf8))
+        let digest = NoticeDigest(
+            generatedAt: "2026-06-01T00:00:00+09:00",
+            noticeCount: 1,
+            courses: [NoticeCourseDigest(course: "Algorithms", notices: [notice])]
+        )
+        let state = NoticeUserStateFile(notices: [
+            notice.url: NoticeInteractionState(
+                title: "Old title",
+                course: "Algorithms",
+                url: notice.url,
+                fingerprint: "old",
+                readFingerprint: "abc",
+                readAt: "2026-05-31 12:00 KST",
+                important: true
+            )
+        ])
+
+        let migrated = state.migratingLegacyNoticeKeys(for: digest)
+
+        XCTAssertNil(migrated.notices[notice.url])
+        XCTAssertEqual(migrated.notices["article:435776"]?.readFingerprint, "abc")
+        XCTAssertEqual(migrated.notices["article:435776"]?.readAt, "2026-05-31 12:00 KST")
+        XCTAssertEqual(migrated.notices["article:435776"]?.important, true)
+        XCTAssertEqual(migrated.notices["article:435776"]?.title, "Notice")
     }
 
     func testAppUserStateStoreTracksHiddenAndTrashedFiles() throws {
@@ -522,6 +612,108 @@ final class DashboardDataModelTests: XCTestCase {
 
         let restored = try String(contentsOf: paths.configURL, encoding: .utf8)
         XCTAssertTrue(restored.contains("user"))
+    }
+
+    func testMacAndIOSUseWholeScreenVerticalScroll() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let macRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let mac = try String(contentsOf: macRoot, encoding: .utf8)
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+
+        XCTAssertTrue(mac.contains("ScrollView(.vertical, showsIndicators: true)"))
+        XCTAssertTrue(mac.contains(".scrollIndicators(.visible)"))
+        XCTAssertTrue(mac.contains("private struct WholeScreenVerticalScrollView"))
+        XCTAssertTrue(mac.contains("GeometryReader { geometry in"))
+        XCTAssertTrue(mac.contains("minHeight: geometry.size.height"))
+        XCTAssertFalse(mac.contains("ScrollView(.horizontal)"))
+        XCTAssertTrue(ios.contains("ScrollView(.vertical, showsIndicators: true)"))
+        XCTAssertTrue(ios.contains(".scrollIndicators(.visible)"))
+        XCTAssertTrue(ios.contains("private struct WholeScreenVerticalScrollView"))
+        XCTAssertTrue(ios.contains("GeometryReader { geometry in"))
+        XCTAssertTrue(ios.contains("minHeight: geometry.size.height"))
+    }
+
+    func testIOSStatusAndRunScreensDoNotDuplicatePrimaryControls() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let statusScreen = try sourceStructBody(named: "CompanionStatusScreen", in: ios)
+        let runScreen = try sourceStructBody(named: "CompanionRunScreen", in: ios)
+
+        XCTAssertTrue(statusScreen.contains("RemoteStatusHeader"))
+        XCTAssertTrue(statusScreen.contains("RemoteLogSummaryPanel"))
+        XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel"))
+        XCTAssertFalse(statusScreen.contains("RemoteCommandPanel"))
+        XCTAssertFalse(statusScreen.contains("RemoteCancelControl"))
+        XCTAssertFalse(statusScreen.contains("RecentRemoteCommandsView"))
+
+        XCTAssertTrue(runScreen.contains("RemoteCommandPanel"))
+        XCTAssertTrue(runScreen.contains("RemoteCancelControl"))
+        XCTAssertTrue(runScreen.contains("RemoteSettingsPanel"))
+        XCTAssertFalse(runScreen.contains("RemoteStatusHeader"))
+        XCTAssertFalse(runScreen.contains("RemoteChangeSummaryPanel"))
+    }
+
+    func testLogClearPreservesActiveCancellationAndFileRequests() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
+        let macViewRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let macModel = try String(contentsOf: macModelRoot, encoding: .utf8)
+        let macView = try String(contentsOf: macViewRoot, encoding: .utf8)
+
+        let iosApplyLogClear = try sourceBody(
+            after: "private func applyLogClear(scope: ServerRelayLogClearScope)",
+            in: ios,
+            description: "iOS applyLogClear"
+        )
+        XCTAssertTrue(iosApplyLogClear.contains("recentFileAccessRequests = recentFileAccessRequests.filter { $0.status.isInFlight }"))
+        XCTAssertFalse(iosApplyLogClear.contains("pendingCancelCommandID = nil"))
+        XCTAssertFalse(iosApplyLogClear.contains("pendingCancelRequestedAt = nil"))
+
+        let macClearLogs = try sourceBody(
+            after: "func clearVisibleLogsAndServerRelayLogs() async",
+            in: macModel,
+            description: "Mac visible log clear"
+        )
+        XCTAssertTrue(macClearLogs.contains("clearDisplayState(resetSnapshot: false)"))
+        XCTAssertTrue(macClearLogs.contains("await clearServerRelayLogs(scope: .all)"))
+        XCTAssertTrue(macView.contains("await model.clearVisibleLogsAndServerRelayLogs()"))
+        XCTAssertTrue(macView.contains("await model.refresh(clearDisplayLogs: false, showConfirmation: true)"))
+        XCTAssertTrue(macView.contains("model.clearDisplayState(resetSnapshot: false, showConfirmation: true)"))
+        XCTAssertTrue(macModel.contains("serverRelayStatusMessage = \"새로 고침 완료\""))
+        XCTAssertTrue(macModel.contains("serverRelayStatusMessage = \"화면 표시를 정리했습니다.\""))
+    }
+
+    func testIOSRefreshAndDisplayClearShowImmediateFeedback() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+
+        let queueRefresh = try sourceBody(
+            after: "private func queueRefreshIfNeeded",
+            in: ios,
+            description: "iOS queued refresh feedback"
+        )
+        XCTAssertTrue(queueRefresh.contains("connectionMessage = \"진행 중인 갱신이 끝나면 바로 새로 고침합니다.\""))
+        XCTAssertTrue(queueRefresh.contains("isRefreshing = true"))
+        XCTAssertTrue(ios.contains("connectionMessage = \"새로 고침 완료\""))
+        XCTAssertTrue(ios.contains("func resetDisplayState(showConfirmation: Bool = true)"))
+        XCTAssertTrue(ios.contains("connectionMessage = \"화면 표시를 정리했습니다.\""))
     }
 
     func testAcademicTermInferenceUsesExplicitCourseNameAndDates() throws {
@@ -708,5 +900,38 @@ final class DashboardDataModelTests: XCTestCase {
     private func writeManifest(_ payload: [[String: Any]], to url: URL) throws {
         let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
         try data.write(to: url)
+    }
+
+    private func sourceStructBody(named name: String, in source: String) throws -> String {
+        let marker = "private struct \(name): View"
+        return try sourceBody(after: marker, in: source, description: "SwiftUI view struct \(name)")
+    }
+
+    private func sourceBody(after marker: String, in source: String, description: String) throws -> String {
+        guard let startRange = source.range(of: marker),
+              let bodyStart = source[startRange.upperBound...].firstIndex(of: "{") else {
+            throw NSError(domain: "DashboardDataModelTests", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Missing \(description)",
+            ])
+        }
+
+        var depth = 0
+        var index = bodyStart
+        while index < source.endIndex {
+            let char = source[index]
+            if char == "{" {
+                depth += 1
+            } else if char == "}" {
+                depth -= 1
+                if depth == 0 {
+                    return String(source[bodyStart...index])
+                }
+            }
+            index = source.index(after: index)
+        }
+
+        throw NSError(domain: "DashboardDataModelTests", code: 2, userInfo: [
+            NSLocalizedDescriptionKey: "Unterminated \(description)",
+        ])
     }
 }

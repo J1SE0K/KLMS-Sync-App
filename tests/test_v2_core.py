@@ -132,6 +132,134 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(len(state.assignment_records), 1)
         self.assertEqual(len(state.completed_assignments), 1)
 
+    def test_logical_duplicate_assignments_with_different_notice_urls_merge(self) -> None:
+        first = Assignment(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1193350&bwid=432642",
+            course="데이타베이스 개론",
+            title="Project 3",
+            due="2026년 5월 31일 오후 11:59",
+            sync_due="2026-05-31T23:59:00+09:00",
+            source="notice",
+            instructions="Project 3 deadline",
+        )
+        second = Assignment(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1193350&bwid=432643",
+            course="데이타베이스 개론",
+            title="Project 3",
+            due="2026년 5월 31일 오후 11:59",
+            sync_due="2026-05-31T23:59:00+09:00",
+            source="notice",
+            instructions="Project 3 deadline and submission guide",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-05-13 19:18 KST",
+            detail_pages=[],
+            notices=[],
+            source_assignments=[first, second],
+        )
+
+        self.assertEqual(len(state.assignments), 1)
+        self.assertEqual(len(state.assignment_records), 1)
+        self.assertEqual(state.assignments[0].instructions, second.instructions)
+
+    def test_source_assignment_and_notice_assignment_merge_by_logical_due(self) -> None:
+        source = Assignment(
+            url="https://klms.kaist.ac.kr/mod/assign/view.php?id=1234595",
+            course="알고리즘 개론",
+            title="Written Assignment 4",
+            due="2026년 6월 9일 오후 11:59",
+            sync_due="2026-06-09T23:59:00+09:00",
+            source="source",
+            instructions="source assignment",
+        )
+        notice = Assignment(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=435776",
+            course="알고리즘 개론",
+            title="Written Assignment 4",
+            due="2026년 6월 9일 오후 11:59",
+            sync_due="2026-06-09T23:59:00+09:00",
+            source="notice",
+            type="assignment_notice",
+            instructions="notice assignment with details",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-06-02 12:20 KST",
+            detail_pages=[],
+            notices=[],
+            source_assignments=[source, notice],
+        )
+
+        self.assertEqual(len(state.assignments), 1)
+        self.assertEqual(len(state.assignment_records), 1)
+        self.assertEqual(state.assignments[0].url, source.url)
+        self.assertEqual(state.assignments[0].instructions, notice.instructions)
+
+    def test_logical_assignment_override_hides_all_url_variants(self) -> None:
+        source = Assignment(
+            url="https://klms.kaist.ac.kr/mod/assign/view.php?id=1234595",
+            course="알고리즘 개론",
+            title="Written Assignment 4",
+            due="2026년 6월 9일 오후 11:59",
+            sync_due="2026-06-09T23:59:00+09:00",
+            source="source",
+        )
+        notice = Assignment(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=435776",
+            course="알고리즘 개론",
+            title="Written Assignment 4",
+            due="2026년 6월 9일 오후 11:59",
+            sync_due="2026-06-09T23:59:00+09:00",
+            source="notice",
+            type="assignment_notice",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-06-02 12:20 KST",
+            detail_pages=[],
+            notices=[],
+            source_assignments=[source, notice],
+            overrides={
+                "assignments": {
+                    "알고리즘 개론::Written Assignment 4::2026-06-09T23:59:00+09:00": "completed"
+                }
+            },
+        )
+
+        self.assertEqual(len(state.assignments), 0)
+        self.assertEqual(len(state.completed_assignments), 1)
+        self.assertEqual(state.completed_assignments[0].record_status, "completed")
+        self.assertEqual(state.completed_assignments[0].completion_reason, "manual_completed")
+
+    def test_same_courseboard_course_id_does_not_merge_different_assignments(self) -> None:
+        written = Assignment(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
+            course="영미 단편소설",
+            title="Written Assignment 2",
+            due="2026년 5월 20일 오후 11:59",
+            sync_due="2026-05-20T23:59:00+09:00",
+            source="notice",
+        )
+        programming = Assignment(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432002",
+            course="영미 단편소설",
+            title="Programming Assignment 2",
+            due="2026년 5월 20일 오후 11:59",
+            sync_due="2026-05-20T23:59:00+09:00",
+            source="notice",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-05-13 19:18 KST",
+            detail_pages=[],
+            notices=[],
+            source_assignments=[written, programming],
+        )
+
+        self.assertEqual(len(state.assignments), 2)
+        self.assertEqual({item.title for item in state.assignments}, {"Written Assignment 2", "Programming Assignment 2"})
+
     def test_notice_deadline_project_becomes_assignment(self) -> None:
         notice = Notice(
             url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=2",

@@ -11,6 +11,7 @@ enum DashboardDetailKind: String, CaseIterable, Identifiable {
     case helpDesk
     case notices
     case files
+    case missingFiles
     case newFiles
     case quarantine
     case pruned
@@ -37,6 +38,8 @@ enum DashboardDetailKind: String, CaseIterable, Identifiable {
             "공지"
         case .files:
             "파일 목록"
+        case .missingFiles:
+            "누락 파일"
         case .newFiles:
             "새 파일"
         case .quarantine:
@@ -145,6 +148,8 @@ struct DashboardDetailPanelView: View {
                 NoticeListView(filters: filters, model: model)
             case .files:
                 FileManifestListView(filters: filters, model: model)
+            case .missingFiles:
+                MissingFilesListView(filters: filters, model: model)
             case .newFiles:
                 NewFilesListView(filters: filters, model: model)
             case .quarantine:
@@ -152,7 +157,7 @@ struct DashboardDetailPanelView: View {
             case .pruned:
                 PrunedListView(filters: filters, snapshot: model.snapshot)
             case .calendar:
-                CalendarDetailView(snapshot: model.snapshot, filters: filters)
+                CalendarDetailView(snapshot: model.snapshot, filters: filters, model: model)
             case .hidden:
                 HiddenItemsListView(filters: filters, model: model)
             }
@@ -213,6 +218,25 @@ private struct DashboardDetailFilters {
     }
 }
 
+private enum DashboardLargeList {
+    static let initialVisibleLimit = 80
+    static let increment = 80
+}
+
+private struct DashboardShowMoreButton: View {
+    var remainingCount: Int
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label("더 보기 \(remainingCount)개 남음", systemImage: "chevron.down")
+                .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 34)
+        }
+        .buttonStyle(.bordered)
+    }
+}
+
 private enum DashboardCourseFilter {
     static let all = "전체"
 
@@ -235,6 +259,8 @@ private enum DashboardCourseFilter {
             courses = snapshot.noticeDigest?.notices.map(\.course) ?? []
         case .files, .newFiles:
             courses = snapshot.courseFileManifest.map(\.course)
+        case .missingFiles:
+            courses = snapshot.filePreview?.localMissingEntries.map(\.course) ?? []
         case .calendar:
             courses = snapshot.calendarSyncResult?.changes.map(\.course) ?? []
         case .hidden:
@@ -330,6 +356,8 @@ private enum DashboardTermFilter {
             terms = (snapshot.noticeDigest?.notices ?? []).map { $0.academicTerm(generatedAt: generatedAt) }
         case .files:
             terms = snapshot.courseFileManifest.map(\.academicTerm)
+        case .missingFiles:
+            terms = missingFileTerms(snapshot: snapshot)
         case .newFiles:
             terms = newFileTerms(snapshot: snapshot)
         case .quarantine:
@@ -351,6 +379,15 @@ private enum DashboardTermFilter {
                 (!item.url.isEmpty && entry.url == item.url) || entry.relativePath == item.relativePath
             }
             return manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath])
+        }
+    }
+
+    private static func missingFileTerms(snapshot: EngineSnapshot) -> [AcademicTerm?] {
+        (snapshot.filePreview?.localMissingEntries ?? []).map { entry in
+            AcademicTerm.infer(
+                title: entry.effectiveRelativePath,
+                dateTexts: [entry.effectiveRelativePath, entry.expectedPath ?? ""]
+            )
         }
     }
 
@@ -394,7 +431,7 @@ private enum DashboardTermFilter {
 private extension DashboardDetailKind {
     var supportsNewOnly: Bool {
         switch self {
-        case .notices, .files, .newFiles:
+        case .notices, .files, .missingFiles, .newFiles:
             true
         default:
             false
@@ -403,7 +440,7 @@ private extension DashboardDetailKind {
 
     var supportsRecentOnly: Bool {
         switch self {
-        case .notices, .files, .newFiles, .quarantine:
+        case .notices, .files, .missingFiles, .newFiles, .quarantine:
             true
         default:
             false
@@ -428,34 +465,90 @@ private struct DashboardFilterBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 8) {
+                    searchControl
+                    rangeControl
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    searchControl
+                    rangeControl
+                }
+            }
+            displayControl
+        }
+    }
+
+    private var searchControl: some View {
+        DashboardControlBox(title: "검색", systemImage: "magnifyingglass") {
             HStack(spacing: 8) {
                 TextField("검색", text: $searchText)
                     .textFieldStyle(.roundedBorder)
-                Picker("과목", selection: normalizedCourseBinding) {
-                    ForEach(courses, id: \.self) { course in
-                        Text(course).tag(course)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 170)
-                Picker("년도", selection: normalizedYearBinding) {
-                    ForEach(years, id: \.self) { year in
-                        Text(year).tag(year)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 110)
-                .disabled(years.count <= 1)
-                Picker("학기", selection: normalizedTermBinding) {
-                    ForEach(semesters, id: \.self) { semester in
-                        Text(semester).tag(semester)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 120)
-                .disabled(semesters.count <= 1)
+                    .frame(minWidth: 180)
             }
-            HStack(spacing: 12) {
+        }
+    }
+
+    private var rangeControl: some View {
+        DashboardControlBox(title: "범위", systemImage: "line.3.horizontal.decrease.circle") {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    coursePickerField
+                    yearPickerField
+                    semesterPickerField
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    coursePickerField
+                    HStack(spacing: 8) {
+                        yearPickerField
+                        semesterPickerField
+                    }
+                }
+            }
+        }
+    }
+
+    private var coursePickerField: some View {
+        DashboardRangeField(title: "과목", systemImage: "book.closed", minWidth: 150) {
+            Picker("과목", selection: normalizedCourseBinding) {
+                ForEach(courses, id: \.self) { course in
+                    Text(course).tag(course)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var yearPickerField: some View {
+        DashboardRangeField(title: "년도", systemImage: "calendar", minWidth: 86, disabled: years.count <= 1) {
+            Picker("년도", selection: normalizedYearBinding) {
+                ForEach(years, id: \.self) { year in
+                    Text(year).tag(year)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+            .disabled(years.count <= 1)
+        }
+    }
+
+    private var semesterPickerField: some View {
+        DashboardRangeField(title: "학기", systemImage: "calendar.badge.clock", minWidth: 98, disabled: semesters.count <= 1) {
+            Picker("학기", selection: normalizedTermBinding) {
+                ForEach(semesters, id: \.self) { semester in
+                    Text(semester).tag(semester)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+            .disabled(semesters.count <= 1)
+        }
+    }
+
+    private var displayControl: some View {
+        DashboardControlBox(title: "표시", systemImage: "slider.horizontal.3") {
+            HStack(spacing: 10) {
                 if supportsNewOnly {
                     Toggle("새 항목만", isOn: $newOnly)
                 }
@@ -530,6 +623,53 @@ private struct DashboardFilterBarView: View {
     }
 }
 
+private struct DashboardControlBox<Content: View>: View {
+    var title: String
+    var systemImage: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label(title, systemImage: systemImage)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+        }
+    }
+}
+
+private struct DashboardRangeField<Content: View>: View {
+    var title: String
+    var systemImage: String
+    var minWidth: CGFloat
+    var disabled = false
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label(title, systemImage: systemImage)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .frame(minWidth: minWidth, alignment: .leading)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor).opacity(disabled ? 0.20 : 0.52), lineWidth: 1)
+        }
+        .opacity(disabled ? 0.58 : 1)
+    }
+}
+
 private enum StateItemEditorKind {
     case assignment
     case assignmentRecord
@@ -542,15 +682,22 @@ private struct StateItemListView: View {
     var editor: StateItemEditorKind
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
         let visibleItems = filteredItems
+        let renderedItems = Array(visibleItems.prefix(visibleLimit))
         if visibleItems.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 항목이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : emptyText)
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(visibleItems) { item in
+                ForEach(renderedItems) { item in
                     StateItemRowView(item: item, editor: editor, model: model)
+                }
+                if visibleItems.count > renderedItems.count {
+                    DashboardShowMoreButton(remainingCount: visibleItems.count - renderedItems.count) {
+                        visibleLimit += DashboardLargeList.increment
+                    }
                 }
             }
         }
@@ -608,6 +755,7 @@ private struct StateItemRowView: View {
     var item: StateItem
     var editor: StateItemEditorKind
     @ObservedObject var model: KLMSMacModel
+    @State private var didRequestSync = false
 
     var body: some View {
         let hidden = isHidden
@@ -633,14 +781,14 @@ private struct StateItemRowView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
-                    if !item.location.isEmpty || !item.coverageSummary.isEmpty {
-                        Text([item.location, item.coverageSummary].filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                Spacer(minLength: 8)
+            if !item.location.isEmpty || !item.coverageSummary.isEmpty {
+                Text([item.location, item.coverageSummary].filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        Spacer(minLength: 8)
                 if !item.url.isEmpty {
                     Button {
                         openExternalURL(item.url)
@@ -652,6 +800,7 @@ private struct StateItemRowView: View {
                 }
             }
 
+            DashboardActionCaption("수정")
             switch editor {
             case .assignment:
                 AssignmentOverridePicker(item: item, model: model)
@@ -665,7 +814,25 @@ private struct StateItemRowView: View {
                 )
             }
 
-            HStack(spacing: 8) {
+            if didRequestSync {
+                MacInlinePendingActionView(message: "과제/시험 동기화 반영을 시작했습니다.")
+            } else {
+                HStack(spacing: 8) {
+                if editor == .exam {
+                    Button {
+                        approveExam()
+                    } label: {
+                        Label("시험 반영", systemImage: "checkmark.seal")
+                    }
+                    .disabled(isHidden)
+                }
+                Button {
+                    didRequestSync = true
+                    Task { await model.run(.coreSync) }
+                } label: {
+                    Label("동기화 반영", systemImage: KLMSEngineCommand.coreSync.systemImage)
+                }
+                .disabled(model.runningCommand != nil)
                 if editor == .assignmentRecord, isManualCompleted {
                     Button {
                         clearCompletion()
@@ -683,13 +850,14 @@ private struct StateItemRowView: View {
                     Button {
                         hide()
                     } label: {
-                        Label(editor == .exam ? "시험 아님" : "숨김", systemImage: "eye.slash")
+                        Label(editor == .exam ? "삭제/시험 아님" : "삭제/숨김", systemImage: "eye.slash")
                     }
                 }
                 Spacer()
+                }
+                .font(.caption)
+                .buttonStyle(.bordered)
             }
-            .font(.caption)
-            .buttonStyle(.bordered)
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -717,6 +885,12 @@ private struct StateItemRowView: View {
         case .exam:
             model.setExamHidden(true, for: item)
         }
+    }
+
+    private func approveExam() {
+        var override = model.snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride()
+        override.status = "approved"
+        model.setExamOverride(override, for: item)
     }
 
     private func clearCompletion() {
@@ -813,6 +987,38 @@ private struct AssignmentOverridePicker: View {
     }
 }
 
+private struct DashboardActionCaption: View {
+    var text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 2)
+    }
+}
+
+private struct MacInlinePendingActionView: View {
+    var message: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
 private struct ExamOverrideEditor: View {
     var item: StateItem
     var override: ExamOverride
@@ -878,6 +1084,7 @@ private struct NoticeListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
     @State private var category: NoticeListCategory
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     init(
         filters: DashboardDetailFilters,
@@ -903,12 +1110,18 @@ private struct NoticeListView: View {
     @ViewBuilder
     private var noticeRows: some View {
         let notices = filteredNotices
+        let renderedNotices = Array(notices.prefix(visibleLimit))
         if notices.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 공지가 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "공지 목록이 없습니다.")
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(notices.prefix(80)) { notice in
+                ForEach(renderedNotices) { notice in
                     NoticeRowView(notice: notice, model: model)
+                }
+                if notices.count > renderedNotices.count {
+                    DashboardShowMoreButton(remainingCount: notices.count - renderedNotices.count) {
+                        visibleLimit += DashboardLargeList.increment
+                    }
                 }
             }
         }
@@ -949,7 +1162,11 @@ private struct NoticeListView: View {
             }
             let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !query.isEmpty else { return true }
-            return [term?.displayName ?? "", notice.title, notice.course, notice.postedAt, notice.summary, notice.bodyText, notice.url]
+            var searchableFields = [term?.displayName ?? "", notice.title, notice.course, notice.postedAt, notice.summary, notice.url]
+            if query.count >= 3 {
+                searchableFields.append(notice.bodyText)
+            }
+            return searchableFields
                 .joined(separator: " ")
                 .localizedCaseInsensitiveContains(query)
         }
@@ -1062,6 +1279,7 @@ private struct NoticeCategoryPickerView: View {
 private struct NoticeRowView: View {
     var notice: NoticeDigestEntry
     @ObservedObject var model: KLMSMacModel
+    @State private var didRequestSync = false
 
     var body: some View {
         let hidden = model.snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true
@@ -1147,6 +1365,7 @@ private struct NoticeRowView: View {
                 }
             }
 
+            DashboardActionCaption("수정")
             HStack {
                 Toggle("읽음", isOn: readBinding)
                 Toggle("중요", isOn: importantBinding)
@@ -1155,16 +1374,27 @@ private struct NoticeRowView: View {
             }
             .toggleStyle(.checkbox)
 
-            HStack(spacing: 8) {
+            if didRequestSync {
+                MacInlinePendingActionView(message: "공지 메모 반영을 시작했습니다.")
+            } else {
+                HStack(spacing: 8) {
+                Button {
+                    didRequestSync = true
+                    Task { await model.run(.noticeSync) }
+                } label: {
+                    Label("메모 반영", systemImage: KLMSEngineCommand.noticeSync.systemImage)
+                }
+                .disabled(model.runningCommand != nil)
                 Button {
                     model.setNoticeHidden(!hidden, for: notice)
                 } label: {
-                    Label(hidden ? "복구" : "목록에서 숨김", systemImage: hidden ? "arrow.uturn.backward" : "eye.slash")
+                    Label(hidden ? "복구" : "삭제/숨김", systemImage: hidden ? "arrow.uturn.backward" : "eye.slash")
                 }
                 .buttonStyle(.bordered)
                 Spacer()
+                }
+                .font(.caption)
             }
-            .font(.caption)
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1260,17 +1490,25 @@ private struct NewFilesListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.recent
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
         let files = filteredItems
+        let sortedFiles = files.sorted(by: sortOption)
+        let visibleFiles = Array(sortedFiles.prefix(visibleLimit))
         if files.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 새 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "새 파일이 없습니다.")
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 FileSortPickerView(selection: $sortOption)
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(files.sorted(by: sortOption)) { item in
+                    ForEach(visibleFiles) { item in
                         FileRowView(item: item, kind: .file, model: model)
+                    }
+                    if sortedFiles.count > visibleFiles.count {
+                        DashboardShowMoreButton(remainingCount: sortedFiles.count - visibleFiles.count) {
+                            visibleLimit += DashboardLargeList.increment
+                        }
                     }
                 }
                 .id(sortOption.rawValue)
@@ -1311,17 +1549,25 @@ private struct FileManifestListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.course
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
         let files = filteredItems
+        let sortedFiles = files.sorted(by: sortOption)
+        let visibleFiles = Array(sortedFiles.prefix(visibleLimit))
         if files.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "파일 목록이 없습니다. 파일 동기화를 한 번 실행하면 KLMS 파일 목록이 여기에 표시됩니다.")
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 FileSortPickerView(selection: $sortOption)
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(files.sorted(by: sortOption)) { item in
+                    ForEach(visibleFiles) { item in
                         FileRowView(item: item, kind: .file, model: model)
+                    }
+                    if sortedFiles.count > visibleFiles.count {
+                        DashboardShowMoreButton(remainingCount: sortedFiles.count - visibleFiles.count) {
+                            visibleLimit += DashboardLargeList.increment
+                        }
                     }
                 }
                 .id(sortOption.rawValue)
@@ -1364,6 +1610,75 @@ private struct FileManifestListView: View {
                     && !result.failed
                     && !result.quarantined)
         }
+    }
+}
+
+private struct MissingFilesListView: View {
+    var filters: DashboardDetailFilters
+    @ObservedObject var model: KLMSMacModel
+    @State private var sortOption = DashboardFileSortOption.course
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
+
+    var body: some View {
+        let files = filteredItems
+        let sortedFiles = files.sorted(by: sortOption)
+        let visibleFiles = Array(sortedFiles.prefix(visibleLimit))
+        if files.isEmpty {
+            EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 누락 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "로컬에서 누락된 파일이 없습니다.")
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("파일 목록에는 있지만 현재 로컬 저장 위치에 없는 항목입니다. 파일 동기화를 실행하면 archive/log에서 복구하거나, 없으면 KLMS에서 다시 받습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                FileSortPickerView(selection: $sortOption)
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(visibleFiles) { item in
+                        FileRowView(item: item, kind: .file, model: model)
+                    }
+                    if sortedFiles.count > visibleFiles.count {
+                        DashboardShowMoreButton(remainingCount: sortedFiles.count - visibleFiles.count) {
+                            visibleLimit += DashboardLargeList.increment
+                        }
+                    }
+                }
+                .id(sortOption.rawValue)
+            }
+        }
+    }
+
+    private var filteredItems: [DashboardFileItem] {
+        (model.snapshot.verifyResult?.files?.missingFiles ?? []).compactMap { path in
+            let relativePath = normalizedMissingFilePath(path)
+            let key = fileKey(url: "", path: path, fallback: relativePath)
+            let title = fileDisplayTitle(filename: URL(fileURLWithPath: relativePath).lastPathComponent, relativePath: relativePath)
+            let course = relativePath.split(separator: "/", omittingEmptySubsequences: true).first.map(String.init) ?? ""
+            let item = DashboardFileItem(
+                key: key,
+                title: title,
+                course: course,
+                academicTerm: AcademicTerm.infer(
+                    title: relativePath,
+                    dateTexts: [relativePath, path]
+                ),
+                path: path,
+                sortPath: relativePath,
+                bucket: fileBucket(from: relativePath),
+                url: "",
+                isRecent: true,
+                recencyText: "",
+                interaction: model.snapshot.appUserState?.files[key]
+            )
+            return item.matches(filters: filters) ? item : nil
+        }
+    }
+
+    private func normalizedMissingFilePath(_ path: String) -> String {
+        let marker = "/KLMSNotesSync/course_files/"
+        if let range = path.range(of: marker) {
+            return String(path[range.upperBound...])
+        }
+        return path
     }
 }
 
@@ -1439,27 +1754,44 @@ private struct FileSortPickerView: View {
     @Binding var selection: DashboardFileSortOption
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text("정렬")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        DashboardControlBox(title: "정렬", systemImage: "arrow.up.arrow.down") {
             HStack(spacing: 4) {
                 ForEach(DashboardFileSortOption.allCases) { option in
-                    Button {
+                    DashboardControlChip(
+                        title: option.title,
+                        isSelected: selection == option,
+                        help: option.helpText
+                    ) {
                         selection = option
-                    } label: {
-                        Text(option.title)
-                            .font(.caption.weight(selection == option ? .semibold : .regular))
-                            .frame(minWidth: 42)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(selection == option ? .accentColor : .secondary)
-                    .help(option.helpText)
                 }
             }
-            Spacer(minLength: 0)
         }
+    }
+}
+
+private struct DashboardControlChip: View {
+    var title: String
+    var isSelected: Bool
+    var help: String
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                .frame(minWidth: 42)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(isSelected ? Color.accentColor.opacity(0.16) : Color(nsColor: .textBackgroundColor), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(isSelected ? Color.accentColor.opacity(0.45) : Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }
 
@@ -1593,6 +1925,7 @@ private enum DashboardFileRowKind {
 private struct HiddenItemsListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1617,17 +1950,19 @@ private struct HiddenItemsListView: View {
 
     @ViewBuilder
     private var hiddenFileRows: some View {
-        let files = hiddenFiles
-        let quarantine = hiddenQuarantine
-        if files.isEmpty && quarantine.isEmpty {
+        let hiddenFileItems = hiddenFiles + hiddenQuarantine
+        let visibleItems = Array(hiddenFileItems.prefix(visibleLimit))
+        if hiddenFileItems.isEmpty {
             EmptyDetailText(text: "숨긴 파일이 없습니다.")
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(files) { item in
-                    FileRowView(item: item, kind: .file, model: model)
+                ForEach(visibleItems) { item in
+                    FileRowView(item: item, kind: item.bucket == "quarantine" ? .quarantine : .file, model: model)
                 }
-                ForEach(quarantine) { item in
-                    FileRowView(item: item, kind: .quarantine, model: model)
+                if hiddenFileItems.count > visibleItems.count {
+                    DashboardShowMoreButton(remainingCount: hiddenFileItems.count - visibleItems.count) {
+                        visibleLimit += DashboardLargeList.increment
+                    }
                 }
             }
         }
@@ -1721,21 +2056,29 @@ private struct QuarantineListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.name
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
         let records = filteredItems
+        let sortedRecords = records.sorted(by: sortOption)
+        let visibleRecords = Array(sortedRecords.prefix(visibleLimit))
         if records.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 격리 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "격리 파일이 없습니다.")
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 FileSortPickerView(selection: $sortOption)
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(records.sorted(by: sortOption)) { item in
+                    ForEach(visibleRecords) { item in
                         FileRowView(
                             item: item,
                             kind: .quarantine,
                             model: model
                         )
+                    }
+                    if sortedRecords.count > visibleRecords.count {
+                        DashboardShowMoreButton(remainingCount: sortedRecords.count - visibleRecords.count) {
+                            visibleLimit += DashboardLargeList.increment
+                        }
                     }
                 }
                 .id(sortOption.rawValue)
@@ -1772,21 +2115,29 @@ private struct PrunedListView: View {
     var filters: DashboardDetailFilters
     var snapshot: EngineSnapshot
     @State private var sortOption = DashboardFileSortOption.path
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
         let deleted = filteredItems
+        let sortedDeleted = deleted.sorted(by: sortOption)
+        let visibleDeleted = Array(sortedDeleted.prefix(visibleLimit))
         if deleted.isEmpty {
             EmptyDetailText(text: "삭제된 파일 기록이 없습니다.")
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 FileSortPickerView(selection: $sortOption)
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(deleted.sorted(by: sortOption)) { item in
+                    ForEach(visibleDeleted) { item in
                         FileRowView(
                             item: item,
                             kind: .pruned,
                             model: nil
                         )
+                    }
+                    if sortedDeleted.count > visibleDeleted.count {
+                        DashboardShowMoreButton(remainingCount: sortedDeleted.count - visibleDeleted.count) {
+                            visibleLimit += DashboardLargeList.increment
+                        }
                     }
                 }
                 .id(sortOption.rawValue)
@@ -1829,9 +2180,11 @@ private struct FileRowView: View {
     var item: DashboardFileItem
     var kind: DashboardFileRowKind
     var model: KLMSMacModel?
+    @State private var didRequestSync = false
 
     var body: some View {
         let hidden = item.isHidden
+        let pathExists = !item.path.isEmpty && FileManager.default.fileExists(atPath: item.path)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -1869,7 +2222,7 @@ private struct FileRowView: View {
                     }
                 }
                 Spacer(minLength: 8)
-                if !item.path.isEmpty {
+                if pathExists {
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
                     } label: {
@@ -1888,7 +2241,7 @@ private struct FileRowView: View {
                     .help("KLMS 열기")
                 }
             }
-            actionBar(hidden: hidden)
+            actionBar(hidden: hidden, pathExists: pathExists)
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1896,9 +2249,26 @@ private struct FileRowView: View {
     }
 
     @ViewBuilder
-    private func actionBar(hidden: Bool) -> some View {
+    private func actionBar(hidden: Bool, pathExists: Bool) -> some View {
         if let model, kind != .pruned {
-            HStack(spacing: 8) {
+            if didRequestSync {
+                MacInlinePendingActionView(message: "파일 동기화 반영을 시작했습니다.")
+            } else {
+                HStack(spacing: 8) {
+                if pathExists {
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+                    } label: {
+                        Label("수정/열기", systemImage: "folder")
+                    }
+                }
+                Button {
+                    didRequestSync = true
+                    Task { await model.run(.filesSync) }
+                } label: {
+                    Label("파일 반영", systemImage: KLMSEngineCommand.filesSync.systemImage)
+                }
+                .disabled(model.runningCommand != nil)
                 if hidden {
                     Button {
                         restore(model)
@@ -1909,10 +2279,10 @@ private struct FileRowView: View {
                     Button {
                         hide(model)
                     } label: {
-                        Label(kind == .quarantine ? "무시" : "목록에서 숨김", systemImage: "eye.slash")
+                        Label(kind == .quarantine ? "삭제/무시" : "삭제/숨김", systemImage: "eye.slash")
                     }
                 }
-                if !item.path.isEmpty {
+                if pathExists {
                     Button(role: .destructive) {
                         moveToTrash(model)
                     } label: {
@@ -1920,10 +2290,11 @@ private struct FileRowView: View {
                     }
                 }
                 Spacer()
+                }
+                .font(.caption)
+                .buttonStyle(.bordered)
+                .padding(.top, 8)
             }
-            .font(.caption)
-            .buttonStyle(.bordered)
-            .padding(.top, 8)
         }
     }
 
@@ -2021,14 +2392,20 @@ private extension DashboardFileItem {
 private struct CalendarDetailView: View {
     var snapshot: EngineSnapshot
     var filters: DashboardDetailFilters
+    @ObservedObject var model: KLMSMacModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            CalendarActionGuideView(
+                model: model,
+                hasReportedCalendarChanges: hasReportedCalendarChanges
+            )
+
             if let calendar = snapshot.syncReport?.calendar {
                 MetricGrid(metrics: [
                     Metric("생성", calendar.created),
                     Metric("수정", calendar.updated),
-                    Metric("삭제", calendar.deleted),
+                    Metric("정리", calendar.deleted),
                 ])
             } else {
                 EmptyDetailText(text: "캘린더 결과가 없습니다.")
@@ -2045,6 +2422,7 @@ private struct CalendarDetailView: View {
                 CalendarChangeListView(
                     changes: result.changes,
                     filters: filters,
+                    model: model,
                     hasLegacyCountWithoutDetails: result.changes.isEmpty && hasReportedCalendarChanges
                 )
             } else if hasReportedCalendarChanges {
@@ -2060,6 +2438,112 @@ private struct CalendarDetailView: View {
             $0 + $1.created + $1.updated + $1.deleted
         } ?? 0
         return reportCount + summaryCount > 0
+    }
+}
+
+private struct CalendarActionGuideView: View {
+    @ObservedObject var model: KLMSMacModel
+    var hasReportedCalendarChanges: Bool
+
+    private let columns = [GridItem(.adaptive(minimum: 128), spacing: 8)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .frame(width: 28, height: 28)
+                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("캘린더 확인")
+                        .font(.caption.weight(.semibold))
+                    Text(helpText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                CalendarActionButton(
+                    title: "캘린더 열기",
+                    systemImage: "calendar",
+                    tint: .orange
+                ) {
+                    openSystemCalendar()
+                }
+                CalendarActionButton(
+                    title: "상태 다시 검사",
+                    systemImage: KLMSEngineCommand.verify.systemImage,
+                    tint: .blue,
+                    disabled: model.runningCommand != nil
+                ) {
+                    Task { await model.run(.verify) }
+                }
+                CalendarActionButton(
+                    title: "과제/시험 재동기화",
+                    systemImage: KLMSEngineCommand.coreSync.systemImage,
+                    tint: .green,
+                    disabled: model.runningCommand != nil
+                ) {
+                    Task { await model.run(.coreSync) }
+                }
+                CalendarActionButton(
+                    title: "권한 점검",
+                    systemImage: KLMSEngineCommand.doctor.systemImage,
+                    tint: .secondary,
+                    disabled: model.runningCommand != nil
+                ) {
+                    Task { await model.run(.doctor) }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.orange.opacity(0.18), lineWidth: 1)
+        }
+    }
+
+    private var helpText: String {
+        if model.runningCommand != nil {
+            return "현재 동기화가 실행 중입니다. 끝난 뒤 캘린더를 다시 검사할 수 있습니다."
+        }
+        if hasReportedCalendarChanges {
+            return "방금 생성, 수정, 정리된 일정을 확인하려면 캘린더를 열어 보세요. 숫자가 맞지 않으면 상태 검사 또는 과제/시험 재동기화를 실행하세요."
+        }
+        return "캘린더가 비어 있거나 권한 문제가 의심되면 상태 검사와 권한 점검을 먼저 실행하세요."
+    }
+
+    private func openSystemCalendar() {
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+            NSWorkspace.shared.open(appURL)
+        }
+    }
+}
+
+private struct CalendarActionButton: View {
+    var title: String
+    var systemImage: String
+    var tint: Color
+    var disabled = false
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 30)
+        }
+        .buttonStyle(.bordered)
+        .tint(tint)
+        .disabled(disabled)
     }
 }
 
@@ -2082,7 +2566,7 @@ private struct CalendarSummaryListView: View {
                         Spacer()
                         Text("생성 \(summary.created)")
                         Text("수정 \(summary.updated)")
-                        Text("삭제 \(summary.deleted)")
+                        Text("정리 \(summary.deleted)")
                         Text("전체 \(summary.total)")
                     }
                     .font(.caption2)
@@ -2108,6 +2592,7 @@ private struct CalendarSummaryListView: View {
 private struct CalendarChangeListView: View {
     var changes: [CalendarChange]
     var filters: DashboardDetailFilters
+    @ObservedObject var model: KLMSMacModel
     var hasLegacyCountWithoutDetails: Bool
 
     var body: some View {
@@ -2122,7 +2607,7 @@ private struct CalendarChangeListView: View {
             } else {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(visibleChanges.prefix(50))) { change in
-                        CalendarChangeRowView(change: change)
+                        CalendarChangeRowView(change: change, model: model)
                     }
                 }
                 if visibleChanges.count > 50 {
@@ -2177,6 +2662,9 @@ private struct CalendarChangeListView: View {
 
 private struct CalendarChangeRowView: View {
     var change: CalendarChange
+    @ObservedObject var model: KLMSMacModel
+    @State private var editStatusText: String?
+    @State private var isShowingEditSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -2213,22 +2701,44 @@ private struct CalendarChangeRowView: View {
                             .foregroundStyle(.orange)
                             .lineLimit(2)
                     }
+                    CalendarChangeExplanationView(change: change)
                 }
                 Spacer(minLength: 8)
-                if !change.url.isEmpty {
+            }
+            if let editStatusText {
+                MacInlinePendingActionView(message: editStatusText)
+            } else {
+                HStack(spacing: 8) {
                     Button {
-                        openExternalURL(change.url)
+                        isShowingEditSheet = true
                     } label: {
-                        Image(systemName: "safari")
+                        Label("내용 수정", systemImage: "pencil")
                     }
-                    .help("KLMS 열기")
-                    .buttonStyle(.borderless)
+                    .help("Apple Calendar에 저장된 이 일정의 제목, 시간, 장소를 직접 수정합니다.")
+                    Button {
+                        openSystemCalendar()
+                    } label: {
+                        Label("캘린더에서 열기", systemImage: "calendar")
+                    }
+                    .help("Calendar 앱을 열어 직접 확인, 수정, 삭제합니다.")
+                    Spacer()
                 }
+                .font(.caption)
+                .buttonStyle(.bordered)
             }
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .sheet(isPresented: $isShowingEditSheet) {
+            CalendarEventEditSheet(change: change) { edit in
+                editStatusText = "캘린더 내용을 저장하는 중입니다."
+                Task {
+                    await model.editCalendarEvent(change: change, edit: edit)
+                    editStatusText = "캘린더 내용 수정 요청을 처리했습니다."
+                }
+            }
+        }
     }
 
     private var metadataText: String {
@@ -2278,6 +2788,110 @@ private struct CalendarChangeRowView: View {
             bucket
         }
     }
+
+    private func openSystemCalendar() {
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+            NSWorkspace.shared.open(appURL)
+        }
+    }
+}
+
+private struct CalendarEventEditSheet: View {
+    var change: CalendarChange
+    var onSave: (CalendarEventEdit) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var startAt: String
+    @State private var dueAt: String
+    @State private var location: String
+
+    init(change: CalendarChange, onSave: @escaping (CalendarEventEdit) -> Void) {
+        self.change = change
+        self.onSave = onSave
+        _title = State(initialValue: change.title)
+        _startAt = State(initialValue: calendarEditInputDate(change.startAt))
+        _dueAt = State(initialValue: calendarEditInputDate(change.dueAt))
+        _location = State(initialValue: change.location)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("캘린더 내용 수정")
+                .font(.headline)
+            Text("Apple Calendar에 저장된 이벤트를 직접 수정합니다. 비워 둔 시간/장소는 변경하지 않습니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
+                GridRow {
+                    Text("제목")
+                        .foregroundStyle(.secondary)
+                    TextField("일정 제목", text: $title)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("시작")
+                        .foregroundStyle(.secondary)
+                    TextField("2026-06-17 13:00", text: $startAt)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("종료")
+                        .foregroundStyle(.secondary)
+                    TextField("2026-06-17 16:00", text: $dueAt)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("장소")
+                        .foregroundStyle(.secondary)
+                    TextField("장소", text: $location)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            HStack {
+                Spacer()
+                Button("취소") {
+                    dismiss()
+                }
+                Button("저장") {
+                    onSave(CalendarEventEdit(title: title, startAt: startAt, dueAt: dueAt, location: location))
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(18)
+        .frame(width: 520)
+    }
+}
+
+private struct CalendarChangeExplanationView: View {
+    var change: CalendarChange
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label(change.explanationText, systemImage: "info.circle")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(change.nextActionText)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(change.actionButtonHelpText)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(Color.orange.opacity(0.14), lineWidth: 1)
+        }
+    }
 }
 
 private func displayCalendarDate(_ text: String) -> String {
@@ -2288,6 +2902,15 @@ private func displayCalendarDate(_ text: String) -> String {
     formatter.locale = Locale(identifier: "ko_KR")
     formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
     formatter.dateFormat = "M/d HH:mm"
+    return formatter.string(from: date)
+}
+
+private func calendarEditInputDate(_ text: String) -> String {
+    guard let date = parseCalendarDetailDate(text) else { return text }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "ko_KR")
+    formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+    formatter.dateFormat = "yyyy-MM-dd HH:mm"
     return formatter.string(from: date)
 }
 

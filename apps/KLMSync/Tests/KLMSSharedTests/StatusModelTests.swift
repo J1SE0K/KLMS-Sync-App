@@ -61,6 +61,22 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(result.changes.first?.changes, ["제목", "종료"])
     }
 
+    func testCalendarEventEditMessageRoundTripUsesServerKeys() throws {
+        let edit = CalendarEventEdit(
+            title: "기말고사 장소 변경",
+            startAt: "2026-06-17 13:00",
+            dueAt: "2026-06-17 16:00",
+            location: "E11"
+        )
+
+        let message = try edit.encodedMessage()
+        let decoded = try CalendarEventEdit.decodeMessage(message)
+
+        XCTAssertTrue(message.contains("\"start_at\""))
+        XCTAssertTrue(message.contains("\"due_at\""))
+        XCTAssertEqual(decoded, edit)
+    }
+
     func testParsesNoticeStageTimingRenderMode() throws {
         let json = """
         {
@@ -111,11 +127,15 @@ final class StatusModelTests: XCTestCase {
           "actual_file_count": 9,
           "new_url_count": 1,
           "moved_count": 2,
+          "local_missing_count": 6,
+          "recoverable_missing_count": 2,
           "fresh_download_candidate_count": 3,
           "prune_candidate_count": 4,
           "type_mismatch_candidate_count": 5,
           "new_url_entries": [{"course": "CS", "filename": "a.pdf", "effective_relative_path": "CS/a.pdf", "url": "u"}],
           "moved_entries": [],
+          "local_missing_entries": [{"course": "CS", "filename": "b.pdf", "effective_relative_path": "CS/b.pdf", "expected_path": "/tmp/CS/b.pdf", "recovery_source_path": "/archive/CS/b.pdf", "url": "u2"}],
+          "recoverable_missing_entries": [],
           "fresh_download_candidates": [],
           "prune_candidates": ["old.pdf"],
           "type_mismatch_candidates": []
@@ -133,6 +153,10 @@ final class StatusModelTests: XCTestCase {
         let quarantine = try JSONDecoder().decode(QuarantineReport.self, from: Data(quarantineJSON.utf8))
 
         XCTAssertEqual(preview.freshDownloadCandidateCount, 3)
+        XCTAssertEqual(preview.localMissingCount, 6)
+        XCTAssertEqual(preview.recoverableMissingCount, 2)
+        XCTAssertEqual(preview.localMissingEntries.first?.expectedPath, "/tmp/CS/b.pdf")
+        XCTAssertEqual(preview.localMissingEntries.first?.recoverySourcePath, "/archive/CS/b.pdf")
         XCTAssertEqual(preview.pruneCandidates, ["old.pdf"])
         XCTAssertEqual(quarantine.quarantineCount, 1)
         XCTAssertEqual(quarantine.records.first?.bytes, 10)
@@ -386,6 +410,16 @@ final class StatusModelTests: XCTestCase {
             "assignment_candidate_count": 2,
             "missing_assignment_candidate_count": 0
           },
+          "files": {
+            "manifest_file_count": 91,
+            "missing_file_count": 1,
+            "missing_files": ["데이타베이스 개론/board-attachments/NanoQuiz.pdf"],
+            "derived_assignment_count": 0,
+            "missing_derived_assignment_count": 0,
+            "derived_exam_count": 0,
+            "missing_derived_exam_count": 0,
+            "classification_error": ""
+          },
           "state": {
             "assignment_count": 3,
             "exam_count": 2,
@@ -423,6 +457,9 @@ final class StatusModelTests: XCTestCase {
 
         XCTAssertEqual(verify.notices?.renderedCount, 65)
         XCTAssertEqual(verify.notices?.examCandidateCount, 2)
+        XCTAssertEqual(verify.files?.manifestFileCount, 91)
+        XCTAssertEqual(verify.files?.missingFileCount, 1)
+        XCTAssertEqual(verify.files?.missingFiles, ["데이타베이스 개론/board-attachments/NanoQuiz.pdf"])
         XCTAssertEqual(verify.state?.assignmentCount, 3)
         XCTAssertEqual(verify.calendar?.resultTotals?.exam, 2)
         XCTAssertEqual(verify.reminders?.assignmentActiveCount, 3)

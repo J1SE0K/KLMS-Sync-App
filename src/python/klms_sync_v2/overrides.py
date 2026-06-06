@@ -17,6 +17,45 @@ def split_override_key(key: str) -> tuple[str, str]:
     return url, title
 
 
+def assignment_override_candidate_keys(item: Assignment) -> list[str]:
+    url = one_line(item.url)
+    title = one_line(item.title)
+    course = one_line(item.course)
+    due = one_line(item.sync_due or item.due)
+    return [
+        url,
+        f"{url}::{title}" if url and title else "",
+        f"{course}::{title}::{due}" if course and title and due else "",
+        f"{course}::{title}" if course and title else "",
+    ]
+
+
+def assignment_override_identity(item: Assignment) -> str:
+    for key in assignment_override_candidate_keys(item)[2:] + assignment_override_candidate_keys(item)[:2]:
+        if key:
+            return key
+    return ""
+
+
+def normalize_assignment_overrides(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for key, status in payload.items():
+        normalized_key = one_line(str(key))
+        normalized_status = one_line(str(status)).lower()
+        if normalized_key and normalized_status:
+            normalized[normalized_key] = normalized_status
+    return normalized
+
+
+def assignment_override_status(item: Assignment, overrides: dict[str, str]) -> str:
+    for key in assignment_override_candidate_keys(item):
+        if key and key in overrides:
+            return overrides[key]
+    return ""
+
+
 def apply_overrides(
     state: SyncState,
     overrides: dict[str, Any] | None,
@@ -31,50 +70,48 @@ def apply_overrides(
     source_by_url = source_by_url or {}
     updated = deepcopy(state)
 
-    assignment_overrides = overrides.get("assignments") or {}
-    removed_assignment_urls = set()
-    completed_assignment_urls = set()
-    ignored_assignment_urls = set()
-    for url, status in assignment_overrides.items():
-        normalized_url = split_override_key(str(url))[0]
-        normalized_status = str(status).lower()
-        if normalized_status == "completed":
-            removed_assignment_urls.add(normalized_url)
-            completed_assignment_urls.add(normalized_url)
-        elif normalized_status == "ignored":
-            removed_assignment_urls.add(normalized_url)
-            ignored_assignment_urls.add(normalized_url)
-    if removed_assignment_urls:
+    assignment_overrides = normalize_assignment_overrides(overrides.get("assignments") or {})
+    if assignment_overrides:
+        def status_for_assignment(item: Assignment) -> str:
+            return assignment_override_status(item, assignment_overrides)
+
+        def is_removed(item: Assignment) -> bool:
+            return status_for_assignment(item) in {"completed", "ignored"}
+
         removed_items = [
             item
             for item in updated.assignments + updated.assignment_candidates
-            if item.url in removed_assignment_urls
+            if is_removed(item)
         ]
-        updated.assignments = [
-            item for item in updated.assignments if item.url not in removed_assignment_urls
-        ]
+        updated.assignments = [item for item in updated.assignments if not is_removed(item)]
         updated.assignment_candidates = [
-            item for item in updated.assignment_candidates if item.url not in removed_assignment_urls
+            item for item in updated.assignment_candidates if not is_removed(item)
         ]
-        existing_record_urls = {item.url for item in updated.assignment_records}
-        existing_completed_urls = {item.url for item in updated.completed_assignments}
+        existing_record_keys = {
+            assignment_override_identity(item) for item in updated.assignment_records
+        }
+        existing_completed_keys = {
+            assignment_override_identity(item) for item in updated.completed_assignments
+        }
         for item in removed_items:
-            if item.url in completed_assignment_urls:
+            status = status_for_assignment(item)
+            identity = assignment_override_identity(item)
+            if status == "completed":
                 completed = replace(
                     item,
                     auto_completed=True,
                     record_status="completed",
                     completion_reason="manual_completed",
                 )
-                if item.url not in existing_completed_urls:
+                if identity not in existing_completed_keys:
                     updated.completed_assignments.append(completed)
-                    existing_completed_urls.add(item.url)
-                if item.url not in existing_record_urls:
+                    existing_completed_keys.add(identity)
+                if identity not in existing_record_keys:
                     updated.assignment_records.append(completed)
-                    existing_record_urls.add(item.url)
-            elif item.url in ignored_assignment_urls and item.url not in existing_record_urls:
+                    existing_record_keys.add(identity)
+            elif status == "ignored" and identity not in existing_record_keys:
                 updated.assignment_records.append(replace(item, record_status="ignored"))
-                existing_record_urls.add(item.url)
+                existing_record_keys.add(identity)
         updated.assignment_records = [
             replace(
                 item,
@@ -82,9 +119,9 @@ def apply_overrides(
                 record_status="completed",
                 completion_reason=item.completion_reason or "manual_completed",
             )
-            if item.url in completed_assignment_urls
+            if status_for_assignment(item) == "completed"
             else replace(item, record_status=item.record_status or "ignored")
-            if item.url in ignored_assignment_urls
+            if status_for_assignment(item) == "ignored"
             else item
             for item in updated.assignment_records
         ]

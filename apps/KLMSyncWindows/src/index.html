@@ -23,8 +23,8 @@
             <span id="connectionState" class="status-pill muted">대기</span>
           </div>
           <label>
-            서버 주소
-            <input id="relayURL" type="url" placeholder="https://sync.example.com 또는 http://192.168.x.x:18484">
+            서버 URL
+            <input id="relayURL" type="url" placeholder="https://sync.example.com">
           </label>
           <label>
             클라이언트 토큰
@@ -40,13 +40,20 @@
             <button id="checkConnectionButton" class="wide secondary">저장 후 연결 확인</button>
             <button id="clearConnectionButton" class="wide ghost">연결 지우기</button>
           </div>
-          <p id="connectionHint" class="hint">Cloudflare Workers 릴레이 주소와 클라이언트 토큰을 넣습니다. Windows 앱은 KLMS를 직접 읽지 않고 서버 DB의 요약 상태와 항목만 봅니다.</p>
+          <p id="connectionHint" class="hint">Cloudflare Workers 릴레이 URL과 클라이언트 토큰을 넣습니다. Windows 앱은 KLMS를 직접 읽지 않고 서버 DB의 요약 상태와 항목만 봅니다.</p>
         </section>
 
         <section class="panel commands-panel">
           <div class="panel-heading">
             <h2>원격 실행</h2>
           </div>
+          <label class="check-row">
+            <input id="updateNoticeNotes" type="checkbox" checked>
+            <span>
+              <strong>공지 메모도 업데이트</strong>
+              <small>끄면 전체/공지 동기화는 목록만 갱신하고 Mac의 Notes 메모는 건드리지 않습니다.</small>
+            </span>
+          </label>
           <div id="commandButtons" class="command-grid"></div>
         </section>
       </aside>

@@ -41,10 +41,97 @@ class NoticeReadStateSafetyTests(unittest.TestCase):
         text = read_notice_js()
 
         self.assertIn("capture-failed-preserve-user-state", text)
+        self.assertIn("nativeNoticeCaptureFailureCanRenderWithPreservedState", text)
+        self.assertIn("capture-state-preserved", text)
         self.assertIn("noticeRenderWarningsAreNonFatal", text)
         self.assertIn("noticeRenderWarningIsRecoverable", text)
         self.assertIn("if (renderWarningText && !nonFatalRenderWarning)", text)
         self.assertIn('summary.status = "warn"', text)
+
+    def test_suspicious_capture_drop_renders_with_preserved_state(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed")
+
+        script = r"""
+const fs = require("fs");
+const source = fs.readFileSync("src/js/sync_notice_bridge.js", "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+eval([
+  extractFunction("nativeNoticeEnvHasKey"),
+  extractFunction("nativeNoticeDefaultEnvironment"),
+  extractFunction("nativeNoticeVerifyStableSkipFormatEnabled"),
+  extractFunction("nativeNoticePostRenderVerifyEnabled"),
+  extractFunction("nativeNoticeEnvironmentEnabled"),
+  extractFunction("nativeNoticeEnvironmentValue"),
+  extractFunction("noticeTargetRequiresPostCaptureRender"),
+  extractFunction("nativeNoticeCaptureFailureCanRenderWithPreservedState"),
+  extractFunction("updateNoticeNativeNote"),
+].join("\n"));
+
+let calls = [];
+function debugStderr() {}
+function runNativeNoticeCommandWithRecoverableRetry(stageTelemetry, target, command) {
+  calls.push(target);
+  if (target === "capture") {
+    throw new Error("capture-failed-preserve-user-state: suspicious read state drop before=67 after=0 captured_ids=69");
+  }
+  return `rendered ${target}`;
+}
+function verifyNoticeNativeNoteReadableFormat() {
+  return "";
+}
+
+const result = updateNoticeNativeNote(
+  "/engine",
+  "KLMS 공지",
+  "KLMS 확인한 공지",
+  "/digest.json",
+  "/notice_state.json",
+  "/primary_render_state.json",
+  "/archive_render_state.json",
+  false,
+  true,
+  false,
+  false,
+  [],
+  null
+);
+
+console.log(JSON.stringify({
+  calls,
+  preserved: result.results.some((item) => item.target === "capture-state-preserved"),
+}));
+"""
+        result = subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(
+            result.stdout.strip(),
+            '{"calls":["capture","archive","primary"],"preserved":true}',
+        )
 
     def test_notice_render_summary_is_cleared_on_skipped_paths(self) -> None:
         text = read_notice_js()
@@ -160,17 +247,30 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("Proceeding capture despite plaintext drift", text)
         self.assertIn("resolved_titles=\\(resolvedTitleCount)/\\(renderedTitles.count)", text)
 
-    def test_archive_capture_cannot_create_read_state(self) -> None:
+    def test_archive_capture_can_restore_read_state(self) -> None:
         text = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("displayMode == .primary && readChecked", text)
-        self.assertIn("displayMode == .archive && readChecked", text)
+        self.assertIn("if readChecked", text)
+        self.assertIn("state.readFingerprint = rendered.fingerprint", text)
+        self.assertIn("state.readAt = timestamp", text)
         self.assertIn("preserving existing read state on unchecked capture", text)
+        self.assertNotIn("ignoring archive read=true capture", text)
         self.assertNotIn("state.readFingerprint = nil", text)
         self.assertNotIn("state.readAt = nil", text)
         self.assertIn("plaintextHash(for: currentText) != expectedPlaintextHash", text)
+
+    def test_notice_capture_rejects_bulk_state_drop(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("func suspiciousNoticeCaptureRegression", text)
+        self.assertIn("suspicious read state drop", text)
+        self.assertIn("suspicious important state drop", text)
+        self.assertIn("userStateBeforeCapture", text)
+        self.assertIn("fail(\"capture-failed-preserve-user-state: \\(regression)\")", text)
 
     def test_legacy_notice_capture_does_not_clear_existing_read_state(self) -> None:
         text = (
@@ -190,6 +290,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("state.important = importantChecked", text)
         self.assertIn("suspiciousImportantThreshold", text)
         self.assertIn("importantTrueCount >= suspiciousImportantThreshold", text)
+        self.assertIn("$0.rendered.shouldCheckImportant == true", text)
         self.assertIn("capture-failed-preserve-user-state: suspicious bulk", text)
         self.assertNotIn("ignoring archive important=true capture", text)
         self.assertNotIn("ignoring archive important=false capture", text)
@@ -482,8 +583,8 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("let pasteAttributedText = (plainTextPasteEnabled || preformattedPasteOnlyEnabled)", renderer)
         self.assertIn("paste(context: context, text: plaintext, attributedText: pasteAttributedText)", renderer)
         self.assertIn("paste(context: context, text: text, attributedText: pasteAttributedText)", renderer)
-        self.assertIn("ensureChecklistStates(\n        context: context,", renderer)
-        self.assertIn("ensureCheckedItemsStayInPlace(\n        context: context,", renderer)
+        self.assertRegex(renderer, r"ensureChecklistStates\(\s+context: context,")
+        self.assertRegex(renderer, r"ensureCheckedItemsStayInPlace\(\s+context: context,")
         self.assertIn("notes.selection = [note]", renderer)
         self.assertIn("set frontmost to true", renderer)
         self.assertNotIn("text areas of entire contents", renderer)
@@ -843,6 +944,7 @@ console.log(JSON.stringify({ off: runCase("0"), on: runCase("1") }));
         self.assertIn("readability-format-check-failed", text)
         self.assertIn("Native notice note readability format stale", text)
         self.assertIn('"--verify-only"', text)
+        self.assertIn('"NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",\n    true', text)
         self.assertIn("runCommand(command, scriptDir)", text)
         self.assertIn("Verified native notice readability format", text)
         self.assertNotIn("noteReadableStyleMetricsViaAppleScript", text)
@@ -913,6 +1015,9 @@ eval([
   extractFunction("nativeNoticeEnvironmentEnabled"),
   extractFunction("nativeNoticeEnvironmentValue"),
   extractFunction("noticeIdentifierForDigestNotice"),
+  extractFunction("legacyNoticeIdentifiersForDigestNotice"),
+  extractFunction("noticeInteractionStateForDigestNotice"),
+  extractFunction("mergeNoticeInteractionState"),
   extractFunction("oneLineText"),
 ].join("\n"));
 
@@ -987,6 +1092,9 @@ eval([
   extractFunction("nativeNoticeEnvironmentEnabled"),
   extractFunction("nativeNoticeEnvironmentValue"),
   extractFunction("noticeIdentifierForDigestNotice"),
+  extractFunction("legacyNoticeIdentifiersForDigestNotice"),
+  extractFunction("noticeInteractionStateForDigestNotice"),
+  extractFunction("mergeNoticeInteractionState"),
   extractFunction("oneLineText"),
 ].join("\n"));
 
@@ -1028,6 +1136,82 @@ console.log(JSON.stringify({
             '{"primary":["read-1","read-2"],"primaryChecked":[true,true],"archive":["read-1","read-2"]}',
         )
 
+    def test_notice_expected_state_reuses_legacy_url_state_for_article_id(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not available")
+        script = r"""
+const fs = require("fs");
+const path = "src/js/sync_notice_bridge.js";
+const source = fs.readFileSync(path, "utf8");
+
+function extractFunction(name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  if (start < 0) throw new Error(`missing ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  throw new Error(`unterminated ${name}`);
+}
+
+eval([
+  extractFunction("expectedNoticeNativeRenderState"),
+  extractFunction("noticeInteractionStateIsRead"),
+  extractFunction("nativeNoticeEnvironmentEnabled"),
+  extractFunction("nativeNoticeEnvironmentValue"),
+  extractFunction("noticeIdentifierForDigestNotice"),
+  extractFunction("legacyNoticeIdentifiersForDigestNotice"),
+  extractFunction("noticeInteractionStateForDigestNotice"),
+  extractFunction("mergeNoticeInteractionState"),
+  extractFunction("oneLineText"),
+].join("\n"));
+
+const legacyUrl = "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=2&page=2&bwid=435776";
+const digest = {
+  courses: [
+    {
+      course: "Course A",
+      notices: [
+        { url: legacyUrl, article_id: "435776", fingerprint: "fp-current", change_state: "new" },
+        { url: "unread-1", fingerprint: "fp-unread", change_state: "stable" },
+      ],
+    },
+  ],
+};
+const userState = {
+  notices: {
+    [legacyUrl]: { read_at: "2026-06-01T00:00:00+09:00", read_fingerprint: "fp-old" },
+  },
+};
+
+const expected = expectedNoticeNativeRenderState(digest, userState);
+console.log(JSON.stringify({
+  primary: expected.primary.map((notice) => notice.notice_id),
+  archive: expected.archive.map((notice) => notice.notice_id),
+  archiveChecked: expected.archive.map((notice) => notice.should_check_read),
+}));
+"""
+        result = subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(
+            result.stdout.strip(),
+            '{"primary":["unread-1"],"archive":["article:435776"],"archiveChecked":[true]}',
+        )
+
     def test_notice_read_at_survives_fingerprint_drift_for_native_expected_state(self) -> None:
         node = shutil.which("node")
         if node is None:
@@ -1060,6 +1244,9 @@ eval([
   extractFunction("nativeNoticeEnvironmentEnabled"),
   extractFunction("nativeNoticeEnvironmentValue"),
   extractFunction("noticeIdentifierForDigestNotice"),
+  extractFunction("legacyNoticeIdentifiersForDigestNotice"),
+  extractFunction("noticeInteractionStateForDigestNotice"),
+  extractFunction("mergeNoticeInteractionState"),
   extractFunction("oneLineText"),
 ].join("\n"));
 
@@ -1152,6 +1339,9 @@ eval([
   extractFunction("renderStateNoticeKeys"),
   extractFunction("expectedNoticeKeys"),
   extractFunction("noticeIdentifierForDigestNotice"),
+  extractFunction("legacyNoticeIdentifiersForDigestNotice"),
+  extractFunction("noticeInteractionStateForDigestNotice"),
+  extractFunction("mergeNoticeInteractionState"),
   extractFunction("oneLineText"),
 ].join("\n"));
 

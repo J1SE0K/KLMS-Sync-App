@@ -72,9 +72,15 @@ class CourseFileSyncPreviewTests(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertEqual(payload["new_url_count"], 1)
+        self.assertEqual(payload["local_missing_count"], 2)
+        self.assertEqual(payload["recoverable_missing_count"], 0)
         self.assertEqual(payload["fresh_download_candidate_count"], 2)
         self.assertEqual(payload["prune_candidate_count"], 1)
         self.assertEqual(payload["type_mismatch_candidate_count"], 1)
+        self.assertEqual(
+            [item["effective_relative_path"] for item in payload["local_missing_entries"]],
+            ["Course/new.pdf", "Course/slides.pptx"],
+        )
         self.assertIn("Course/slides.pptx", payload["tracked_relative_paths"])
 
     def test_preview_reuses_previous_weekly_layout_paths(self) -> None:
@@ -148,9 +154,61 @@ class CourseFileSyncPreviewTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(payload["new_url_count"], 0)
         self.assertEqual(payload["moved_count"], 2)
+        self.assertEqual(payload["local_missing_count"], 2)
+        self.assertEqual(payload["recoverable_missing_count"], 2)
         self.assertEqual(payload["fresh_download_candidate_count"], 0)
         self.assertEqual(payload["prune_candidate_count"], 1)
+        self.assertEqual(
+            [item["recovery_source_path"] for item in payload["recoverable_missing_entries"]],
+            [str(old_output_path.resolve()), str(old_archive_path.resolve())],
+        )
         self.assertIn("Course/resources/Week Notes.pdf", payload["tracked_relative_paths"])
+
+    def test_preview_does_not_mark_existing_files_as_new_urls_when_log_was_cleared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_root = root / "course_files"
+            archive_root = root / "archive"
+            existing_path = output_root / "Course" / "kept.pdf"
+            existing_path.parent.mkdir(parents=True)
+            existing_path.write_text("already here", encoding="utf-8")
+
+            manifest = [
+                {
+                    "course": "Course",
+                    "filename": "kept.pdf",
+                    "relative_path": "Course/kept.pdf",
+                    "url": "https://klms.kaist.ac.kr/mod/resource/view.php?id=1",
+                }
+            ]
+            manifest_path = root / "manifest.json"
+            log_path = root / "download_log.json"
+            preview_path = root / "preview.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            log_path.write_text(json.dumps({"results": []}), encoding="utf-8")
+
+            with redirect_stdout(StringIO()):
+                rc = build_course_file_sync_preview.main_with_args(
+                    [
+                        "--manifest-json",
+                        str(manifest_path),
+                        "--output-root",
+                        str(output_root),
+                        "--download-log-json",
+                        str(log_path),
+                        "--download-archive-root",
+                        str(archive_root),
+                        "--output-json",
+                        str(preview_path),
+                    ]
+                )
+
+            payload = json.loads(preview_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["new_url_count"], 0)
+        self.assertEqual(payload["local_missing_count"], 0)
+        self.assertEqual(payload["fresh_download_candidate_count"], 0)
 
 
 if __name__ == "__main__":

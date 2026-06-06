@@ -18,8 +18,11 @@ if [ -z "$DOMAIN" ]; then
   exit 64
 fi
 
-if [ -f .env ] && [ "${FORCE:-0}" != "1" ]; then
-  printf '%s\n' ".env already exists. Set FORCE=1 to overwrite." >&2
+SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+ENV_PATH="$SCRIPT_DIR/.env"
+
+if [ -f "$ENV_PATH" ] && [ "${FORCE:-0}" != "1" ]; then
+  printf '%s\n' "$ENV_PATH already exists. Set FORCE=1 to overwrite." >&2
   exit 73
 fi
 
@@ -31,18 +34,37 @@ new_token() {
   fi
 }
 
+display_token() {
+  token="$1"
+  if [ "${SHOW_TOKEN:-0}" = "1" ]; then
+    printf '%s\n' "$token"
+    return
+  fi
+  length="$(printf '%s' "$token" | wc -c | tr -d ' ')"
+  if [ "$length" -le 12 ]; then
+    printf '%s\n' "저장됨"
+    return
+  fi
+  prefix="$(printf '%s' "$token" | cut -c 1-6)"
+  suffix="$(printf '%s' "$token" | rev | cut -c 1-4 | rev)"
+  printf '%s\n' "$prefix...$suffix"
+}
+
 CLIENT_TOKEN="$(new_token)"
 WORKER_TOKEN="$(new_token)"
 
-cat > .env <<EOF
+cat > "$ENV_PATH" <<EOF
 KLMS_RELAY_DOMAIN=$DOMAIN
 KLMS_RELAY_CLIENT_TOKEN=$CLIENT_TOKEN
 KLMS_RELAY_WORKER_TOKEN=$WORKER_TOKEN
 EOF
 
-chmod 600 .env
+chmod 600 "$ENV_PATH"
 
-printf '%s\n' "Created .env"
-printf '%s\n' "서버 주소: https://$DOMAIN"
-printf '%s\n' "클라이언트 토큰: $CLIENT_TOKEN"
-printf '%s\n' "Mac worker 토큰: $WORKER_TOKEN"
+printf '%s\n' "Created $ENV_PATH"
+printf '%s\n' "서버 URL: https://$DOMAIN"
+printf '%s\n' "클라이언트 토큰: $(display_token "$CLIENT_TOKEN")"
+printf '%s\n' "Mac worker 토큰: $(display_token "$WORKER_TOKEN")"
+if [ "${SHOW_TOKEN:-0}" != "1" ]; then
+  printf '%s\n' "전체 토큰은 권한 600의 $ENV_PATH에 저장했습니다. 화면 공유나 로그에 남기지 않도록 기본 출력은 마스킹합니다."
+fi

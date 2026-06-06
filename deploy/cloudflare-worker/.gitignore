@@ -5,3 +5,4 @@
 .relay-worker-token
 .worker-url
 wrangler.local.toml
+.wrangler/

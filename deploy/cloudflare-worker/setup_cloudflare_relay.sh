@@ -10,7 +10,8 @@ DB_NAME="${KLMS_CLOUDFLARE_D1_NAME:-klms-sync-relay}"
 R2_BUCKET_NAME="${KLMS_CLOUDFLARE_R2_BUCKET:-klms-sync-file-relay}"
 CLIENT_TOKEN_FILE="${KLMS_CLOUDFLARE_CLIENT_TOKEN_FILE:-$SCRIPT_DIR/.relay-client-token}"
 WORKER_TOKEN_FILE="${KLMS_CLOUDFLARE_WORKER_TOKEN_FILE:-$SCRIPT_DIR/.relay-worker-token}"
-WRANGLER_TOML="$SCRIPT_DIR/wrangler.toml"
+WRANGLER_TEMPLATE_TOML="$SCRIPT_DIR/wrangler.toml"
+WRANGLER_TOML="${KLMS_CLOUDFLARE_WRANGLER_TOML:-$SCRIPT_DIR/wrangler.local.toml}"
 CLOUDFLARE_ENV_FILE="${KLMS_CLOUDFLARE_ENV_FILE:-$SCRIPT_DIR/.cloudflare.env}"
 ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
 WORKERS_DEV_SUBDOMAIN="${KLMS_CLOUDFLARE_WORKERS_DEV_SUBDOMAIN:-}"
@@ -32,11 +33,96 @@ current_database_id() {
   sed -n 's/^[[:space:]]*database_id[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$WRANGLER_TOML" | tail -n 1
 }
 
+ensure_local_wrangler_config() {
+  if [[ ! -f "$WRANGLER_TOML" ]]; then
+    cp "$WRANGLER_TEMPLATE_TOML" "$WRANGLER_TOML"
+    chmod 600 "$WRANGLER_TOML" 2>/dev/null || true
+    print -- "로컬 Wrangler 설정 생성됨: $WRANGLER_TOML"
+    return
+  fi
+
+  WRANGLER_TEMPLATE_TOML="$WRANGLER_TEMPLATE_TOML" WRANGLER_TOML="$WRANGLER_TOML" node <<'NODE'
+const fs = require("fs");
+
+const templatePath = process.env.WRANGLER_TEMPLATE_TOML;
+const localPath = process.env.WRANGLER_TOML;
+const template = fs.readFileSync(templatePath, "utf8");
+const local = fs.readFileSync(localPath, "utf8");
+
+function topLevelString(text, key) {
+  const match = text.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, "m"));
+  return match?.[1] || "";
+}
+
+function section(text, headerPattern) {
+  const match = text.match(new RegExp(`${headerPattern}[\\s\\S]*?(?=\\n\\[|$)`));
+  return match?.[0] || "";
+}
+
+function stringValue(text, key) {
+  const match = text.match(new RegExp(`^\\s*${key}\\s*=\\s*"([^"]*)"`, "m"));
+  return match?.[1] || "";
+}
+
+function replaceFirstString(text, key, value) {
+  if (!value) return text;
+  return text.replace(new RegExp(`(^\\s*${key}\\s*=\\s*")[^"]*(")`, "m"), (_match, prefix, suffix) => `${prefix}${value}${suffix}`);
+}
+
+function replaceSectionString(text, headerPattern, key, value) {
+  if (!value) return text;
+  return text.replace(new RegExp(`(${headerPattern}[\\s\\S]*?^\\s*${key}\\s*=\\s*")[^"]*(")`, "m"), (_match, prefix, suffix) => `${prefix}${value}${suffix}`);
+}
+
+function vars(text) {
+  const raw = section(text, "\\[vars\\]");
+  const pairs = {};
+  for (const line of raw.split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*"([^"]*)"/);
+    if (match) pairs[match[1]] = match[2];
+  }
+  return pairs;
+}
+
+function replaceVars(text, values) {
+  let next = text;
+  for (const [key, value] of Object.entries(values)) {
+    const pattern = new RegExp(`(^\\s*${key}\\s*=\\s*")[^"]*(")`, "m");
+    if (pattern.test(next)) next = next.replace(pattern, (_match, prefix, suffix) => `${prefix}${value}${suffix}`);
+  }
+  return next;
+}
+
+let next = template;
+
+next = replaceFirstString(next, "name", topLevelString(local, "name"));
+
+const localD1 = section(local, "\\[\\[d1_databases\\]\\]");
+next = replaceSectionString(next, "\\[\\[d1_databases\\]\\]", "database_name", stringValue(localD1, "database_name"));
+next = replaceSectionString(next, "\\[\\[d1_databases\\]\\]", "database_id", stringValue(localD1, "database_id"));
+
+const localR2 = section(local, "\\[\\[r2_buckets\\]\\]");
+next = replaceSectionString(next, "\\[\\[r2_buckets\\]\\]", "bucket_name", stringValue(localR2, "bucket_name"));
+
+next = replaceVars(next, vars(local));
+
+if (next !== local) {
+  fs.writeFileSync(localPath, next);
+  process.stdout.write(`로컬 Wrangler 설정을 템플릿 기준으로 갱신함: ${localPath}\n`);
+}
+NODE
+  chmod 600 "$WRANGLER_TOML" 2>/dev/null || true
+}
+
+wrangler() {
+  npx wrangler --config "$WRANGLER_TOML" "$@"
+}
+
 set_database_id() {
   local database_id="$1"
-  DATABASE_ID="$database_id" node <<'NODE'
+  DATABASE_ID="$database_id" WRANGLER_TOML="$WRANGLER_TOML" node <<'NODE'
 const fs = require("fs");
-const path = "wrangler.toml";
+const path = process.env.WRANGLER_TOML;
 const databaseID = process.env.DATABASE_ID;
 const text = fs.readFileSync(path, "utf8");
 const next = text.replace(
@@ -44,7 +130,7 @@ const next = text.replace(
   `database_id = "${databaseID}"`
 );
 if (text === next) {
-  throw new Error("Could not update database_id in wrangler.toml");
+  throw new Error(`Could not update database_id in ${path}`);
 }
 fs.writeFileSync(path, next);
 NODE
@@ -52,9 +138,9 @@ NODE
 
 set_r2_bucket_name() {
   local bucket_name="$1"
-  R2_BUCKET_NAME="$bucket_name" node <<'NODE'
+  R2_BUCKET_NAME="$bucket_name" WRANGLER_TOML="$WRANGLER_TOML" node <<'NODE'
 const fs = require("fs");
-const path = "wrangler.toml";
+const path = process.env.WRANGLER_TOML;
 const bucketName = process.env.R2_BUCKET_NAME;
 const text = fs.readFileSync(path, "utf8");
 const next = text.replace(
@@ -65,7 +151,7 @@ if (text === next) {
   if (text.includes(`binding = "RELAY_FILES"`) && text.includes(`bucket_name = "${bucketName}"`)) {
     process.exit(0);
   }
-  throw new Error("Could not update RELAY_FILES bucket_name in wrangler.toml");
+  throw new Error(`Could not update RELAY_FILES bucket_name in ${path}`);
 }
 fs.writeFileSync(path, next);
 NODE
@@ -115,11 +201,11 @@ ensure_login() {
     print -u2 -- "D1/R2 생성까지 자동화하려면 Account > D1 > Edit, Account > R2 > Edit 권한도 포함해야 해."
     exit 78
   fi
-  if npx wrangler whoami >/dev/null 2>&1; then
+  if wrangler whoami >/dev/null 2>&1; then
     return
   fi
   print -- "Cloudflare API token 확인 중..."
-  npx wrangler whoami >/dev/null
+  wrangler whoami >/dev/null
 }
 
 ensure_account_id() {
@@ -127,7 +213,7 @@ ensure_account_id() {
     return
   fi
   local whoami_output
-  whoami_output="$(npx wrangler whoami)"
+  whoami_output="$(wrangler whoami)"
   ACCOUNT_ID="$(print -r -- "$whoami_output" | sed -n 's/.*│[[:space:]]*\([0-9a-f]\{32\}\)[[:space:]]*│.*/\1/p' | head -n 1)"
   if [[ -z "$ACCOUNT_ID" ]]; then
     ACCOUNT_ID="$(print -r -- "$whoami_output" | sed -n 's/.*Account ID[^0-9a-f]*\([0-9a-f]\{32\}\).*/\1/p' | head -n 1)"
@@ -198,7 +284,7 @@ ensure_database() {
 
   print -- "D1 DB 생성/조회 중: $DB_NAME"
   local list_json
-  list_json="$(DB_NAME="$DB_NAME" npx wrangler d1 list --json 2>/dev/null || true)"
+  list_json="$(DB_NAME="$DB_NAME" wrangler d1 list --json 2>/dev/null || true)"
   if [[ -n "$list_json" ]]; then
     database_id="$(print -r -- "$list_json" | DB_NAME="$DB_NAME" wrangler_json_field uuid)"
     if [[ -z "$database_id" ]]; then
@@ -208,24 +294,24 @@ ensure_database() {
 
   if [[ -z "$database_id" ]]; then
     local create_output
-    create_output="$(npx wrangler d1 create "$DB_NAME")"
+    create_output="$(wrangler d1 create "$DB_NAME")"
     print -r -- "$create_output"
     database_id="$(print -r -- "$create_output" | sed -n 's/.*database_id[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | tail -n 1)"
   fi
 
   if [[ -z "$database_id" ]]; then
-    print -u2 -- "D1 database_id를 자동으로 찾지 못했어. wrangler 출력의 database_id를 wrangler.toml에 넣고 다시 실행해줘."
+    print -u2 -- "D1 database_id를 자동으로 찾지 못했어. wrangler 출력의 database_id를 $WRANGLER_TOML에 넣고 다시 실행해줘."
     exit 70
   fi
 
   set_database_id "$database_id"
-  print -- "wrangler.toml database_id 적용됨: $database_id"
+  print -- "로컬 Wrangler 설정 database_id 적용됨: $database_id"
 }
 
 ensure_r2_bucket() {
   print -- "R2 파일 릴레이 버킷 생성/조회 중: $R2_BUCKET_NAME"
   local list_json
-  list_json="$(npx wrangler r2 bucket list --json 2>/dev/null || true)"
+  list_json="$(wrangler r2 bucket list --json 2>/dev/null || true)"
   if [[ -n "$list_json" ]]; then
     local found
     found="$(print -r -- "$list_json" | R2_BUCKET_NAME="$R2_BUCKET_NAME" node -e '
@@ -249,7 +335,7 @@ if (found) process.stdout.write(found.name);
   fi
 
   local create_output
-  if ! create_output="$(npx wrangler r2 bucket create "$R2_BUCKET_NAME" 2>&1)"; then
+  if ! create_output="$(wrangler r2 bucket create "$R2_BUCKET_NAME" 2>&1)"; then
     print -r -- "$create_output"
     if print -r -- "$create_output" | grep -qi "already exists"; then
       set_r2_bucket_name "$R2_BUCKET_NAME"
@@ -296,24 +382,24 @@ ensure_tokens() {
   fi
 
   print -- "Cloudflare secret RELAY_CLIENT_TOKEN 적용 중..."
-  printf "%s" "$client_token" | npx wrangler secret put RELAY_CLIENT_TOKEN
+  printf "%s" "$client_token" | wrangler secret put RELAY_CLIENT_TOKEN
   print -- "Cloudflare secret RELAY_WORKER_TOKEN 적용 중..."
-  printf "%s" "$worker_token" | npx wrangler secret put RELAY_WORKER_TOKEN
+  printf "%s" "$worker_token" | wrangler secret put RELAY_WORKER_TOKEN
 }
 
 deploy_worker() {
   print -- "D1 migration 적용 중..."
-  npx wrangler d1 migrations apply "$DB_NAME" --remote
+  wrangler d1 migrations apply "$DB_NAME" --remote
 
   print -- "Worker 배포 중..."
   local deploy_log
   deploy_log="$(mktemp "${TMPDIR:-/tmp}/klms-cloudflare-deploy.XXXXXX")"
-  npx wrangler deploy | tee "$deploy_log"
+  wrangler deploy | tee "$deploy_log"
 
   local worker_url
   worker_url="$(sed -n 's/.*\(https:\/\/[^[:space:]]*workers.dev\).*/\1/p' "$deploy_log" | tail -n 1)"
   if [[ -z "$worker_url" ]]; then
-    worker_url="https://${WORKER_NAME}.$(npx wrangler whoami 2>/dev/null | sed -n 's/.*Account ID: //p' | head -n 1).workers.dev"
+    worker_url="https://${WORKER_NAME}.$(wrangler whoami 2>/dev/null | sed -n 's/.*Account ID: //p' | head -n 1).workers.dev"
   fi
   print -r -- "$worker_url" > "$SCRIPT_DIR/.worker-url"
 
@@ -325,7 +411,7 @@ deploy_worker() {
 
   print
   print -- "배포 완료."
-  print -- "서버 주소: $worker_url"
+  print -- "서버 URL: $worker_url"
   print -- "클라이언트 토큰 파일: $CLIENT_TOKEN_FILE"
   print -- "Mac worker 토큰 파일: $WORKER_TOKEN_FILE"
   print
@@ -333,6 +419,7 @@ deploy_worker() {
 }
 
 ensure_dependencies
+ensure_local_wrangler_config
 ensure_login
 ensure_account_id
 ensure_workers_dev_subdomain

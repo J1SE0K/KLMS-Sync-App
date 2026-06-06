@@ -36,6 +36,7 @@ const defaultStatus = {
   calendarUpdated: 0,
   calendarDeleted: 0,
   phase: "idle",
+  phaseDetail: null,
   loginRequired: false,
   authDigits: null,
   authStatusMessage: null
@@ -48,6 +49,7 @@ const state = {
   running: false,
   message: "",
   items: [],
+  calendarChanges: [],
   recentCommands: [],
   recentActions: [],
   recentFileAccess: [],
@@ -55,11 +57,13 @@ const state = {
   selectedItemId: "",
   sort: "recent",
   query: "",
+  relayEventSince: "",
   busy: false
 };
 
 const $ = (id) => document.getElementById(id);
 let refreshTimer = null;
+let realtimeLoopID = 0;
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
@@ -96,6 +100,11 @@ async function loadConfig() {
     $("relayToken").placeholder = config.hasToken ? `저장됨 (${config.tokenPreview})` : "처음 연결하거나 바꿀 때만 입력";
     state.configured = Boolean(config.relayURL && config.hasToken);
     updateConnectionState(state.configured ? "저장됨" : "대기", state.configured ? "ok" : "muted");
+    if (state.configured) {
+      startRealtimeRefresh();
+    } else {
+      stopRealtimeRefresh();
+    }
   } catch (error) {
     showError(error);
   }
@@ -112,6 +121,7 @@ async function saveConnection(options = {}) {
     $("relayToken").placeholder = config.hasToken ? `저장됨 (${config.tokenPreview})` : "처음 연결하거나 바꿀 때만 입력";
     state.configured = Boolean(config.relayURL && config.hasToken);
     updateConnectionState("저장됨", "ok");
+    startRealtimeRefresh();
     if (!options.quiet) {
       toast("서버 연결 정보를 저장했습니다.");
     }
@@ -148,10 +158,13 @@ async function clearConnection() {
     state.running = false;
     state.message = "";
     state.items = [];
+    state.calendarChanges = [];
     state.recentCommands = [];
     state.recentActions = [];
     state.selectedKind = "all";
     state.selectedItemId = "";
+    state.relayEventSince = "";
+    stopRealtimeRefresh();
     stopAutoRefresh();
     updateConnectionState("대기", "muted");
     renderAll();
@@ -186,7 +199,7 @@ function parseConnectionText() {
 }
 
 function parseConnectionInfo(text) {
-  const url = text.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || "";
+  const url = text.match(/https:\/\/[^\s"'<>]+/i)?.[0] || "";
   const token = text.match(/(?:클라이언트\s*토큰|client\s*(?:relay\s*)?token|iphone\s*토큰|windows\s*토큰)\s*[:=]\s*([A-Za-z0-9._-]{12,})/i)?.[1]
     || text.match(/(?:토큰|token)\s*[:=]\s*([A-Za-z0-9._-]{12,})/i)?.[1]
     || text.match(/\b([a-f0-9]{48,128})\b/i)?.[1]
@@ -222,6 +235,7 @@ async function refreshAll(options = {}) {
     applyStatus(statusResponse);
     state.recentCommands = commandResponse.commands || [];
     state.items = syncData.items || [];
+    state.calendarChanges = syncData.calendarChanges || [];
     state.recentActions = actionResponse.actions || [];
     state.recentFileAccess = fileAccessResponse.requests || [];
     updateConnectionState("연결됨", "ok");
@@ -239,6 +253,41 @@ async function refreshAll(options = {}) {
       setBusy(false);
     }
     scheduleAutoRefresh();
+  }
+}
+
+function startRealtimeRefresh() {
+  if (!state.configured) {
+    stopRealtimeRefresh();
+    return;
+  }
+  const loopID = ++realtimeLoopID;
+  runRealtimeRefreshLoop(loopID);
+}
+
+function stopRealtimeRefresh() {
+  realtimeLoopID += 1;
+}
+
+async function runRealtimeRefreshLoop(loopID) {
+  while (loopID === realtimeLoopID && state.configured) {
+    try {
+      const event = await window.klmsWindows.waitForRelayEvent({ since: state.relayEventSince });
+      if (loopID !== realtimeLoopID || !state.configured) {
+        return;
+      }
+      if (event?.updatedAt) {
+        state.relayEventSince = event.updatedAt;
+      }
+      updateConnectionState("실시간 연결됨", "ok");
+      await refreshAll({ quiet: true, auto: true, realtime: true });
+    } catch (error) {
+      if (loopID !== realtimeLoopID || !state.configured) {
+        return;
+      }
+      updateConnectionState("실시간 재연결 중", "warn");
+      await delay(2000);
+    }
   }
 }
 
@@ -274,6 +323,25 @@ function applyStatus(payload) {
   state.latestCommand = payload.latestCommand || null;
   state.running = Boolean(payload.running);
   state.message = payload.message || "";
+  if (payload.updatedAt && isNewerTimestamp(payload.updatedAt, state.relayEventSince)) {
+    state.relayEventSince = payload.updatedAt;
+  }
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function isNewerTimestamp(candidate, current) {
+  const candidateEpoch = Date.parse(candidate || "");
+  const currentEpoch = Date.parse(current || "");
+  if (!Number.isFinite(candidateEpoch)) {
+    return false;
+  }
+  if (!Number.isFinite(currentEpoch)) {
+    return true;
+  }
+  return candidateEpoch > currentEpoch;
 }
 
 async function createCommand(kind) {
@@ -282,7 +350,12 @@ async function createCommand(kind) {
     await window.klmsWindows.relayRequest({
       path: "/v1/commands",
       method: "POST",
-      body: { kind }
+      body: {
+        kind,
+        options: {
+          updateNoticeNotes: $("updateNoticeNotes")?.checked !== false
+        }
+      }
     });
     toast(`${commandLabel(kind)} 요청을 보냈습니다.`);
     await refreshAll({ quiet: true });
@@ -295,6 +368,10 @@ async function createCommand(kind) {
 
 async function createItemAction(action, item) {
   try {
+    const message = itemActionMessage(action, item);
+    if (message === null) {
+      return;
+    }
     setBusy(true);
     await window.klmsWindows.relayRequest({
       path: "/v1/item-actions",
@@ -303,7 +380,8 @@ async function createItemAction(action, item) {
         action,
         itemID: item.id,
         itemKind: item.kind,
-        itemTitle: item.title
+        itemTitle: item.title,
+        message
       }
     });
     applyOptimisticItemAction(action, item);
@@ -314,6 +392,38 @@ async function createItemAction(action, item) {
   } finally {
     setBusy(false);
   }
+}
+
+function itemActionMessage(action, item) {
+  if (action !== "calendarEdit") {
+    return "";
+  }
+  const title = window.prompt("캘린더 제목", item.title || "");
+  if (title === null) {
+    return null;
+  }
+  const startAt = window.prompt("시작 시간 (예: 2026-06-17 13:00)", item.startAt || "");
+  if (startAt === null) {
+    return null;
+  }
+  const dueAt = window.prompt("종료 시간 (예: 2026-06-17 16:00)", item.dueAt || "");
+  if (dueAt === null) {
+    return null;
+  }
+  const location = window.prompt("장소 (비워 두면 변경하지 않음)", item.location || "");
+  if (location === null) {
+    return null;
+  }
+  if (![title, startAt, dueAt, location].some((value) => String(value || "").trim())) {
+    showError(new Error("수정할 캘린더 내용이 없습니다."));
+    return null;
+  }
+  return JSON.stringify({
+    title,
+    start_at: startAt,
+    due_at: dueAt,
+    location
+  });
 }
 
 async function createFileAccess(item) {
@@ -417,7 +527,7 @@ function renderHeader() {
   const terminal = isTerminalStatus(phase) || isTerminalStatus(state.latestCommand?.status);
   $("phaseLabel").textContent = phaseLabel(phase);
   $("statusTitle").textContent = statusTitle();
-  $("statusSubtitle").textContent = state.message || latestCommandText() || "대기 중인 서버 요청이 없습니다.";
+  $("statusSubtitle").textContent = state.message || runningPhaseDetail() || latestCommandText() || "대기 중인 서버 요청이 없습니다.";
 
   const banner = $("attentionBanner");
   banner.className = "attention hidden";
@@ -699,6 +809,25 @@ function compareItems(lhs, rhs) {
 
 function calendarItems() {
   const updatedAt = state.latestCommand?.updatedAt || "";
+  if (state.calendarChanges.length) {
+    return state.calendarChanges.map((change) => {
+      const startAt = change.start_at || change.startAt || "";
+      const dueAt = change.due_at || change.dueAt || "";
+      return {
+        id: calendarChangeID(change),
+        kind: "calendar",
+        course: change.course || "캘린더",
+        title: change.title || "캘린더 변경",
+        timestamp: startAt || dueAt || updatedAt,
+        status: calendarChangeActionLabel(change.action),
+        detail: [change.calendar, change.bucket, (change.changes || []).join(", ")].filter(Boolean).join(" · "),
+        updatedAt,
+        startAt,
+        dueAt,
+        location: change.location || ""
+      };
+    });
+  }
   const rows = [
     {
       id: "calendar-created",
@@ -724,14 +853,35 @@ function calendarItems() {
       id: "calendar-deleted",
       kind: "calendar",
       course: "캘린더",
-      title: "삭제된 일정",
+      title: "정리된 일정",
       timestamp: updatedAt,
       status: `${state.status.calendarDeleted}개`,
-      detail: "최근 동기화에서 더 이상 필요 없어 삭제한 캘린더 일정입니다.",
+      detail: "최근 동기화에서 더 이상 필요 없어 정리한 캘린더 일정입니다.",
       updatedAt
     }
   ];
   return rows.filter((item) => Number.parseInt(item.status, 10) > 0);
+}
+
+function calendarChangeID(change) {
+  return [
+    change.action || "",
+    change.calendar || "",
+    change.bucket || "",
+    change.identifier || "",
+    change.title || "",
+    change.start_at || change.startAt || "",
+    change.due_at || change.dueAt || "",
+    change.raw || ""
+  ].join("|");
+}
+
+function calendarChangeActionLabel(action) {
+  return {
+    created: "생성",
+    updated: "수정",
+    deleted: "정리됨"
+  }[action] || action || "변경";
 }
 
 function detailActions(item) {
@@ -785,6 +935,10 @@ function detailActions(item) {
     case "file":
       return [
         { title: item.isHidden ? "파일 숨김 해제" : "파일 숨김", action: item.isHidden ? "fileUnhide" : "fileHide" }
+      ];
+    case "calendar":
+      return [
+        { title: "내용 수정", action: "calendarEdit" }
       ];
     default:
       return [];
@@ -844,7 +998,7 @@ function cardDetail(key) {
     return `새 ${state.status.noticeNew} · 수정 ${state.status.noticeUpdated}`;
   }
   if (key === "calendar") {
-    return `생성 ${state.status.calendarCreated} · 수정 ${state.status.calendarUpdated} · 삭제 ${state.status.calendarDeleted}`;
+    return `생성 ${state.status.calendarCreated} · 수정 ${state.status.calendarUpdated} · 정리 ${state.status.calendarDeleted}`;
   }
   if (key === "file") {
     return `새 ${state.status.newFiles} · 정리 ${fileCleanupTotal(state.status)}`;
@@ -867,12 +1021,18 @@ function statusTitle() {
     return `KAIST 인증 번호 ${state.status.authDigits}`;
   }
   if (state.running || phase === "running") {
-    return "Mac에서 동기화 실행 중";
+    const detail = runningPhaseDetail();
+    return detail ? `Mac에서 ${detail} 진행 중` : "Mac에서 동기화 실행 중";
   }
   if (state.latestCommand) {
     return `${commandLabel(state.latestCommand.kind)} · ${commandStatusLabel(state.latestCommand.status)}`;
   }
   return "서버 릴레이 연결됨";
+}
+
+function runningPhaseDetail() {
+  const detail = String(state.status.phaseDetail || "").trim();
+  return detail || "";
 }
 
 function latestCommandText() {
@@ -927,7 +1087,11 @@ function actionLabel(action) {
     noticeHide: "공지 숨김",
     noticeUnhide: "공지 숨김 해제",
     fileHide: "파일 숨김",
-    fileUnhide: "파일 숨김 해제"
+    fileUnhide: "파일 숨김 해제",
+    calendarVerify: "캘린더 상태 확인",
+    calendarApply: "KLMS 기준 반영",
+    calendarEdit: "캘린더 내용 수정",
+    calendarDelete: "KLMS 기준 반영"
   }[action] || action;
 }
 

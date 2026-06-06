@@ -86,6 +86,36 @@ label {
   font-weight: 700;
 }
 
+.check-row {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fafc;
+  color: var(--text);
+}
+
+.check-row input {
+  width: auto;
+  margin-top: 2px;
+}
+
+.check-row strong,
+.check-row small {
+  display: block;
+}
+
+.check-row small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 320px 1fr;

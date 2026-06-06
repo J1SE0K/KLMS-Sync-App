@@ -84,6 +84,11 @@ function run(argv) {
     const helpDeskCalendarEnabled = config.HELP_DESK_CALENDAR_SYNC_ENABLED === "1";
     const remindersEnabled = config.REMINDERS_SYNC_ENABLED === "1";
     const noticeSummaryEnabled = config.NOTICE_SUMMARY_ENABLED !== "0";
+    const noticeNativeRenderEnabled = readEnabledConfig(
+      config,
+      "NOTICE_NATIVE_RENDER_ENABLED",
+      true
+    );
     const noticeNativeStableNoopSkipEnabled = readEnabledConfig(
       config,
       "NOTICE_NATIVE_STABLE_NOOP_SKIP",
@@ -418,6 +423,7 @@ function run(argv) {
         config.NOTICE_AUTO_IMPORTANT_KEYWORDS_APPLY === "1",
       noticeNoteName,
       noticeArchiveNoteName,
+      skipNativeRender: !noticeNativeRenderEnabled,
       noticeNativeStableNoopSkipEnabled,
       noticeNativeAlwaysCaptureStateEnabled,
       noticeNativeDeferStateOnlyRenderEnabled,
@@ -1665,6 +1671,7 @@ function applyRuntimeConfigOverrides(config) {
     "NOTICE_NATIVE_STABLE_NOOP_SKIP",
     "NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER",
     "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER",
+    "NOTICE_NATIVE_RENDER_ENABLED",
     "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
     "NOTICE_NATIVE_POST_RENDER_VERIFY",
     "NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK",

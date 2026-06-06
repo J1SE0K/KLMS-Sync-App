@@ -97,19 +97,19 @@ public enum KLMSEngineCommand: String, CaseIterable, Sendable, Codable, Identifi
         case .fullSync:
             "과제/시험, 공지 메모, 강의 파일을 순서대로 모두 동기화합니다."
         case .coreSync:
-            "과제, 시험, 헬프데스크를 갱신하고 캘린더/미리 알림에 반영합니다."
+            "과제, 시험, 헬프데스크를 갱신하고 캘린더와 미리 알림에 반영합니다."
         case .noticeSync:
-            "KLMS 공지와 확인한 공지 메모를 체크리스트와 문단 형식으로 갱신합니다."
+            "KLMS 공지와 확인한 공지 메모를 체크리스트와 문단 서식으로 갱신합니다."
         case .filesSync:
-            "강의 파일 목록을 새로 읽고 새 파일 보관함, 격리, 삭제 결과를 갱신합니다."
+            "강의 파일 목록을 새로 읽고 새 파일, 격리, 정리 결과를 갱신합니다."
         case .verify:
-            "현재 저장된 상태, 파일 목록, 캘린더/미리 알림 결과가 맞는지 검사합니다."
+            "저장된 상태와 파일 목록, 캘린더/미리 알림 결과가 맞는지 확인합니다."
         case .doctor:
-            "config.env, Python/Node, Safari/Notes/캘린더/미리 알림 권한과 로그인 캐시를 점검합니다."
+            "config.env, Python/Node, Safari/Notes/캘린더/미리 알림 권한과 로그인 상태를 점검합니다."
         case .report:
-            "동기화는 실행하지 않고 앱 대시보드용 요약 파일만 다시 만듭니다."
+            "동기화는 실행하지 않고 앱 대시보드용 요약만 다시 만듭니다."
         case .v2BuildState:
-            "KLMS 캐시로 내부 상태 파일만 재생성합니다. 메모, 캘린더, 미리 알림에는 반영하지 않습니다."
+            "KLMS 캐시로 내부 상태 파일만 다시 만듭니다. 메모, 캘린더, 미리 알림에는 반영하지 않습니다."
         }
     }
 

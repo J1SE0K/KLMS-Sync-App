@@ -43,6 +43,8 @@ def main_with_args(argv: list[str] | None = None) -> int:
     tracked_paths: dict[str, str] = {}
     new_url_entries: list[dict[str, Any]] = []
     moved_entries: list[dict[str, Any]] = []
+    local_missing_entries: list[dict[str, Any]] = []
+    recoverable_missing_entries: list[dict[str, Any]] = []
     fresh_download_candidates: list[dict[str, Any]] = []
     type_mismatch_candidates: list[dict[str, Any]] = []
 
@@ -57,8 +59,6 @@ def main_with_args(argv: list[str] | None = None) -> int:
         if effective_relative_path:
             tracked_paths[canonical_relative_path(effective_relative_path)] = effective_relative_path
 
-        if url and previous is None:
-            new_url_entries.append(compact_entry(item, effective_relative_path))
         if previous is not None:
             previous_relative_path = str(previous.get("relative_path") or "").strip()
             if previous_relative_path and canonical_relative_path(previous_relative_path) != canonical_relative_path(effective_relative_path):
@@ -94,12 +94,24 @@ def main_with_args(argv: list[str] | None = None) -> int:
                 for relative_path in reusable_relative_paths
                 for root in (output_root, archive_root)
             ]
-            if (
-                not output_path_for_entry.is_file()
-                and not archive_path_for_entry.is_file()
-                and not any(path.is_file() for path in reusable_paths)
-            ):
-                fresh_download_candidates.append(compact_entry(item, effective_relative_path))
+            reusable_existing_paths = [
+                path
+                for path in [archive_path_for_entry, *reusable_paths]
+                if path.is_file()
+            ]
+            if url and previous is None and not output_path_for_entry.is_file():
+                new_url_entries.append(compact_entry(item, effective_relative_path))
+            if not output_path_for_entry.is_file():
+                missing_entry = {
+                    **compact_entry(item, effective_relative_path),
+                    "expected_path": str(output_path_for_entry),
+                    "recovery_source_path": str(reusable_existing_paths[0]) if reusable_existing_paths else "",
+                }
+                local_missing_entries.append(missing_entry)
+                if reusable_existing_paths:
+                    recoverable_missing_entries.append(missing_entry)
+                else:
+                    fresh_download_candidates.append(missing_entry)
 
     prune_candidates = sorted(
         relative_path
@@ -116,12 +128,16 @@ def main_with_args(argv: list[str] | None = None) -> int:
         "actual_file_count": len(actual_files),
         "new_url_count": len(new_url_entries),
         "moved_count": len(moved_entries),
+        "local_missing_count": len(local_missing_entries),
+        "recoverable_missing_count": len(recoverable_missing_entries),
         "fresh_download_candidate_count": len(fresh_download_candidates),
         "prune_candidate_count": len(prune_candidates),
         "type_mismatch_candidate_count": len(type_mismatch_candidates),
         "tracked_relative_paths": sorted(tracked_paths.values()),
         "new_url_entries": new_url_entries,
         "moved_entries": moved_entries,
+        "local_missing_entries": local_missing_entries,
+        "recoverable_missing_entries": recoverable_missing_entries,
         "fresh_download_candidates": fresh_download_candidates,
         "prune_candidates": prune_candidates,
         "type_mismatch_candidates": type_mismatch_candidates,
@@ -134,6 +150,8 @@ def main_with_args(argv: list[str] | None = None) -> int:
         f"manifest={payload['manifest_count']} "
         f"new_urls={payload['new_url_count']} "
         f"moved={payload['moved_count']} "
+        f"local_missing={payload['local_missing_count']} "
+        f"recoverable_missing={payload['recoverable_missing_count']} "
         f"fresh_download_candidates={payload['fresh_download_candidate_count']} "
         f"prune_candidates={payload['prune_candidate_count']} "
         f"type_mismatch_candidates={payload['type_mismatch_candidate_count']}"

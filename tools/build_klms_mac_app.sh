@@ -163,13 +163,17 @@ find "$PAYLOAD_ROOT" -type f \
   -exec chmod +x {} +
 
 if git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git_head="$(git -C "$ROOT_DIR" rev-parse --short HEAD)"
-  if [[ -n "$(git -C "$ROOT_DIR" status --porcelain)" ]]; then
-    dirty_suffix="-dirty-$(date +%Y%m%d%H%M%S)"
+  git_head="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+  if [[ -n "$git_head" ]]; then
+    if [[ -n "$(git -C "$ROOT_DIR" status --porcelain 2>/dev/null || true)" ]]; then
+      dirty_suffix="-dirty-$(date +%Y%m%d%H%M%S)"
+    else
+      dirty_suffix=""
+    fi
+    payload_version="$git_head$dirty_suffix"
   else
-    dirty_suffix=""
+    payload_version="local-$(date +%Y%m%d%H%M%S)"
   fi
-  payload_version="$git_head$dirty_suffix"
 else
   payload_version="local-$(date +%Y%m%d%H%M%S)"
 fi

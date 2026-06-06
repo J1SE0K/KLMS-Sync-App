@@ -7,7 +7,7 @@ function run(argv) {
   const options = parseArgs(argv);
   if (!options.manifestPath || !options.outputRoot) {
     throw new Error(
-      "Usage: download_klms_files.js --manifest=/path/to/manifest.json --output-root=/path [--base-url=https://klms.kaist.ac.kr/my/] [--downloads-dir=/path] [--timeout=60] [--max-file-attempts=3] [--retry-delay-seconds=2] [--download-log=/path/to/log.json] [--download-archive-root=/path] [--new-files-root=/path] [--quarantine-root=/path] [--force-download]"
+      "Usage: download_klms_files.js --manifest=/path/to/manifest.json --output-root=/path [--base-url=https://klms.kaist.ac.kr/my/] [--downloads-dir=/path] [--timeout=0] [--download-start-timeout=180] [--download-stall-timeout=900] [--max-file-attempts=3] [--retry-delay-seconds=2] [--download-log=/path/to/log.json] [--download-archive-root=/path] [--new-files-root=/path] [--quarantine-root=/path] [--force-download]"
     );
   }
 
@@ -15,7 +15,15 @@ function run(argv) {
   const outputRoot = standardizePath(options.outputRoot);
   const baseUrl = options.baseUrl || "https://klms.kaist.ac.kr/my/";
   const downloadsDir = standardizePath(options.downloadsDir || `${homeDirectory()}/Downloads`);
-  const timeoutSeconds = Math.max(5, Number(options.timeoutSeconds || "60"));
+  const timeoutSeconds = nonnegativeNumberOrDefault(options.timeoutSeconds, 0);
+  const downloadStartTimeoutSeconds = nonnegativeNumberOrDefault(
+    options.downloadStartTimeoutSeconds,
+    timeoutSeconds > 0 ? timeoutSeconds : 180
+  );
+  const downloadStallTimeoutSeconds = nonnegativeNumberOrDefault(
+    options.downloadStallTimeoutSeconds,
+    900
+  );
   const maxFileAttempts = Math.max(1, Number(options.maxFileAttempts || "3"));
   const retryDelaySeconds = Math.max(0, Number(options.retryDelaySeconds || "2"));
   const backupRoot = standardizePath(options.backupRoot || `${outputRoot}/../runtime/tmp/download_backups`);
@@ -410,9 +418,16 @@ function run(argv) {
             String(entry.url || "")
           );
         const allowAnyDownload = isResourceViewDownload || isMediaPluginDownload;
-        const perFileTimeoutSeconds = isMediaPluginDownload
-          ? Math.max(timeoutSeconds, 600)
+        const perFileTimeoutSeconds =
+          timeoutSeconds > 0 && isMediaPluginDownload
+            ? Math.max(timeoutSeconds, 600)
           : timeoutSeconds;
+        const perFileStartTimeoutSeconds = isMediaPluginDownload
+          ? Math.max(downloadStartTimeoutSeconds, 600)
+          : downloadStartTimeoutSeconds;
+        const perFileStallTimeoutSeconds = isMediaPluginDownload
+          ? Math.max(downloadStallTimeoutSeconds, 900)
+          : downloadStallTimeoutSeconds;
         if (!targetUrl) {
           throw new Error(`Missing URL for ${manifestRelativePath}`);
         }
@@ -502,7 +517,9 @@ function run(argv) {
             beforeEntries,
             beforeEntrySignatures,
             manifestFilename,
-            Math.min(perFileTimeoutSeconds, 30)
+            boundedDownloadProbeSeconds(perFileTimeoutSeconds, 30),
+            Math.min(perFileStartTimeoutSeconds, 30),
+            perFileStallTimeoutSeconds
           );
         }
 
@@ -512,7 +529,7 @@ function run(argv) {
             downloadsDir,
             beforeEntries,
             manifestFilename,
-            Math.min(perFileTimeoutSeconds, 20)
+            boundedDownloadProbeSeconds(perFileTimeoutSeconds, 20)
           );
           downloadedPath = recovered.path;
           auxiliaryPaths = recovered.auxiliaryPaths;
@@ -526,7 +543,9 @@ function run(argv) {
             beforeEntrySignatures,
             manifestFilename,
             perFileTimeoutSeconds,
-            allowAnyDownload
+            allowAnyDownload,
+            perFileStartTimeoutSeconds,
+            perFileStallTimeoutSeconds
           );
         }
 
@@ -541,7 +560,9 @@ function run(argv) {
             beforeEntries,
             beforeEntrySignatures,
             manifestFilename,
-            perFileTimeoutSeconds
+            perFileTimeoutSeconds,
+            perFileStartTimeoutSeconds,
+            perFileStallTimeoutSeconds
           );
         }
 
@@ -576,7 +597,7 @@ function run(argv) {
           if (activeUrl.includes("/login/")) {
             throw new Error(`Login required while downloading: ${entry.url}`);
           }
-          throw new Error(`Timed out waiting for download: ${entry.url}`);
+          throw new Error(`Download did not complete: ${entry.url}`);
         }
 
         activeFilename = baseName(downloadedPath) || manifestFilename;
@@ -824,6 +845,14 @@ function parseArgs(argv) {
       options.timeoutSeconds = arg.slice("--timeout=".length);
       return;
     }
+    if (arg.startsWith("--download-start-timeout=")) {
+      options.downloadStartTimeoutSeconds = arg.slice("--download-start-timeout=".length);
+      return;
+    }
+    if (arg.startsWith("--download-stall-timeout=")) {
+      options.downloadStallTimeoutSeconds = arg.slice("--download-stall-timeout=".length);
+      return;
+    }
     if (arg.startsWith("--max-file-attempts=")) {
       options.maxFileAttempts = arg.slice("--max-file-attempts=".length);
       return;
@@ -879,6 +908,22 @@ function parseArgs(argv) {
     throw new Error(`Unknown argument: ${arg}`);
   });
   return options;
+}
+
+function nonnegativeNumberOrDefault(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) {
+    return fallback;
+  }
+  return number;
+}
+
+function boundedDownloadProbeSeconds(timeoutSeconds, fallbackSeconds) {
+  const timeout = Number(timeoutSeconds);
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    return fallbackSeconds;
+  }
+  return Math.min(timeout, fallbackSeconds);
 }
 
 function buildDownloadPayload(manifestPath, outputRoot, downloadLogPath, results, extra) {
@@ -1141,16 +1186,6 @@ function existingFileRefreshDecision(entry, destinationPath, previousDownloadSta
       current_klms_timestamp_epoch: currentEpoch,
       previous_klms_timestamp_epoch: previousEpoch,
       file_modified_epoch: fileModifiedEpoch || null,
-    };
-  }
-
-  if (currentEpoch > 0 && fileModifiedEpoch > 0 && currentEpoch > fileModifiedEpoch + toleranceSeconds) {
-    return {
-      refresh: true,
-      reason: "klms-timestamp-newer-than-local-file",
-      current_klms_timestamp_epoch: currentEpoch,
-      previous_klms_timestamp_epoch: previousEpoch || null,
-      file_modified_epoch: fileModifiedEpoch,
     };
   }
 
@@ -1438,13 +1473,26 @@ function waitForDownloadedFile(
   beforeEntrySignatures,
   expectedFilename,
   timeoutSeconds,
-  allowAnyDownload
+  allowAnyDownload,
+  downloadStartTimeoutSeconds,
+  downloadStallTimeoutSeconds
 ) {
-  const deadline = Date.now() + timeoutSeconds * 1000;
-  while (Date.now() < deadline) {
+  const startTimeoutSeconds = nonnegativeNumberOrDefault(
+    downloadStartTimeoutSeconds,
+    timeoutSeconds > 0 ? timeoutSeconds : 180
+  );
+  const stallTimeoutSeconds = nonnegativeNumberOrDefault(downloadStallTimeoutSeconds, 900);
+  const startDeadline = Date.now() + Math.max(1, startTimeoutSeconds) * 1000;
+  const hardDeadline = timeoutSeconds > 0 ? Date.now() + timeoutSeconds * 1000 : 0;
+  let sawActiveDownload = false;
+  let activeDownloadMissingSince = 0;
+  let lastProgressSignature = "";
+  let lastProgressAt = Date.now();
+
+  while (true) {
     delay(0.5);
     const afterEntries = listDirectory(downloadsDir);
-    const candidates = afterEntries.filter((name) => {
+    const changedEntries = afterEntries.filter((name) => {
       if (isIgnoredDownloadName(name)) {
         return false;
       }
@@ -1454,16 +1502,31 @@ function waitForDownloadedFile(
       if (beforeEntries.has(name) && beforeSignature === signature) {
         return false;
       }
+      return true;
+    });
+    const activeDownloadCandidates = changedEntries.filter((name) =>
+      transientDownloadMatchesExpected(name, expectedFilename, allowAnyDownload)
+    );
+    const progressSignatures = activeDownloadCandidates.map((name) => {
+      const fullPath = joinPath(downloadsDir, name);
+      return `${name}:${entrySignature(fullPath)}`;
+    });
+    const candidates = changedEntries.filter((name) => {
       if (allowAnyDownload) {
         return freshDownloadFilenameMatchesExpected(name, expectedFilename);
       }
       return isCandidateFilename(name, expectedFilename);
     });
     const finalCandidates = candidates.filter((name) => !name.endsWith(".download"));
+    let unstableFinalCandidateSeen = false;
     for (const candidate of finalCandidates.filter((name) => !isTransientDownloadName(name))) {
       const fullPath = joinPath(downloadsDir, candidate);
       if (isStableFile(fullPath)) {
         return fullPath;
+      }
+      if (fileSize(fullPath) > 0) {
+        unstableFinalCandidateSeen = true;
+        progressSignatures.push(`${candidate}:${entrySignature(fullPath)}`);
       }
     }
     for (const candidate of finalCandidates.filter((name) => isTransientDownloadName(name))) {
@@ -1472,8 +1535,59 @@ function waitForDownloadedFile(
         return fullPath;
       }
     }
+
+    if (activeDownloadCandidates.length > 0 || unstableFinalCandidateSeen) {
+      const progressSignature = progressSignatures.sort().join("|");
+      if (progressSignature && progressSignature !== lastProgressSignature) {
+        lastProgressSignature = progressSignature;
+        lastProgressAt = Date.now();
+      } else if (
+        stallTimeoutSeconds > 0 &&
+        Date.now() - lastProgressAt >= stallTimeoutSeconds * 1000
+      ) {
+        return "";
+      }
+      sawActiveDownload = true;
+      activeDownloadMissingSince = 0;
+      continue;
+    }
+
+    if (!sawActiveDownload) {
+      if (Date.now() >= startDeadline) {
+        return "";
+      }
+      if (hardDeadline > 0 && Date.now() >= hardDeadline) {
+        return "";
+      }
+      continue;
+    }
+
+    if (!activeDownloadMissingSince) {
+      activeDownloadMissingSince = Date.now();
+    }
+    if (Date.now() - activeDownloadMissingSince >= 10 * 1000) {
+      return "";
+    }
   }
-  return "";
+}
+
+function transientDownloadMatchesExpected(filename, expectedFilename, allowAnyDownload) {
+  const actual = String(filename || "").trim();
+  if (!isTransientDownloadName(actual)) {
+    return false;
+  }
+  const finalName = finalFilenameFromTransientDownloadName(actual);
+  if (allowAnyDownload) {
+    return freshDownloadFilenameMatchesExpected(finalName, expectedFilename);
+  }
+  return isCandidateFilename(finalName, expectedFilename);
+}
+
+function finalFilenameFromTransientDownloadName(filename) {
+  return String(filename || "")
+    .trim()
+    .replace(/\.download$/i, "")
+    .replace(/\.drivedownload$/i, "");
 }
 
 function freshDownloadFilenameMatchesExpected(filename, expectedFilename) {
@@ -1500,7 +1614,9 @@ function retryInlineResourceDownload(
   beforeEntries,
   beforeEntrySignatures,
   expectedFilename,
-  timeoutSeconds
+  timeoutSeconds,
+  downloadStartTimeoutSeconds,
+  downloadStallTimeoutSeconds
 ) {
   const inlineUrl = currentTabUrl(windowRef);
   if (!inlineUrl || inlineUrl.includes("/login/")) {
@@ -1525,7 +1641,9 @@ function retryInlineResourceDownload(
     beforeEntrySignatures,
     expectedFilename,
     timeoutSeconds,
-    true
+    true,
+    downloadStartTimeoutSeconds,
+    downloadStallTimeoutSeconds
   );
 }
 
@@ -2158,7 +2276,7 @@ function openReusableDownloadPage(safari, existingWindowRef, targetUrl) {
 }
 
 function navigateTabWithoutFocus(tab, targetUrl, windowRef) {
-  const frontmostApp = frontmostApplicationName();
+  const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
   tab.url = targetUrl;
   if (windowRef && safariBackgroundWindowEnabled()) {
     prepareBackgroundWindow(windowRef);
@@ -2177,6 +2295,9 @@ function frontmostApplicationName() {
 }
 
 function restoreFrontmostApplication(appName) {
+  if (!safariRestoreFrontmostEnabled()) {
+    return;
+  }
   if (!appName || appName === "Safari") {
     return;
   }
@@ -2211,7 +2332,7 @@ function findKlmsWindow(safari, backgroundWindowEnabled) {
 }
 
 function createSafariWindow(safari, targetUrl, backgroundWindowEnabled) {
-  const frontmostApp = frontmostApplicationName();
+  const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
   const previousWindowIds = new Set(listWindowIds(safari));
   const openWindowCommand = [
     "/usr/bin/osascript",
@@ -2258,6 +2379,12 @@ function prepareBackgroundWindow(windowRef) {
   if (!windowRef) {
     return;
   }
+  if (isBackgroundWindow(windowRef)) {
+    return;
+  }
+  if (safariBackgroundWindowMode() !== "minimize") {
+    return;
+  }
   try {
     windowRef.miniaturized = true;
   } catch (_error) {
@@ -2272,6 +2399,17 @@ function isBackgroundWindow(windowRef) {
   }
   const visible = safeValue(() => windowRef.visible());
   return visible === false;
+}
+
+function safariBackgroundWindowMode() {
+  const configured = envValue("KLMS_SAFARI_BACKGROUND_WINDOW_MODE").trim().toLowerCase();
+  if (configured === "offscreen") {
+    return "minimize";
+  }
+  if (["minimize", "none"].includes(configured)) {
+    return configured;
+  }
+  return "minimize";
 }
 
 function waitForWindowUrl(windowRef, targetUrl, timeoutSeconds) {
@@ -3085,19 +3223,33 @@ function ensureSafari(existingSafari) {
   }
 
   const safari = Application("/Applications/Safari.app");
-  const frontmostApp = frontmostApplicationName();
-  safari.launch();
-  delay(0.5);
+  const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
+  if (!safeValue(() => safari.running())) {
+    safari.launch();
+    delay(0.5);
+  }
   restoreFrontmostApplication(frontmostApp);
   return safari;
 }
 
 function safariBackgroundWindowEnabled() {
-  return envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1");
+  return envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1") && safariBackgroundWindowMode() !== "none";
 }
 
 function safariReuseExistingWindowEnabled() {
-  return envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0");
+  return envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "1");
+}
+
+function safariNonIntrusiveModeEnabled() {
+  return envFlag("KLMS_APP_NON_INTRUSIVE_SAFARI", "0") || envFlag("KLMS_APP_RUN", "0");
+}
+
+function safariRestoreFrontmostEnabled() {
+  const configured = envValue("KLMS_SAFARI_RESTORE_FRONTMOST_ENABLED");
+  if (configured) {
+    return envFlag("KLMS_SAFARI_RESTORE_FRONTMOST_ENABLED", "1");
+  }
+  return !safariNonIntrusiveModeEnabled();
 }
 
 function envValue(name) {

@@ -150,9 +150,38 @@ prompt_login_if_needed() {
     /usr/bin/osascript \
       -e 'on run argv' \
       -e 'set targetUrl to item 1 of argv' \
-      -e 'tell application "Safari" to make new document with properties {URL:targetUrl}' \
+      -e 'set shouldMinimize to true' \
+      -e 'if (count of argv) > 1 and item 2 of argv is "0" then set shouldMinimize to false' \
+      -e 'set reuseKlmsWindow to true' \
+      -e 'if (count of argv) > 2 and item 3 of argv is "0" then set reuseKlmsWindow to false' \
+      -e 'tell application "Safari"' \
+      -e 'try' \
+      -e 'set targetWindow to missing value' \
+      -e 'if reuseKlmsWindow then' \
+      -e 'repeat with candidateWindow in windows' \
+      -e 'try' \
+      -e 'set candidateUrl to URL of current tab of candidateWindow' \
+      -e 'if (candidateUrl contains "klms.kaist.ac.kr" or candidateUrl contains "sso.kaist.ac.kr") and ((not shouldMinimize) or miniaturized of candidateWindow) then' \
+      -e 'set targetWindow to candidateWindow' \
+      -e 'exit repeat' \
+      -e 'end if' \
+      -e 'end try' \
+      -e 'end repeat' \
+      -e 'end if' \
+      -e 'if targetWindow is missing value then' \
+      -e 'make new document with properties {URL:targetUrl}' \
+      -e 'set targetWindow to front window' \
+      -e 'else' \
+      -e 'set URL of current tab of targetWindow to targetUrl' \
+      -e 'end if' \
+      -e 'if shouldMinimize then set miniaturized of targetWindow to true' \
+      -e 'on error' \
+      -e 'make new document with properties {URL:targetUrl}' \
+      -e 'if shouldMinimize then set miniaturized of front window to true' \
+      -e 'end try' \
+      -e 'end tell' \
       -e 'end run' \
-      "$KLMS_LOGIN_URL" >/dev/null 2>&1 || true
+      "$KLMS_LOGIN_URL" "${KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED:-1}" "${KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED:-1}" >/dev/null 2>&1 || true
   fi
   print -r -- "$prompt_now_epoch" > "$LOGIN_PROMPT_EPOCH_FILE"
   print -r -- "${auth_digits:-}" > "$LOGIN_PROMPT_DIGITS_FILE"

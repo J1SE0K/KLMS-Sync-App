@@ -11,8 +11,8 @@ struct KLMSMacApp: App {
         WindowGroup("KLMS Sync") {
             MenuBarRootView(model: model)
                 .frame(
-                    minWidth: 460,
-                    idealWidth: 820,
+                    minWidth: 540,
+                    idealWidth: 900,
                     maxWidth: .infinity,
                     minHeight: 520,
                     idealHeight: 820,
@@ -67,7 +67,7 @@ private enum KLMSWindowMetrics {
     }
 
     static var menuBarWidth: CGFloat {
-        min(620, max(360, visibleFrame.width - 48))
+        min(760, max(440, visibleFrame.width - 48))
     }
 
     static var menuBarHeight: CGFloat {
@@ -75,10 +75,10 @@ private enum KLMSWindowMetrics {
     }
 
     static var settingsWidth: CGFloat {
-        min(560, max(420, visibleFrame.width - 64))
+        min(760, max(620, visibleFrame.width - 64))
     }
 
     static var settingsHeight: CGFloat {
-        min(660, max(420, visibleFrame.height - 96))
+        min(700, max(520, visibleFrame.height - 96))
     }
 }

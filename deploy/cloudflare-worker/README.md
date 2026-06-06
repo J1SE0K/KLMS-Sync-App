@@ -31,7 +31,7 @@ npm run setup
 - Cloudflare 로그인 확인
 - D1 DB 생성/조회
 - R2 임시 파일 버킷 생성/조회
-- `wrangler.toml`의 `database_id` 적용
+- ignored `wrangler.local.toml` 생성 후 `database_id` 적용
 - 클라이언트/worker 릴레이 토큰 생성 및 Cloudflare secret 등록
 - D1 migration 적용
 - Worker 배포
@@ -58,7 +58,10 @@ npm run setup
 cd deploy/cloudflare-worker
 npm install
 npx wrangler login
+test -f wrangler.local.toml || cp wrangler.toml wrangler.local.toml
 ```
+
+`wrangler.local.toml`이 이미 있으면 덮어쓰지 않는다. 기존 파일을 덮으면 붙여 넣은 `database_id`가 placeholder로 돌아갈 수 있다.
 
 ## 2. D1 DB 생성
 
@@ -66,7 +69,8 @@ npx wrangler login
 npx wrangler d1 create klms-sync-relay
 ```
 
-출력에 나오는 `database_id`를 `wrangler.toml`의 `database_id`에 넣는다.
+출력에 나오는 `database_id`를 ignored `wrangler.local.toml`의 `database_id`에 넣는다.
+tracked 기본 파일인 `wrangler.toml`에는 실제 Cloudflare 리소스 ID를 넣지 않는다.
 
 ```toml
 [[d1_databases]]
@@ -87,8 +91,8 @@ WORKER_TOKEN="$(openssl rand -hex 32)"
 Worker secret에 저장한다.
 
 ```sh
-printf "%s" "$CLIENT_TOKEN" | npx wrangler secret put RELAY_CLIENT_TOKEN
-printf "%s" "$WORKER_TOKEN" | npx wrangler secret put RELAY_WORKER_TOKEN
+printf "%s" "$CLIENT_TOKEN" | npx wrangler --config wrangler.local.toml secret put RELAY_CLIENT_TOKEN
+printf "%s" "$WORKER_TOKEN" | npx wrangler --config wrangler.local.toml secret put RELAY_WORKER_TOKEN
 ```
 
 수동 입력 프롬프트를 쓰는 경우에도 secret 이름은 `RELAY_CLIENT_TOKEN`, `RELAY_WORKER_TOKEN`이다.
@@ -96,13 +100,13 @@ printf "%s" "$WORKER_TOKEN" | npx wrangler secret put RELAY_WORKER_TOKEN
 ## 4. DB migration 적용
 
 ```sh
-npx wrangler d1 migrations apply klms-sync-relay --remote
+npx wrangler --config wrangler.local.toml d1 migrations apply klms-sync-relay --remote
 ```
 
 ## 5. 배포
 
 ```sh
-npx wrangler deploy
+npx wrangler --config wrangler.local.toml deploy
 ```
 
 배포 후 주소는 보통 아래 형태다.
@@ -156,10 +160,11 @@ Cloudflare 자체 billing hard cap은 별도로 보장되지 않으므로, Dashb
 수동으로 R2 bucket을 만들려면:
 
 ```sh
-npx wrangler r2 bucket create klms-sync-file-relay
+npx wrangler --config wrangler.local.toml r2 bucket create klms-sync-file-relay
 ```
 
-`wrangler.toml`에는 아래 binding이 필요하다.
+`wrangler.toml` 템플릿과 `wrangler.local.toml`에는 아래 binding이 필요하다.
+실제 bucket 이름을 개인용으로 바꿨다면 ignored `wrangler.local.toml`에만 반영한다.
 
 ```toml
 [[r2_buckets]]
@@ -174,8 +179,8 @@ bucket_name = "klms-sync-file-relay"
 ```sh
 cp .dev.vars.example .dev.vars
 # .dev.vars의 RELAY_CLIENT_TOKEN, RELAY_WORKER_TOKEN 수정
-npx wrangler d1 migrations apply klms-sync-relay --local
-npx wrangler dev
+npx wrangler --config wrangler.local.toml d1 migrations apply klms-sync-relay --local
+npx wrangler --config wrangler.local.toml dev
 ```
 
 다른 터미널에서 확인한다.

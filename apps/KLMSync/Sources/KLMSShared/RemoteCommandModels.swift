@@ -17,8 +17,10 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
     case coreSync
     case noticeSync
     case filesSync
+    case verify
     case doctor
     case report
+    case v2BuildState
 
     public var id: String { rawValue }
 
@@ -32,10 +34,14 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
             .noticeSync
         case .filesSync:
             .filesSync
+        case .verify:
+            .verify
         case .doctor:
             .doctor
         case .report:
             .report
+        case .v2BuildState:
+            .v2BuildState
         }
     }
 
@@ -54,12 +60,14 @@ public enum RemoteCommandKind: String, Codable, CaseIterable, Sendable, Identifi
             self = .noticeSync
         case .filesSync:
             self = .filesSync
+        case .verify:
+            self = .verify
         case .doctor:
             self = .doctor
         case .report:
             self = .report
-        case .verify, .v2BuildState:
-            return nil
+        case .v2BuildState:
+            self = .v2BuildState
         }
     }
 }
@@ -69,6 +77,7 @@ public enum RemoteCommandStatus: String, Codable, Sendable {
     case running
     case completed
     case failed
+    case cancelled
     case macUnavailable
 
     public var displayName: String {
@@ -81,8 +90,10 @@ public enum RemoteCommandStatus: String, Codable, Sendable {
             "완료"
         case .failed:
             "실패"
+        case .cancelled:
+            "취소됨"
         case .macUnavailable:
-            "Mac 응답 없음"
+            "Mac 확인 지연"
         }
     }
 
@@ -90,7 +101,7 @@ public enum RemoteCommandStatus: String, Codable, Sendable {
         switch self {
         case .pending, .running:
             true
-        case .completed, .failed, .macUnavailable:
+        case .completed, .failed, .cancelled, .macUnavailable:
             false
         }
     }
@@ -100,8 +111,29 @@ public enum RemoteCommandStatus: String, Codable, Sendable {
     }
 }
 
+public struct RemoteRunOptions: Codable, Sendable, Equatable {
+    public var updateNoticeNotes: Bool
+    public var dryRun: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case updateNoticeNotes
+        case dryRun
+    }
+
+    public init(updateNoticeNotes: Bool = true, dryRun: Bool = false) {
+        self.updateNoticeNotes = updateNoticeNotes
+        self.dryRun = dryRun
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        updateNoticeNotes = try container.decodeIfPresent(Bool.self, forKey: .updateNoticeNotes) ?? true
+        dryRun = try container.decodeIfPresent(Bool.self, forKey: .dryRun) ?? false
+    }
+}
+
 public struct RemoteRunCommand: Identifiable, Codable, Sendable, Equatable {
-    public static let macUnavailableInterval: TimeInterval = 5 * 60
+    public static let macUnavailableInterval: TimeInterval = 60 * 60
     public static let staleExecutionInterval: TimeInterval = 60 * 60
 
     public var id: UUID
@@ -112,6 +144,19 @@ public struct RemoteRunCommand: Identifiable, Codable, Sendable, Equatable {
     public var lastExitCode: Int?
     public var loginRequired: Bool
     public var summary: SanitizedRemoteStatus
+    public var options: RemoteRunOptions
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case kind
+        case status
+        case createdAt
+        case updatedAt
+        case lastExitCode
+        case loginRequired
+        case summary
+        case options
+    }
 
     public init(
         id: UUID = UUID(),
@@ -121,7 +166,8 @@ public struct RemoteRunCommand: Identifiable, Codable, Sendable, Equatable {
         updatedAt: Date = Date(),
         lastExitCode: Int? = nil,
         loginRequired: Bool = false,
-        summary: SanitizedRemoteStatus = SanitizedRemoteStatus()
+        summary: SanitizedRemoteStatus = SanitizedRemoteStatus(),
+        options: RemoteRunOptions = RemoteRunOptions()
     ) {
         self.id = id
         self.kind = kind
@@ -131,6 +177,20 @@ public struct RemoteRunCommand: Identifiable, Codable, Sendable, Equatable {
         self.lastExitCode = lastExitCode
         self.loginRequired = loginRequired
         self.summary = summary
+        self.options = options
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(RemoteCommandKind.self, forKey: .kind)
+        status = try container.decode(RemoteCommandStatus.self, forKey: .status)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        lastExitCode = try container.decodeIfPresent(Int.self, forKey: .lastExitCode)
+        loginRequired = try container.decodeIfPresent(Bool.self, forKey: .loginRequired) ?? false
+        summary = try container.decodeIfPresent(SanitizedRemoteStatus.self, forKey: .summary) ?? SanitizedRemoteStatus()
+        options = try container.decodeIfPresent(RemoteRunOptions.self, forKey: .options) ?? RemoteRunOptions()
     }
 
     public func displayStatus(
@@ -168,6 +228,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
     public var calendarUpdated: Int
     public var calendarDeleted: Int
     public var phase: String
+    public var phaseDetail: String?
     public var loginRequired: Bool
     public var authDigits: String?
     public var authStatusMessage: String?
@@ -189,6 +250,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         case calendarUpdated
         case calendarDeleted
         case phase
+        case phaseDetail
         case loginRequired
         case authDigits
         case authStatusMessage
@@ -211,6 +273,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         calendarUpdated: Int = 0,
         calendarDeleted: Int = 0,
         phase: String = "",
+        phaseDetail: String? = nil,
         loginRequired: Bool = false,
         authDigits: String? = nil,
         authStatusMessage: String? = nil
@@ -231,6 +294,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         self.calendarUpdated = calendarUpdated
         self.calendarDeleted = calendarDeleted
         self.phase = phase
+        self.phaseDetail = phaseDetail
         self.loginRequired = loginRequired
         self.authDigits = authDigits
         self.authStatusMessage = authStatusMessage
@@ -254,6 +318,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         calendarUpdated = snapshot.syncReport?.calendar.updated ?? 0
         calendarDeleted = snapshot.syncReport?.calendar.deleted ?? 0
         self.phase = phase
+        phaseDetail = nil
         authDigits = nil
         authStatusMessage = nil
         loginRequired = snapshot.loginPromptDetected
@@ -282,6 +347,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         calendarUpdated = container.decodeIfPresentDefault(Int.self, forKey: .calendarUpdated, default: 0)
         calendarDeleted = container.decodeIfPresentDefault(Int.self, forKey: .calendarDeleted, default: 0)
         phase = container.decodeIfPresentDefault(String.self, forKey: .phase, default: "")
+        phaseDetail = try container.decodeIfPresent(String.self, forKey: .phaseDetail)
         loginRequired = container.decodeIfPresentDefault(Bool.self, forKey: .loginRequired, default: false)
         authDigits = try container.decodeIfPresent(String.self, forKey: .authDigits)
         authStatusMessage = try container.decodeIfPresent(String.self, forKey: .authStatusMessage)
@@ -662,6 +728,7 @@ public struct LocalRemoteResponse: Codable, Sendable, Equatable {
     public var status: SanitizedRemoteStatus
     public var latestCommand: RemoteRunCommand?
     public var running: Bool
+    public var updatedAt: String?
     public var requestNonce: String?
     public var responseIssuedAtEpochSeconds: Int64?
     public var signature: String?
@@ -672,6 +739,7 @@ public struct LocalRemoteResponse: Codable, Sendable, Equatable {
         status: SanitizedRemoteStatus = SanitizedRemoteStatus(),
         latestCommand: RemoteRunCommand? = nil,
         running: Bool = false,
+        updatedAt: String? = nil,
         requestNonce: String? = nil,
         responseIssuedAtEpochSeconds: Int64? = nil,
         signature: String? = nil
@@ -681,6 +749,7 @@ public struct LocalRemoteResponse: Codable, Sendable, Equatable {
         self.status = status
         self.latestCommand = latestCommand
         self.running = running
+        self.updatedAt = updatedAt
         self.requestNonce = requestNonce
         self.responseIssuedAtEpochSeconds = responseIssuedAtEpochSeconds
         self.signature = signature
@@ -774,6 +843,7 @@ private struct LocalRemoteResponseSignatureBody: Codable {
     var status: SanitizedRemoteStatus
     var latestCommand: RemoteRunCommand?
     var running: Bool
+    var updatedAt: String?
 }
 
 public enum LocalRemoteClientError: LocalizedError, Sendable {
@@ -792,7 +862,7 @@ public enum LocalRemoteClientError: LocalizedError, Sendable {
         case .invalidPort:
             "포트 번호가 올바르지 않습니다."
         case .emptyHost:
-            "Mac 주소를 입력해 주세요."
+            "Mac 호스트 이름 또는 IP를 입력해 주세요."
         case .emptyToken:
             "Mac 앱에 표시된 토큰을 입력해 주세요."
         case let .connectionFailed(message):
@@ -816,24 +886,39 @@ public struct ServerRelayConnectionInfo: Sendable, Equatable {
 
     public static func parse(
         urlText: String,
-        tokenText: String = ""
+        tokenText: String = "",
+        requiresPublicHTTPS: Bool = true
     ) -> ServerRelayConnectionInfo? {
         let rawURLText = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
         let rawTokenText = tokenText.trimmingCharacters(in: .whitespacesAndNewlines)
         let combinedText = [rawURLText, rawTokenText]
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
-        let extractedURL = labeledValue(in: combinedText, labels: ["서버 주소", "서버", "Relay URL", "Server URL", "URL"])
+        let extractedURL = labeledValue(in: combinedText, labels: ["서버 URL", "서버 주소", "서버", "Relay URL", "Server URL", "URL"])
             ?? firstURL(in: combinedText)
             ?? rawURLText
         let extractedToken = rawTokenText.isEmpty
             ? labeledToken(in: combinedText, labels: Self.clientTokenLabels + Self.legacyTokenLabels)
             : rawTokenText
-        guard let baseURL = normalizedBaseURL(extractedURL),
+        let normalizedURL = requiresPublicHTTPS
+            ? normalizedPublicRelayURL(extractedURL)
+            : normalizedBaseURL(extractedURL)
+        guard let baseURL = normalizedURL,
               let token = extractedToken?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else {
             return nil
         }
         return ServerRelayConnectionInfo(baseURL: baseURL, token: token)
+    }
+
+    public static func normalizedPublicRelayURL(_ value: String) -> URL? {
+        guard let url = normalizedBaseURL(value),
+              url.scheme?.lowercased() == "https",
+              let host = url.host,
+              !isPrivateOrLocalHost(host),
+              !looksSensitiveURLText(value) else {
+            return nil
+        }
+        return url
     }
 
     public static let clientTokenLabels = [
@@ -845,6 +930,8 @@ public struct ServerRelayConnectionInfo: Sendable, Equatable {
     ]
 
     public static let workerTokenLabels = [
+        "Mac 전용 토큰",
+        "Mac 처리 토큰",
         "Mac worker 토큰",
         "Worker Token",
         "Worker Relay Token",
@@ -915,31 +1002,145 @@ public struct ServerRelayConnectionInfo: Sendable, Equatable {
         guard let url = components.url else { return nil }
         return url
     }
+
+    public static func isPrivateOrLocalHost(_ host: String) -> Bool {
+        var lowered = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if lowered.hasPrefix("[") && lowered.hasSuffix("]") {
+            lowered.removeFirst()
+            lowered.removeLast()
+        }
+        if let zoneIndex = lowered.firstIndex(of: "%") {
+            lowered = String(lowered[..<zoneIndex])
+        }
+        while lowered.hasSuffix(".") {
+            lowered.removeLast()
+        }
+        if lowered == "localhost" || lowered.hasSuffix(".localhost") || lowered.hasSuffix(".local") {
+            return true
+        }
+        if let octets = ipv4Octets(lowered) {
+            return isPrivateIPv4(octets)
+        }
+        if lowered.contains(":") {
+            return isPrivateIPv6(lowered)
+        }
+        return false
+    }
+
+    private static func ipv4Octets(_ host: String) -> [Int]? {
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return nil }
+        var octets: [Int] = []
+        for part in parts {
+            guard !part.isEmpty,
+                  part.allSatisfy({ $0.isNumber }),
+                  let value = Int(part),
+                  (0...255).contains(value) else {
+                return nil
+            }
+            octets.append(value)
+        }
+        return octets
+    }
+
+    private static func isPrivateIPv4(_ octets: [Int]) -> Bool {
+        guard octets.count == 4 else { return false }
+        if octets[0] == 10 || octets[0] == 127 {
+            return true
+        }
+        if octets[0] == 0 || octets[0] >= 224 {
+            return true
+        }
+        if octets[0] == 100 && (64...127).contains(octets[1]) {
+            return true
+        }
+        if octets[0] == 169 && octets[1] == 254 {
+            return true
+        }
+        if octets[0] == 192 && octets[1] == 168 {
+            return true
+        }
+        if octets[0] == 172 && (16...31).contains(octets[1]) {
+            return true
+        }
+        if octets[0] == 198 && (18...19).contains(octets[1]) {
+            return true
+        }
+        return false
+    }
+
+    private static func isPrivateIPv6(_ host: String) -> Bool {
+        if let mappedIPv4 = host.split(separator: ":").last.map(String.init),
+           let octets = ipv4Octets(mappedIPv4) {
+            return isPrivateIPv4(octets)
+        }
+
+        if host == "::" || host == "::1" || host == "0:0:0:0:0:0:0:0" || host == "0:0:0:0:0:0:0:1" {
+            return true
+        }
+
+        let hextets = host.split(separator: ":", omittingEmptySubsequences: false)
+        guard let firstText = hextets.first(where: { !$0.isEmpty }),
+              let first = Int(firstText, radix: 16) else {
+            return false
+        }
+        if (first & 0xfe00) == 0xfc00 {
+            return true
+        }
+        if (first & 0xffc0) == 0xfe80 {
+            return true
+        }
+        if (first & 0xff00) == 0xff00 {
+            return true
+        }
+        if first == 0x2001,
+           hextets.dropFirst().first(where: { !$0.isEmpty }).map(String.init) == "db8" {
+            return true
+        }
+        return false
+    }
+
+    private static func looksSensitiveURLText(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        if lowered.contains("/users/") || lowered.contains("address") || text.contains("주소") || text.contains("집주소") {
+            return true
+        }
+        if text.range(of: #"[가-힣A-Za-z0-9_.-]+(로|길)\s*\d{1,4}(\s*-\s*\d{1,4})?"#, options: .regularExpression) != nil {
+            return true
+        }
+        return false
+    }
 }
 
 public enum ServerRelayClientError: LocalizedError, Sendable {
     case emptyURL
     case emptyToken
     case insecureURL(String)
+    case privateURL(String)
     case invalidURL
     case invalidResponse
+    case invalidResponseDetail(String)
     case serverRejected(Int, String)
 
     public var errorDescription: String? {
         switch self {
         case .emptyURL:
-            return "서버 주소를 입력해 주세요."
+            return "서버 URL을 입력해 주세요."
         case .emptyToken:
             return "서버 토큰을 입력해 주세요."
         case let .insecureURL(host):
-            return "\(host)은 HTTPS가 아닙니다. 외부 접속용 서버는 HTTPS 주소를 사용해야 합니다."
+            return "\(host)은 HTTPS가 아닙니다. 외부 접속용 서버는 HTTPS URL을 사용해야 합니다."
+        case let .privateURL(host):
+            return "\(host)은 로컬/사설 네트워크 주소입니다. 서버 릴레이에는 공개 HTTPS URL만 사용해 주세요."
         case .invalidURL:
-            return "서버 주소 형식이 올바르지 않습니다."
+            return "서버 URL 형식이 올바르지 않습니다."
         case .invalidResponse:
             return "서버 응답을 해석하지 못했습니다."
+        case let .invalidResponseDetail(detail):
+            return detail.isEmpty ? "서버 응답을 해석하지 못했습니다." : "서버 응답을 해석하지 못했습니다. \(detail)"
         case let .serverRejected(statusCode, message):
             if statusCode == 401 {
-                return "서버 인증 실패: 서버 주소와 클라이언트/워커 토큰이 최신 값인지 확인해 주세요."
+                return "서버 인증 실패: 서버 URL과 클라이언트/워커 토큰이 최신 값인지 확인해 주세요."
             }
             return message.isEmpty ? "서버 요청이 실패했습니다." : message
         }
@@ -965,6 +1166,117 @@ public struct ServerRelayCommandListResponse: Codable, Sendable, Equatable {
     }
 }
 
+public struct ServerRelayRequestLogEntry: Codable, Sendable, Equatable, Identifiable {
+    public var id: UUID
+    public var source: String
+    public var action: String
+    public var method: String
+    public var path: String
+    public var status: String
+    public var message: String
+    public var createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case source
+        case action
+        case method
+        case path
+        case status
+        case message
+        case createdAt
+    }
+
+    public init(
+        id: UUID = UUID(),
+        source: String = "",
+        action: String = "",
+        method: String = "",
+        path: String = "",
+        status: String = "",
+        message: String = "",
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.source = source
+        self.action = action
+        self.method = method
+        self.path = path
+        self.status = status
+        self.message = message
+        self.createdAt = createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        action = try container.decodeIfPresent(String.self, forKey: .action) ?? ""
+        method = try container.decodeIfPresent(String.self, forKey: .method) ?? ""
+        path = try container.decodeIfPresent(String.self, forKey: .path) ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+    }
+
+    public var sourceDisplayName: String {
+        let normalized = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? "알 수 없음" : normalized
+    }
+
+    public var statusDisplayName: String {
+        switch status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "accepted", "created", "queued", "ok", "completed":
+            return "기록됨"
+        case "running":
+            return "처리 중"
+        case "failed", "rejected", "error":
+            return "실패"
+        default:
+            return status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "기록됨" : status
+        }
+    }
+}
+
+public struct ServerRelayRequestLogResponse: Codable, Sendable, Equatable {
+    public var entries: [ServerRelayRequestLogEntry]
+
+    public init(entries: [ServerRelayRequestLogEntry] = []) {
+        self.entries = entries
+    }
+}
+
+public struct ServerRelayLogClearResponse: Codable, Sendable, Equatable {
+    public var clearedAt: Date
+    public var commands: Int
+    public var itemActions: Int
+    public var settingActions: Int
+    public var fileAccessRequests: Int
+    public var requestLogEntries: Int
+
+    public init(
+        clearedAt: Date = Date(),
+        commands: Int = 0,
+        itemActions: Int = 0,
+        settingActions: Int = 0,
+        fileAccessRequests: Int = 0,
+        requestLogEntries: Int = 0
+    ) {
+        self.clearedAt = clearedAt
+        self.commands = commands
+        self.itemActions = itemActions
+        self.settingActions = settingActions
+        self.fileAccessRequests = fileAccessRequests
+        self.requestLogEntries = requestLogEntries
+    }
+}
+
+public enum ServerRelayLogClearScope: String, Sendable, Equatable {
+    case all
+    case requestLog
+    case fileAccess
+}
+
 public struct ServerRelayStatusUpdate: Codable, Sendable, Equatable {
     public var status: SanitizedRemoteStatus
     public var latestCommand: RemoteRunCommand?
@@ -987,10 +1299,39 @@ public struct ServerRelayStatusUpdate: Codable, Sendable, Equatable {
 public struct ServerRelaySyncData: Codable, Sendable, Equatable {
     public var generatedAt: String
     public var items: [ServerRelaySyncItem]
+    public var dryRunReports: [DryRunReport]
+    public var calendarChanges: [CalendarChange]
+    public var settings: [ServerRelaySetting]
 
-    public init(generatedAt: String = "", items: [ServerRelaySyncItem] = []) {
+    enum CodingKeys: String, CodingKey {
+        case generatedAt
+        case items
+        case dryRunReports
+        case calendarChanges
+        case settings
+    }
+
+    public init(
+        generatedAt: String = "",
+        items: [ServerRelaySyncItem] = [],
+        dryRunReports: [DryRunReport] = [],
+        calendarChanges: [CalendarChange] = [],
+        settings: [ServerRelaySetting] = []
+    ) {
         self.generatedAt = generatedAt
         self.items = items
+        self.dryRunReports = dryRunReports
+        self.calendarChanges = calendarChanges
+        self.settings = settings
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt) ?? ""
+        items = try container.decodeIfPresent([ServerRelaySyncItem].self, forKey: .items) ?? []
+        dryRunReports = try container.decodeIfPresent([DryRunReport].self, forKey: .dryRunReports) ?? []
+        calendarChanges = try container.decodeIfPresent([CalendarChange].self, forKey: .calendarChanges) ?? []
+        settings = try container.decodeIfPresent([ServerRelaySetting].self, forKey: .settings) ?? []
     }
 }
 
@@ -998,6 +1339,9 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var kind: String
     public var course: String
+    public var academicTerm: String
+    public var academicYear: Int?
+    public var academicSemester: String
     public var title: String
     public var timestamp: String
     public var status: String
@@ -1012,6 +1356,9 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
         case id
         case kind
         case course
+        case academicTerm
+        case academicYear
+        case academicSemester
         case title
         case timestamp
         case status
@@ -1027,6 +1374,9 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
         id: String,
         kind: String,
         course: String = "",
+        academicTerm: String = "",
+        academicYear: Int? = nil,
+        academicSemester: String = "",
         title: String,
         timestamp: String = "",
         status: String = "",
@@ -1040,6 +1390,9 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
         self.id = id
         self.kind = kind
         self.course = course
+        self.academicTerm = academicTerm
+        self.academicYear = academicYear
+        self.academicSemester = academicSemester
         self.title = title
         self.timestamp = timestamp
         self.status = status
@@ -1056,6 +1409,9 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
         id = try container.decode(String.self, forKey: .id)
         kind = try container.decode(String.self, forKey: .kind)
         course = try container.decodeIfPresent(String.self, forKey: .course) ?? ""
+        academicTerm = try container.decodeIfPresent(String.self, forKey: .academicTerm) ?? ""
+        academicYear = try container.decodeIfPresent(Int.self, forKey: .academicYear)
+        academicSemester = try container.decodeIfPresent(String.self, forKey: .academicSemester) ?? ""
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp) ?? ""
         status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
@@ -1100,6 +1456,11 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
     case noticeUnhide
     case fileHide
     case fileUnhide
+    case fileTrash
+    case calendarVerify
+    case calendarApply
+    case calendarEdit
+    case calendarDelete
 
     public var id: String { rawValue }
 
@@ -1135,6 +1496,16 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
             "파일 숨김"
         case .fileUnhide:
             "파일 숨김 해제"
+        case .fileTrash:
+            "파일 휴지통"
+        case .calendarVerify:
+            "캘린더 상태 확인"
+        case .calendarApply:
+            "KLMS 기준 반영"
+        case .calendarEdit:
+            "캘린더 내용 수정"
+        case .calendarDelete:
+            "KLMS 기준 반영"
         }
     }
 }
@@ -1290,10 +1661,188 @@ public struct ServerRelayFileAccessListResponse: Codable, Sendable, Equatable {
     }
 }
 
+public enum ServerRelaySettingValueKind: String, Codable, Sendable {
+    case bool
+    case number
+    case text
+    case choice
+}
+
+public struct ServerRelaySetting: Codable, Sendable, Equatable, Identifiable {
+    public var id: String { key }
+    public var key: String
+    public var title: String
+    public var value: String
+    public var valueKind: ServerRelaySettingValueKind
+    public var options: [String]
+    public var editable: Bool
+    public var updatedAt: String
+
+    public init(
+        key: String,
+        title: String,
+        value: String = "",
+        valueKind: ServerRelaySettingValueKind = .text,
+        options: [String] = [],
+        editable: Bool = true,
+        updatedAt: String = ServerRelaySyncItem.isoTimestamp()
+    ) {
+        self.key = key
+        self.title = title
+        self.value = value
+        self.valueKind = valueKind
+        self.options = options
+        self.editable = editable
+        self.updatedAt = updatedAt
+    }
+
+    public var boolValue: Bool {
+        ["1", "true", "yes", "on"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+}
+
+public enum ServerRelaySettingActionStatus: String, Codable, Sendable {
+    case pending
+    case running
+    case completed
+    case failed
+    case macUnavailable
+
+    public var displayName: String {
+        switch self {
+        case .pending:
+            "대기 중"
+        case .running:
+            "처리 중"
+        case .completed:
+            "완료"
+        case .failed:
+            "실패"
+        case .macUnavailable:
+            "Mac 응답 없음"
+        }
+    }
+}
+
+public struct ServerRelaySettingAction: Codable, Sendable, Equatable, Identifiable {
+    public var id: UUID
+    public var key: String
+    public var value: String
+    public var title: String
+    public var status: ServerRelaySettingActionStatus
+    public var createdAt: Date
+    public var updatedAt: Date
+    public var message: String
+
+    public init(
+        id: UUID = UUID(),
+        key: String,
+        value: String,
+        title: String = "",
+        status: ServerRelaySettingActionStatus = .pending,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        message: String = ""
+    ) {
+        self.id = id
+        self.key = key
+        self.value = value
+        self.title = title
+        self.status = status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.message = message
+    }
+}
+
+public struct ServerRelaySettingActionListResponse: Codable, Sendable, Equatable {
+    public var actions: [ServerRelaySettingAction]
+
+    public init(actions: [ServerRelaySettingAction] = []) {
+        self.actions = actions
+    }
+}
+
+public struct ServerRelayCancelRequest: Codable, Sendable, Equatable {
+    public var requested: Bool
+    public var requestedAt: Date?
+    public var commandID: UUID?
+    public var message: String
+
+    public init(
+        requested: Bool = false,
+        requestedAt: Date? = nil,
+        commandID: UUID? = nil,
+        message: String = ""
+    ) {
+        self.requested = requested
+        self.requestedAt = requestedAt
+        self.commandID = commandID
+        self.message = message
+    }
+}
+
+public struct ServerRelayWorkerInbox: Codable, Sendable, Equatable {
+    public var statusResponse: LocalRemoteResponse
+    public var recentRequestLog: [ServerRelayRequestLogEntry]
+    public var recentFileAccessRequests: [ServerRelayFileAccessRequest]
+    public var pendingFileAccessRequests: [ServerRelayFileAccessRequest]
+    public var pendingSettingActions: [ServerRelaySettingAction]
+    public var pendingItemActions: [ServerRelayItemAction]
+    public var pendingCommands: [RemoteRunCommand]
+    public var cancelRequest: ServerRelayCancelRequest
+
+    enum CodingKeys: String, CodingKey {
+        case statusResponse
+        case recentRequestLog
+        case recentFileAccessRequests
+        case pendingFileAccessRequests
+        case pendingSettingActions
+        case pendingItemActions
+        case pendingCommands
+        case cancelRequest
+    }
+
+    public init(
+        statusResponse: LocalRemoteResponse = LocalRemoteResponse(),
+        recentRequestLog: [ServerRelayRequestLogEntry] = [],
+        recentFileAccessRequests: [ServerRelayFileAccessRequest] = [],
+        pendingFileAccessRequests: [ServerRelayFileAccessRequest] = [],
+        pendingSettingActions: [ServerRelaySettingAction] = [],
+        pendingItemActions: [ServerRelayItemAction] = [],
+        pendingCommands: [RemoteRunCommand] = [],
+        cancelRequest: ServerRelayCancelRequest = ServerRelayCancelRequest()
+    ) {
+        self.statusResponse = statusResponse
+        self.recentRequestLog = recentRequestLog
+        self.recentFileAccessRequests = recentFileAccessRequests
+        self.pendingFileAccessRequests = pendingFileAccessRequests
+        self.pendingSettingActions = pendingSettingActions
+        self.pendingItemActions = pendingItemActions
+        self.pendingCommands = pendingCommands
+        self.cancelRequest = cancelRequest
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        statusResponse = try container.decodeIfPresent(LocalRemoteResponse.self, forKey: .statusResponse) ?? LocalRemoteResponse()
+        recentRequestLog = try container.decodeIfPresent([ServerRelayRequestLogEntry].self, forKey: .recentRequestLog) ?? []
+        recentFileAccessRequests = try container.decodeIfPresent([ServerRelayFileAccessRequest].self, forKey: .recentFileAccessRequests) ?? []
+        pendingFileAccessRequests = try container.decodeIfPresent([ServerRelayFileAccessRequest].self, forKey: .pendingFileAccessRequests) ?? []
+        pendingSettingActions = try container.decodeIfPresent([ServerRelaySettingAction].self, forKey: .pendingSettingActions) ?? []
+        pendingItemActions = try container.decodeIfPresent([ServerRelayItemAction].self, forKey: .pendingItemActions) ?? []
+        pendingCommands = try container.decodeIfPresent([RemoteRunCommand].self, forKey: .pendingCommands) ?? []
+        cancelRequest = try container.decodeIfPresent(ServerRelayCancelRequest.self, forKey: .cancelRequest) ?? ServerRelayCancelRequest()
+    }
+}
+
 public struct ServerRelayCommandStore: RemoteCommandStore {
     public var baseURL: URL
     public var token: String
     public var allowsInsecureHTTP: Bool
+    private static let requestTimeout: TimeInterval = 30
+    private static let longPollRequestTimeout: TimeInterval = 45
+    private static let uploadTimeout: TimeInterval = 12 * 60 * 60
 
     public init(
         baseURL: URL,
@@ -1315,7 +1864,11 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         token: String,
         allowsInsecureHTTP: Bool = false
     ) throws {
-        guard let info = ServerRelayConnectionInfo.parse(urlText: urlText, tokenText: token) else {
+        guard let info = ServerRelayConnectionInfo.parse(
+            urlText: urlText,
+            tokenText: token,
+            requiresPublicHTTPS: !allowsInsecureHTTP
+        ) else {
             if urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 throw ServerRelayClientError.emptyURL
             }
@@ -1354,6 +1907,14 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
             queryItems: [URLQueryItem(name: "limit", value: "\(limit)")]
         )
         return response.commands
+    }
+
+    @discardableResult
+    public func clearLogs(scope: ServerRelayLogClearScope = .all) async throws -> ServerRelayLogClearResponse {
+        let queryItems = scope == .all
+            ? []
+            : [URLQueryItem(name: "scope", value: scope.rawValue)]
+        return try await send(method: "DELETE", path: "/v1/logs", queryItems: queryItems)
     }
 
     public func update(_ command: RemoteRunCommand) async throws {
@@ -1407,6 +1968,116 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         )
     }
 
+    public func requestCancel(
+        commandID: UUID,
+        message: String = "iPhone에서 실행 중단 요청"
+    ) async throws -> ServerRelayCancelRequest {
+        try await send(
+            method: "POST",
+            path: "/v1/cancel",
+            body: ServerRelayCancelRequest(
+                requested: true,
+                requestedAt: Date(),
+                commandID: commandID,
+                message: message
+            )
+        )
+    }
+
+    public func fetchCancelRequest() async throws -> ServerRelayCancelRequest {
+        do {
+            return try await send(method: "GET", path: "/v1/cancel")
+        } catch {
+            guard Self.isMissingOptionalEndpoint(error) else { throw error }
+            return ServerRelayCancelRequest(requested: false)
+        }
+    }
+
+    public func clearCancelRequest() async throws -> ServerRelayCancelRequest {
+        do {
+            return try await send(method: "DELETE", path: "/v1/cancel")
+        } catch {
+            guard Self.isMissingOptionalEndpoint(error) else { throw error }
+            return ServerRelayCancelRequest(requested: false)
+        }
+    }
+
+    public func fetchWorkerInbox(since updatedAt: String? = nil, waitSeconds: Int = 0) async throws -> ServerRelayWorkerInbox {
+        var queryItems: [URLQueryItem] = []
+        if let updatedAt,
+           !updatedAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            queryItems.append(URLQueryItem(name: "since", value: updatedAt))
+        }
+        if waitSeconds > 0 {
+            queryItems.append(URLQueryItem(name: "waitSeconds", value: "\(waitSeconds)"))
+        }
+        do {
+            return try await send(
+                method: "GET",
+                path: "/v1/worker/inbox",
+                queryItems: queryItems,
+                bodyData: nil,
+                timeout: waitSeconds > 0 ? Self.longPollRequestTimeout : nil
+            )
+        } catch {
+            guard Self.isMissingOptionalEndpoint(error) else { throw error }
+            async let statusResponse = fetchStatusResponse()
+            async let recentFileAccessRequests = fetchRecentFileAccessRequests(limit: 8)
+            async let pendingFileAccessRequests = fetchPendingFileAccessRequests()
+            async let pendingSettingActions = fetchPendingSettingActions()
+            async let pendingItemActions = fetchPendingItemActions()
+            async let pendingCommands = fetchPending()
+            async let cancelRequest = fetchCancelRequest()
+            async let recentRequestLog = fetchRecentRequestLog(limit: 20)
+            return try await ServerRelayWorkerInbox(
+                statusResponse: statusResponse,
+                recentRequestLog: recentRequestLog,
+                recentFileAccessRequests: recentFileAccessRequests,
+                pendingFileAccessRequests: pendingFileAccessRequests,
+                pendingSettingActions: pendingSettingActions,
+                pendingItemActions: pendingItemActions,
+                pendingCommands: pendingCommands,
+                cancelRequest: cancelRequest
+            )
+        }
+    }
+
+    public func fetchRecentRequestLog(limit: Int = 20) async throws -> [ServerRelayRequestLogEntry] {
+        do {
+            let response: ServerRelayRequestLogResponse = try await send(
+                method: "GET",
+                path: "/v1/request-log/recent",
+                queryItems: [URLQueryItem(name: "limit", value: "\(limit)")]
+            )
+            return response.entries
+        } catch {
+            guard Self.isMissingOptionalEndpoint(error) else { throw error }
+            return []
+        }
+    }
+
+    public func eventStreamRequest(role: String) -> URLRequest {
+        let normalizedRole = role.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "client"
+            : role.trimmingCharacters(in: .whitespacesAndNewlines)
+        let httpURL = endpoint(
+            "/v1/events",
+            queryItems: [URLQueryItem(name: "role", value: normalizedRole)]
+        )
+        var components = URLComponents(url: httpURL, resolvingAgainstBaseURL: false)
+        if components?.scheme?.lowercased() == "https" {
+            components?.scheme = "wss"
+        } else if components?.scheme?.lowercased() == "http" {
+            components?.scheme = "ws"
+        }
+        var request = URLRequest(url: components?.url ?? httpURL)
+        request.timeoutInterval = Self.longPollRequestTimeout
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Self.clientSourceName, forHTTPHeaderField: "X-KLMS-Client")
+        return request
+    }
+
     public func createItemAction(_ action: ServerRelayItemAction) async throws {
         let _: ServerRelayItemAction = try await send(
             method: "POST",
@@ -1436,6 +2107,49 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         let _: ServerRelayItemAction = try await send(
             method: "PUT",
             path: "/v1/item-actions/\(action.id.uuidString)",
+            body: action
+        )
+    }
+
+    public func createSettingAction(_ action: ServerRelaySettingAction) async throws {
+        let _: ServerRelaySettingAction = try await send(
+            method: "POST",
+            path: "/v1/setting-actions",
+            body: action
+        )
+    }
+
+    public func fetchPendingSettingActions() async throws -> [ServerRelaySettingAction] {
+        do {
+            let response: ServerRelaySettingActionListResponse = try await send(
+                method: "GET",
+                path: "/v1/setting-actions/pending"
+            )
+            return response.actions
+        } catch {
+            guard Self.isMissingOptionalEndpoint(error) else { throw error }
+            return []
+        }
+    }
+
+    public func fetchRecentSettingActions(limit: Int = 20) async throws -> [ServerRelaySettingAction] {
+        do {
+            let response: ServerRelaySettingActionListResponse = try await send(
+                method: "GET",
+                path: "/v1/setting-actions/recent",
+                queryItems: [URLQueryItem(name: "limit", value: "\(limit)")]
+            )
+            return response.actions
+        } catch {
+            guard Self.isMissingOptionalEndpoint(error) else { throw error }
+            return []
+        }
+    }
+
+    public func updateSettingAction(_ action: ServerRelaySettingAction) async throws {
+        let _: ServerRelaySettingAction = try await send(
+            method: "PUT",
+            path: "/v1/setting-actions/\(action.id.uuidString)",
             body: action
         )
     }
@@ -1484,9 +2198,11 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
             "/v1/file-access/\(fileRequest.id.uuidString)/upload",
             queryItems: []
         ))
+        request.timeoutInterval = Self.uploadTimeout
         request.httpMethod = "PUT"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Self.clientSourceName, forHTTPHeaderField: "X-KLMS-Client")
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         request.setValue(
             filename.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "klms-file",
@@ -1503,9 +2219,15 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
             throw ServerRelayClientError.serverRejected(httpResponse.statusCode, message)
         }
         do {
-            return try JSONDecoder.klmsLocalRemote.decode(ServerRelayFileAccessRequest.self, from: data)
+            return try Self.decodeResponse(
+                ServerRelayFileAccessRequest.self,
+                from: data,
+                path: request.url?.path ?? "/v1/file-access/:id/upload"
+            )
         } catch {
-            throw ServerRelayClientError.invalidResponse
+            throw ServerRelayClientError.invalidResponseDetail(
+                Self.decodeFailureSummary(error: error, data: data, path: request.url?.path)
+            )
         }
     }
 
@@ -1531,12 +2253,15 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         method: String,
         path: String,
         queryItems: [URLQueryItem],
-        bodyData: Data?
+        bodyData: Data?,
+        timeout: TimeInterval? = nil
     ) async throws -> T {
         var request = URLRequest(url: endpoint(path, queryItems: queryItems))
+        request.timeoutInterval = timeout ?? Self.requestTimeout
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(Self.clientSourceName, forHTTPHeaderField: "X-KLMS-Client")
         if let bodyData {
             request.httpBody = bodyData
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -1552,10 +2277,39 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
             throw ServerRelayClientError.serverRejected(httpResponse.statusCode, message)
         }
         do {
-            return try JSONDecoder.klmsLocalRemote.decode(T.self, from: data)
+            return try Self.decodeResponse(T.self, from: data, path: path)
         } catch {
-            throw ServerRelayClientError.invalidResponse
+            throw ServerRelayClientError.invalidResponseDetail(
+                Self.decodeFailureSummary(error: error, data: data, path: path)
+            )
         }
+    }
+
+    private static func decodeResponse<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        path: String
+    ) throws -> T {
+        try JSONDecoder.klmsLocalRemote.decode(type, from: data)
+    }
+
+    private static func decodeFailureSummary(error: Error, data: Data, path: String?) -> String {
+        var parts: [String] = []
+        if let path, !path.isEmpty {
+            parts.append("경로: \(path)")
+        }
+        if let decodingError = error as? DecodingError {
+            parts.append(decodingError.klmsShortDescription)
+        } else {
+            parts.append(error.localizedDescription)
+        }
+        if let preview = String(data: data.prefix(240), encoding: .utf8)?
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !preview.isEmpty {
+            parts.append("응답: \(preview)")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func endpoint(_ path: String, queryItems: [URLQueryItem]) -> URL {
@@ -1572,12 +2326,22 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         return components.url ?? url
     }
 
+    private static func isMissingOptionalEndpoint(_ error: Error) -> Bool {
+        guard case let ServerRelayClientError.serverRejected(statusCode, message) = error else {
+            return false
+        }
+        return statusCode == 404 && message.localizedCaseInsensitiveContains("not found")
+    }
+
     private func validateURL() throws {
         guard let scheme = baseURL.scheme?.lowercased(), !scheme.isEmpty,
               let host = baseURL.host, !host.isEmpty else {
             throw ServerRelayClientError.invalidURL
         }
-        guard scheme == "https" || allowsInsecureHTTP || Self.isPrivateHost(host) else {
+        if !allowsInsecureHTTP, ServerRelayConnectionInfo.isPrivateOrLocalHost(host) {
+            throw ServerRelayClientError.privateURL(host)
+        }
+        guard scheme == "https" || allowsInsecureHTTP else {
             throw ServerRelayClientError.insecureURL(host)
         }
     }
@@ -1591,26 +2355,16 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         return components?.url ?? url
     }
 
-    private static func isPrivateHost(_ host: String) -> Bool {
-        let lowered = host.lowercased()
-        if lowered == "localhost" || lowered.hasSuffix(".local") {
-            return true
-        }
-        let octets = lowered.split(separator: ".").compactMap { Int($0) }
-        guard octets.count == 4 else {
-            return false
-        }
-        if octets[0] == 10 || octets[0] == 127 {
-            return true
-        }
-        if octets[0] == 192 && octets[1] == 168 {
-            return true
-        }
-        if octets[0] == 172 && (16...31).contains(octets[1]) {
-            return true
-        }
-        return false
+    private static var clientSourceName: String {
+        #if os(iOS)
+        return "iPhone"
+        #elseif os(macOS)
+        return "Mac"
+        #else
+        return "Swift"
+        #endif
     }
+
 }
 
 private struct ServerRelayErrorResponse: Decodable {
@@ -1775,8 +2529,50 @@ public extension JSONEncoder {
 public extension JSONDecoder {
     static var klmsLocalRemote: JSONDecoder {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            if let date = KLMSRemoteDateParser.date(from: value) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid ISO-8601 date: \(value)"
+            )
+        }
         return decoder
+    }
+}
+
+private enum KLMSRemoteDateParser {
+    static func date(from value: String) -> Date? {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: value) {
+            return date
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)
+    }
+}
+
+private extension DecodingError {
+    var klmsShortDescription: String {
+        switch self {
+        case let .typeMismatch(_, context),
+             let .valueNotFound(_, context),
+             let .keyNotFound(_, context),
+             let .dataCorrupted(context):
+            let path = context.codingPath.map(\.stringValue).joined(separator: ".")
+            if path.isEmpty {
+                return context.debugDescription
+            }
+            return "\(path): \(context.debugDescription)"
+        @unknown default:
+            return localizedDescription
+        }
     }
 }
 

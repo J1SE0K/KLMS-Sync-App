@@ -98,6 +98,7 @@ class VerifySyncStateTests(unittest.TestCase):
                                 "notices": [
                                     {
                                         "url": exam_url,
+                                        "article_id": "10",
                                         "title": "기말 고사 건 / On Final-term Exam",
                                         "body_text": "The exam will be taken on the 4th of June from 14h 30 to 15h 30.",
                                     }
@@ -108,6 +109,7 @@ class VerifySyncStateTests(unittest.TestCase):
                                 "notices": [
                                     {
                                         "url": project_url,
+                                        "article_id": "11",
                                         "title": "Project 3 Announcement",
                                         "body_text": "deadline 5/31 23:59",
                                     }
@@ -121,8 +123,8 @@ class VerifySyncStateTests(unittest.TestCase):
             )
             render_state = {
                 "rendered_notices": [
-                    {"notice_id": exam_url},
-                    {"notice_id": project_url},
+                    {"notice_id": "article:10"},
+                    {"notice_id": "article:11"},
                 ]
             }
             (cache_dir / "notice_note_render_state.json").write_text(
@@ -232,12 +234,78 @@ class VerifySyncStateTests(unittest.TestCase):
 
         self.assertEqual(payload["status"], "ok")
         checks = {item["name"]: item for item in payload["checks"]}
+        self.assertEqual(checks["notice_render_complete"]["status"], "ok")
         self.assertEqual(checks["notice_exam_detection_covered_by_state"]["status"], "ok")
         self.assertEqual(checks["manifest_assignment_detection_covered_by_state"]["status"], "ok")
         self.assertEqual(checks["reminders_assignment_count_matches_state"]["status"], "ok")
         self.assertEqual(payload["reminders"]["assignment_active_count"], 2)
         self.assertEqual(payload["reminders"]["alert_active_count"], 4)
         self.assertEqual(payload["reminders"]["total_active_count"], 6)
+
+    def test_notice_assignment_update_can_be_covered_by_logical_state_item(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_dir = root / "cache"
+            cache_dir.mkdir()
+            notice_url = "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=435776"
+            state_json = root / "state.json"
+            (cache_dir / "notice_digest.json").write_text(
+                json.dumps(
+                    {
+                        "generated_at": "2026-06-01 20:00 KST",
+                        "courses": [
+                            {
+                                "course": "알고리즘 개론",
+                                "notices": [
+                                    {
+                                        "url": notice_url,
+                                        "title": "Update on due date of Written Assignment 4 (June 9th, 23:59)",
+                                        "body_text": "The due date of Written Assignment 4 is June 9th, 23:59.",
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (cache_dir / "notice_note_render_state.json").write_text(
+                json.dumps({"rendered_notices": [{"notice_id": notice_url}]}),
+                encoding="utf-8",
+            )
+            state_json.write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "generated_at": "2026-06-01 20:00 KST",
+                        "content": {
+                            "kind": "success",
+                            "assignments": [
+                                {
+                                    "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1234595",
+                                    "course": "알고리즘 개론",
+                                    "title": "Written Assignment 4",
+                                    "sync_due": "2026-06-09T23:59:00+09:00",
+                                }
+                            ],
+                            "assignment_records": [],
+                            "completed_assignments": [],
+                            "assignment_candidates": [],
+                            "exam_items": [],
+                            "exam_candidates": [],
+                            "help_desk_items": [],
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            payload = verify_sync_state.build_payload(cache_dir, state_json, None)
+
+        checks = {item["name"]: item for item in payload["checks"]}
+        self.assertEqual(checks["notice_assignment_detection_covered_by_state"]["status"], "ok")
 
     def test_likely_exam_notice_missing_from_state_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

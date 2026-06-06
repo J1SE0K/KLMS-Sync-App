@@ -5,11 +5,15 @@ public struct FileSyncPreview: Decodable, Sendable, Equatable {
     public var actualFileCount: Int
     public var newURLCount: Int
     public var movedCount: Int
+    public var localMissingCount: Int
+    public var recoverableMissingCount: Int
     public var freshDownloadCandidateCount: Int
     public var pruneCandidateCount: Int
     public var typeMismatchCandidateCount: Int
     public var newURLEntries: [FilePreviewEntry]
     public var movedEntries: [FilePreviewEntry]
+    public var localMissingEntries: [FilePreviewEntry]
+    public var recoverableMissingEntries: [FilePreviewEntry]
     public var freshDownloadCandidates: [FilePreviewEntry]
     public var pruneCandidates: [String]
     public var typeMismatchCandidates: [FilePreviewEntry]
@@ -19,11 +23,15 @@ public struct FileSyncPreview: Decodable, Sendable, Equatable {
         case actualFileCount = "actual_file_count"
         case newURLCount = "new_url_count"
         case movedCount = "moved_count"
+        case localMissingCount = "local_missing_count"
+        case recoverableMissingCount = "recoverable_missing_count"
         case freshDownloadCandidateCount = "fresh_download_candidate_count"
         case pruneCandidateCount = "prune_candidate_count"
         case typeMismatchCandidateCount = "type_mismatch_candidate_count"
         case newURLEntries = "new_url_entries"
         case movedEntries = "moved_entries"
+        case localMissingEntries = "local_missing_entries"
+        case recoverableMissingEntries = "recoverable_missing_entries"
         case freshDownloadCandidates = "fresh_download_candidates"
         case pruneCandidates = "prune_candidates"
         case typeMismatchCandidates = "type_mismatch_candidates"
@@ -34,11 +42,15 @@ public struct FileSyncPreview: Decodable, Sendable, Equatable {
         actualFileCount: Int = 0,
         newURLCount: Int = 0,
         movedCount: Int = 0,
+        localMissingCount: Int = 0,
+        recoverableMissingCount: Int = 0,
         freshDownloadCandidateCount: Int = 0,
         pruneCandidateCount: Int = 0,
         typeMismatchCandidateCount: Int = 0,
         newURLEntries: [FilePreviewEntry] = [],
         movedEntries: [FilePreviewEntry] = [],
+        localMissingEntries: [FilePreviewEntry] = [],
+        recoverableMissingEntries: [FilePreviewEntry] = [],
         freshDownloadCandidates: [FilePreviewEntry] = [],
         pruneCandidates: [String] = [],
         typeMismatchCandidates: [FilePreviewEntry] = []
@@ -47,11 +59,15 @@ public struct FileSyncPreview: Decodable, Sendable, Equatable {
         self.actualFileCount = actualFileCount
         self.newURLCount = newURLCount
         self.movedCount = movedCount
+        self.localMissingCount = localMissingCount
+        self.recoverableMissingCount = recoverableMissingCount
         self.freshDownloadCandidateCount = freshDownloadCandidateCount
         self.pruneCandidateCount = pruneCandidateCount
         self.typeMismatchCandidateCount = typeMismatchCandidateCount
         self.newURLEntries = newURLEntries
         self.movedEntries = movedEntries
+        self.localMissingEntries = localMissingEntries
+        self.recoverableMissingEntries = recoverableMissingEntries
         self.freshDownloadCandidates = freshDownloadCandidates
         self.pruneCandidates = pruneCandidates
         self.typeMismatchCandidates = typeMismatchCandidates
@@ -63,11 +79,15 @@ public struct FileSyncPreview: Decodable, Sendable, Equatable {
         actualFileCount = container.decodeIfPresentDefault(Int.self, forKey: .actualFileCount, default: 0)
         newURLCount = container.decodeIfPresentDefault(Int.self, forKey: .newURLCount, default: 0)
         movedCount = container.decodeIfPresentDefault(Int.self, forKey: .movedCount, default: 0)
+        localMissingCount = container.decodeIfPresentDefault(Int.self, forKey: .localMissingCount, default: 0)
+        recoverableMissingCount = container.decodeIfPresentDefault(Int.self, forKey: .recoverableMissingCount, default: 0)
         freshDownloadCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .freshDownloadCandidateCount, default: 0)
         pruneCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .pruneCandidateCount, default: 0)
         typeMismatchCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .typeMismatchCandidateCount, default: 0)
         newURLEntries = container.decodeIfPresentDefault([FilePreviewEntry].self, forKey: .newURLEntries, default: [])
         movedEntries = container.decodeIfPresentDefault([FilePreviewEntry].self, forKey: .movedEntries, default: [])
+        localMissingEntries = container.decodeIfPresentDefault([FilePreviewEntry].self, forKey: .localMissingEntries, default: [])
+        recoverableMissingEntries = container.decodeIfPresentDefault([FilePreviewEntry].self, forKey: .recoverableMissingEntries, default: [])
         freshDownloadCandidates = container.decodeIfPresentDefault([FilePreviewEntry].self, forKey: .freshDownloadCandidates, default: [])
         pruneCandidates = container.decodeIfPresentDefault([String].self, forKey: .pruneCandidates, default: [])
         typeMismatchCandidates = container.decodeIfPresentDefault([FilePreviewEntry].self, forKey: .typeMismatchCandidates, default: [])
@@ -83,6 +103,8 @@ public struct FilePreviewEntry: Decodable, Sendable, Equatable, Identifiable {
     public var sourceURL: String
     public var previousRelativePath: String?
     public var previousFilename: String?
+    public var expectedPath: String?
+    public var recoverySourcePath: String?
 
     public var id: String { url.isEmpty ? effectiveRelativePath : url }
 
@@ -95,6 +117,8 @@ public struct FilePreviewEntry: Decodable, Sendable, Equatable, Identifiable {
         case sourceURL = "source_url"
         case previousRelativePath = "previous_relative_path"
         case previousFilename = "previous_filename"
+        case expectedPath = "expected_path"
+        case recoverySourcePath = "recovery_source_path"
     }
 
     public init(from decoder: Decoder) throws {
@@ -107,6 +131,8 @@ public struct FilePreviewEntry: Decodable, Sendable, Equatable, Identifiable {
         sourceURL = container.decodeIfPresentDefault(String.self, forKey: .sourceURL, default: "")
         previousRelativePath = try? container.decodeIfPresent(String.self, forKey: .previousRelativePath)
         previousFilename = try? container.decodeIfPresent(String.self, forKey: .previousFilename)
+        expectedPath = try? container.decodeIfPresent(String.self, forKey: .expectedPath)
+        recoverySourcePath = try? container.decodeIfPresent(String.self, forKey: .recoverySourcePath)
     }
 }
 

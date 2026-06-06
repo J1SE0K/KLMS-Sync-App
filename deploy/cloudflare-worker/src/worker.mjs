@@ -1,18 +1,27 @@
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_COMMANDS = 100;
 const MAX_ITEM_ACTIONS = 200;
+const MAX_SETTING_ACTIONS = 100;
+const MAX_REQUEST_LOG_ENTRIES = 100;
 const MAX_SYNC_ITEMS = 2000;
+const MAX_SYNC_EXTRAS = 200;
 const MAX_FILE_ACCESS_REQUESTS = 100;
 const DEFAULT_MAX_FILE_UPLOAD_BYTES = 25 * 1024 * 1024;
 const DEFAULT_DAILY_FILE_UPLOADS = 20;
 const DEFAULT_DAILY_FILE_UPLOAD_BYTES = 250 * 1024 * 1024;
 const DEFAULT_DAILY_FILE_DOWNLOADS = 100;
 const DEFAULT_FILE_DOWNLOADS_PER_LINK = 3;
+const DEFAULT_FILE_PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
+const DEFAULT_TEXT_FILE_PREVIEW_MAX_BYTES = 512 * 1024;
 const STALE_PENDING_COMMAND_MS = 60 * 60 * 1000;
 const STALE_RUNNING_COMMAND_MS = 2 * 60 * 1000;
 const STALE_PENDING_ITEM_ACTION_MS = 60 * 60 * 1000;
+const STALE_PENDING_SETTING_ACTION_MS = 60 * 60 * 1000;
 const STALE_PENDING_FILE_ACCESS_MS = 10 * 60 * 1000;
+const CANCEL_REQUEST_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_FILE_ACCESS_TTL_MS = 5 * 60 * 1000;
+const WORKER_INBOX_LONG_POLL_MAX_MS = 25 * 1000;
+const WORKER_INBOX_LONG_POLL_INTERVAL_MS = 350;
 
 const defaultStatus = {
   assignments: 0,
@@ -31,12 +40,77 @@ const defaultStatus = {
   calendarUpdated: 0,
   calendarDeleted: 0,
   phase: "idle",
+  phaseDetail: null,
   loginRequired: false,
   authDigits: null,
   authStatusMessage: null,
 };
 
 let schemaReady = false;
+
+export class RelayRealtimeRoom {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/connect") {
+      if (request.headers.get("Upgrade") !== "websocket") {
+        return sendJSON(426, { error: "websocket required" });
+      }
+      const role = sanitizeRealtimeRole(url.searchParams.get("role"));
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      server.serializeAttachment({
+        role,
+        connectedAt: new Date().toISOString(),
+      });
+      this.state.acceptWebSocket(server);
+      server.send(JSON.stringify({
+        type: "hello",
+        role,
+        sentAt: new Date().toISOString(),
+      }));
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    if (request.method === "POST" && url.pathname === "/broadcast") {
+      const body = await readJSON(request);
+      this.broadcast({
+        type: "changed",
+        reason: sanitizePublicText(body.reason) || "updated",
+        updatedAt: sanitizePublicText(body.updatedAt) || new Date().toISOString(),
+      });
+      return sendJSON(200, { ok: true, connections: this.state.getWebSockets().length });
+    }
+
+    return sendJSON(404, { error: "not found" });
+  }
+
+  async webSocketMessage(webSocket, message) {
+    if (String(message || "") === "ping") {
+      webSocket.send(JSON.stringify({ type: "pong", sentAt: new Date().toISOString() }));
+    }
+  }
+
+  async webSocketClose() {}
+  async webSocketError() {}
+
+  broadcast(payload) {
+    const message = JSON.stringify(payload);
+    for (const webSocket of this.state.getWebSockets()) {
+      try {
+        webSocket.send(message);
+      } catch (_error) {
+        try {
+          webSocket.close(1011, "send failed");
+        } catch (_closeError) {}
+      }
+    }
+  }
+}
 
 export default {
   async fetch(request, env) {
@@ -74,6 +148,28 @@ async function route(request, env) {
     return sendJSON(404, { error: "not found" });
   }
 
+  if (request.method === "GET" && pathname === "/v1/events") {
+    const role = sanitizeRealtimeRole(url.searchParams.get("role"));
+    if (!(await authorized(request, env, role === "worker" ? "worker" : "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const room = realtimeRoom(env);
+    if (!room) {
+      return sendJSON(501, { error: "realtime not configured" });
+    }
+    return room.fetch(new Request("https://klms-sync-relay.internal/connect" + url.search, request));
+  }
+
+  if (request.method === "GET" && pathname === "/v1/events/poll") {
+    const role = sanitizeRealtimeRole(url.searchParams.get("role"));
+    if (!(await authorized(request, env, role === "worker" ? "worker" : "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const db = database(env);
+    await ensureSchema(db);
+    return sendJSON(200, await waitForRelayEventChange(db, url.searchParams));
+  }
+
   const downloadMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/download$/);
   if (request.method === "GET" && downloadMatch) {
     const db = database(env);
@@ -99,6 +195,14 @@ async function route(request, env) {
     state = await loadState(db);
   }
 
+  if (request.method === "GET" && pathname === "/v1/worker/inbox") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    state = await waitForWorkerInboxChange(db, state, url.searchParams);
+    return sendJSON(200, await workerInboxResponse(db, request, env, state));
+  }
+
   if (request.method === "GET" && pathname === "/v1/status") {
     if (!(await authorized(request, env, "client"))) {
       return sendJSON(401, { error: "unauthorized" });
@@ -121,7 +225,7 @@ async function route(request, env) {
       state.latestCommand = command;
     }
     state.updatedAt = now;
-    await saveMetaState(db, state);
+    await saveMetaState(db, state, env);
     return sendJSON(200, relayResponse(state));
   }
 
@@ -142,8 +246,61 @@ async function route(request, env) {
     const items = Array.isArray(body.items)
       ? body.items.map(normalizeSyncItem).filter(Boolean).slice(0, MAX_SYNC_ITEMS)
       : [];
-    await replaceSyncItems(db, items, body.generatedAt);
+    await replaceSyncItems(db, items, body.generatedAt, {
+      dryRunReports: normalizeDryRunReports(body.dryRunReports),
+      calendarChanges: normalizeCalendarChanges(body.calendarChanges),
+      settings: normalizeSettings(body.settings),
+    });
+    await touchRelayEvent(db, env, {
+      reason: "sync-data",
+      updatedAt: new Date().toISOString(),
+    });
     return sendJSON(200, await syncDataResponse(db, { limit: MAX_SYNC_ITEMS }));
+  }
+
+  if (request.method === "POST" && pathname === "/v1/cancel") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const body = await readJSON(request);
+    const cancelRequest = normalizeCancelRequest({
+      requested: true,
+      requestedAt: body.requestedAt || new Date().toISOString(),
+      commandID: body.commandID || body.commandId || body.command_id,
+      message: body.message || "사용자가 실행 중단을 요청했습니다.",
+    });
+    if (!cancelRequest.commandID) {
+      return sendJSON(400, { error: "missing command id" });
+    }
+    const pendingCancel = await cancelPendingCommandIfNeeded(db, state, cancelRequest, request, env);
+    if (pendingCancel) {
+      return sendJSON(200, pendingCancel);
+    }
+    await setCancelRequest(db, cancelRequest);
+    await appendRequestLog(db, request, {
+      action: "동기화 중단 요청",
+      status: "accepted",
+      message: cancelRequest.message,
+    });
+    state.message = "실행 중단 요청 대기 중";
+    state.updatedAt = new Date().toISOString();
+    await saveMetaState(db, state, env);
+    return sendJSON(202, cancelRequest);
+  }
+
+  if (request.method === "GET" && pathname === "/v1/cancel") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    return sendJSON(200, await loadCancelRequest(db));
+  }
+
+  if (request.method === "DELETE" && pathname === "/v1/cancel") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    await clearCancelRequest(db);
+    return sendJSON(200, normalizeCancelRequest({ requested: false }));
   }
 
   if (request.method === "POST" && pathname === "/v1/commands") {
@@ -161,12 +318,17 @@ async function route(request, env) {
     command.summary = normalizeStatus(command.summary || state.status, "pending");
     command.loginRequired = Boolean(command.loginRequired);
     await upsertCommand(db, command);
+    await appendRequestLog(db, request, {
+      action: `${displayCommandName(command.kind)} 요청`,
+      status: "queued",
+      message: "원격 실행 요청을 서버에 기록했습니다.",
+    });
     state.latestCommand = command;
     state.status = command.summary;
     state.running = false;
     state.message = `${displayCommandName(command.kind)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state);
+    await saveMetaState(db, state, env);
     return sendJSON(201, command);
   }
 
@@ -203,7 +365,7 @@ async function route(request, env) {
     state.running = command.status === "running";
     state.message = `${displayCommandName(command.kind)} · ${displayStatus(command.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state);
+    await saveMetaState(db, state, env);
     return sendJSON(200, command);
   }
 
@@ -217,9 +379,14 @@ async function route(request, env) {
       return sendJSON(400, { error: "missing item action target" });
     }
     await upsertItemAction(db, action);
+    await appendRequestLog(db, request, {
+      action: displayItemActionName(action.action),
+      status: "queued",
+      message: action.itemTitle || action.itemID,
+    });
     state.message = `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state);
+    await saveMetaState(db, state, env);
     return sendJSON(201, action);
   }
 
@@ -253,7 +420,62 @@ async function route(request, env) {
     await upsertItemAction(db, action);
     state.message = `${displayItemActionName(action.action)} · ${displayStatus(action.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state);
+    await saveMetaState(db, state, env);
+    return sendJSON(200, action);
+  }
+
+  if (request.method === "POST" && pathname === "/v1/setting-actions") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const body = await readJSON(request);
+    const action = normalizeSettingAction(body, "pending");
+    if (!action.key) {
+      return sendJSON(400, { error: "missing setting key" });
+    }
+    await upsertSettingAction(db, action);
+    await appendRequestLog(db, request, {
+      action: `${action.title || action.key} 설정 변경`,
+      status: "queued",
+      message: "설정 변경 요청을 서버에 기록했습니다.",
+    });
+    state.message = `${action.title || action.key} 설정 변경 요청 대기 중`;
+    state.updatedAt = new Date().toISOString();
+    await saveMetaState(db, state, env);
+    return sendJSON(201, action);
+  }
+
+  if (request.method === "GET" && pathname === "/v1/setting-actions/pending") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    return sendJSON(200, settingActionListResponse(state.settingActions
+      .filter((action) => action.status === "pending")
+      .sort((lhs, rhs) => Date.parse(lhs.createdAt) - Date.parse(rhs.createdAt))));
+  }
+
+  if (request.method === "GET" && pathname === "/v1/setting-actions/recent") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const limit = boundedInt(url.searchParams.get("limit"), 20, 1, 50);
+    return sendJSON(200, settingActionListResponse(state.settingActions
+      .slice()
+      .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+      .slice(0, limit)));
+  }
+
+  const settingActionMatch = pathname.match(/^\/v1\/setting-actions\/([0-9a-fA-F-]+)$/);
+  if (request.method === "PUT" && settingActionMatch) {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const body = await readJSON(request);
+    const action = normalizeSettingAction({ ...body, id: settingActionMatch[1] }, body.status || "pending");
+    await upsertSettingAction(db, action);
+    state.message = `${action.title || action.key} · ${displayStatus(action.status)}`;
+    state.updatedAt = new Date().toISOString();
+    await saveMetaState(db, state, env);
     return sendJSON(200, action);
   }
 
@@ -275,9 +497,14 @@ async function route(request, env) {
       return sendJSON(429, { error: "file access queue limit reached" });
     }
     await upsertFileAccessRequest(db, fileRequest);
+    await appendRequestLog(db, request, {
+      action: "파일 열기 요청",
+      status: "queued",
+      message: fileRequest.itemTitle || fileRequest.itemID,
+    });
     state.message = `파일 열기 요청 대기 중: ${fileRequest.itemTitle || fileRequest.itemID}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state);
+    await saveMetaState(db, state, env);
     return sendJSON(201, fileAccessResponseItem(fileRequest, request, env));
   }
 
@@ -309,6 +536,25 @@ async function route(request, env) {
     ));
   }
 
+  if (request.method === "GET" && pathname === "/v1/request-log/recent") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const limit = boundedInt(url.searchParams.get("limit"), 20, 1, MAX_REQUEST_LOG_ENTRIES);
+    return sendJSON(200, await requestLogResponse(db, limit));
+  }
+
+  if (request.method === "DELETE" && pathname === "/v1/logs") {
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const scope = normalizeLogClearScope(url.searchParams.get("scope"));
+    if (scope === "fileAccess" && await hasActiveFileAccessWork(db)) {
+      return sendJSON(409, { error: "active file access request is still running" });
+    }
+    return sendJSON(200, await clearRelayLogs(db, env, state, scope));
+  }
+
   const fileAccessMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)$/);
   if (request.method === "PUT" && fileAccessMatch) {
     if (!(await authorized(request, env, "worker"))) {
@@ -328,6 +574,10 @@ async function route(request, env) {
       itemTitle: body.itemTitle || current.itemTitle,
     }, body.status || current.status || "pending");
     await upsertFileAccessRequest(db, fileRequest);
+    await touchRelayEvent(db, env, {
+      reason: `file-access:${fileRequest.status}`,
+      updatedAt: fileRequest.updatedAt,
+    });
     return sendJSON(200, fileAccessResponseItem(fileRequest, request, env));
   }
 
@@ -343,10 +593,14 @@ async function route(request, env) {
 }
 
 function requiredRoleFor(method, pathname) {
+  if (method === "GET" && pathname === "/v1/worker/inbox") return "worker";
   if (method === "GET" && pathname === "/v1/status") return "client";
   if (method === "POST" && pathname === "/v1/status") return "worker";
   if (method === "GET" && pathname === "/v1/sync-data") return "client";
   if (method === "POST" && pathname === "/v1/sync-data") return "worker";
+  if (method === "POST" && pathname === "/v1/cancel") return "client";
+  if (method === "GET" && pathname === "/v1/cancel") return "worker";
+  if (method === "DELETE" && pathname === "/v1/cancel") return "worker";
   if (method === "POST" && pathname === "/v1/commands") return "client";
   if (method === "GET" && pathname === "/v1/commands/pending") return "worker";
   if (method === "GET" && pathname === "/v1/commands/recent") return "client";
@@ -355,12 +609,165 @@ function requiredRoleFor(method, pathname) {
   if (method === "GET" && pathname === "/v1/item-actions/pending") return "worker";
   if (method === "GET" && pathname === "/v1/item-actions/recent") return "client";
   if (method === "PUT" && /^\/v1\/item-actions\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
+  if (method === "POST" && pathname === "/v1/setting-actions") return "client";
+  if (method === "GET" && pathname === "/v1/setting-actions/pending") return "worker";
+  if (method === "GET" && pathname === "/v1/setting-actions/recent") return "client";
+  if (method === "PUT" && /^\/v1\/setting-actions\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
   if (method === "POST" && pathname === "/v1/file-access") return "client";
   if (method === "GET" && pathname === "/v1/file-access/pending") return "worker";
   if (method === "GET" && pathname === "/v1/file-access/recent") return "client";
+  if (method === "GET" && pathname === "/v1/request-log/recent") return "client";
+  if (method === "DELETE" && pathname === "/v1/logs") return "worker";
   if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
   if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F-]+\/upload$/.test(pathname)) return "worker";
   return null;
+}
+
+async function workerInboxResponse(db, request, env, state) {
+  const [
+    requestLog,
+    recentFileAccess,
+    pendingFileAccess,
+    cancelRequest,
+  ] = await Promise.all([
+    requestLogResponse(db, 20),
+    loadFileAccessRequests(db, { limit: 8 }),
+    loadFileAccessRequests(db, {
+      statuses: ["pending"],
+      order: "created",
+      limit: 20,
+    }),
+    loadCancelRequest(db),
+  ]);
+  return {
+    statusResponse: relayResponse(state),
+    recentRequestLog: requestLog.entries,
+    recentFileAccessRequests: fileAccessListResponse(recentFileAccess, request, env).requests,
+    pendingFileAccessRequests: fileAccessListResponse(pendingFileAccess, request, env).requests,
+    pendingSettingActions: state.settingActions
+      .filter((action) => action.status === "pending")
+      .sort((lhs, rhs) => Date.parse(lhs.createdAt) - Date.parse(rhs.createdAt)),
+    pendingItemActions: state.itemActions
+      .filter((action) => action.status === "pending")
+      .sort((lhs, rhs) => Date.parse(lhs.createdAt) - Date.parse(rhs.createdAt)),
+    pendingCommands: state.commands
+      .filter((command) => command.status === "pending")
+      .sort((lhs, rhs) => Date.parse(lhs.createdAt) - Date.parse(rhs.createdAt)),
+    cancelRequest,
+  };
+}
+
+async function waitForWorkerInboxChange(db, state, searchParams) {
+  const since = String(searchParams.get("since") || "").trim();
+  const sinceEpoch = Date.parse(since);
+  const waitSeconds = boundedInt(searchParams.get("waitSeconds"), 0, 0, 25);
+  const waitMs = boundedInt(
+    searchParams.get("waitMs"),
+    waitSeconds * 1000,
+    0,
+    WORKER_INBOX_LONG_POLL_MAX_MS
+  );
+  if (waitMs <= 0 || !Number.isFinite(sinceEpoch)) {
+    return state;
+  }
+  if (Date.parse(state.updatedAt || "") > sinceEpoch || await hasWorkerInboxWork(db, state)) {
+    return state;
+  }
+
+  const deadline = Date.now() + waitMs;
+  let current = state;
+  while (Date.now() < deadline) {
+    await sleep(Math.min(WORKER_INBOX_LONG_POLL_INTERVAL_MS, Math.max(25, deadline - Date.now())));
+    current = await loadState(db);
+    if (Date.parse(current.updatedAt || "") > sinceEpoch || await hasWorkerInboxWork(db, current)) {
+      return current;
+    }
+  }
+  return current;
+}
+
+async function waitForRelayEventChange(db, searchParams) {
+  const since = String(searchParams.get("since") || "").trim();
+  const sinceEpoch = Date.parse(since);
+  const waitSeconds = boundedInt(searchParams.get("waitSeconds"), 0, 0, 25);
+  const waitMs = boundedInt(
+    searchParams.get("waitMs"),
+    waitSeconds * 1000,
+    0,
+    WORKER_INBOX_LONG_POLL_MAX_MS
+  );
+  let current = await relayEventSnapshot(db);
+  if (waitMs <= 0 || !Number.isFinite(sinceEpoch) || Date.parse(current.updatedAt || "") > sinceEpoch) {
+    return current;
+  }
+
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline) {
+    await sleep(Math.min(WORKER_INBOX_LONG_POLL_INTERVAL_MS, Math.max(25, deadline - Date.now())));
+    current = await relayEventSnapshot(db);
+    if (Date.parse(current.updatedAt || "") > sinceEpoch) {
+      return current;
+    }
+  }
+  return current;
+}
+
+async function relayEventSnapshot(db) {
+  const [eventUpdatedAt, eventReason, stateUpdatedAt, syncDataUpdatedAt] = await Promise.all([
+    getMeta(db, "relayEventUpdatedAt"),
+    getMeta(db, "relayEventReason"),
+    getMeta(db, "updatedAt"),
+    getMeta(db, "syncDataUpdatedAt"),
+  ]);
+  return {
+    type: "changed",
+    reason: sanitizePublicText(eventReason) || "state",
+    updatedAt: newestTimestamp([
+      eventUpdatedAt,
+      stateUpdatedAt,
+      syncDataUpdatedAt,
+    ]) || new Date().toISOString(),
+  };
+}
+
+function newestTimestamp(values) {
+  let newest = "";
+  let newestEpoch = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    const text = String(value || "").trim();
+    const epoch = Date.parse(text);
+    if (Number.isFinite(epoch) && epoch > newestEpoch) {
+      newest = text;
+      newestEpoch = epoch;
+    }
+  }
+  return newest;
+}
+
+async function hasWorkerInboxWork(db, state) {
+  if (state.commands.some((command) => command.status === "pending")) {
+    return true;
+  }
+  if (state.itemActions.some((action) => action.status === "pending")) {
+    return true;
+  }
+  if ((state.settingActions || []).some((action) => action.status === "pending")) {
+    return true;
+  }
+  const cancelRequest = await loadCancelRequest(db);
+  if (cancelRequest.requested) {
+    return true;
+  }
+  const pendingFileAccess = await loadFileAccessRequests(db, {
+    statuses: ["pending"],
+    order: "created",
+    limit: 1,
+  });
+  return pendingFileAccess.length > 0;
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function database(env) {
@@ -412,6 +819,49 @@ async function constantTimeEqual(expected, actual) {
   return diff === 0;
 }
 
+function sanitizeRealtimeRole(value) {
+  return String(value || "").trim().toLowerCase() === "worker" ? "worker" : "client";
+}
+
+function realtimeRoom(env) {
+  if (!env?.RELAY_REALTIME) {
+    return null;
+  }
+  return env.RELAY_REALTIME.get(env.RELAY_REALTIME.idFromName("default"));
+}
+
+async function notifyRelayChange(env, payload = {}) {
+  const room = realtimeRoom(env);
+  if (!room) {
+    return;
+  }
+  try {
+    await room.fetch("https://klms-sync-relay.internal/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    console.warn("realtime notify failed", error?.message || error);
+  }
+}
+
+async function touchRelayEvent(db, env, payload = {}) {
+  const updatedAt = sanitizePublicText(payload.updatedAt) || new Date().toISOString();
+  const reason = sanitizePublicText(payload.reason) || "updated";
+  if (db) {
+    await db.batch([
+      setMetaStatement(db, "relayEventUpdatedAt", updatedAt),
+      setMetaStatement(db, "relayEventReason", reason),
+    ]);
+  }
+  await notifyRelayChange(env, {
+    ...payload,
+    reason,
+    updatedAt,
+  });
+}
+
 function normalizedPath(pathname, env) {
   const normalized = `/${String(pathname || "/")
     .split("/")
@@ -438,7 +888,7 @@ async function ensureSchema(db) {
 }
 
 async function loadState(db) {
-  const [status, latestCommand, running, message, updatedAt, commands, itemActions] = await Promise.all([
+  const [status, latestCommand, running, message, updatedAt, commands, itemActions, settingActions] = await Promise.all([
     getJSONMeta(db, "status", defaultStatus),
     getJSONMeta(db, "latestCommand", null),
     getMeta(db, "running"),
@@ -446,6 +896,7 @@ async function loadState(db) {
     getMeta(db, "updatedAt"),
     loadCommands(db),
     loadItemActions(db),
+    loadSettingActions(db),
   ]);
   const storedLatest = latestCommand
     ? normalizeCommand(latestCommand, latestCommand.status || "pending")
@@ -463,6 +914,7 @@ async function loadState(db) {
     latestCommand: normalizedLatest,
     commands,
     itemActions,
+    settingActions,
     running: running === "true",
     message: message || "서버 준비됨",
     updatedAt: updatedAt || new Date().toISOString(),
@@ -471,7 +923,7 @@ async function loadState(db) {
 
 async function loadCommands(db) {
   const result = await db.prepare(`
-    SELECT id, kind, status, created_at, updated_at, last_exit_code, login_required, summary_json
+    SELECT id, kind, status, created_at, updated_at, last_exit_code, login_required, summary_json, options_json
     FROM commands
     ORDER BY updated_at DESC
     LIMIT ?
@@ -487,6 +939,14 @@ async function loadItemActions(db) {
     LIMIT ?
   `).bind(MAX_ITEM_ACTIONS * 2).all();
   return deduplicateByID((result.results || []).map(rowToItemAction), MAX_ITEM_ACTIONS);
+}
+
+async function loadSettingActions(db) {
+  const raw = parseJSON(await getMeta(db, "settingActions"), []);
+  return deduplicateByID(
+    (Array.isArray(raw) ? raw : []).map((item) => normalizeSettingAction(item, item?.status || "pending")),
+    MAX_SETTING_ACTIONS
+  );
 }
 
 function deduplicateByID(items, limit) {
@@ -506,7 +966,7 @@ function deduplicateByID(items, limit) {
     .slice(0, limit);
 }
 
-async function saveMetaState(db, state) {
+async function saveMetaState(db, state, env = null) {
   await db.batch([
     setMetaStatement(db, "status", JSON.stringify(normalizeStatus(state.status || defaultStatus))),
     setMetaStatement(db, "latestCommand", JSON.stringify(state.latestCommand || null)),
@@ -514,6 +974,10 @@ async function saveMetaState(db, state) {
     setMetaStatement(db, "message", String(state.message || "")),
     setMetaStatement(db, "updatedAt", String(state.updatedAt || new Date().toISOString())),
   ]);
+  await touchRelayEvent(db, env, {
+    reason: "state",
+    updatedAt: state.updatedAt || new Date().toISOString(),
+  });
 }
 
 async function getMeta(db, key) {
@@ -536,8 +1000,8 @@ function setMetaStatement(db, key, value) {
 async function upsertCommand(db, command) {
   await db.prepare(`
     INSERT INTO commands (
-      id, kind, status, created_at, updated_at, last_exit_code, login_required, summary_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      id, kind, status, created_at, updated_at, last_exit_code, login_required, summary_json, options_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       kind = excluded.kind,
       status = excluded.status,
@@ -545,7 +1009,8 @@ async function upsertCommand(db, command) {
       updated_at = excluded.updated_at,
       last_exit_code = excluded.last_exit_code,
       login_required = excluded.login_required,
-      summary_json = excluded.summary_json
+      summary_json = excluded.summary_json,
+      options_json = excluded.options_json
   `).bind(
     command.id,
     command.kind,
@@ -554,7 +1019,8 @@ async function upsertCommand(db, command) {
     command.updatedAt,
     Number.isInteger(command.lastExitCode) ? command.lastExitCode : null,
     command.loginRequired ? 1 : 0,
-    JSON.stringify(normalizeStatus(command.summary || defaultStatus, command.status))
+    JSON.stringify(normalizeStatus(command.summary || defaultStatus, command.status)),
+    JSON.stringify(normalizeCommandOptions(command.options))
   ).run();
   await trimCommands(db);
 }
@@ -594,6 +1060,223 @@ async function upsertItemAction(db, action) {
     action.message
   ).run();
   await trimItemActions(db);
+}
+
+async function upsertSettingAction(db, action) {
+  const current = await loadSettingActions(db);
+  const next = deduplicateByID([action, ...current], MAX_SETTING_ACTIONS);
+  await setMetaStatement(db, "settingActions", JSON.stringify(next)).run();
+}
+
+async function requestLogResponse(db, limit = 20) {
+  return {
+    entries: (await loadRequestLog(db)).slice(0, Math.max(1, Math.min(MAX_REQUEST_LOG_ENTRIES, limit))),
+  };
+}
+
+async function appendRequestLog(db, request, raw) {
+  const entry = normalizeRequestLogEntry(request, raw);
+  const entries = [entry, ...(await loadRequestLog(db)).filter((item) => item.id !== entry.id)]
+    .sort((lhs, rhs) => Date.parse(rhs.createdAt) - Date.parse(lhs.createdAt))
+    .slice(0, MAX_REQUEST_LOG_ENTRIES);
+  await setMetaStatement(db, "requestLog", JSON.stringify(entries)).run();
+}
+
+async function loadRequestLog(db) {
+  const raw = parseJSON(await getMeta(db, "requestLog"), []);
+  return (Array.isArray(raw) ? raw : [])
+    .map((item) => normalizeRequestLogEntry(null, item))
+    .sort((lhs, rhs) => Date.parse(rhs.createdAt) - Date.parse(lhs.createdAt))
+    .slice(0, MAX_REQUEST_LOG_ENTRIES);
+}
+
+async function hasActiveRelayWork(db, state) {
+  if (state.running) {
+    return true;
+  }
+  if (state.commands.some((command) => command.status === "pending" || command.status === "running")) {
+    return true;
+  }
+  if (state.itemActions.some((action) => action.status === "pending" || action.status === "running")) {
+    return true;
+  }
+  if (state.settingActions.some((action) => action.status === "pending" || action.status === "running")) {
+    return true;
+  }
+  return hasActiveFileAccessWork(db);
+}
+
+async function hasActiveFileAccessWork(db) {
+  const activeFileAccess = await loadFileAccessRequests(db, {
+    statuses: ["pending", "running"],
+    order: "created",
+    limit: 1,
+  });
+  return activeFileAccess.length > 0;
+}
+
+function normalizeLogClearScope(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (["requestlog", "request-log", "request", "server", "serverrequest", "server-request"].includes(text)) {
+    return "requestLog";
+  }
+  if (["fileaccess", "file-access", "file", "files"].includes(text)) {
+    return "fileAccess";
+  }
+  return "all";
+}
+
+async function clearRelayLogs(db, env, state, scope = "all") {
+  const clearedAt = new Date().toISOString();
+  const shouldClearAll = scope === "all";
+  const shouldClearRequestLog = shouldClearAll || scope === "requestLog";
+  const shouldClearFileAccess = shouldClearAll || scope === "fileAccess";
+  const [fileAccessRows, requestLog] = await Promise.all([
+    shouldClearFileAccess ? loadFileAccessRequests(db, { limit: MAX_FILE_ACCESS_REQUESTS }) : Promise.resolve([]),
+    shouldClearRequestLog ? loadRequestLog(db) : Promise.resolve([]),
+  ]);
+  const fileAccessRowsToClear = shouldClearAll
+    ? fileAccessRows.filter((request) => request.status !== "pending" && request.status !== "running")
+    : fileAccessRows;
+  for (const fileRequest of fileAccessRowsToClear) {
+    if (!env?.RELAY_FILES || !fileRequest.objectKey) {
+      continue;
+    }
+    try {
+      await env.RELAY_FILES.delete(fileRequest.objectKey);
+    } catch (error) {
+      console.error("failed to delete file access object while clearing logs", fileRequest.objectKey, error);
+    }
+  }
+
+  const result = {
+    clearedAt,
+    commands: shouldClearAll
+      ? state.commands.filter((command) => command.status !== "pending" && command.status !== "running").length
+      : 0,
+    itemActions: shouldClearAll
+      ? state.itemActions.filter((action) => action.status !== "pending" && action.status !== "running").length
+      : 0,
+    settingActions: shouldClearAll
+      ? state.settingActions.filter((action) => action.status !== "pending" && action.status !== "running").length
+      : 0,
+    fileAccessRequests: fileAccessRowsToClear.length,
+    requestLogEntries: requestLog.length,
+  };
+
+  const statements = [];
+  if (shouldClearAll) {
+    statements.push(
+      db.prepare("DELETE FROM commands WHERE status NOT IN ('pending', 'running')"),
+      db.prepare("DELETE FROM item_actions WHERE status NOT IN ('pending', 'running')"),
+      setMetaStatement(
+        db,
+        "settingActions",
+        JSON.stringify(state.settingActions.filter((action) => action.status === "pending" || action.status === "running"))
+      )
+    );
+  }
+  if (shouldClearFileAccess) {
+    statements.push(shouldClearAll
+      ? db.prepare("DELETE FROM file_access_requests WHERE status NOT IN ('pending', 'running')")
+      : db.prepare("DELETE FROM file_access_requests"));
+  }
+  if (shouldClearRequestLog) {
+    statements.push(setMetaStatement(db, "requestLog", "[]"));
+  }
+  if (statements.length > 0) {
+    await db.batch(statements);
+  }
+
+  if (shouldClearAll) {
+    state.commands = state.commands.filter((command) => command.status === "pending" || command.status === "running");
+    state.itemActions = state.itemActions.filter((action) => action.status === "pending" || action.status === "running");
+    state.settingActions = state.settingActions.filter((action) => action.status === "pending" || action.status === "running");
+    state.latestCommand = state.commands[0] || null;
+    state.running = state.commands.some((command) => command.status === "running") || state.running && Boolean(state.latestCommand);
+    state.message = "로그를 지웠습니다.";
+    state.updatedAt = clearedAt;
+    await saveMetaState(db, state, env);
+  } else {
+    await touchRelayEvent(db, env, {
+      reason: `logs:${scope}`,
+      updatedAt: clearedAt,
+    });
+  }
+  return result;
+}
+
+function normalizeRequestLogEntry(request, raw = {}) {
+  const url = request ? new URL(request.url) : null;
+  return {
+    id: normalizeUUIDText(raw.id) || crypto.randomUUID(),
+    source: sanitizeRequestSource(raw.source || requestSource(request)),
+    action: sanitizePublicText(raw.action),
+    method: sanitizePublicText(raw.method || request?.method || ""),
+    path: sanitizeRequestPath(raw.path || url?.pathname || ""),
+    status: sanitizePublicText(raw.status || "ok"),
+    message: sanitizePublicText(raw.message),
+    createdAt: raw.createdAt || raw.created_at || new Date().toISOString(),
+  };
+}
+
+function requestSource(request) {
+  if (!request) {
+    return "";
+  }
+  const headerSource = request.headers.get("x-klms-client");
+  if (headerSource) {
+    return headerSource;
+  }
+  const userAgent = request.headers.get("user-agent") || "";
+  if (/iphone|ipad|ios/i.test(userAgent)) {
+    return "iPhone";
+  }
+  if (/windows|electron/i.test(userAgent)) {
+    return "Windows";
+  }
+  if (/macintosh|darwin|mac os/i.test(userAgent)) {
+    return "Mac";
+  }
+  return "알 수 없음";
+}
+
+function sanitizeRequestSource(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text.includes("iphone") || text.includes("ios") || text.includes("ipad")) {
+    return "iPhone";
+  }
+  if (text.includes("windows")) {
+    return "Windows";
+  }
+  if (text.includes("mac")) {
+    return "Mac";
+  }
+  if (text.includes("web") || text.includes("browser") || text.includes("웹")) {
+    return "웹";
+  }
+  return sanitizePublicText(value) || "알 수 없음";
+}
+
+function sanitizeRequestPath(value) {
+  const pathText = sanitizePublicText(value).split("?")[0];
+  return pathText.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ":id");
+}
+
+async function loadCancelRequest(db) {
+  const cancelRequest = normalizeCancelRequest(parseJSON(await getMeta(db, "cancelRequest"), {}));
+  if (!cancelRequest.requested) {
+    await clearCancelRequest(db);
+  }
+  return cancelRequest;
+}
+
+async function setCancelRequest(db, cancelRequest) {
+  await setMetaStatement(db, "cancelRequest", JSON.stringify(normalizeCancelRequest(cancelRequest))).run();
+}
+
+async function clearCancelRequest(db) {
+  await setMetaStatement(db, "cancelRequest", JSON.stringify(normalizeCancelRequest({ requested: false }))).run();
 }
 
 async function trimItemActions(db) {
@@ -796,6 +1479,16 @@ async function uploadFileAccess(db, env, request, id) {
     downloadCount: 0,
   };
   await upsertFileAccessRequest(db, updated);
+  await touchRelayEvent(db, env, {
+    reason: "file-access:completed",
+    updatedAt: updated.updatedAt,
+  });
+  await appendRequestLog(db, request, {
+    action: "파일 업로드 완료",
+    status: "completed",
+    message: filename,
+    source: "Mac",
+  });
   await saveFileAccessQuota(db, {
     ...quota,
     uploadCount: quota.uploadCount + 1,
@@ -805,50 +1498,162 @@ async function uploadFileAccess(db, env, request, id) {
 }
 
 async function downloadFileAccess(db, env, request, id) {
-  const ticket = new URL(request.url).searchParams.get("ticket") || "";
+  const url = new URL(request.url);
+  const ticket = url.searchParams.get("ticket") || "";
+  const wantsPreview = url.searchParams.has("preview") && !url.searchParams.has("download");
   const fileRequest = await getFileAccessRequest(db, id);
   if (!fileRequest || fileRequest.status !== "completed" || !fileRequest.objectKey || !fileRequest.downloadTicket) {
-    return sendJSON(404, { error: "file link not found" });
+    return fileAccessDownloadPage({
+      request,
+      status: 404,
+      title: "파일 링크를 찾을 수 없습니다",
+      message: "요청한 파일 링크가 없거나 이미 정리되었습니다.",
+    });
   }
   if (fileRequest.downloadTicket !== ticket) {
-    return sendJSON(401, { error: "unauthorized" });
+    return fileAccessDownloadPage({
+      request,
+      status: 401,
+      title: "권한이 없는 링크입니다",
+      message: "링크의 인증 정보가 맞지 않습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
+    });
   }
   if (fileRequest.expiresAt && Date.parse(fileRequest.expiresAt) <= Date.now()) {
     await cleanupExpiredFileAccess(db, env);
-    return sendJSON(410, { error: "file link expired" });
+    return fileAccessDownloadPage({
+      request,
+      fileRequest,
+      status: 410,
+      title: "파일 링크가 만료되었습니다",
+      message: "임시 파일은 만료 후 자동 삭제됩니다. 앱에서 파일 링크를 다시 요청해 주세요.",
+    });
   }
   const limits = fileAccessLimits(env);
   if (Number(fileRequest.downloadCount || 0) >= limits.downloadsPerLink) {
-    return sendJSON(429, { error: "file link download limit reached" });
+    return fileAccessDownloadPage({
+      request,
+      fileRequest,
+      status: 429,
+      title: "다운로드 횟수를 모두 사용했습니다",
+      message: "이 링크의 다운로드 가능 횟수를 초과했습니다. 앱에서 새 링크를 요청해 주세요.",
+    });
   }
   const quota = await loadFileAccessQuota(db);
   if (quota.downloadCount >= limits.dailyDownloads) {
-    return sendJSON(429, { error: "daily file download limit reached" });
+    return fileAccessDownloadPage({
+      request,
+      fileRequest,
+      status: 429,
+      title: "오늘 다운로드 한도에 도달했습니다",
+      message: "과금 방지를 위해 오늘의 파일 다운로드 한도를 넘기지 않도록 막았습니다.",
+    });
+  }
+  if (wantsPreview) {
+    const preview = filePreviewDetails(fileRequest, limits.previewMaxBytes, limits.textPreviewMaxBytes);
+    if (!preview.available) {
+      return fileAccessDownloadPage({
+        request,
+        fileRequest,
+        status: 415,
+        title: "미리보기를 지원하지 않는 파일입니다",
+        message: preview.message || "이 형식은 브라우저에서 바로 볼 수 없어 다운로드만 지원합니다.",
+      });
+    }
+    if (!env?.RELAY_FILES) {
+      return fileAccessDownloadPage({
+        request,
+        fileRequest,
+        status: 503,
+        title: "파일 저장소가 설정되지 않았습니다",
+        message: "서버의 임시 파일 저장소 설정을 확인해 주세요.",
+      });
+    }
+    const object = await env.RELAY_FILES.get(fileRequest.objectKey);
+    if (!object) {
+      return fileAccessDownloadPage({
+        request,
+        fileRequest,
+        status: 404,
+        title: "파일을 찾을 수 없습니다",
+        message: "임시 저장소의 파일이 이미 정리되었습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
+      });
+    }
+    await upsertFileAccessRequest(db, {
+      ...fileRequest,
+      downloadCount: Number(fileRequest.downloadCount || 0) + 1,
+      updatedAt: new Date().toISOString(),
+    });
+    await appendRequestLog(db, request, {
+      action: "파일 미리보기",
+      status: "completed",
+      message: fileRequest.itemTitle || "파일",
+      source: "웹",
+      method: "GET",
+      path: "/v1/file-access/:id/download?preview",
+    });
+    await saveFileAccessQuota(db, {
+      ...quota,
+      downloadCount: quota.downloadCount + 1,
+    });
+    await touchRelayEvent(db, env, {
+      reason: "file-access:previewed",
+      updatedAt: new Date().toISOString(),
+    });
+    return fileAccessObjectResponse(fileRequest, object, { disposition: "inline", preview });
+  }
+  if (!url.searchParams.has("download")) {
+    return fileAccessDownloadPage({
+      request,
+      fileRequest,
+      status: 200,
+      title: "KLMS 파일 미리보기",
+      message: "Mac이 준비한 임시 파일 링크입니다. PDF와 이미지는 이 페이지에서 바로 열어 보고, 필요할 때만 다운로드하세요.",
+      canDownload: true,
+      previewMaxBytes: limits.previewMaxBytes,
+      textPreviewMaxBytes: limits.textPreviewMaxBytes,
+    });
   }
   if (!env?.RELAY_FILES) {
-    return sendJSON(503, { error: "file relay storage is not configured" });
+    return fileAccessDownloadPage({
+      request,
+      fileRequest,
+      status: 503,
+      title: "파일 저장소가 설정되지 않았습니다",
+      message: "서버의 임시 파일 저장소 설정을 확인해 주세요.",
+    });
   }
   const object = await env.RELAY_FILES.get(fileRequest.objectKey);
   if (!object) {
-    return sendJSON(404, { error: "file object not found" });
-  }
-  const headers = new Headers();
-  headers.set("Cache-Control", "no-store");
-  headers.set("Content-Type", fileRequest.contentType || object.httpMetadata?.contentType || "application/octet-stream");
-  headers.set("Content-Disposition", contentDisposition(fileRequest.itemTitle || "KLMS file"));
-  if (Number.isFinite(Number(fileRequest.sizeBytes))) {
-    headers.set("Content-Length", String(Number(fileRequest.sizeBytes)));
+    return fileAccessDownloadPage({
+      request,
+      fileRequest,
+      status: 404,
+      title: "파일을 찾을 수 없습니다",
+      message: "임시 저장소의 파일이 이미 정리되었습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
+    });
   }
   await upsertFileAccessRequest(db, {
     ...fileRequest,
     downloadCount: Number(fileRequest.downloadCount || 0) + 1,
     updatedAt: new Date().toISOString(),
   });
+  await appendRequestLog(db, request, {
+    action: "파일 다운로드",
+    status: "completed",
+    message: fileRequest.itemTitle || "파일",
+    source: "웹",
+    method: "GET",
+    path: "/v1/file-access/:id/download",
+  });
   await saveFileAccessQuota(db, {
     ...quota,
     downloadCount: quota.downloadCount + 1,
   });
-  return new Response(object.body, { status: 200, headers });
+  await touchRelayEvent(db, env, {
+    reason: "file-access:downloaded",
+    updatedAt: new Date().toISOString(),
+  });
+  return fileAccessObjectResponse(fileRequest, object, { disposition: "attachment" });
 }
 
 async function expireStaleRecords(db, state) {
@@ -872,7 +1677,18 @@ async function expireStaleRecords(db, state) {
       });
     }
   }
-  if (commandUpdates.length === 0 && actionUpdates.length === 0) {
+  const settingActionUpdates = [];
+  for (const action of state.settingActions || []) {
+    if (action.status === "pending" && ageMs(action.createdAt, now) > STALE_PENDING_SETTING_ACTION_MS) {
+      settingActionUpdates.push({
+        ...action,
+        status: "macUnavailable",
+        updatedAt: new Date().toISOString(),
+        message: "Mac 앱이 제한 시간 안에 처리하지 않았습니다.",
+      });
+    }
+  }
+  if (commandUpdates.length === 0 && actionUpdates.length === 0 && settingActionUpdates.length === 0) {
     return false;
   }
   for (const command of commandUpdates) {
@@ -880,6 +1696,9 @@ async function expireStaleRecords(db, state) {
   }
   for (const action of actionUpdates) {
     await upsertItemAction(db, action);
+  }
+  for (const action of settingActionUpdates) {
+    await upsertSettingAction(db, action);
   }
   return true;
 }
@@ -893,6 +1712,51 @@ function markCommandUnavailable(command) {
   };
 }
 
+function markCommandCancelled(command, message) {
+  const summary = normalizeStatus(command.summary || defaultStatus, "cancelled");
+  summary.phaseDetail = message || "사용자가 실행 전에 요청을 취소했습니다.";
+  summary.loginRequired = false;
+  summary.authDigits = null;
+  summary.authStatusMessage = null;
+  return {
+    ...command,
+    status: "cancelled",
+    updatedAt: new Date().toISOString(),
+    lastExitCode: null,
+    loginRequired: false,
+    summary,
+  };
+}
+
+async function cancelPendingCommandIfNeeded(db, state, cancelRequest, request, env) {
+  const command = state.commands.find((item) => item.id === cancelRequest.commandID);
+  if (!command || command.status !== "pending") {
+    return null;
+  }
+  const message = "Mac이 처리하기 전에 원격 실행 요청을 취소했습니다.";
+  const cancelled = markCommandCancelled(command, message);
+  await upsertCommand(db, cancelled);
+  state.commands = state.commands.map((item) => item.id === cancelled.id ? cancelled : item);
+  await clearCancelRequest(db);
+  await appendRequestLog(db, request, {
+    action: "원격 실행 요청 취소",
+    status: "cancelled",
+    message,
+  });
+  state.latestCommand = cancelled;
+  state.status = cancelled.summary;
+  state.running = false;
+  state.message = `${displayCommandName(cancelled.kind)} · ${displayStatus(cancelled.status)}`;
+  state.updatedAt = cancelled.updatedAt;
+  await saveMetaState(db, state, env);
+  return normalizeCancelRequest({
+    requested: false,
+    requestedAt: cancelRequest.requestedAt,
+    commandID: cancelRequest.commandID,
+    message,
+  });
+}
+
 function commandListResponse(state, commands) {
   return {
     commands,
@@ -903,6 +1767,10 @@ function commandListResponse(state, commands) {
 }
 
 function itemActionListResponse(actions) {
+  return { actions };
+}
+
+function settingActionListResponse(actions) {
   return { actions };
 }
 
@@ -938,6 +1806,169 @@ function fileAccessResponseItem(fileRequest, request, env) {
   return response;
 }
 
+function fileAccessDownloadPage({
+  request,
+  fileRequest = null,
+  status = 200,
+  title = "KLMS 파일 미리보기",
+  message = "",
+  canDownload = false,
+  previewMaxBytes = DEFAULT_FILE_PREVIEW_MAX_BYTES,
+  textPreviewMaxBytes = DEFAULT_TEXT_FILE_PREVIEW_MAX_BYTES,
+}) {
+  const downloadURL = canDownload ? downloadActionURL(request) : "";
+  const preview = canDownload ? filePreviewDetails(fileRequest, previewMaxBytes, textPreviewMaxBytes) : { available: false, kind: "", label: "", message: "" };
+  const previewURL = preview.available ? previewActionURL(request) : "";
+  const previewMarkup = fileRequest && canDownload ? filePreviewMarkup(preview, previewURL) : "";
+  const filename = fileRequest?.itemTitle || "KLMS 파일";
+  const sizeText = formatBytes(fileRequest?.sizeBytes);
+  const expiresText = fileRequest?.expiresAt || "";
+  const downloadCount = Number.isFinite(Number(fileRequest?.downloadCount)) ? Number(fileRequest.downloadCount) : 0;
+  const html = `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHTML(title)}</title>
+  <style>
+    :root { color-scheme: light dark; --accent: #2563eb; --ok: #16a34a; --ink: #172033; --muted: #64748b; --panel: rgba(255,255,255,.86); --line: rgba(148,163,184,.35); }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: radial-gradient(circle at 20% 0%, #dbeafe 0, transparent 30%), linear-gradient(135deg, #f8fafc, #eef2ff 55%, #ecfeff); display: grid; place-items: center; padding: 28px; }
+    main { width: min(860px, 100%); }
+    .card { background: var(--panel); backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 60px rgba(15,23,42,.14); overflow: hidden; }
+    .top { padding: 28px 28px 18px; }
+    .badge { display: inline-flex; align-items: center; gap: 8px; padding: 7px 11px; border-radius: 999px; background: rgba(37,99,235,.10); color: var(--accent); font-size: 13px; font-weight: 700; }
+    h1 { margin: 16px 0 8px; font-size: clamp(24px, 5vw, 34px); line-height: 1.12; letter-spacing: 0; }
+    p { margin: 0; color: var(--muted); line-height: 1.55; }
+    .file { margin: 18px 0 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(248,250,252,.72); }
+    .filename { font-weight: 800; word-break: break-word; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .chip { padding: 6px 9px; border-radius: 999px; background: rgba(100,116,139,.11); color: #475569; font-size: 12px; font-weight: 650; }
+    .preview { margin: 18px 0 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: rgba(15,23,42,.04); }
+    .preview-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    .preview-title { font-weight: 800; }
+    .preview-body { min-height: 220px; background: rgba(255,255,255,.62); }
+    .preview-frame { display: block; width: 100%; height: min(62vh, 520px); border: 0; background: white; }
+    .preview-text { width: 100%; min-height: 220px; max-height: min(62vh, 520px); margin: 0; padding: 14px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: #fff; color: #111827; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .preview-image { display: block; width: 100%; max-height: min(62vh, 520px); object-fit: contain; background: #0f172a; }
+    .preview-media { display: block; width: 100%; padding: 18px; }
+    .preview-empty { padding: 16px 14px; color: var(--muted); line-height: 1.5; }
+    .actions { display: flex; gap: 10px; padding: 18px 28px 28px; }
+    a.button { flex: 1; text-align: center; text-decoration: none; border-radius: 12px; padding: 13px 16px; font-weight: 800; background: var(--accent); color: white; box-shadow: 0 10px 24px rgba(37,99,235,.26); }
+    .note { padding: 0 28px 24px; font-size: 12px; color: var(--muted); }
+    @media (prefers-color-scheme: dark) { :root { --ink: #e5e7eb; --muted: #a3aebf; --panel: rgba(15,23,42,.82); --line: rgba(148,163,184,.22); } body { background: radial-gradient(circle at 20% 0%, #1e3a8a 0, transparent 32%), linear-gradient(135deg, #020617, #111827 65%, #0f172a); } .file { background: rgba(15,23,42,.7); } .chip { background: rgba(148,163,184,.16); color: #cbd5e1; } .preview { background: rgba(15,23,42,.62); } .preview-body { background: rgba(2,6,23,.7); } }
+    @media (max-width: 640px) { body { padding: 14px; place-items: start center; } .top { padding: 22px 18px 14px; } .actions { padding: 16px 18px 22px; } .note { padding: 0 18px 20px; } .preview-frame, .preview-image { height: 360px; max-height: 58vh; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <div class="top">
+        <div class="badge">${status === 200 ? "준비 완료" : "확인 필요"}</div>
+        <h1>${escapeHTML(title)}</h1>
+        <p>${escapeHTML(message)}</p>
+        ${fileRequest ? `<div class="file"><div class="filename">${escapeHTML(filename)}</div><div class="meta">${sizeText ? `<span class="chip">${escapeHTML(sizeText)}</span>` : ""}${expiresText ? `<span class="chip" data-expires="${escapeHTML(expiresText)}">만료 ${escapeHTML(expiresText)}</span>` : ""}<span class="chip" data-download-count="${downloadCount}">열람/다운로드 ${downloadCount}회</span></div></div>` : ""}
+        ${previewMarkup}
+      </div>
+      ${canDownload ? `<div class="actions"><a class="button" href="${escapeHTML(downloadURL)}">파일 다운로드</a></div>` : ""}
+      <div class="note">이 링크는 임시 링크입니다. 만료되면 서버의 파일과 기록이 자동 정리됩니다.</div>
+    </section>
+  </main>
+  <script>
+    for (const el of document.querySelectorAll("[data-expires]")) {
+      const d = new Date(el.dataset.expires);
+      if (!Number.isNaN(d.getTime())) el.textContent = "만료 " + d.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
+    }
+    const usageChip = document.querySelector("[data-download-count]");
+    const countedPreviewElements = new WeakSet();
+    function setUsageCount(value) {
+      if (!usageChip) return;
+      usageChip.dataset.downloadCount = String(value);
+      usageChip.textContent = "열람/다운로드 " + value + "회";
+    }
+    function bumpUsageCount(el) {
+      if (!usageChip || (el && countedPreviewElements.has(el))) return;
+      if (el) countedPreviewElements.add(el);
+      const current = Number.parseInt(usageChip.dataset.downloadCount || "0", 10);
+      setUsageCount(Number.isFinite(current) ? current + 1 : 1);
+    }
+    for (const el of document.querySelectorAll("[data-preview-resource]")) {
+      el.addEventListener("load", () => bumpUsageCount(el), { once: true });
+      el.addEventListener("loadedmetadata", () => bumpUsageCount(el), { once: true });
+      if (el.tagName === "IMG" && el.complete && el.naturalWidth > 0) {
+        bumpUsageCount(el);
+      }
+    }
+    for (const el of document.querySelectorAll("[data-preview-text-url]")) {
+      fetch(el.dataset.previewTextUrl, { cache: "no-store" })
+        .then((res) => {
+          if (!res.ok) return Promise.reject(new Error("preview failed"));
+          bumpUsageCount(el);
+          return res.text();
+        })
+        .then((text) => { el.textContent = text || "미리볼 내용이 없습니다."; })
+        .catch(() => { el.textContent = "미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요."; });
+    }
+  </script>
+</body>
+</html>`;
+  return new Response(html, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; frame-src 'self'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
+}
+
+function downloadActionURL(request) {
+  const url = new URL(request.url);
+  url.searchParams.set("download", "1");
+  url.searchParams.delete("preview");
+  return url.toString();
+}
+
+function previewActionURL(request) {
+  const url = new URL(request.url);
+  url.searchParams.set("preview", "1");
+  url.searchParams.delete("download");
+  return url.toString();
+}
+
+function fileAccessObjectResponse(fileRequest, object, { disposition = "attachment", preview = null } = {}) {
+  const headers = new Headers();
+  headers.set("Cache-Control", "no-store");
+  headers.set("Content-Type", effectiveFileContentType(fileRequest, object, { disposition, preview }));
+  headers.set("Content-Disposition", contentDisposition(fileRequest.itemTitle || "KLMS file", disposition));
+  if (Number.isFinite(Number(fileRequest.sizeBytes))) {
+    headers.set("Content-Length", String(Number(fileRequest.sizeBytes)));
+  }
+  return new Response(object.body, { status: 200, headers });
+}
+
+function filePreviewMarkup(preview, previewURL) {
+  if (preview.available) {
+    const url = escapeHTML(previewURL);
+    const label = escapeHTML(preview.label);
+    if (preview.kind === "image") {
+      return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><img class="preview-image" data-preview-resource src="${url}" alt="파일 미리보기"></div></div>`;
+    }
+    if (preview.kind === "text") {
+      return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><pre class="preview-text" data-preview-text-url="${url}">미리보기를 불러오는 중입니다.</pre></div></div>`;
+    }
+    if (preview.kind === "audio") {
+      return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><audio class="preview-media" data-preview-resource controls src="${url}"></audio></div></div>`;
+    }
+    if (preview.kind === "video") {
+      return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><video class="preview-media" data-preview-resource controls src="${url}"></video></div></div>`;
+    }
+    return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><iframe class="preview-frame" data-preview-resource title="파일 미리보기" src="${url}"></iframe></div></div>`;
+  }
+  return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">지원 안 함</span></div><div class="preview-empty">${escapeHTML(preview.message || "이 파일은 브라우저 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.")}</div></div>`;
+}
+
 function relayResponse(state) {
   return {
     ok: true,
@@ -945,6 +1976,7 @@ function relayResponse(state) {
     status: normalizeStatus(state.status, state.running ? "running" : undefined),
     latestCommand: state.latestCommand || null,
     running: Boolean(state.running),
+    updatedAt: state.updatedAt || null,
     requestNonce: null,
     responseIssuedAtEpochSeconds: null,
     signature: null,
@@ -963,6 +1995,15 @@ function normalizeCommand(raw, fallbackStatus) {
     lastExitCode: Number.isInteger(raw.lastExitCode) ? raw.lastExitCode : null,
     loginRequired: Boolean(raw.loginRequired),
     summary: normalizeStatus(raw.summary || defaultStatus, raw.status || fallbackStatus),
+    options: normalizeCommandOptions(raw.options || raw.options_json),
+  };
+}
+
+function normalizeCommandOptions(raw) {
+  const parsed = typeof raw === "string" ? parseJSON(raw, {}) : raw || {};
+  return {
+    updateNoticeNotes: parsed.updateNoticeNotes !== false && parsed.update_notice_notes !== false,
+    dryRun: normalizeBoolean(parsed.dryRun ?? parsed.dry_run),
   };
 }
 
@@ -1007,6 +2048,42 @@ function normalizeFileAccessRequest(raw, fallbackStatus) {
   };
 }
 
+function normalizeSettingAction(raw, fallbackStatus) {
+  const now = new Date().toISOString();
+  const id = String(raw?.id || crypto.randomUUID()).toLowerCase();
+  return {
+    id,
+    key: sanitizeSettingKey(raw?.key),
+    value: sanitizePublicText(raw?.value),
+    title: sanitizePublicText(raw?.title),
+    status: String(raw?.status || fallbackStatus),
+    createdAt: raw?.createdAt || raw?.created_at || now,
+    updatedAt: raw?.updatedAt || raw?.updated_at || now,
+    message: sanitizePublicText(raw?.message),
+  };
+}
+
+function normalizeCancelRequest(raw) {
+  const requestedAt = raw?.requestedAt || raw?.requested_at || null;
+  const commandID = normalizeUUIDText(raw?.commandID || raw?.commandId || raw?.command_id);
+  const requested = Boolean(commandID) && normalizeBoolean(raw?.requested) && (
+    !requestedAt || ageMs(requestedAt, Date.now()) <= CANCEL_REQUEST_TTL_MS
+  );
+  return {
+    requested,
+    requestedAt: requested ? requestedAt || new Date().toISOString() : null,
+    commandID: requested ? commandID : null,
+    message: sanitizePublicText(raw?.message),
+  };
+}
+
+function normalizeUUIDText(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(text)
+    ? text
+    : "";
+}
+
 function normalizeStatus(raw, fallbackPhase) {
   const status = { ...defaultStatus, ...(raw || {}) };
   for (const key of [
@@ -1029,6 +2106,7 @@ function normalizeStatus(raw, fallbackPhase) {
     status[key] = Number.isFinite(Number(status[key])) ? Number(status[key]) : 0;
   }
   status.phase = String(fallbackPhase || status.phase || "");
+  status.phaseDetail = sanitizePublicText(status.phaseDetail) || null;
   status.loginRequired = Boolean(status.loginRequired);
   status.authDigits = status.authDigits == null ? null : String(status.authDigits);
   status.authStatusMessage = status.authStatusMessage == null ? null : String(status.authStatusMessage);
@@ -1048,17 +2126,47 @@ function normalizeSyncItem(raw) {
   return {
     id,
     kind,
-    course: String(raw.course || "").trim(),
-    title: String(raw.title || "").trim(),
-    timestamp: String(raw.timestamp || "").trim(),
-    status: String(raw.status || "").trim(),
-    detail: String(raw.detail || "").trim(),
+    course: sanitizePublicText(raw.course),
+    academicTerm: sanitizePublicText(raw.academicTerm),
+    academicYear: Number.isFinite(Number(raw.academicYear)) ? Number(raw.academicYear) : null,
+    academicSemester: sanitizePublicText(raw.academicSemester),
+    title: sanitizePublicText(raw.title),
+    timestamp: sanitizePublicText(raw.timestamp),
+    status: sanitizePublicText(raw.status),
+    detail: sanitizePublicText(raw.detail),
     attachmentCount: Number.isFinite(Number(raw.attachmentCount)) ? Number(raw.attachmentCount) : 0,
     updatedAt: String(raw.updatedAt || now),
     isRead: normalizeBoolean(raw.isRead),
     isImportant: normalizeBoolean(raw.isImportant),
     isHidden: normalizeBoolean(raw.isHidden),
   };
+}
+
+function sanitizePublicText(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  if (looksPrivateText(text)) {
+    return "";
+  }
+  return text.replace(/\/Users\/[^\s"'<>]+/g, "[local-path]");
+}
+
+function looksPrivateText(text) {
+  if (/\/Users\//i.test(text)) {
+    return true;
+  }
+  if (/(주소|address)/i.test(text)) {
+    return true;
+  }
+  if (/(?<!\d)\d{5}(?!\d)/.test(text)) {
+    return true;
+  }
+  if (/[가-힣A-Za-z0-9_.-]+(로|길)\s*\d{1,4}(\s*-\s*\d{1,4})?/.test(text)) {
+    return true;
+  }
+  return false;
 }
 
 function normalizeBoolean(value) {
@@ -1074,10 +2182,13 @@ function normalizeBoolean(value) {
   return false;
 }
 
-async function replaceSyncItems(db, items, generatedAt) {
+async function replaceSyncItems(db, items, generatedAt, extras = {}) {
   const now = new Date().toISOString();
   await db.batch([
     setMetaStatement(db, "syncDataItems", JSON.stringify(items.slice(0, MAX_SYNC_ITEMS))),
+    setMetaStatement(db, "syncDataDryRunReports", JSON.stringify(extras.dryRunReports || [])),
+    setMetaStatement(db, "syncDataCalendarChanges", JSON.stringify(extras.calendarChanges || [])),
+    setMetaStatement(db, "syncDataSettings", JSON.stringify(extras.settings || [])),
     setMetaStatement(db, "syncDataGeneratedAt", String(generatedAt || now)),
     setMetaStatement(db, "syncDataUpdatedAt", now),
   ]);
@@ -1085,8 +2196,13 @@ async function replaceSyncItems(db, items, generatedAt) {
 
 async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {
   const items = parseJSON(await getMeta(db, "syncDataItems"), []);
+  const dryRunReports = parseJSON(await getMeta(db, "syncDataDryRunReports"), []);
+  const calendarChanges = parseJSON(await getMeta(db, "syncDataCalendarChanges"), []);
+  const settings = parseJSON(await getMeta(db, "syncDataSettings"), []);
   const trimmedKind = String(kind || "").trim();
   const filtered = (Array.isArray(items) ? items : [])
+    .map(normalizeSyncItem)
+    .filter(Boolean)
     .filter((item) => !trimmedKind || item.kind === trimmedKind)
     .sort(compareSyncItems)
     .slice(0, limit);
@@ -1094,7 +2210,78 @@ async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {
     generatedAt: await getMeta(db, "syncDataGeneratedAt") || "",
     updatedAt: await getMeta(db, "syncDataUpdatedAt") || "",
     items: filtered,
+    dryRunReports: normalizeDryRunReports(dryRunReports),
+    calendarChanges: normalizeCalendarChanges(calendarChanges),
+    settings: normalizeSettings(settings),
   };
+}
+
+function normalizeDryRunReports(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.slice(0, MAX_SYNC_EXTRAS).map((report) => ({
+    scope: sanitizePublicText(report?.scope),
+    status: sanitizePublicText(report?.status) || "missing",
+    would_create: boundedInt(report?.would_create ?? report?.wouldCreate, 0, 0, 1_000_000),
+    would_update: boundedInt(report?.would_update ?? report?.wouldUpdate, 0, 0, 1_000_000),
+    would_delete: boundedInt(report?.would_delete ?? report?.wouldDelete, 0, 0, 1_000_000),
+    would_download: boundedInt(report?.would_download ?? report?.wouldDownload, 0, 0, 1_000_000),
+    would_prune: boundedInt(report?.would_prune ?? report?.wouldPrune, 0, 0, 1_000_000),
+    would_prune_course_files: boundedInt(report?.would_prune_course_files ?? report?.wouldPruneCourseFiles, 0, 0, 1_000_000),
+    would_prune_archive: boundedInt(report?.would_prune_archive ?? report?.wouldPruneArchive, 0, 0, 1_000_000),
+    skipped_side_effects: Array.isArray(report?.skipped_side_effects ?? report?.skippedSideEffects)
+      ? (report.skipped_side_effects ?? report.skippedSideEffects).map(sanitizePublicText).filter(Boolean).slice(0, 50)
+      : [],
+    prune_backup_manifest: "",
+    archive_prune_backup_manifest: "",
+  }));
+}
+
+function normalizeCalendarChanges(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.slice(0, MAX_SYNC_EXTRAS).map((change) => ({
+    action: sanitizePublicText(change?.action),
+    calendar: sanitizePublicText(change?.calendar),
+    bucket: sanitizePublicText(change?.bucket),
+    identifier: sanitizePublicText(change?.identifier),
+    title: sanitizePublicText(change?.title),
+    course: sanitizePublicText(change?.course),
+    url: "",
+    start_at: sanitizePublicText(change?.start_at ?? change?.startAt),
+    due_at: sanitizePublicText(change?.due_at ?? change?.dueAt),
+    location: "",
+    changes: Array.isArray(change?.changes) ? change.changes.map(sanitizePublicText).filter(Boolean).slice(0, 50) : [],
+    raw: "",
+    parse_error: sanitizePublicText(change?.parse_error ?? change?.parseError),
+  }));
+}
+
+function normalizeSettings(raw) {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.slice(0, MAX_SYNC_EXTRAS).map((setting) => ({
+    key: sanitizeSettingKey(setting?.key),
+    title: sanitizePublicText(setting?.title),
+    value: sanitizePublicText(setting?.value),
+    valueKind: sanitizeSettingValueKind(setting?.valueKind ?? setting?.value_kind),
+    options: Array.isArray(setting?.options) ? setting.options.map(sanitizePublicText).filter(Boolean).slice(0, 20) : [],
+    editable: normalizeBoolean(setting?.editable ?? true),
+    updatedAt: String(setting?.updatedAt || setting?.updated_at || new Date().toISOString()),
+  })).filter((setting) => setting.key);
+}
+
+function sanitizeSettingKey(value) {
+  const key = String(value || "").trim();
+  return /^[A-Z][A-Z0-9_]*$/.test(key) ? key : "";
+}
+
+function sanitizeSettingValueKind(value) {
+  const kind = String(value || "text");
+  return ["bool", "number", "text", "choice"].includes(kind) ? kind : "text";
 }
 
 function compareSyncItems(lhs, rhs) {
@@ -1130,6 +2317,7 @@ function rowToCommand(row) {
     lastExitCode: Number.isInteger(row.last_exit_code) ? row.last_exit_code : null,
     loginRequired: Boolean(row.login_required),
     summary: parseJSON(row.summary_json, defaultStatus),
+    options: parseJSON(row.options_json, {}),
   }, row.status || "pending");
 }
 
@@ -1200,6 +2388,8 @@ function fileAccessLimits(env) {
     dailyUploadBytes: boundedInt(env?.FILE_RELAY_DAILY_UPLOAD_BYTES, DEFAULT_DAILY_FILE_UPLOAD_BYTES, 1, 10 * 1024 * 1024 * 1024),
     dailyDownloads: boundedInt(env?.FILE_RELAY_DAILY_DOWNLOADS, DEFAULT_DAILY_FILE_DOWNLOADS, 1, 100_000),
     downloadsPerLink: boundedInt(env?.FILE_RELAY_DOWNLOADS_PER_LINK, DEFAULT_FILE_DOWNLOADS_PER_LINK, 1, 100),
+    previewMaxBytes: boundedInt(env?.FILE_RELAY_PREVIEW_MAX_BYTES, DEFAULT_FILE_PREVIEW_MAX_BYTES, 1, 100 * 1024 * 1024),
+    textPreviewMaxBytes: boundedInt(env?.FILE_RELAY_TEXT_PREVIEW_MAX_BYTES, DEFAULT_TEXT_FILE_PREVIEW_MAX_BYTES, 1, 5 * 1024 * 1024),
     ttlMs: boundedInt(env?.FILE_RELAY_TTL_SECONDS, DEFAULT_FILE_ACCESS_TTL_MS / 1000, 60, 60 * 60) * 1000,
     maxPendingRequests: boundedInt(env?.FILE_RELAY_MAX_PENDING_REQUESTS, 20, 1, MAX_FILE_ACCESS_REQUESTS),
   };
@@ -1213,6 +2403,8 @@ function publicFileAccessLimits(env) {
     dailyUploadBytes: limits.dailyUploadBytes,
     dailyDownloads: limits.dailyDownloads,
     downloadsPerLink: limits.downloadsPerLink,
+    previewMaxBytes: limits.previewMaxBytes,
+    textPreviewMaxBytes: limits.textPreviewMaxBytes,
     ttlSeconds: Math.floor(limits.ttlMs / 1000),
     maxPendingRequests: limits.maxPendingRequests,
   };
@@ -1287,10 +2479,125 @@ function decodeHeaderFilename(value) {
   }
 }
 
-function contentDisposition(filename) {
+function contentDisposition(filename, disposition = "attachment") {
   const safe = sanitizeFilename(filename);
   const ascii = safe.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeRFC5987ValueChars(safe)}`;
+  const mode = disposition === "inline" ? "inline" : "attachment";
+  return `${mode}; filename="${ascii}"; filename*=UTF-8''${encodeRFC5987ValueChars(safe)}`;
+}
+
+function filePreviewDetails(
+  fileRequest,
+  previewMaxBytes = DEFAULT_FILE_PREVIEW_MAX_BYTES,
+  textPreviewMaxBytes = DEFAULT_TEXT_FILE_PREVIEW_MAX_BYTES
+) {
+  if (!fileRequest) {
+    return { available: false, kind: "", label: "", message: "" };
+  }
+  const filename = String(fileRequest.itemTitle || "");
+  const extension = filename.includes(".") ? filename.split(".").pop().toLowerCase() : "";
+  const contentType = effectiveFileContentType(fileRequest).split(";")[0].trim().toLowerCase();
+  let preview = {
+    available: false,
+    kind: "",
+    label: "",
+    message: "이 형식은 브라우저에서 바로 볼 수 없어 다운로드만 지원합니다.",
+  };
+  if (contentType === "application/pdf") {
+    preview = { available: true, kind: "pdf", label: "PDF", contentType, message: "" };
+  } else if (contentType.startsWith("image/") && extension !== "svg") {
+    preview = { available: true, kind: "image", label: "이미지", contentType, message: "" };
+  } else if (contentType.startsWith("audio/")) {
+    preview = { available: true, kind: "audio", label: "오디오", contentType, message: "" };
+  } else if (contentType.startsWith("video/")) {
+    preview = { available: true, kind: "video", label: "동영상", contentType, message: "" };
+  } else if (
+    contentType.startsWith("text/")
+    || ["txt", "md", "markdown", "csv", "tsv", "json", "xml", "log", "svg"].includes(extension)
+  ) {
+    preview = { available: true, kind: "text", label: "텍스트", contentType: "text/plain; charset=utf-8", message: "" };
+  }
+  if (!preview.available) return preview;
+  const bytes = Number(fileRequest.sizeBytes || 0);
+  const maxBytes = preview.kind === "text" ? textPreviewMaxBytes : previewMaxBytes;
+  if (Number.isFinite(bytes) && bytes > maxBytes) {
+    return {
+      available: false,
+      kind: "",
+      label: "",
+      message: `파일이 ${formatBytes(maxBytes)}보다 커서 미리보기를 생략했습니다. 다운로드해서 확인해 주세요.`,
+    };
+  }
+  return preview;
+}
+
+function effectiveFileContentType(fileRequest, object = null, { disposition = "attachment", preview = null } = {}) {
+  if (disposition === "inline" && preview?.contentType) {
+    return preview.contentType;
+  }
+  const stored = String(fileRequest?.contentType || object?.httpMetadata?.contentType || "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  if (stored && stored !== "application/octet-stream" && stored !== "binary/octet-stream") {
+    return stored;
+  }
+  return inferredContentTypeForFilename(fileRequest?.itemTitle || "");
+}
+
+function inferredContentTypeForFilename(filename) {
+  const extension = String(filename || "").split(".").pop()?.toLowerCase() || "";
+  switch (extension) {
+    case "pdf": return "application/pdf";
+    case "png": return "image/png";
+    case "jpg":
+    case "jpeg": return "image/jpeg";
+    case "gif": return "image/gif";
+    case "webp": return "image/webp";
+    case "bmp": return "image/bmp";
+    case "mp3": return "audio/mpeg";
+    case "m4a": return "audio/mp4";
+    case "wav": return "audio/wav";
+    case "aac": return "audio/aac";
+    case "ogg": return "audio/ogg";
+    case "mp4":
+    case "m4v": return "video/mp4";
+    case "mov": return "video/quicktime";
+    case "webm": return "video/webm";
+    case "txt":
+    case "md":
+    case "markdown":
+    case "csv":
+    case "tsv":
+    case "json":
+    case "xml":
+    case "log":
+    case "svg": return "text/plain; charset=utf-8";
+    default: return "application/octet-stream";
+  }
+}
+
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = bytes;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  const digits = size >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${size.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function encodeRFC5987ValueChars(value) {
@@ -1369,6 +2676,16 @@ function displayItemActionName(action) {
       return "파일 숨김";
     case "fileUnhide":
       return "파일 숨김 해제";
+    case "fileTrash":
+      return "파일 휴지통";
+    case "calendarVerify":
+      return "캘린더 상태 확인";
+    case "calendarApply":
+      return "KLMS 기준 반영";
+    case "calendarEdit":
+      return "캘린더 내용 수정";
+    case "calendarDelete":
+      return "KLMS 기준 반영";
     default:
       return action || "항목 처리";
   }
@@ -1384,10 +2701,14 @@ function displayCommandName(kind) {
       return "공지 메모";
     case "filesSync":
       return "파일 동기화";
+    case "verify":
+      return "상태 검사";
     case "doctor":
       return "권한/환경 진단";
     case "report":
       return "요약 갱신";
+    case "v2BuildState":
+      return "상태 파일 재생성";
     default:
       return kind || "요청";
   }
@@ -1403,6 +2724,8 @@ function displayStatus(status) {
       return "완료";
     case "failed":
       return "실패";
+    case "cancelled":
+      return "취소됨";
     case "macUnavailable":
       return "Mac 응답 없음";
     default:

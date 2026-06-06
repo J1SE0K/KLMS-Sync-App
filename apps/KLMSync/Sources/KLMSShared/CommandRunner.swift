@@ -71,6 +71,7 @@ public enum KLMSCommandRunnerError: Error, Sendable, LocalizedError, Equatable {
 }
 
 public actor KLMSCommandRunner {
+    private static let forcedTerminationGraceNanoseconds: UInt64 = 700_000_000
     private var currentCommand: KLMSEngineCommand?
     private var currentProcess: Process?
     private var cancellationRequested = false
@@ -84,11 +85,12 @@ public actor KLMSCommandRunner {
         }
         cancellationRequested = true
         let rootPID = currentProcess.processIdentifier
-        Self.sendSignalToProcessTree(rootPID: rootPID, signal: SIGTERM)
+        let targetPIDs = Self.processTreeIncludingRoot(rootPID: rootPID)
+        Self.sendSignal(to: targetPIDs, signal: SIGTERM)
         currentProcess.terminate()
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            await self?.forceKillIfStillRunning(rootPID: rootPID)
+            try? await Task.sleep(nanoseconds: Self.forcedTerminationGraceNanoseconds)
+            await self?.forceKillIfStillRunning(targetPIDs: targetPIDs)
         }
         return true
     }
@@ -175,14 +177,12 @@ public actor KLMSCommandRunner {
         )
     }
 
-    private func forceKillIfStillRunning(rootPID: Int32) {
-        guard cancellationRequested,
-              let currentProcess,
-              currentProcess.processIdentifier == rootPID,
-              currentProcess.isRunning else {
+    private func forceKillIfStillRunning(targetPIDs: [Int32]) {
+        guard cancellationRequested else {
             return
         }
-        Self.sendSignalToProcessTree(rootPID: rootPID, signal: SIGKILL)
+        let livePIDs = targetPIDs.filter { Self.processExists($0) }
+        Self.sendSignal(to: livePIDs, signal: SIGKILL)
     }
 
     public static func extractAuthDigits(from text: String) -> String? {
@@ -319,16 +319,29 @@ public actor KLMSCommandRunner {
         return environment
     }
 
-    private static func sendSignalToProcessTree(rootPID: Int32, signal: Int32) {
+    private static func processTreeIncludingRoot(rootPID: Int32) -> [Int32] {
         guard rootPID > 1 else {
-            return
+            return []
         }
         let childrenByParent = processChildrenByParent()
         let descendants = processTree(rootPID: rootPID, childrenByParent: childrenByParent)
-        for pid in descendants.reversed() where pid > 1 {
+        return descendants.reversed().filter { $0 > 1 } + [rootPID]
+    }
+
+    private static func sendSignal(to pids: [Int32], signal: Int32) {
+        for pid in pids where pid > 1 {
             Darwin.kill(pid_t(pid), signal)
         }
-        Darwin.kill(pid_t(rootPID), signal)
+    }
+
+    private static func processExists(_ pid: Int32) -> Bool {
+        guard pid > 1 else {
+            return false
+        }
+        if Darwin.kill(pid_t(pid), 0) == 0 {
+            return true
+        }
+        return errno == EPERM
     }
 
     private static func processTree(rootPID: Int32, childrenByParent: [Int32: [Int32]]) -> [Int32] {

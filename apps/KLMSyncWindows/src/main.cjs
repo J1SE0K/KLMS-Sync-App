@@ -2,7 +2,8 @@ const { app, BrowserWindow, clipboard, ipcMain, safeStorage, shell } = require("
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+const EVENT_POLL_WAIT_SECONDS = 25;
 
 let mainWindow;
 
@@ -53,6 +54,7 @@ function registerIPC() {
   });
   ipcMain.handle("clipboard:readText", async () => clipboard.readText("clipboard"));
   ipcMain.handle("relay:request", async (_event, request) => relayRequest(request || {}));
+  ipcMain.handle("relay:waitForEvent", async (_event, request) => waitForRelayEvent(request || {}));
   ipcMain.handle("shell:openExternal", async (_event, target) => {
     if (typeof target === "string" && /^https?:\/\//i.test(target)) {
       await shell.openExternal(target);
@@ -145,6 +147,18 @@ function decodeToken(config) {
   return "";
 }
 
+async function waitForRelayEvent(request) {
+  const searchParams = new URLSearchParams({
+    role: "client",
+    waitSeconds: String(EVENT_POLL_WAIT_SECONDS)
+  });
+  const since = String(request.since || "").trim();
+  if (since) {
+    searchParams.set("since", since);
+  }
+  return relayRequest({ path: `/v1/events/poll?${searchParams.toString()}` });
+}
+
 async function relayRequest(request) {
   const config = await readConfigFile();
   const relayURL = normalizeRelayURL(config.relayURL || "");
@@ -159,7 +173,8 @@ async function relayRequest(request) {
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const headers = {
-      Accept: "application/json"
+      Accept: "application/json",
+      "X-KLMS-Client": "Windows"
     };
     if (endpoint !== "/healthz") {
       headers.Authorization = `Bearer ${token}`;
@@ -184,7 +199,7 @@ async function relayRequest(request) {
     }
     if (!response.ok) {
       const message = response.status === 401
-        ? "서버 인증 실패: 서버 주소와 클라이언트 토큰이 최신 값인지 확인해 주세요."
+        ? "서버 인증 실패: 서버 URL과 클라이언트 토큰이 최신 값인지 확인해 주세요."
         : payload && payload.error ? payload.error : `서버 요청 실패 (${response.status})`;
       const error = new Error(message);
       error.status = response.status;
@@ -210,24 +225,23 @@ function normalizeEndpoint(endpoint) {
 function normalizeRelayURL(value) {
   const trimmed = value.trim().replace(/\/+$/, "");
   if (!trimmed) {
-    throw new Error("서버 주소를 입력해야 합니다.");
+    throw new Error("서버 URL을 입력해야 합니다.");
   }
   const url = new URL(trimmed);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("서버 주소는 http 또는 https여야 합니다.");
+  if (url.protocol !== "https:") {
+    throw new Error("서버 URL은 공개 HTTPS URL이어야 합니다.");
   }
   return url.toString().replace(/\/+$/, "");
 }
 
 function validateRelayURL(value) {
   const url = new URL(value);
-  if (url.protocol === "https:") {
-    return;
+  if (url.protocol !== "https:") {
+    throw new Error("서버 URL은 공개 HTTPS URL이어야 합니다.");
   }
-  if (url.protocol === "http:" && isPrivateHost(url.hostname)) {
-    return;
+  if (isPrivateHost(url.hostname)) {
+    throw new Error("localhost, .local, 사설 IP는 서버 URL로 사용할 수 없습니다. 공개 HTTPS URL을 입력해 주세요.");
   }
-  throw new Error("공개 주소는 HTTPS만 허용합니다. HTTP는 localhost, 사설 IP, .local 주소만 사용할 수 있습니다.");
 }
 
 function isPrivateHost(hostname) {

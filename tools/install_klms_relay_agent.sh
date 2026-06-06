@@ -141,6 +141,12 @@ write_plist() {
 EOF
 }
 
+reset_relay_logs() {
+  mkdir -p "$LOG_DIR"
+  : > "$LOG_DIR/relay.stdout.log"
+  : > "$LOG_DIR/relay.stderr.log"
+}
+
 health_url() {
   local host="${KLMS_RELAY_HOST:-$DEFAULT_HOST}"
   local port="${KLMS_RELAY_PORT:-$DEFAULT_PORT}"
@@ -148,12 +154,15 @@ health_url() {
 }
 
 print_config() {
-  local client_token worker_token
+  local client_token worker_token legacy_token
   client_token="$(read_existing_env_value KLMS_RELAY_CLIENT_TOKEN || true)"
   worker_token="$(read_existing_env_value KLMS_RELAY_WORKER_TOKEN || true)"
+  legacy_token="$(read_existing_env_value KLMS_RELAY_TOKEN || true)"
   print -r -- "서버 주소: http://$DEFAULT_HOST:$DEFAULT_PORT"
   if [[ -n "$client_token" ]]; then
     print -r -- "클라이언트 토큰: $(display_token "$client_token")"
+  elif [[ -n "$legacy_token" ]]; then
+    print -r -- "클라이언트 토큰: 예전 단일 토큰 있음. install을 다시 실행하면 분리 저장됩니다."
   else
     print -r -- "클라이언트 토큰: relay.env 생성 전"
   fi
@@ -166,7 +175,7 @@ print_config() {
   print -r -- "환경 파일: $ENV_FILE"
   print -r -- "LaunchAgent: $PLIST_DST"
   if [[ "$SHOW_TOKEN" != "1" ]]; then
-    print -r -- "전체 토큰을 보려면: $0 print-config --show-token"
+    print -r -- "전체 토큰을 보려면: $SCRIPT_DIR/install_klms_relay_agent.sh print-config --show-token"
   fi
 }
 
@@ -197,11 +206,15 @@ install_agent() {
   fi
   install_tool_files
 
-  local existing_client_token existing_worker_token client_token worker_token
+  local existing_client_token existing_worker_token existing_legacy_token client_token worker_token
   existing_client_token="$(read_existing_env_value KLMS_RELAY_CLIENT_TOKEN || true)"
   existing_worker_token="$(read_existing_env_value KLMS_RELAY_WORKER_TOKEN || true)"
+  existing_legacy_token="$(read_existing_env_value KLMS_RELAY_TOKEN || true)"
   client_token="${KLMS_RELAY_CLIENT_TOKEN:-$existing_client_token}"
   worker_token="${KLMS_RELAY_WORKER_TOKEN:-$existing_worker_token}"
+  if [[ -z "$client_token" && -n "$existing_legacy_token" ]]; then
+    client_token="$existing_legacy_token"
+  fi
   if [[ -z "$client_token" ]]; then
     client_token="$(generate_token)"
   fi
@@ -209,12 +222,12 @@ install_agent() {
     worker_token="$(generate_token)"
   fi
   if [[ "$client_token" == "$worker_token" ]]; then
-    print -u2 -- "KLMS_RELAY_CLIENT_TOKEN and KLMS_RELAY_WORKER_TOKEN must be different."
-    exit 64
+    worker_token="$(generate_token)"
   fi
 
   write_env_file "$node_bin" "$client_token" "$worker_token"
   write_plist
+  reset_relay_logs
 
   launchctl bootout "$GUI_DOMAIN" "$PLIST_DST" >/dev/null 2>&1 || true
   launchctl bootstrap "$GUI_DOMAIN" "$PLIST_DST"

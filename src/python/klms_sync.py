@@ -3082,15 +3082,122 @@ def assignment_to_exam_item(assignment: dict[str, Any]) -> dict[str, Any]:
     return exam_item
 
 
+def sync_item_identity_text(value: Any) -> str:
+    return normalize_whitespace(str(value or "")).casefold()
+
+
+def canonical_sync_item_url_identity(url: str) -> str:
+    normalized = normalize_whitespace(url)
+    if not normalized:
+        return ""
+
+    parsed = urlparse(normalized)
+    path = parsed.path.lower()
+    query = {key.lower(): value for key, value in parse_qsl(parsed.query, keep_blank_values=True)}
+
+    if "/mod/courseboard/article.php" in path and query.get("bwid"):
+        return f"{path}?bwid={query['bwid']}"
+    if query.get("id"):
+        return f"{path}?id={query['id']}"
+    if query.get("bwid"):
+        return f"{path}?bwid={query['bwid']}"
+    return normalized.casefold()
+
+
+def assignment_logical_identity_key(item: dict[str, Any]) -> tuple[str, str, str, str]:
+    course = sync_item_identity_text(item.get("course", ""))
+    title = sync_item_identity_text(item.get("title", ""))
+    due = sync_item_identity_text(item.get("sync_due") or item.get("due", ""))
+    if course and title and due:
+        return ("logical", course, title, due)
+
+    url = canonical_sync_item_url_identity(str(item.get("url", "")))
+    return ("url", url, title, due)
+
+
+def sync_item_quality_score(item: dict[str, Any]) -> tuple[int, int, int, int, int, int, int]:
+    module = module_name_from_url(str(item.get("url", "")))
+    category = sync_item_identity_text(item.get("category", ""))
+    record_status = sync_item_identity_text(item.get("record_status", ""))
+    module_score = 3 if module in {"assign", "quiz"} else 2 if module == "courseboard" else 1
+    category_score = 3 if category == "assignment" else 2 if category == "assignment_candidate" else 1
+    status_score = 3 if record_status == "active" else 2 if record_status == "completed" else 1
+    return (
+        module_score,
+        category_score,
+        status_score,
+        1 if item.get("sync_due") else 0,
+        len(normalize_whitespace(str(item.get("instructions", "")))),
+        len(normalize_whitespace(str(item.get("source_title", "")))),
+        len(normalize_whitespace(str(item.get("url", "")))),
+    )
+
+
+def merge_sync_items(existing: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    if sync_item_quality_score(candidate) > sync_item_quality_score(existing):
+        base = dict(candidate)
+        fallback = existing
+    else:
+        base = dict(existing)
+        fallback = candidate
+
+    for field in (
+        "url",
+        "type",
+        "category",
+        "course",
+        "title",
+        "schedule",
+        "due",
+        "submission",
+        "sync_due",
+        "sync_start",
+        "source_title",
+        "timing_precision",
+        "time_source",
+        "record_status",
+        "completion_reason",
+        "location",
+        "coverage",
+        "coverage_summary",
+    ):
+        if not base.get(field) and fallback.get(field):
+            base[field] = fallback[field]
+
+    if not base.get("sort_due") and fallback.get("sort_due"):
+        base["sort_due"] = fallback["sort_due"]
+
+    base_instructions = normalize_whitespace(str(base.get("instructions", "")))
+    fallback_instructions = normalize_whitespace(str(fallback.get("instructions", "")))
+    if len(fallback_instructions) > len(base_instructions):
+        base["instructions"] = fallback.get("instructions", "")
+
+    return base
+
+
+def dedupe_assignment_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    indexes: dict[tuple[str, str, str, str], int] = {}
+    deduped: list[dict[str, Any]] = []
+    for item in items:
+        key = assignment_logical_identity_key(item)
+        if key in indexes:
+            index = indexes[key]
+            deduped[index] = merge_sync_items(deduped[index], item)
+            continue
+        indexes[key] = len(deduped)
+        deduped.append(item)
+    return deduped
+
+
 def dedupe_sync_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[tuple[str, str, str, str]] = set()
     deduped: list[dict[str, Any]] = []
     for item in items:
         key = (
-            normalize_whitespace(str(item.get("url", ""))),
-            normalize_whitespace(str(item.get("title", ""))),
-            normalize_whitespace(str(item.get("sync_due") or item.get("due", ""))),
-            normalize_whitespace(str(item.get("category", ""))),
+            canonical_sync_item_url_identity(str(item.get("url", ""))),
+            sync_item_identity_text(item.get("title", "")),
+            sync_item_identity_text(item.get("sync_due") or item.get("due", "")),
+            sync_item_identity_text(item.get("category", "")),
         )
         if key in seen:
             continue
@@ -3104,8 +3211,24 @@ def is_hidden_by_override(assignment: dict[str, Any], overrides: dict[str, str])
     return status in {"ignored", "completed"}
 
 
+def assignment_override_candidate_keys(assignment: dict[str, Any]) -> list[str]:
+    url = normalize_whitespace(str(assignment.get("url", "")))
+    title = normalize_whitespace(str(assignment.get("title", "")))
+    course = normalize_whitespace(str(assignment.get("course", "")))
+    due = normalize_whitespace(str(assignment.get("sync_due") or assignment.get("due") or ""))
+    return [
+        url,
+        f"{url}::{title}" if url and title else "",
+        f"{course}::{title}::{due}" if course and title and due else "",
+        f"{course}::{title}" if course and title else "",
+    ]
+
+
 def assignment_override_status(assignment: dict[str, Any], overrides: dict[str, str]) -> str:
-    return overrides.get(assignment["url"], "").strip().lower()
+    for key in assignment_override_candidate_keys(assignment):
+        if key and key in overrides:
+            return overrides.get(key, "").strip().lower()
+    return ""
 
 
 def assignment_completion_reason(assignment: dict[str, Any]) -> str:
@@ -4406,8 +4529,13 @@ def build_success_payload(
     completed_assignments: list[dict[str, Any]] | None = None,
     assignment_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    assignments = dedupe_assignment_items(assignments)
+    completed_assignments = dedupe_assignment_items(completed_assignments or [])
+    assignment_candidates = dedupe_assignment_items(assignment_candidates)
     completed_assignments = completed_assignments or []
-    assignment_records = assignment_records or assignments + completed_assignments + assignment_candidates
+    assignment_records = dedupe_assignment_items(
+        assignment_records or assignments + completed_assignments + assignment_candidates
+    )
     sorted_assignments = sorted(assignments, key=assignment_sort_key)
     sorted_completed_assignments = sorted(completed_assignments, key=assignment_sort_key)
     sorted_assignment_records = sorted(assignment_records, key=assignment_sort_key)

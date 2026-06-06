@@ -90,6 +90,55 @@ class CourseItemParsingTests(unittest.TestCase):
 
         self.assertEqual(items, [])
 
+    def test_dedupe_assignment_items_merges_same_logical_assignment(self) -> None:
+        items = [
+            {
+                "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1193350&bwid=432642",
+                "category": "assignment",
+                "course": "데이타베이스 개론",
+                "title": "Project 3",
+                "due": "2026년 5월 31일 오후 11:59",
+                "sync_due": "2026-05-31T23:59:00+09:00",
+                "instructions": "short",
+            },
+            {
+                "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1193350&bwid=432643",
+                "category": "assignment",
+                "course": "데이타베이스 개론",
+                "title": "Project 3",
+                "due": "2026년 5월 31일 오후 11:59",
+                "sync_due": "2026-05-31T23:59:00+09:00",
+                "instructions": "longer duplicate assignment body",
+            },
+        ]
+
+        deduped = klms_sync.dedupe_assignment_items(items)
+
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["instructions"], "longer duplicate assignment body")
+
+    def test_dedupe_assignment_items_keeps_different_titles_with_same_courseboard_id(self) -> None:
+        items = [
+            {
+                "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
+                "category": "assignment",
+                "course": "영미 단편소설",
+                "title": "Written Assignment 2",
+                "sync_due": "2026-05-20T23:59:00+09:00",
+            },
+            {
+                "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432002",
+                "category": "assignment",
+                "course": "영미 단편소설",
+                "title": "Programming Assignment 2",
+                "sync_due": "2026-05-20T23:59:00+09:00",
+            },
+        ]
+
+        deduped = klms_sync.dedupe_assignment_items(items)
+
+        self.assertEqual(len(deduped), 2)
+
     def test_placeholder_dashboard_course_is_recovered_from_course_page(self) -> None:
         url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1231095"
         dashboard = klms_sync.DashboardParseResult(

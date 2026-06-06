@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ "$#" -lt 9 ]]; then
-  print -r -- "usage: run_download_files_step.sh script manifest output-root download-log archive-root result-json timeout max-attempts retry-delay [force] [preserve-archive] [new-files-root] [quarantine-root]" >&2
+  print -r -- "usage: run_download_files_step.sh script manifest output-root download-log archive-root result-json timeout max-attempts retry-delay [force] [preserve-archive] [new-files-root] [quarantine-root] [download-start-timeout] [download-stall-timeout]" >&2
   exit 64
 fi
 
@@ -19,6 +19,8 @@ FORCE_DOWNLOAD="${10:-0}"
 PRESERVE_DOWNLOAD_ARCHIVE="${11:-0}"
 NEW_FILES_ROOT="${12:-}"
 QUARANTINE_ROOT="${13:-}"
+DOWNLOAD_START_TIMEOUT_SECONDS="${14:-180}"
+DOWNLOAD_STALL_TIMEOUT_SECONDS="${15:-900}"
 
 download_args=(
   /usr/bin/osascript
@@ -31,6 +33,8 @@ download_args=(
   "--download-archive-root=$DOWNLOAD_ARCHIVE_ROOT"
   "--result-json=$DOWNLOAD_RESULT_JSON"
   "--timeout=$TIMEOUT_SECONDS"
+  "--download-start-timeout=$DOWNLOAD_START_TIMEOUT_SECONDS"
+  "--download-stall-timeout=$DOWNLOAD_STALL_TIMEOUT_SECONDS"
   "--max-file-attempts=$MAX_ATTEMPTS"
   "--retry-delay-seconds=$RETRY_DELAY_SECONDS"
 )

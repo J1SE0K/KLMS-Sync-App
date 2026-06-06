@@ -23,6 +23,7 @@ public struct EngineSnapshot: Sendable, Equatable {
     public var cleanupResult: CleanupResult?
     public var dryRunReports: [KLMSSyncScope: DryRunReport]
     public var launchAgentLogTail: String
+    public var relayLogTail: String
 
     public init(
         syncReport: SyncReport? = nil,
@@ -46,7 +47,8 @@ public struct EngineSnapshot: Sendable, Equatable {
         quarantineReport: QuarantineReport? = nil,
         cleanupResult: CleanupResult? = nil,
         dryRunReports: [KLMSSyncScope: DryRunReport] = [:],
-        launchAgentLogTail: String = ""
+        launchAgentLogTail: String = "",
+        relayLogTail: String = ""
     ) {
         self.syncReport = syncReport
         self.calendarSyncResult = calendarSyncResult
@@ -70,6 +72,7 @@ public struct EngineSnapshot: Sendable, Equatable {
         self.cleanupResult = cleanupResult
         self.dryRunReports = dryRunReports
         self.launchAgentLogTail = launchAgentLogTail
+        self.relayLogTail = relayLogTail
     }
 
     public var needsAttention: Bool {
@@ -583,6 +586,9 @@ public struct EngineSnapshotStore: Sendable {
             into: JSONFileLoader.loadIfExists([CourseFileManifestEntry].self, from: paths.courseFileManifestURL) ?? [],
             courseFilesRoot: paths.courseFilesURL
         )
+        let noticeDigest = JSONFileLoader.loadIfExists(NoticeDigest.self, from: paths.noticeDigestURL)
+        let noticeUserState = (try? NoticeUserStateStore(url: paths.noticeUserStateURL).load())?
+            .migratingLegacyNoticeKeys(for: noticeDigest)
 
         return EngineSnapshot(
             syncReport: JSONFileLoader.loadIfExists(SyncReport.self, from: paths.syncReportURL),
@@ -597,8 +603,8 @@ public struct EngineSnapshotStore: Sendable {
             rawLegacyState: rawLegacyState,
             legacyState: legacyState,
             manualOverrides: manualOverrides,
-            noticeDigest: JSONFileLoader.loadIfExists(NoticeDigest.self, from: paths.noticeDigestURL),
-            noticeUserState: try? NoticeUserStateStore(url: paths.noticeUserStateURL).load(),
+            noticeDigest: noticeDigest,
+            noticeUserState: noticeUserState,
             appUserState: try? AppUserStateStore(url: paths.appUserStateURL).load(),
             filePreview: JSONFileLoader.loadIfExists(FileSyncPreview.self, from: paths.filePreviewURL),
             downloadResult: JSONFileLoader.loadIfExists(CourseFileDownloadResult.self, from: paths.downloadResultURL),
@@ -608,8 +614,24 @@ public struct EngineSnapshotStore: Sendable {
             dryRunReports: dryRuns,
             launchAgentLogTail: EngineSnapshot.recentLaunchAgentLogTail(
                 from: tailText(paths.launchAgentLogURL, maxBytes: 16_384)
-            )
+            ),
+            relayLogTail: recentRelayLogTail(paths: paths)
         )
+    }
+
+    private func recentRelayLogTail(paths: KLMSPaths) -> String {
+        let stderr = tailText(paths.relayStderrLogURL, maxBytes: 16_384)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let stdout = tailText(paths.relayStdoutLogURL, maxBytes: 8_192)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var parts: [String] = []
+        if !stderr.isEmpty {
+            parts.append("[relay stderr]\n\(stderr)")
+        }
+        if !stdout.isEmpty {
+            parts.append("[relay stdout]\n\(stdout)")
+        }
+        return parts.joined(separator: "\n\n")
     }
 
     static func mergingLocalCourseFiles(
@@ -813,6 +835,7 @@ public struct VerifyNoticeSummary: Decodable, Sendable, Equatable {
 public struct VerifyFileSummary: Decodable, Sendable, Equatable {
     public var manifestFileCount: Int
     public var missingFileCount: Int
+    public var missingFiles: [String]
     public var derivedAssignmentCount: Int
     public var missingDerivedAssignmentCount: Int
     public var derivedExamCount: Int
@@ -822,6 +845,7 @@ public struct VerifyFileSummary: Decodable, Sendable, Equatable {
     enum CodingKeys: String, CodingKey {
         case manifestFileCount = "manifest_file_count"
         case missingFileCount = "missing_file_count"
+        case missingFiles = "missing_files"
         case derivedAssignmentCount = "derived_assignment_count"
         case missingDerivedAssignmentCount = "missing_derived_assignment_count"
         case derivedExamCount = "derived_exam_count"
@@ -832,6 +856,7 @@ public struct VerifyFileSummary: Decodable, Sendable, Equatable {
     public init(
         manifestFileCount: Int = 0,
         missingFileCount: Int = 0,
+        missingFiles: [String] = [],
         derivedAssignmentCount: Int = 0,
         missingDerivedAssignmentCount: Int = 0,
         derivedExamCount: Int = 0,
@@ -840,6 +865,7 @@ public struct VerifyFileSummary: Decodable, Sendable, Equatable {
     ) {
         self.manifestFileCount = manifestFileCount
         self.missingFileCount = missingFileCount
+        self.missingFiles = missingFiles
         self.derivedAssignmentCount = derivedAssignmentCount
         self.missingDerivedAssignmentCount = missingDerivedAssignmentCount
         self.derivedExamCount = derivedExamCount
@@ -851,6 +877,7 @@ public struct VerifyFileSummary: Decodable, Sendable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         manifestFileCount = container.decodeIfPresentDefault(Int.self, forKey: .manifestFileCount, default: 0)
         missingFileCount = container.decodeIfPresentDefault(Int.self, forKey: .missingFileCount, default: 0)
+        missingFiles = container.decodeIfPresentDefault([String].self, forKey: .missingFiles, default: [])
         derivedAssignmentCount = container.decodeIfPresentDefault(Int.self, forKey: .derivedAssignmentCount, default: 0)
         missingDerivedAssignmentCount = container.decodeIfPresentDefault(Int.self, forKey: .missingDerivedAssignmentCount, default: 0)
         derivedExamCount = container.decodeIfPresentDefault(Int.self, forKey: .derivedExamCount, default: 0)

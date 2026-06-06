@@ -94,6 +94,7 @@ klms_init_context() {
     NOTICE_NATIVE_ALWAYS_CAPTURE_STATE
     NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER
     NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER
+    NOTICE_NATIVE_RENDER_ENABLED
     NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT
     NOTICE_NATIVE_POST_RENDER_VERIFY
     NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED
@@ -189,7 +190,11 @@ klms_init_context() {
   KLMS_FORCE_LOGIN_PREFLIGHT="${KLMS_FORCE_LOGIN_PREFLIGHT:-0}"
   KLMS_LOGIN_STATUS_REUSE_SECONDS="${KLMS_LOGIN_STATUS_REUSE_SECONDS:-900}"
   KLMS_LOGIN_URL="${KLMS_LOGIN_URL:-$KLMS_DASHBOARD_URL}"
-  KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE="${KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE:-1}"
+  local default_login_open_safari_on_failure=1
+  if [[ "${KLMS_APP_RUN:-0}" == "1" ]]; then
+    default_login_open_safari_on_failure=0
+  fi
+  KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE="${KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE:-$default_login_open_safari_on_failure}"
   KLMS_LOGIN_ASSIST_ENABLED="${KLMS_LOGIN_ASSIST_ENABLED:-${KAIKEY_LOGIN_ASSIST_ENABLED:-${KAIKEY_AUTO_LOGIN_ENABLED:-0}}}"
   KLMS_LOGIN_ASSIST_EARLY_ENABLED="${KLMS_LOGIN_ASSIST_EARLY_ENABLED:-1}"
   KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="${KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-${KAIKEY_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}}"
@@ -400,17 +405,36 @@ klms_open_login_page_if_enabled() {
     -e 'set targetUrl to item 1 of argv' \
     -e 'set shouldMinimize to true' \
     -e 'if (count of argv) > 1 and item 2 of argv is "0" then set shouldMinimize to false' \
+    -e 'set reuseKlmsWindow to true' \
+    -e 'if (count of argv) > 2 and item 3 of argv is "0" then set reuseKlmsWindow to false' \
     -e 'tell application "Safari"' \
     -e 'try' \
+    -e 'set targetWindow to missing value' \
+    -e 'if reuseKlmsWindow then' \
+    -e 'repeat with candidateWindow in windows' \
+    -e 'try' \
+    -e 'set candidateUrl to URL of current tab of candidateWindow' \
+    -e 'if (candidateUrl contains "klms.kaist.ac.kr" or candidateUrl contains "sso.kaist.ac.kr") and ((not shouldMinimize) or miniaturized of candidateWindow) then' \
+    -e 'set targetWindow to candidateWindow' \
+    -e 'exit repeat' \
+    -e 'end if' \
+    -e 'end try' \
+    -e 'end repeat' \
+    -e 'end if' \
+    -e 'if targetWindow is missing value then' \
     -e 'make new document with properties {URL:targetUrl}' \
-    -e 'if shouldMinimize then set miniaturized of front window to true' \
+    -e 'set targetWindow to front window' \
+    -e 'else' \
+    -e 'set URL of current tab of targetWindow to targetUrl' \
+    -e 'end if' \
+    -e 'if shouldMinimize then set miniaturized of targetWindow to true' \
     -e 'on error' \
     -e 'make new document with properties {URL:targetUrl}' \
     -e 'if shouldMinimize then set miniaturized of front window to true' \
     -e 'end try' \
     -e 'end tell' \
     -e 'end run' \
-    "$KLMS_LOGIN_URL" "${KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED:-1}" >/dev/null 2>&1 || true
+    "$KLMS_LOGIN_URL" "${KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED:-1}" "${KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED:-1}" >/dev/null 2>&1 || true
 }
 
 klms_login_assist_enabled() {

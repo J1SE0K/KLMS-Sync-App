@@ -571,6 +571,67 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertNotIn('Text("전체").tag("full")', file_picker)
         self.assertNotIn('configToggle("강제 재다운로드"', settings)
 
+    def test_mac_settings_are_grouped_by_tabs_without_duplicate_file_controls(self) -> None:
+        settings = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "SettingsView.swift"
+        ).read_text(encoding="utf-8")
+        root = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("private enum SettingsTab", settings)
+        self.assertIn("TabView(selection: $selectedTab)", settings)
+        for label in [
+            'Label("로그인", systemImage: "person.badge.key")',
+            'Label("동기화", systemImage: "arrow.triangle.2.circlepath")',
+            'Label("공지", systemImage: "checklist")',
+            'Label("파일", systemImage: "folder")',
+            'Label("서버", systemImage: "network")',
+            'Label("앱", systemImage: "app.badge")',
+        ]:
+            self.assertIn(label, settings)
+
+        self.assertEqual(settings.count('Picker("파일 탐색 모드"'), 1)
+        sync_settings = settings.split("private var syncSettings", 1)[1].split(
+            "private var noticeSettings",
+            1,
+        )[0]
+        file_settings = settings.split("private var fileSettings", 1)[1].split(
+            "private var relaySettings",
+            1,
+        )[0]
+        self.assertNotIn('Picker("파일 탐색 모드"', sync_settings)
+        self.assertIn('Picker("파일 탐색 모드"', file_settings)
+        self.assertNotIn("SettingsView(model: model)", root)
+        self.assertIn("설정 > 서버", root)
+        self.assertNotIn("설정 > iPhone 서버 릴레이", root)
+        self.assertIn("private func described", settings)
+        for description in [
+            "비밀번호는 저장하지 않습니다.",
+            "수동 실행 버튼에는 영향을 주지 않습니다.",
+            "동기화할 때마다 Notes 체크리스트 상태를 다시 읽어",
+            "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다.",
+            "집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.",
+            "config.env, 인증 상태, runtime, course_files는 덮어쓰지 않습니다.",
+        ]:
+            self.assertIn(description, settings)
+
+    def test_mac_settings_open_in_separate_settings_window(self) -> None:
+        app = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacApp.swift"
+        ).read_text(encoding="utf-8")
+        root = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("Settings {", app)
+        self.assertIn("SettingsView(model: model)", app)
+        self.assertIn("@Environment(\\.openSettings)", root)
+        self.assertIn("openSettings()", root)
+        self.assertNotIn("showingSettings", root)
+        self.assertNotIn("if showingSettings", root)
+        self.assertNotIn("SettingsView(model: model)", root)
+
     def test_mac_app_exposes_full_file_manifest_list(self) -> None:
         menu = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
@@ -579,9 +640,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "DashboardDetailView.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('Metric("파일 목록", snapshot.courseFileManifest.count, detail: .files)', menu)
-        self.assertIn('Metric("파일 목록", preview.manifestCount, detail: .files)', menu)
-        self.assertIn("@State private var selectedDetail = DashboardDetailKind.files", menu)
+        self.assertIn('Metric("파일", snapshot.courseFileManifest.count, detail: .files)', menu)
+        self.assertIn("@State private var selectedDetail = DashboardDetailKind.assignments", menu)
         self.assertIn("case files", detail)
         self.assertIn("FileManifestListView(filters: filters, model: model)", detail)
         self.assertIn("model.snapshot.courseFileManifest.compactMap", detail)
@@ -642,7 +702,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("DashboardDetailPanelView(kind: activeDetail, model: model)", menu)
         self.assertRegex(
             menu,
-            r'Metric\("격리됨", visibleFileCounts\.quarantine, detail: \.quarantine\),\s*\]\.filter \{ \$0\.value > 0 \}',
+            r'Metric\("격리", counts\.quarantine, detail: \.quarantine\),\s*'
+            r'Metric\("과제 후보", assignmentCandidateCount, detail: \.assignmentCandidates\),',
         )
 
     def test_safari_automation_uses_background_windows_by_default(self) -> None:
@@ -657,14 +718,18 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         for text in [fetch_text, download_text]:
             self.assertIn("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", text)
             self.assertIn("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", text)
+            self.assertIn("KLMS_SAFARI_BACKGROUND_WINDOW_MODE", text)
             self.assertIn("prepareBackgroundWindow", text)
             self.assertIn("windowRef.miniaturized = true", text)
             self.assertIn("isBackgroundWindow", text)
+            self.assertNotIn("moveWindowOffscreen", text)
+            self.assertNotIn("windowRef.bounds", text)
 
         self.assertIn('KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED="1"', config)
-        self.assertIn('KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED="0"', config)
+        self.assertIn('KLMS_SAFARI_BACKGROUND_WINDOW_MODE="minimize"', config)
+        self.assertIn('KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED="1"', config)
 
-    def test_safari_automation_defaults_to_dedicated_windows(self) -> None:
+    def test_safari_automation_defaults_to_reusing_dedicated_background_windows(self) -> None:
         fetch_text = (PROJECT_DIR / "src" / "js" / "fetch_pages_with_safari.js").read_text(
             encoding="utf-8"
         )
@@ -673,13 +738,44 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         )
         login_text = (PROJECT_DIR / "src" / "sh" / "klms_common.sh").read_text(encoding="utf-8")
 
-        self.assertIn('envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0")', fetch_text)
+        self.assertIn('envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "1")', fetch_text)
+        self.assertIn("if (!safariWasRunning)", fetch_text)
         self.assertIn("if (reuseExistingWindowEnabled)", fetch_text)
         self.assertIn("Failed to create a dedicated Safari fetch window", fetch_text)
-        self.assertIn('envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0")', download_text)
+        self.assertIn('return "minimize";', fetch_text)
+        self.assertIn('if (configured === "offscreen")', fetch_text)
+        self.assertIn('envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "1")', download_text)
+        self.assertIn("if (!safeValue(() => safari.running()))", download_text)
         self.assertIn("reuseExistingWindowEnabled ? findKlmsWindow", download_text)
+        self.assertIn('return "minimize";', download_text)
+        self.assertIn('if (configured === "offscreen")', download_text)
         self.assertIn('make new document with properties {URL:targetUrl}', login_text)
-        self.assertNotIn('repeat with w in windows', login_text)
+        self.assertIn("reuseKlmsWindow", login_text)
+        self.assertIn("repeat with candidateWindow in windows", login_text)
+        self.assertIn('set URL of current tab of targetWindow to targetUrl', login_text)
+        launch_text = (PROJECT_DIR / "src" / "sh" / "launch_sync_if_idle.sh").read_text(
+            encoding="utf-8"
+        )
+        model_text = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+        self.assertIn("reuseKlmsWindow", launch_text)
+        self.assertIn("repeat with candidateWindow in windows", launch_text)
+        self.assertIn('set URL of current tab of targetWindow to targetUrl', launch_text)
+        app_environment = model_text[
+            model_text.index("var appRunEnvironment")
+            : model_text.index("var serverRelayConfigured")
+        ]
+        self.assertIn('"KLMS_APP_NON_INTRUSIVE_SAFARI": "1"', app_environment)
+        self.assertIn('"KLMS_SAFARI_BACKGROUND_WINDOW_MODE": "minimize"', app_environment)
+        self.assertIn('"KLMS_SAFARI_RESTORE_FRONTMOST_ENABLED": "0"', app_environment)
+        self.assertIn('"KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE": "0"', app_environment)
+        self.assertIn('"LOGIN_PROMPT_OPEN_SAFARI": "0"', app_environment)
+        self.assertNotIn('"KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED": "1"', app_environment)
+        self.assertIn("safariRestoreFrontmostEnabled", fetch_text)
+        self.assertIn("safariRestoreFrontmostEnabled", download_text)
+        self.assertIn('title: "KLMS Sync Safari 창 재사용"', model_text)
+        self.assertIn('defaultValue: "1"', model_text)
 
     def test_launch_agent_aborts_sync_when_user_returns(self) -> None:
         text = (PROJECT_DIR / "src" / "sh" / "launch_sync_if_idle.sh").read_text(
@@ -822,10 +918,151 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         text = (PROJECT_DIR / "src" / "js" / "sync_reminders_bridge.js").read_text(encoding="utf-8")
 
         self.assertIn("function buildRemindersDesiredHash", text)
+        self.assertIn("REMINDERS_DESIRED_HASH_VERSION", text)
         self.assertIn("buildDesiredReminders(normalizeSyncEntries(state.content), options)", text)
         self.assertIn("completedReminderRetentionDays", text)
         self.assertIn("deviceAlertMode", text)
         self.assertNotIn("readText(outputState) +", text)
+
+    def test_server_relay_does_not_publish_location_or_submission_detail(self) -> None:
+        model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("detail: serverRelayPublicText(item.coverageSummary.nilIfBlank)", model)
+        self.assertIn("private func serverRelayLooksPrivate", model)
+        self.assertNotIn("item.location.nilIfBlank ?? item.submission", model)
+
+    def test_mac_log_block_uses_outer_vertical_scroll(self) -> None:
+        view = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("WholeScreenVerticalScrollView", view)
+        self.assertIn("GeometryReader", view)
+        self.assertIn("ScrollView(.vertical, showsIndicators: true)", view)
+        self.assertIn("minHeight: geometry.size.height", view)
+        self.assertNotIn("ScrollView {\n                VStack(alignment: .leading, spacing: 16)", view)
+        self.assertIn("private struct LogTextBlock", view)
+        self.assertNotIn("ScrollView(.horizontal)", view)
+        self.assertNotIn("ScrollView([.vertical, .horizontal])", view)
+        self.assertNotIn(".frame(minHeight: 120, maxHeight: 280)", view)
+
+    def test_reminders_deduplicate_assignment_desired_items_before_sync(self) -> None:
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed")
+
+        script = r"""
+const fs = require("fs");
+const assert = require("assert");
+const source = fs.readFileSync("src/js/sync_reminders_bridge.js", "utf8");
+eval(source);
+
+const entries = [
+  {
+    category: "assignment",
+    course: "Course",
+    title: "Report",
+    due: "",
+    sync_due: "",
+    url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=42",
+    instructions: "missing",
+  },
+  {
+    category: "assignment",
+    course: "Course",
+    title: "Report",
+    due: "2099.06.01 23:59",
+    sync_due: "2099-06-01T23:59:00+09:00",
+    url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=42",
+    instructions: "full",
+  },
+  {
+    category: "assignment",
+    course: "Course",
+    title: "Report duplicate",
+    due: "2099.06.01 23:59",
+    sync_due: "2099-06-01T23:59:00+09:00",
+    url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=42",
+    instructions: "duplicate",
+  },
+];
+
+const desired = buildDesiredReminders(entries, { deviceAlertsEnabled: false });
+assert.equal(desired.active.length, 1);
+assert.equal(desired.issues.length, 0);
+assert.ok(desired.active[0].identifier.startsWith("assignment:"));
+assert.ok(desired.active[0].aliasIdentifiers.includes("42"));
+
+const crossSourceEntries = [
+  {
+    category: "assignment",
+    course: "알고리즘 개론",
+    title: "Written Assignment 4",
+    due: "2026년 6월 9일 오후 11:59",
+    sync_due: "2026-06-09T23:59:00+09:00",
+    url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=1234595",
+    instructions: "source assignment",
+  },
+  {
+    category: "assignment",
+    course: "알고리즘 개론",
+    title: "Written Assignment 4",
+    due: "2026년 6월 9일 오후 11:59",
+    sync_due: "2026-06-09T23:59:00+09:00",
+    url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=435776",
+    instructions: "notice assignment with details",
+  },
+];
+const crossSourceDesired = buildDesiredReminders(crossSourceEntries, { deviceAlertsEnabled: false });
+assert.equal(crossSourceDesired.active.length, 1);
+assert.equal(crossSourceDesired.issues.length, 0);
+assert.equal(
+  crossSourceDesired.active[0].identifier,
+  "assignment:%EC%95%8C%EA%B3%A0%EB%A6%AC%EC%A6%98%20%EA%B0%9C%EB%A1%A0:written%20assignment%204:2026-06-09t23%3A59%3A00%2B09%3A00"
+);
+assert.ok(crossSourceDesired.active[0].aliasIdentifiers.includes("1234595"));
+assert.ok(crossSourceDesired.active[0].aliasIdentifiers.includes("435776"));
+assert.ok(
+  assignmentOverrideKeysForEntry(crossSourceEntries[1]).includes(
+    "알고리즘 개론::Written Assignment 4::2026-06-09T23:59:00+09:00"
+  )
+);
+
+const distinctCourseboardEntries = [
+  {
+    category: "assignment",
+    course: "영미 단편소설",
+    title: "Written Assignment 2",
+    due: "2099년 5월 20일 오후 11:59",
+    sync_due: "2099-05-20T23:59:00+09:00",
+    url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
+  },
+  {
+    category: "assignment",
+    course: "영미 단편소설",
+    title: "Programming Assignment 2",
+    due: "2099년 5월 21일 오후 11:59",
+    sync_due: "2099-05-21T23:59:00+09:00",
+    url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432002",
+  },
+];
+const distinctCourseboardDesired = buildDesiredReminders(
+  distinctCourseboardEntries,
+  { deviceAlertsEnabled: false }
+);
+assert.equal(distinctCourseboardDesired.active.length, 2);
+assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers.includes("432001")));
+assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers.includes("432002")));
+"""
+        subprocess.run(
+            [node, "-e", script],
+            cwd=PROJECT_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
     def test_default_config_keeps_assignment_note_sync_disabled(self) -> None:
         config = (PROJECT_DIR / "examples" / "config.env.example").read_text(encoding="utf-8")
@@ -957,7 +1194,9 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("AuthSuccessBanner", ios_app)
         self.assertIn('UserAlert(title: "인증 완료", message: authStatusMessage)', ios_app)
         self.assertNotIn("if let authStatusMessage = status.authStatusMessage {\n            return authStatusMessage\n        }\n        if status.loginRequired", ios_app)
-        self.assertIn("? 2_000_000_000", ios_app)
+        self.assertIn("configureServerRelayEventStream()", ios_app)
+        self.assertIn("? (pendingCancelCommandID == nil ? 350_000_000 : 250_000_000)", ios_app)
+        self.assertIn(": 4_000_000_000", ios_app)
 
     def test_ios_companion_notifies_report_refresh_result(self) -> None:
         ios_app = (
@@ -975,7 +1214,7 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("displayStatus.isTerminal", ios_app)
         self.assertIn('title = "요약 갱신 완료"', ios_app)
         self.assertIn('title = "요약 갱신 실패"', ios_app)
-        self.assertIn('title = "요약 갱신 응답 없음"', ios_app)
+        self.assertIn('title = "요약 갱신 확인 지연"', ios_app)
         self.assertIn("UNUserNotificationCenter.current()", ios_app)
         self.assertIn("requestAuthorization(options: [.alert, .sound])", ios_app)
         self.assertIn("klms-report-refresh-", ios_app)
@@ -1017,7 +1256,7 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("legacyServiceByteGroups", remote_models)
         self.assertIn("backend.save(trimmedToken, account: account, service: service)", remote_models)
         self.assertIn("delete(account: account, service: legacyService)", remote_models)
-        self.assertNotIn("com." + "jiseok", combined)
+        self.assertNotIn("com." + "personal", combined)
         self.assertNotIn("VCT" + "W5T" + "9B4K", combined)
         self.assertNotIn("gs" + "36212js", combined)
 
@@ -1043,8 +1282,11 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-mac\")", model)
         self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-client-mac\")", model)
         self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-worker-mac\")", model)
-        self.assertIn("LocalRemoteTokenStore.save(serverRelayClientToken, account: \"server-relay-client-mac\")", model)
-        self.assertIn("LocalRemoteTokenStore.save(serverRelayWorkerToken, account: \"server-relay-worker-mac\")", model)
+        self.assertIn("Self.persistRelayToken(", model)
+        self.assertIn("serverRelayClientToken,", model)
+        self.assertIn("serverRelayWorkerToken,", model)
+        self.assertIn("account: \"server-relay-client-mac\"", model)
+        self.assertIn("account: \"server-relay-worker-mac\"", model)
         self.assertIn("LocalRemoteTokenStore.delete(account: \"server-relay-mac\")", model)
         self.assertIn("UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)", model)
         self.assertIn("pasteboardClearTask", model)
@@ -1062,21 +1304,78 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         ios_app = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
         ).read_text(encoding="utf-8")
+        mac_view = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("case cancel", shared)
         self.assertIn("cancelRunningCommand() async throws", shared)
         self.assertIn("func cancelRunningCommand() async", model)
-        self.assertIn("서버 릴레이에서는 아직 실행 중단을 지원하지 않습니다.", ios_app)
+        self.assertIn("requestCancel", shared)
+        self.assertIn("fetchCancelRequest", model)
+        self.assertIn("await model.cancelRunningCommand()", ios_app)
+        self.assertIn("RemoteCancelControl(model: model, compact: false)", ios_app)
+        self.assertIn("private struct RemoteCancelControl", ios_app)
+        self.assertIn('return localCancelSubmitting || model.isSubmitting ? "중단 요청 중" : "지금 중단"', ios_app)
+        self.assertIn("Label(buttonTitle", ios_app)
+        self.assertIn("await model.cancelRunningCommand()", mac_view)
+        self.assertIn('model.isCancellingCommand ? "중단 중" : "중단"', mac_view)
         self.assertIn("TabView", ios_app)
         self.assertIn("CompanionStatusScreen", ios_app)
         self.assertIn("CompanionRunScreen", ios_app)
         self.assertIn("CompanionConnectionScreen", ios_app)
         self.assertIn("CompanionHistoryScreen", ios_app)
-        self.assertIn("현재 동기화 중단", ios_app)
         self.assertIn("SecureField(\"클라이언트 토큰\"", ios_app)
         self.assertIn("clearServerRelayConnectionInfo", ios_app)
         self.assertIn("Cloudflare 서버 릴레이", ios_app)
+        self.assertIn('Text("연결")', ios_app)
+        self.assertIn('Text("복사")', ios_app)
+        self.assertIn('connectionAsyncButton("연결 확인"', ios_app)
+        self.assertIn('connectionAsyncButton("요약 갱신"', ios_app)
+        self.assertIn('connectionButton("URL 복사"', ios_app)
+        self.assertIn('connectionButton("연결 정보 복사"', ios_app)
+        self.assertIn('connectionButton("클라이언트 토큰 복사"', ios_app)
+        self.assertIn('Label("연결 정보 지우기", systemImage: "trash")', ios_app)
+        self.assertIn("ConnectionNoticeBanner", ios_app)
+        self.assertIn("diagnosticButton(.verify)", ios_app)
+        self.assertIn("diagnosticButton(.v2BuildState)", ios_app)
+        self.assertIn('requestGroupTitle("원격 실행")', ios_app)
+        self.assertIn("private let commands: [RemoteCommandKind] = [.fullSync, .coreSync, .noticeSync, .filesSync]", ios_app)
+        self.assertIn("private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)", ios_app)
+        self.assertIn("primaryCommandActionCard(primaryCommand)", ios_app)
+        self.assertIn("commandActionCard(command)", ios_app)
         self.assertIn("RemotePrivacyNote", ios_app)
+        self.assertIn("@State private var selectedDashboardPreview", ios_app)
+        self.assertIn("DashboardCategoryInlineDetailPanel(", ios_app)
+        self.assertIn("ServerSyncItemInlineDetailPanel(item: item, model: model)", ios_app)
+        self.assertIn("if let category = selectedDashboardPreview", ios_app)
+        self.assertNotIn('Label("상세 보기", systemImage: "arrow.right.circle")', ios_app)
+        status_screen = ios_app.split("private struct CompanionStatusScreen", 1)[1].split(
+            "private struct CompanionRunScreen",
+            1,
+        )[0]
+        status_tap_block = status_screen.split("onCategoryTap: { category in", 1)[1].split(
+            "}",
+            1,
+        )[0]
+        self.assertIn("selectedDashboardPreview = category", status_tap_block)
+        self.assertNotIn("selectedDashboardRoute = category", status_tap_block)
+        self.assertNotIn("selectedSyncItem", status_screen)
+        self.assertNotIn(".navigationDestination", status_screen)
+        self.assertNotIn("DashboardMetricDetailPanel(", status_screen)
+        self.assertNotIn("ServerSyncDataPanel(", status_screen)
+        self.assertNotIn(".sheet(item: $selectedDashboardPreview)", status_screen)
+        self.assertIn("CompanionSettingHelpText", ios_app)
+        for description in [
+            "집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.",
+            "Mac 전용 토큰은 여기에 넣지 않습니다.",
+            "복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.",
+            "연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다.",
+            "Mac 앱이 받아서 설정 파일(config.env)에 반영합니다.",
+            "동기화할 때마다 Notes 체크리스트 상태를 다시 읽어",
+            "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다.",
+        ]:
+            self.assertIn(description, ios_app)
 
     def test_server_relay_uses_role_scoped_tokens(self) -> None:
         node_relay = (PROJECT_DIR / "tools" / "klms_relay_server.mjs").read_text(encoding="utf-8")

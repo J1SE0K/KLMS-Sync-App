@@ -15,7 +15,7 @@ function run(argv) {
   }
 
   const safari = Application("/Applications/Safari.app");
-  const frontmostApp = frontmostApplicationName();
+  const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
   if (!safeBoolean(() => safari.running())) {
     safari.launch();
   }
@@ -100,25 +100,42 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
     };
   }
 
-  if (urlLower.includes("klms.kaist.ac.kr/login/ssologin.php")) {
+  if (looksLikeKlmsLoginUrl(urlLower)) {
+    const fallbackUrl = kaistSsoLoginUrl(targetUrl);
     const result = runPageScript(tab, `
 (() => {
+  const fallbackUrl = ${JSON.stringify(fallbackUrl)};
   const links = Array.from(document.querySelectorAll("a[href]"));
   const link =
     links.find((anchor) =>
       String(anchor.href || "").includes("sso.kaist.ac.kr/auth/kaist/user/login/view")
     ) || document.querySelector("div.login > a[href]");
-  if (!link || !link.href || String(link.href).endsWith("#")) {
-    return JSON.stringify({ ok: false, reason: "missing-link" });
+  const href = link && link.href && !String(link.href).endsWith("#") ? String(link.href) : fallbackUrl;
+  if (!href) {
+    return JSON.stringify({ ok: false, reason: "missing-login-target" });
   }
-  window.location.assign(link.href);
-  return JSON.stringify({ ok: true });
+  window.location.assign(href);
+  return JSON.stringify({ ok: true, method: link ? "page-link" : "fallback-url" });
 })();
 `);
     const payload = parseJson(result);
+    if (!payload.ok) {
+      tab.url = fallbackUrl;
+      if (safariBackgroundWindowEnabled()) {
+        prepareBackgroundWindow(windowRef);
+      }
+      return {
+        status: "klms_redirect_clicked",
+        reason: payload.reason || "fallback-direct-sso",
+        method: "fallback-url",
+        url,
+        targetUrl: fallbackUrl
+      };
+    }
     return {
-      status: payload.ok ? "klms_redirect_clicked" : "waiting",
+      status: "klms_redirect_clicked",
       reason: payload.reason || "",
+      method: payload.method || "",
       url
     };
   }
@@ -213,7 +230,7 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
 
 function checkAuthenticatedWithoutLeavingTwofactor(targetUrl, sourceUrl, options = {}) {
   const safari = Application("/Applications/Safari.app");
-  const frontmostApp = frontmostApplicationName();
+  const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
   let checkWindow = null;
   try {
     checkWindow = createSafariWindow(safari, true);
@@ -288,6 +305,21 @@ function looksLikeAuthenticatedKlmsUrl(url) {
     !lower.includes("/login/") &&
     !lower.includes("ssologin.php")
   );
+}
+
+function looksLikeKlmsLoginUrl(url) {
+  const lower = String(url || "").toLowerCase();
+  return lower.includes("klms.kaist.ac.kr/login/");
+}
+
+function kaistSsoLoginUrl(targetUrl) {
+  const redirectUrl = String(targetUrl || "https://klms.kaist.ac.kr/my/");
+  return [
+    "https://sso.kaist.ac.kr/auth/kaist/user/login/view",
+    "?agt_id=kaist-prod-klms",
+    `&agt_url=${encodeURIComponent("https://klms.kaist.ac.kr")}`,
+    `&add_param_url=${encodeURIComponent(redirectUrl)}`
+  ].join("");
 }
 
 function readKlmsPageLoadState(tab) {
@@ -423,6 +455,12 @@ function prepareBackgroundWindow(windowRef) {
   if (!windowRef) {
     return;
   }
+  if (isBackgroundWindow(windowRef)) {
+    return;
+  }
+  if (safariBackgroundWindowMode() !== "minimize") {
+    return;
+  }
   try {
     windowRef.miniaturized = true;
   } catch (_error) {
@@ -450,6 +488,17 @@ function isBackgroundWindow(windowRef) {
   return visible === false;
 }
 
+function safariBackgroundWindowMode() {
+  const configured = envValue("KLMS_SAFARI_BACKGROUND_WINDOW_MODE").trim().toLowerCase();
+  if (configured === "offscreen") {
+    return "minimize";
+  }
+  if (["minimize", "none"].includes(configured)) {
+    return configured;
+  }
+  return "minimize";
+}
+
 function listWindowIds(safari) {
   return safeList(() => safari.windows())
     .map((windowRef) => safeNumber(() => windowRef.id(), null))
@@ -467,6 +516,9 @@ function frontmostApplicationName() {
 }
 
 function restoreFrontmostApplication(appName) {
+  if (!safariRestoreFrontmostEnabled()) {
+    return;
+  }
   if (!appName || appName === "Safari") {
     return;
   }
@@ -478,11 +530,23 @@ function restoreFrontmostApplication(appName) {
 }
 
 function safariBackgroundWindowEnabled() {
-  return envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1");
+  return envFlag("KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "1") && safariBackgroundWindowMode() !== "none";
 }
 
 function safariReuseExistingWindowEnabled() {
-  return envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "0");
+  return envFlag("KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED", "1");
+}
+
+function safariNonIntrusiveModeEnabled() {
+  return envFlag("KLMS_APP_NON_INTRUSIVE_SAFARI", "0") || envFlag("KLMS_APP_RUN", "0");
+}
+
+function safariRestoreFrontmostEnabled() {
+  const configured = envValue("KLMS_SAFARI_RESTORE_FRONTMOST_ENABLED");
+  if (configured) {
+    return envFlag("KLMS_SAFARI_RESTORE_FRONTMOST_ENABLED", "1");
+  }
+  return !safariNonIntrusiveModeEnabled();
 }
 
 function envValue(name) {

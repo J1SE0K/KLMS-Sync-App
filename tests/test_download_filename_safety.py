@@ -80,6 +80,7 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("buildPreviousDownloadStateIndex", text)
         self.assertIn("existingFileRefreshDecision", text)
         self.assertIn("klms-timestamp-newer-than-previous-record", text)
+        self.assertNotIn("klms-timestamp-newer-than-local-file", text)
         self.assertIn("refreshed_existing_file", text)
         self.assertIn("dateValue instanceof Date", text)
         self.assertIn("previousDownloadResult", text)
@@ -91,6 +92,81 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("result.source_url", text)
         self.assertIn("isServerTemporaryFilename", text)
         self.assertIn("canonicalFilenameForDownloadedName", text)
+
+    def test_existing_file_refresh_requires_previous_download_record(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "download_klms_files.js").read_text(
+            encoding="utf-8"
+        )
+        helpers = "\n\n".join(
+            self.extract_function(text, name)
+            for name in (
+                "stripForcedDownloadFlag",
+                "reusableFileKey",
+                "reusableUrlKey",
+                "previousDownloadStateForEntry",
+                "normalizedKlmsTimestampEpoch",
+                "existingFileRefreshDecision",
+            )
+        )
+        script = "\n".join(
+            [
+                "const $ = { NSFileModificationDate: 'mtime' };",
+                "function fileDateEpoch() { return 100; }",
+                helpers,
+                "const entry = { url: 'https://klms.kaist.ac.kr/mod/resource/view.php?id=1', filename: 'file.pdf', klms_timestamp_epoch: 200 };",
+                "const newer = existingFileRefreshDecision(entry, '/tmp/file.pdf', {});",
+                "const previousIndex = { [reusableUrlKey(entry.url)]: { filename: 'file.pdf', klms_timestamp_epoch: 150 } };",
+                "const changed = existingFileRefreshDecision(entry, '/tmp/file.pdf', previousIndex);",
+                "console.log(JSON.stringify({ newer, changed }));",
+            ]
+        )
+        result = subprocess.run(
+            ["node", "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(result.stdout)
+
+        self.assertFalse(payload["newer"]["refresh"])
+        self.assertEqual(payload["newer"]["reason"], "existing-file-current")
+        self.assertTrue(payload["changed"]["refresh"])
+        self.assertEqual(
+            payload["changed"]["reason"],
+            "klms-timestamp-newer-than-previous-record",
+        )
+
+    def test_download_wait_is_completion_based_after_download_starts(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "download_klms_files.js").read_text(
+            encoding="utf-8"
+        )
+        wait_block = text[
+            text.index("function waitForDownloadedFile")
+            : text.index("function freshDownloadFilenameMatchesExpected")
+        ]
+        refresh_text = (PROJECT_DIR / "bin" / "refresh_course_files.sh").read_text(
+            encoding="utf-8"
+        )
+        runner_text = (PROJECT_DIR / "src" / "sh" / "run_download_files_step.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('FILE_DOWNLOAD_TIMEOUT_SECONDS="${FILE_DOWNLOAD_TIMEOUT_SECONDS:-0}"', refresh_text)
+        self.assertIn("FILE_DOWNLOAD_START_TIMEOUT_SECONDS", refresh_text)
+        self.assertIn("FILE_DOWNLOAD_STALL_TIMEOUT_SECONDS", refresh_text)
+        self.assertIn("--download-start-timeout=$DOWNLOAD_START_TIMEOUT_SECONDS", runner_text)
+        self.assertIn("--download-stall-timeout=$DOWNLOAD_STALL_TIMEOUT_SECONDS", runner_text)
+        self.assertIn("const hardDeadline = timeoutSeconds > 0", wait_block)
+        self.assertIn("const stallTimeoutSeconds", wait_block)
+        self.assertIn("lastProgressSignature", wait_block)
+        self.assertIn("lastProgressAt", wait_block)
+        self.assertIn("if (activeDownloadCandidates.length > 0 || unstableFinalCandidateSeen)", wait_block)
+        self.assertIn("sawActiveDownload = true", wait_block)
+        self.assertIn("unstableFinalCandidateSeen", wait_block)
+        self.assertIn("stallTimeoutSeconds > 0", wait_block)
+        self.assertIn("continue;", wait_block)
+        self.assertIn("transientDownloadMatchesExpected", wait_block)
+        self.assertIn("Download did not complete", text)
 
     def test_resource_download_url_uses_redirect_before_forcedownload(self) -> None:
         self.assertEqual(

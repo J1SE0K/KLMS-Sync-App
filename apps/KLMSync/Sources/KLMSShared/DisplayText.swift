@@ -72,7 +72,7 @@ public extension String {
         case "completed-reminders-import":
             return "완료된 미리 알림 읽기"
         case "calendar-sync":
-            return "캘린더 반영"
+            return "캘린더 동기화"
         case "reminders-sync":
             return "미리 알림 반영"
         case "files-course-pages":

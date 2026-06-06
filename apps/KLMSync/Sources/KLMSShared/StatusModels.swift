@@ -137,7 +137,7 @@ public struct SyncReport: Decodable, Sendable, Equatable {
     }
 }
 
-public struct CalendarSyncResult: Decodable, Sendable, Equatable {
+public struct CalendarSyncResult: Codable, Sendable, Equatable {
     public var backend: String
     public var generatedAt: String
     public var summaries: [CalendarSyncSummary]
@@ -171,7 +171,7 @@ public struct CalendarSyncResult: Decodable, Sendable, Equatable {
     }
 }
 
-public struct CalendarSyncSummary: Decodable, Sendable, Equatable, Identifiable {
+public struct CalendarSyncSummary: Codable, Sendable, Equatable, Identifiable {
     public var raw: String
     public var calendar: String
     public var bucket: String
@@ -224,7 +224,7 @@ public struct CalendarSyncSummary: Decodable, Sendable, Equatable, Identifiable 
     }
 }
 
-public struct CalendarChange: Decodable, Sendable, Equatable, Identifiable {
+public struct CalendarChange: Codable, Sendable, Equatable, Identifiable {
     public var action: String
     public var calendar: String
     public var bucket: String
@@ -259,7 +259,7 @@ public struct CalendarChange: Decodable, Sendable, Equatable, Identifiable {
         case "updated":
             "수정"
         case "deleted":
-            "삭제"
+            "정리됨"
         default:
             action.isEmpty ? "변경" : action
         }
@@ -326,6 +326,101 @@ public struct CalendarChange: Decodable, Sendable, Equatable, Identifiable {
         changes = container.decodeIfPresentDefault([String].self, forKey: .changes, default: [])
         raw = container.decodeIfPresentDefault(String.self, forKey: .raw, default: "")
         parseError = container.decodeIfPresentDefault(String.self, forKey: .parseError, default: "")
+    }
+}
+
+public struct CalendarEventEdit: Codable, Sendable, Equatable {
+    public var title: String
+    public var startAt: String
+    public var dueAt: String
+    public var location: String
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case startAt = "start_at"
+        case dueAt = "due_at"
+        case location
+    }
+
+    public init(
+        title: String = "",
+        startAt: String = "",
+        dueAt: String = "",
+        location: String = ""
+    ) {
+        self.title = title
+        self.startAt = startAt
+        self.dueAt = dueAt
+        self.location = location
+    }
+
+    public var isEmpty: Bool {
+        [title, startAt, dueAt, location].allSatisfy {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    public static func decodeMessage(_ message: String) throws -> CalendarEventEdit {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else {
+            throw NSError(
+                domain: "KLMSync.CalendarEventEdit",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "캘린더 수정 내용이 비어 있습니다."]
+            )
+        }
+        return try JSONDecoder().decode(CalendarEventEdit.self, from: data)
+    }
+
+    public func encodedMessage() throws -> String {
+        let data = try JSONEncoder().encode(self)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw NSError(
+                domain: "KLMSync.CalendarEventEdit",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "캘린더 수정 내용을 인코딩할 수 없습니다."]
+            )
+        }
+        return text
+    }
+}
+
+public extension CalendarChange {
+    var explanationText: String {
+        switch normalizedAction {
+        case "created":
+            return "KLMS에서 확인된 일정이 Apple Calendar에 없어서 새로 만든 항목입니다."
+        case "updated":
+            if changes.isEmpty {
+                return "KLMS 일정과 Apple Calendar 일정이 달라서 수정한 항목입니다."
+            }
+            return "KLMS 일정과 Apple Calendar 일정이 달라서 수정한 항목입니다. 바뀐 값: \(changes.joined(separator: ", "))."
+        case "deleted":
+            return "KLMS 기준으로 더 이상 유지할 일정이 아니어서 Apple Calendar에서 정리한 항목입니다."
+        default:
+            return "최근 동기화에서 캘린더 상태가 바뀐 항목입니다."
+        }
+    }
+
+    var nextActionText: String {
+        switch normalizedAction {
+        case "created":
+            return "캘린더 앱에서 시간이 맞는지 확인하세요. 직접 고치려면 ‘내용 수정’을 누르고, Calendar 앱에서 보려면 ‘캘린더에서 열기’를 누르세요."
+        case "updated":
+            return "변경된 시간이 맞는지 확인하세요. 직접 고친 일정이 덮였거나 값이 이상하면 ‘내용 수정’으로 Calendar 이벤트를 바로 고치세요."
+        case "deleted":
+            return "동기화 결과에서 정리된 일정입니다. 다시 필요하면 위쪽의 과제/시험 재동기화를 실행하세요."
+        default:
+            return "결과가 맞는지 확인하고, 이상하면 상태 검사 또는 과제/시험 재동기화를 실행하세요."
+        }
+    }
+
+    var actionButtonHelpText: String {
+        "내용 수정은 Apple Calendar 이벤트 자체를 바꿉니다. 캘린더에서 열기는 Calendar 앱에서 직접 확인하는 기능입니다."
+    }
+
+    private var normalizedAction: String {
+        action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
 
@@ -693,7 +788,7 @@ private struct NoticeRenderedStateItem: Decodable, Equatable {
     init(from decoder: Decoder) throws {}
 }
 
-public struct DryRunReport: Decodable, Sendable, Equatable {
+public struct DryRunReport: Codable, Sendable, Equatable {
     public var scope: String
     public var status: String
     public var wouldCreate: Int

@@ -49,17 +49,28 @@ final class RemoteCommandModelTests: XCTestCase {
         )
         let expired = RemoteRunCommand(
             kind: .fullSync,
-            createdAt: now.addingTimeInterval(-301)
+            createdAt: now.addingTimeInterval(-901)
         )
 
         XCTAssertEqual(
-            recent.displayStatus(now: now, unavailableInterval: 300),
+            recent.displayStatus(now: now, unavailableInterval: 900),
             .pending
         )
         XCTAssertEqual(
-            expired.displayStatus(now: now, unavailableInterval: 300),
+            expired.displayStatus(now: now, unavailableInterval: 900),
             .macUnavailable
         )
+    }
+
+    func testDefaultMacUnavailableDisplayIntervalMatchesServerPendingTimeout() {
+        let now = Date(timeIntervalSinceReferenceDate: 1_000)
+        let command = RemoteRunCommand(
+            kind: .fullSync,
+            createdAt: now.addingTimeInterval(-(15 * 60 + 1))
+        )
+
+        XCTAssertEqual(RemoteRunCommand.macUnavailableInterval, 60 * 60)
+        XCTAssertEqual(command.displayStatus(now: now), .pending)
     }
 
     func testOnlyOldPendingCommandsAreStaleForExecution() {
@@ -96,13 +107,69 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertTrue(RemoteCommandStatus.running.isInFlight)
         XCTAssertFalse(RemoteCommandStatus.completed.isInFlight)
         XCTAssertFalse(RemoteCommandStatus.failed.isInFlight)
+        XCTAssertFalse(RemoteCommandStatus.cancelled.isInFlight)
         XCTAssertFalse(RemoteCommandStatus.macUnavailable.isInFlight)
 
         XCTAssertFalse(RemoteCommandStatus.pending.isTerminal)
         XCTAssertFalse(RemoteCommandStatus.running.isTerminal)
         XCTAssertTrue(RemoteCommandStatus.completed.isTerminal)
         XCTAssertTrue(RemoteCommandStatus.failed.isTerminal)
+        XCTAssertTrue(RemoteCommandStatus.cancelled.isTerminal)
         XCTAssertTrue(RemoteCommandStatus.macUnavailable.isTerminal)
+    }
+
+    func testRemoteRunCommandOptionsRoundTrip() throws {
+        let command = RemoteRunCommand(
+            kind: .noticeSync,
+            options: RemoteRunOptions(updateNoticeNotes: false, dryRun: true)
+        )
+
+        let data = try JSONEncoder.klmsLocalRemote.encode(command)
+        let decoded = try JSONDecoder.klmsLocalRemote.decode(RemoteRunCommand.self, from: data)
+
+        XCTAssertFalse(decoded.options.updateNoticeNotes)
+        XCTAssertTrue(decoded.options.dryRun)
+    }
+
+    func testServerRelayLogClearResponseDecodesCounts() throws {
+        let data = Data("""
+        {
+          "clearedAt": "2026-06-06T12:34:56Z",
+          "commands": 2,
+          "itemActions": 3,
+          "settingActions": 1,
+          "fileAccessRequests": 4,
+          "requestLogEntries": 5
+        }
+        """.utf8)
+
+        let decoded = try JSONDecoder.klmsLocalRemote.decode(ServerRelayLogClearResponse.self, from: data)
+
+        let expectedDate = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-06-06T12:34:56Z"))
+        XCTAssertEqual(decoded.clearedAt.timeIntervalSince1970, expectedDate.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(decoded.commands, 2)
+        XCTAssertEqual(decoded.itemActions, 3)
+        XCTAssertEqual(decoded.settingActions, 1)
+        XCTAssertEqual(decoded.fileAccessRequests, 4)
+        XCTAssertEqual(decoded.requestLogEntries, 5)
+    }
+
+    func testRemoteRunCommandOptionsDefaultToUpdatingNoticeNotesForLegacyPayloads() throws {
+        let payload = """
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "kind": "fullSync",
+          "status": "pending",
+          "createdAt": "2026-06-01T00:00:00Z",
+          "updatedAt": "2026-06-01T00:00:00Z",
+          "loginRequired": false
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder.klmsLocalRemote.decode(RemoteRunCommand.self, from: payload)
+
+        XCTAssertTrue(decoded.options.updateNoticeNotes)
+        XCTAssertFalse(decoded.options.dryRun)
     }
 
     func testSanitizedRemoteStatusUsesCountsPhaseAndLoginAttention() {
@@ -161,6 +228,7 @@ final class RemoteCommandModelTests: XCTestCase {
 
         XCTAssertEqual(status.assignments, 1)
         XCTAssertEqual(status.phase, "idle")
+        XCTAssertNil(status.phaseDetail)
         XCTAssertEqual(status.noticeNew, 0)
         XCTAssertEqual(status.fileTotal, 0)
         XCTAssertEqual(status.calendarCreated, 0)
@@ -185,6 +253,7 @@ final class RemoteCommandModelTests: XCTestCase {
             calendarUpdated: 8,
             calendarDeleted: 9,
             phase: "running",
+            phaseDetail: "공지",
             authStatusMessage: "인증 완료됨"
         )
 
@@ -205,6 +274,7 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(decoded.calendarUpdated, 8)
         XCTAssertEqual(decoded.calendarDeleted, 9)
         XCTAssertEqual(decoded.phase, "running")
+        XCTAssertEqual(decoded.phaseDetail, "공지")
         XCTAssertFalse(decoded.loginRequired)
         XCTAssertNil(decoded.authDigits)
         XCTAssertEqual(decoded.authStatusMessage, "인증 완료됨")
@@ -237,6 +307,37 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertTrue(decoded.isDownloadAvailable)
     }
 
+    func testServerRelayFileAccessRequestDecodesCloudflareFractionalDates() throws {
+        let json = """
+        {
+          "id": "3E222DF2-8D38-47D8-83A2-C12ED5DC75D2",
+          "itemID": "file-1",
+          "itemKind": "file",
+          "itemTitle": "기말 정리.pdf",
+          "status": "completed",
+          "createdAt": "2026-06-04T10:51:25.123Z",
+          "updatedAt": "2026-06-04T10:51:26.456Z",
+          "message": "파일 링크 준비 완료",
+          "downloadURL": "https://relay.example/v1/file-access/id/download?ticket=abc",
+          "expiresAt": "2099-06-04T11:51:26.789Z",
+          "sizeBytes": 1024,
+          "downloadCount": 0
+        }
+        """
+
+        let decoded = try JSONDecoder.klmsLocalRemote.decode(
+            ServerRelayFileAccessRequest.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(decoded.itemID, "file-1")
+        XCTAssertEqual(decoded.status, .completed)
+        XCTAssertEqual(decoded.itemTitle, "기말 정리.pdf")
+        XCTAssertEqual(decoded.sizeBytes, 1_024)
+        XCTAssertNotNil(decoded.expiresAt)
+        XCTAssertTrue(decoded.isDownloadAvailable)
+    }
+
     func testLocalRemoteConnectionInfoParsesCopiedMacConnectionText() {
         let text = """
         KLMS Sync iPhone 연결 정보
@@ -266,7 +367,7 @@ final class RemoteCommandModelTests: XCTestCase {
     func testServerRelayConnectionInfoParsesCopiedConnectionText() {
         let text = """
         KLMS Sync 서버 연결 정보
-        서버 주소: https://klms-sync.example.com/relay/
+        서버 URL: https://klms-sync.example.com/relay/
         클라이언트 토큰: client-token-123
         Mac worker 토큰: worker-token-456
         """
@@ -279,20 +380,83 @@ final class RemoteCommandModelTests: XCTestCase {
             ServerRelayConnectionInfo.labeledToken(in: text, labels: ServerRelayConnectionInfo.workerTokenLabels),
             "worker-token-456"
         )
+
+        let legacyText = text.replacingOccurrences(of: "서버 URL:", with: "서버 주소:")
+        let legacyInfo = ServerRelayConnectionInfo.parse(urlText: legacyText)
+        XCTAssertEqual(legacyInfo?.baseURL.absoluteString, "https://klms-sync.example.com/relay")
+        XCTAssertEqual(legacyInfo?.token, "client-token-123")
+    }
+
+    func testServerRelayConnectionInfoAllowsPublicHTTPSURLWithDigits() {
+        let text = """
+        KLMS Sync 서버 연결 정보
+        서버 URL: https://klms-sync-relay.user12345.workers.dev
+        클라이언트 토큰: client-token-123
+        """
+
+        let info = ServerRelayConnectionInfo.parse(urlText: text)
+
+        XCTAssertEqual(info?.baseURL.absoluteString, "https://klms-sync-relay.user12345.workers.dev")
+        XCTAssertEqual(info?.token, "client-token-123")
     }
 
     func testServerRelayCommandStoreRejectsPublicHTTPByDefault() {
         XCTAssertThrowsError(
             try ServerRelayCommandStore(urlText: "http://example.com", token: "token")
         ) { error in
-            guard case ServerRelayClientError.insecureURL("example.com") = error else {
+            guard case ServerRelayClientError.invalidURL = error else {
                 return XCTFail("unexpected error: \(error)")
             }
         }
     }
 
-    func testServerRelayCommandStoreAllowsPrivateHTTPForDevelopment() throws {
-        let store = try ServerRelayCommandStore(urlText: "http://127.0.0.1:18484", token: "token")
+    func testServerRelayConnectionInfoRejectsPrivateURLsByDefault() {
+        let text = """
+        KLMS Sync 서버 연결 정보
+        서버 URL: http://192.168.0.12:18484
+        클라이언트 토큰: client-token-123
+        """
+
+        XCTAssertNil(ServerRelayConnectionInfo.parse(urlText: text))
+        let blockedURLs = [
+            "https://127.0.0.1:18484",
+            "https://0.0.0.0",
+            "https://10.20.30.40",
+            "https://172.16.0.1",
+            "https://172.31.255.255",
+            "https://192.168.1.10",
+            "https://169.254.1.10",
+            "https://100.64.0.1",
+            "https://100.127.255.255",
+            "https://[::1]:18484",
+            "https://[fc00::1]",
+            "https://[fd12:3456::1]",
+            "https://[fe80::1]",
+            "https://[::ffff:192.168.0.10]",
+            "https://macbook.local",
+        ]
+        for url in blockedURLs {
+            XCTAssertNil(ServerRelayConnectionInfo.normalizedPublicRelayURL(url), url)
+        }
+        XCTAssertNotNil(ServerRelayConnectionInfo.normalizedPublicRelayURL("https://example.com"))
+    }
+
+    func testServerRelayCommandStoreRejectsPrivateURLByDefault() {
+        XCTAssertThrowsError(
+            try ServerRelayCommandStore(urlText: "https://127.0.0.1:18484", token: "token")
+        ) { error in
+            guard case ServerRelayClientError.invalidURL = error else {
+                return XCTFail("unexpected error: \(error)")
+            }
+        }
+    }
+
+    func testServerRelayCommandStoreAllowsPrivateHTTPOnlyWhenExplicitlyEnabledForDevelopment() throws {
+        let store = try ServerRelayCommandStore(
+            urlText: "http://127.0.0.1:18484",
+            token: "token",
+            allowsInsecureHTTP: true
+        )
 
         XCTAssertEqual(store.baseURL.absoluteString, "http://127.0.0.1:18484")
     }
@@ -302,7 +466,7 @@ final class RemoteCommandModelTests: XCTestCase {
 
         XCTAssertEqual(
             error.errorDescription,
-            "서버 인증 실패: 서버 주소와 클라이언트/워커 토큰이 최신 값인지 확인해 주세요."
+            "서버 인증 실패: 서버 URL과 클라이언트/워커 토큰이 최신 값인지 확인해 주세요."
         )
     }
 
@@ -369,7 +533,30 @@ final class RemoteCommandModelTests: XCTestCase {
             isRead: true,
             isImportant: true
         )
-        let data = ServerRelaySyncData(generatedAt: "2026-05-31T10:01:00Z", items: [item])
+        let dryRun = DryRunReport(scope: "notice", status: "ok", wouldCreate: 1)
+        let calendarChange = CalendarChange(
+            action: "created",
+            calendar: "KLMS 시험",
+            bucket: "exam",
+            title: "기말고사",
+            course: "영미 단편소설",
+            startAt: "2026-06-12 10:00",
+            changes: ["시간 생성"]
+        )
+        let setting = ServerRelaySetting(
+            key: EnvKnownKey.fileRefreshMode.rawValue,
+            title: "파일 탐색 모드",
+            value: "auto",
+            valueKind: .choice,
+            options: ["auto", "quick"]
+        )
+        let data = ServerRelaySyncData(
+            generatedAt: "2026-05-31T10:01:00Z",
+            items: [item],
+            dryRunReports: [dryRun],
+            calendarChanges: [calendarChange],
+            settings: [setting]
+        )
 
         let encoded = try JSONEncoder.klmsLocalRemote.encode(data)
         let rawJSON = String(data: encoded, encoding: .utf8) ?? ""
@@ -380,6 +567,9 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertTrue(decoded.items[0].isRead)
         XCTAssertTrue(decoded.items[0].isImportant)
         XCTAssertFalse(decoded.items[0].isHidden)
+        XCTAssertEqual(decoded.dryRunReports, [dryRun])
+        XCTAssertEqual(decoded.calendarChanges, [calendarChange])
+        XCTAssertEqual(decoded.settings, [setting])
         XCTAssertFalse(rawJSON.contains("https://klms.example/private/notice"))
     }
 
@@ -410,10 +600,10 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(RemoteCommandKind(engineCommand: .coreSync), .coreSync)
         XCTAssertEqual(RemoteCommandKind(engineCommand: .noticeSync), .noticeSync)
         XCTAssertEqual(RemoteCommandKind(engineCommand: .filesSync), .filesSync)
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .verify), .verify)
         XCTAssertEqual(RemoteCommandKind(engineCommand: .doctor), .doctor)
         XCTAssertEqual(RemoteCommandKind(engineCommand: .report), .report)
-        XCTAssertNil(RemoteCommandKind(engineCommand: .verify))
-        XCTAssertNil(RemoteCommandKind(engineCommand: .v2BuildState))
+        XCTAssertEqual(RemoteCommandKind(engineCommand: .v2BuildState), .v2BuildState)
     }
 
     func testLocalRemoteCancelRequestIsSignedAndAuthorized() throws {

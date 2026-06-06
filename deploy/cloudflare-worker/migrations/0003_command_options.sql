@@ -1,0 +1,1 @@
+ALTER TABLE commands ADD COLUMN options_json TEXT NOT NULL DEFAULT '{}';

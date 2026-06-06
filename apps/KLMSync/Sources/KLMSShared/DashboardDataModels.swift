@@ -408,13 +408,30 @@ public struct NoticeDigestEntry: Decodable, Sendable, Equatable, Identifiable {
     }
 
     public var noticeIdentifier: String {
-        if !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return url
-        }
         if !articleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "article:\(articleID)"
         }
+        if !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return url
+        }
         return "\(course)|\(Self.oneLine(title))|\(Self.oneLine(postedAt))"
+    }
+
+    public var legacyNoticeIdentifiers: [String] {
+        let primary = noticeIdentifier
+        let candidates = [
+            url.trimmingCharacters(in: .whitespacesAndNewlines),
+            articleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "article:\(articleID)",
+            "\(course)|\(Self.oneLine(title))|\(Self.oneLine(postedAt))",
+        ]
+        var seen = Set<String>()
+        return candidates.compactMap { candidate in
+            guard !candidate.isEmpty, candidate != primary, !seen.contains(candidate) else {
+                return nil
+            }
+            seen.insert(candidate)
+            return candidate
+        }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -474,6 +491,39 @@ public struct NoticeUserStateFile: Codable, Sendable, Equatable {
         self.version = version
         self.updatedAt = updatedAt
         self.notices = notices
+    }
+
+    public func migratingLegacyNoticeKeys(for digest: NoticeDigest?) -> NoticeUserStateFile {
+        guard let digest else {
+            return self
+        }
+        var migrated = self
+        for notice in digest.notices {
+            let primary = notice.noticeIdentifier
+            let legacyItem = notice.legacyNoticeIdentifiers
+                .compactMap { migrated.notices[$0] }
+                .first
+            if var item = migrated.notices[primary] {
+                if let legacyItem {
+                    item = mergeNoticeInteractionState(primary: item, fallback: legacyItem)
+                }
+                item.title = notice.title
+                item.course = notice.course
+                item.url = notice.url
+                item.fingerprint = notice.fingerprint
+                migrated.notices[primary] = item
+            } else if var item = legacyItem {
+                item.title = notice.title
+                item.course = notice.course
+                item.url = notice.url
+                item.fingerprint = notice.fingerprint
+                migrated.notices[primary] = item
+            }
+            for legacyID in notice.legacyNoticeIdentifiers {
+                migrated.notices.removeValue(forKey: legacyID)
+            }
+        }
+        return migrated
     }
 }
 
@@ -546,6 +596,33 @@ public struct NoticeInteractionState: Codable, Sendable, Equatable {
     }
 }
 
+private func mergeNoticeInteractionState(
+    primary: NoticeInteractionState,
+    fallback: NoticeInteractionState
+) -> NoticeInteractionState {
+    var merged = primary
+    let hasReadState =
+        !(merged.readAt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        !(merged.readFingerprint ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    if !hasReadState {
+        if !(fallback.readAt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            merged.readAt = fallback.readAt
+        }
+        if !(fallback.readFingerprint ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            merged.readFingerprint = fallback.readFingerprint
+        }
+    }
+    if !merged.important && fallback.important {
+        merged.important = true
+        merged.importantAt = fallback.importantAt
+    }
+    if !merged.hidden && fallback.hidden {
+        merged.hidden = true
+        merged.hiddenAt = fallback.hiddenAt
+    }
+    return merged
+}
+
 public struct NoticeUserStateStore: Sendable {
     public var url: URL
 
@@ -568,7 +645,7 @@ public struct NoticeUserStateStore: Sendable {
         var state = try load()
         let timestamp = Self.timestamp()
         let key = notice.noticeIdentifier
-        var item = state.notices[key] ?? NoticeInteractionState()
+        var item = Self.interactionState(in: state, for: notice)
         item.title = notice.title
         item.course = notice.course
         item.url = notice.url
@@ -582,6 +659,7 @@ public struct NoticeUserStateStore: Sendable {
             item.readAt = nil
         }
         state.updatedAt = timestamp
+        removeLegacyNoticeStates(from: &state, for: notice)
         state.notices[key] = item
         try save(state)
     }
@@ -590,7 +668,7 @@ public struct NoticeUserStateStore: Sendable {
         var state = try load()
         let timestamp = Self.timestamp()
         let key = notice.noticeIdentifier
-        var item = state.notices[key] ?? NoticeInteractionState()
+        var item = Self.interactionState(in: state, for: notice)
         item.title = notice.title
         item.course = notice.course
         item.url = notice.url
@@ -599,6 +677,7 @@ public struct NoticeUserStateStore: Sendable {
         item.importantAt = isImportant ? timestamp : nil
         item.updatedAt = timestamp
         state.updatedAt = timestamp
+        removeLegacyNoticeStates(from: &state, for: notice)
         state.notices[key] = item
         try save(state)
     }
@@ -607,7 +686,7 @@ public struct NoticeUserStateStore: Sendable {
         var state = try load()
         let timestamp = Self.timestamp()
         let key = notice.noticeIdentifier
-        var item = state.notices[key] ?? NoticeInteractionState()
+        var item = Self.interactionState(in: state, for: notice)
         item.title = notice.title
         item.course = notice.course
         item.url = notice.url
@@ -616,8 +695,38 @@ public struct NoticeUserStateStore: Sendable {
         item.hiddenAt = isHidden ? timestamp : nil
         item.updatedAt = timestamp
         state.updatedAt = timestamp
+        removeLegacyNoticeStates(from: &state, for: notice)
         state.notices[key] = item
         try save(state)
+    }
+
+    private static func interactionState(
+        in state: NoticeUserStateFile,
+        for notice: NoticeDigestEntry
+    ) -> NoticeInteractionState {
+        if var item = state.notices[notice.noticeIdentifier] {
+            for legacyID in notice.legacyNoticeIdentifiers {
+                if let legacyItem = state.notices[legacyID] {
+                    item = mergeNoticeInteractionState(primary: item, fallback: legacyItem)
+                }
+            }
+            return item
+        }
+        for legacyID in notice.legacyNoticeIdentifiers {
+            if let item = state.notices[legacyID] {
+                return item
+            }
+        }
+        return NoticeInteractionState()
+    }
+
+    private func removeLegacyNoticeStates(
+        from state: inout NoticeUserStateFile,
+        for notice: NoticeDigestEntry
+    ) {
+        for legacyID in notice.legacyNoticeIdentifiers {
+            state.notices.removeValue(forKey: legacyID)
+        }
     }
 
     private func save(_ state: NoticeUserStateFile) throws {

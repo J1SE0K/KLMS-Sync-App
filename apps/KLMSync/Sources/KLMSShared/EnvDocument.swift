@@ -11,6 +11,7 @@ public enum EnvKnownKey: String, CaseIterable, Sendable, Identifiable {
     case syncAbortOnUserActivity = "SYNC_ABORT_ON_USER_ACTIVITY"
     case syncActiveAbortIdleSeconds = "SYNC_ACTIVE_ABORT_IDLE_SECONDS"
     case safariBackgroundWindowEnabled = "KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED"
+    case safariBackgroundWindowMode = "KLMS_SAFARI_BACKGROUND_WINDOW_MODE"
     case safariReuseExistingWindowEnabled = "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED"
     case calendarSkipUnchangedDesired = "CALENDAR_SKIP_UNCHANGED_DESIRED"
     case syncMode = "SYNC_MODE"
