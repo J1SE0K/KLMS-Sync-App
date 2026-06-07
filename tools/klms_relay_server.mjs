@@ -332,8 +332,9 @@ async function route(request, response) {
     expireStaleCommands();
     expireStalePendingItemActions();
     const limit = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get("limit") || "10", 10) || 10));
+    const clearTimes = displayLogClearTimes();
     sendJSON(response, 200, commandListResponse(
-      state.commands
+      filterDisplayCommands(state.commands, clearTimes.command)
         .slice()
         .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
         .slice(0, limit)
@@ -571,7 +572,11 @@ async function route(request, response) {
       return;
     }
     const limit = boundedInt(url.searchParams.get("limit"), 20, 1, MAX_FILE_ACCESS_REQUESTS);
-    sendJSON(response, 200, fileAccessListResponse(loadFileAccessRequests({ limit }), request));
+    const clearTimes = displayLogClearTimes();
+    sendJSON(response, 200, fileAccessListResponse(
+      filterDisplayFileAccess(loadFileAccessRequests({ limit: MAX_FILE_ACCESS_REQUESTS }), clearTimes.fileAccess).slice(0, limit),
+      request
+    ));
     return;
   }
 
@@ -582,6 +587,16 @@ async function route(request, response) {
     }
     const limit = boundedInt(url.searchParams.get("limit"), 20, 1, MAX_REQUEST_LOG_ENTRIES);
     sendJSON(response, 200, requestLogResponse(limit));
+    return;
+  }
+
+  if (request.method === "DELETE" && url.pathname === "/v1/logs/display") {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    const scope = normalizeLogClearScope(url.searchParams.get("scope"));
+    sendJSON(response, 200, clearDisplayLogs(scope));
     return;
   }
 
@@ -639,10 +654,11 @@ async function route(request, response) {
 }
 
 function commandListResponse(commands) {
+  const latestCommand = commands.find((command) => command.id === state.latestCommand?.id) || commands[0] || null;
   return {
     commands,
     status: normalizeStatus(state.status, state.running ? "running" : undefined),
-    latestCommand: state.latestCommand || commands[0] || null,
+    latestCommand,
     running: Boolean(state.running),
   };
 }
@@ -662,11 +678,12 @@ function fileAccessListResponse(requests, request) {
 }
 
 function workerInboxResponse(request) {
+  const clearTimes = displayLogClearTimes();
   return {
     statusResponse: relayResponse(),
     recentRequestLog: requestLogResponse(20).entries,
     recentFileAccessRequests: fileAccessListResponse(
-      loadFileAccessRequests({ limit: 8 }),
+      filterDisplayFileAccess(loadFileAccessRequests({ limit: 8 }), clearTimes.fileAccess),
       request
     ).requests,
     pendingFileAccessRequests: fileAccessListResponse(
@@ -803,8 +820,12 @@ function sanitizeRealtimeRole(value) {
 }
 
 function requestLogResponse(limit = 20) {
+  const clearTimes = displayLogClearTimes();
   return {
-    entries: loadRequestLog().slice(0, Math.max(1, Math.min(MAX_REQUEST_LOG_ENTRIES, limit))),
+    entries: filterDisplayRequestLog(
+      loadRequestLog(),
+      clearTimes.requestLog
+    ).slice(0, Math.max(1, Math.min(MAX_REQUEST_LOG_ENTRIES, limit))),
   };
 }
 
@@ -958,6 +979,46 @@ function loadRequestLog() {
     .slice(0, MAX_REQUEST_LOG_ENTRIES);
 }
 
+function displayLogClearTimes() {
+  return {
+    command: getMeta("displayCommandLogClearedAt"),
+    requestLog: getMeta("displayRequestLogClearedAt"),
+    fileAccess: getMeta("displayFileAccessLogClearedAt"),
+  };
+}
+
+function filterDisplayCommands(commands, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return commands;
+  }
+  return commands.filter((command) => (
+    command.status === "pending"
+    || command.status === "running"
+    || (Date.parse(command.updatedAt) || 0) > clearTime
+  ));
+}
+
+function filterDisplayRequestLog(entries, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return entries;
+  }
+  return entries.filter((entry) => (Date.parse(entry.createdAt) || 0) > clearTime);
+}
+
+function filterDisplayFileAccess(requests, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return requests;
+  }
+  return requests.filter((request) => (
+    request.status === "pending"
+    || request.status === "running"
+    || (Date.parse(request.updatedAt) || 0) > clearTime
+  ));
+}
+
 function hasActiveRelayWork() {
   if (state.running) {
     return true;
@@ -994,6 +1055,41 @@ function normalizeLogClearScope(value) {
     return "fileAccess";
   }
   return "all";
+}
+
+function clearDisplayLogs(scope = "all") {
+  const clearedAt = new Date().toISOString();
+  const shouldClearAll = scope === "all";
+  const shouldClearCommands = shouldClearAll || scope === "command";
+  const shouldClearRequestLog = shouldClearAll || scope === "requestLog";
+  const shouldClearFileAccess = shouldClearAll || scope === "fileAccess";
+  const requestLog = shouldClearRequestLog ? loadRequestLog() : [];
+  const fileAccessRows = shouldClearFileAccess
+    ? loadFileAccessRequests({ limit: MAX_FILE_ACCESS_REQUESTS })
+    : [];
+  const result = {
+    clearedAt,
+    commands: shouldClearCommands
+      ? state.commands.filter((command) => command.status !== "pending" && command.status !== "running").length
+      : 0,
+    itemActions: 0,
+    settingActions: 0,
+    fileAccessRequests: shouldClearFileAccess
+      ? fileAccessRows.filter((request) => request.status !== "pending" && request.status !== "running").length
+      : 0,
+    requestLogEntries: requestLog.length,
+  };
+  if (shouldClearCommands) {
+    setMeta("displayCommandLogClearedAt", clearedAt);
+  }
+  if (shouldClearRequestLog) {
+    setMeta("displayRequestLogClearedAt", clearedAt);
+  }
+  if (shouldClearFileAccess) {
+    setMeta("displayFileAccessLogClearedAt", clearedAt);
+  }
+  touchRelayEvent(`logs-display:${scope}`, clearedAt);
+  return result;
 }
 
 async function clearRelayLogs(scope = "all") {

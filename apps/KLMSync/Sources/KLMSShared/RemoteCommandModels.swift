@@ -1980,6 +1980,14 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
     }
 
     @discardableResult
+    public func clearDisplayLogs(scope: ServerRelayLogClearScope = .all) async throws -> ServerRelayLogClearResponse {
+        let queryItems = scope == .all
+            ? []
+            : [URLQueryItem(name: "scope", value: scope.rawValue)]
+        return try await send(method: "DELETE", path: "/v1/logs/display", queryItems: queryItems)
+    }
+
+    @discardableResult
     public func clearSharedRunLogs() async throws -> ServerRelaySharedRunLogClearResponse {
         try await send(method: "DELETE", path: "/v1/sync-data/run-logs")
     }

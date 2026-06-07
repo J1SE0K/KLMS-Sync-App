@@ -721,24 +721,27 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "로그 지우기 보류", message: message)
             return
         }
-        var sharedClearError: String?
-        if scope == .all, let serverRelayStore {
+        var remoteClearError: String?
+        if let serverRelayStore {
             do {
-                _ = try await serverRelayStore.clearSharedRunLogs()
-                sharedRunLogs = []
-                sharedRunLogsSignature = nil
-                syncDataNeedsRefresh = true
+                _ = try await serverRelayStore.clearDisplayLogs(scope: scope)
+                if scope == .all {
+                    _ = try await serverRelayStore.clearSharedRunLogs()
+                    sharedRunLogs = []
+                    sharedRunLogsSignature = nil
+                    syncDataNeedsRefresh = true
+                }
             } catch {
-                sharedClearError = "공유 실행 로그 지우기 실패: \(error.localizedDescription)"
+                remoteClearError = "서버 표시 기록 지우기 실패: \(error.localizedDescription)"
             }
         }
         applyLogClear(scope: scope)
-        connectionMessage = sharedClearError ?? (scope == .all ? "화면 기록과 공유 실행 로그를 지웠습니다." : "화면 기록을 지웠습니다.")
+        connectionMessage = remoteClearError ?? (scope == .all ? "화면 기록과 공유 실행 로그를 지웠습니다." : "화면 기록을 지웠습니다.")
         connectionSucceeded = true
-        errorMessage = sharedClearError ?? ""
+        errorMessage = remoteClearError ?? ""
         userAlert = UserAlert(
-            title: sharedClearError == nil ? "\(scope.clearTitle) 완료" : "일부 로그 지우기 실패",
-            message: sharedClearError ?? (scope == .all ? "이 기기의 화면 기록을 정리했고, 공유 실행 로그는 모든 기기에서 비워집니다." : scope.localClearMessage)
+            title: remoteClearError == nil ? "\(scope.clearTitle) 완료" : "일부 로그 지우기 실패",
+            message: remoteClearError ?? (scope == .all ? "이 기기의 화면 기록을 정리했고, 공유 실행 로그는 모든 기기에서 비워집니다." : "이 기록은 다른 기기 화면에서도 함께 숨겨집니다.")
         )
     }
 

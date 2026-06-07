@@ -523,6 +523,33 @@ async function runSmoke() {
     assert.equal(syncDataAfterClear.items.length, 1);
   }
 
+  {
+    const displayCommand = await expectJSON("/v1/commands", {
+      kind: "fullSync",
+      status: "pending",
+      summary: { assignments: 1, phase: "pending" },
+    }, { method: "POST", status: 201 });
+    await expectJSON(`/v1/commands/${displayCommand.id}`, {
+      ...displayCommand,
+      status: "completed",
+      updatedAt: new Date().toISOString(),
+      summary: { assignments: 1, phase: "completed" },
+    }, { method: "PUT", role: "worker" });
+    const beforeDisplayClearCommands = await expectJSON("/v1/commands/recent");
+    assert.equal(beforeDisplayClearCommands.commands.length, 1);
+    const beforeDisplayClearRequests = await expectJSON("/v1/request-log/recent");
+    assert.ok(beforeDisplayClearRequests.entries.length > 0);
+
+    const displayClear = await expectJSON("/v1/logs/display", undefined, { method: "DELETE" });
+    assert.equal(displayClear.commands, 1);
+    assert.ok(displayClear.requestLogEntries > 0);
+    const afterDisplayClearCommands = await expectJSON("/v1/commands/recent");
+    assert.equal(afterDisplayClearCommands.commands.length, 0);
+    assert.equal(afterDisplayClearCommands.latestCommand, null);
+    const afterDisplayClearRequests = await expectJSON("/v1/request-log/recent");
+    assert.equal(afterDisplayClearRequests.entries.length, 0);
+  }
+
   console.log("cloudflare worker smoke ok");
 }
 

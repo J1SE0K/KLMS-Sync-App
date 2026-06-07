@@ -356,7 +356,8 @@ async function route(request, env) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const limit = boundedInt(url.searchParams.get("limit"), 10, 1, 50);
-    return sendJSON(200, commandListResponse(state, state.commands
+    const clearTimes = await displayLogClearTimes(db);
+    return sendJSON(200, commandListResponse(state, filterDisplayCommands(state.commands, clearTimes.command)
       .slice()
       .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
       .slice(0, limit)));
@@ -539,8 +540,9 @@ async function route(request, env) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const limit = boundedInt(url.searchParams.get("limit"), 20, 1, MAX_FILE_ACCESS_REQUESTS);
+    const clearTimes = await displayLogClearTimes(db);
     return sendJSON(200, fileAccessListResponse(
-      await loadFileAccessRequests(db, { limit }),
+      filterDisplayFileAccess(await loadFileAccessRequests(db, { limit: MAX_FILE_ACCESS_REQUESTS }), clearTimes.fileAccess).slice(0, limit),
       request,
       env
     ));
@@ -552,6 +554,14 @@ async function route(request, env) {
     }
     const limit = boundedInt(url.searchParams.get("limit"), 20, 1, MAX_REQUEST_LOG_ENTRIES);
     return sendJSON(200, await requestLogResponse(db, limit));
+  }
+
+  if (request.method === "DELETE" && pathname === "/v1/logs/display") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const scope = normalizeLogClearScope(url.searchParams.get("scope"));
+    return sendJSON(200, await clearDisplayLogs(db, env, state, scope));
   }
 
   if (request.method === "DELETE" && pathname === "/v1/logs") {
@@ -628,6 +638,7 @@ function requiredRoleFor(method, pathname) {
   if (method === "GET" && pathname === "/v1/file-access/pending") return "worker";
   if (method === "GET" && pathname === "/v1/file-access/recent") return "client";
   if (method === "GET" && pathname === "/v1/request-log/recent") return "client";
+  if (method === "DELETE" && pathname === "/v1/logs/display") return "client";
   if (method === "DELETE" && pathname === "/v1/logs") return "worker";
   if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
   if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F-]+\/upload$/.test(pathname)) return "worker";
@@ -635,6 +646,7 @@ function requiredRoleFor(method, pathname) {
 }
 
 async function workerInboxResponse(db, request, env, state) {
+  const clearTimes = await displayLogClearTimes(db);
   const [
     requestLog,
     recentFileAccess,
@@ -653,7 +665,11 @@ async function workerInboxResponse(db, request, env, state) {
   return {
     statusResponse: relayResponse(state),
     recentRequestLog: requestLog.entries,
-    recentFileAccessRequests: fileAccessListResponse(recentFileAccess, request, env).requests,
+    recentFileAccessRequests: fileAccessListResponse(
+      filterDisplayFileAccess(recentFileAccess, clearTimes.fileAccess),
+      request,
+      env
+    ).requests,
     pendingFileAccessRequests: fileAccessListResponse(pendingFileAccess, request, env).requests,
     pendingSettingActions: state.settingActions
       .filter((action) => action.status === "pending")
@@ -1080,8 +1096,12 @@ async function upsertSettingAction(db, action) {
 }
 
 async function requestLogResponse(db, limit = 20) {
+  const clearTimes = await displayLogClearTimes(db);
   return {
-    entries: (await loadRequestLog(db)).slice(0, Math.max(1, Math.min(MAX_REQUEST_LOG_ENTRIES, limit))),
+    entries: filterDisplayRequestLog(
+      await loadRequestLog(db),
+      clearTimes.requestLog
+    ).slice(0, Math.max(1, Math.min(MAX_REQUEST_LOG_ENTRIES, limit))),
   };
 }
 
@@ -1099,6 +1119,46 @@ async function loadRequestLog(db) {
     .map((item) => normalizeRequestLogEntry(null, item))
     .sort((lhs, rhs) => Date.parse(rhs.createdAt) - Date.parse(lhs.createdAt))
     .slice(0, MAX_REQUEST_LOG_ENTRIES);
+}
+
+async function displayLogClearTimes(db) {
+  return {
+    command: await getMeta(db, "displayCommandLogClearedAt"),
+    requestLog: await getMeta(db, "displayRequestLogClearedAt"),
+    fileAccess: await getMeta(db, "displayFileAccessLogClearedAt"),
+  };
+}
+
+function filterDisplayCommands(commands, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return commands;
+  }
+  return commands.filter((command) => (
+    command.status === "pending"
+    || command.status === "running"
+    || (Date.parse(command.updatedAt) || 0) > clearTime
+  ));
+}
+
+function filterDisplayRequestLog(entries, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return entries;
+  }
+  return entries.filter((entry) => (Date.parse(entry.createdAt) || 0) > clearTime);
+}
+
+function filterDisplayFileAccess(requests, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return requests;
+  }
+  return requests.filter((request) => (
+    request.status === "pending"
+    || request.status === "running"
+    || (Date.parse(request.updatedAt) || 0) > clearTime
+  ));
 }
 
 async function hasActiveRelayWork(db, state) {
@@ -1138,6 +1198,48 @@ function normalizeLogClearScope(value) {
     return "fileAccess";
   }
   return "all";
+}
+
+async function clearDisplayLogs(db, env, state, scope = "all") {
+  const clearedAt = new Date().toISOString();
+  const shouldClearAll = scope === "all";
+  const shouldClearCommands = shouldClearAll || scope === "command";
+  const shouldClearRequestLog = shouldClearAll || scope === "requestLog";
+  const shouldClearFileAccess = shouldClearAll || scope === "fileAccess";
+  const [requestLog, fileAccessRows] = await Promise.all([
+    shouldClearRequestLog ? loadRequestLog(db) : Promise.resolve([]),
+    shouldClearFileAccess ? loadFileAccessRequests(db, { limit: MAX_FILE_ACCESS_REQUESTS }) : Promise.resolve([]),
+  ]);
+  const result = {
+    clearedAt,
+    commands: shouldClearCommands
+      ? filterDisplayCommands(state.commands, "").filter((command) => command.status !== "pending" && command.status !== "running").length
+      : 0,
+    itemActions: 0,
+    settingActions: 0,
+    fileAccessRequests: shouldClearFileAccess
+      ? fileAccessRows.filter((request) => request.status !== "pending" && request.status !== "running").length
+      : 0,
+    requestLogEntries: shouldClearRequestLog ? requestLog.length : 0,
+  };
+  const statements = [];
+  if (shouldClearCommands) {
+    statements.push(setMetaStatement(db, "displayCommandLogClearedAt", clearedAt));
+  }
+  if (shouldClearRequestLog) {
+    statements.push(setMetaStatement(db, "displayRequestLogClearedAt", clearedAt));
+  }
+  if (shouldClearFileAccess) {
+    statements.push(setMetaStatement(db, "displayFileAccessLogClearedAt", clearedAt));
+  }
+  if (statements.length > 0) {
+    await db.batch(statements);
+  }
+  await touchRelayEvent(db, env, {
+    reason: `logs-display:${scope}`,
+    updatedAt: clearedAt,
+  });
+  return result;
 }
 
 async function clearRelayLogs(db, env, state, scope = "all") {
@@ -1781,10 +1883,11 @@ async function cancelPendingCommandIfNeeded(db, state, cancelRequest, request, e
 }
 
 function commandListResponse(state, commands) {
+  const latestCommand = commands.find((command) => command.id === state.latestCommand?.id) || commands[0] || null;
   return {
     commands,
     status: normalizeStatus(state.status, state.running ? "running" : undefined),
-    latestCommand: state.latestCommand || commands[0] || null,
+    latestCommand,
     running: Boolean(state.running),
   };
 }
