@@ -79,6 +79,7 @@ final class KLMSMacModel: ObservableObject {
     @Published var lastRemoteCommand: RemoteRunCommand?
     @Published var serverRelayRecentRequestLog: [ServerRelayRequestLogEntry] = []
     @Published var serverRelayRecentFileAccessRequests: [ServerRelayFileAccessRequest] = []
+    @Published var serverRelaySharedRunLogs: [ServerRelayRunLog] = []
     @Published var remoteProcessingStatusMessage: String?
     @Published var isCheckingRemoteCommands = false
     @Published var serverRelayEnabled: Bool
@@ -518,6 +519,9 @@ final class KLMSMacModel: ObservableObject {
             if let requestLog = try? await store.fetchRecentRequestLog(limit: 20) {
                 serverRelayRecentRequestLog = requestLog
             }
+            if let syncData = try? await store.fetchSyncData(limit: 1) {
+                serverRelaySharedRunLogs = syncData.runLogs
+            }
             serverRelayLastStatusPublishAt = Date()
             if enableOnSuccess && !serverRelayEnabled {
                 setServerRelayEnabled(true)
@@ -551,8 +555,25 @@ final class KLMSMacModel: ObservableObject {
             if let requestLog = try? await store.fetchRecentRequestLog(limit: 20) {
                 serverRelayRecentRequestLog = requestLog
             }
+            if let syncData = try? await store.fetchSyncData(limit: 1) {
+                serverRelaySharedRunLogs = syncData.runLogs
+            }
         } catch {
             serverRelayStatusMessage = "로그 지우기 실패: \(error.localizedDescription)"
+            errorMessage = serverRelayStatusMessage
+        }
+    }
+
+    func clearServerRelaySharedRunLogs() async {
+        do {
+            let store = try makeServerRelayStore()
+            let result = try await store.clearSharedRunLogs()
+            serverRelaySharedRunLogs = []
+            serverRelayStatusMessage = "공유 실행 로그 \(result.runLogs)개를 지웠습니다."
+            remoteProcessingStatusMessage = nil
+            errorMessage = nil
+        } catch {
+            serverRelayStatusMessage = "공유 실행 로그 지우기 실패: \(error.localizedDescription)"
             errorMessage = serverRelayStatusMessage
         }
     }
@@ -570,6 +591,7 @@ final class KLMSMacModel: ObservableObject {
             return
         }
         await clearServerRelayLogs(scope: .all)
+        await clearServerRelaySharedRunLogs()
     }
 
     private func applyServerRelayLogClear(scope: ServerRelayLogClearScope) {
@@ -580,6 +602,7 @@ final class KLMSMacModel: ObservableObject {
             }
             serverRelayRecentRequestLog = []
             serverRelayRecentFileAccessRequests = serverRelayRecentFileAccessRequests.filter { $0.status.isInFlight }
+            serverRelaySharedRunLogs = []
         case .command:
             if lastRemoteCommand?.status.isInFlight != true {
                 lastRemoteCommand = nil
@@ -856,7 +879,8 @@ final class KLMSMacModel: ObservableObject {
             items: items,
             dryRunReports: serverRelayDryRunReports(from: snapshot),
             calendarChanges: snapshot.calendarSyncResult?.changes.map(serverRelayCalendarChange) ?? [],
-            settings: serverRelaySettings(updatedAt: updatedAt)
+            settings: serverRelaySettings(updatedAt: updatedAt),
+            runLogs: serverRelayRunLogs()
         )
     }
 
@@ -899,6 +923,26 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    private func serverRelayRunLogs() -> [ServerRelayRunLog] {
+        return commandHistory.records.prefix(40).map { record in
+            ServerRelayRunLog(
+                id: record.id,
+                command: record.command.rawValue,
+                commandTitle: record.command.displayName,
+                status: record.statusText,
+                startedAt: record.startedAt,
+                finishedAt: record.finishedAt,
+                updatedAt: record.finishedAt,
+                duration: record.elapsedSecondsText,
+                exitCode: Int(record.exitCode),
+                dryRun: record.dryRun,
+                wasCancelled: record.wasCancelled,
+                needsAttention: record.needsAttention,
+                outputTail: serverRelayPublicLogText(record.outputTail)
+            )
+        }
+    }
+
     private func serverRelaySyncItem(
         kind: String,
         item: StateItem,
@@ -930,6 +974,46 @@ final class KLMSMacModel: ObservableObject {
             return ""
         }
         return value
+    }
+
+    private func serverRelayPublicLogText(_ text: String?) -> String {
+        let value = (text ?? "").klmsDisplayText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            return ""
+        }
+        let patterns: [(String, String)] = [
+            (#"KAIST 인증 번호:\s*[0-9]{1,3}"#, "KAIST 인증 번호: --"),
+            (#"digits=[0-9]{1,3}"#, "digits=--"),
+            (#"https?:\/\/klms\.kaist\.ac\.kr\/[^\s"'<>]+"#, "[KLMS URL]"),
+            (#"\/Users\/[^\s"'<>]+"#, "[local-path]"),
+            (#"\/var\/folders\/[^\s"'<>]+"#, "[temp-path]"),
+            (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#, "[email]")
+        ]
+        var redacted = value
+        for (pattern, replacement) in patterns {
+            redacted = redacted.replacingOccurrences(
+                of: pattern,
+                with: replacement,
+                options: [.regularExpression, .caseInsensitive]
+            )
+        }
+        let safeLines = redacted
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .filter { !serverRelayLooksPrivateLogLine($0) }
+        let tailLines = safeLines.suffix(80)
+        let joined = tailLines.joined(separator: "\n")
+        guard joined.count > 12_000 else {
+            return joined
+        }
+        return "...\n" + String(joined.suffix(12_000))
+    }
+
+    private func serverRelayLooksPrivateLogLine(_ line: String) -> Bool {
+        line.range(
+            of: #"[가-힣A-Za-z0-9_.-]+(로|길)\s*\d{1,4}(\s*-\s*\d{1,4})?"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private func serverRelayLooksPrivate(_ text: String) -> Bool {
@@ -1798,6 +1882,9 @@ final class KLMSMacModel: ObservableObject {
             serverRelayLastInboxUpdatedAt = inbox.statusResponse.updatedAt
             serverRelayRecentRequestLog = inbox.recentRequestLog
             serverRelayRecentFileAccessRequests = inbox.recentFileAccessRequests
+            if let syncData = try? await store.fetchSyncData(limit: 1) {
+                serverRelaySharedRunLogs = syncData.runLogs
+            }
             let pendingFileRequests = inbox.pendingFileAccessRequests
             if let fileRequest = pendingFileRequests.first {
                 var runningRequest = fileRequest

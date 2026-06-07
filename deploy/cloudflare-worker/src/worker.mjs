@@ -5,6 +5,8 @@ const MAX_SETTING_ACTIONS = 100;
 const MAX_REQUEST_LOG_ENTRIES = 100;
 const MAX_SYNC_ITEMS = 2000;
 const MAX_SYNC_EXTRAS = 200;
+const MAX_SHARED_RUN_LOGS = 60;
+const MAX_SHARED_RUN_LOG_CHARS = 12_000;
 const MAX_FILE_ACCESS_REQUESTS = 100;
 const DEFAULT_MAX_FILE_UPLOAD_BYTES = 25 * 1024 * 1024;
 const DEFAULT_DAILY_FILE_UPLOADS = 20;
@@ -250,12 +252,20 @@ async function route(request, env) {
       dryRunReports: normalizeDryRunReports(body.dryRunReports),
       calendarChanges: normalizeCalendarChanges(body.calendarChanges),
       settings: normalizeSettings(body.settings),
+      runLogs: normalizeRunLogs(body.runLogs),
     });
     await touchRelayEvent(db, env, {
       reason: "sync-data",
       updatedAt: new Date().toISOString(),
     });
     return sendJSON(200, await syncDataResponse(db, { limit: MAX_SYNC_ITEMS }));
+  }
+
+  if (request.method === "DELETE" && pathname === "/v1/sync-data/run-logs") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    return sendJSON(200, await clearSharedRunLogs(db, env));
   }
 
   if (request.method === "POST" && pathname === "/v1/cancel") {
@@ -598,6 +608,7 @@ function requiredRoleFor(method, pathname) {
   if (method === "POST" && pathname === "/v1/status") return "worker";
   if (method === "GET" && pathname === "/v1/sync-data") return "client";
   if (method === "POST" && pathname === "/v1/sync-data") return "worker";
+  if (method === "DELETE" && pathname === "/v1/sync-data/run-logs") return "client";
   if (method === "POST" && pathname === "/v1/cancel") return "client";
   if (method === "GET" && pathname === "/v1/cancel") return "worker";
   if (method === "DELETE" && pathname === "/v1/cancel") return "worker";
@@ -2165,6 +2176,39 @@ function sanitizePublicText(value) {
   return text.replace(/\/Users\/[^\s"'<>]+/g, "[local-path]");
 }
 
+function sanitizeLogText(value) {
+  let text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  text = text
+    .replace(/KAIST 인증 번호:\s*\d{1,3}/g, "KAIST 인증 번호: --")
+    .replace(/digits=\d{1,3}/g, "digits=--")
+    .replace(/https?:\/\/klms\.kaist\.ac\.kr\/[^\s"'<>]+/gi, "[KLMS URL]")
+    .replace(/\/Users\/[^\s"'<>]+/g, "[local-path]")
+    .replace(/\/var\/folders\/[^\s"'<>]+/g, "[temp-path]")
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]");
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => !looksPrivateLogLine(line));
+  const joined = lines.join("\n");
+  if (joined.length <= MAX_SHARED_RUN_LOG_CHARS) {
+    return joined;
+  }
+  return `...\n${joined.slice(-MAX_SHARED_RUN_LOG_CHARS)}`;
+}
+
+function looksPrivateLogLine(text) {
+  if (/(주소|address)/i.test(text)) {
+    return true;
+  }
+  if (/[가-힣A-Za-z0-9_.-]+(로|길)\s*\d{1,4}(\s*-\s*\d{1,4})?/.test(text)) {
+    return true;
+  }
+  return false;
+}
+
 function looksPrivateText(text) {
   if (/\/Users\//i.test(text)) {
     return true;
@@ -2196,11 +2240,14 @@ function normalizeBoolean(value) {
 
 async function replaceSyncItems(db, items, generatedAt, extras = {}) {
   const now = new Date().toISOString();
+  const runLogsClearedAt = await getMeta(db, "syncDataRunLogsClearedAt");
+  const runLogs = normalizeRunLogs(extras.runLogs, runLogsClearedAt);
   await db.batch([
     setMetaStatement(db, "syncDataItems", JSON.stringify(items.slice(0, MAX_SYNC_ITEMS))),
     setMetaStatement(db, "syncDataDryRunReports", JSON.stringify(extras.dryRunReports || [])),
     setMetaStatement(db, "syncDataCalendarChanges", JSON.stringify(extras.calendarChanges || [])),
     setMetaStatement(db, "syncDataSettings", JSON.stringify(extras.settings || [])),
+    setMetaStatement(db, "syncDataRunLogs", JSON.stringify(runLogs)),
     setMetaStatement(db, "syncDataGeneratedAt", String(generatedAt || now)),
     setMetaStatement(db, "syncDataUpdatedAt", now),
   ]);
@@ -2211,6 +2258,8 @@ async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {
   const dryRunReports = parseJSON(await getMeta(db, "syncDataDryRunReports"), []);
   const calendarChanges = parseJSON(await getMeta(db, "syncDataCalendarChanges"), []);
   const settings = parseJSON(await getMeta(db, "syncDataSettings"), []);
+  const runLogs = parseJSON(await getMeta(db, "syncDataRunLogs"), []);
+  const runLogsClearedAt = await getMeta(db, "syncDataRunLogsClearedAt");
   const trimmedKind = String(kind || "").trim();
   const filtered = (Array.isArray(items) ? items : [])
     .map(normalizeSyncItem)
@@ -2225,6 +2274,25 @@ async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {
     dryRunReports: normalizeDryRunReports(dryRunReports),
     calendarChanges: normalizeCalendarChanges(calendarChanges),
     settings: normalizeSettings(settings),
+    runLogs: normalizeRunLogs(runLogs, runLogsClearedAt),
+  };
+}
+
+async function clearSharedRunLogs(db, env) {
+  const clearedAt = new Date().toISOString();
+  const previous = normalizeRunLogs(parseJSON(await getMeta(db, "syncDataRunLogs"), []));
+  await db.batch([
+    setMetaStatement(db, "syncDataRunLogs", "[]"),
+    setMetaStatement(db, "syncDataRunLogsClearedAt", clearedAt),
+    setMetaStatement(db, "syncDataUpdatedAt", clearedAt),
+  ]);
+  await touchRelayEvent(db, env, {
+    reason: "sync-data:run-logs-clear",
+    updatedAt: clearedAt,
+  });
+  return {
+    clearedAt,
+    runLogs: previous.length,
   };
 }
 
@@ -2284,6 +2352,43 @@ function normalizeSettings(raw) {
     editable: normalizeBoolean(setting?.editable ?? true),
     updatedAt: String(setting?.updatedAt || setting?.updated_at || new Date().toISOString()),
   })).filter((setting) => setting.key);
+}
+
+function normalizeRunLogs(raw, clearedAt = "") {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const clearedTime = Date.parse(clearedAt || "") || 0;
+  return raw
+    .slice(0, MAX_SHARED_RUN_LOGS * 2)
+    .map((log) => {
+      const now = new Date().toISOString();
+      const startedAt = sanitizePublicText(log?.startedAt || log?.started_at) || now;
+      const finishedAt = sanitizePublicText(log?.finishedAt || log?.finished_at) || startedAt;
+      const updatedAt = sanitizePublicText(log?.updatedAt || log?.updated_at) || finishedAt;
+      const finishedTime = Date.parse(finishedAt) || Date.parse(updatedAt) || 0;
+      if (clearedTime > 0 && finishedTime <= clearedTime) {
+        return null;
+      }
+      return {
+        id: normalizeUUIDText(log?.id) || crypto.randomUUID(),
+        command: sanitizePublicText(log?.command),
+        commandTitle: sanitizePublicText(log?.commandTitle || log?.command_title) || "동기화",
+        status: sanitizePublicText(log?.status) || "기록됨",
+        startedAt,
+        finishedAt,
+        updatedAt,
+        duration: sanitizePublicText(log?.duration),
+        exitCode: boundedInt(log?.exitCode ?? log?.exit_code, 0, -999, 999),
+        dryRun: normalizeBoolean(log?.dryRun ?? log?.dry_run),
+        wasCancelled: normalizeBoolean(log?.wasCancelled ?? log?.was_cancelled),
+        needsAttention: normalizeBoolean(log?.needsAttention ?? log?.needs_attention),
+        outputTail: sanitizeLogText(log?.outputTail || log?.output_tail),
+      };
+    })
+    .filter(Boolean)
+    .sort((lhs, rhs) => Date.parse(rhs.finishedAt) - Date.parse(lhs.finishedAt))
+    .slice(0, MAX_SHARED_RUN_LOGS);
 }
 
 function sanitizeSettingKey(value) {

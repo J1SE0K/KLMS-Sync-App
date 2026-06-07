@@ -48,6 +48,7 @@ final class CompanionModel: ObservableObject {
     @Published var dryRunReports: [DryRunReport] = []
     @Published var calendarChanges: [CalendarChange] = []
     @Published var remoteSettings: [ServerRelaySetting] = []
+    @Published var sharedRunLogs: [ServerRelayRunLog] = []
     @Published var status = SanitizedRemoteStatus()
     @Published var errorMessage = ""
     @Published var connectionMessage = ""
@@ -89,6 +90,7 @@ final class CompanionModel: ObservableObject {
     private var syncItemsSignature: Int?
     private var calendarChangesSignature: Int?
     private var remoteSettingsSignature: Int?
+    private var sharedRunLogsSignature: Int?
     private var lastTerminalCommandID: UUID?
     private let syncDataStaleInterval: TimeInterval = 45
 
@@ -719,14 +721,48 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "로그 지우기 보류", message: message)
             return
         }
+        var sharedClearError: String?
+        if scope == .all, let serverRelayStore {
+            do {
+                _ = try await serverRelayStore.clearSharedRunLogs()
+                sharedRunLogs = []
+                sharedRunLogsSignature = nil
+                syncDataNeedsRefresh = true
+            } catch {
+                sharedClearError = "공유 실행 로그 지우기 실패: \(error.localizedDescription)"
+            }
+        }
         applyLogClear(scope: scope)
-        connectionMessage = "화면 기록을 지웠습니다."
+        connectionMessage = sharedClearError ?? (scope == .all ? "화면 기록과 공유 실행 로그를 지웠습니다." : "화면 기록을 지웠습니다.")
         connectionSucceeded = true
-        errorMessage = ""
+        errorMessage = sharedClearError ?? ""
         userAlert = UserAlert(
-            title: "\(scope.clearTitle) 완료",
-            message: scope.localClearMessage
+            title: sharedClearError == nil ? "\(scope.clearTitle) 완료" : "일부 로그 지우기 실패",
+            message: sharedClearError ?? (scope == .all ? "이 기기의 화면 기록을 정리했고, 공유 실행 로그는 모든 기기에서 비워집니다." : scope.localClearMessage)
         )
+    }
+
+    func clearSharedRunLogs() async {
+        guard let serverRelayStore else {
+            let message = "서버 연결 정보가 없어 공유 실행 로그를 지울 수 없습니다."
+            errorMessage = message
+            userAlert = UserAlert(title: "공유 실행 로그 지우기 실패", message: message)
+            return
+        }
+        do {
+            let result = try await serverRelayStore.clearSharedRunLogs()
+            sharedRunLogs = []
+            sharedRunLogsSignature = nil
+            syncDataNeedsRefresh = true
+            connectionMessage = "공유 실행 로그 \(result.runLogs)개를 지웠습니다."
+            connectionSucceeded = true
+            errorMessage = ""
+            userAlert = UserAlert(title: "공유 실행 로그 지움", message: "모든 기기에서 공유 실행 로그가 비워집니다.")
+        } catch {
+            let message = "공유 실행 로그 지우기 실패: \(error.localizedDescription)"
+            errorMessage = message
+            userAlert = UserAlert(title: "공유 실행 로그 지우기 실패", message: message)
+        }
     }
 
     private func applyLogClear(scope: ServerRelayLogClearScope) {
@@ -989,7 +1025,7 @@ final class CompanionModel: ObservableObject {
               let event = try? JSONDecoder().decode(RelayEventEnvelope.self, from: data) else {
             return false
         }
-        return event.reason == "sync-data"
+        return event.reason == "sync-data" || event.reason?.hasPrefix("sync-data:") == true
     }
 
     @discardableResult
@@ -1096,6 +1132,12 @@ final class CompanionModel: ObservableObject {
             remoteSettingsSignature = nextRemoteSettingsSignature
             didChange = true
         }
+        let nextSharedRunLogsSignature = Self.signature(for: syncData.runLogs)
+        if sharedRunLogsSignature != nextSharedRunLogsSignature {
+            sharedRunLogs = syncData.runLogs
+            sharedRunLogsSignature = nextSharedRunLogsSignature
+            didChange = true
+        }
         lastSyncDataRefreshAt = Date()
         syncDataNeedsRefresh = false
         return didChange
@@ -1135,6 +1177,18 @@ final class CompanionModel: ObservableObject {
             hasher.combine(setting.value)
             hasher.combine(setting.updatedAt)
             hasher.combine(setting.editable)
+        }
+        return hasher.finalize()
+    }
+
+    private static func signature(for logs: [ServerRelayRunLog]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(logs.count)
+        for log in logs {
+            hasher.combine(log.id)
+            hasher.combine(log.status)
+            hasher.combine(log.updatedAt)
+            hasher.combine(log.outputTail)
         }
         return hasher.finalize()
     }
@@ -1462,6 +1516,15 @@ private struct CompanionHistoryScreen: View {
         CompanionScreenContainer(title: "요청 기록", model: model) {
             RemoteAttentionStack(model: model)
             RemoteLogSummaryPanel(model: model, compact: false)
+            SharedRunLogsView(
+                logs: model.sharedRunLogs,
+                clearAction: {
+                    Task {
+                        await model.clearSharedRunLogs()
+                    }
+                },
+                clearDisabled: !model.serverRelayConfigured || model.isSubmitting || model.sharedRunLogs.isEmpty
+            )
             RecentServerRequestLogView(
                 entries: model.recentRequestLog,
                 clearAction: {
@@ -5702,6 +5765,119 @@ private struct RemoteLogSummaryRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint(isExpanded ? "관련 기록 접기" : "관련 기록 펼치기")
+    }
+}
+
+private struct SharedRunLogsView: View {
+    var logs: [ServerRelayRunLog]
+    var clearAction: (() -> Void)?
+    var clearDisabled = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("공유 실행 로그")
+                    .font(.headline)
+                Spacer()
+                if !logs.isEmpty {
+                    Text("최근 \(logs.count)개")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let clearAction {
+                    Button(action: clearAction) {
+                        Label("지우기", systemImage: "trash")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .disabled(clearDisabled)
+                }
+            }
+            Text("Mac이 실행한 동기화 결과를 모든 기기가 함께 보는 기록입니다. 지우면 다른 기기에서도 사라집니다.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if logs.isEmpty {
+                Text("아직 공유 실행 로그가 없습니다.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(.quinary)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                LazyVStack(spacing: 8) {
+                    ForEach(logs.prefix(30)) { log in
+                        SharedRunLogRow(log: log)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct SharedRunLogRow: View {
+    var log: ServerRelayRunLog
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(tint)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(log.commandTitle.nilIfEmpty ?? "동기화")
+                        .font(.subheadline.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("\(log.status) · \(log.duration) · \(log.finishedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if log.dryRun {
+                        Text("미리보기 실행")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            if isExpanded {
+                CompanionInlineLogBlock(text: log.outputTail)
+            }
+        }
+        .padding(12)
+        .background(.background)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(tint.opacity(0.16), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.snappy(duration: 0.18)) {
+                isExpanded.toggle()
+            }
+        }
+    }
+
+    private var systemImage: String {
+        if log.wasCancelled {
+            return "stop.circle"
+        }
+        if log.needsAttention {
+            return "exclamationmark.triangle.fill"
+        }
+        return "checkmark.circle.fill"
+    }
+
+    private var tint: Color {
+        if log.wasCancelled {
+            return .secondary
+        }
+        return log.needsAttention ? .orange : .green
     }
 }
 

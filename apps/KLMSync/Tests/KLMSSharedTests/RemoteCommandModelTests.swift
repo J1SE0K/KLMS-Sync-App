@@ -158,6 +158,44 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(ServerRelayLogClearScope.command.rawValue, "command")
     }
 
+    func testServerRelaySyncDataRunLogsRoundTripAndLegacyDefault() throws {
+        let startedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-06-07T01:00:00Z"))
+        let finishedAt = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-06-07T01:00:05Z"))
+        let syncData = ServerRelaySyncData(
+            generatedAt: "2026-06-07T01:00:05Z",
+            runLogs: [
+                ServerRelayRunLog(
+                    id: "run-1",
+                    command: "full",
+                    commandTitle: "전체 동기화",
+                    status: "성공",
+                    startedAt: startedAt,
+                    finishedAt: finishedAt,
+                    updatedAt: finishedAt,
+                    duration: "5초",
+                    exitCode: 0,
+                    dryRun: false,
+                    wasCancelled: false,
+                    needsAttention: false,
+                    outputTail: "정상 완료"
+                )
+            ]
+        )
+
+        let encoded = try JSONEncoder.klmsLocalRemote.encode(syncData)
+        let decoded = try JSONDecoder.klmsLocalRemote.decode(ServerRelaySyncData.self, from: encoded)
+
+        XCTAssertEqual(decoded.runLogs.count, 1)
+        XCTAssertEqual(decoded.runLogs[0].commandTitle, "전체 동기화")
+        XCTAssertEqual(decoded.runLogs[0].outputTail, "정상 완료")
+
+        let legacy = try JSONDecoder.klmsLocalRemote.decode(
+            ServerRelaySyncData.self,
+            from: Data(#"{"generatedAt":"2026-06-07T01:00:05Z","items":[]}"#.utf8)
+        )
+        XCTAssertTrue(legacy.runLogs.isEmpty)
+    }
+
     func testRemoteRunCommandOptionsDefaultToUpdatingNoticeNotesForLegacyPayloads() throws {
         let payload = """
         {

@@ -1271,6 +1271,16 @@ public struct ServerRelayLogClearResponse: Codable, Sendable, Equatable {
     }
 }
 
+public struct ServerRelaySharedRunLogClearResponse: Codable, Sendable, Equatable {
+    public var clearedAt: Date
+    public var runLogs: Int
+
+    public init(clearedAt: Date = Date(), runLogs: Int = 0) {
+        self.clearedAt = clearedAt
+        self.runLogs = runLogs
+    }
+}
+
 public enum ServerRelayLogClearScope: String, Sendable, Equatable {
     case all
     case command
@@ -1303,6 +1313,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
     public var dryRunReports: [DryRunReport]
     public var calendarChanges: [CalendarChange]
     public var settings: [ServerRelaySetting]
+    public var runLogs: [ServerRelayRunLog]
 
     enum CodingKeys: String, CodingKey {
         case generatedAt
@@ -1310,6 +1321,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         case dryRunReports
         case calendarChanges
         case settings
+        case runLogs
     }
 
     public init(
@@ -1317,13 +1329,15 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         items: [ServerRelaySyncItem] = [],
         dryRunReports: [DryRunReport] = [],
         calendarChanges: [CalendarChange] = [],
-        settings: [ServerRelaySetting] = []
+        settings: [ServerRelaySetting] = [],
+        runLogs: [ServerRelayRunLog] = []
     ) {
         self.generatedAt = generatedAt
         self.items = items
         self.dryRunReports = dryRunReports
         self.calendarChanges = calendarChanges
         self.settings = settings
+        self.runLogs = runLogs
     }
 
     public init(from decoder: Decoder) throws {
@@ -1333,6 +1347,53 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         dryRunReports = try container.decodeIfPresent([DryRunReport].self, forKey: .dryRunReports) ?? []
         calendarChanges = try container.decodeIfPresent([CalendarChange].self, forKey: .calendarChanges) ?? []
         settings = try container.decodeIfPresent([ServerRelaySetting].self, forKey: .settings) ?? []
+        runLogs = try container.decodeIfPresent([ServerRelayRunLog].self, forKey: .runLogs) ?? []
+    }
+}
+
+public struct ServerRelayRunLog: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var command: String
+    public var commandTitle: String
+    public var status: String
+    public var startedAt: Date
+    public var finishedAt: Date
+    public var updatedAt: Date
+    public var duration: String
+    public var exitCode: Int
+    public var dryRun: Bool
+    public var wasCancelled: Bool
+    public var needsAttention: Bool
+    public var outputTail: String
+
+    public init(
+        id: String,
+        command: String,
+        commandTitle: String,
+        status: String,
+        startedAt: Date,
+        finishedAt: Date,
+        updatedAt: Date,
+        duration: String,
+        exitCode: Int,
+        dryRun: Bool,
+        wasCancelled: Bool,
+        needsAttention: Bool,
+        outputTail: String
+    ) {
+        self.id = id
+        self.command = command
+        self.commandTitle = commandTitle
+        self.status = status
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.updatedAt = updatedAt
+        self.duration = duration
+        self.exitCode = exitCode
+        self.dryRun = dryRun
+        self.wasCancelled = wasCancelled
+        self.needsAttention = needsAttention
+        self.outputTail = outputTail
     }
 }
 
@@ -1916,6 +1977,11 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
             ? []
             : [URLQueryItem(name: "scope", value: scope.rawValue)]
         return try await send(method: "DELETE", path: "/v1/logs", queryItems: queryItems)
+    }
+
+    @discardableResult
+    public func clearSharedRunLogs() async throws -> ServerRelaySharedRunLogClearResponse {
+        try await send(method: "DELETE", path: "/v1/sync-data/run-logs")
     }
 
     public func update(_ command: RemoteRunCommand) async throws {

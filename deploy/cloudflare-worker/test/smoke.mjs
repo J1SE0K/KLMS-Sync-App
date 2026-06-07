@@ -154,6 +154,23 @@ async function runSmoke() {
         editable: true,
       },
     ],
+    runLogs: [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        command: "full",
+        commandTitle: "전체 동기화",
+        status: "성공",
+        startedAt: "2026-05-31T00:00:00Z",
+        finishedAt: "2026-05-31T00:00:05Z",
+        updatedAt: "2026-05-31T00:00:05Z",
+        duration: "5초",
+        exitCode: 0,
+        dryRun: false,
+        wasCancelled: false,
+        needsAttention: false,
+        outputTail: "KAIST 인증 번호: 57\n/Users/example/private\nhttps://klms.kaist.ac.kr/mod/courseboard/article.php?id=123\n정상 완료",
+      },
+    ],
   }, { method: "POST", role: "worker" });
 
   {
@@ -177,6 +194,76 @@ async function runSmoke() {
     assert.equal(payload.settings[0].key, "FILE_REFRESH_MODE");
     assert.equal(payload.calendarChanges[0].url, "");
     assert.equal(payload.calendarChanges[0].location, "");
+    assert.equal(payload.runLogs.length, 1);
+    assert.match(payload.runLogs[0].outputTail, /KAIST 인증 번호: --/);
+    assert.match(payload.runLogs[0].outputTail, /\[local-path\]/);
+    assert.match(payload.runLogs[0].outputTail, /\[KLMS URL\]/);
+    assert.doesNotMatch(payload.runLogs[0].outputTail, /57/);
+    assert.doesNotMatch(payload.runLogs[0].outputTail, /\/Users/);
+  }
+
+  {
+    const clearRunLogs = await expectJSON("/v1/sync-data/run-logs", undefined, { method: "DELETE" });
+    assert.equal(clearRunLogs.runLogs, 1);
+    const event = await expectJSON("/v1/events/poll?role=client&waitSeconds=0");
+    assert.equal(event.type, "changed");
+    assert.equal(event.reason, "sync-data:run-logs-clear");
+    const afterClear = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(afterClear.runLogs.length, 0);
+    await expectJSON("/v1/sync-data", {
+      generatedAt: "2026-05-31T00:00:00Z",
+      items: [
+        {
+          id: "exam-1",
+          kind: "exam",
+          course: "영미 단편소설",
+          title: "기말고사",
+          timestamp: "2026-06-12 10:00",
+          status: "예정",
+          detail: "범위: 전체",
+          attachmentCount: 0,
+          updatedAt: "2026-05-31T00:00:00Z",
+        },
+      ],
+      runLogs: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          command: "notice",
+          commandTitle: "공지",
+          status: "성공",
+          startedAt: "2026-05-30T00:00:00Z",
+          finishedAt: "2026-05-30T00:00:01Z",
+          updatedAt: "2026-05-30T00:00:01Z",
+          duration: "1초",
+          exitCode: 0,
+          outputTail: "지워진 이전 로그",
+        },
+      ],
+    }, { method: "POST", role: "worker" });
+    const afterOldPost = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(afterOldPost.runLogs.length, 0);
+    const future = new Date(Date.now() + 1000).toISOString();
+    await expectJSON("/v1/sync-data", {
+      generatedAt: "2026-05-31T00:00:00Z",
+      items: afterOldPost.items,
+      runLogs: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          command: "files",
+          commandTitle: "파일",
+          status: "성공",
+          startedAt: future,
+          finishedAt: future,
+          updatedAt: future,
+          duration: "1초",
+          exitCode: 0,
+          outputTail: "새 로그",
+        },
+      ],
+    }, { method: "POST", role: "worker" });
+    const afterNewPost = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(afterNewPost.runLogs.length, 1);
+    assert.equal(afterNewPost.runLogs[0].commandTitle, "파일");
   }
 
   const action = await expectJSON("/v1/item-actions", {

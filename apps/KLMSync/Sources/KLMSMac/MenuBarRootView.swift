@@ -1953,11 +1953,23 @@ private struct RemoteActivityPanelView: View {
     var body: some View {
         let fileRequests = model.serverRelayRecentFileAccessRequests
         let requestLog = model.serverRelayRecentRequestLog
-        if model.lastRemoteCommand != nil || !fileRequests.isEmpty || !requestLog.isEmpty || model.remoteProcessingStatusMessage?.nilIfBlank != nil {
+        let sharedRunLogs = model.serverRelaySharedRunLogs
+        if model.lastRemoteCommand != nil || !fileRequests.isEmpty || !requestLog.isEmpty || !sharedRunLogs.isEmpty || model.remoteProcessingStatusMessage?.nilIfBlank != nil {
             SectionBox(title: "원격/파일 요청 기록") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Spacer()
+                        Button {
+                            Task {
+                                await model.clearServerRelaySharedRunLogs()
+                            }
+                        } label: {
+                            Label("공유 실행 로그 지우기", systemImage: "trash")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(!model.serverRelayConfigured || sharedRunLogs.isEmpty)
+
                         Button {
                             Task {
                                 await model.clearServerRelayLogs(scope: .requestLog)
@@ -2002,6 +2014,17 @@ private struct RemoteActivityPanelView: View {
                         RemoteCommandActivityRow(command: command)
                     }
 
+                    if !sharedRunLogs.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("공유 실행 로그")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(sharedRunLogs.prefix(8)) { log in
+                                SharedRunLogActivityRow(log: log)
+                            }
+                        }
+                    }
+
                     if !requestLog.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("서버 요청")
@@ -2028,6 +2051,61 @@ private struct RemoteActivityPanelView: View {
                 .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
             }
         }
+    }
+}
+
+private struct SharedRunLogActivityRow: View {
+    var log: ServerRelayRunLog
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(tint)
+                    .frame(width: 16)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(log.commandTitle.nilIfBlank ?? "동기화")
+                        .font(.caption.weight(.semibold))
+                    Text("\(log.status) · \(log.duration) · \(log.finishedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            if isExpanded {
+                LogTextBlock(text: log.outputTail)
+            }
+        }
+        .padding(8)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(tint.opacity(0.18), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.snappy(duration: 0.18)) {
+                isExpanded.toggle()
+            }
+        }
+    }
+
+    private var systemImage: String {
+        if log.wasCancelled {
+            return "stop.circle"
+        }
+        return log.needsAttention ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
+    }
+
+    private var tint: Color {
+        if log.wasCancelled {
+            return .secondary
+        }
+        return log.needsAttention ? .orange : .green
     }
 }
 
