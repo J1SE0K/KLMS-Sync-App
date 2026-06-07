@@ -686,6 +686,35 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(runScreen.contains("RemoteChangeSummaryPanel"))
     }
 
+    func testMacAndIOSServerRelayUseWebSocketInsteadOfPeriodicPolling() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
+        let sharedRoot = packageRoot.appendingPathComponent("Sources/KLMSShared/RemoteCommandModels.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let macModel = try String(contentsOf: macModelRoot, encoding: .utf8)
+        let shared = try String(contentsOf: sharedRoot, encoding: .utf8)
+
+        XCTAssertTrue(macModel.contains("webSocketTask(with: store.eventStreamRequest(role: \"worker\"))"))
+        XCTAssertTrue(ios.contains("webSocketTask(with: store.eventStreamRequest(role: \"client\"))"))
+        XCTAssertTrue(ios.contains("await model.startServerRelayRealtime()"))
+
+        XCTAssertFalse(macModel.contains("serverRelayPollingTask"))
+        XCTAssertFalse(macModel.contains("configureServerRelayPolling"))
+        XCTAssertFalse(macModel.contains("serverRelayIdlePollingIntervalNanoseconds"))
+        XCTAssertFalse(macModel.contains("serverRelayActivePollingIntervalNanoseconds"))
+        XCTAssertFalse(ios.contains("pollRecentCommands"))
+        XCTAssertFalse(ios.contains("Task.sleep(nanoseconds: interval)"))
+        XCTAssertFalse(ios.contains("Task.sleep(nanoseconds: 250_000_000)"))
+
+        XCTAssertTrue(macModel.contains("waitSeconds: 0"))
+        XCTAssertFalse(macModel.contains("waitSeconds: runningCommand == nil ? 20 : 0"))
+        XCTAssertTrue(shared.contains("path: \"/v1/worker/inbox\""))
+    }
+
     func testLogClearPreservesActiveCancellationAndFileRequests() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

@@ -108,7 +108,6 @@ final class KLMSMacModel: ObservableObject {
     private let installer = EngineInstaller()
     private let locator = EnginePayloadLocator()
     private var isBootstrapping = false
-    private var serverRelayPollingTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
     private var serverRelayEventStreamKey: String?
@@ -134,8 +133,6 @@ final class KLMSMacModel: ObservableObject {
     private static let serverRelayClientTokenKey = "KLMSServerRelayClientToken"
     private static let serverRelayWorkerTokenKey = "KLMSServerRelayWorkerToken"
     private static let deprecatedServerRelayTokenKey = "KLMSServerRelayToken"
-    private static let serverRelayIdlePollingIntervalNanoseconds: UInt64 = 900_000_000
-    private static let serverRelayActivePollingIntervalNanoseconds: UInt64 = 250_000_000
     private static let serverRelayIdleStatusPublishMinimumInterval: TimeInterval = 30
     private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 0.5
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
@@ -205,7 +202,6 @@ final class KLMSMacModel: ObservableObject {
     }
 
     deinit {
-        serverRelayPollingTask?.cancel()
         serverRelayEventWebSocketTask?.cancel(with: .goingAway, reason: nil)
         serverRelayEventStreamTask?.cancel()
         passiveSnapshotRefreshTask?.cancel()
@@ -334,7 +330,7 @@ final class KLMSMacModel: ObservableObject {
         }
         await refresh()
         configurePassiveSnapshotRefresh()
-        configureServerRelayPolling()
+        configureServerRelayRealtime()
     }
 
     var shouldRequestPermissionsAfterInstall: Bool {
@@ -401,7 +397,7 @@ final class KLMSMacModel: ObservableObject {
     func setServerRelayEnabled(_ enabled: Bool) {
         serverRelayEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: Self.serverRelayEnabledKey)
-        configureServerRelayPolling()
+        configureServerRelayRealtime()
         if enabled {
             guard serverRelayConfigured else {
                 serverRelayStatusMessage = "서버 URL과 Mac 전용 토큰을 먼저 입력해 주세요."
@@ -421,7 +417,7 @@ final class KLMSMacModel: ObservableObject {
         serverRelayURL = value.trimmingCharacters(in: .whitespacesAndNewlines)
         UserDefaults.standard.set(serverRelayURL, forKey: Self.serverRelayURLKey)
         if serverRelayEnabled {
-            configureServerRelayPolling()
+            configureServerRelayRealtime()
         }
     }
 
@@ -433,7 +429,7 @@ final class KLMSMacModel: ObservableObject {
             defaultsKey: Self.serverRelayClientTokenKey
         )
         if serverRelayEnabled {
-            configureServerRelayPolling()
+            configureServerRelayRealtime()
         }
     }
 
@@ -445,7 +441,7 @@ final class KLMSMacModel: ObservableObject {
             defaultsKey: Self.serverRelayWorkerTokenKey
         )
         if serverRelayEnabled {
-            configureServerRelayPolling()
+            configureServerRelayRealtime()
         }
     }
 
@@ -706,9 +702,7 @@ final class KLMSMacModel: ObservableObject {
         ServerRelayConnectionInfo.normalizedPublicRelayURL(serverRelayURL)?.absoluteString
     }
 
-    private func configureServerRelayPolling() {
-        serverRelayPollingTask?.cancel()
-        serverRelayPollingTask = nil
+    private func configureServerRelayRealtime() {
         configureServerRelayEventStream()
         guard serverRelayEnabled else {
             return
@@ -716,14 +710,6 @@ final class KLMSMacModel: ObservableObject {
         guard serverRelayConfigured else {
             serverRelayStatusMessage = "서버 URL과 Mac 전용 토큰을 먼저 입력해 주세요."
             return
-        }
-        serverRelayPollingTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.processServerRelayCommands(silent: true)
-                let interval = self?.serverRelayPollingIntervalForCurrentState()
-                    ?? Self.serverRelayIdlePollingIntervalNanoseconds
-                try? await Task.sleep(nanoseconds: interval)
-            }
         }
     }
 
@@ -799,13 +785,6 @@ final class KLMSMacModel: ObservableObject {
             return nil
         }
         return event.reason
-    }
-
-    private func serverRelayPollingIntervalForCurrentState() -> UInt64 {
-        if runningCommand != nil || lastRemoteCommand?.status.isInFlight == true {
-            return Self.serverRelayActivePollingIntervalNanoseconds
-        }
-        return Self.serverRelayIdlePollingIntervalNanoseconds
     }
 
     private func makeServerRelayStore() throws -> ServerRelayCommandStore {
@@ -1601,7 +1580,6 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func cancelCommandBeforeTermination() async {
-        serverRelayPollingTask?.cancel()
         passiveSnapshotRefreshTask?.cancel()
         runningCommandStatusPollTask?.cancel()
         authStatusClearTask?.cancel()
@@ -1953,7 +1931,7 @@ final class KLMSMacModel: ObservableObject {
             await publishServerRelayStatusIfNeeded()
             let inbox = try await store.fetchWorkerInbox(
                 since: runningCommand == nil ? serverRelayLastInboxUpdatedAt : nil,
-                waitSeconds: runningCommand == nil ? 20 : 0
+                waitSeconds: 0
             )
             serverRelayLastInboxUpdatedAt = inbox.statusResponse.updatedAt
             serverRelayRecentRequestLog = inbox.recentRequestLog

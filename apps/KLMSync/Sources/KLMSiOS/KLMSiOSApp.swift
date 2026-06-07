@@ -360,8 +360,6 @@ final class CompanionModel: ObservableObject {
                 userAlert = UserAlert(title: "요청 취소됨", message: connectionMessage)
             }
             await refreshRecent(includeSyncData: false, showsActivity: false)
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            await refreshRecent(includeSyncData: false, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
             if pendingCancelCommandID == commandID {
@@ -949,25 +947,9 @@ final class CompanionModel: ObservableObject {
         #endif
     }
 
-    func pollRecentCommands() async {
+    func startServerRelayRealtime() async {
         configureServerRelayEventStream()
-        while !Task.isCancelled {
-            configureServerRelayEventStream()
-            let heavyRefreshAllowed = !hasInFlightRequest
-                && status.phase != "running"
-                && status.authDigits == nil
-            await refreshRecent(
-                silentErrors: true,
-                includeSyncData: heavyRefreshAllowed ? nil : false,
-                showsActivity: false
-            )
-            let interval: UInt64 = hasInFlightRequest
-                || status.phase == "running"
-                || status.authDigits != nil
-                ? (pendingCancelCommandID == nil ? 350_000_000 : 250_000_000)
-                : 4_000_000_000
-            try? await Task.sleep(nanoseconds: interval)
-        }
+        await refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false)
     }
 
     private func configureServerRelayEventStream() {
@@ -1226,24 +1208,9 @@ final class CompanionModel: ObservableObject {
     private func startCancelFollowUp(commandID: UUID) {
         cancelFollowUpTask?.cancel()
         cancelFollowUpTask = Task { @MainActor [weak self] in
-            var attempts = 0
-            while !Task.isCancelled, attempts < 60 {
-                try? await Task.sleep(nanoseconds: 250_000_000)
-                guard let self,
-                      self.pendingCancelCommandID == commandID else {
-                    return
-                }
-                await self.refreshRecent(
-                    silentErrors: true,
-                    includeSyncData: false,
-                    showsActivity: false
-                )
-                if self.pendingCancelCommandID != commandID {
-                    return
-                }
-                attempts += 1
-            }
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
             guard let self,
+                  !Task.isCancelled,
                   self.pendingCancelCommandID == commandID else {
                 return
             }
@@ -1440,7 +1407,7 @@ struct CompanionRootView: View {
         .tint(.klmsCommandAccent)
         .klmsTabChrome()
         .task {
-            await model.pollRecentCommands()
+            await model.startServerRelayRealtime()
         }
         .alert(item: $model.userAlert) { alert in
             Alert(
