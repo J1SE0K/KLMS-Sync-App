@@ -562,6 +562,31 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(record.needsAttention)
     }
 
+    func testCommandRunHistoryClearPersistsEmptyHistory() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("klms-dashboard-clear-history-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let store = CommandRunHistoryStore(url: directory.appendingPathComponent("history.json"))
+        _ = try store.append(KLMSCommandResult(
+            invocation: KLMSEngineCommand.fullSync.invocation(),
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 3),
+            exitCode: 0,
+            standardOutput: "done",
+            standardError: "",
+            authDigits: nil
+        ))
+
+        let cleared = try store.clear()
+
+        XCTAssertEqual(cleared.records.count, 0)
+        XCTAssertEqual(store.load().records.count, 0)
+    }
+
     func testCancelledCommandHistoryRedactsAuthDigits() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("klms-dashboard-cancel-history-\(UUID().uuidString)", isDirectory: true)
@@ -689,7 +714,11 @@ final class DashboardDataModelTests: XCTestCase {
             description: "Mac visible log clear"
         )
         XCTAssertTrue(macClearLogs.contains("clearDisplayState(resetSnapshot: false)"))
+        XCTAssertTrue(macClearLogs.contains("clearLocalStoredLogs()"))
         XCTAssertTrue(macClearLogs.contains("await clearServerRelayLogs(scope: .all)"))
+        XCTAssertTrue(macModel.contains("let result = try await store.clearDisplayLogs(scope: scope)"))
+        XCTAssertTrue(macModel.contains("CommandRunHistoryStore(url: paths.appHistoryURL).clear()"))
+        XCTAssertTrue(macModel.contains("reason == \"sync-data:run-logs-clear\""))
         XCTAssertTrue(macView.contains("await model.clearVisibleLogsAndServerRelayLogs()"))
         XCTAssertTrue(macView.contains("await model.refresh(clearDisplayLogs: false, showConfirmation: true)"))
         XCTAssertTrue(macView.contains("model.clearDisplayState(resetSnapshot: false, showConfirmation: true)"))

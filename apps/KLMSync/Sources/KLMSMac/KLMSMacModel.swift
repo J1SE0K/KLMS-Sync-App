@@ -23,6 +23,12 @@ private struct PermissionProbeResult: Sendable {
 
 @MainActor
 final class KLMSMacModel: ObservableObject {
+    private struct RelayEventEnvelope: Decodable {
+        var type: String?
+        var reason: String?
+        var updatedAt: String?
+    }
+
     private struct ServerRelaySettingDefinition {
         var key: EnvKnownKey
         var title: String
@@ -544,7 +550,7 @@ final class KLMSMacModel: ObservableObject {
         }
         do {
             let store = try makeServerRelayStore()
-            let result = try await store.clearLogs(scope: scope)
+            let result = try await store.clearDisplayLogs(scope: scope)
             applyServerRelayLogClear(scope: scope)
             serverRelayStatusMessage = serverRelayLogClearMessage(scope: scope, result: result)
             remoteProcessingStatusMessage = nil
@@ -584,6 +590,7 @@ final class KLMSMacModel: ObservableObject {
             return
         }
         clearDisplayState(resetSnapshot: false)
+        clearLocalStoredLogs()
         guard serverRelayConfigured else {
             serverRelayStatusMessage = "로그를 지웠습니다."
             remoteProcessingStatusMessage = nil
@@ -592,6 +599,29 @@ final class KLMSMacModel: ObservableObject {
         }
         await clearServerRelayLogs(scope: .all)
         await clearServerRelaySharedRunLogs()
+    }
+
+    private func clearLocalStoredLogs() {
+        commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
+        snapshot.launchAgentLogTail = ""
+        snapshot.relayLogTail = ""
+        for url in [paths.launchAgentLogURL, paths.relayStdoutLogURL, paths.relayStderrLogURL] {
+            do {
+                try FileManager.default.createDirectory(
+                    at: url.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                if FileManager.default.fileExists(atPath: url.path) {
+                    let handle = try FileHandle(forWritingTo: url)
+                    try handle.truncate(atOffset: 0)
+                    try handle.close()
+                } else {
+                    try Data().write(to: url)
+                }
+            } catch {
+                errorMessage = "로컬 로그 파일 지우기 실패: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func applyServerRelayLogClear(scope: ServerRelayLogClearScope) {
@@ -722,7 +752,8 @@ final class KLMSMacModel: ObservableObject {
                 task.resume()
                 await processServerRelayCommands(silent: true)
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
-                    _ = try await task.receive()
+                    let message = try await task.receive()
+                    handleServerRelayEvent(message)
                     await processServerRelayCommands(silent: true)
                 }
             } catch {
@@ -732,6 +763,42 @@ final class KLMSMacModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func handleServerRelayEvent(_ message: URLSessionWebSocketTask.Message) {
+        guard let reason = Self.serverRelayEventReason(message) else {
+            return
+        }
+        if reason == "sync-data:run-logs-clear" {
+            clearLocalStoredLogs()
+        }
+        if reason == "logs-display:all" {
+            applyServerRelayLogClear(scope: .all)
+            clearLocalStoredLogs()
+        } else if reason == "logs-display:requestLog" {
+            applyServerRelayLogClear(scope: .requestLog)
+        } else if reason == "logs-display:fileAccess" {
+            applyServerRelayLogClear(scope: .fileAccess)
+        } else if reason == "logs-display:command" {
+            applyServerRelayLogClear(scope: .command)
+        }
+    }
+
+    private static func serverRelayEventReason(_ message: URLSessionWebSocketTask.Message) -> String? {
+        let data: Data?
+        switch message {
+        case .data(let payload):
+            data = payload
+        case .string(let text):
+            data = text.data(using: .utf8)
+        @unknown default:
+            data = nil
+        }
+        guard let data,
+              let event = try? JSONDecoder().decode(RelayEventEnvelope.self, from: data) else {
+            return nil
+        }
+        return event.reason
     }
 
     private func serverRelayPollingIntervalForCurrentState() -> UInt64 {
@@ -758,13 +825,16 @@ final class KLMSMacModel: ObservableObject {
            now.timeIntervalSince(serverRelayLastStatusPublishAt) < minimumInterval {
             return
         }
+        let store: ServerRelayCommandStore
+        let status: SanitizedRemoteStatus
+        var latestCommand = lastRemoteCommand
+        let message: String
         do {
-            let store = try makeServerRelayStore()
-            let status = sanitizedRemoteStatus(
+            store = try makeServerRelayStore()
+            status = sanitizedRemoteStatus(
                 snapshot: snapshot,
                 phase: runningCommand == nil ? "idle" : "running"
             )
-            var latestCommand = lastRemoteCommand
             if var command = lastRemoteCommand, command.status.isInFlight {
                 command.summary = status
                 command.updatedAt = now
@@ -773,18 +843,24 @@ final class KLMSMacModel: ObservableObject {
                 latestCommand = command
                 try await store.update(command)
             }
-            let message = serverRelayPublicStatusMessage(status: status, latestCommand: latestCommand)
+            message = serverRelayPublicStatusMessage(status: status, latestCommand: latestCommand)
             try await store.publishStatus(
                 status,
                 latestCommand: latestCommand,
                 running: runningCommand != nil,
                 message: message
             )
-            try await store.publishSyncData(serverRelaySyncData(from: snapshot))
             serverRelayLastStatusPublishAt = now
             serverRelayStatusMessage = message.isEmpty ? "서버 상태 갱신 완료" : message
         } catch {
             serverRelayStatusMessage = "서버 상태 갱신 실패: \(error.localizedDescription)"
+            return
+        }
+
+        do {
+            try await store.publishSyncData(serverRelaySyncData(from: snapshot))
+        } catch {
+            serverRelayStatusMessage = "서버 상태는 갱신됐지만 대시보드 요약 업로드 실패: \(error.localizedDescription)"
         }
     }
 
