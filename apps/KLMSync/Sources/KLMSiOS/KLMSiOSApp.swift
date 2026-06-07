@@ -737,12 +737,18 @@ final class CompanionModel: ObservableObject {
             locallyHiddenFileAccessRequestIDs.formUnion(recentFileAccessRequests.filter { !$0.status.isInFlight }.map(\.id))
             locallyHiddenItemActionIDs.formUnion(recentItemActions.filter { $0.status != .pending && $0.status != .running }.map(\.id))
             locallyHiddenSettingActionIDs.formUnion(recentSettingActions.filter { $0.status != .pending && $0.status != .running }.map(\.id))
-            recentCommands = []
+            recentCommands = recentCommands.filter { $0.status.isInFlight }
             recentRequestLog = []
             recentFileAccessRequests = recentFileAccessRequests.filter { $0.status.isInFlight }
             recentItemActions = recentItemActions.filter { $0.status == .pending || $0.status == .running }
             recentSettingActions = recentSettingActions.filter { $0.status == .pending || $0.status == .running }
             lastTerminalCommandID = nil
+        case .command:
+            locallyHiddenCommandIDs.formUnion(recentCommands.filter { !$0.status.isInFlight }.map(\.id))
+            recentCommands = recentCommands.filter { $0.status.isInFlight }
+            if recentCommands.isEmpty {
+                lastTerminalCommandID = nil
+            }
         case .requestLog:
             locallyHiddenRequestLogIDs.formUnion(recentRequestLog.map(\.id))
             recentRequestLog = []
@@ -1001,8 +1007,15 @@ final class CompanionModel: ObservableObject {
             }
         }
         if let latestCommand = response.latestCommand {
-            if recentCommands.first != latestCommand {
-                recentCommands = [latestCommand]
+            let shouldShowLatestCommand = latestCommand.status.isInFlight
+                || !locallyHiddenCommandIDs.contains(latestCommand.id)
+            if shouldShowLatestCommand {
+                if recentCommands.first != latestCommand {
+                    recentCommands = [latestCommand]
+                    didChange = true
+                }
+            } else if recentCommands.first?.id == latestCommand.id {
+                recentCommands = recentCommands.filter { $0.id != latestCommand.id }
                 didChange = true
             }
             clearFinishedCancelRequestIfNeeded([latestCommand])
@@ -1470,7 +1483,18 @@ private struct CompanionHistoryScreen: View {
                     || model.recentFileAccessRequests.isEmpty
                     || model.recentFileAccessRequests.contains { $0.status.isInFlight }
             )
-            RecentRemoteCommandsView(commands: model.recentCommands, compact: false)
+            RecentRemoteCommandsView(
+                commands: model.recentCommands,
+                compact: false,
+                clearAction: {
+                    Task {
+                        await model.clearRemoteLogs(scope: .command)
+                    }
+                },
+                clearDisabled: !model.serverRelayConfigured
+                    || model.isSubmitting
+                    || !model.recentCommands.contains { !$0.status.isInFlight }
+            )
         }
     }
 }
@@ -5307,6 +5331,8 @@ private extension ServerRelayLogClearScope {
         switch self {
         case .all:
             "로그 지우기"
+        case .command:
+            "최근 실행 요청 지우기"
         case .requestLog:
             "서버 요청 기록 지우기"
         case .fileAccess:
@@ -5318,6 +5344,8 @@ private extension ServerRelayLogClearScope {
         switch self {
         case .all:
             return "실행 \(result.commands)개, 서버 요청 \(result.requestLogEntries)개, 파일 요청 \(result.fileAccessRequests)개 기록을 지웠습니다."
+        case .command:
+            return "최근 실행 요청 \(result.commands)개를 지웠습니다."
         case .requestLog:
             return "서버 요청 기록 \(result.requestLogEntries)개를 지웠습니다."
         case .fileAccess:
@@ -5329,6 +5357,8 @@ private extension ServerRelayLogClearScope {
         switch self {
         case .all:
             "이 기기 화면의 완료된 실행, 서버 요청, 파일 요청 기록을 숨겼습니다. 진행 중인 요청은 유지됩니다."
+        case .command:
+            "이 기기 화면의 완료된 실행 요청 기록을 숨겼습니다. 진행 중인 요청은 유지됩니다."
         case .requestLog:
             "이 기기 화면의 서버 요청 기록을 숨겼습니다."
         case .fileAccess:
@@ -5404,7 +5434,7 @@ private struct RemoteLogSummaryPanel: View {
 
                 if let expandedKind {
                     RemoteLogDetailPanel(kind: expandedKind, model: model)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .transition(.opacity)
                 } else {
                     Text("요약 행을 누르면 관련 기록을 바로 펼칩니다.")
                         .font(.caption2)
@@ -5459,7 +5489,7 @@ private struct RemoteLogSummaryPanel: View {
             return .orange
         }
         if model.hasInFlightRequest || model.status.phase == "running" {
-            return .blue
+            return .klmsCommandAccent
         }
         if model.latestDisplayStatus == .failed || model.latestDisplayStatus == .macUnavailable {
             return .orange
@@ -5502,7 +5532,7 @@ private struct RemoteLogSummaryPanel: View {
     private var recentCommandTint: Color {
         switch currentCommand?.displayStatus() {
         case .pending, .running:
-            return .blue
+            return .klmsCommandAccent
         case .completed:
             return .green
         case .cancelled:
@@ -5550,7 +5580,7 @@ private struct RemoteLogSummaryPanel: View {
     private var fileRequestTint: Color {
         switch latestFileRequest?.status {
         case .pending, .running:
-            return .blue
+            return .klmsCommandAccent
         case .completed:
             return .green
         case .failed, .macUnavailable:
@@ -5577,7 +5607,18 @@ private struct RemoteLogDetailPanel: View {
             case .status:
                 statusDetails
             case .command:
-                RecentRemoteCommandsView(commands: model.recentCommands, compact: false)
+                RecentRemoteCommandsView(
+                    commands: model.recentCommands,
+                    compact: false,
+                    clearAction: {
+                        Task {
+                            await model.clearRemoteLogs(scope: .command)
+                        }
+                    },
+                    clearDisabled: !model.serverRelayConfigured
+                        || model.isSubmitting
+                        || !model.recentCommands.contains { !$0.status.isInFlight }
+                )
             case .fileRequest:
                 RecentFileAccessRequestsView(
                     requests: model.recentFileAccessRequests,
@@ -5656,7 +5697,7 @@ private struct RemoteLogSummaryRow: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isExpanded ? tint.opacity(0.42) : tint.opacity(0.16), lineWidth: 1)
+                    .stroke(isExpanded ? tint.opacity(0.32) : Color.klmsBorder, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -6097,6 +6138,8 @@ private struct RemoteSettingRow: View {
 private struct RecentRemoteCommandsView: View {
     var commands: [RemoteRunCommand]
     var compact: Bool
+    var clearAction: (() -> Void)? = nil
+    var clearDisabled = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -6108,6 +6151,15 @@ private struct RecentRemoteCommandsView: View {
                     Text("최근 \(commands.count)개")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if let clearAction {
+                    Button(action: clearAction) {
+                        Label("지우기", systemImage: "trash")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .disabled(clearDisabled)
                 }
             }
             if commands.isEmpty {

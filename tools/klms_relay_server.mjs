@@ -975,6 +975,9 @@ function normalizeLogClearScope(value) {
   if (["requestlog", "request-log", "request", "server", "serverrequest", "server-request"].includes(text)) {
     return "requestLog";
   }
+  if (["command", "commands", "run", "runs", "recent", "recentcommand", "recent-command", "recentcommands", "recent-commands"].includes(text)) {
+    return "command";
+  }
   if (["fileaccess", "file-access", "file", "files"].includes(text)) {
     return "fileAccess";
   }
@@ -984,6 +987,7 @@ function normalizeLogClearScope(value) {
 async function clearRelayLogs(scope = "all") {
   const clearedAt = new Date().toISOString();
   const shouldClearAll = scope === "all";
+  const shouldClearCommands = shouldClearAll || scope === "command";
   const shouldClearRequestLog = shouldClearAll || scope === "requestLog";
   const shouldClearFileAccess = shouldClearAll || scope === "fileAccess";
   const fileAccessRows = shouldClearFileAccess
@@ -1008,7 +1012,7 @@ async function clearRelayLogs(scope = "all") {
 
   const result = {
     clearedAt,
-    commands: shouldClearAll
+    commands: shouldClearCommands
       ? state.commands.filter((command) => command.status !== "pending" && command.status !== "running").length
       : 0,
     itemActions: shouldClearAll
@@ -1023,8 +1027,10 @@ async function clearRelayLogs(scope = "all") {
 
   db.exec("BEGIN IMMEDIATE");
   try {
-    if (shouldClearAll) {
+    if (shouldClearCommands) {
       db.prepare("DELETE FROM commands WHERE status NOT IN ('pending', 'running')").run();
+    }
+    if (shouldClearAll) {
       db.prepare("DELETE FROM item_actions WHERE status NOT IN ('pending', 'running')").run();
       setMeta(
         "settingActions",
@@ -1047,13 +1053,19 @@ async function clearRelayLogs(scope = "all") {
     throw error;
   }
 
-  if (shouldClearAll) {
+  if (shouldClearCommands) {
     state.commands = state.commands.filter((command) => command.status === "pending" || command.status === "running");
-    state.itemActions = state.itemActions.filter((action) => action.status === "pending" || action.status === "running");
-    state.settingActions = (state.settingActions || []).filter((action) => action.status === "pending" || action.status === "running");
     state.latestCommand = state.commands[0] || null;
     state.running = state.commands.some((command) => command.status === "running") || state.running && Boolean(state.latestCommand);
+  }
+  if (shouldClearAll) {
+    state.itemActions = state.itemActions.filter((action) => action.status === "pending" || action.status === "running");
+    state.settingActions = (state.settingActions || []).filter((action) => action.status === "pending" || action.status === "running");
     state.message = "로그를 지웠습니다.";
+    state.updatedAt = clearedAt;
+    await saveState();
+  } else if (shouldClearCommands) {
+    state.message = "최근 실행 요청 기록을 지웠습니다.";
     state.updatedAt = clearedAt;
     await saveState();
   } else {

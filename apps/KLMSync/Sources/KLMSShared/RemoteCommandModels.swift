@@ -1273,6 +1273,7 @@ public struct ServerRelayLogClearResponse: Codable, Sendable, Equatable {
 
 public enum ServerRelayLogClearScope: String, Sendable, Equatable {
     case all
+    case command
     case requestLog
     case fileAccess
 }

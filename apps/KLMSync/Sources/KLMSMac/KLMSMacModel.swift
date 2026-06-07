@@ -580,6 +580,10 @@ final class KLMSMacModel: ObservableObject {
             }
             serverRelayRecentRequestLog = []
             serverRelayRecentFileAccessRequests = serverRelayRecentFileAccessRequests.filter { $0.status.isInFlight }
+        case .command:
+            if lastRemoteCommand?.status.isInFlight != true {
+                lastRemoteCommand = nil
+            }
         case .requestLog:
             serverRelayRecentRequestLog = []
         case .fileAccess:
@@ -594,6 +598,8 @@ final class KLMSMacModel: ObservableObject {
         switch scope {
         case .all:
             return "로그를 지웠습니다. 실행 \(result.commands)개, 서버 요청 \(result.requestLogEntries)개, 파일 요청 \(result.fileAccessRequests)개"
+        case .command:
+            return "최근 실행 요청 \(result.commands)개를 지웠습니다."
         case .requestLog:
             return "서버 요청 기록 \(result.requestLogEntries)개를 지웠습니다."
         case .fileAccess:

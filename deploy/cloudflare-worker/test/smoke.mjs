@@ -395,6 +395,16 @@ async function runSmoke() {
     const beforeClearFileRequests = await expectJSON("/v1/file-access/recent");
     assert.ok(beforeClearFileRequests.requests.length > 0);
 
+    const commandClear = await expectJSON("/v1/logs?scope=command", undefined, { method: "DELETE", role: "worker" });
+    assert.ok(commandClear.commands > 0);
+    assert.equal(commandClear.requestLogEntries, 0);
+    assert.equal(commandClear.fileAccessRequests, 0);
+    const recentCommandsAfterCommandClear = await expectJSON("/v1/commands/recent");
+    assert.equal(recentCommandsAfterCommandClear.commands.length, 0);
+    assert.equal(recentCommandsAfterCommandClear.latestCommand, null);
+    const fileRequestsAfterCommandClear = await expectJSON("/v1/file-access/recent");
+    assert.ok(fileRequestsAfterCommandClear.requests.length > 0);
+
     const requestLogClear = await expectJSON("/v1/logs?scope=requestLog", undefined, { method: "DELETE", role: "worker" });
     assert.ok(requestLogClear.requestLogEntries > 0);
     assert.equal(requestLogClear.fileAccessRequests, 0);
@@ -410,7 +420,7 @@ async function runSmoke() {
     assert.equal(fileRequestsAfterFileAccessClear.requests.length, 0);
 
     const clear = await expectJSON("/v1/logs", undefined, { method: "DELETE", role: "worker" });
-    assert.ok(clear.commands > 0);
+    assert.equal(clear.commands, 0);
     assert.ok(clear.itemActions > 0);
     assert.equal(clear.fileAccessRequests, 0);
     assert.equal(clear.requestLogEntries, 0);

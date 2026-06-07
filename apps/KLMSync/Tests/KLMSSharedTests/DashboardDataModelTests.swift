@@ -678,6 +678,7 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS applyLogClear"
         )
+        XCTAssertTrue(iosApplyLogClear.contains("recentCommands = recentCommands.filter { $0.status.isInFlight }"))
         XCTAssertTrue(iosApplyLogClear.contains("recentFileAccessRequests = recentFileAccessRequests.filter { $0.status.isInFlight }"))
         XCTAssertFalse(iosApplyLogClear.contains("pendingCancelCommandID = nil"))
         XCTAssertFalse(iosApplyLogClear.contains("pendingCancelRequestedAt = nil"))

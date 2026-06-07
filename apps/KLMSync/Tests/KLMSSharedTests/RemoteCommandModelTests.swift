@@ -154,6 +154,10 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(decoded.requestLogEntries, 5)
     }
 
+    func testServerRelayLogClearScopeCommandRawValue() {
+        XCTAssertEqual(ServerRelayLogClearScope.command.rawValue, "command")
+    }
+
     func testRemoteRunCommandOptionsDefaultToUpdatingNoticeNotesForLegacyPayloads() throws {
         let payload = """
         {
