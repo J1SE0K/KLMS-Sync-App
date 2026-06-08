@@ -67,7 +67,7 @@ final class KLMSMacModel: ObservableObject {
         ServerRelaySettingDefinition(.fileRefreshMode, title: "파일 탐색 모드", valueKind: .choice, defaultValue: "auto", options: ["auto", "quick"]),
         ServerRelaySettingDefinition(.fileSkipDownloadWhenPreviewEmpty, title: "파일 변경 없으면 다운로드 확인 건너뛰기", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.fileKeepFreshDownloads, title: "새 다운로드 임시 폴더 유지", valueKind: .bool, defaultValue: "0"),
-        ServerRelaySettingDefinition(.fileWeeklyFoldersEnabled, title: "주차/출처 폴더 사용", valueKind: .bool, defaultValue: "0"),
+        ServerRelaySettingDefinition(.fileWeeklyFoldersEnabled, title: "주차/출처 폴더 사용", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.filePreserveDownloadArchive, title: "임시 다운로드 보관", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.noticeHideHiddenItems, title: "숨긴 공지는 메모에서 제외", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.noticeStableNoopSkip, title: "변경 없으면 공지 메모 건너뛰기", valueKind: .bool, defaultValue: "1"),
@@ -270,7 +270,7 @@ final class KLMSMacModel: ObservableObject {
             "NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER": "0",
             "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER": "0",
             "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0",
-            "NOTICE_NATIVE_POST_RENDER_VERIFY": "1",
+            "NOTICE_NATIVE_POST_RENDER_VERIFY": "0",
             "NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED": "1",
             "NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK": "0",
             "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT": "1",
@@ -289,6 +289,7 @@ final class KLMSMacModel: ObservableObject {
             "FILE_REFRESH_MODE": "auto",
             "FILE_FORCE_DOWNLOAD": "0",
             "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": "1",
+            "FILE_WEEKLY_FOLDERS_ENABLED": "1",
             "FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS": "21600",
         ]
     }

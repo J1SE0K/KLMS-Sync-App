@@ -24,6 +24,23 @@ struct KLMSMacApp: App {
                 }
         }
 
+        Window("KLMS Sync 진단", id: KLMSMacWindowID.diagnostics) {
+            DiagnosticWindowView(model: model)
+                .frame(
+                    minWidth: 620,
+                    idealWidth: 920,
+                    maxWidth: .infinity,
+                    minHeight: 480,
+                    idealHeight: 760,
+                    maxHeight: .infinity
+                )
+                .task {
+                    appDelegate.model = model
+                    await model.bootstrap()
+                }
+        }
+        .defaultSize(width: 920, height: 760)
+
         MenuBarExtra {
             MenuBarRootView(model: model)
                 .frame(width: KLMSWindowMetrics.menuBarWidth, height: KLMSWindowMetrics.menuBarHeight)
@@ -41,6 +58,10 @@ struct KLMSMacApp: App {
                 .frame(width: KLMSWindowMetrics.settingsWidth, height: KLMSWindowMetrics.settingsHeight)
         }
     }
+}
+
+enum KLMSMacWindowID {
+    static let diagnostics = "klms-diagnostics"
 }
 
 @MainActor

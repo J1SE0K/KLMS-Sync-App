@@ -153,6 +153,16 @@ class CalendarExamFieldTests(unittest.TestCase):
         self.assertIn('line.startsWith("calendar_change_json=")', js_source)
         self.assertIn("changes,", js_source)
 
+    def test_calendar_suite_deduplicates_desired_event_identifiers(self) -> None:
+        source = (
+            PROJECT_DIR / "src" / "swift" / "sync_klms_calendar_suite.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("deduplicatedDesiredStandardEvents(", source)
+        self.assertIn("func deduplicatedDesiredStandardEvents", source)
+        self.assertIn("seenIdentifiers.insert(event.identifier).inserted", source)
+        self.assertIn("let desiredByID = Dictionary(uniqueKeysWithValues:", source)
+
 
 if __name__ == "__main__":
     unittest.main()

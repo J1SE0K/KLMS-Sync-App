@@ -160,7 +160,7 @@ final class CompanionModel: ObservableObject {
 
     var remoteAvailabilityMessage: String {
         if serverRelayStore == nil {
-            return "HTTPS 서버 릴레이 URL과 iPhone/Windows용 클라이언트 토큰을 입력해 주세요."
+            return "HTTPS 서버 릴레이 URL과 iPhone/iPad/Windows용 클라이언트 토큰을 입력해 주세요."
         }
         return ""
     }
@@ -588,9 +588,18 @@ final class CompanionModel: ObservableObject {
         }
         do {
             if let serverRelayStore {
-                let response = try await serverRelayStore.fetchStatusResponse()
+                let shouldLoadSyncData = shouldFetchSyncData(includeSyncData: includeSyncData)
+                async let responseTask = serverRelayStore.fetchStatusResponse()
+                async let commandsTask: [RemoteRunCommand]? = try? serverRelayStore.fetchRecent(limit: 8)
+                async let syncDataTask = Self.fetchSyncDataIfNeeded(shouldLoadSyncData, store: serverRelayStore)
+                async let fileRequestsTask: [ServerRelayFileAccessRequest]? = try? serverRelayStore.fetchRecentFileAccessRequests(limit: 20)
+                async let itemActionsTask: [ServerRelayItemAction]? = try? serverRelayStore.fetchRecentItemActions(limit: 40)
+                async let requestLogTask: [ServerRelayRequestLogEntry]? = try? serverRelayStore.fetchRecentRequestLog(limit: 30)
+                async let settingActionsTask: [ServerRelaySettingAction]? = try? serverRelayStore.fetchRecentSettingActions(limit: 20)
+
+                let response = try await responseTask
                 var didChange = apply(response)
-                if let commands = try? await serverRelayStore.fetchRecent(limit: 8), !commands.isEmpty {
+                if let commands = await commandsTask, !commands.isEmpty {
                     let visibleCommands = visibleCommands(commands)
                     if recentCommands != visibleCommands {
                         recentCommands = visibleCommands
@@ -599,32 +608,31 @@ final class CompanionModel: ObservableObject {
                     clearFinishedCancelRequestIfNeeded(commands)
                     handleReportNotificationUpdates(commands)
                 }
-                if shouldFetchSyncData(includeSyncData: includeSyncData),
-                   let syncData = try? await serverRelayStore.fetchSyncData(limit: 2000) {
+                if let syncData = await syncDataTask {
                     didChange = apply(syncData) || didChange
                 }
-                if let fileRequests = try? await serverRelayStore.fetchRecentFileAccessRequests(limit: 20) {
+                if let fileRequests = await fileRequestsTask {
                     let visibleFileRequests = visibleFileAccessRequests(fileRequests)
                     if recentFileAccessRequests != visibleFileRequests {
                         recentFileAccessRequests = visibleFileRequests
                         didChange = true
                     }
                 }
-                if let itemActions = try? await serverRelayStore.fetchRecentItemActions(limit: 40) {
+                if let itemActions = await itemActionsTask {
                     let visibleItemActions = visibleItemActions(itemActions)
                     if recentItemActions != visibleItemActions {
                         recentItemActions = visibleItemActions
                         didChange = true
                     }
                 }
-                if let requestLog = try? await serverRelayStore.fetchRecentRequestLog(limit: 30) {
+                if let requestLog = await requestLogTask {
                     let visibleRequestLog = visibleRequestLog(requestLog)
                     if recentRequestLog != visibleRequestLog {
                         recentRequestLog = visibleRequestLog
                         didChange = true
                     }
                 }
-                if let settingActions = try? await serverRelayStore.fetchRecentSettingActions(limit: 20) {
+                if let settingActions = await settingActionsTask {
                     let visibleSettingActions = visibleSettingActions(settingActions)
                     if recentSettingActions != visibleSettingActions {
                         recentSettingActions = visibleSettingActions
@@ -656,6 +664,16 @@ final class CompanionModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private static func fetchSyncDataIfNeeded(
+        _ shouldFetch: Bool,
+        store: ServerRelayCommandStore
+    ) async -> ServerRelaySyncData? {
+        guard shouldFetch else {
+            return nil
+        }
+        return try? await store.fetchSyncData(limit: 2000)
     }
 
     private func queueRefreshIfNeeded(
@@ -1381,31 +1399,56 @@ struct UserAlert: Identifiable {
     var message: String
 }
 
+private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
+    case status
+    case run
+    case connection
+    case history
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .status:
+            return "상태"
+        case .run:
+            return "실행"
+        case .connection:
+            return "연결"
+        case .history:
+            return "기록"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .status:
+            return "gauge"
+        case .run:
+            return "play.circle"
+        case .connection:
+            return "macbook.and.iphone"
+        case .history:
+            return "clock.arrow.circlepath"
+        }
+    }
+}
+
 struct CompanionRootView: View {
     @StateObject private var model = CompanionModel()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var selectedSection: CompanionAppSection? = .status
 
     var body: some View {
-        TabView {
-            CompanionStatusScreen(model: model)
-                .tabItem {
-                    Label("상태", systemImage: "gauge")
-                }
-            CompanionRunScreen(model: model)
-                .tabItem {
-                    Label("실행", systemImage: "play.circle")
-                }
-            CompanionConnectionScreen(model: model)
-                .tabItem {
-                    Label("연결", systemImage: "macbook.and.iphone")
-                }
-            CompanionHistoryScreen(model: model)
-                .tabItem {
-                    Label("기록", systemImage: "clock.arrow.circlepath")
+        Group {
+            if horizontalSizeClass == .regular {
+                CompanionSplitRootView(model: model, selectedSection: $selectedSection)
+            } else {
+                CompanionTabRootView(model: model)
             }
         }
         .background(Color.klmsScreenBackground.ignoresSafeArea())
         .tint(.klmsCommandAccent)
-        .klmsTabChrome()
         .task {
             await model.startServerRelayRealtime()
         }
@@ -1415,6 +1458,72 @@ struct CompanionRootView: View {
                 message: Text(alert.message),
                 dismissButton: .default(Text("확인"))
             )
+        }
+    }
+}
+
+private struct CompanionTabRootView: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        TabView {
+            CompanionSectionContent(section: .status, model: model)
+                .tabItem {
+                    Label(CompanionAppSection.status.title, systemImage: CompanionAppSection.status.systemImage)
+                }
+            CompanionSectionContent(section: .run, model: model)
+                .tabItem {
+                    Label(CompanionAppSection.run.title, systemImage: CompanionAppSection.run.systemImage)
+                }
+            CompanionSectionContent(section: .connection, model: model)
+                .tabItem {
+                    Label(CompanionAppSection.connection.title, systemImage: CompanionAppSection.connection.systemImage)
+                }
+            CompanionSectionContent(section: .history, model: model)
+                .tabItem {
+                    Label(CompanionAppSection.history.title, systemImage: CompanionAppSection.history.systemImage)
+            }
+        }
+        .klmsTabChrome()
+    }
+}
+
+private struct CompanionSplitRootView: View {
+    @ObservedObject var model: CompanionModel
+    @Binding var selectedSection: CompanionAppSection?
+
+    var body: some View {
+        NavigationSplitView {
+            List(selection: $selectedSection) {
+                Section("KLMS Sync") {
+                    ForEach(CompanionAppSection.allCases) { section in
+                        Label(section.title, systemImage: section.systemImage)
+                            .tag(Optional(section))
+                    }
+                }
+            }
+            .navigationTitle("KLMS Sync")
+            .klmsNavigationChrome()
+        } detail: {
+            CompanionSectionContent(section: selectedSection ?? .status, model: model)
+        }
+    }
+}
+
+private struct CompanionSectionContent: View {
+    var section: CompanionAppSection
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        switch section {
+        case .status:
+            CompanionStatusScreen(model: model)
+        case .run:
+            CompanionRunScreen(model: model)
+        case .connection:
+            CompanionConnectionScreen(model: model)
+        case .history:
+            CompanionHistoryScreen(model: model)
         }
     }
 }
@@ -1454,13 +1563,13 @@ private struct CompanionRunScreen: View {
     var body: some View {
         CompanionScreenContainer(title: "실행", model: model) {
             RemoteAttentionStack(model: model)
-            RemoteLogSummaryPanel(model: model, compact: true)
             RemoteCommandPanel(model: model, compact: false)
             RemoteCancelControl(model: model, compact: false)
+            RemoteLogSummaryPanel(model: model, compact: true)
             RemoteRunRequestHistoryPanel(model: model)
             RemoteSettingsPanel(model: model)
             RemoteDiagnosticPanel(model: model)
-            InfoBanner(message: "iPhone은 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Cloudflare 서버 릴레이를 사용하면 같은 Wi‑Fi에 있지 않아도 요청할 수 있지만, 실제 동기화는 Mac 앱이 켜져 있을 때만 실행됩니다.")
+            InfoBanner(message: "iPhone/iPad는 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Cloudflare 서버 릴레이를 사용하면 같은 Wi‑Fi에 있지 않아도 요청할 수 있지만, 실제 동기화는 Mac 앱이 켜져 있을 때만 실행됩니다.")
         }
     }
 }
@@ -1759,7 +1868,7 @@ private struct ServerRelayConnectionPanel: View {
                     CompanionSettingHelpText("서버 URL에는 Cloudflare Worker 같은 공개 HTTPS 주소만 넣습니다. 집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.")
                     TextField("서버 URL", text: $model.serverURL)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                    CompanionSettingHelpText("클라이언트 토큰은 iPhone/Windows용 토큰입니다. 상태 조회와 실행 요청만 할 수 있으며, Mac 전용 토큰은 여기에 넣지 않습니다.")
+                    CompanionSettingHelpText("클라이언트 토큰은 iPhone/iPad/Windows용 토큰입니다. 상태 조회와 실행 요청만 할 수 있으며, Mac 전용 토큰은 여기에 넣지 않습니다.")
                     SecureField("클라이언트 토큰", text: $model.serverToken)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                     CompanionSettingHelpText("Mac 앱에는 같은 서버 URL과 별도의 Mac 전용 토큰이 저장되어 있어야 합니다. 실제 KLMS 동기화는 Mac 앱이 처리합니다.")
@@ -2065,6 +2174,10 @@ private enum CompanionItemSortOption: String, CaseIterable, Identifiable {
         case .status:
             "상태"
         }
+    }
+
+    static func defaultSort(for _: DashboardMetricCategory?) -> CompanionItemSortOption {
+        .recent
     }
 }
 
@@ -2888,6 +3001,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     init(category: DashboardMetricCategory, model: CompanionModel) {
         self.category = category
         _model = ObservedObject(wrappedValue: model)
+        _sortOption = State(initialValue: CompanionItemSortOption.defaultSort(for: category))
         _statusFilter = State(initialValue: CompanionItemStatusFilter.defaultFilter(for: category))
     }
 
@@ -3137,6 +3251,7 @@ private struct DashboardCategoryDetailScreen: View {
         self.items = items
         self.calendarChanges = calendarChanges
         self.onSelect = onSelect
+        _sortOption = State(initialValue: CompanionItemSortOption.defaultSort(for: category))
         _statusFilter = State(initialValue: CompanionItemStatusFilter.defaultFilter(for: category))
     }
 
@@ -4338,7 +4453,7 @@ private struct ServerSyncItemDetailView: View {
 
     private var detailHelpMessage: String {
         if item.kind == "file" {
-            return "iPhone은 KLMS에 직접 로그인하지 않습니다. 파일 열기 요청을 보내면 Mac이 course_files 원본을 임시 링크로 준비합니다. 링크가 만료되면 서버 기록과 임시 파일은 자동으로 정리됩니다."
+            return "iPhone/iPad는 KLMS에 직접 로그인하지 않습니다. 파일 열기 요청을 보내면 Mac이 course_files 원본을 임시 링크로 준비합니다. 링크가 만료되면 서버 기록과 임시 파일은 자동으로 정리됩니다."
         }
         return "항목 처리 요청은 서버에 대기 상태로 올라가고, Mac 앱이 확인한 뒤 기존 상태 파일에 반영합니다."
     }
@@ -4927,6 +5042,7 @@ private struct RemoteCommandPanel: View {
                     commandActionCard(command)
                 }
             }
+            RemoteStageDurationSummaryView(durations: stageDurations)
             if compact {
                 Text("점검 도구는 실행 탭에서 할 수 있습니다.")
                     .font(.caption)
@@ -4976,6 +5092,13 @@ private struct RemoteCommandPanel: View {
         .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
     }
 
+    private var stageDurations: [KLMSStageDuration] {
+        guard let log = model.sharedRunLogs.first(where: { !$0.outputTail.isEmpty }) else {
+            return []
+        }
+        return KLMSStageDurationParser.parse(from: log.outputTail)
+    }
+
     private func commandActionCard(_ kind: RemoteCommandKind) -> some View {
         Button {
             Task {
@@ -5000,6 +5123,53 @@ private struct RemoteCommandPanel: View {
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         .accessibilityLabel("\(kind.displayName) 실행")
         .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
+    }
+}
+
+private struct RemoteStageDurationSummaryView: View {
+    var durations: [KLMSStageDuration]
+
+    var body: some View {
+        if !durations.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("단계별 소요 시간")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], spacing: 6) {
+                    ForEach(durations) { duration in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(tint(for: duration.stage))
+                                .frame(width: 6, height: 6)
+                            Text(duration.displayName)
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(duration.secondsText)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }
+        }
+    }
+
+    private func tint(for stage: String) -> Color {
+        switch stage {
+        case "core":
+            return .orange
+        case "notice":
+            return .brown
+        case "files":
+            return .blue
+        default:
+            return .secondary
+        }
     }
 }
 
@@ -5108,7 +5278,7 @@ private struct RemoteRunRequestHistoryPanel: View {
             }
 
             if totalCount == 0 {
-                Text("iPhone이나 Windows에서 실행, 파일 열기, 상태 갱신을 요청하면 여기에 최근 기록이 표시됩니다.")
+                Text("iPhone/iPad나 Windows에서 실행, 파일 열기, 상태 갱신을 요청하면 여기에 최근 기록이 표시됩니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -5170,6 +5340,7 @@ private struct RemoteDiagnosticPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             DisclosureGroup(isExpanded: $isPanelExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
+                    RemoteStageDurationSummaryView(durations: latestStageDurations)
                     Text("동기화는 실행하지 않고 현재 상태를 확인하거나, 앱 대시보드에 필요한 보조 파일만 갱신합니다.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -5218,6 +5389,13 @@ private struct RemoteDiagnosticPanel: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
+    }
+
+    private var latestStageDurations: [KLMSStageDuration] {
+        guard let log = model.sharedRunLogs.first(where: { !$0.outputTail.isEmpty }) else {
+            return []
+        }
+        return KLMSStageDurationParser.parse(from: log.outputTail)
     }
 
     private func diagnosticButton(_ kind: RemoteCommandKind) -> some View {
@@ -5728,6 +5906,7 @@ private struct RemoteLogSummaryRow: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .background(.background)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(isExpanded ? tint.opacity(0.32) : Color.klmsBorder, lineWidth: 1)
@@ -6158,17 +6337,89 @@ private struct CompanionInlineLogBlock: View {
     var text: String
 
     var body: some View {
-        Text(text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "표시할 로그가 없습니다.")
-            .font(.system(.caption2, design: .monospaced))
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(10)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(.quaternary, lineWidth: 1)
-            )
+        VStack(alignment: .leading, spacing: 8) {
+            CompanionReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: text))
+            Text(text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "표시할 로그가 없습니다.")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.quaternary, lineWidth: 1)
+                )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct CompanionReadableLogHighlightsView: View {
+    var highlights: [KLMSLogHighlight]
+
+    var body: some View {
+        if !highlights.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("핵심 로그")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(highlights) { highlight in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: systemImage(for: highlight.level))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(tint(for: highlight.level))
+                                .frame(width: 16)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(highlight.title)
+                                    .font(.caption.weight(.semibold))
+                                Text(highlight.detail.klmsDisplayText)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(tint(for: highlight.level).opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(tint(for: highlight.level).opacity(0.18), lineWidth: 1)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func systemImage(for level: String) -> String {
+        switch level {
+        case "error", "warning":
+            return "exclamationmark.triangle.fill"
+        case "auth":
+            return "iphone.radiowaves.left.and.right"
+        case "success":
+            return "checkmark.circle.fill"
+        case "summary":
+            return "list.bullet.rectangle"
+        default:
+            return "info.circle"
+        }
+    }
+
+    private func tint(for level: String) -> Color {
+        switch level {
+        case "error", "warning", "auth":
+            return .orange
+        case "success":
+            return .green
+        case "summary":
+            return .blue
+        default:
+            return .secondary
+        }
     }
 }
 
@@ -6256,7 +6507,7 @@ private struct RemoteSettingRow: View {
     private var settingExplanation: String? {
         switch setting.key {
         case "SYNC_INTERVAL_SECONDS":
-            return "자동 실행이 다음 실행 여부를 확인하는 간격입니다. iPhone에서 누르는 수동 실행에는 영향을 주지 않습니다."
+            return "자동 실행이 다음 실행 여부를 확인하는 간격입니다. iPhone/iPad에서 누르는 수동 실행에는 영향을 주지 않습니다."
         case "MIN_IDLE_SECONDS":
             return "Mac에서 키보드나 마우스를 이 시간 이상 사용하지 않았을 때만 자동 실행을 허용합니다."
         case "SYNC_MODE":
@@ -6265,6 +6516,8 @@ private struct RemoteSettingRow: View {
             return "자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠르게는 기존 캐시 재사용을 우선합니다."
         case "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY":
             return "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다."
+        case "FILE_WEEKLY_FOLDERS_ENABLED":
+            return "파일을 과목, 주차, KLMS 출처 구조에 맞춰 정리합니다. 기본값은 켜짐입니다."
         case "NOTICE_HIDE_HIDDEN_ITEMS":
             return "숨긴 공지는 Notes 메모에 쓰지 않습니다. KLMS 원본 공지는 그대로 둡니다."
         case "NOTICE_NATIVE_STABLE_NOOP_SKIP":

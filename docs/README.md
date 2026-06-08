@@ -8,4 +8,5 @@
 | [sync-workflows.md](./sync-workflows.md) | 실행 모드, 로그인/Kaikey, 자동 실행, 검증 절차 |
 | [feature-behavior.md](./feature-behavior.md) | 공지 메모, 파일 정리, Reminders/Calendar/Notes 동작 정책 |
 | [windows-ui-ux-design.md](./windows-ui-ux-design.md) | Windows companion 앱 UI/UX, 색상, 화면 구조, 보안 기준 |
+| [windows-implementation-guide.md](./windows-implementation-guide.md) | Mac/iPhone/iPad 변경을 Windows companion에 반영하기 위한 기능 parity 가이드 |
 | [publication-checklist.md](./publication-checklist.md) | 공개 repo로 push하기 전 보안/검증 체크리스트 |

@@ -5,6 +5,7 @@ import SwiftUI
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
+    @State private var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
         WholeScreenVerticalScrollView {
@@ -13,10 +14,11 @@ struct MenuBarRootView: View {
                 QuickStatusStripView(model: model)
                 ImportantLogPanelView(
                     model: model,
-                    selectedSection: $selectedSection
+                    selectedSection: $selectedSection,
+                    expandedLogSummaryKind: $expandedLogSummaryKind
                 )
-                LogSummaryPanelView(model: model)
                 CommandPanelView(model: model)
+                LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                 RemoteActivityPanelView(model: model)
                 ExternalIntegrationStatusView(model: model)
 
@@ -68,6 +70,46 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
             .clipped()
         }
+    }
+}
+
+struct DiagnosticWindowView: View {
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        WholeScreenVerticalScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacCommandAccent)
+                        .frame(width: 30, height: 30)
+                        .background(Color.klmsMacCommandAccent.opacity(0.10), in: Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("진단 로그")
+                            .font(.headline.weight(.semibold))
+                        Text("상단 경고에서 진단 보기를 눌렀을 때 필요한 실패 로그와 검사 결과를 바로 보여줍니다.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                    if model.runningCommand != nil {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                DiagnosticCommandLogPanelView(model: model)
+                DoctorPanelView(snapshot: model.snapshot)
+                AppDiagnosticsPanelView(model: model)
+                LoginPanelView(model: model)
+                LogPanelView(snapshot: model.snapshot, history: model.commandHistory)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .background(Color.klmsMacScreenBackground)
     }
 }
 
@@ -593,13 +635,15 @@ private struct SectionPickerView: View {
 private struct ImportantLogPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
+    @Binding var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             AuthCodeBannerView(digits: model.currentAuthDigits, statusMessage: model.authStatusMessage)
             NextActionPanelView(
                 model: model,
-                selectedSection: $selectedSection
+                selectedSection: $selectedSection,
+                expandedLogSummaryKind: $expandedLogSummaryKind
             )
         }
     }
@@ -613,7 +657,7 @@ private enum LogSummaryKind: String {
 
 private struct LogSummaryPanelView: View {
     @ObservedObject var model: KLMSMacModel
-    @State private var expandedKind: LogSummaryKind?
+    @Binding var expandedKind: LogSummaryKind?
     private static let terminalSummaryDisplayInterval: TimeInterval = 5 * 60
 
     var body: some View {
@@ -1034,6 +1078,7 @@ private struct LogSummaryTile: View {
             .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
             .padding(9)
             .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(isExpanded ? tint.opacity(0.42) : tint.opacity(0.16), lineWidth: 1)
@@ -1047,7 +1092,9 @@ private struct LogSummaryTile: View {
 private struct NextActionPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
+    @Binding var expandedLogSummaryKind: LogSummaryKind?
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         if let action = nextAction {
@@ -1134,8 +1181,14 @@ private struct NextActionPanelView: View {
 
     private func perform(_ action: NextAction) {
         switch action.kind {
-        case .showRunningLog, .openDiagnostics:
+        case .showRunningLog:
+            expandedLogSummaryKind = .run
             selectedSection = .logs
+            openDiagnosticsWindow()
+        case .openDiagnostics:
+            expandedLogSummaryKind = .run
+            selectedSection = .logs
+            openDiagnosticsWindow()
         case .copyAuthDigits:
             if let digits = model.currentAuthDigits {
                 NSPasteboard.general.clearContents()
@@ -1148,6 +1201,11 @@ private struct NextActionPanelView: View {
         case .openSettings:
             openSettings()
         }
+    }
+
+    private func openDiagnosticsWindow() {
+        openWindow(id: KLMSMacWindowID.diagnostics)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -1537,7 +1595,8 @@ private struct DiagnosticCommandLogPanelView: View {
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
-                    LogTextBlock(text: source.text)
+                    CommandStageDurationSummaryView(durations: KLMSStageDurationParser.parse(from: source.text))
+                    LogTextBlock(text: source.text, detailed: true)
                 } else {
                     Text("아직 표시할 실행 로그가 없습니다. 위의 권한/환경 진단이나 동기화 버튼을 실행하면 실시간 로그와 마지막 로그가 여기에 표시됩니다.")
                         .font(.caption)
@@ -1679,20 +1738,125 @@ private struct DiagnosticLogSource {
 
 private struct LogTextBlock: View {
     var text: String
+    var detailed = false
 
     var body: some View {
-        Text(text)
-            .font(.system(.caption2, design: .monospaced))
-            .textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(8)
+        VStack(alignment: .leading, spacing: 8) {
+            ReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: text), detailed: detailed)
+            Text(text)
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(8)
+                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                )
+        }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-        )
+    }
+}
+
+private struct ReadableLogHighlightsView: View {
+    var highlights: [KLMSLogHighlight]
+    var detailed = false
+
+    var body: some View {
+        if !highlights.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("핵심 로그")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 6)], alignment: .leading, spacing: 6) {
+                    ForEach(highlights) { highlight in
+                        HStack(alignment: .top, spacing: 7) {
+                            Image(systemName: systemImage(for: highlight.level))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(tint(for: highlight.level))
+                                .frame(width: 16)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(highlight.title)
+                                    .font(.caption2.weight(.semibold))
+                                Text(highlight.detail.klmsDisplayText)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if detailed {
+                                    diagnosticDetailRows(for: highlight)
+                                }
+                            }
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .background(tint(for: highlight.level).opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(tint(for: highlight.level).opacity(0.18), lineWidth: 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func diagnosticDetailRows(for highlight: KLMSLogHighlight) -> some View {
+        if !highlight.explanation.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("의미", systemImage: "questionmark.circle")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(highlight.explanation.klmsDisplayText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 5)
+        }
+        if !highlight.nextAction.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("다음 확인", systemImage: "arrow.turn.down.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(tint(for: highlight.level))
+                Text(highlight.nextAction.klmsDisplayText)
+                    .font(.caption2)
+                    .foregroundStyle(.primary.opacity(0.78))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 3)
+        }
+    }
+
+    private func systemImage(for level: String) -> String {
+        switch level {
+        case "error", "warning":
+            return "exclamationmark.triangle.fill"
+        case "auth":
+            return "iphone.radiowaves.left.and.right"
+        case "success":
+            return "checkmark.circle.fill"
+        case "summary":
+            return "list.bullet.rectangle"
+        default:
+            return "info.circle"
+        }
+    }
+
+    private func tint(for level: String) -> Color {
+        switch level {
+        case "error", "warning", "auth":
+            return .orange
+        case "success":
+            return .green
+        case "summary":
+            return .blue
+        default:
+            return .secondary
+        }
     }
 }
 
@@ -2475,6 +2639,8 @@ private struct CommandPanelView: View {
                         commandActionCard(command)
                     }
                 }
+
+                CommandStageDurationSummaryView(durations: stageDurations)
             }
 
             if let command = model.runningCommand {
@@ -2559,6 +2725,60 @@ private struct CommandPanelView: View {
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
         .disabled(model.runningCommand != nil)
+    }
+
+    private var stageDurations: [KLMSStageDuration] {
+        let output = model.liveCommandOutput.isEmpty
+            ? (model.lastCommandResult?.combinedOutput ?? "")
+            : model.liveCommandOutput
+        return KLMSStageDurationParser.parse(from: output)
+    }
+}
+
+private struct CommandStageDurationSummaryView: View {
+    var durations: [KLMSStageDuration]
+
+    var body: some View {
+        if !durations.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("단계별 소요 시간")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], spacing: 6) {
+                    ForEach(durations) { duration in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(tint(for: duration.stage))
+                                .frame(width: 6, height: 6)
+                            Text(duration.displayName)
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(duration.secondsText)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }
+        }
+    }
+
+    private func tint(for stage: String) -> Color {
+        switch stage {
+        case "core":
+            return .orange
+        case "notice":
+            return .brown
+        case "files":
+            return .blue
+        default:
+            return .secondary
+        }
     }
 }
 
@@ -3610,6 +3830,9 @@ struct CollapsibleSectionBox<Content: View>: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
 
             if isExpanded {
                 content

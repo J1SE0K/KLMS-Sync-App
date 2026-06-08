@@ -28,7 +28,7 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 
 | 경로 | 역할 |
 | --- | --- |
-| `apps/KLMSync/` | SwiftUI macOS 메뉴바 앱, iPhone companion, 공유 앱 모델/테스트 |
+| `apps/KLMSync/` | SwiftUI macOS 메뉴바 앱, iPhone/iPad companion, 공유 앱 모델/테스트 |
 | `bin/` | 루트 wrapper가 호출하는 실제 shell entrypoint |
 | `src/sh/` | 공통 shell helper, launchd worker, runtime cleanup |
 | `src/js/` | Safari/JXA 자동화, Notes/Reminders runner, Kaikey CLI |

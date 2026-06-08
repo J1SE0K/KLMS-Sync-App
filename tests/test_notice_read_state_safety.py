@@ -847,7 +847,7 @@ console.log(JSON.stringify({ off: runCase("0"), on: runCase("1") }));
         self.assertIn('NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0"', app_model)
-        self.assertIn('NOTICE_NATIVE_POST_RENDER_VERIFY": "1"', app_model)
+        self.assertIn('NOTICE_NATIVE_POST_RENDER_VERIFY": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK": "0"', app_model)
         self.assertIn('NOTICE_COLLAPSE_SECTIONS": "0"', app_model)

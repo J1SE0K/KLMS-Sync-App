@@ -246,7 +246,9 @@ func syncStandardCalendar(
         throw SuiteError.message("Could not resolve or create calendar: \(calendarName)")
     }
 
-    let desiredEvents = buildDesiredStandardEvents(items: standardSyncableItems(from: content, bucket: bucket))
+    let desiredEvents = deduplicatedDesiredStandardEvents(
+        buildDesiredStandardEvents(items: standardSyncableItems(from: content, bucket: bucket))
+    )
     let desiredByID = Dictionary(uniqueKeysWithValues: desiredEvents.map { ($0.identifier, $0) })
     let existingEvents = managedEvents(
         in: calendar,
@@ -388,6 +390,18 @@ func buildDesiredStandardEvents(items: [SyncItem]) -> [DesiredStandardEvent] {
             kindLabel: kindLabel
         )
     }
+}
+
+func deduplicatedDesiredStandardEvents(_ events: [DesiredStandardEvent]) -> [DesiredStandardEvent] {
+    var seenIdentifiers = Set<String>()
+    var deduplicated: [DesiredStandardEvent] = []
+    for event in events {
+        guard seenIdentifiers.insert(event.identifier).inserted else {
+            continue
+        }
+        deduplicated.append(event)
+    }
+    return deduplicated
 }
 
 func standardSyncableItems(from content: SyncContent, bucket: StandardBucket) -> [SyncItem] {

@@ -208,6 +208,7 @@ struct SettingsView: View {
                 configToggle(
                     "주차/출처 폴더 사용",
                     .fileWeeklyFoldersEnabled,
+                    defaultValue: true,
                     description: "파일 목록을 과목, 주차 같은 KLMS 출처 구조에 맞춰 정리합니다."
                 )
                 configToggle(

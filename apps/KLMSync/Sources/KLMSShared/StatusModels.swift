@@ -563,6 +563,351 @@ public struct NoticeRenderResult: Decodable, Sendable, Equatable, Identifiable {
     }
 }
 
+public struct KLMSStageDuration: Sendable, Equatable, Identifiable {
+    public var stage: String
+    public var seconds: Int
+
+    public var id: String { stage }
+
+    public init(stage: String, seconds: Int) {
+        self.stage = stage
+        self.seconds = seconds
+    }
+
+    public var displayName: String {
+        switch stage {
+        case "core":
+            return "과제/시험"
+        case "notice":
+            return "공지"
+        case "files":
+            return "파일"
+        default:
+            return stage
+        }
+    }
+
+    public var secondsText: String {
+        if seconds >= 60 {
+            let minutes = seconds / 60
+            let remainder = seconds % 60
+            return remainder == 0 ? "\(minutes)분" : "\(minutes)분 \(remainder)초"
+        }
+        return "\(seconds)초"
+    }
+}
+
+public enum KLMSStageDurationParser {
+    public static func parse(from output: String) -> [KLMSStageDuration] {
+        let pattern = #"^==\s+(core|notice|files)\s+finish\b.*\bduration_s=(\d+)\s*=="#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return []
+        }
+        var latestByStage: [String: KLMSStageDuration] = [:]
+        output.split(whereSeparator: \.isNewline).forEach { line in
+            let text = String(line)
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            guard let match = regex.firstMatch(in: text, range: range), match.numberOfRanges >= 3 else {
+                return
+            }
+            guard
+                let stageRange = Range(match.range(at: 1), in: text),
+                let secondsRange = Range(match.range(at: 2), in: text),
+                let seconds = Int(String(text[secondsRange]))
+            else {
+                return
+            }
+            let stage = String(text[stageRange])
+            latestByStage[stage] = KLMSStageDuration(stage: stage, seconds: seconds)
+        }
+        let order = ["core", "notice", "files"]
+        return order.compactMap { latestByStage[$0] }
+    }
+}
+
+public struct KLMSLogHighlight: Sendable, Equatable, Identifiable {
+    public var level: String
+    public var title: String
+    public var detail: String
+    public var explanation: String
+    public var nextAction: String
+
+    public var id: String { "\(level)-\(title)-\(detail)" }
+
+    public init(level: String, title: String, detail: String, explanation: String = "", nextAction: String = "") {
+        self.level = level
+        self.title = title
+        self.detail = detail
+        self.explanation = explanation
+        self.nextAction = nextAction
+    }
+}
+
+public enum KLMSReadableLogParser {
+    public static func highlights(from output: String, limit: Int = 8) -> [KLMSLogHighlight] {
+        let lines = output
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        var highlights: [KLMSLogHighlight] = []
+        var seen = Set<String>()
+
+        func append(_ level: String, _ title: String, _ detail: String) {
+            let cleanedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleanedDetail.isEmpty else { return }
+            let key = "\(level)|\(title)|\(cleanedDetail)"
+            guard seen.insert(key).inserted else { return }
+            let diagnostic = diagnosticText(level: level, title: title, detail: cleanedDetail)
+            highlights.append(
+                KLMSLogHighlight(
+                    level: level,
+                    title: title,
+                    detail: cleanedDetail,
+                    explanation: diagnostic.explanation,
+                    nextAction: diagnostic.nextAction
+                )
+            )
+        }
+
+        for line in lines {
+            if line.hasPrefix("FAILED") || line.localizedCaseInsensitiveContains(" Error: ") {
+                append("error", "실패", compactFailureDetail(line))
+                continue
+            }
+
+            if line.contains("KLMS 로그인이 풀린") || line.localizedCaseInsensitiveContains("login-prompt notified") {
+                append("warning", "로그인 필요", line)
+                continue
+            }
+
+            if line.contains("KAIST 인증 번호:") {
+                append("auth", "인증 번호", line.replacingOccurrences(of: "휴대폰 인증 화면에서 같은 번호를 선택하면 동기화를 계속 진행해.", with: ""))
+                continue
+            }
+
+            if line == "status=ok stage=authenticated" || line.contains("KLMS 로그인 보조 완료") || line.contains("KLMS 이미 로그인되어 있습니다") {
+                append("success", "로그인 확인", line)
+                continue
+            }
+
+            if let stage = parseStageFinish(line) {
+                let status = stage.status == "0" ? "완료" : "실패"
+                append(stage.status == "0" ? "success" : "warning", "\(stage.name) \(status)", "소요 시간 \(stage.secondsText) · 종료 코드 \(stage.status)")
+                continue
+            }
+
+            if line.hasPrefix("status=ok scope=core") {
+                append("summary", "과제/시험 요약", compactKeyValueLine(line, preferredKeys: ["assignments", "exams", "help_desk", "assignment_candidates", "exam_candidates", "changed"]))
+                continue
+            }
+
+            if line.hasPrefix("status=ok scope=notice") {
+                append("summary", "공지 요약", compactKeyValueLine(line, preferredKeys: ["notice_count", "new", "updated", "dry_run"]))
+                continue
+            }
+
+            if line.hasPrefix("file-preview ") {
+                append("summary", "파일 변경량", compactKeyValueLine(line, preferredKeys: ["manifest", "new_urls", "moved", "fresh_download_candidates", "prune_candidates", "type_mismatch_candidates"]))
+                continue
+            }
+
+            if line.hasPrefix("download-summary ") {
+                append("summary", "파일 다운로드", compactKeyValueLine(line, preferredKeys: ["total", "skipped_existing", "downloaded_fresh", "new_files_copied", "failed", "quarantine"]))
+                continue
+            }
+        }
+
+        return Array(highlights.prefix(limit))
+    }
+
+    private static func parseStageFinish(_ line: String) -> (name: String, status: String, secondsText: String)? {
+        let pattern = #"^==\s+(core|notice|files)\s+finish\b.*\bstatus=(\d+)\s+duration_s=(\d+)\s*=="#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        guard let match = regex.firstMatch(in: line, range: range), match.numberOfRanges >= 4,
+              let stageRange = Range(match.range(at: 1), in: line),
+              let statusRange = Range(match.range(at: 2), in: line),
+              let secondsRange = Range(match.range(at: 3), in: line),
+              let seconds = Int(String(line[secondsRange])) else {
+            return nil
+        }
+        let duration = KLMSStageDuration(stage: String(line[stageRange]), seconds: seconds)
+        return (duration.displayName, String(line[statusRange]), duration.secondsText)
+    }
+
+    private static func compactFailureDetail(_ line: String) -> String {
+        if let range = line.range(of: " Error: ") {
+            return String(line[range.upperBound...])
+        }
+        if let range = line.range(of: "Error:") {
+            return String(line[range.lowerBound...])
+        }
+        return line
+    }
+
+    private static func compactKeyValueLine(_ line: String, preferredKeys: [String]) -> String {
+        let pairs = parseKeyValues(line)
+        let preferred = preferredKeys.compactMap { key -> String? in
+            guard let value = pairs[key], !value.isEmpty else { return nil }
+            return "\(displayName(for: key)) \(value)"
+        }
+        if !preferred.isEmpty {
+            return preferred.joined(separator: " · ")
+        }
+        return line
+    }
+
+    private static func parseKeyValues(_ line: String) -> [String: String] {
+        var values: [String: String] = [:]
+        for part in line.split(separator: " ") {
+            let fields = part.split(separator: "=", maxSplits: 1).map(String.init)
+            guard fields.count == 2 else { continue }
+            values[fields[0]] = fields[1].trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+        }
+        return values
+    }
+
+    private static func displayName(for key: String) -> String {
+        switch key {
+        case "assignments": return "과제"
+        case "exams": return "시험"
+        case "help_desk": return "헬프데스크"
+        case "assignment_candidates": return "과제 후보"
+        case "exam_candidates": return "시험 후보"
+        case "changed": return "변경"
+        case "notice_count": return "공지"
+        case "new": return "신규"
+        case "updated": return "수정"
+        case "dry_run": return "미리보기"
+        case "manifest": return "목록"
+        case "new_urls": return "새 URL"
+        case "moved": return "이동"
+        case "fresh_download_candidates": return "다운로드 후보"
+        case "prune_candidates": return "정리 후보"
+        case "type_mismatch_candidates": return "종류 불일치"
+        case "total": return "전체"
+        case "skipped_existing": return "기존 유지"
+        case "downloaded_fresh": return "새 다운로드"
+        case "new_files_copied": return "새 파일함"
+        case "failed": return "실패"
+        case "quarantine": return "격리"
+        default: return key
+        }
+    }
+
+    private static func diagnosticText(level: String, title: String, detail: String) -> (explanation: String, nextAction: String) {
+        if title == "인증 번호" {
+            return (
+                "KLMS 로그인 보조가 KAIST 2단계 인증 번호를 읽어 온 상태입니다. 이 번호를 휴대폰 인증 화면에서 선택해야 다음 단계로 넘어갑니다.",
+                "휴대폰에서 같은 번호를 누른 뒤, 로그가 ‘로그인 확인’으로 바뀌는지 확인하세요."
+            )
+        }
+
+        if title == "로그인 확인" {
+            return (
+                "Safari의 KLMS 세션이 현재 유효하다고 확인된 상태입니다. 이 뒤부터 과제/시험, 공지, 파일 동기화가 진행됩니다.",
+                "이후 단계가 실패하면 로그인 자체보다 실패 단계의 상세 로그를 우선 확인하세요."
+            )
+        }
+
+        if title == "로그인 필요" {
+            return (
+                "KLMS 대시보드 확인 중 로그인 세션이 유효하지 않다고 판단했습니다. 세션이 풀린 상태에서 동기화를 계속하면 빈 페이지나 누락 데이터가 생길 수 있습니다.",
+                "Safari에서 KLMS 로그인을 완료한 뒤 다시 실행하세요. 인증 번호가 뜨면 같은 번호를 선택해야 합니다."
+            )
+        }
+
+        if title == "과제/시험 요약" {
+            return (
+                "과제, 시험, 헬프데스크 후보를 읽고 앱 상태 파일에 반영한 결과입니다. 후보 수가 0이 아니면 앱에서 실제 과제/시험으로 바꿔야 할 항목이 남아 있을 수 있습니다.",
+                "앱 대시보드의 과제/시험/후보 항목을 열어 누락된 항목이 있는지 확인하세요."
+            )
+        }
+
+        if title == "공지 요약" {
+            return (
+                "KLMS 공지 목록을 읽고 Notes 메모에 반영한 결과입니다. 신규/수정 수가 0이어도 전체 공지 렌더링 검증은 별도로 봐야 합니다.",
+                "공지 메모 양식이 이상하면 진단 결과의 notice_render 관련 항목과 원본 로그의 Notes 오류를 확인하세요."
+            )
+        }
+
+        if title == "파일 변경량" {
+            return (
+                "KLMS 파일 목록을 기존 manifest와 비교해서 새 파일, 이동, 재다운로드 후보, 정리 후보를 계산한 결과입니다. 이 단계 자체는 실제 파일을 지우거나 받지 않습니다.",
+                "다운로드 후보가 있을 때만 파일 다운로드 단계에서 새 파일 또는 수정된 파일을 처리합니다."
+            )
+        }
+
+        if title == "파일 다운로드" {
+            return (
+                "파일 다운로드 단계의 최종 요약입니다. ‘기존 유지’는 이미 있는 파일을 다시 받지 않았다는 뜻이고, ‘새 다운로드’는 새 파일이나 수정 후보만 받은 수입니다.",
+                "실패나 격리가 0보다 크면 파일 탭에서 해당 항목을 열어 원인과 처리 버튼을 확인하세요."
+            )
+        }
+
+        if title.contains("완료") {
+            return (
+                "해당 동기화 단계가 정상 종료되었습니다. 소요 시간은 이 단계만의 실행 시간이고, 전체 동기화 시간과는 다를 수 있습니다.",
+                "소요 시간이 평소보다 길면 아래 원본 로그에서 fetch, render, download처럼 오래 걸린 세부 단계를 확인하세요."
+            )
+        }
+
+        if title.contains("실패") || level == "error" || level == "warning" {
+            return failureDiagnosticText(detail: detail)
+        }
+
+        return (
+            "동기화 과정에서 상태를 요약한 로그입니다. 원본 로그를 전부 읽지 않아도 현재 단계의 핵심 결과를 빠르게 보기 위한 항목입니다.",
+            "문제가 계속되면 바로 아래 원본 로그에서 같은 시간대의 줄을 확인하세요."
+        )
+    }
+
+    private static func failureDiagnosticText(detail: String) -> (explanation: String, nextAction: String) {
+        let lower = detail.lowercased()
+
+        if detail.contains("로그인") || lower.contains("login") || detail.contains("세션") {
+            return (
+                "KLMS 로그인 세션이 중간에 풀렸거나, Safari가 KLMS 페이지를 정상 대시보드로 읽지 못한 상태입니다.",
+                "Safari에서 KLMS 대시보드가 바로 열리는지 확인하고, 로그인/인증을 끝낸 뒤 같은 명령을 다시 실행하세요."
+            )
+        }
+
+        if detail.contains("Notes") || detail.contains("메모") || detail.contains("notice note") || lower.contains("native notice") {
+            return (
+                "공지 내용을 Apple Notes에 쓰거나, 기존 읽음/중요 체크 상태를 보존하는 과정에서 실패했습니다. 권한 문제, Notes 창 상태, 메모 양식 불일치가 흔한 원인입니다.",
+                "Notes 앱을 열어 KLMS 공지/확인한 공지 메모가 존재하는지 확인하고, 권한/환경 진단을 실행한 뒤 공지 동기화만 다시 실행하세요."
+            )
+        }
+
+        if detail.contains("capture-failed") || detail.contains("suspicious bulk") {
+            return (
+                "읽음/중요 체크 상태를 캡처하는 과정에서 이전 상태와 너무 크게 달라져 앱이 안전장치로 중단했습니다. 기존 체크가 대량으로 사라지는 것을 막기 위한 보호 로직입니다.",
+                "Notes의 KLMS 공지와 KLMS 확인한 공지에서 체크 상태가 정상인지 본 뒤, 공지 동기화를 다시 실행하세요."
+            )
+        }
+
+        if detail.contains("Expected one page") || detail.contains("found 0") {
+            return (
+                "Safari가 KLMS 대시보드 HTML을 비어 있는 결과로 저장했습니다. 보통 로그인 미완료, 페이지 로딩 실패, Safari 자동화 실패에서 나옵니다.",
+                "Safari에서 KLMS 대시보드를 새로 열어 정상 표시되는지 확인한 뒤 전체 동기화를 다시 실행하세요."
+            )
+        }
+
+        if detail.contains("file") || detail.contains("manifest") || detail.contains("download") || detail.contains("quarantine") {
+            return (
+                "파일 manifest 생성, 다운로드, 격리 처리 중 문제가 생긴 로그입니다. 파일명이 바뀌었거나 기존 로컬 파일이 manifest와 맞지 않을 때도 발생할 수 있습니다.",
+                "파일 탭에서 누락/격리/정리 후보를 확인하고, 필요한 경우 파일 동기화만 다시 실행하세요."
+            )
+        }
+
+        return (
+            "명령이 정상 종료되지 않았습니다. 이 항목의 상세 내용이 실제 실패 메시지이며, 아래 원본 로그에는 실패 직전의 단계 흐름이 남아 있습니다.",
+            "실패 메시지의 단계 이름을 기준으로 과제/공지/파일 중 어떤 명령을 다시 실행할지 결정하세요."
+        )
+    }
+}
+
 public struct SlowEvent: Decodable, Sendable, Equatable, Identifiable {
     public var group: String
     public var name: String

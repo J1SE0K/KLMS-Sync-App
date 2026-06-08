@@ -1548,7 +1548,7 @@ private struct NewFilesListView: View {
 private struct FileManifestListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
-    @State private var sortOption = DashboardFileSortOption.course
+    @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
@@ -1616,7 +1616,7 @@ private struct FileManifestListView: View {
 private struct MissingFilesListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
-    @State private var sortOption = DashboardFileSortOption.course
+    @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
@@ -2055,7 +2055,7 @@ private extension StateItem {
 private struct QuarantineListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
-    @State private var sortOption = DashboardFileSortOption.name
+    @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
@@ -2114,7 +2114,7 @@ private struct QuarantineListView: View {
 private struct PrunedListView: View {
     var filters: DashboardDetailFilters
     var snapshot: EngineSnapshot
-    @State private var sortOption = DashboardFileSortOption.path
+    @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {

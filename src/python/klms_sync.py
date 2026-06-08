@@ -3190,18 +3190,28 @@ def dedupe_assignment_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 def dedupe_sync_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: set[tuple[str, str, str, str]] = set()
+    indexes: dict[tuple[str, str, str, str, str], int] = {}
     deduped: list[dict[str, Any]] = []
     for item in items:
-        key = (
-            canonical_sync_item_url_identity(str(item.get("url", ""))),
-            sync_item_identity_text(item.get("title", "")),
-            sync_item_identity_text(item.get("sync_due") or item.get("due", "")),
-            sync_item_identity_text(item.get("category", "")),
-        )
-        if key in seen:
+        category = sync_item_identity_text(item.get("category", ""))
+        course = sync_item_identity_text(item.get("course", ""))
+        title = sync_item_identity_text(item.get("title", ""))
+        due = sync_item_identity_text(item.get("sync_due") or item.get("due", ""))
+        if category and course and title and due:
+            key = ("logical", category, course, title, due)
+        else:
+            key = (
+                "url",
+                category,
+                canonical_sync_item_url_identity(str(item.get("url", ""))),
+                title,
+                due,
+            )
+        if key in indexes:
+            index = indexes[key]
+            deduped[index] = merge_sync_items(deduped[index], item)
             continue
-        seen.add(key)
+        indexes[key] = len(deduped)
         deduped.append(item)
     return deduped
 

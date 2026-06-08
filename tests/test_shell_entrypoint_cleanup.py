@@ -564,9 +564,12 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn('"FILE_REFRESH_MODE": "auto"', model)
         self.assertIn('"FILE_FORCE_DOWNLOAD": "0"', model)
         self.assertIn('"FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": "1"', model)
+        self.assertIn('"FILE_WEEKLY_FOLDERS_ENABLED": "1"', model)
         self.assertIn('"FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS": "21600"', model)
         self.assertIn('Picker("파일 탐색 모드"', settings)
         self.assertIn('allowedValues: ["auto", "quick"]', settings)
+        self.assertIn('ServerRelaySettingDefinition(.fileWeeklyFoldersEnabled, title: "주차/출처 폴더 사용", valueKind: .bool, defaultValue: "1")', model)
+        self.assertIn('configToggle(\n                    "주차/출처 폴더 사용",\n                    .fileWeeklyFoldersEnabled,\n                    defaultValue: true', settings)
         file_picker = settings.split('Picker("파일 탐색 모드"', 1)[1].split("}", 1)[0]
         self.assertNotIn('Text("전체").tag("full")', file_picker)
         self.assertNotIn('configToggle("강제 재다운로드"', settings)
@@ -664,6 +667,10 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("private struct FileSortPickerView", detail)
         self.assertGreaterEqual(detail.count("FileSortPickerView(selection: $sortOption)"), 4)
         self.assertGreaterEqual(detail.count(".sorted(by: sortOption)"), 4)
+        self.assertEqual(detail.count("@State private var sortOption = DashboardFileSortOption.recent"), 5)
+        self.assertNotIn("@State private var sortOption = DashboardFileSortOption.course", detail)
+        self.assertNotIn("@State private var sortOption = DashboardFileSortOption.name", detail)
+        self.assertNotIn("@State private var sortOption = DashboardFileSortOption.path", detail)
         self.assertIn("selection = option", detail)
         self.assertIn(".id(sortOption.rawValue)", detail)
         self.assertIn("sortPath: entry.relativePath", detail)
@@ -1195,8 +1202,10 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn('UserAlert(title: "인증 완료", message: authStatusMessage)', ios_app)
         self.assertNotIn("if let authStatusMessage = status.authStatusMessage {\n            return authStatusMessage\n        }\n        if status.loginRequired", ios_app)
         self.assertIn("configureServerRelayEventStream()", ios_app)
-        self.assertIn("? (pendingCancelCommandID == nil ? 350_000_000 : 250_000_000)", ios_app)
-        self.assertIn(": 4_000_000_000", ios_app)
+        self.assertIn('webSocketTask(with: store.eventStreamRequest(role: "client"))', ios_app)
+        self.assertIn("task.receive()", ios_app)
+        self.assertIn("async let responseTask = serverRelayStore.fetchStatusResponse()", ios_app)
+        self.assertNotIn("pendingCancelCommandID == nil ? 350_000_000 : 250_000_000", ios_app)
 
     def test_ios_companion_notifies_report_refresh_result(self) -> None:
         ios_app = (
@@ -1334,6 +1343,16 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn('connectionAsyncButton("요약 갱신"', ios_app)
         self.assertIn('connectionButton("URL 복사"', ios_app)
         self.assertIn('connectionButton("연결 정보 복사"', ios_app)
+        self.assertIn(
+            "static func defaultSort(for _: DashboardMetricCategory?) -> CompanionItemSortOption",
+            ios_app,
+        )
+        self.assertIn(
+            "_sortOption = State(initialValue: CompanionItemSortOption.defaultSort(for: category))",
+            ios_app,
+        )
+        self.assertIn('case "FILE_WEEKLY_FOLDERS_ENABLED":', ios_app)
+        self.assertIn("기본값은 켜짐입니다.", ios_app)
         self.assertIn('connectionButton("클라이언트 토큰 복사"', ios_app)
         self.assertIn('Label("연결 정보 지우기", systemImage: "trash")', ios_app)
         self.assertIn("ConnectionNoticeBanner", ios_app)

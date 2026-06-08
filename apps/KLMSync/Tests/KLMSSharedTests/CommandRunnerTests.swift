@@ -71,6 +71,54 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(KLMSLiveCommandPhase.currentPhase(in: log), .files)
     }
 
+    func testStageDurationParserExtractsCoreNoticeAndFilesDurations() {
+        let log = """
+        == core start 2026-06-07 23:25:18 KST ==
+        == core finish 2026-06-07 23:25:36 KST status=0 duration_s=18 ==
+        == notice finish 2026-06-07 23:26:35 KST status=0 duration_s=59 ==
+        == files finish 2026-06-07 23:32:13 KST status=0 duration_s=338 ==
+        """
+
+        let durations = KLMSStageDurationParser.parse(from: log)
+
+        XCTAssertEqual(durations.map(\.stage), ["core", "notice", "files"])
+        XCTAssertEqual(durations.map(\.seconds), [18, 59, 338])
+        XCTAssertEqual(durations[0].displayName, "과제/시험")
+        XCTAssertEqual(durations[2].secondsText, "5분 38초")
+    }
+
+    func testReadableLogParserExtractsImportantLogHighlights() {
+        let log = """
+        KAIST 인증 번호: 11
+        status=ok stage=authenticated
+        == core finish 2026-06-07 23:25:36 KST status=0 duration_s=18 ==
+        status=ok scope=core dry_run=0 changed=true assignments=6 exams=2 help_desk=1 assignment_candidates=0 exam_candidates=0
+        FAILED(start > notice-summary) Error: 공지 본문을 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.
+        file-preview manifest=91 new_urls=2 moved=0 fresh_download_candidates=2 prune_candidates=0 type_mismatch_candidates=0
+        download-summary total=91 skipped_existing=89 downloaded_fresh=2 new_files_copied=2 failed=0 quarantine=0
+        """
+
+        let highlights = KLMSReadableLogParser.highlights(from: log)
+
+        XCTAssertEqual(highlights.map(\.title), [
+            "인증 번호",
+            "로그인 확인",
+            "과제/시험 완료",
+            "과제/시험 요약",
+            "실패",
+            "파일 변경량",
+            "파일 다운로드",
+        ])
+        XCTAssertEqual(highlights.first?.level, "auth")
+        XCTAssertTrue(highlights[3].detail.contains("과제 6"))
+        XCTAssertTrue(highlights[4].detail.contains("공지 본문"))
+        XCTAssertTrue(highlights[6].detail.contains("새 다운로드 2"))
+        XCTAssertTrue(highlights[0].explanation.contains("2단계 인증"))
+        XCTAssertTrue(highlights[0].nextAction.contains("휴대폰"))
+        XCTAssertTrue(highlights[4].explanation.contains("로그인 세션"))
+        XCTAssertTrue(highlights[4].nextAction.contains("Safari"))
+    }
+
     func testLivePhaseKeepsCleanupAboveFilesForLatestFileCleanupLine() {
         let log = """
         == files start 2026-05-20 22:22:22 KST ==

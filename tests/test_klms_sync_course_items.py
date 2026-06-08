@@ -353,6 +353,30 @@ class CourseItemParsingTests(unittest.TestCase):
         self.assertEqual(len(approved), 1)
         self.assertEqual(approved[0]["title"], "기말고사")
 
+    def test_duplicate_exam_items_are_deduped_by_course_title_and_time(self) -> None:
+        first = {
+            "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=100007",
+            "type": "exam",
+            "category": "exam",
+            "course": "데이타베이스 개론",
+            "title": "기말고사",
+            "due": "2026년 6월 17일 오후 1:00 - 오후 4:00",
+            "sync_due": "2026-06-17T16:00:00+09:00",
+            "sync_start": "2026-06-17T13:00:00+09:00",
+            "instructions": "시험 범위: 전체",
+        }
+        second = {
+            **first,
+            "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=100008",
+            "instructions": "시험 범위: 전체 및 SQL",
+        }
+
+        deduped = klms_sync.dedupe_sync_items([first, second])
+
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["course"], "데이타베이스 개론")
+        self.assertIn("SQL", deduped[0]["instructions"])
+
     def test_success_payload_keeps_completed_assignment_records(self) -> None:
         completed = {
             "url": "https://klms.kaist.ac.kr/mod/url/view.php?id=100004",

@@ -686,6 +686,32 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(runScreen.contains("RemoteChangeSummaryPanel"))
     }
 
+    func testIOSCompanionUsesAdaptiveIPadNavigation() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let projectRoot = packageRoot
+            .appendingPathComponent("Xcode/KLMSiOS/KLMSiOS.xcodeproj/project.pbxproj")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let project = try String(contentsOf: projectRoot, encoding: .utf8)
+
+        XCTAssertTrue(project.contains("TARGETED_DEVICE_FAMILY = \"1,2\";"))
+        XCTAssertTrue(project.contains("INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad"))
+        XCTAssertTrue(ios.contains("@Environment(\\.horizontalSizeClass)"))
+        XCTAssertTrue(ios.contains("private struct CompanionSplitRootView"))
+        XCTAssertTrue(ios.contains("NavigationSplitView"))
+        XCTAssertTrue(ios.contains("private struct CompanionTabRootView"))
+        XCTAssertTrue(ios.contains("private struct CompanionSectionContent"))
+        XCTAssertTrue(ios.contains("CompanionSplitRootView(model: model, selectedSection: $selectedSection)"))
+        XCTAssertTrue(ios.contains("CompanionTabRootView(model: model)"))
+        XCTAssertTrue(ios.contains("iPhone/iPad는 KLMS를 직접 읽지 않고"))
+        XCTAssertTrue(ios.contains("iPhone/iPad/Windows용 클라이언트 토큰"))
+        XCTAssertFalse(ios.contains("iPhone은 KLMS를 직접 읽지 않고"))
+        XCTAssertFalse(ios.contains("iPhone/Windows용 클라이언트 토큰"))
+    }
+
     func testMacAndIOSServerRelayUseWebSocketInsteadOfPeriodicPolling() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -773,6 +799,29 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("connectionMessage = \"새로 고침 완료\""))
         XCTAssertTrue(ios.contains("func resetDisplayState(showConfirmation: Bool = true)"))
         XCTAssertTrue(ios.contains("connectionMessage = \"화면 표시를 정리했습니다.\""))
+    }
+
+    func testIOSRelayRefreshFetchesRemotePanelsConcurrently() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let refreshBody = try sourceBody(
+            after: "func refreshRecent(",
+            in: ios,
+            description: "iOS relay refresh"
+        )
+
+        XCTAssertTrue(refreshBody.contains("async let responseTask = serverRelayStore.fetchStatusResponse()"))
+        XCTAssertTrue(refreshBody.contains("async let commandsTask"))
+        XCTAssertTrue(refreshBody.contains("async let syncDataTask"))
+        XCTAssertTrue(refreshBody.contains("async let fileRequestsTask"))
+        XCTAssertTrue(refreshBody.contains("async let itemActionsTask"))
+        XCTAssertTrue(refreshBody.contains("async let requestLogTask"))
+        XCTAssertTrue(refreshBody.contains("async let settingActionsTask"))
+        XCTAssertTrue(ios.contains("private static func fetchSyncDataIfNeeded"))
     }
 
     func testAcademicTermInferenceUsesExplicitCourseNameAndDates() throws {

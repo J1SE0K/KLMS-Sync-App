@@ -205,14 +205,16 @@ function run(argv) {
             addKlmsTimestampFields(result, entry);
             addLocalDownloadMetadataFields(result, localDownloadMetadata);
             results.push(result);
-            persistDownloadProgress(
+            persistDownloadProgressIfUseful(
               manifestPath,
               manifest,
               manifestStatePath,
               manifestState,
               downloadLogPath,
               outputRoot,
-              results
+              results,
+              result,
+              manifest.length
             );
             completed = true;
             break;
@@ -292,14 +294,16 @@ function run(argv) {
           addKlmsTimestampFields(result, entry);
           addLocalDownloadMetadataFields(result, localDownloadMetadata);
           results.push(result);
-          persistDownloadProgress(
+          persistDownloadProgressIfUseful(
             manifestPath,
             manifest,
             manifestStatePath,
             manifestState,
             downloadLogPath,
             outputRoot,
-            results
+            results,
+            result,
+            manifest.length
           );
           completed = true;
           break;
@@ -380,14 +384,16 @@ function run(argv) {
           addKlmsTimestampFields(result, entry);
           addLocalDownloadMetadataFields(result, localDownloadMetadata);
           results.push(result);
-          persistDownloadProgress(
+          persistDownloadProgressIfUseful(
             manifestPath,
             manifest,
             manifestStatePath,
             manifestState,
             downloadLogPath,
             outputRoot,
-            results
+            results,
+            result,
+            manifest.length
           );
           completed = true;
           break;
@@ -649,14 +655,16 @@ function run(argv) {
               quarantine_relative_path: quarantineRecord.quarantine_relative_path,
             };
             results.push(result);
-            persistDownloadProgress(
+            persistDownloadProgressIfUseful(
               manifestPath,
               manifest,
               manifestStatePath,
               manifestState,
               downloadLogPath,
               outputRoot,
-              results
+              results,
+              result,
+              manifest.length
             );
             completed = true;
             break;
@@ -732,14 +740,16 @@ function run(argv) {
         addKlmsTimestampFields(result, entry);
         addLocalDownloadMetadataFields(result, localDownloadMetadata);
         results.push(result);
-        persistDownloadProgress(
+        persistDownloadProgressIfUseful(
           manifestPath,
           manifest,
           manifestStatePath,
           manifestState,
           downloadLogPath,
           outputRoot,
-          results
+          results,
+          result,
+          manifest.length
         );
         completed = true;
       } catch (error) {
@@ -990,6 +1000,52 @@ function persistDownloadProgress(
     writeJson(manifestStatePath, manifestState);
   }
   writeJson(downloadLogPath, buildDownloadPayload(manifestPath, outputRoot, downloadLogPath, results));
+}
+
+function persistDownloadProgressIfUseful(
+  manifestPath,
+  manifest,
+  manifestStatePath,
+  manifestState,
+  downloadLogPath,
+  outputRoot,
+  results,
+  latestResult,
+  totalCount
+) {
+  if (!shouldPersistDownloadProgressNow(latestResult, results.length, totalCount)) {
+    return;
+  }
+  persistDownloadProgress(
+    manifestPath,
+    manifest,
+    manifestStatePath,
+    manifestState,
+    downloadLogPath,
+    outputRoot,
+    results
+  );
+}
+
+function shouldPersistDownloadProgressNow(result, resultCount, totalCount) {
+  if (!result || typeof result !== "object") {
+    return resultCount === totalCount || resultCount % 25 === 0;
+  }
+  if (
+    result.failed ||
+    result.quarantined ||
+    result.copied_to_new_files_inbox ||
+    result.restored_from_archive ||
+    result.reused_logged_file ||
+    result.refreshed_existing_file ||
+    result.forced_download
+  ) {
+    return true;
+  }
+  if (resultCount === totalCount) {
+    return true;
+  }
+  return resultCount % 25 === 0;
 }
 
 function normalizeBoolean(value) {

@@ -12,6 +12,8 @@ Windows companion app for the KLMS Sync server relay.
 - 과제, 시험, 공지, 파일 목록 검색/정렬
 - 숨김/무시 항목은 전체에서 제외하고 보관함에서 별도 확인
 - 파일 목록은 KLMS 등록 시각 기준 최신 순, 서버 갱신 순, 과목/제목/종류 순 정렬
+- 파일 목록 기본 정렬은 KLMS 등록 시각 기준 최신 순
+- 파일 경로는 Mac의 기본 정책과 맞춰 과목/주차/출처 폴더 구조를 전제로 표시
 - 캘린더 생성/수정/삭제 요약 확인
 - 항목 상세 확인
 - 공지 읽음/중요 ON/OFF 토글
@@ -19,6 +21,7 @@ Windows companion app for the KLMS Sync server relay.
 - 파일 열기 요청: Mac이 로컬 `course_files` 원본을 임시 업로드하고 만료 링크를 제공
 - 전체/과제/공지/파일/진단 원격 실행 요청
 - 최근 요청 상태 확인
+- 로그 요약 카드 확인: 인증, 실패, 단계 완료, 파일 변경량, 다운로드 요약
 
 ## 개발 실행
 
@@ -53,3 +56,7 @@ HTTP는 `localhost`, 사설 IP, `.local` 주소에서만 허용한다. 외부에
 - Windows에서는 Electron `safeStorage`를 통해 OS 암호화 저장소를 사용하고, 암호화 저장소가 없으면 토큰을 저장하지 않는다.
 - 서버에는 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로를 올리지 않는다.
 - 파일 원본은 사용자가 파일 열기를 요청한 경우에만 임시 업로드되며, 링크 만료 후 서버 기록과 임시 파일을 정리한다.
+
+## 구현 가이드
+
+Windows 앱을 Mac/iPhone/iPad UI와 맞춰 고도화할 때는 [docs/windows-implementation-guide.md](../../docs/windows-implementation-guide.md)를 기준으로 작업한다. 실제 서버 URL, 토큰, 개인 경로는 코드나 문서 기본값에 넣지 않는다.
