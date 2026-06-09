@@ -259,37 +259,11 @@ public struct EngineSnapshot: Sendable, Equatable {
     }
 
     private func verifyIssueTitle(for check: VerifyCheck) -> String {
-        switch check.name {
-        case "manifest_files_exist":
-            if let missing = numericValue(named: "missing", in: check.detail) {
-                return "상태 검사 실패 · 파일 \(missing)개 누락"
-            }
-            return "상태 검사 실패 · 파일 누락"
-        case "notice_render_complete":
-            if let missing = numericValue(named: "missing", in: check.detail) {
-                return "상태 검사 실패 · 공지 \(missing)개 누락"
-            }
-            return "상태 검사 실패 · 공지 메모 불일치"
-        default:
-            return "상태 검사 실패 · \(check.name)"
-        }
+        "상태 검사 실패 · \(check.diagnosticTitle)"
     }
 
     private func verifyIssueDetail(for check: VerifyCheck) -> String {
-        switch check.name {
-        case "manifest_files_exist":
-            if let missing = numericValue(named: "missing", in: check.detail) {
-                return "파일 manifest에는 있지만 로컬에 없는 파일이 \(missing)개 있습니다. 파일 동기화를 다시 실행하면 누락 파일을 다시 받거나 manifest를 최신 상태로 맞출 수 있습니다."
-            }
-            return check.detail
-        case "notice_render_complete":
-            if let missing = numericValue(named: "missing", in: check.detail) {
-                return "공지 digest에는 있지만 메모 렌더 상태에 반영되지 않은 공지가 \(missing)개 있습니다. 공지 동기화를 다시 실행해 주세요."
-            }
-            return check.detail
-        default:
-            return check.detail
-        }
+        "\(check.diagnosticExplanation) \(check.diagnosticNextAction)"
     }
 
     private func numericValue(named key: String, in detail: String) -> Int? {
@@ -1081,7 +1055,7 @@ public struct VerifyRemindersSummary: Decodable, Sendable, Equatable {
     }
 }
 
-public struct VerifyCheck: Decodable, Sendable, Equatable, Identifiable {
+public struct VerifyCheck: Codable, Sendable, Equatable, Identifiable {
     public var name: String
     public var status: String
     public var detail: String
@@ -1089,6 +1063,166 @@ public struct VerifyCheck: Decodable, Sendable, Equatable, Identifiable {
     public var message: String { detail }
 
     public var id: String { name }
+
+    public var diagnosticTitle: String {
+        switch name {
+        case "manifest_files_exist":
+            if let missing = numericValue(named: "missing") {
+                return "파일 \(missing)개 누락"
+            }
+            return "파일 목록 불일치"
+        case "notice_render_complete":
+            if let missing = numericValue(named: "missing") {
+                return "공지 메모 \(missing)개 누락"
+            }
+            return "공지 메모 반영 불일치"
+        case "notice_exam_detection_covered_by_state":
+            return "공지 속 시험 감지 상태 확인"
+        case "notice_assignment_detection_covered_by_state":
+            return "공지 속 과제 감지 상태 확인"
+        case "manifest_assignment_detection_covered_by_state":
+            return "파일 속 과제 감지 상태 확인"
+        case "manifest_exam_detection_covered_by_state":
+            return "파일 속 시험 감지 상태 확인"
+        case "calendar_exam_count_matches_state":
+            if let calendar = numericValue(named: "calendar"),
+               let state = numericValue(named: "state"),
+               state > calendar {
+                return "캘린더 시험 \(state - calendar)개 누락"
+            }
+            return "캘린더 시험 수 불일치"
+        case "calendar_helpdesk_count_matches_state":
+            if let calendar = numericValue(named: "calendar"),
+               let state = numericValue(named: "state"),
+               state > calendar {
+                return "캘린더 헬프데스크 \(state - calendar)개 누락"
+            }
+            return "캘린더 헬프데스크 수 불일치"
+        case "calendar_result_exam_matches_state":
+            if let result = numericValue(named: "result"),
+               let state = numericValue(named: "state"),
+               state > result {
+                return "마지막 캘린더 반영에서 시험 \(state - result)개 누락"
+            }
+            return "마지막 캘린더 시험 반영 불일치"
+        case "calendar_result_helpdesk_matches_state":
+            if let result = numericValue(named: "result"),
+               let state = numericValue(named: "state"),
+               state > result {
+                return "마지막 캘린더 반영에서 헬프데스크 \(state - result)개 누락"
+            }
+            return "마지막 캘린더 헬프데스크 반영 불일치"
+        case "reminders_assignment_count_matches_state":
+            return "미리 알림 과제 수 불일치"
+        case "reminders_total_count_consistent":
+            return "미리 알림 전체 수 불일치"
+        case "past_exam_items_absent":
+            return "지난 시험 정리 상태 확인"
+        case "exam_information_present":
+            return "시험 세부 정보 확인"
+        default:
+            return "상태 검사 · \(name)"
+        }
+    }
+
+    public var diagnosticExplanation: String {
+        switch name {
+        case "manifest_files_exist":
+            if let missing = numericValue(named: "missing") {
+                return "파일 목록에는 있는데 Mac 로컬 저장소에서 찾지 못한 파일이 \(missing)개 있다는 뜻입니다."
+            }
+            return "파일 목록과 실제 저장된 파일 목록이 서로 맞지 않습니다."
+        case "notice_render_complete":
+            if let missing = numericValue(named: "missing") {
+                return "KLMS에서 읽은 공지 중 Notes 메모에 반영되지 않은 공지가 \(missing)개 있다는 뜻입니다."
+            }
+            return "공지 수집 결과와 Notes 메모 렌더 결과가 서로 맞지 않습니다."
+        case "notice_exam_detection_covered_by_state":
+            return "공지 본문에서 시험처럼 보이는 항목을 찾았고, 그 항목이 앱 상태와 캘린더 후보에 반영됐는지 검사합니다."
+        case "notice_assignment_detection_covered_by_state":
+            return "공지 본문에서 과제처럼 보이는 항목을 찾았고, 그 항목이 앱 상태와 미리 알림 후보에 반영됐는지 검사합니다."
+        case "manifest_assignment_detection_covered_by_state":
+            return "파일명이나 파일 목록에서 과제처럼 보이는 항목을 찾았을 때 앱 상태에 반영됐는지 검사합니다."
+        case "manifest_exam_detection_covered_by_state":
+            return "파일명이나 파일 목록에서 시험처럼 보이는 항목을 찾았을 때 앱 상태에 반영됐는지 검사합니다."
+        case "calendar_exam_count_matches_state":
+            let calendar = numericValue(named: "calendar")
+            let state = numericValue(named: "state")
+            if let calendar, let state {
+                return "앱 상태 파일에는 시험 \(state)개가 있는데 Apple Calendar에는 시험 \(calendar)개만 있습니다. 캘린더 이벤트가 삭제됐거나 반영 단계가 일부 실패했을 수 있습니다."
+            }
+            return "앱이 알고 있는 시험 수와 Apple Calendar에 등록된 시험 수가 다릅니다."
+        case "calendar_helpdesk_count_matches_state":
+            let calendar = numericValue(named: "calendar")
+            let state = numericValue(named: "state")
+            if let calendar, let state {
+                return "앱 상태 파일에는 헬프데스크 \(state)개가 있는데 Apple Calendar에는 \(calendar)개만 있습니다."
+            }
+            return "앱이 알고 있는 헬프데스크 수와 Apple Calendar 등록 수가 다릅니다."
+        case "calendar_result_exam_matches_state":
+            let result = numericValue(named: "result")
+            let state = numericValue(named: "state")
+            if let result, let state {
+                return "마지막 캘린더 반영 결과가 시험 \(result)개로 기록됐지만, 앱 상태에는 시험 \(state)개가 있습니다. 방금 실행한 동기화가 모든 시험 일정을 Calendar에 쓰지 못했다는 신호입니다."
+            }
+            return "마지막 캘린더 반영 결과와 앱 상태의 시험 수가 다릅니다."
+        case "calendar_result_helpdesk_matches_state":
+            let result = numericValue(named: "result")
+            let state = numericValue(named: "state")
+            if let result, let state {
+                return "마지막 캘린더 반영 결과가 헬프데스크 \(result)개로 기록됐지만, 앱 상태에는 \(state)개가 있습니다."
+            }
+            return "마지막 캘린더 반영 결과와 앱 상태의 헬프데스크 수가 다릅니다."
+        case "reminders_assignment_count_matches_state":
+            return "앱 상태의 과제 수와 Apple Reminders의 과제 미리 알림 수가 다릅니다."
+        case "reminders_total_count_consistent":
+            return "과제, 이슈, 알림 목록을 합친 전체 미리 알림 수가 예상 합계와 다릅니다."
+        case "past_exam_items_absent":
+            return "지난 시험이 앱 상태나 캘린더에 남아 있는지 확인하는 검사입니다."
+        case "exam_information_present":
+            return "시험 일정에 시간, 범위, 장소 같은 세부 정보가 충분히 들어 있는지 확인하는 검사입니다."
+        default:
+            return detail.isEmpty ? "상태 검사 항목입니다." : detail
+        }
+    }
+
+    public var diagnosticNextAction: String {
+        switch name {
+        case "manifest_files_exist":
+            return "파일 동기화를 다시 실행하세요. 그래도 계속 실패하면 파일 탭에서 누락 파일을 확인하고 새 파일/수정 파일만 다시 받으면 됩니다."
+        case "notice_render_complete":
+            return "공지 동기화를 다시 실행하세요. Notes 메모가 열려 있거나 권한이 흔들렸다면 권한/환경 진단도 같이 실행하세요."
+        case "notice_exam_detection_covered_by_state",
+             "notice_assignment_detection_covered_by_state":
+            return "대시보드의 후보 항목을 확인하고, 빠진 항목이 있으면 시험/과제로 반영한 뒤 과제/시험 동기화를 다시 실행하세요."
+        case "manifest_assignment_detection_covered_by_state",
+             "manifest_exam_detection_covered_by_state":
+            return "파일 탭에서 해당 파일을 확인하고, 실제 과제/시험 자료라면 후보를 과제/시험으로 반영하세요."
+        case "calendar_exam_count_matches_state",
+             "calendar_helpdesk_count_matches_state",
+             "calendar_result_exam_matches_state",
+             "calendar_result_helpdesk_matches_state":
+            return "과제/시험 동기화를 다시 실행한 뒤 상태 검사를 한 번 더 누르세요. 계속 남으면 Calendar 앱의 KLMS 캘린더에서 누락된 일정을 확인하세요."
+        case "reminders_assignment_count_matches_state",
+             "reminders_total_count_consistent":
+            return "과제/시험 동기화를 다시 실행하세요. 직접 체크한 완료 상태는 보존되어야 하므로, 중복 항목이 보이면 미리 알림 목록에서 같은 제목을 확인하세요."
+        case "past_exam_items_absent":
+            return "지난 시험이 남아 있으면 과제/시험 동기화를 다시 실행해서 오래된 시험을 정리하세요."
+        case "exam_information_present":
+            return "시험 상세가 부족하면 해당 시험 항목을 열어 범위/장소를 직접 보강하거나 공지 후보를 다시 확인하세요."
+        default:
+            return status.isIssueStatus ? "원본 로그에서 같은 항목명을 검색하고, 관련 동기화를 다시 실행하세요." : "문제가 없으면 별도 조치가 필요 없습니다."
+        }
+    }
+
+    private func numericValue(named key: String) -> Int? {
+        for part in detail.split(whereSeparator: { $0 == " " || $0 == "," || $0 == "\t" }) {
+            let prefix = "\(key)="
+            guard part.hasPrefix(prefix) else { continue }
+            return Int(part.dropFirst(prefix.count))
+        }
+        return nil
+    }
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -1111,6 +1245,13 @@ public struct VerifyCheck: Decodable, Sendable, Equatable, Identifiable {
         if detail.isEmpty {
             detail = container.decodeIfPresentDefault(String.self, forKey: .message, default: "")
         }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(status, forKey: .status)
+        try container.encode(detail, forKey: .detail)
     }
 }
 

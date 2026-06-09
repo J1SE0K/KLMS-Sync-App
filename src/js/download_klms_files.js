@@ -7,7 +7,7 @@ function run(argv) {
   const options = parseArgs(argv);
   if (!options.manifestPath || !options.outputRoot) {
     throw new Error(
-      "Usage: download_klms_files.js --manifest=/path/to/manifest.json --output-root=/path [--base-url=https://klms.kaist.ac.kr/my/] [--downloads-dir=/path] [--timeout=0] [--download-start-timeout=180] [--download-stall-timeout=900] [--max-file-attempts=3] [--retry-delay-seconds=2] [--download-log=/path/to/log.json] [--download-archive-root=/path] [--new-files-root=/path] [--quarantine-root=/path] [--force-download]"
+      "Usage: download_klms_files.js --manifest=/path/to/manifest.json --output-root=/path [--base-url=https://klms.kaist.ac.kr/my/] [--downloads-dir=/path] [--timeout=0] [--download-start-timeout=180] [--download-stall-timeout=900] [--download-parallelism=1] [--direct-fetch-max-bytes=26214400] [--max-file-attempts=3] [--retry-delay-seconds=2] [--download-log=/path/to/log.json] [--download-archive-root=/path] [--new-files-root=/path] [--quarantine-root=/path] [--force-download]"
     );
   }
 
@@ -23,6 +23,18 @@ function run(argv) {
   const downloadStallTimeoutSeconds = nonnegativeNumberOrDefault(
     options.downloadStallTimeoutSeconds,
     900
+  );
+  const directFetchParallelism = Math.max(
+    1,
+    Math.min(4, Math.floor(Number(options.downloadParallelism || "1")))
+  );
+  const directFetchMaxBytes = nonnegativeNumberOrDefault(
+    options.directFetchMaxBytes,
+    25 * 1024 * 1024
+  );
+  const directFetchBatchTimeoutSeconds = nonnegativeNumberOrDefault(
+    options.directFetchBatchTimeoutSeconds,
+    Math.max(30, downloadStartTimeoutSeconds)
   );
   const maxFileAttempts = Math.max(1, Number(options.maxFileAttempts || "3"));
   const retryDelaySeconds = Math.max(0, Number(options.retryDelaySeconds || "2"));
@@ -69,6 +81,7 @@ function run(argv) {
   const quarantineRecords = [];
   const claimedAuxiliaryPaths = new Set();
   const claimedRelativePaths = new Set();
+  const prefetchedDirectDownloads = {};
 
   try {
     ensureDir(outputRoot);
@@ -451,7 +464,43 @@ function run(argv) {
         );
         fileWindowRef = downloadWindowRef;
 
-        if (canDirectFetchKlmsFile(targetUrl)) {
+        if (
+          directFetchParallelism > 1 &&
+          canDirectFetchKlmsFile(targetUrl) &&
+          !prefetchedDirectDownloads[index]
+        ) {
+          step = "direct-fetch-batch";
+          const batchDownloads = prefetchDirectDownloadBatch(
+            fileWindowRef,
+            manifest,
+            index,
+            {
+              manifestPath,
+              outputRoot,
+              downloadArchiveRoot,
+              forceDownload,
+              previousDownloadStateIndex,
+              reusableFileIndex,
+              recordedFilenameIndex,
+              backupRoot,
+              directFetchParallelism,
+              directFetchMaxBytes,
+              directFetchBatchTimeoutSeconds,
+              prefetchedDirectDownloads,
+            }
+          );
+          Object.keys(batchDownloads).forEach((key) => {
+            prefetchedDirectDownloads[Number(key)] = batchDownloads[key];
+          });
+        }
+
+        if (prefetchedDirectDownloads[index]) {
+          step = "use-prefetched-direct-fetch";
+          downloadedPath = prefetchedDirectDownloads[index];
+          delete prefetchedDirectDownloads[index];
+        }
+
+        if (!downloadedPath && canDirectFetchKlmsFile(targetUrl)) {
           step = "direct-fetch";
           downloadedPath = fetchKlmsFileViaSafari(
             fileWindowRef,
@@ -861,6 +910,18 @@ function parseArgs(argv) {
     }
     if (arg.startsWith("--download-stall-timeout=")) {
       options.downloadStallTimeoutSeconds = arg.slice("--download-stall-timeout=".length);
+      return;
+    }
+    if (arg.startsWith("--download-parallelism=")) {
+      options.downloadParallelism = arg.slice("--download-parallelism=".length);
+      return;
+    }
+    if (arg.startsWith("--direct-fetch-max-bytes=")) {
+      options.directFetchMaxBytes = arg.slice("--direct-fetch-max-bytes=".length);
+      return;
+    }
+    if (arg.startsWith("--direct-fetch-batch-timeout=")) {
+      options.directFetchBatchTimeoutSeconds = arg.slice("--direct-fetch-batch-timeout=".length);
       return;
     }
     if (arg.startsWith("--max-file-attempts=")) {
@@ -1761,6 +1822,266 @@ function fetchKlmsFileViaSafari(windowRef, targetUrl, backupRoot, fileIndex, exp
   const outputPath = joinPath(tempRoot, baseName(resolvedFilename));
   writeBase64File(payload.base64, outputPath);
   return isRegularFile(outputPath) && fileSize(outputPath) > 0 ? outputPath : "";
+}
+
+function prefetchDirectDownloadBatch(windowRef, manifest, startIndex, context) {
+  if (!windowRef || !Array.isArray(manifest) || !context) {
+    return {};
+  }
+
+  const items = collectDirectFetchBatchItems(manifest, startIndex, context);
+  if (items.length === 0) {
+    return {};
+  }
+
+  const batchId = `klms-direct-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const startResult = startSafariDirectFetchBatch(
+    windowRef,
+    batchId,
+    items,
+    context.directFetchMaxBytes
+  );
+  if (!startResult.ok) {
+    return {};
+  }
+
+  const state = waitForSafariDirectFetchBatch(
+    windowRef,
+    batchId,
+    context.directFetchBatchTimeoutSeconds
+  );
+  clearSafariDirectFetchBatch(windowRef, batchId);
+  if (!state || state.status !== "done" || !Array.isArray(state.results)) {
+    return {};
+  }
+
+  const itemByIndex = {};
+  items.forEach((item) => {
+    itemByIndex[String(item.index)] = item;
+  });
+
+  const downloads = {};
+  state.results.forEach((result) => {
+    const item = itemByIndex[String(result && result.index)];
+    if (!item || !result || !result.ok || !result.base64 || !fetchedPayloadCompatibleWithExpected(result)) {
+      return;
+    }
+    const resolvedFilename = resolveFetchedFilename(result, item.url, item.expectedFilename);
+    const tempRoot = joinPath(
+      context.backupRoot,
+      `direct-batch-${String(item.index + 1).padStart(3, "0")}-${sanitizeFileComponent(baseName(resolvedFilename))}-${Date.now()}`
+    );
+    ensureDir(tempRoot);
+    const outputPath = joinPath(tempRoot, baseName(resolvedFilename));
+    writeBase64File(result.base64, outputPath);
+    if (isRegularFile(outputPath) && fileSize(outputPath) > 0) {
+      downloads[item.index] = outputPath;
+    }
+  });
+
+  return downloads;
+}
+
+function collectDirectFetchBatchItems(manifest, startIndex, context) {
+  const items = [];
+  const maxCount = Math.max(1, Number(context.directFetchParallelism || 1));
+  const prefetchedDirectDownloads = context.prefetchedDirectDownloads || {};
+
+  for (let index = startIndex; index < manifest.length && items.length < maxCount; index += 1) {
+    if (prefetchedDirectDownloads[index]) {
+      continue;
+    }
+    const entry = manifest[index];
+    if (!entry) {
+      continue;
+    }
+
+    const manifestRelativePath = String(entry.relative_path || entry.filename || "").trim();
+    const relativeDir = directoryName(manifestRelativePath);
+    const manifestFilename = String(entry.filename || baseName(manifestRelativePath) || "").trim();
+    const cachedDirectResource = resolveCachedDirectResource(entry, context.manifestPath);
+    const originalUrl = String(entry.url || "");
+    const downloadUrl = cachedDirectResource.url || originalUrl;
+    const targetUrl = withForcedDownload(downloadUrl);
+    if (!canDirectFetchKlmsFile(targetUrl) || isLargeDirectFetchBatchCandidate(targetUrl, manifestFilename)) {
+      continue;
+    }
+
+    let activeFilename =
+      recordedFilenameForEntry(entry, context.recordedFilenameIndex) ||
+      cachedDirectResource.filename ||
+      manifestFilename;
+    activeFilename = canonicalFilenameForDownloadedName(activeFilename, manifestFilename, entry);
+    const relativePath = activeFilename
+      ? (relativeDir ? joinPath(relativeDir, activeFilename) : activeFilename)
+      : manifestRelativePath;
+    const destinationPath = activeFilename ? joinPath(context.outputRoot, relativePath) : "";
+    const trackedArchivePath = activeFilename
+      ? joinPath(context.downloadArchiveRoot, relativePath)
+      : "";
+
+    if (!context.forceDownload) {
+      if (destinationPath && isRegularFile(destinationPath)) {
+        const decision = existingFileRefreshDecision(
+          entry,
+          destinationPath,
+          context.previousDownloadStateIndex
+        );
+        if (!decision.refresh) {
+          continue;
+        }
+      } else if (trackedArchivePath && isRegularFile(trackedArchivePath)) {
+        continue;
+      } else if (
+        findReusableSourcePath(context.reusableFileIndex, entry, destinationPath, trackedArchivePath)
+      ) {
+        continue;
+      }
+    }
+
+    items.push({
+      index,
+      url: targetUrl,
+      expectedFilename: manifestFilename || activeFilename || `attachment-${index + 1}`,
+    });
+  }
+
+  return items;
+}
+
+function isLargeDirectFetchBatchCandidate(url, filename) {
+  const text = `${String(url || "")} ${String(filename || "")}`.toLowerCase();
+  return /\.(mp4|m4v|mov|mp3|m4a|wav|zip)(?:[?#\s]|$)/i.test(text);
+}
+
+function startSafariDirectFetchBatch(windowRef, batchId, items, maxBytes) {
+  const script = [
+    "(function(){",
+    `  var batchId = ${JSON.stringify(batchId)};`,
+    `  var items = ${JSON.stringify(items)};`,
+    `  var maxBytes = ${Math.max(0, Number(maxBytes || 0))};`,
+    "  window.__klmsDirectFetchBatches = window.__klmsDirectFetchBatches || {};",
+    "  var state = {status:'running', startedAt:Date.now(), results:[], error:''};",
+    "  window.__klmsDirectFetchBatches[batchId] = state;",
+    "  function bytesToBase64(bytes) {",
+    "    var chunkSize = 0x8000;",
+    "    var parts = [];",
+    "    for (var offset = 0; offset < bytes.length; offset += chunkSize) {",
+    "      parts.push(String.fromCharCode.apply(null, bytes.subarray(offset, offset + chunkSize)));",
+    "    }",
+    "    return btoa(parts.join(''));",
+    "  }",
+    "  function bytesToAsciiPreview(bytes) {",
+    "    var length = Math.min(bytes.length, 128);",
+    "    var parts = [];",
+    "    for (var index = 0; index < length; index += 1) {",
+    "      var value = bytes[index];",
+    "      if ((value >= 32 && value <= 126) || value === 9 || value === 10 || value === 13) {",
+    "        parts.push(String.fromCharCode(value));",
+    "      } else {",
+    "        parts.push('.');",
+    "      }",
+    "    }",
+    "    return parts.join('');",
+    "  }",
+    "  function fetchOne(item) {",
+    "    return fetch(item.url, {credentials:'include'}).then(function(response) {",
+    "      var status = response.status || 0;",
+    "      var contentLength = Number(response.headers.get('Content-Length') || '0');",
+    "      if (status >= 400) {",
+    "        return {index:item.index, ok:false, status:status, error:'http-' + status};",
+    "      }",
+    "      if (maxBytes > 0 && contentLength > maxBytes) {",
+    "        return {index:item.index, ok:false, status:status, error:'too-large', contentLength:contentLength};",
+    "      }",
+    "      return response.arrayBuffer().then(function(buffer) {",
+    "        if (maxBytes > 0 && buffer.byteLength > maxBytes) {",
+    "          return {index:item.index, ok:false, status:status, error:'too-large', contentLength:buffer.byteLength};",
+    "        }",
+    "        var bytes = new Uint8Array(buffer);",
+    "        if (!bytes.length) {",
+    "          return {index:item.index, ok:false, status:status, error:'empty-body'};",
+    "        }",
+    "        return {",
+    "          index: item.index,",
+    "          ok: true,",
+    "          status: status,",
+    "          responseUrl: response.url || item.url || '',",
+    "          contentDisposition: response.headers.get('Content-Disposition') || '',",
+    "          contentType: response.headers.get('Content-Type') || '',",
+    "          headText: bytesToAsciiPreview(bytes),",
+    "          base64: bytesToBase64(bytes)",
+    "        };",
+    "      });",
+    "    }).catch(function(error) {",
+    "      return {index:item.index, ok:false, error:String(error)};",
+    "    });",
+    "  }",
+    "  Promise.all(items.map(fetchOne)).then(function(results) {",
+    "    state.status = 'done';",
+    "    state.finishedAt = Date.now();",
+    "    state.results = results;",
+    "  }).catch(function(error) {",
+    "    state.status = 'error';",
+    "    state.finishedAt = Date.now();",
+    "    state.error = String(error);",
+    "  });",
+    "  return JSON.stringify({ok:true,batchId:batchId,count:items.length});",
+    "})()",
+  ].join("\n");
+  const result = runSafariJavaScript(windowRef, script);
+  try {
+    return JSON.parse(String(result || "{}"));
+  } catch (_error) {
+    return { ok: false, error: "invalid-start-result" };
+  }
+}
+
+function waitForSafariDirectFetchBatch(windowRef, batchId, timeoutSeconds) {
+  const deadline = Date.now() + Math.max(5, Number(timeoutSeconds || 30)) * 1000;
+  while (Date.now() < deadline) {
+    delay(0.25);
+    const state = readSafariDirectFetchBatch(windowRef, batchId);
+    if (state.status === "done" || state.status === "error") {
+      return state;
+    }
+  }
+  return { status: "timeout", results: [] };
+}
+
+function readSafariDirectFetchBatch(windowRef, batchId) {
+  const script = [
+    "(function(){",
+    `  var batchId = ${JSON.stringify(batchId)};`,
+    "  var batches = window.__klmsDirectFetchBatches || {};",
+    "  var state = batches[batchId] || null;",
+    "  if (!state) { return JSON.stringify({status:'missing', results:[]}); }",
+    "  return JSON.stringify(state);",
+    "})()",
+  ].join("\n");
+  const result = runSafariJavaScript(windowRef, script);
+  try {
+    return JSON.parse(String(result || "{}"));
+  } catch (_error) {
+    return { status: "invalid", results: [] };
+  }
+}
+
+function clearSafariDirectFetchBatch(windowRef, batchId) {
+  const script = [
+    "(function(){",
+    `  var batchId = ${JSON.stringify(batchId)};`,
+    "  if (window.__klmsDirectFetchBatches) {",
+    "    delete window.__klmsDirectFetchBatches[batchId];",
+    "  }",
+    "  return 'ok';",
+    "})()",
+  ].join("\n");
+  try {
+    runSafariJavaScript(windowRef, script);
+  } catch (_error) {
+    // Ignore cleanup failures.
+  }
 }
 
 function resolveFetchedFilename(payload, targetUrl, expectedFilename) {

@@ -222,6 +222,9 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('KAIKEY_AUTHENTICATED_RECHECK_SECONDS": "1"', app_model)
         self.assertIn('KAIKEY_AUTH_CHECK_SECONDS": "1.2"', app_model)
         self.assertIn('KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS": "60"', app_model)
+        self.assertIn('FILE_DOWNLOAD_PARALLELISM": "3"', app_model)
+        self.assertIn('FILE_DIRECT_FETCH_MAX_BYTES": "26214400"', app_model)
+        self.assertIn('REMINDER_RECREATE_STAGE_ALERT_LIST": "0"', app_model)
         self.assertNotIn("KLMS_LOGIN_ALWAYS_ASSIST_ENABLED", app_model)
         self.assertIn('"${KLMS_APP_RUN:-0}" == "1"', common)
         self.assertIn('"$force_login_preflight" != "1"', common)
@@ -834,6 +837,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn('QUARANTINE_ROOT="${13:-}"', text)
         self.assertIn("--new-files-root=$NEW_FILES_ROOT", text)
         self.assertIn("--quarantine-root=$QUARANTINE_ROOT", text)
+        self.assertIn('DOWNLOAD_PARALLELISM="${16:-1}"', text)
+        self.assertIn('DIRECT_FETCH_MAX_BYTES="${17:-26214400}"', text)
 
     def test_launch_agent_install_copies_bin_implementations(self) -> None:
         text = (PROJECT_DIR / "install_launch_agent.sh").read_text(encoding="utf-8")
@@ -923,12 +928,20 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
 
     def test_reminders_hash_uses_desired_payload_not_generated_state_text(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "sync_reminders_bridge.js").read_text(encoding="utf-8")
+        sync_text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8")
+        config = (PROJECT_DIR / "examples" / "config.env.example").read_text(encoding="utf-8")
 
         self.assertIn("function buildRemindersDesiredHash", text)
         self.assertIn("REMINDERS_DESIRED_HASH_VERSION", text)
         self.assertIn("buildDesiredReminders(normalizeSyncEntries(state.content), options)", text)
         self.assertIn("completedReminderRetentionDays", text)
         self.assertIn("deviceAlertMode", text)
+        self.assertIn("recreateStageAlertList: Boolean(options.recreateStageAlertList)", text)
+        self.assertIn("{ recreateList: reminderOptions.recreateStageAlertList === true }", text)
+        self.assertIn("new Set(knownIdentifiers)", text)
+        self.assertIn("knownIdentifierLimit", text)
+        self.assertIn('"REMINDER_RECREATE_STAGE_ALERT_LIST",\n      false', sync_text)
+        self.assertIn('REMINDER_RECREATE_STAGE_ALERT_LIST="0"', config)
         self.assertNotIn("readText(outputState) +", text)
 
     def test_server_relay_does_not_publish_location_or_submission_detail(self) -> None:

@@ -336,6 +336,72 @@ label {
   font-size: 12px;
 }
 
+.verify-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px;
+}
+
+.verify-check-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.verify-check {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.verify-check.fail {
+  border-color: rgba(198, 64, 64, 0.25);
+  background: #fff5f5;
+}
+
+.verify-check.warn {
+  border-color: rgba(201, 106, 20, 0.26);
+  background: #fff8ed;
+}
+
+.verify-check.ok {
+  border-color: rgba(22, 132, 95, 0.20);
+  background: #f2fbf7;
+}
+
+.verify-check.compact {
+  padding: 8px;
+}
+
+.verify-check-title {
+  display: grid;
+  gap: 4px;
+}
+
+.verify-check p {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.verify-check code {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.verify-details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(340px, 42%) minmax(380px, 1fr);

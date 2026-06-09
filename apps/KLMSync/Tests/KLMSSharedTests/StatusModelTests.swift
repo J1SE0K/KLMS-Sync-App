@@ -77,6 +77,22 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(decoded, edit)
     }
 
+    func testCalendarChangeEditDefaultsPreserveVisibleCalendarContent() throws {
+        let change = CalendarChange(
+            title: "영미 단편소설 기말고사",
+            startAt: "2026-06-04T05:30:00.000Z",
+            dueAt: "2026-06-04T06:30:00.000Z",
+            location: "N4 1432호"
+        )
+
+        let defaults = change.editDefaults
+
+        XCTAssertEqual(defaults.title, "영미 단편소설 기말고사")
+        XCTAssertEqual(defaults.startAt, "2026-06-04 14:30")
+        XCTAssertEqual(defaults.dueAt, "2026-06-04 15:30")
+        XCTAssertEqual(defaults.location, "N4 1432호")
+    }
+
     func testParsesNoticeStageTimingRenderMode() throws {
         let json = """
         {
@@ -98,6 +114,39 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(timing.elapsedSecondsText, "4.90s")
         XCTAssertEqual(timing.noticeRenderResults.first?.target, "capture")
         XCTAssertEqual(timing.slowestEvents.first?.durationSecondsText, "3s")
+    }
+
+    func testNoticeRenderResultsDisplayPrimaryBeforeArchiveAndCapture() throws {
+        let timing = StageTimingReport(
+            noticeRenderResults: [
+                NoticeRenderResult(target: "capture", status: "ok", output: ""),
+                NoticeRenderResult(target: "archive", status: "ok", output: ""),
+                NoticeRenderResult(target: "primary", status: "ok", output: ""),
+            ]
+        )
+
+        XCTAssertEqual(
+            timing.noticeRenderResultsForDisplay.map(\.target),
+            ["primary", "archive", "capture"]
+        )
+    }
+
+    func testNoticeRenderResultsDisplayPrimaryStableNoopBeforeArchive() throws {
+        let timing = StageTimingReport(
+            noticeRenderResults: [
+                NoticeRenderResult(target: "archive", status: "ok", output: ""),
+                NoticeRenderResult(target: "primary-stable-noop", status: "skipped", output: ""),
+                NoticeRenderResult(target: "capture-state-preserved", status: "ok", output: ""),
+            ]
+        )
+
+        XCTAssertEqual(
+            timing.noticeRenderResultsForDisplay.map(\.target),
+            ["primary-stable-noop", "archive", "capture-state-preserved"]
+        )
+        XCTAssertEqual(timing.noticeRenderResultsForDisplay[0].displayTargetTitle, "KLMS 공지")
+        XCTAssertEqual(timing.noticeRenderResultsForDisplay[1].displayTargetTitle, "확인한 공지")
+        XCTAssertEqual(timing.noticeRenderResultsForDisplay[2].displayTargetTitle, "체크 표시 보존")
     }
 
     func testStaleRunningNoticeStageTimingIsMarkedInterrupted() throws {
@@ -482,6 +531,33 @@ final class StatusModelTests: XCTestCase {
         let snapshot = EngineSnapshot(verifyResult: verify)
 
         XCTAssertEqual(snapshot.attentionSummary, "상태 검사 실패 · 파일 18개 누락")
-        XCTAssertEqual(snapshot.issues.first?.detail, "파일 manifest에는 있지만 로컬에 없는 파일이 18개 있습니다. 파일 동기화를 다시 실행하면 누락 파일을 다시 받거나 manifest를 최신 상태로 맞출 수 있습니다.")
+        XCTAssertEqual(
+            snapshot.issues.first?.detail,
+            "파일 목록에는 있는데 Mac 로컬 저장소에서 찾지 못한 파일이 18개 있다는 뜻입니다. 파일 동기화를 다시 실행하세요. 그래도 계속 실패하면 파일 탭에서 누락 파일을 확인하고 새 파일/수정 파일만 다시 받으면 됩니다."
+        )
+    }
+
+    func testVerifyCalendarMismatchExplainsMissingCalendarExam() throws {
+        let json = """
+        {
+          "status": "fail",
+          "checks": [
+            {"name": "calendar_exam_count_matches_state", "status": "fail", "detail": "calendar=1 state=2"},
+            {"name": "calendar_result_exam_matches_state", "status": "fail", "detail": "result=1 state=2"}
+          ]
+        }
+        """
+
+        let verify = try JSONDecoder().decode(VerifyResult.self, from: Data(json.utf8))
+        let snapshot = EngineSnapshot(verifyResult: verify)
+
+        XCTAssertEqual(verify.checks[0].diagnosticTitle, "캘린더 시험 1개 누락")
+        XCTAssertEqual(
+            verify.checks[0].diagnosticExplanation,
+            "앱 상태 파일에는 시험 2개가 있는데 Apple Calendar에는 시험 1개만 있습니다. 캘린더 이벤트가 삭제됐거나 반영 단계가 일부 실패했을 수 있습니다."
+        )
+        XCTAssertEqual(verify.checks[1].diagnosticTitle, "마지막 캘린더 반영에서 시험 1개 누락")
+        XCTAssertEqual(snapshot.attentionSummary, "상태 검사 실패 · 캘린더 시험 1개 누락")
+        XCTAssertTrue(snapshot.issues[0].detail.contains("과제/시험 동기화를 다시 실행"))
     }
 }

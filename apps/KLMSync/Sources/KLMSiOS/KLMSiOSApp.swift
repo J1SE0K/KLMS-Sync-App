@@ -49,6 +49,7 @@ final class CompanionModel: ObservableObject {
     @Published var calendarChanges: [CalendarChange] = []
     @Published var remoteSettings: [ServerRelaySetting] = []
     @Published var sharedRunLogs: [ServerRelayRunLog] = []
+    @Published var verifySummary: ServerRelayVerifySummary?
     @Published var status = SanitizedRemoteStatus()
     @Published var errorMessage = ""
     @Published var connectionMessage = ""
@@ -64,6 +65,7 @@ final class CompanionModel: ObservableObject {
     private var locallyHiddenFileAccessRequestIDs = Set<UUID>()
     private var locallyHiddenItemActionIDs = Set<UUID>()
     private var locallyHiddenSettingActionIDs = Set<UUID>()
+    private var resolvedCalendarChangeIDs = Set<String>()
     @Published var shouldUpdateNoticeNotes: Bool {
         didSet { UserDefaults.standard.set(shouldUpdateNoticeNotes, forKey: Self.shouldUpdateNoticeNotesKey) }
     }
@@ -91,6 +93,7 @@ final class CompanionModel: ObservableObject {
     private var calendarChangesSignature: Int?
     private var remoteSettingsSignature: Int?
     private var sharedRunLogsSignature: Int?
+    private var verifySummarySignature: Int?
     private var lastTerminalCommandID: UUID?
     private let syncDataStaleInterval: TimeInterval = 45
 
@@ -212,6 +215,14 @@ final class CompanionModel: ObservableObject {
         status.authStatusMessage != nil
             && status.authDigits == nil
             && !status.loginRequired
+    }
+
+    var authStatusDisplayTitle: String {
+        guard let message = status.authStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !message.isEmpty else {
+            return "인증 완료"
+        }
+        return Self.isAlreadyLoggedInMessage(message) ? "이미 로그인됨" : "인증 완료"
     }
 
     var statusLine: String {
@@ -478,8 +489,44 @@ final class CompanionModel: ObservableObject {
         }
     }
 
+    func createManualCalendarAction(title: String, edit: CalendarEventEdit) async {
+        guard let serverRelayStore else {
+            errorMessage = "캘린더 등록 요청은 서버 릴레이 연결에서만 사용할 수 있습니다."
+            userAlert = UserAlert(title: "요청 실패", message: errorMessage)
+            return
+        }
+        isSubmitting = true
+        defer {
+            isSubmitting = false
+        }
+        do {
+            let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let action = ServerRelayItemAction(
+                action: .calendarCreate,
+                itemID: "mail-calendar-\(UUID().uuidString)",
+                itemKind: "calendar",
+                itemTitle: title.isEmpty ? "메일 일정" : title,
+                message: try edit.encodedMessage()
+            )
+            recentItemActions.insert(action, at: 0)
+            try await serverRelayStore.createItemAction(action)
+            connectionMessage = "\(ServerRelayItemActionKind.calendarCreate.displayName) 요청을 보냈습니다."
+            connectionSucceeded = true
+            errorMessage = ""
+            userAlert = UserAlert(title: "요청 완료", message: "Mac 앱이 Apple Calendar에 새 일정을 등록합니다.")
+            await refreshRecent(includeSyncData: false, showsActivity: false)
+        } catch {
+            guard !isCancellationError(error) else { return }
+            let message = userFacingMessage(for: error)
+            errorMessage = message
+            userAlert = UserAlert(title: "요청 실패", message: message)
+        }
+    }
+
     private func calendarActionRequestMessage(for actionKind: ServerRelayItemActionKind) -> String {
         switch actionKind {
+        case .calendarCreate:
+            return "Mac 앱이 Apple Calendar에 새 일정을 등록합니다."
         case .calendarEdit:
             return "Mac 앱이 Apple Calendar 일정을 직접 수정합니다."
         case .calendarApply, .calendarDelete:
@@ -562,6 +609,49 @@ final class CompanionModel: ObservableObject {
             .first
     }
 
+    func activeCalendarAction(for change: CalendarChange) -> ServerRelayItemAction? {
+        recentItemActions
+            .filter { action in
+                action.itemID == change.id
+                    && action.itemKind == "calendar"
+                    && action.status.isInFlight
+            }
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .first
+    }
+
+    func visibleCalendarChanges() -> [CalendarChange] {
+        calendarChanges
+            .filter { change in
+                return !isCalendarChangeResolved(change)
+            }
+    }
+
+    private func isCalendarChangeResolved(_ change: CalendarChange) -> Bool {
+        if resolvedCalendarChangeIDs.contains(change.id) {
+            return true
+        }
+        return recentItemActions.contains { action in
+            action.itemKind == "calendar"
+                && action.itemID == change.id
+                && action.status == .completed
+                && action.action.resolvesCalendarChange
+        }
+    }
+
+    private func recordResolvedCalendarChanges(_ actions: [ServerRelayItemAction]) {
+        let resolvedIDs = actions.compactMap { action -> String? in
+            guard action.itemKind == "calendar",
+                  action.status == .completed,
+                  action.action.resolvesCalendarChange else {
+                return nil
+            }
+            return action.itemID.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        }
+        guard !resolvedIDs.isEmpty else { return }
+        resolvedCalendarChangeIDs.formUnion(resolvedIDs)
+    }
+
     func refreshRecent(
         silentErrors: Bool = false,
         includeSyncData: Bool? = nil,
@@ -619,6 +709,7 @@ final class CompanionModel: ObservableObject {
                     }
                 }
                 if let itemActions = await itemActionsTask {
+                    recordResolvedCalendarChanges(itemActions)
                     let visibleItemActions = visibleItemActions(itemActions)
                     if recentItemActions != visibleItemActions {
                         recentItemActions = visibleItemActions
@@ -1038,8 +1129,8 @@ final class CompanionModel: ObservableObject {
             status = response.status
             didChange = true
         }
-        if shouldNotifyAuthSuccess(for: response.status) {
-            let authStatusMessage = response.status.authStatusMessage ?? "인증 완료됨"
+        if shouldNotifyAuthSuccess(for: response.status),
+           let authStatusMessage = response.status.authStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines) {
             if shouldPresentAuthSuccessAlert(message: authStatusMessage) {
                 userAlert = UserAlert(title: "인증 완료", message: authStatusMessage)
                 didChange = true
@@ -1076,7 +1167,12 @@ final class CompanionModel: ObservableObject {
               status.phase == "running" else {
             return false
         }
-        return true
+        return !Self.isAlreadyLoggedInMessage(message)
+    }
+
+    private static func isAlreadyLoggedInMessage(_ message: String) -> Bool {
+        let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.contains("이미 로그인") || normalized.contains("already")
     }
 
     private func shouldPresentAuthSuccessAlert(message: String, now: Date = Date()) -> Bool {
@@ -1141,6 +1237,12 @@ final class CompanionModel: ObservableObject {
             sharedRunLogsSignature = nextSharedRunLogsSignature
             didChange = true
         }
+        let nextVerifySummarySignature = Self.signature(for: syncData.verifySummary)
+        if verifySummarySignature != nextVerifySummarySignature {
+            verifySummary = syncData.verifySummary
+            verifySummarySignature = nextVerifySummarySignature
+            didChange = true
+        }
         lastSyncDataRefreshAt = Date()
         syncDataNeedsRefresh = false
         return didChange
@@ -1192,6 +1294,19 @@ final class CompanionModel: ObservableObject {
             hasher.combine(log.status)
             hasher.combine(log.updatedAt)
             hasher.combine(log.outputTail)
+        }
+        return hasher.finalize()
+    }
+
+    private static func signature(for summary: ServerRelayVerifySummary?) -> Int {
+        var hasher = Hasher()
+        hasher.combine(summary?.status ?? "")
+        hasher.combine(summary?.updatedAt ?? "")
+        hasher.combine(summary?.checks.count ?? 0)
+        for check in summary?.checks ?? [] {
+            hasher.combine(check.name)
+            hasher.combine(check.status)
+            hasher.combine(check.detail)
         }
         return hasher.finalize()
     }
@@ -1296,9 +1411,9 @@ final class CompanionModel: ObservableObject {
         case .failed:
             title = "요약 갱신 실패"
             if let lastExitCode = command.lastExitCode {
-                body = "Mac 앱에서 요약 갱신이 실패했습니다. 종료 코드 \(lastExitCode). 기록 탭에서 오류를 확인해 주세요."
+                body = "Mac 앱에서 요약 갱신이 실패했습니다. 종료 코드 \(lastExitCode). 로그 탭에서 오류를 확인해 주세요."
             } else {
-                body = "Mac 앱에서 요약 갱신이 실패했습니다. 기록 탭에서 오류를 확인해 주세요."
+                body = "Mac 앱에서 요약 갱신이 실패했습니다. 로그 탭에서 오류를 확인해 주세요."
             }
         case .cancelled:
             title = "요약 갱신 취소됨"
@@ -1416,7 +1531,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
         case .connection:
             return "연결"
         case .history:
-            return "기록"
+            return "로그"
         }
     }
 
@@ -1494,19 +1609,68 @@ private struct CompanionSplitRootView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedSection) {
+            List {
                 Section("KLMS Sync") {
                     ForEach(CompanionAppSection.allCases) { section in
-                        Label(section.title, systemImage: section.systemImage)
-                            .tag(Optional(section))
+                        CompanionSidebarButton(
+                            section: section,
+                            isSelected: selectedSection == section
+                        ) {
+                            selectedSection = section
+                        }
+                        .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(Color.klmsScreenBackground)
+            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
             .navigationTitle("KLMS Sync")
             .klmsNavigationChrome()
         } detail: {
             CompanionSectionContent(section: selectedSection ?? .status, model: model)
         }
+        .navigationSplitViewStyle(.balanced)
+    }
+}
+
+private struct CompanionSidebarButton: View {
+    var section: CompanionAppSection
+    var isSelected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: section.systemImage)
+                    .font(.body.weight(.semibold))
+                    .frame(width: 22)
+                    .foregroundStyle(isSelected ? Color.klmsCommandAccent : .secondary)
+                Text(section.title)
+                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(
+                isSelected
+                    ? Color.klmsCommandBackground
+                    : Color.clear,
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.klmsCommandBorder : Color.clear, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(section.title)
+        .accessibilityValue(isSelected ? "선택됨" : "")
     }
 }
 
@@ -1531,19 +1695,31 @@ private struct CompanionSectionContent: View {
 private struct CompanionStatusScreen: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
+    @State private var selectedChangeSummary: RemoteChangeSummaryKind?
 
     var body: some View {
         CompanionScreenContainer(title: "상태", model: model) {
             Group {
                 RemoteAttentionStack(model: model)
-                RemoteLogSummaryPanel(model: model, compact: true)
                 RemoteStatusHeader(
                     model: model,
                     selectedCategory: $selectedDashboardPreview,
                     onCategoryTap: { category in
+                        selectedChangeSummary = nil
                         selectedDashboardPreview = category
+                    },
+                    selectedChangeSummary: selectedChangeSummary,
+                    onChangeSummaryTap: { kind in
+                        selectedDashboardPreview = nil
+                        selectedChangeSummary = kind
                     }
                 )
+                MailPasteAnalyzerPanel(model: model)
+                if let kind = selectedChangeSummary {
+                    RemoteChangeSummaryDetailPanel(kind: kind, model: model)
+                        .id(kind)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
                 if let category = selectedDashboardPreview {
                     DashboardCategoryInlineDetailPanel(
                         category: category,
@@ -1565,8 +1741,6 @@ private struct CompanionRunScreen: View {
             RemoteAttentionStack(model: model)
             RemoteCommandPanel(model: model, compact: false)
             RemoteCancelControl(model: model, compact: false)
-            RemoteLogSummaryPanel(model: model, compact: true)
-            RemoteRunRequestHistoryPanel(model: model)
             RemoteSettingsPanel(model: model)
             RemoteDiagnosticPanel(model: model)
             InfoBanner(message: "iPhone/iPad는 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Cloudflare 서버 릴레이를 사용하면 같은 Wi‑Fi에 있지 않아도 요청할 수 있지만, 실제 동기화는 Mac 앱이 켜져 있을 때만 실행됩니다.")
@@ -1592,7 +1766,7 @@ private struct CompanionHistoryScreen: View {
     @ObservedObject var model: CompanionModel
 
     var body: some View {
-        CompanionScreenContainer(title: "요청 기록", model: model) {
+        CompanionScreenContainer(title: "로그", model: model) {
             RemoteAttentionStack(model: model)
             RemoteLogSummaryPanel(model: model, compact: false)
             SharedRunLogsView(
@@ -1645,48 +1819,59 @@ private struct CompanionScreenContainer<Content: View>: View {
     var title: String
     @ObservedObject var model: CompanionModel
     @ViewBuilder var content: () -> Content
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.klmsScreenBackground.ignoresSafeArea()
-                WholeScreenVerticalScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        CompanionScreenHeader(title: title, model: model)
-                        content()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 20)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+        Group {
+            if horizontalSizeClass == .regular {
+                screenContent
+            } else {
+                NavigationStack {
+                    screenContent
                 }
             }
-            .navigationTitle(title)
-            .klmsNavigationTitleMode()
-            .toolbar {
-                ToolbarItemGroup(placement: .automatic) {
-                    Button {
-                        Task {
-                            await model.refreshRecent(includeSyncData: true)
-                        }
-                    } label: {
-                        Label("새로 고침", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(model.isRefreshing)
+        }
+    }
 
-                    Button {
-                        model.resetDisplayState()
-                    } label: {
-                        Label("화면 정리", systemImage: "eraser")
-                    }
-                    .disabled(model.isRefreshing || model.isSubmitting)
+    private var screenContent: some View {
+        ZStack {
+            Color.klmsScreenBackground.ignoresSafeArea()
+            WholeScreenVerticalScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    CompanionScreenHeader(title: title, model: model)
+                    content()
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .refreshable {
                 await model.refreshRecent(includeSyncData: true)
             }
-            .klmsNavigationChrome()
         }
+        .navigationTitle(title)
+        .klmsNavigationTitleMode()
+        .toolbar {
+            ToolbarItemGroup(placement: .automatic) {
+                Button {
+                    Task {
+                        await model.refreshRecent(includeSyncData: true)
+                    }
+                } label: {
+                    Label("새로 고침", systemImage: "arrow.clockwise")
+                }
+                .disabled(model.isRefreshing)
+
+                Button {
+                    model.resetDisplayState()
+                } label: {
+                    Label("화면 정리", systemImage: "eraser")
+                }
+                .disabled(model.isRefreshing || model.isSubmitting)
+            }
+        }
+        .klmsNavigationChrome()
     }
 }
 
@@ -1744,7 +1929,7 @@ private struct CompanionScreenHeader: View {
             return "play.circle.fill"
         case "서버 연결":
             return "network"
-        case "요청 기록":
+        case "로그":
             return "clock.arrow.circlepath"
         default:
             return "gauge.with.dots.needle.67percent"
@@ -2582,6 +2767,8 @@ private struct RemoteStatusHeader: View {
     @ObservedObject var model: CompanionModel
     @Binding var selectedCategory: DashboardMetricCategory?
     var onCategoryTap: (DashboardMetricCategory) -> Void = { _ in }
+    var selectedChangeSummary: RemoteChangeSummaryKind?
+    var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void = { _ in }
 
     private let columns = [
         GridItem(.adaptive(minimum: 96), spacing: 8),
@@ -2622,7 +2809,11 @@ private struct RemoteStatusHeader: View {
 
             if model.status.hasCompanionChangeSummary {
                 Divider()
-                RemoteDashboardChangeSummary(status: model.status)
+                RemoteDashboardChangeSummary(
+                    status: model.status,
+                    selectedKind: selectedChangeSummary,
+                    onSelect: onChangeSummaryTap
+                )
             }
         }
         .padding(16)
@@ -2690,7 +2881,7 @@ private struct RemoteStatusHeader: View {
             return "KLMS 로그인 필요"
         }
         if model.shouldShowAuthCompletion {
-            return "인증 완료"
+            return model.authStatusDisplayTitle
         }
         guard let latest = model.latestCommand,
               let status = model.latestDisplayStatus else {
@@ -2788,19 +2979,167 @@ private struct RemoteStatusHeader: View {
     }
 }
 
+private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
+    case noticeNew
+    case noticeUpdated
+    case newFiles
+    case fileCleanup
+    case calendarCreated
+    case calendarUpdated
+    case calendarDeleted
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .noticeNew:
+            "새 공지"
+        case .noticeUpdated:
+            "수정 공지"
+        case .newFiles:
+            "새 파일"
+        case .fileCleanup:
+            "파일 정리"
+        case .calendarCreated:
+            "캘린더 생성"
+        case .calendarUpdated:
+            "캘린더 수정"
+        case .calendarDeleted:
+            "캘린더 정리"
+        }
+    }
+
+    var detailTitle: String {
+        switch self {
+        case .noticeNew:
+            "새로 들어온 공지"
+        case .noticeUpdated:
+            "내용이 바뀐 공지"
+        case .newFiles:
+            "새로 확인된 파일"
+        case .fileCleanup:
+            "파일 정리 결과"
+        case .calendarCreated:
+            "새로 만든 캘린더 일정"
+        case .calendarUpdated:
+            "수정한 캘린더 일정"
+        case .calendarDeleted:
+            "정리한 캘린더 일정"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .noticeNew, .noticeUpdated:
+            "note.text"
+        case .newFiles, .fileCleanup:
+            "folder"
+        case .calendarCreated, .calendarUpdated, .calendarDeleted:
+            "calendar"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .noticeNew, .noticeUpdated:
+            .brown
+        case .newFiles, .fileCleanup:
+            .blue
+        case .calendarCreated:
+            .green
+        case .calendarUpdated:
+            .teal
+        case .calendarDeleted:
+            .red
+        }
+    }
+
+    var emptyMessage: String {
+        switch self {
+        case .noticeNew, .noticeUpdated:
+            "서버에 올라온 공지 상세 목록에서 해당 변경 항목을 찾지 못했습니다. Mac에서 요약 갱신을 다시 누르면 상세가 채워질 수 있습니다."
+        case .newFiles:
+            "서버에 올라온 파일 목록에서 새 파일 상세를 찾지 못했습니다. 파일 동기화가 끝난 뒤 요약 갱신을 다시 눌러 주세요."
+        case .fileCleanup:
+            "파일 정리 숫자는 확인됐지만 상세 정리 로그가 아직 올라오지 않았습니다."
+        case .calendarCreated, .calendarUpdated, .calendarDeleted:
+            "캘린더 변경 상세가 아직 서버에 올라오지 않았습니다. Mac에서 요약 갱신을 다시 눌러 주세요."
+        }
+    }
+
+    var isCalendarChange: Bool {
+        switch self {
+        case .calendarCreated, .calendarUpdated, .calendarDeleted:
+            true
+        default:
+            false
+        }
+    }
+
+    func value(from status: SanitizedRemoteStatus) -> Int {
+        switch self {
+        case .noticeNew:
+            status.noticeNew
+        case .noticeUpdated:
+            status.noticeUpdated
+        case .newFiles:
+            status.newFiles
+        case .fileCleanup:
+            status.fileCleanupTotal
+        case .calendarCreated:
+            status.calendarCreated
+        case .calendarUpdated:
+            status.calendarUpdated
+        case .calendarDeleted:
+            status.calendarDeleted
+        }
+    }
+
+    func includes(_ item: ServerRelaySyncItem) -> Bool {
+        switch self {
+        case .noticeNew:
+            item.kind == "notice" && item.isCompanionNewLike
+        case .noticeUpdated:
+            item.kind == "notice" && item.isCompanionUpdatedLike
+        case .newFiles:
+            item.kind == "file" && item.isCompanionChangedLike
+        case .fileCleanup, .calendarCreated, .calendarUpdated, .calendarDeleted:
+            false
+        }
+    }
+
+    func includes(_ change: CalendarChange) -> Bool {
+        switch self {
+        case .calendarCreated:
+            change.action == "created"
+        case .calendarUpdated:
+            change.action == "updated"
+        case .calendarDeleted:
+            change.action == "deleted"
+        default:
+            false
+        }
+    }
+}
+
+private struct RemoteChangeSummaryEntry: Identifiable {
+    var kind: RemoteChangeSummaryKind
+    var value: Int
+
+    var id: String { kind.id }
+}
+
 private struct RemoteDashboardChangeSummary: View {
     var status: SanitizedRemoteStatus
+    var selectedKind: RemoteChangeSummaryKind?
+    var onSelect: (RemoteChangeSummaryKind) -> Void
 
-    private var chips: [(String, String, Color)] {
-        [
-            status.noticeNew > 0 ? ("새 공지", "\(status.noticeNew)", .brown) : nil,
-            status.noticeUpdated > 0 ? ("수정 공지", "\(status.noticeUpdated)", .brown) : nil,
-            status.newFiles > 0 ? ("새 파일", "\(status.newFiles)", .blue) : nil,
-            status.fileCleanupTotal > 0 ? ("파일 정리", "\(status.fileCleanupTotal)", .blue) : nil,
-            status.calendarCreated > 0 ? ("캘린더 생성", "\(status.calendarCreated)", .green) : nil,
-            status.calendarUpdated > 0 ? ("캘린더 수정", "\(status.calendarUpdated)", .green) : nil,
-            status.calendarDeleted > 0 ? ("캘린더 정리", "\(status.calendarDeleted)", .red) : nil,
-        ].compactMap { $0 }
+    private var entries: [RemoteChangeSummaryEntry] {
+        RemoteChangeSummaryKind.allCases.compactMap { kind in
+            let value = kind.value(from: status)
+            guard value > 0 else { return nil }
+            return RemoteChangeSummaryEntry(kind: kind, value: value)
+        }
     }
 
     var body: some View {
@@ -2808,30 +3147,45 @@ private struct RemoteDashboardChangeSummary: View {
             Label("변경 요약", systemImage: "sparkles")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            FlowChipLayout(chips: chips)
+            FlowChipLayout(entries: entries, selectedKind: selectedKind, onSelect: onSelect)
         }
     }
 }
 
 private struct FlowChipLayout: View {
-    var chips: [(String, String, Color)]
+    var entries: [RemoteChangeSummaryEntry]
+    var selectedKind: RemoteChangeSummaryKind?
+    var onSelect: (RemoteChangeSummaryKind) -> Void
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: 6)], alignment: .leading, spacing: 6) {
-            ForEach(chips, id: \.0) { title, value, tint in
-                HStack(spacing: 5) {
-                    Text(value)
-                        .font(.caption.monospacedDigit().weight(.bold))
-                    Text(title)
-                        .font(.caption2.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+            ForEach(entries) { entry in
+                Button {
+                    onSelect(entry.kind)
+                } label: {
+                    HStack(spacing: 5) {
+                        Text("\(entry.value)")
+                            .font(.caption.monospacedDigit().weight(.bold))
+                        Text(entry.kind.title)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                        Spacer(minLength: 0)
+                        Image(systemName: selectedKind == entry.kind ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .foregroundStyle(entry.kind.tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(entry.kind.tint.opacity(selectedKind == entry.kind ? 0.18 : 0.10), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(selectedKind == entry.kind ? entry.kind.tint.opacity(0.35) : Color.clear, lineWidth: 1)
+                    )
                 }
-                .foregroundStyle(tint)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                .buttonStyle(.plain)
+                .accessibilityHint("변경된 항목 목록을 펼칩니다.")
             }
         }
     }
@@ -3010,7 +3364,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     }
 
     private var calendarChanges: [CalendarChange] {
-        model.calendarChanges
+        model.visibleCalendarChanges()
     }
 
     private var baseItems: [ServerRelaySyncItem] {
@@ -3112,8 +3466,11 @@ private struct DashboardCategoryInlineDetailPanel: View {
                     panelEmptyText("최근 캘린더 변경 상세가 아직 서버에 올라오지 않았습니다.")
                 } else {
                     ForEach(calendarChanges) { change in
-                        DashboardCalendarChangeDetailRow(change: change) { action, edit in
-                            Task { await model.createCalendarAction(action, change: change, edit: edit) }
+                        DashboardCalendarChangeDetailRow(
+                            change: change,
+                            activeAction: model.activeCalendarAction(for: change)
+                        ) { action, edit in
+                            await model.createCalendarAction(action, change: change, edit: edit)
                         }
                     }
                 }
@@ -3220,6 +3577,1337 @@ private struct DashboardCategoryInlineDetailPanel: View {
                 .frame(maxWidth: .infinity, minHeight: 36)
         }
         .buttonStyle(.bordered)
+    }
+}
+
+private struct RemoteChangeSummaryDetailPanel: View {
+    var kind: RemoteChangeSummaryKind
+    @ObservedObject var model: CompanionModel
+    @State private var selectedItemID: String?
+
+    private var status: SanitizedRemoteStatus {
+        model.status
+    }
+
+    private var changedItems: [ServerRelaySyncItem] {
+        model.syncItems
+            .filter { kind.includes($0) }
+            .companionSorted(by: .recent)
+    }
+
+    private var changedCalendarItems: [CalendarChange] {
+        model.visibleCalendarChanges().filter { kind.includes($0) }
+    }
+
+    private var fileCleanupReports: [DryRunReport] {
+        model.dryRunReports.filter { report in
+            report.scope == "files"
+                && (report.wouldPrune > 0 || report.wouldPruneCourseFiles > 0 || report.wouldPruneArchive > 0 || report.wouldDelete > 0)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            detailContent
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(kind.tint.opacity(0.24), lineWidth: 1)
+        )
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: kind.systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(kind.tint)
+                .frame(width: 32, height: 32)
+                .background(kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(kind.detailTitle)
+                    .font(.headline)
+                Text(summaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(kind.tint.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        if kind.isCalendarChange {
+            if changedCalendarItems.isEmpty {
+                emptyState
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(changedCalendarItems) { change in
+                        DashboardCalendarChangeDetailRow(
+                            change: change,
+                            activeAction: model.activeCalendarAction(for: change)
+                        ) { action, edit in
+                            await model.createCalendarAction(action, change: change, edit: edit)
+                        }
+                    }
+                }
+            }
+        } else if kind == .fileCleanup {
+            fileCleanupContent
+        } else if changedItems.isEmpty {
+            emptyState
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(changedItems.prefix(12))) { item in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                selectedItemID = selectedItemID == item.id ? nil : item.id
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                ServerSyncDataRow(item: item)
+                                    .equatable()
+                                Image(systemName: selectedItemID == item.id ? "chevron.up" : "chevron.down")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if selectedItemID == item.id {
+                            ServerSyncItemInlineDetailPanel(item: item, model: model)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                }
+                if changedItems.count > 12 {
+                    Text("외 \(changedItems.count - 12)개는 대시보드 \(categoryHint)에서 확인할 수 있습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var fileCleanupContent: some View {
+        let cleanupTotal = status.fileCleanupTotal
+        if cleanupTotal <= 0 && fileCleanupReports.isEmpty {
+            emptyState
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    DashboardCountPill(title: "정리", value: status.filePruned, tint: kind.tint)
+                    DashboardCountPill(title: "보관 정리", value: status.fileArchivePruned, tint: kind.tint)
+                }
+                if fileCleanupReports.isEmpty {
+                    Text("정리된 파일 수는 확인됐지만 상세 미리보기 리포트는 없습니다. 실제 삭제/정리 내역은 Mac의 파일 로그에서 확인할 수 있습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(10)
+                        .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                } else {
+                    ForEach(Array(fileCleanupReports.enumerated()), id: \.offset) { _, report in
+                        RemoteDryRunReportRow(report: report)
+                    }
+                }
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        Text(kind.emptyMessage)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var summaryText: String {
+        let count = kind.value(from: status)
+        switch kind {
+        case .noticeNew, .noticeUpdated, .newFiles:
+            return "\(count)개 · 항목을 누르면 세부 정보와 상태 변경 버튼이 열립니다."
+        case .fileCleanup:
+            return "\(count)개 · 정리된 파일과 보관 정리 결과를 확인합니다."
+        case .calendarCreated, .calendarUpdated, .calendarDeleted:
+            return "\(count)개 · 일정 내용을 확인하고 필요하면 바로 수정할 수 있습니다."
+        }
+    }
+
+    private var categoryHint: String {
+        switch kind {
+        case .noticeNew, .noticeUpdated:
+            "공지"
+        case .newFiles, .fileCleanup:
+            "파일"
+        case .calendarCreated, .calendarUpdated, .calendarDeleted:
+            "캘린더"
+        }
+    }
+}
+
+private struct MailPasteAnalyzerPanel: View {
+    @ObservedObject var model: CompanionModel
+    @State private var isExpanded = false
+    @State private var mailText = ""
+    @State private var analysis = MailPasteAnalysis.empty
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("KLMS와 별도로 메일로 온 과제, 시험, 공지, 일정 내용을 붙여넣으면 이 기기 안에서만 자동으로 판독합니다. 서버에는 메일 본문을 올리지 않습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                TextEditor(text: $mailText)
+                    .font(.callout)
+                    .frame(minHeight: 136)
+                    .padding(8)
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.klmsBorder, lineWidth: 1)
+                    )
+
+                HStack(spacing: 8) {
+                    Button {
+                        pasteFromClipboard()
+                    } label: {
+                        Label("붙여넣기", systemImage: "doc.on.clipboard")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        runAnalysis()
+                    } label: {
+                        Label("다시 분석", systemImage: "wand.and.stars")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Spacer(minLength: 0)
+
+                    Button(role: .destructive) {
+                        mailText = ""
+                        analysis = .empty
+                    } label: {
+                        Label("지우기", systemImage: "trash")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(mailText.isEmpty)
+                }
+                .font(.caption.weight(.semibold))
+
+                MailPasteAnalysisResultView(analysis: analysis, model: model)
+            }
+            .padding(.top, 10)
+        } label: {
+            HStack(spacing: 8) {
+                Label("메일 내용 자동 판독", systemImage: "envelope.open")
+                    .font(.headline)
+                Spacer(minLength: 0)
+                if !analysis.isEmpty {
+                    Text(analysis.kind.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(analysis.kind.tint)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(analysis.kind.tint.opacity(0.12), in: Capsule())
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
+        .onChange(of: mailText) { _, _ in
+            runAnalysis()
+        }
+        .onChange(of: model.syncItems) { _, _ in
+            runAnalysis()
+        }
+    }
+
+    private func pasteFromClipboard() {
+        #if canImport(UIKit)
+        if let clipboardText = UIPasteboard.general.string {
+            mailText = clipboardText
+            isExpanded = true
+            runAnalysis()
+        }
+        #endif
+    }
+
+    private func runAnalysis() {
+        analysis = MailPasteAnalyzer.analyze(mailText, syncItems: model.syncItems)
+    }
+}
+
+private struct MailPasteAnalysisResultView: View {
+    var analysis: MailPasteAnalysis
+    @ObservedObject var model: CompanionModel
+    @State private var selectedItemID: String?
+    @State private var isShowingCreateSheet = false
+
+    var body: some View {
+        if analysis.isEmpty {
+            Text("메일 본문을 붙여넣으면 과제, 시험, 공지, 캘린더 처리 여부를 자동으로 나눠 보여줍니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: analysis.kind.systemImage)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(analysis.kind.tint)
+                        .frame(width: 30, height: 30)
+                        .background(analysis.kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(analysis.title.nilIfEmpty ?? "제목을 찾지 못했습니다.")
+                            .font(.subheadline.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(analysis.summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: 8)], alignment: .leading, spacing: 8) {
+                    MailAnalysisPill(title: "분류", value: analysis.kind.title, tint: analysis.kind.tint)
+                    MailAnalysisPill(title: "과목", value: analysis.course.nilIfEmpty ?? "미확인", tint: .teal)
+                    MailAnalysisPill(title: "일정", value: analysis.dueText.nilIfEmpty ?? "미확인", tint: .orange)
+                    MailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? .green : .orange)
+                }
+
+                MailAnalysisProcessView(steps: analysis.analysisSteps)
+
+                if !analysis.detectedTargets.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("처리 대상")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: 8)], alignment: .leading, spacing: 8) {
+                            ForEach(analysis.detectedTargets, id: \.self) { target in
+                                MailAnalysisPill(title: "판독", value: target, tint: analysis.kind.tint)
+                            }
+                        }
+                    }
+                }
+
+                if !analysis.urls.isEmpty {
+                    Text("본문 링크 \(analysis.urls.count)개를 감지했습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if analysis.matchedItems.isEmpty {
+                    MailActionPlanView(lines: analysis.actionPlan)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("관련 KLMS 항목")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(Array(analysis.matchedItems.prefix(5))) { item in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.16)) {
+                                        selectedItemID = selectedItemID == item.id ? nil : item.id
+                                    }
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        ServerSyncDataRow(item: item)
+                                            .equatable()
+                                        Image(systemName: selectedItemID == item.id ? "chevron.up" : "chevron.down")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+
+                                if selectedItemID == item.id {
+                                    ServerSyncItemInlineDetailPanel(item: item, model: model)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !analysis.actionPlan.isEmpty, !analysis.matchedItems.isEmpty {
+                    MailActionPlanView(lines: analysis.actionPlan)
+                }
+
+                if analysis.canCreateCalendarEvent {
+                    Button {
+                        isShowingCreateSheet = true
+                    } label: {
+                        Label("Mac 캘린더에 등록", systemImage: "calendar.badge.plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .disabled(model.isSubmitting)
+                }
+            }
+            .padding(12)
+            .background(analysis.kind.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(analysis.kind.tint.opacity(0.22), lineWidth: 1)
+            )
+            .sheet(isPresented: $isShowingCreateSheet) {
+                MailCalendarCreateForm(analysis: analysis) { edit in
+                    Task {
+                        await model.createManualCalendarAction(title: analysis.calendarTitle, edit: edit)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct MailCalendarCreateForm: View {
+    var analysis: MailPasteAnalysis
+    var onSave: (CalendarEventEdit) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var startAt: String
+    @State private var dueAt: String
+    @State private var location: String
+
+    init(analysis: MailPasteAnalysis, onSave: @escaping (CalendarEventEdit) -> Void) {
+        self.analysis = analysis
+        self.onSave = onSave
+        _title = State(initialValue: analysis.calendarTitle)
+        _startAt = State(initialValue: analysis.calendarStartInput)
+        _dueAt = State(initialValue: analysis.calendarEndInput)
+        _location = State(initialValue: "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("제목", text: $title)
+                    TextField("시작 시간", text: $startAt)
+                    TextField("종료 시간", text: $dueAt)
+                    TextField("장소", text: $location)
+                } header: {
+                    Text("캘린더 일정")
+                } footer: {
+                    Text("Mac 앱이 Apple Calendar에 새 일정을 등록합니다. 시간은 2026-06-17 13:00 형식으로 확인해 주세요.")
+                }
+            }
+            .navigationTitle("메일 일정 등록")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("등록") {
+                        onSave(CalendarEventEdit(title: title, startAt: startAt, dueAt: dueAt, location: location))
+                        dismiss()
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || startAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+}
+
+private struct MailAnalysisPill: View {
+    var title: String
+    var value: String
+    var tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private enum MailAnalysisStepTone: String, Equatable {
+    case secondary
+    case orange
+    case green
+    case teal
+    case blue
+    case brown
+    case purple
+
+    var color: Color {
+        switch self {
+        case .secondary:
+            .secondary
+        case .orange:
+            .orange
+        case .green:
+            .green
+        case .teal:
+            .teal
+        case .blue:
+            .blue
+        case .brown:
+            .brown
+        case .purple:
+            .purple
+        }
+    }
+}
+
+private struct MailAnalysisStep: Identifiable, Equatable {
+    var id: String
+    var title: String
+    var detail: String
+    var systemImage: String
+    var tone: MailAnalysisStepTone
+}
+
+private struct MailAnalysisProcessView: View {
+    var steps: [MailAnalysisStep]
+    @State private var isExpanded = true
+
+    var body: some View {
+        if !steps.isEmpty {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(steps) { step in
+                        HStack(alignment: .top, spacing: 9) {
+                            Image(systemName: step.systemImage)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(step.tone.color)
+                                .frame(width: 22, height: 22)
+                                .background(step.tone.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(step.title)
+                                    .font(.caption.weight(.semibold))
+                                Text(step.detail)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(8)
+                        .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                HStack(spacing: 8) {
+                    Label("분석 과정", systemImage: "list.bullet.clipboard")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Text("\(steps.count)단계")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(10)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(.primary.opacity(0.08), lineWidth: 1)
+            )
+        }
+    }
+}
+
+private struct MailActionPlanView: View {
+    var lines: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("추천 처리")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(lines, id: \.self) { line in
+                Label(line, systemImage: "checkmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private enum MailPasteDetectedKind: String {
+    case none
+    case assignment
+    case exam
+    case notice
+
+    var title: String {
+        switch self {
+        case .none:
+            "미분류"
+        case .assignment:
+            "과제 후보"
+        case .exam:
+            "시험 후보"
+        case .notice:
+            "공지 후보"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .none:
+            "questionmark.circle"
+        case .assignment:
+            "checklist"
+        case .exam:
+            "calendar"
+        case .notice:
+            "note.text"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .none:
+            .secondary
+        case .assignment:
+            .orange
+        case .exam:
+            .green
+        case .notice:
+            .brown
+        }
+    }
+}
+
+private struct MailPasteAnalysis: Equatable {
+    var kind: MailPasteDetectedKind
+    var title: String
+    var course: String
+    var dueText: String
+    var urls: [String]
+    var confidence: Int
+    var matchedItems: [ServerRelaySyncItem]
+    var suggestedAction: String
+    var calendarStartInput: String
+    var calendarEndInput: String
+    var analysisSteps: [MailAnalysisStep]
+
+    static let empty = MailPasteAnalysis(
+        kind: .none,
+        title: "",
+        course: "",
+        dueText: "",
+        urls: [],
+        confidence: 0,
+        matchedItems: [],
+        suggestedAction: "",
+        calendarStartInput: "",
+        calendarEndInput: "",
+        analysisSteps: []
+    )
+
+    var isEmpty: Bool {
+        kind == .none
+            && title.isEmpty
+            && course.isEmpty
+            && dueText.isEmpty
+            && urls.isEmpty
+            && matchedItems.isEmpty
+    }
+
+    var summary: String {
+        if !matchedItems.isEmpty {
+            return "서버 DB의 기존 항목 \(matchedItems.count)개와 연결될 가능성이 큽니다."
+        }
+        if kind == .none {
+            return "과제, 시험, 공지 중 어떤 항목인지 확실하지 않습니다."
+        }
+        return "\(kind.title)로 보입니다. 일정 정보가 있으면 캘린더 처리까지 이어갈 수 있습니다."
+    }
+
+    var canCreateCalendarEvent: Bool {
+        kind == .assignment || kind == .exam
+    }
+
+    var calendarTitle: String {
+        let base = title.nilIfEmpty ?? kind.title
+        return course.nilIfEmpty.map { "\($0) · \(base)" } ?? base
+    }
+
+    var detectedTargets: [String] {
+        var targets: [String] = []
+        switch kind {
+        case .assignment:
+            targets.append("과제 후보")
+        case .exam:
+            targets.append("시험/캘린더 후보")
+        case .notice:
+            targets.append("공지 후보")
+        case .none:
+            break
+        }
+        if !dueText.isEmpty {
+            targets.append("일정/마감 감지")
+        }
+        if !matchedItems.isEmpty {
+            targets.append("기존 KLMS 항목 연결")
+        }
+        if !urls.isEmpty {
+            targets.append("링크 포함")
+        }
+        var seen = Set<String>()
+        return targets.filter { seen.insert($0).inserted }
+    }
+
+    var actionPlan: [String] {
+        if isEmpty { return [] }
+        var lines: [String] = []
+        if !matchedItems.isEmpty {
+            lines.append("기존 KLMS 항목과 맞아 보입니다. 항목을 펼쳐 상태를 바로 확인하세요.")
+        }
+        switch kind {
+        case .assignment:
+            lines.append("과제로 판독했습니다. 마감이 있으면 미리알림/캘린더 등록 대상입니다.")
+        case .exam:
+            lines.append("시험 또는 퀴즈로 판독했습니다. 캘린더 등록 대상입니다.")
+        case .notice:
+            lines.append("공지로 판독했습니다. 일정 문구가 있으면 캘린더 등록 여부를 확인하세요.")
+        case .none:
+            lines.append("분류가 애매합니다. 제목, 과목명, 날짜가 들어간 메일 본문 전체를 붙여넣어 주세요.")
+        }
+        if canCreateCalendarEvent {
+            lines.append("필요하면 Mac 캘린더에 직접 등록하도록 요청할 수 있습니다.")
+        }
+        var seen = Set<String>()
+        return lines.filter { seen.insert($0).inserted }
+    }
+}
+
+private enum MailPasteAnalyzer {
+    static func analyze(_ rawText: String, syncItems: [ServerRelaySyncItem]) -> MailPasteAnalysis {
+        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return .empty }
+
+        let urls = regexMatches("https?://[^\\s>\\]]+", in: text)
+        let lines = text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let knownCourses = Array(Set(syncItems.map(\.course).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }))
+            .sorted { $0.count > $1.count }
+        let course = detectCourse(in: text, lines: lines, knownCourses: knownCourses)
+        let scores = kindScores(in: text)
+        let kind = detectKind(in: text)
+        let title = detectTitle(lines: lines, kind: kind, course: course)
+        let dueText = detectDueText(in: text)
+        let matchedItems = matchItems(
+            syncItems: syncItems,
+            text: text,
+            kind: kind,
+            title: title,
+            course: course,
+            dueText: dueText
+        )
+        let calendarInput = calendarInputs(from: dueText)
+        let confidence = confidenceScore(kind: kind, title: title, course: course, dueText: dueText, matchedItems: matchedItems)
+        let steps = analysisSteps(
+            kind: kind,
+            assignmentScore: scores.assignmentScore,
+            examScore: scores.examScore,
+            course: course,
+            title: title,
+            dueText: dueText,
+            calendarInput: calendarInput,
+            matchedItems: matchedItems,
+            urls: urls
+        )
+        return MailPasteAnalysis(
+            kind: kind,
+            title: title,
+            course: course,
+            dueText: dueText,
+            urls: urls,
+            confidence: confidence,
+            matchedItems: matchedItems,
+            suggestedAction: suggestedAction(kind: kind, matchedItems: matchedItems),
+            calendarStartInput: calendarInput.start,
+            calendarEndInput: calendarInput.end,
+            analysisSteps: steps
+        )
+    }
+
+    private static func kindScores(in text: String) -> (assignmentScore: Int, examScore: Int) {
+        let lower = text.lowercased()
+        let assignmentScore = keywordScore(lower, weightedKeywords: [
+            ("written assignment", 7),
+            ("problem set", 6),
+            ("due date", 6),
+            ("deadline", 6),
+            ("assignment", 5),
+            ("homework", 5),
+            ("submission", 4),
+            ("submit", 4),
+            ("project", 3),
+            ("essay", 3),
+            ("paper", 3),
+            ("과제", 6),
+            ("숙제", 5),
+            ("제출", 5),
+            ("마감", 5),
+            ("레포트", 4),
+            ("보고서", 4),
+        ])
+        let examScore = keywordScore(lower, weightedKeywords: [
+            ("final exam", 7),
+            ("midterm exam", 7),
+            ("기말고사", 7),
+            ("중간고사", 7),
+            ("quiz", 5),
+            ("exam", 5),
+            ("시험", 5),
+            ("퀴즈", 5),
+            ("midterm", 3),
+            ("final", 2),
+            ("중간", 2),
+            ("기말", 2),
+        ])
+        return (assignmentScore, examScore)
+    }
+
+    private static func detectKind(in text: String) -> MailPasteDetectedKind {
+        let scores = kindScores(in: text)
+        let assignmentScore = scores.assignmentScore
+        let examScore = scores.examScore
+        if assignmentScore > examScore {
+            return .assignment
+        }
+        if examScore > assignmentScore {
+            return .exam
+        }
+        if assignmentScore > 0 { return .assignment }
+        if examScore > 0 { return .exam }
+        return .notice
+    }
+
+    private static func analysisSteps(
+        kind: MailPasteDetectedKind,
+        assignmentScore: Int,
+        examScore: Int,
+        course: String,
+        title: String,
+        dueText: String,
+        calendarInput: (start: String, end: String),
+        matchedItems: [ServerRelaySyncItem],
+        urls: [String]
+    ) -> [MailAnalysisStep] {
+        var steps: [MailAnalysisStep] = [
+            MailAnalysisStep(
+                id: "kind",
+                title: "분류 판단",
+                detail: "과제 키워드 점수 \(assignmentScore), 시험 키워드 점수 \(examScore)를 비교해 \(kind.title)로 분류했습니다.",
+                systemImage: kind.systemImage,
+                tone: tone(for: kind)
+            ),
+        ]
+
+        let courseDetail: String
+        if course.isEmpty {
+            courseDetail = "본문과 서버 DB 항목에서 과목명이나 과목 코드를 찾지 못했습니다."
+        } else if let code = firstCapture("\\(([A-Z]{2,}\\d{2,4}[A-Z]?)\\)$", in: course) {
+            courseDetail = "메일의 \(code) 코드를 현재 KLMS 과목명/별칭표로 풀었습니다: \(course)"
+        } else {
+            courseDetail = "본문 또는 서버 DB 항목에서 과목명을 찾았습니다: \(course)"
+        }
+        steps.append(MailAnalysisStep(id: "course", title: "과목 해석", detail: courseDetail, systemImage: "books.vertical", tone: .teal))
+
+        let titleDetail: String
+        if title.isEmpty {
+            titleDetail = "제목, Subject, 시험/과제 핵심 문구에서 사용할 제목을 찾지 못했습니다."
+        } else if ["기말고사", "중간고사", "퀴즈", "시험 안내", "과제 안내"].contains(title) {
+            titleDetail = "본문의 핵심 키워드로 제목을 추론했습니다: \(title)"
+        } else {
+            titleDetail = "Subject 또는 본문 첫 유효 줄에서 제목을 잡았습니다: \(title)"
+        }
+        steps.append(MailAnalysisStep(id: "title", title: "제목 추론", detail: titleDetail, systemImage: "text.quote", tone: .blue))
+
+        let dateDetail: String
+        if dueText.isEmpty {
+            dateDetail = "마감, 일정, 시험 시간 같은 날짜 문구를 찾지 못했습니다."
+        } else if !calendarInput.start.isEmpty {
+            dateDetail = "\(dueText)를 캘린더 입력값 \(calendarInput.start)로 변환했습니다."
+        } else {
+            dateDetail = "날짜 문구 \(dueText)는 찾았지만 캘린더 시간으로 변환하지 못했습니다."
+        }
+        steps.append(MailAnalysisStep(id: "date", title: "일정 해석", detail: dateDetail, systemImage: "calendar.badge.clock", tone: .orange))
+
+        let matchDetail = matchedItems.isEmpty
+            ? "서버 DB의 기존 항목과 직접 연결되는 항목은 아직 없습니다."
+            : "서버 DB 항목 \(matchedItems.count)개와 제목, 과목, 일정 정보가 겹칩니다."
+        steps.append(MailAnalysisStep(id: "match", title: "기존 항목 비교", detail: matchDetail, systemImage: "link", tone: matchedItems.isEmpty ? .secondary : .green))
+
+        if !urls.isEmpty {
+            steps.append(MailAnalysisStep(id: "links", title: "링크 감지", detail: "본문에서 URL \(urls.count)개를 찾았습니다. KLMS 링크가 있으면 다음 동기화와 대조할 수 있습니다.", systemImage: "link.circle", tone: .purple))
+        }
+        return steps
+    }
+
+    private static func tone(for kind: MailPasteDetectedKind) -> MailAnalysisStepTone {
+        switch kind {
+        case .none:
+            .secondary
+        case .assignment:
+            .orange
+        case .exam:
+            .green
+        case .notice:
+            .brown
+        }
+    }
+
+    private static func detectCourse(in text: String, lines: [String], knownCourses: [String]) -> String {
+        if let known = knownCourses.first(where: { text.localizedCaseInsensitiveContains($0) }) {
+            return known
+        }
+        if let captured = firstCapture("(?:과목|강의|Course)[:：]\\s*([^\\n]+)", in: text) {
+            return resolvedCourseDisplay(for: captured, knownCourses: knownCourses) ?? captured
+        }
+        if let captured = firstCapture("(?:TA|조교)\\s*(?:for|of|[:：])\\s*([A-Z]{2,}\\s*\\d{2,4}[A-Z]?)", in: text) {
+            return resolvedCourseDisplay(for: captured, knownCourses: knownCourses) ?? captured.replacingOccurrences(of: " ", with: "")
+        }
+        if let captured = firstCapture("([A-Z]{2,}\\s*\\d{2,4}[A-Z]?)\\s*(?:TA|조교)", in: text) {
+            return resolvedCourseDisplay(for: captured, knownCourses: knownCourses) ?? captured.replacingOccurrences(of: " ", with: "")
+        }
+        if let captured = firstCapture("\\b([A-Z]{2,}\\s*\\.?\\s*\\d{2,4}[A-Z]?)\\b", in: text),
+           let resolved = resolvedCourseDisplay(for: captured, knownCourses: knownCourses) {
+            return resolved
+        }
+        if let bracket = firstCapture("^\\s*\\[([^\\]\\n]{2,40})\\]", in: lines.first ?? "") {
+            return resolvedCourseDisplay(for: bracket, knownCourses: knownCourses) ?? bracket
+        }
+        return ""
+    }
+
+    private static func resolvedCourseDisplay(for rawCourseOrCode: String, knownCourses: [String]) -> String? {
+        let code = normalizedCourseCode(rawCourseOrCode)
+        guard !code.isEmpty else { return nil }
+        if let known = knownCourseName(for: code, knownCourses: knownCourses) {
+            return "\(known) (\(code))"
+        }
+        if let fallback = fallbackCourseCodeAliases[code] {
+            return "\(fallback) (\(code))"
+        }
+        return code == rawCourseOrCode.trimmingCharacters(in: .whitespacesAndNewlines) ? nil : code
+    }
+
+    private static func normalizedCourseCode(_ raw: String) -> String {
+        let compact = raw
+            .uppercased()
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard compact.range(of: #"^[A-Z]{2,}\d{2,4}[A-Z]?$"#, options: .regularExpression) != nil else {
+            return ""
+        }
+        return compact
+    }
+
+    private static func knownCourseName(for code: String, knownCourses: [String]) -> String? {
+        switch code {
+        case "EE488":
+            return knownCourses.first {
+                $0.localizedCaseInsensitiveContains("전자공학을 위한 사이버 보안 개론")
+            } ?? knownCourses.first {
+                $0.localizedCaseInsensitiveContains("Introduction to Cybersecurity for EE")
+            }
+        default:
+            return nil
+        }
+    }
+
+    private static let fallbackCourseCodeAliases: [String: String] = [
+        "EE488": "전기 전자공학특강<전자공학을 위한 사이버 보안 개론>",
+    ]
+
+    private static func detectTitle(lines: [String], kind: MailPasteDetectedKind, course: String) -> String {
+        if let subject = lines.first(where: { line in
+            let lower = line.lowercased()
+            return lower.hasPrefix("subject:") || line.hasPrefix("제목:") || line.hasPrefix("제목：")
+        }) {
+            return cleanTitle(subject)
+        }
+        if let inferred = inferredTitle(lines: lines, kind: kind, course: course) {
+            return inferred
+        }
+        if let title = lines.first(where: { line in
+            let lower = line.lowercased()
+            return !lower.hasPrefix("from:")
+                && !lower.hasPrefix("to:")
+                && !lower.hasPrefix("date:")
+                && !lower.hasPrefix("sent:")
+                && !line.hasPrefix("보낸 사람:")
+                && !line.hasPrefix("받는 사람:")
+                && !line.hasPrefix("날짜:")
+                && !line.hasPrefix("https://")
+                && !line.hasPrefix("http://")
+                && !isMailGreetingOrSignature(line)
+        }) {
+            return cleanTitle(title)
+        }
+        return ""
+    }
+
+    private static func inferredTitle(lines: [String], kind: MailPasteDetectedKind, course: String) -> String? {
+        let joined = lines.joined(separator: "\n").lowercased()
+        switch kind {
+        case .exam:
+            if joined.contains("final exam") || joined.contains("기말고사") {
+                return "기말고사"
+            }
+            if joined.contains("midterm exam") || joined.contains("중간고사") {
+                return "중간고사"
+            }
+            if joined.contains("quiz") || joined.contains("퀴즈") {
+                return "퀴즈"
+            }
+            return "시험 안내"
+        case .assignment:
+            if let line = lines.first(where: { line in
+                let lower = line.lowercased()
+                return lower.contains("assignment") || lower.contains("homework") || lower.contains("과제")
+            }) {
+                return cleanTitle(line)
+            }
+            return "과제 안내"
+        case .notice:
+            return nil
+        case .none:
+            return nil
+        }
+    }
+
+    private static func isMailGreetingOrSignature(_ line: String) -> Bool {
+        let lower = line.lowercased()
+        return lower.hasPrefix("dear ")
+            || lower == "hi,"
+            || lower.hasPrefix("hi, ")
+            || lower.hasPrefix("hello")
+            || lower.hasPrefix("best regards")
+            || lower.hasPrefix("regards")
+            || lower.hasPrefix("thanks")
+            || line.hasPrefix("학생 여러분")
+            || line.hasPrefix("안녕하세요")
+            || line.hasPrefix("감사합니다")
+            || line.hasPrefix("질문이 있으면")
+    }
+
+    private static func cleanTitle(_ raw: String) -> String {
+        var title = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in ["Subject:", "subject:", "제목:", "제목：", "[KLMS]", "KLMS:"] {
+            if title.hasPrefix(prefix) {
+                title.removeFirst(prefix.count)
+                title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        if let range = title.range(of: "^\\[[^\\]]+\\]\\s*", options: .regularExpression) {
+            title.removeSubrange(range)
+        }
+        return title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func detectDueText(in text: String) -> String {
+        if let captured = firstCapture("(?:due|deadline|exam schedule|schedule|마감|제출|일시|일정|시험일|시험 일정|시험일정|시험 시간|시험시간)[:：]?\\s*([^\\n]{1,160})", in: text) {
+            return dateSnippet(in: captured) ?? captured
+        }
+        if let subjectDate = dateSnippet(in: text) {
+            return subjectDate
+        }
+        let datePatterns = [
+            "\\d{4}\\s*[년.-]\\s*\\d{1,2}\\s*[월.-]\\s*\\d{1,2}\\s*일?(?:[^\\n]{0,40})?",
+            "(?:January|Jan|February|Feb|March|Mar|April|Apr|May|June|Jun|July|Jul|August|Aug|September|Sep|October|Oct|November|Nov|December|Dec)\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s*\\d{4})?(?:[^\\n]{0,50})?",
+            "\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?(?:[^\\n]{0,30})?",
+        ]
+        for pattern in datePatterns {
+            if let match = regexMatches(pattern, in: text).first {
+                return match.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return ""
+    }
+
+    private static func matchItems(
+        syncItems: [ServerRelaySyncItem],
+        text: String,
+        kind: MailPasteDetectedKind,
+        title: String,
+        course: String,
+        dueText: String
+    ) -> [ServerRelaySyncItem] {
+        let lowerText = text.lowercased()
+        let normalizedText = normalizeMailText(text)
+        let normalizedCourse = normalizeMailText(course)
+        let normalizedDue = normalizeMailText(dueText)
+        let detectedTitleTokens = titleTokens(title).map(normalizeMailText)
+        let scored = syncItems.compactMap { item -> (ServerRelaySyncItem, Int)? in
+            guard kind == .none || item.kind.matches(mailKind: kind) else {
+                return nil
+            }
+            var score = 0
+            let itemCourse = normalizeMailText(item.course)
+            if !normalizedCourse.isEmpty,
+               !itemCourse.isEmpty,
+               (itemCourse.contains(normalizedCourse) || normalizedCourse.contains(itemCourse)) {
+                score += 3
+            }
+            if item.kind.matches(mailKind: kind) {
+                score += 2
+            }
+            if !item.title.isEmpty && lowerText.contains(item.title.lowercased()) {
+                score += 8
+            } else {
+                let itemTitleText = normalizeMailText(item.title)
+                var tokenHits = titleTokens(item.title)
+                    .map(normalizeMailText)
+                    .filter { !$0.isEmpty && normalizedText.contains($0) }
+                    .count
+                if !detectedTitleTokens.isEmpty, !itemTitleText.isEmpty {
+                    tokenHits += detectedTitleTokens.filter { !$0.isEmpty && itemTitleText.contains($0) }.count
+                }
+                if tokenHits >= 2 {
+                    score += min(5, tokenHits)
+                }
+            }
+            if !normalizedDue.isEmpty && normalizeMailText(item.searchText).contains(normalizedDue) {
+                score += 1
+            }
+            guard score >= 5 else { return nil }
+            return (item, score)
+        }
+        return scored
+            .sorted {
+                if $0.1 != $1.1 {
+                    return $0.1 > $1.1
+                }
+                return $0.0.title.localizedStandardCompare($1.0.title) == .orderedAscending
+            }
+            .map(\.0)
+    }
+
+    private static func confidenceScore(
+        kind: MailPasteDetectedKind,
+        title: String,
+        course: String,
+        dueText: String,
+        matchedItems: [ServerRelaySyncItem]
+    ) -> Int {
+        if !matchedItems.isEmpty {
+            return 90
+        }
+        var score = kind == .none ? 20 : 42
+        if !title.isEmpty {
+            score += 18
+        }
+        if !course.isEmpty {
+            score += 14
+        }
+        if !dueText.isEmpty {
+            score += 16
+        }
+        return min(score, 82)
+    }
+
+    private static func suggestedAction(kind: MailPasteDetectedKind, matchedItems: [ServerRelaySyncItem]) -> String {
+        if !matchedItems.isEmpty {
+            return "기존 KLMS 항목과 맞아 보입니다. 항목을 펼쳐 읽음, 중요, 숨김 같은 상태를 바로 확인할 수 있습니다."
+        }
+        switch kind {
+        case .assignment:
+            return "과제 후보로 보입니다. 다음 전체 동기화 후 과제 대시보드에서 반영됐는지 확인하세요. KLMS에 없는 메일 전용 과제라면 수동 등록 기능을 추가하는 쪽이 필요합니다."
+        case .exam:
+            return "시험 후보로 보입니다. 캘린더에 자동 반영되지 않으면 시험 대시보드에서 후보 승격 또는 캘린더 내용 수정을 사용하세요."
+        case .notice:
+            return "공지 후보로 보입니다. KLMS 공지가 아니라 메일 전용 공지라면 앱 안의 기록용 항목으로 따로 저장하는 기능을 추가할 수 있습니다."
+        case .none:
+            return "분류가 확실하지 않습니다. 제목, 과목명, 마감일이 들어간 메일 본문 전체를 붙여넣으면 분석이 더 정확해집니다."
+        }
+    }
+
+    private static func calendarInputs(from dueText: String) -> (start: String, end: String) {
+        guard let date = parseMailDate(dueText) else {
+            return ("", "")
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return (formatter.string(from: date), formatter.string(from: date.addingTimeInterval(60 * 60)))
+    }
+
+    private static func parseMailDate(_ raw: String) -> Date? {
+        var text = (dateSnippet(in: raw) ?? raw)
+            .replacingOccurrences(of: #"(\d)(st|nd|rd|th)"#, with: "$1", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"(?i)\bat\s+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "오전", with: "AM")
+            .replacingOccurrences(of: "오후", with: "PM")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        text = text.replacingOccurrences(of: #"[()]"#, with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\s*(월요일|화요일|수요일|목요일|금요일|토요일|일요일|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s*"#, with: " ", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: #"(\d{1,2})\s*시\s*(\d{1,2})\s*분"#, with: "$1:$2", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"(\d{1,2})\s*시"#, with: "$1:00", options: .regularExpression)
+        let currentYear = Calendar(identifier: .gregorian).component(.year, from: Date())
+        let candidates = [text, "\(currentYear) \(text)"]
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        let formats = [
+            ("ko_KR", "yyyy년 M월 d일 a h:mm"),
+            ("ko_KR", "yyyy년 M월 d일 H:mm"),
+            ("ko_KR", "yyyy M월 d일 a h:mm"),
+            ("ko_KR", "yyyy M월 d일 H:mm"),
+            ("en_US_POSIX", "yyyy MMMM d, h:mm a"),
+            ("en_US_POSIX", "yyyy MMM d, h:mm a"),
+            ("en_US_POSIX", "yyyy MMMM d h:mm a"),
+            ("en_US_POSIX", "yyyy MMM d h:mm a"),
+            ("en_US_POSIX", "yyyy MMMM d, HH:mm"),
+            ("en_US_POSIX", "yyyy MMM d, HH:mm"),
+            ("en_US_POSIX", "yyyy MMMM d HH:mm"),
+            ("en_US_POSIX", "yyyy MMM d HH:mm"),
+            ("en_US_POSIX", "yyyy M/d HH:mm"),
+            ("en_US_POSIX", "yyyy M/d/yyyy HH:mm"),
+        ]
+        for candidate in candidates {
+            for (locale, format) in formats {
+                formatter.locale = Locale(identifier: locale)
+                formatter.dateFormat = format
+                if let date = formatter.date(from: candidate) {
+                    return date
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func dateSnippet(in text: String) -> String? {
+        let patterns = [
+            "(?:\\d{4}\\s*년\\s*)?\\d{1,2}\\s*월\\s*\\d{1,2}\\s*일(?:\\s*(?:월요일|화요일|수요일|목요일|금요일|토요일|일요일))?(?:\\s*(?:오전|오후|AM|PM)?\\s*\\d{1,2}(?::\\d{2}|\\s*시(?:\\s*\\d{1,2}\\s*분)?))?",
+            "\\d{4}\\s*[.-]\\s*\\d{1,2}\\s*[.-]\\s*\\d{1,2}(?:\\s*(?:오전|오후|AM|PM)?\\s*\\d{1,2}:\\d{2})?",
+            "(?:January|Jan|February|Feb|March|Mar|April|Apr|May|June|Jun|July|Jul|August|Aug|September|Sep|October|Oct|November|Nov|December|Dec)\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s*\\d{4})?(?:,?\\s*(?:at\\s*)?(?:(?:AM|PM|오전|오후)\\s*)?\\d{1,2}:\\d{2}(?:\\s*(?:AM|PM))?)?",
+            "\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?(?:\\s*(?:AM|PM|오전|오후)?\\s*\\d{1,2}:\\d{2})?",
+        ]
+        for pattern in patterns {
+            if let match = regexMatches(pattern, in: text).first {
+                return match
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "().,"))
+            }
+        }
+        return nil
+    }
+
+    private static func titleTokens(_ title: String) -> [String] {
+        title
+            .components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count >= 3 }
+    }
+
+    private static func keywordScore(_ text: String, weightedKeywords: [(String, Int)]) -> Int {
+        weightedKeywords.reduce(0) { partialResult, keyword in
+            partialResult + (text.contains(keyword.0) ? keyword.1 : 0)
+        }
+    }
+
+    private static func normalizeMailText(_ text: String) -> String {
+        text
+            .lowercased()
+            .components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    private static func regexMatches(_ pattern: String, in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return []
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.matches(in: text, options: [], range: range).compactMap { match in
+            guard let swiftRange = Range(match.range, in: text) else { return nil }
+            return String(text[swiftRange])
+        }
+    }
+
+    private static func firstCapture(_ pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges > 1,
+              let captureRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[captureRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func matches(mailKind: MailPasteDetectedKind) -> Bool {
+        switch mailKind {
+        case .assignment:
+            self == "assignment" || self == "assignmentCandidate" || self == "completedAssignment"
+        case .exam:
+            self == "exam" || self == "examCandidate"
+        case .notice:
+            self == "notice"
+        case .none:
+            false
+        }
     }
 }
 
@@ -3486,12 +5174,17 @@ private struct RemoteCalendarActionPanel: View {
 
 private struct DashboardCalendarChangeDetailRow: View {
     var change: CalendarChange
-    var onAction: ((ServerRelayItemActionKind, CalendarEventEdit?) -> Void)?
-    @State private var didSubmitCommand = false
+    var activeAction: ServerRelayItemAction?
+    var onAction: ((ServerRelayItemActionKind, CalendarEventEdit?) async -> Void)?
     @State private var isShowingEditSheet = false
 
-    init(change: CalendarChange, onAction: ((ServerRelayItemActionKind, CalendarEventEdit?) -> Void)? = nil) {
+    init(
+        change: CalendarChange,
+        activeAction: ServerRelayItemAction? = nil,
+        onAction: ((ServerRelayItemActionKind, CalendarEventEdit?) async -> Void)? = nil
+    ) {
         self.change = change
+        self.activeAction = activeAction
         self.onAction = onAction
     }
 
@@ -3520,10 +5213,10 @@ private struct DashboardCalendarChangeDetailRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             CalendarChangeExplanationPanel(change: change, showsActionHelp: onAction != nil)
-            if didSubmitCommand {
+            if let activeAction {
                 RemoteItemRequestPendingView(
-                    title: "요청 전송됨",
-                    message: "Mac이 캘린더 요청을 처리하는 중입니다."
+                    title: activeAction.action.displayName,
+                    message: "Mac이 \(activeAction.status.displayName)입니다."
                 )
             } else if onAction != nil {
                 HStack(spacing: 8) {
@@ -3546,8 +5239,11 @@ private struct DashboardCalendarChangeDetailRow: View {
         .padding(.vertical, 4)
         .sheet(isPresented: $isShowingEditSheet) {
             CalendarEventEditForm(change: change) { edit in
-                didSubmitCommand = true
-                onAction?(.calendarEdit, edit)
+                Task {
+                    if let onAction {
+                        await onAction(.calendarEdit, edit)
+                    }
+                }
             }
         }
     }
@@ -3593,10 +5289,11 @@ private struct CalendarEventEditForm: View {
     init(change: CalendarChange, onSave: @escaping (CalendarEventEdit) -> Void) {
         self.change = change
         self.onSave = onSave
-        _title = State(initialValue: change.title)
-        _startAt = State(initialValue: calendarEditInputDate(change.startAt))
-        _dueAt = State(initialValue: calendarEditInputDate(change.dueAt))
-        _location = State(initialValue: change.location)
+        let defaults = change.editDefaults
+        _title = State(initialValue: defaults.title)
+        _startAt = State(initialValue: defaults.startAt)
+        _dueAt = State(initialValue: defaults.dueAt)
+        _location = State(initialValue: defaults.location)
     }
 
     var body: some View {
@@ -3627,15 +5324,6 @@ private struct CalendarEventEditForm: View {
             }
         }
     }
-}
-
-private func calendarEditInputDate(_ text: String) -> String {
-    guard let date = parseCalendarEditInputDate(text) else { return text }
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "ko_KR")
-    formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
-    formatter.dateFormat = "yyyy-MM-dd HH:mm"
-    return formatter.string(from: date)
 }
 
 private func parseCalendarEditInputDate(_ text: String) -> Date? {
@@ -4700,13 +6388,21 @@ private extension Array where Element == ServerRelaySyncItem {
 
 private extension ServerRelaySyncItem {
     var isCompanionChangedLike: Bool {
+        isCompanionNewLike || isCompanionUpdatedLike || status.localizedCaseInsensitiveContains("changed")
+    }
+
+    var isCompanionNewLike: Bool {
         let text = searchText
         return text.localizedCaseInsensitiveContains("new")
-            || text.localizedCaseInsensitiveContains("updated")
             || text.localizedCaseInsensitiveContains("새")
-            || text.localizedCaseInsensitiveContains("수정")
             || text.localizedCaseInsensitiveContains("신규")
-            || status.localizedCaseInsensitiveContains("changed")
+    }
+
+    var isCompanionUpdatedLike: Bool {
+        let text = searchText
+        return text.localizedCaseInsensitiveContains("updated")
+            || text.localizedCaseInsensitiveContains("수정")
+            || text.localizedCaseInsensitiveContains("변경")
     }
 
     var searchText: String {
@@ -4787,6 +6483,15 @@ private extension ServerRelaySyncItem {
 }
 
 private extension ServerRelayItemActionStatus {
+    var isInFlight: Bool {
+        switch self {
+        case .pending, .running:
+            true
+        case .completed, .failed, .macUnavailable:
+            false
+        }
+    }
+
     var isFailedLike: Bool {
         switch self {
         case .failed, .macUnavailable:
@@ -4834,8 +6539,10 @@ private extension ServerRelayItemActionKind {
             "확인/캘린더"
         case .calendarApply:
             "KLMS 기준 반영"
+        case .calendarCreate:
+            "캘린더 일정 등록"
         case .calendarEdit:
-            "수정/캘린더"
+            "캘린더 내용 수정"
         case .calendarDelete:
             "KLMS 기준 반영"
         }
@@ -4855,6 +6562,8 @@ private extension ServerRelayItemActionKind {
             "checklist"
         case .calendarApply:
             "calendar.badge.checkmark"
+        case .calendarCreate:
+            "calendar.badge.plus"
         case .calendarEdit:
             "pencil"
         case .calendarDelete:
@@ -4869,6 +6578,17 @@ private extension ServerRelayItemActionKind {
             "star"
         case .noticeUnimportant:
             "star.slash"
+        }
+    }
+
+    var resolvesCalendarChange: Bool {
+        switch self {
+        case .calendarEdit, .calendarApply, .calendarDelete:
+            true
+        case .calendarVerify, .calendarCreate:
+            false
+        default:
+            false
         }
     }
 }
@@ -5135,7 +6855,7 @@ private struct RemoteStageDurationSummaryView: View {
                 Text("단계별 소요 시간")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], spacing: 6) {
+                VStack(spacing: 6) {
                     ForEach(durations) { duration in
                         HStack(spacing: 6) {
                             Circle()
@@ -5144,6 +6864,7 @@ private struct RemoteStageDurationSummaryView: View {
                             Text(duration.displayName)
                                 .font(.caption2.weight(.semibold))
                                 .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                             Spacer(minLength: 4)
                             Text(duration.secondsText)
                                 .font(.caption2)
@@ -5152,6 +6873,7 @@ private struct RemoteStageDurationSummaryView: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                     }
                 }
@@ -5304,7 +7026,7 @@ private struct RemoteRunRequestHistoryPanel: View {
                             ServerRequestLogRow(entry: entry)
                         }
                     }
-                    Text("전체 내역은 아래 메뉴의 요청 기록 탭에서 볼 수 있습니다.")
+                    Text("전체 내역은 아래 메뉴의 로그 탭에서 볼 수 있습니다.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -5323,6 +7045,165 @@ private struct RemoteRunRequestHistoryPanel: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.top, 2)
+    }
+}
+
+private struct RemoteVerifySummaryPanel: View {
+    var summary: ServerRelayVerifySummary?
+    @State private var showsAllChecks = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: issueChecks.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(issueChecks.isEmpty ? .green : .orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("상태 검사 해설")
+                        .font(.subheadline.weight(.semibold))
+                    Text(summaryText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if let summary {
+                if issueChecks.isEmpty {
+                    Text("메모, 파일, 캘린더, 미리 알림 검사에서 설명이 필요한 실패 항목이 없습니다.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(issueChecks, id: \.id) { check in
+                        RemoteVerifyCheckRow(check: check)
+                    }
+                }
+
+                DisclosureGroup(isExpanded: $showsAllChecks) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(summary.checks, id: \.id) { check in
+                            RemoteVerifyCheckRow(check: check, compact: true)
+                        }
+                    }
+                    .padding(.top, 4)
+                } label: {
+                    Text("전체 상태 검사 항목 \(summary.checks.count)개")
+                        .font(.caption.weight(.semibold))
+                }
+            } else {
+                Text("아직 Mac에서 상태 검사 결과를 서버에 올리지 않았습니다. 상태 검사를 실행하면 캘린더/미리 알림/메모 불일치를 한국어로 풀어 보여줍니다.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
+    }
+
+    private var issueChecks: [VerifyCheck] {
+        summary?.issueChecks ?? []
+    }
+
+    private var summaryText: String {
+        guard let summary else {
+            return "검사 전"
+        }
+        let okCount = summary.checks.filter { $0.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ok" }.count
+        if issueChecks.isEmpty {
+            return "상태 \(summary.status.klmsLocalizedStatus) · 정상 \(okCount)개"
+        }
+        return "상태 \(summary.status.klmsLocalizedStatus) · 확인 필요 \(issueChecks.count)개 · 정상 \(okCount)개"
+    }
+}
+
+private struct RemoteVerifyCheckRow: View {
+    var check: VerifyCheck
+    var compact = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 2 : 5) {
+            HStack(alignment: .top, spacing: 7) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(tint)
+                    .frame(width: 16)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(check.diagnosticTitle) · \(check.status.klmsLocalizedStatus)")
+                        .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
+                    if compact {
+                        Text(rawDetail)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            if !compact {
+                Text(check.diagnosticExplanation)
+                    .font(.caption2)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(check.diagnosticNextAction)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !rawDetail.isEmpty {
+                    Text("원본: \(rawDetail)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(compact ? 7 : 9)
+        .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(tint.opacity(compact ? 0.10 : 0.22), lineWidth: 1)
+        }
+    }
+
+    private var rawDetail: String {
+        check.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var status: String {
+        check.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var systemImage: String {
+        if ["fail", "failed", "error"].contains(status) {
+            return "xmark.octagon.fill"
+        }
+        if ["warn", "warning"].contains(status) {
+            return "exclamationmark.triangle.fill"
+        }
+        return "checkmark.circle.fill"
+    }
+
+    private var tint: Color {
+        if ["fail", "failed", "error"].contains(status) {
+            return .red
+        }
+        if ["warn", "warning"].contains(status) {
+            return .orange
+        }
+        return .green
+    }
+
+    private var rowBackground: Color {
+        if ["fail", "failed", "error"].contains(status) {
+            return Color.red.opacity(0.08)
+        }
+        if ["warn", "warning"].contains(status) {
+            return Color.orange.opacity(0.10)
+        }
+        return Color.klmsCardBackground
     }
 }
 
@@ -5351,6 +7232,7 @@ private struct RemoteDiagnosticPanel: View {
                         diagnosticButton(.report)
                         diagnosticButton(.v2BuildState)
                     }
+                    RemoteVerifySummaryPanel(summary: model.verifySummary)
 
                     DisclosureGroup(isExpanded: $isAdvancedExpanded) {
                         VStack(alignment: .leading, spacing: 8) {
@@ -5978,22 +7860,27 @@ private struct SharedRunLogRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(log.commandTitle.nilIfEmpty ?? "동기화")
                         .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("\(log.status) · \(log.duration) · \(log.finishedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    CompactRemoteStageDurationRowsView(durations: stageDurations)
                     if log.dryRun {
                         Text("미리보기 실행")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
                 }
+                .layoutPriority(1)
                 Spacer(minLength: 8)
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             if isExpanded {
+                RemoteStageDurationSummaryView(durations: stageDurations)
                 CompanionInlineLogBlock(text: log.outputTail)
             }
         }
@@ -6027,6 +7914,33 @@ private struct SharedRunLogRow: View {
             return .secondary
         }
         return log.needsAttention ? .orange : .green
+    }
+
+    private var stageDurations: [KLMSStageDuration] {
+        KLMSStageDurationParser.parse(from: log.outputTail)
+    }
+
+}
+
+private struct CompactRemoteStageDurationRowsView: View {
+    var durations: [KLMSStageDuration]
+
+    var body: some View {
+        if !durations.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(durations) { duration in
+                    HStack(spacing: 4) {
+                        Text(duration.displayName)
+                            .font(.caption.weight(.semibold))
+                        Text(duration.secondsText)
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+        }
     }
 }
 

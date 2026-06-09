@@ -133,7 +133,7 @@ function run(argv) {
     const recreateStageAlertList = readEnabledConfig(
       config,
       "REMINDER_RECREATE_STAGE_ALERT_LIST",
-      true
+      false
     );
     const reminderAlertListName = config.REMINDER_ALERT_LIST_NAME || "KLMS 알림";
     const completedReminderRetentionDays = Math.max(

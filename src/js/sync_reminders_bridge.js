@@ -61,7 +61,7 @@ function syncRemindersFromState(
       alertListName,
       desired.alerts,
       0,
-      { recreateList: reminderOptions.recreateStageAlertList !== false }
+      { recreateList: reminderOptions.recreateStageAlertList === true }
     );
   } else if (
     reminderOptions &&
@@ -98,7 +98,7 @@ function buildRemindersDesiredHash(
         deviceAlertMode: options.deviceAlertMode || "adaptive",
         stageAlertsEnabled: Boolean(options.stageAlertsEnabled),
         cleanDisabledStageAlerts: Boolean(options.cleanDisabledStageAlerts),
-        recreateStageAlertList: options.recreateStageAlertList !== false,
+        recreateStageAlertList: Boolean(options.recreateStageAlertList),
         alertListName: options.alertListName || "KLMS 알림",
       },
       desired,
@@ -220,7 +220,8 @@ function importCompletedRemindersToOverrides(stateJsonPath, overridesJsonPath, l
     () => collectCompletedReminderIdentifiers(
       remindersApp,
       listNames,
-      reminderSnapshot
+      reminderSnapshot,
+      new Set(knownIdentifiers)
     )
   );
   if (completedIdentifiers.length === 0) {
@@ -527,35 +528,50 @@ function forgetReminderListSnapshot(reminderSnapshot, listName, list) {
   });
 }
 
-function collectCompletedReminderIdentifiers(remindersApp, listNames, reminderSnapshot) {
+function collectCompletedReminderIdentifiers(
+  remindersApp,
+  listNames,
+  reminderSnapshot,
+  knownIdentifierSet
+) {
   const identifiers = new Set();
+  const knownIdentifierLimit =
+    knownIdentifierSet && knownIdentifierSet.size > 0 ? knownIdentifierSet.size : 0;
+  const shouldIncludeIdentifier = (identifier) =>
+    !knownIdentifierSet || knownIdentifierSet.size === 0 || knownIdentifierSet.has(identifier);
 
-  listNames.forEach((listName) => {
+  for (let listIndex = 0; listIndex < listNames.length; listIndex += 1) {
+    const listName = listNames[listIndex];
     if (!listName) {
-      return;
+      continue;
     }
 
     const list = findReminderList(remindersApp, listName, reminderSnapshot);
     if (!list) {
-      return;
+      continue;
     }
 
-    const listId = safeString(() => list.id());
     const completedItems = loadReminderItemsForList(list, reminderSnapshot);
-    completedItems
-      .filter((item) => safeValue(() => item.completed()))
-      .forEach((item) => {
-        const identifier = extractIdentifierFromText(safeString(() => item.body()));
-        if (
-          identifier &&
-          !identifier.startsWith("exam:") &&
-          !identifier.startsWith("assignment-candidate:") &&
-          !identifier.startsWith("helpdesk:")
-        ) {
-          identifiers.add(identifier);
+    for (let itemIndex = 0; itemIndex < completedItems.length; itemIndex += 1) {
+      const item = completedItems[itemIndex];
+      if (!safeValue(() => item.completed())) {
+        continue;
+      }
+      const identifier = extractIdentifierFromText(safeString(() => item.body()));
+      if (
+        identifier &&
+        shouldIncludeIdentifier(identifier) &&
+        !identifier.startsWith("exam:") &&
+        !identifier.startsWith("assignment-candidate:") &&
+        !identifier.startsWith("helpdesk:")
+      ) {
+        identifiers.add(identifier);
+        if (knownIdentifierLimit > 0 && identifiers.size >= knownIdentifierLimit) {
+          return Array.from(identifiers);
         }
-      });
-  });
+      }
+    }
+  }
 
   return Array.from(identifiers);
 }

@@ -120,6 +120,122 @@ def dedupe_assignment_state(state: SyncState) -> SyncState:
     return state
 
 
+def event_identity_key(item: Event) -> tuple[str, str, str, str, str]:
+    category = "exam" if item.category in {"exam", "exam_candidate"} else _identity_text(item.category)
+    course = _identity_text(item.course)
+    title = _identity_text(item.title)
+    due = _identity_text(item.sync_due or item.due)
+    if category and course and title and due:
+        return ("logical", category, course, title, due)
+
+    return (
+        "url",
+        category,
+        _canonical_url_identity(item.url),
+        title,
+        due,
+    )
+
+
+def _event_source_score(item: Event) -> int:
+    source = _identity_text(item.source)
+    if source == "override":
+        return 4
+    if source == "notice":
+        return 3
+    if source == "file":
+        return 2
+    return 1
+
+
+def _event_quality_score(item: Event) -> tuple[int, int, int, int, int, int, int, int]:
+    category_score = 3 if item.category in {"exam", "help_desk"} else 2 if item.category == "exam_candidate" else 1
+    return (
+        category_score,
+        _event_source_score(item),
+        1 if item.sync_due else 0,
+        1 if item.sync_start else 0,
+        len(one_line(item.coverage)),
+        len(one_line(item.location)),
+        len(one_line(item.instructions)),
+        len(one_line(item.source_title)),
+    )
+
+
+def merge_event(existing: Event, candidate: Event) -> Event:
+    base, fallback = (
+        (candidate, existing)
+        if _event_quality_score(candidate) > _event_quality_score(existing)
+        else (existing, candidate)
+    )
+    updates: dict[str, str] = {}
+    for field in (
+        "url",
+        "course",
+        "title",
+        "due",
+        "sync_due",
+        "sync_start",
+        "source",
+        "source_title",
+        "type",
+        "location",
+    ):
+        if not getattr(base, field) and getattr(fallback, field):
+            updates[field] = getattr(fallback, field)
+    if len(one_line(fallback.instructions)) > len(one_line(base.instructions)):
+        updates["instructions"] = fallback.instructions
+    if len(one_line(fallback.coverage)) > len(one_line(base.coverage)):
+        updates["coverage"] = fallback.coverage
+    if existing.category == "exam" or candidate.category == "exam":
+        updates["category"] = "exam"
+        updates["type"] = "exam"
+    elif existing.category == "help_desk" or candidate.category == "help_desk":
+        updates["category"] = "help_desk"
+        updates["type"] = "help_desk"
+    return replace(base, **updates)
+
+
+def dedupe_events(items: Iterable[Event]) -> list[Event]:
+    indexes: dict[tuple[str, str, str, str, str], int] = {}
+    deduped: list[Event] = []
+    for item in items:
+        key = event_identity_key(item)
+        if key in indexes:
+            index = indexes[key]
+            deduped[index] = merge_event(deduped[index], item)
+            continue
+        indexes[key] = len(deduped)
+        deduped.append(item)
+    return deduped
+
+
+def dedupe_event_state(state: SyncState) -> SyncState:
+    state.exams = dedupe_events(state.exams)
+    state.help_desk_items = dedupe_events(state.help_desk_items)
+
+    approved_indexes = {event_identity_key(item): index for index, item in enumerate(state.exams)}
+    remaining_candidates: list[Event] = []
+    for candidate in state.exam_candidates:
+        key = event_identity_key(candidate)
+        if key in approved_indexes:
+            index = approved_indexes[key]
+            state.exams[index] = replace(
+                merge_event(state.exams[index], candidate),
+                category="exam",
+                type="exam",
+            )
+        else:
+            remaining_candidates.append(candidate)
+    state.exam_candidates = dedupe_events(remaining_candidates)
+    return state
+
+
+def dedupe_state(state: SyncState) -> SyncState:
+    state = dedupe_assignment_state(state)
+    return dedupe_event_state(state)
+
+
 def submitted_assignment_tokens(page: Page) -> set[str]:
     _course, title = split_course_title(page.title)
     normalized = one_line(title).lower()
@@ -316,7 +432,7 @@ def build_sync_state(
     state.exams.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.exam_candidates.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.help_desk_items.sort(key=lambda item: (item.sync_due, item.course, item.title))
-    state = dedupe_assignment_state(state)
+    state = dedupe_state(state)
     state = apply_overrides(
         state,
         overrides,
@@ -324,4 +440,4 @@ def build_sync_state(
         generated_at=generated_at,
         include_past=include_past,
     )
-    return dedupe_assignment_state(state)
+    return dedupe_state(state)

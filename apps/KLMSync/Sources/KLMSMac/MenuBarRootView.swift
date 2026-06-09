@@ -11,15 +11,13 @@ struct MenuBarRootView: View {
         WholeScreenVerticalScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 HeaderView(model: model)
-                QuickStatusStripView(model: model)
+                CommandPanelView(model: model)
                 ImportantLogPanelView(
                     model: model,
                     selectedSection: $selectedSection,
                     expandedLogSummaryKind: $expandedLogSummaryKind
                 )
-                CommandPanelView(model: model)
-                LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
-                RemoteActivityPanelView(model: model)
+                QuickStatusStripView(model: model)
                 ExternalIntegrationStatusView(model: model)
 
                 SectionPickerView(selection: $selectedSection)
@@ -29,12 +27,14 @@ struct MenuBarRootView: View {
                     case .dashboard:
                         DashboardSummaryView(model: model)
                         CommandOutputPanelView(model: model)
-                    case .runLogs:
-                        RunLogArchivePanelView(model: model)
-                    case .logs:
-                        DiagnosticToolsPanelView(model: model)
+                    case .activityLogs:
+                        LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                         RemoteActivityPanelView(model: model)
+                        RunLogArchivePanelView(model: model)
+                    case .diagnostics:
+                        DiagnosticToolsPanelView(model: model)
                         DiagnosticCommandLogPanelView(model: model)
+                        VerifyPanelView(snapshot: model.snapshot)
                         DoctorPanelView(snapshot: model.snapshot)
                         AppDiagnosticsPanelView(model: model)
                         LoginPanelView(model: model)
@@ -101,6 +101,7 @@ struct DiagnosticWindowView: View {
                 }
 
                 DiagnosticCommandLogPanelView(model: model)
+                VerifyPanelView(snapshot: model.snapshot)
                 DoctorPanelView(snapshot: model.snapshot)
                 AppDiagnosticsPanelView(model: model)
                 LoginPanelView(model: model)
@@ -115,8 +116,8 @@ struct DiagnosticWindowView: View {
 
 private enum KLMSMacSection: String, CaseIterable, Identifiable {
     case dashboard
-    case runLogs
-    case logs
+    case activityLogs
+    case diagnostics
 
     var id: String { rawValue }
 
@@ -124,9 +125,9 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard:
             "대시보드"
-        case .runLogs:
-            "실행 로그"
-        case .logs:
+        case .activityLogs:
+            "로그"
+        case .diagnostics:
             "진단"
         }
     }
@@ -135,9 +136,9 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard:
             "gauge.with.dots.needle.67percent"
-        case .runLogs:
+        case .activityLogs:
             "list.bullet.rectangle.portrait"
-        case .logs:
+        case .diagnostics:
             "wrench.and.screwdriver"
         }
     }
@@ -1183,11 +1184,9 @@ private struct NextActionPanelView: View {
         switch action.kind {
         case .showRunningLog:
             expandedLogSummaryKind = .run
-            selectedSection = .logs
-            openDiagnosticsWindow()
+            selectedSection = .activityLogs
         case .openDiagnostics:
-            expandedLogSummaryKind = .run
-            selectedSection = .logs
+            selectedSection = .diagnostics
             openDiagnosticsWindow()
         case .copyAuthDigits:
             if let digits = model.currentAuthDigits {
@@ -1947,6 +1946,7 @@ private struct DashboardSummaryView: View {
             let activeDetail = visibleMetrics.first { $0.detail == selectedDetail }?.detail
                 ?? visibleMetrics.first?.detail
             IssueSummaryView(issues: snapshot.issues)
+            MacMailPasteAnalyzerPanel(model: model, snapshot: snapshot)
             if visibleMetrics.isEmpty {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.caption)
@@ -2033,8 +2033,8 @@ private struct NoticeMemoStatusView: View {
                     Text("최근 공지 메모 작성: \(timing.status.klmsLocalizedStatus) · \(timing.elapsedSecondsText) · 체크리스트/문단 서식")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    ForEach(timing.noticeRenderResults.prefix(3)) { result in
-                        Text("\(noticeTargetText(result.target)): \(result.status.klmsLocalizedStatus)")
+                    ForEach(timing.noticeRenderResultsForDisplay.prefix(3)) { result in
+                        Text("\(result.displayTargetTitle): \(result.status.klmsLocalizedStatus)")
                             .font(.caption2)
                             .foregroundStyle(noticeResultIsOK(result.status) ? Color.secondary : Color.orange)
                     }
@@ -2051,19 +2051,6 @@ private struct NoticeMemoStatusView: View {
 
     private var renderModeColor: Color {
         .blue
-    }
-
-    private func noticeTargetText(_ target: String) -> String {
-        switch target {
-        case "capture":
-            "체크 표시 읽기"
-        case "primary":
-            "KLMS 공지"
-        case "archive":
-            "확인한 공지"
-        default:
-            target
-        }
     }
 
     private func noticeResultIsOK(_ status: String) -> Bool {
@@ -2744,7 +2731,7 @@ private struct CommandStageDurationSummaryView: View {
                 Text("단계별 소요 시간")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], spacing: 6) {
+                VStack(spacing: 6) {
                     ForEach(durations) { duration in
                         HStack(spacing: 6) {
                             Circle()
@@ -2753,6 +2740,7 @@ private struct CommandStageDurationSummaryView: View {
                             Text(duration.displayName)
                                 .font(.caption2.weight(.semibold))
                                 .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                             Spacer(minLength: 4)
                             Text(duration.secondsText)
                                 .font(.caption2)
@@ -2761,6 +2749,7 @@ private struct CommandStageDurationSummaryView: View {
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                     }
                 }
@@ -2841,6 +2830,137 @@ private struct LoginPanelView: View {
         case let value:
             value
         }
+    }
+}
+
+private struct VerifyPanelView: View {
+    var snapshot: EngineSnapshot
+
+    var body: some View {
+        if let verify = snapshot.verifyResult {
+            SectionBox(title: "상태 검사 해설") {
+                let issueChecks = verify.checks.filter { isIssueStatus($0.status) }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(summaryText(for: verify, issueCount: issueChecks.count))
+                        .font(.caption)
+                        .foregroundStyle(issueChecks.isEmpty && verify.status.lowercased() == "ok" ? Color.secondary : Color.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if issueChecks.isEmpty {
+                        Text("메모, 파일, 캘린더, 미리 알림 검사에서 설명이 필요한 실패 항목이 없습니다.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(issueChecks) { check in
+                            VerifyCheckExplanationRowView(check: check)
+                        }
+                    }
+
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(verify.checks) { check in
+                                VerifyCheckExplanationRowView(check: check, compact: true)
+                            }
+                        }
+                    } label: {
+                        Text("전체 상태 검사 항목 \(verify.checks.count)개")
+                            .font(.caption)
+                    }
+                }
+            }
+        }
+    }
+
+    private func summaryText(for verify: VerifyResult, issueCount: Int) -> String {
+        let okCount = verify.checks.filter { $0.status.lowercased() == "ok" }.count
+        if issueCount == 0 {
+            return "상태: \(verify.status.klmsLocalizedStatus) · 정상 \(okCount)개"
+        }
+        return "상태: \(verify.status.klmsLocalizedStatus) · 확인 필요 \(issueCount)개 · 정상 \(okCount)개"
+    }
+
+    private func isIssueStatus(_ status: String) -> Bool {
+        ["fail", "failed", "error", "warn", "warning"].contains(status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+}
+
+private struct VerifyCheckExplanationRowView: View {
+    var check: VerifyCheck
+    var compact = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(color)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: compact ? 2 : 4) {
+                Text("\(check.diagnosticTitle) · \(check.status.klmsLocalizedStatus)")
+                    .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
+                if compact {
+                    Text(rawDetail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(check.diagnosticExplanation)
+                        .font(.caption2)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(check.diagnosticNextAction)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !rawDetail.isEmpty {
+                        Text("원본: \(rawDetail)")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .padding(compact ? 6 : 9)
+        .background(compact ? Color(nsColor: .controlBackgroundColor) : rowBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(color.opacity(compact ? 0.10 : 0.22), lineWidth: 1)
+        }
+    }
+
+    private var rawDetail: String {
+        check.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var rowBackground: Color {
+        if ["fail", "failed", "error"].contains(check.status.lowercased()) {
+            return Color.red.opacity(0.08)
+        }
+        if ["warn", "warning"].contains(check.status.lowercased()) {
+            return Color.orange.opacity(0.10)
+        }
+        return Color.secondary.opacity(0.10)
+    }
+
+    private var systemImage: String {
+        if ["fail", "failed", "error"].contains(check.status.lowercased()) {
+            return "xmark.octagon.fill"
+        }
+        if ["warn", "warning"].contains(check.status.lowercased()) {
+            return "exclamationmark.triangle.fill"
+        }
+        return "checkmark.circle.fill"
+    }
+
+    private var color: Color {
+        if ["fail", "failed", "error"].contains(check.status.lowercased()) {
+            return .red
+        }
+        if ["warn", "warning"].contains(check.status.lowercased()) {
+            return .orange
+        }
+        return .green
     }
 }
 
@@ -3384,6 +3504,7 @@ private struct RunLogArchiveRowView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
+                    CommandStageDurationSummaryView(durations: record.visibleStageDurations)
                     LogTextBlock(text: record.outputTail)
                 }
             }
@@ -3397,20 +3518,26 @@ private struct RunLogArchiveRowView: View {
                     HStack(spacing: 6) {
                         Text(record.command.displayName)
                             .font(.caption.weight(.semibold))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         if record.dryRun {
                             Text("변경량 계산")
                                 .font(.caption2)
                                 .foregroundStyle(.blue)
+                                .lineLimit(1)
                         }
                     }
                     Text("\(record.startedAt.formatted(date: .numeric, time: .shortened)) · \(record.elapsedSecondsText)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                    CompactStageDurationRowsView(durations: record.visibleStageDurations)
                 }
+                .layoutPriority(1)
                 Spacer(minLength: 8)
                 Text(record.statusText)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(statusColor)
+                    .lineLimit(1)
             }
         }
         .padding(9)
@@ -3479,21 +3606,27 @@ private struct CommandHistoryRowView: View {
             HStack {
                 Text(record.command.displayName)
                     .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 if record.dryRun {
                     Text("변경량 계산")
                         .font(.caption2)
                         .foregroundStyle(.blue)
+                        .lineLimit(1)
                 }
-                Spacer()
+                Spacer(minLength: 8)
                 Text(record.statusText)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(statusColor)
+                    .lineLimit(1)
             }
             Text("\(record.startedAt.formatted(date: .numeric, time: .standard)) · \(record.elapsedSecondsText)")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+            CompactStageDurationRowsView(durations: record.visibleStageDurations)
             if !record.outputTail.isEmpty {
                 DisclosureGroup {
+                    CommandStageDurationSummaryView(durations: record.visibleStageDurations)
                     Text(record.outputTail)
                         .font(.system(.caption2, design: .monospaced))
                         .textSelection(.enabled)
@@ -3513,6 +3646,37 @@ private struct CommandHistoryRowView: View {
             return .secondary
         }
         return record.succeeded ? .green : .orange
+    }
+}
+
+private struct CompactStageDurationRowsView: View {
+    var durations: [KLMSStageDuration]
+
+    var body: some View {
+        if !durations.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(durations) { duration in
+                    HStack(spacing: 4) {
+                        Text(duration.displayName)
+                            .font(.caption2.weight(.semibold))
+                        Text(duration.secondsText)
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+        }
+    }
+}
+
+private extension CommandRunRecord {
+    var visibleStageDurations: [KLMSStageDuration] {
+        if !stageDurations.isEmpty {
+            return stageDurations
+        }
+        return KLMSStageDurationParser.parse(from: outputTail)
     }
 }
 
@@ -3864,8 +4028,8 @@ private extension Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
-                ? NSColor(calibratedRed: 0.60, green: 0.53, blue: 0.65, alpha: 1.0)
-                : NSColor(calibratedRed: 0.31, green: 0.24, blue: 0.35, alpha: 1.0)
+                ? NSColor(calibratedRed: 0.42, green: 0.62, blue: 0.55, alpha: 1.0)
+                : NSColor(calibratedRed: 0.15, green: 0.36, blue: 0.31, alpha: 1.0)
         })
     }
 
@@ -3873,8 +4037,8 @@ private extension Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
-                ? NSColor(calibratedRed: 0.08, green: 0.09, blue: 0.11, alpha: 1.0)
-                : NSColor(calibratedRed: 0.95, green: 0.96, blue: 0.97, alpha: 1.0)
+                ? NSColor(calibratedRed: 0.07, green: 0.10, blue: 0.09, alpha: 1.0)
+                : NSColor(calibratedRed: 0.94, green: 0.97, blue: 0.96, alpha: 1.0)
         })
     }
 

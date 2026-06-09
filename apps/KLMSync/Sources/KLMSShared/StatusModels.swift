@@ -419,8 +419,39 @@ public extension CalendarChange {
         "내용 수정은 Apple Calendar 이벤트 자체를 바꿉니다. 캘린더에서 열기는 Calendar 앱에서 직접 확인하는 기능입니다."
     }
 
+    var editDefaults: CalendarEventEdit {
+        CalendarEventEdit(
+            title: title,
+            startAt: CalendarChange.normalizedEditDateText(startAt),
+            dueAt: CalendarChange.normalizedEditDateText(dueAt),
+            location: location
+        )
+    }
+
     private var normalizedAction: String {
         action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func normalizedEditDateText(_ text: String) -> String {
+        guard let date = parseEditDate(text) else { return text }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private static func parseEditDate(_ text: String) -> Date? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: trimmed) {
+            return date
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: trimmed)
     }
 }
 
@@ -502,6 +533,17 @@ public struct StageTimingReport: Decodable, Sendable, Equatable {
         TimeDisplay.secondsText(milliseconds: elapsedMS)
     }
 
+    public var noticeRenderResultsForDisplay: [NoticeRenderResult] {
+        noticeRenderResults.sorted { lhs, rhs in
+            let lhsRank = Self.noticeRenderDisplayRank(lhs.target)
+            let rhsRank = Self.noticeRenderDisplayRank(rhs.target)
+            if lhsRank != rhsRank {
+                return lhsRank < rhsRank
+            }
+            return lhs.target.localizedStandardCompare(rhs.target) == .orderedAscending
+        }
+    }
+
     public func markingStaleRunningIfNeeded(
         now: Date = Date(),
         maxRunningAge: TimeInterval = 30 * 60
@@ -534,6 +576,22 @@ public struct StageTimingReport: Decodable, Sendable, Equatable {
         plain.formatOptions = [.withInternetDateTime]
         return plain.date(from: trimmed)
     }
+
+    private static func noticeRenderDisplayRank(_ target: String) -> Int {
+        switch target.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "primary", "primary-stable-noop":
+            return 0
+        case "archive", "archive-stable-noop":
+            return 1
+        case "capture", "capture-state-preserved":
+            return 2
+        case "stable-noop-before-capture", "stable-noop-after-capture",
+             "state-only-render-deferred":
+            return 3
+        default:
+            return 4
+        }
+    }
 }
 
 public struct NoticeRenderResult: Decodable, Sendable, Equatable, Identifiable {
@@ -542,6 +600,25 @@ public struct NoticeRenderResult: Decodable, Sendable, Equatable, Identifiable {
     public var output: String
 
     public var id: String { "\(target)-\(status)-\(output)" }
+
+    public var displayTargetTitle: String {
+        switch target.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "primary", "primary-stable-noop":
+            return "KLMS 공지"
+        case "archive", "archive-stable-noop":
+            return "확인한 공지"
+        case "capture":
+            return "체크 표시 읽기"
+        case "capture-state-preserved":
+            return "체크 표시 보존"
+        case "stable-noop-before-capture", "stable-noop-after-capture":
+            return "변경 없음"
+        case "state-only-render-deferred":
+            return "상태 변경 보류"
+        default:
+            return target
+        }
+    }
 
     enum CodingKeys: String, CodingKey {
         case target
@@ -563,7 +640,7 @@ public struct NoticeRenderResult: Decodable, Sendable, Equatable, Identifiable {
     }
 }
 
-public struct KLMSStageDuration: Sendable, Equatable, Identifiable {
+public struct KLMSStageDuration: Codable, Sendable, Equatable, Identifiable {
     public var stage: String
     public var seconds: Int
 
@@ -599,15 +676,35 @@ public struct KLMSStageDuration: Sendable, Equatable, Identifiable {
 
 public enum KLMSStageDurationParser {
     public static func parse(from output: String) -> [KLMSStageDuration] {
-        let pattern = #"^==\s+(core|notice|files)\s+finish\b.*\bduration_s=(\d+)\s*=="#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+        let finishPattern = #"^==\s+(core|notice|files)\s+finish\b.*\bduration_s=(\d+)\s*=="#
+        let summaryPattern = #"^==\s+단계별 실행시간\b(.*)==$"#
+        let summaryTokenPattern = #"\b(core|notice|files)=(\d+)s\b"#
+        guard let finishRegex = try? NSRegularExpression(pattern: finishPattern),
+              let summaryRegex = try? NSRegularExpression(pattern: summaryPattern),
+              let summaryTokenRegex = try? NSRegularExpression(pattern: summaryTokenPattern) else {
             return []
         }
         var latestByStage: [String: KLMSStageDuration] = [:]
         output.split(whereSeparator: \.isNewline).forEach { line in
             let text = String(line)
             let range = NSRange(text.startIndex..<text.endIndex, in: text)
-            guard let match = regex.firstMatch(in: text, range: range), match.numberOfRanges >= 3 else {
+            if let summaryMatch = summaryRegex.firstMatch(in: text, range: range), summaryMatch.numberOfRanges >= 2,
+               let summaryRange = Range(summaryMatch.range(at: 1), in: text) {
+                let summaryText = String(text[summaryRange])
+                let summaryNSRange = NSRange(summaryText.startIndex..<summaryText.endIndex, in: summaryText)
+                summaryTokenRegex.matches(in: summaryText, range: summaryNSRange).forEach { tokenMatch in
+                    guard tokenMatch.numberOfRanges >= 3,
+                          let stageRange = Range(tokenMatch.range(at: 1), in: summaryText),
+                          let secondsRange = Range(tokenMatch.range(at: 2), in: summaryText),
+                          let seconds = Int(String(summaryText[secondsRange])) else {
+                        return
+                    }
+                    let stage = String(summaryText[stageRange])
+                    latestByStage[stage] = KLMSStageDuration(stage: stage, seconds: seconds)
+                }
+                return
+            }
+            guard let match = finishRegex.firstMatch(in: text, range: range), match.numberOfRanges >= 3 else {
                 return
             }
             guard
@@ -697,6 +794,14 @@ public enum KLMSReadableLogParser {
                 continue
             }
 
+            if line.hasPrefix("== 단계별 실행시간") {
+                let durations = KLMSStageDurationParser.parse(from: line)
+                if !durations.isEmpty {
+                    append("summary", "단계별 실행시간", stageDurationSummaryText(durations))
+                }
+                continue
+            }
+
             if line.hasPrefix("status=ok scope=core") {
                 append("summary", "과제/시험 요약", compactKeyValueLine(line, preferredKeys: ["assignments", "exams", "help_desk", "assignment_candidates", "exam_candidates", "changed"]))
                 continue
@@ -734,6 +839,12 @@ public enum KLMSReadableLogParser {
         }
         let duration = KLMSStageDuration(stage: String(line[stageRange]), seconds: seconds)
         return (duration.displayName, String(line[statusRange]), duration.secondsText)
+    }
+
+    private static func stageDurationSummaryText(_ durations: [KLMSStageDuration]) -> String {
+        durations
+            .map { "\($0.displayName) \($0.secondsText)" }
+            .joined(separator: " · ")
     }
 
     private static func compactFailureDetail(_ line: String) -> String {

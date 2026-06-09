@@ -1314,6 +1314,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
     public var calendarChanges: [CalendarChange]
     public var settings: [ServerRelaySetting]
     public var runLogs: [ServerRelayRunLog]
+    public var verifySummary: ServerRelayVerifySummary?
 
     enum CodingKeys: String, CodingKey {
         case generatedAt
@@ -1322,6 +1323,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         case calendarChanges
         case settings
         case runLogs
+        case verifySummary
     }
 
     public init(
@@ -1330,7 +1332,8 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         dryRunReports: [DryRunReport] = [],
         calendarChanges: [CalendarChange] = [],
         settings: [ServerRelaySetting] = [],
-        runLogs: [ServerRelayRunLog] = []
+        runLogs: [ServerRelayRunLog] = [],
+        verifySummary: ServerRelayVerifySummary? = nil
     ) {
         self.generatedAt = generatedAt
         self.items = items
@@ -1338,6 +1341,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         self.calendarChanges = calendarChanges
         self.settings = settings
         self.runLogs = runLogs
+        self.verifySummary = verifySummary
     }
 
     public init(from decoder: Decoder) throws {
@@ -1348,6 +1352,33 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         calendarChanges = try container.decodeIfPresent([CalendarChange].self, forKey: .calendarChanges) ?? []
         settings = try container.decodeIfPresent([ServerRelaySetting].self, forKey: .settings) ?? []
         runLogs = try container.decodeIfPresent([ServerRelayRunLog].self, forKey: .runLogs) ?? []
+        verifySummary = try container.decodeIfPresent(ServerRelayVerifySummary.self, forKey: .verifySummary)
+    }
+}
+
+public struct ServerRelayVerifySummary: Codable, Sendable, Equatable {
+    public var status: String
+    public var updatedAt: String
+    public var checks: [VerifyCheck]
+
+    public init(status: String = "missing", updatedAt: String = "", checks: [VerifyCheck] = []) {
+        self.status = status
+        self.updatedAt = updatedAt
+        self.checks = checks
+    }
+
+    public init(result: VerifyResult, updatedAt: String = "") {
+        self.status = result.status
+        self.updatedAt = updatedAt
+        self.checks = result.checks
+    }
+
+    public var issueChecks: [VerifyCheck] {
+        checks.filter { check in
+            ["fail", "failed", "error", "warn", "warning"].contains(
+                check.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            )
+        }
     }
 }
 
@@ -1521,6 +1552,7 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
     case fileTrash
     case calendarVerify
     case calendarApply
+    case calendarCreate
     case calendarEdit
     case calendarDelete
 
@@ -1564,6 +1596,8 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
             "캘린더 상태 확인"
         case .calendarApply:
             "KLMS 기준 반영"
+        case .calendarCreate:
+            "캘린더 일정 등록"
         case .calendarEdit:
             "캘린더 내용 수정"
         case .calendarDelete:

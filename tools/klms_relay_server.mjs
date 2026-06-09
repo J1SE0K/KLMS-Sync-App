@@ -206,6 +206,7 @@ async function route(request, response) {
       calendarChanges: normalizeCalendarChanges(body.calendarChanges),
       settings: normalizeSettings(body.settings),
       runLogs: normalizeRunLogs(body.runLogs),
+      verifySummary: normalizeVerifySummary(body.verifySummary),
     });
     touchRelayEvent("sync-data");
     sendJSON(response, 200, syncDataResponse({ limit: MAX_SYNC_ITEMS }));
@@ -1955,6 +1956,7 @@ async function uploadFileAccess(response, request, id) {
 
 async function downloadFileAccess(response, url, id) {
   const wantsPreview = url.searchParams.has("preview") && !url.searchParams.has("download");
+  const wantsRawPreview = wantsPreview && url.searchParams.has("raw");
   const ticket = url.searchParams.get("ticket") || "";
   const fileRequest = getFileAccessRequest(id);
   if (!fileRequest || fileRequest.status !== "completed" || !fileRequest.objectKey || !fileRequest.downloadTicket) {
@@ -2014,6 +2016,16 @@ async function downloadFileAccess(response, url, id) {
       });
       return;
     }
+    if (!wantsRawPreview) {
+      sendFileAccessPreviewPage(response, url, {
+        fileRequest,
+        preview,
+        status: 200,
+        title: "KLMS 파일 미리보기",
+        message: "미리보기 화면입니다. 확대/축소와 페이지 이동을 사용할 수 있습니다.",
+      });
+      return;
+    }
     let data;
     try {
       data = await fs.readFile(localFileObjectPath(fileRequest.objectKey));
@@ -2054,8 +2066,8 @@ async function downloadFileAccess(response, url, id) {
     sendFileAccessDownloadPage(response, url, {
       fileRequest,
       status: 200,
-      title: "KLMS 파일 미리보기",
-      message: "Mac이 준비한 임시 파일 링크입니다. PDF와 이미지는 이 페이지에서 바로 열어 보고, 필요할 때만 다운로드하세요.",
+      title: "KLMS 파일 다운로드",
+      message: "Mac이 준비한 임시 파일 링크입니다. 미리보기로 먼저 확인하거나 바로 다운로드하세요.",
       canDownload: true,
       previewMaxBytes: limits.previewMaxBytes,
       textPreviewMaxBytes: limits.textPreviewMaxBytes,
@@ -2102,7 +2114,7 @@ async function downloadFileAccess(response, url, id) {
 function sendFileAccessDownloadPage(response, url, {
   fileRequest = null,
   status = 200,
-  title = "KLMS 파일 미리보기",
+  title = "KLMS 파일 다운로드",
   message = "",
   canDownload = false,
   previewMaxBytes = DEFAULT_FILE_PREVIEW_MAX_BYTES,
@@ -2111,7 +2123,10 @@ function sendFileAccessDownloadPage(response, url, {
   const downloadURL = canDownload ? downloadActionURL(url) : "";
   const preview = canDownload ? filePreviewDetails(fileRequest, previewMaxBytes, textPreviewMaxBytes) : { available: false, kind: "", label: "", message: "" };
   const previewURL = preview.available ? previewActionURL(url) : "";
-  const previewMarkup = fileRequest && canDownload ? filePreviewMarkup(preview, previewURL) : "";
+  const previewButton = canDownload ? filePreviewActionMarkup(preview, previewURL) : "";
+  const previewHelp = canDownload
+    ? `<p class="action-note">${escapeHTML(preview.available ? `${preview.label} 파일을 웹에서 바로 열어볼 수 있습니다.` : preview.message || "이 파일은 브라우저 미리보기를 지원하지 않습니다.")}</p>`
+    : "";
   const filename = fileRequest?.itemTitle || "KLMS 파일";
   const sizeText = formatBytes(fileRequest?.sizeBytes);
   const expiresText = fileRequest?.expiresAt || "";
@@ -2136,20 +2151,14 @@ function sendFileAccessDownloadPage(response, url, {
     .filename { font-weight: 800; word-break: break-word; }
     .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     .chip { padding: 6px 9px; border-radius: 999px; background: rgba(100,116,139,.11); color: #475569; font-size: 12px; font-weight: 650; }
-    .preview { margin: 18px 0 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: rgba(15,23,42,.04); }
-    .preview-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
-    .preview-title { font-weight: 800; }
-    .preview-body { min-height: 220px; background: rgba(255,255,255,.62); }
-    .preview-frame { display: block; width: 100%; height: min(62vh, 520px); border: 0; background: white; }
-    .preview-text { width: 100%; min-height: 220px; max-height: min(62vh, 520px); margin: 0; padding: 14px; overflow: auto; white-space: pre-wrap; word-break: break-word; background: #fff; color: #111827; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .preview-image { display: block; width: 100%; max-height: min(62vh, 520px); object-fit: contain; background: #0f172a; }
-    .preview-media { display: block; width: 100%; padding: 18px; }
-    .preview-empty { padding: 16px 14px; color: var(--muted); line-height: 1.5; }
-    .actions { display: flex; gap: 10px; padding: 18px 28px 28px; }
-    a.button { flex: 1; text-align: center; text-decoration: none; border-radius: 12px; padding: 13px 16px; font-weight: 800; background: var(--accent); color: white; box-shadow: 0 10px 24px rgba(37,99,235,.26); }
+    .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 18px 28px 8px; }
+    .button { text-align: center; text-decoration: none; border-radius: 12px; padding: 13px 16px; font-weight: 800; background: var(--accent); color: white; box-shadow: 0 10px 24px rgba(37,99,235,.26); }
+    .button.secondary { background: rgba(100,116,139,.14); color: var(--ink); box-shadow: none; border: 1px solid var(--line); }
+    .button.disabled { background: rgba(100,116,139,.10); color: var(--muted); box-shadow: none; border: 1px solid var(--line); cursor: not-allowed; }
+    .action-note { padding: 0 28px 18px; font-size: 12px; color: var(--muted); }
     .note { padding: 0 28px 24px; font-size: 12px; color: var(--muted); }
-    @media (prefers-color-scheme: dark) { :root { --ink: #e5e7eb; --muted: #a3aebf; --panel: rgba(15,23,42,.82); --line: rgba(148,163,184,.22); } body { background: radial-gradient(circle at 20% 0%, #1e3a8a 0, transparent 32%), linear-gradient(135deg, #020617, #111827 65%, #0f172a); } .file { background: rgba(15,23,42,.7); } .chip { background: rgba(148,163,184,.16); color: #cbd5e1; } .preview { background: rgba(15,23,42,.62); } .preview-body { background: rgba(2,6,23,.7); } }
-    @media (max-width: 640px) { body { padding: 14px; place-items: start center; } .top { padding: 22px 18px 14px; } .actions { padding: 16px 18px 22px; } .note { padding: 0 18px 20px; } .preview-frame, .preview-image { height: 360px; max-height: 58vh; } }
+    @media (prefers-color-scheme: dark) { :root { --ink: #e5e7eb; --muted: #a3aebf; --panel: rgba(15,23,42,.82); --line: rgba(148,163,184,.22); } body { background: radial-gradient(circle at 20% 0%, #1e3a8a 0, transparent 32%), linear-gradient(135deg, #020617, #111827 65%, #0f172a); } .file { background: rgba(15,23,42,.7); } .chip { background: rgba(148,163,184,.16); color: #cbd5e1; } .button.secondary { background: rgba(148,163,184,.16); color: var(--ink); } }
+    @media (max-width: 640px) { body { padding: 14px; place-items: start center; } .top { padding: 22px 18px 14px; } .actions { grid-template-columns: 1fr; padding: 16px 18px 8px; } .action-note { padding: 0 18px 16px; } .note { padding: 0 18px 20px; } }
   </style>
 </head>
 <body>
@@ -2160,9 +2169,8 @@ function sendFileAccessDownloadPage(response, url, {
         <h1>${escapeHTML(title)}</h1>
         <p>${escapeHTML(message)}</p>
         ${fileRequest ? `<div class="file"><div class="filename">${escapeHTML(filename)}</div><div class="meta">${sizeText ? `<span class="chip">${escapeHTML(sizeText)}</span>` : ""}${expiresText ? `<span class="chip" data-expires="${escapeHTML(expiresText)}">만료 ${escapeHTML(expiresText)}</span>` : ""}<span class="chip" data-download-count="${downloadCount}">열람/다운로드 ${downloadCount}회</span></div></div>` : ""}
-        ${previewMarkup}
       </div>
-      ${canDownload ? `<div class="actions"><a class="button" href="${escapeHTML(downloadURL)}">파일 다운로드</a></div>` : ""}
+      ${canDownload ? `<div class="actions">${previewButton}<a class="button secondary" href="${escapeHTML(downloadURL)}">파일 다운로드</a></div>${previewHelp}` : ""}
       <div class="note">이 링크는 임시 링크입니다. 만료되면 서버의 파일과 기록이 자동 정리됩니다.</div>
     </section>
   </main>
@@ -2170,36 +2178,6 @@ function sendFileAccessDownloadPage(response, url, {
     for (const el of document.querySelectorAll("[data-expires]")) {
       const d = new Date(el.dataset.expires);
       if (!Number.isNaN(d.getTime())) el.textContent = "만료 " + d.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
-    }
-    const usageChip = document.querySelector("[data-download-count]");
-    const countedPreviewElements = new WeakSet();
-    function setUsageCount(value) {
-      if (!usageChip) return;
-      usageChip.dataset.downloadCount = String(value);
-      usageChip.textContent = "열람/다운로드 " + value + "회";
-    }
-    function bumpUsageCount(el) {
-      if (!usageChip || (el && countedPreviewElements.has(el))) return;
-      if (el) countedPreviewElements.add(el);
-      const current = Number.parseInt(usageChip.dataset.downloadCount || "0", 10);
-      setUsageCount(Number.isFinite(current) ? current + 1 : 1);
-    }
-    for (const el of document.querySelectorAll("[data-preview-resource]")) {
-      el.addEventListener("load", () => bumpUsageCount(el), { once: true });
-      el.addEventListener("loadedmetadata", () => bumpUsageCount(el), { once: true });
-      if (el.tagName === "IMG" && el.complete && el.naturalWidth > 0) {
-        bumpUsageCount(el);
-      }
-    }
-    for (const el of document.querySelectorAll("[data-preview-text-url]")) {
-      fetch(el.dataset.previewTextUrl, { cache: "no-store" })
-        .then((res) => {
-          if (!res.ok) return Promise.reject(new Error("preview failed"));
-          bumpUsageCount(el);
-          return res.text();
-        })
-        .then((text) => { el.textContent = text || "미리볼 내용이 없습니다."; })
-        .catch(() => { el.textContent = "미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요."; });
     }
   </script>
 </body>
@@ -2224,6 +2202,15 @@ function previewActionURL(url) {
   const next = new URL(url.toString());
   next.searchParams.set("preview", "1");
   next.searchParams.delete("download");
+  next.searchParams.delete("raw");
+  return next.toString();
+}
+
+function rawPreviewActionURL(url) {
+  const next = new URL(url.toString());
+  next.searchParams.set("preview", "1");
+  next.searchParams.set("raw", "1");
+  next.searchParams.delete("download");
   return next.toString();
 }
 
@@ -2237,25 +2224,221 @@ function sendLocalFileObject(response, fileRequest, data, { disposition = "attac
   response.end(data);
 }
 
-function filePreviewMarkup(preview, previewURL) {
+function filePreviewActionMarkup(preview, previewURL) {
   if (preview.available) {
     const url = escapeHTML(previewURL);
-    const label = escapeHTML(preview.label);
-    if (preview.kind === "image") {
-      return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><img class="preview-image" data-preview-resource src="${url}" alt="파일 미리보기"></div></div>`;
-    }
-    if (preview.kind === "text") {
-      return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><pre class="preview-text" data-preview-text-url="${url}">미리보기를 불러오는 중입니다.</pre></div></div>`;
-    }
-    if (preview.kind === "audio") {
-      return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><audio class="preview-media" data-preview-resource controls src="${url}"></audio></div></div>`;
-    }
-    if (preview.kind === "video") {
-      return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><video class="preview-media" data-preview-resource controls src="${url}"></video></div></div>`;
-    }
-    return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">${label}</span></div><div class="preview-body"><iframe class="preview-frame" data-preview-resource title="파일 미리보기" src="${url}"></iframe></div></div>`;
+    return `<a class="button" href="${url}">미리보기</a>`;
   }
-  return `<div class="preview"><div class="preview-head"><span class="preview-title">파일 미리보기</span><span class="chip">지원 안 함</span></div><div class="preview-empty">${escapeHTML(preview.message || "이 파일은 브라우저 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.")}</div></div>`;
+  return `<span class="button disabled" aria-disabled="true">미리보기 불가</span>`;
+}
+
+function sendFileAccessPreviewPage(response, url, {
+  fileRequest,
+  preview,
+  status = 200,
+  title = "KLMS 파일 미리보기",
+  message = "",
+}) {
+  const rawURL = rawPreviewActionURL(url);
+  const backURL = previewBackURL(url);
+  const downloadURL = downloadActionURL(url);
+  const filename = fileRequest?.itemTitle || "KLMS 파일";
+  const sizeText = formatBytes(fileRequest?.sizeBytes);
+  const expiresText = fileRequest?.expiresAt || "";
+  const downloadCount = Number.isFinite(Number(fileRequest?.downloadCount)) ? Number(fileRequest.downloadCount) : 0;
+  const viewerMarkup = filePreviewViewerMarkup(preview, rawURL);
+  const html = `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHTML(title)}</title>
+  <style>
+    :root { color-scheme: light dark; --accent: #2563eb; --ink: #172033; --muted: #64748b; --panel: rgba(255,255,255,.9); --line: rgba(148,163,184,.35); --surface: rgba(248,250,252,.84); }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--ink); background: radial-gradient(circle at 20% 0%, #dbeafe 0, transparent 30%), linear-gradient(135deg, #f8fafc, #eef2ff 55%, #ecfeff); }
+    main { width: min(1160px, calc(100vw - 24px)); margin: 0 auto; padding: 18px 0 28px; }
+    .shell { background: var(--panel); backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 24px 60px rgba(15,23,42,.14); overflow: hidden; }
+    .top { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
+    .badge { display: inline-flex; padding: 6px 10px; border-radius: 999px; background: rgba(37,99,235,.10); color: var(--accent); font-size: 12px; font-weight: 800; }
+    h1 { margin: 12px 0 6px; font-size: clamp(22px, 4vw, 30px); line-height: 1.15; letter-spacing: 0; }
+    p { margin: 0; color: var(--muted); line-height: 1.55; }
+    .file { margin-top: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .filename { font-weight: 850; word-break: break-word; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+    .chip { padding: 6px 9px; border-radius: 999px; background: rgba(100,116,139,.11); color: #475569; font-size: 12px; font-weight: 700; }
+    .toolbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); background: rgba(248,250,252,.94); backdrop-filter: blur(14px); }
+    .tool-group { display: inline-flex; gap: 6px; align-items: center; padding: 4px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.72); }
+    button, .button { min-height: 34px; border: 0; border-radius: 9px; padding: 0 11px; background: rgba(100,116,139,.12); color: var(--ink); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+    button.primary, .button.primary { background: var(--accent); color: white; box-shadow: 0 10px 22px rgba(37,99,235,.22); }
+    button:disabled { color: var(--muted); cursor: not-allowed; opacity: .55; }
+    .status { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 750; }
+    .viewer { min-height: min(74vh, 760px); background: rgba(15,23,42,.05); }
+    .pdf-frame { width: 100%; height: min(74vh, 760px); border: 0; background: white; display: block; }
+    .image-stage { height: min(74vh, 760px); overflow: auto; display: grid; place-items: start center; padding: 18px; background: #0f172a; }
+    .image-stage img { max-width: 100%; transform-origin: top center; transition: transform .12s ease; border-radius: 8px; background: white; box-shadow: 0 16px 40px rgba(0,0,0,.28); }
+    .text-stage { height: min(74vh, 760px); overflow: auto; background: #fff; color: #111827; }
+    .text-page { min-height: 100%; margin: 0; padding: 20px; white-space: pre-wrap; word-break: break-word; font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .media-stage { min-height: min(74vh, 760px); display: grid; place-items: center; padding: 24px; background: rgba(15,23,42,.08); }
+    .media-stage video, .media-stage audio { width: min(100%, 920px); }
+    .empty { padding: 24px; color: var(--muted); }
+    .note { padding: 12px 18px 18px; color: var(--muted); font-size: 12px; }
+    @media (prefers-color-scheme: dark) { :root { --ink: #e5e7eb; --muted: #a3aebf; --panel: rgba(15,23,42,.86); --line: rgba(148,163,184,.22); --surface: rgba(15,23,42,.72); } body { background: radial-gradient(circle at 20% 0%, #1e3a8a 0, transparent 32%), linear-gradient(135deg, #020617, #111827 65%, #0f172a); } .chip { background: rgba(148,163,184,.16); color: #cbd5e1; } .toolbar { background: rgba(15,23,42,.92); } .tool-group { background: rgba(15,23,42,.74); } .text-stage { background: #111827; color: #e5e7eb; } }
+    @media (max-width: 700px) { main { width: 100%; padding: 0; } .shell { border-radius: 0; min-height: 100vh; } .top { padding: 14px; } .toolbar { gap: 7px; padding: 10px; } .tool-group { flex: 1 1 auto; } button, .button { flex: 1 1 auto; padding: 0 9px; } .status { width: 100%; margin-left: 0; text-align: center; } .viewer, .pdf-frame, .image-stage, .text-stage { height: calc(100vh - 270px); min-height: 420px; } }
+  </style>
+</head>
+<body>
+  <main data-kind="${escapeHTML(preview.kind)}" data-raw-url="${escapeHTML(rawURL)}">
+    <section class="shell">
+      <div class="top">
+        <div class="badge">${status === 200 ? "미리보기" : "확인 필요"}</div>
+        <h1>${escapeHTML(title)}</h1>
+        <p>${escapeHTML(message)}</p>
+        <div class="file"><div class="filename">${escapeHTML(filename)}</div><div class="meta">${sizeText ? `<span class="chip">${escapeHTML(sizeText)}</span>` : ""}${expiresText ? `<span class="chip" data-expires="${escapeHTML(expiresText)}">만료 ${escapeHTML(expiresText)}</span>` : ""}<span class="chip">형식 ${escapeHTML(preview.label)}</span><span class="chip" data-download-count="${downloadCount}">열람/다운로드 ${downloadCount}회</span></div></div>
+      </div>
+      <div class="toolbar">
+        <a class="button" href="${escapeHTML(backURL)}">뒤로</a>
+        <div class="tool-group">
+          <button type="button" data-action="prev">이전</button>
+          <button type="button" data-action="next">다음</button>
+        </div>
+        <div class="tool-group">
+          <button type="button" data-action="zoom-out">축소</button>
+          <button type="button" data-action="fit">맞춤</button>
+          <button type="button" data-action="zoom-in">확대</button>
+        </div>
+        <a class="button primary" href="${escapeHTML(downloadURL)}">다운로드</a>
+        <div class="status" data-status>1 / 1 · 100%</div>
+      </div>
+      <div class="viewer">${viewerMarkup}</div>
+      <div class="note">PDF는 브라우저 PDF 뷰어의 자체 페이지/확대 기능도 같이 사용할 수 있습니다.</div>
+    </section>
+  </main>
+  <script>
+    const root = document.querySelector("main");
+    const kind = root.dataset.kind;
+    const rawURL = root.dataset.rawUrl;
+    const status = document.querySelector("[data-status]");
+    const usageChip = document.querySelector("[data-download-count]");
+    let usageBumped = false;
+    let page = 1;
+    let zoom = 1;
+    let pages = [""];
+    const bumpUsage = () => {
+      if (!usageChip || usageBumped) return;
+      usageBumped = true;
+      const current = Number.parseInt(usageChip.dataset.downloadCount || "0", 10);
+      const next = Number.isFinite(current) ? current + 1 : 1;
+      usageChip.dataset.downloadCount = String(next);
+      usageChip.textContent = "열람/다운로드 " + next + "회";
+    };
+    const setStatus = () => {
+      if (kind === "pdf") {
+        status.textContent = "PDF " + page + "쪽 · " + Math.round(zoom * 100) + "%";
+        return;
+      }
+      const max = Math.max(1, pages.length);
+      status.textContent = page + " / " + max + " · " + Math.round(zoom * 100) + "%";
+    };
+    const boundedPage = (value) => kind === "pdf" ? Math.max(1, value) : Math.min(Math.max(1, value), Math.max(1, pages.length));
+    const pdfURL = () => rawURL + "#page=" + page + "&zoom=" + Math.round(zoom * 100);
+    const render = () => {
+      page = boundedPage(page);
+      if (kind === "text") {
+        const pre = document.querySelector("[data-text-page]");
+        if (pre) {
+          pre.textContent = pages[page - 1] || "";
+          pre.style.fontSize = Math.max(10, Math.round(15 * zoom)) + "px";
+        }
+      } else if (kind === "image") {
+        const img = document.querySelector("[data-image-preview]");
+        if (img) img.style.transform = "scale(" + zoom + ")";
+      } else if (kind === "pdf") {
+        const frame = document.querySelector("[data-pdf-preview]");
+        if (frame) frame.src = pdfURL();
+      }
+      setStatus();
+    };
+    const splitTextPages = (text) => {
+      const target = 3600;
+      const chunks = [];
+      let current = "";
+      for (const line of String(text || "").split("\\n")) {
+        if (current.length + line.length + 1 > target && current) {
+          chunks.push(current);
+          current = "";
+        }
+        current += (current ? "\\n" : "") + line;
+      }
+      if (current || chunks.length === 0) chunks.push(current);
+      return chunks;
+    };
+    if (kind === "text") {
+      fetch(rawURL, { cache: "no-store" })
+        .then((res) => {
+          if (!res.ok) return Promise.reject(new Error("preview failed"));
+          bumpUsage();
+          return res.text();
+        })
+        .then((text) => { pages = splitTextPages(text); page = 1; render(); })
+        .catch(() => { pages = ["미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요."]; render(); });
+    } else {
+      pages = [""];
+      render();
+      const resource = document.querySelector("[data-image-preview], [data-pdf-preview], video, audio");
+      if (resource) {
+        resource.addEventListener("load", bumpUsage, { once: true });
+        resource.addEventListener("loadedmetadata", bumpUsage, { once: true });
+        if (resource.tagName === "IMG" && resource.complete && resource.naturalWidth > 0) bumpUsage();
+      }
+    }
+    document.querySelector("[data-action='prev']").addEventListener("click", () => { page -= 1; render(); });
+    document.querySelector("[data-action='next']").addEventListener("click", () => { page += 1; render(); });
+    document.querySelector("[data-action='zoom-out']").addEventListener("click", () => { zoom = Math.max(.35, +(zoom - .15).toFixed(2)); render(); });
+    document.querySelector("[data-action='zoom-in']").addEventListener("click", () => { zoom = Math.min(3, +(zoom + .15).toFixed(2)); render(); });
+    document.querySelector("[data-action='fit']").addEventListener("click", () => { zoom = 1; render(); });
+    for (const el of document.querySelectorAll("[data-expires]")) {
+      const d = new Date(el.dataset.expires);
+      if (!Number.isNaN(d.getTime())) el.textContent = "만료 " + d.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
+    }
+  </script>
+</body>
+</html>`;
+  response.writeHead(status, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; frame-src 'self'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+    "Referrer-Policy": "no-referrer",
+  });
+  response.end(html);
+}
+
+function previewBackURL(url) {
+  const next = new URL(url.toString());
+  next.searchParams.delete("preview");
+  next.searchParams.delete("raw");
+  next.searchParams.delete("download");
+  return next.toString();
+}
+
+function filePreviewViewerMarkup(preview, rawURL) {
+  const url = escapeHTML(rawURL);
+  if (preview.kind === "image") {
+    return `<div class="image-stage"><img data-image-preview src="${url}" alt="파일 미리보기"></div>`;
+  }
+  if (preview.kind === "text") {
+    return `<div class="text-stage"><pre class="text-page" data-text-page>미리보기를 불러오는 중입니다.</pre></div>`;
+  }
+  if (preview.kind === "audio") {
+    return `<div class="media-stage"><audio controls src="${url}"></audio></div>`;
+  }
+  if (preview.kind === "video") {
+    return `<div class="media-stage"><video controls src="${url}"></video></div>`;
+  }
+  if (preview.kind === "pdf") {
+    return `<iframe class="pdf-frame" data-pdf-preview title="파일 미리보기" src="${url}#page=1&zoom=100"></iframe>`;
+  }
+  return `<div class="empty">이 파일은 웹 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.</div>`;
 }
 
 function normalizeSyncItem(raw) {
@@ -2334,6 +2517,7 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
     setMeta("syncDataCalendarChanges", JSON.stringify(extras.calendarChanges || []));
     setMeta("syncDataSettings", JSON.stringify(extras.settings || []));
     setMeta("syncDataRunLogs", JSON.stringify(runLogs));
+    setMeta("syncDataVerifySummary", JSON.stringify(extras.verifySummary || null));
     setMeta("syncDataGeneratedAt", String(generatedAt || now));
     setMeta("syncDataUpdatedAt", now);
     db.exec("COMMIT");
@@ -2363,6 +2547,7 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
   const calendarChanges = parseJSON(getMeta("syncDataCalendarChanges"), []);
   const settings = parseJSON(getMeta("syncDataSettings"), []);
   const runLogs = parseJSON(getMeta("syncDataRunLogs"), []);
+  const verifySummary = parseJSON(getMeta("syncDataVerifySummary"), null);
   const runLogsClearedAt = getMeta("syncDataRunLogsClearedAt");
   return {
     generatedAt: getMeta("syncDataGeneratedAt") || "",
@@ -2372,6 +2557,7 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
     calendarChanges: normalizeCalendarChanges(calendarChanges),
     settings: normalizeSettings(settings),
     runLogs: normalizeRunLogs(runLogs, runLogsClearedAt),
+    verifySummary: normalizeVerifySummary(verifySummary),
   };
 }
 
@@ -2446,6 +2632,34 @@ function normalizeSettings(raw) {
   })).filter((setting) => setting.key);
 }
 
+function normalizeVerifySummary(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  return {
+    status: sanitizePublicText(raw.status) || "missing",
+    updatedAt: sanitizePublicText(raw.updatedAt || raw.updated_at) || "",
+    checks: Array.isArray(raw.checks)
+      ? raw.checks.map(normalizeVerifyCheck).filter(Boolean).slice(0, 80)
+      : [],
+  };
+}
+
+function normalizeVerifyCheck(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const name = sanitizePublicText(raw.name);
+  if (!name) {
+    return null;
+  }
+  return {
+    name,
+    status: sanitizePublicText(raw.status) || "missing",
+    detail: sanitizePublicText(raw.detail || raw.message),
+  };
+}
+
 function normalizeRunLogs(raw, clearedAt = "") {
   if (!Array.isArray(raw)) {
     return [];
@@ -2503,8 +2717,6 @@ function sanitizeLogText(value) {
     .replace(/KAIST 인증 번호:\s*\d{1,3}/g, "KAIST 인증 번호: --")
     .replace(/digits=\d{1,3}/g, "digits=--")
     .replace(/https?:\/\/klms\.kaist\.ac\.kr\/[^\s"'<>]+/gi, "[KLMS URL]")
-    .replace(/\/Users\/[^\s"'<>]+/g, "[local-path]")
-    .replace(/\/var\/folders\/[^\s"'<>]+/g, "[temp-path]")
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]");
   const lines = text
     .split(/\r?\n/)
@@ -2518,6 +2730,9 @@ function sanitizeLogText(value) {
 }
 
 function looksPrivateLogLine(text) {
+  if (/\/Users\//i.test(text) || /\/var\/folders\//i.test(text)) {
+    return true;
+  }
   if (/(주소|address)/i.test(text)) {
     return true;
   }
@@ -2817,6 +3032,8 @@ function displayItemActionName(action) {
       return "캘린더 상태 확인";
     case "calendarApply":
       return "KLMS 기준 반영";
+    case "calendarCreate":
+      return "캘린더 일정 등록";
     case "calendarEdit":
       return "캘린더 내용 수정";
     case "calendarDelete":

@@ -74,6 +74,9 @@ Example Course/resources/Week 1 Notes.pdf
 - 새 파일은 먼저 로컬 staging 아래에 확보하고, 과목별 정리본에는 별도 복사본을 만든다.
 - 현재 정리본, staging inbox, 이전 다운로드 로그가 가리키는 예전 경로를 먼저 재사용한다.
 - 세 위치에 없을 때만 Safari를 열어 실제 다운로드를 시도한다.
+- `FILE_DOWNLOAD_PARALLELISM`은 direct fetch 가능한 KLMS `pluginfile.php` 파일만 병렬로 받는다.
+- Safari 다운로드 폴더를 감지해야 하는 fallback은 파일 매칭 안정성을 위해 직렬로 유지한다.
+- `FILE_DIRECT_FETCH_MAX_BYTES`보다 큰 파일과 동영상/압축 파일은 batch direct fetch에서 제외하고 안전한 직렬 경로로 처리한다.
 - 파일 seed URL 목록이 unchanged이고 기존 manifest와 `course_files`가 맞으면 seed 상세 페이지는 더 오래 재사용하고, resource/assignment index 같은 timestamp 페이지를 주기적으로 확인해 같은 파일명 교체만 다시 받는다.
 - 실행이 끝나면 `course_files`는 manifest 기준으로 prune하고, staging 다운로드는 기본적으로 제거한다.
 - `FILE_KEEP_FRESH_DOWNLOADS=1`이면 이번 실행에서 새로 받은 파일만 staging에 남긴다.
@@ -98,7 +101,8 @@ Example Course/resources/Week 1 Notes.pdf
 
 - `REMINDER_STAGE_ALERTS_ENABLED=1`이면 `REMINDER_ALERT_LIST_NAME` 목록에 `1일 전 / 2시간 전` 단계 알림용 리마인더를 만든다.
 - Apple Reminders 한 항목에는 여러 알림 시점을 넣을 수 없어서 단계 알림은 별도 항목으로 구현한다.
-- `REMINDER_RECREATE_STAGE_ALERT_LIST=1`이면 목록을 재생성해서 비교 시간을 줄인다.
+- 기본값은 기존 단계 알림 목록을 재사용하고 필요한 항목만 수정/삭제한다.
+- `REMINDER_RECREATE_STAGE_ALERT_LIST=1`이면 단계 알림 목록을 강제로 재생성한다. 보통은 빠른 동기화를 위해 `0`을 권장한다.
 - `REMINDER_DEVICE_ALERTS_ENABLED=1`은 표시 시각을 앞당겨 보이게 만들 수 있어 기본값은 `0`이다.
 
 ## Calendar

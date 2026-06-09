@@ -95,6 +95,7 @@ final class KLMSMacModel: ObservableObject {
     @Published var serverRelayStatusMessage: String?
     @Published var permissionStatusMessage: String?
     @Published var permissionProbeRows: [KLMSPermissionProbeRow] = []
+    @Published var resolvedCalendarChangeIDs = Set<String>()
     @Published var runningCommand: KLMSEngineCommand?
     @Published var isCancellingCommand = false
     @Published var liveCommandOutput = ""
@@ -117,6 +118,7 @@ final class KLMSMacModel: ObservableObject {
     private var notifiedAlreadyLoggedInForCurrentRun = false
     private var authDigitsSeenForCurrentRun = false
     private var lastAuthCompletionAt: Date?
+    private var lastAuthStatusMessageForRemote: String?
     private var authStatusClearTask: Task<Void, Never>?
     private var runningCommandStatusPollTask: Task<Void, Never>?
     private var pasteboardClearTask: Task<Void, Never>?
@@ -268,7 +270,7 @@ final class KLMSMacModel: ObservableObject {
             "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": "1",
             "NOTICE_NATIVE_STABLE_NOOP_SKIP": "1",
             "NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER": "0",
-            "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER": "0",
+            "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER": "1",
             "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0",
             "NOTICE_NATIVE_POST_RENDER_VERIFY": "0",
             "NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED": "1",
@@ -291,6 +293,10 @@ final class KLMSMacModel: ObservableObject {
             "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": "1",
             "FILE_WEEKLY_FOLDERS_ENABLED": "1",
             "FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS": "21600",
+            "FILE_DOWNLOAD_PARALLELISM": "3",
+            "FILE_DIRECT_FETCH_MAX_BYTES": "26214400",
+            "FILE_DIRECT_FETCH_BATCH_TIMEOUT_SECONDS": "180",
+            "REMINDER_RECREATE_STAGE_ALERT_LIST": "0",
         ]
     }
 
@@ -374,6 +380,7 @@ final class KLMSMacModel: ObservableObject {
         liveCommandOutput = ""
         liveAuthDigits = nil
         authStatusMessage = nil
+        lastAuthStatusMessageForRemote = nil
         authStatusClearTask?.cancel()
         authStatusClearTask = nil
         runningCommandStatusPollTask?.cancel()
@@ -680,7 +687,7 @@ final class KLMSMacModel: ObservableObject {
               now.timeIntervalSince(lastAuthCompletionAt) <= 120 else {
             return nil
         }
-        return authStatusMessage ?? "인증 완료됨"
+        return authStatusMessage ?? lastAuthStatusMessageForRemote
     }
 
     private func copyToPasteboard(_ value: String) {
@@ -934,9 +941,12 @@ final class KLMSMacModel: ObservableObject {
             generatedAt: generatedAt,
             items: items,
             dryRunReports: serverRelayDryRunReports(from: snapshot),
-            calendarChanges: snapshot.calendarSyncResult?.changes.map(serverRelayCalendarChange) ?? [],
+            calendarChanges: snapshot.calendarSyncResult?.changes
+                .filter { !isCalendarChangeResolved($0) }
+                .map(serverRelayCalendarChange) ?? [],
             settings: serverRelaySettings(updatedAt: updatedAt),
-            runLogs: serverRelayRunLogs()
+            runLogs: serverRelayRunLogs(),
+            verifySummary: snapshot.verifyResult.map { ServerRelayVerifySummary(result: $0, updatedAt: updatedAt) }
         )
     }
 
@@ -957,11 +967,31 @@ final class KLMSMacModel: ObservableObject {
             url: "",
             startAt: serverRelayPublicText(change.startAt),
             dueAt: serverRelayPublicText(change.dueAt),
-            location: "",
+            location: serverRelayPublicText(change.location),
             changes: change.changes.compactMap { serverRelayPublicText($0).nilIfBlank },
             raw: "",
             parseError: serverRelayPublicText(change.parseError)
         )
+    }
+
+    func isCalendarChangeResolved(_ change: CalendarChange) -> Bool {
+        calendarChangeResolvedIDs(for: change).contains { resolvedCalendarChangeIDs.contains($0) }
+    }
+
+    private func markCalendarChangeResolved(_ change: CalendarChange) {
+        resolvedCalendarChangeIDs.formUnion(calendarChangeResolvedIDs(for: change))
+    }
+
+    private func calendarChangeResolvedIDs(for change: CalendarChange) -> [String] {
+        var ids = [change.id]
+        let publicChangeID = serverRelayCalendarChange(change).id
+        if publicChangeID != change.id {
+            ids.append(publicChangeID)
+        }
+        if let identifier = change.identifier.nilIfBlank {
+            ids.append(identifier)
+        }
+        return ids
     }
 
     private func serverRelaySettings(updatedAt: String) -> [ServerRelaySetting] {
@@ -1041,8 +1071,6 @@ final class KLMSMacModel: ObservableObject {
             (#"KAIST 인증 번호:\s*[0-9]{1,3}"#, "KAIST 인증 번호: --"),
             (#"digits=[0-9]{1,3}"#, "digits=--"),
             (#"https?:\/\/klms\.kaist\.ac\.kr\/[^\s"'<>]+"#, "[KLMS URL]"),
-            (#"\/Users\/[^\s"'<>]+"#, "[local-path]"),
-            (#"\/var\/folders\/[^\s"'<>]+"#, "[temp-path]"),
             (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#, "[email]")
         ]
         var redacted = value
@@ -1066,7 +1094,11 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func serverRelayLooksPrivateLogLine(_ line: String) -> Bool {
-        line.range(
+        let lowercased = line.lowercased()
+        if lowercased.contains("/users/") || lowercased.contains("/var/folders/") {
+            return true
+        }
+        return line.range(
             of: #"[가-힣A-Za-z0-9_.-]+(로|길)\s*\d{1,4}(\s*-\s*\d{1,4})?"#,
             options: .regularExpression
         ) != nil
@@ -1152,7 +1184,7 @@ final class KLMSMacModel: ObservableObject {
             try setServerRelayFileHidden(false, for: try serverRelayFile(for: action))
         case .fileTrash:
             try trashServerRelayFile(try serverRelayFile(for: action))
-        case .calendarVerify, .calendarApply, .calendarEdit, .calendarDelete:
+        case .calendarVerify, .calendarApply, .calendarCreate, .calendarEdit, .calendarDelete:
             throw serverRelayItemActionError("캘린더 요청은 실행 큐에서 처리해야 합니다.")
         }
         reloadSnapshot()
@@ -1165,7 +1197,7 @@ final class KLMSMacModel: ObservableObject {
             .verify
         case .calendarApply, .calendarDelete:
             .coreSync
-        case .calendarEdit:
+        case .calendarCreate, .calendarEdit:
             nil
         default:
             nil
@@ -1175,9 +1207,20 @@ final class KLMSMacModel: ObservableObject {
     func editCalendarEvent(change: CalendarChange, edit: CalendarEventEdit) async {
         do {
             try await updateCalendarEvent(change: change, edit: edit)
+            markCalendarChangeResolved(change)
             reloadSnapshot()
             errorMessage = nil
             serverRelayStatusMessage = "캘린더 내용 수정 완료"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func createManualCalendarEvent(title: String, startAt: String, dueAt: String, location: String, notes: String) async {
+        do {
+            try await createCalendarEvent(title: title, startAt: startAt, dueAt: dueAt, location: location, notes: notes)
+            errorMessage = nil
+            serverRelayStatusMessage = "메일 일정 등록 완료"
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1187,8 +1230,22 @@ final class KLMSMacModel: ObservableObject {
         let edit = try CalendarEventEdit.decodeMessage(action.message)
         let change = try serverRelayCalendarChange(for: action)
         try await updateCalendarEvent(change: change, edit: edit)
+        markCalendarChangeResolved(change)
         reloadSnapshot()
         return "캘린더 내용 수정 완료"
+    }
+
+    private func applyServerRelayCalendarCreateAction(_ action: ServerRelayItemAction) async throws -> String {
+        let edit = try CalendarEventEdit.decodeMessage(action.message)
+        try await createCalendarEvent(
+            title: edit.title.nilIfBlank ?? action.itemTitle,
+            startAt: edit.startAt,
+            dueAt: edit.dueAt,
+            location: edit.location,
+            notes: "iPhone/iPad 메일 내용 자동 판독에서 요청한 수동 일정입니다."
+        )
+        reloadSnapshot()
+        return "캘린더 일정 등록 완료"
     }
 
     private func serverRelayCalendarChange(for action: ServerRelayItemAction) throws -> CalendarChange {
@@ -1473,11 +1530,13 @@ final class KLMSMacModel: ObservableObject {
         liveCommandOutput = ""
         liveAuthDigits = nil
         authStatusMessage = nil
+        lastAuthStatusMessageForRemote = nil
         authStatusClearTask?.cancel()
         authStatusClearTask = nil
         authDigitsSuppressed = false
         notifiedAuthDigits.removeAll()
         notifiedAuthCompletionForCurrentRun = false
+        notifiedAlreadyLoggedInForCurrentRun = false
         authDigitsSeenForCurrentRun = false
         lastAuthCompletionAt = nil
         let runStartedAt = Date()
@@ -2047,7 +2106,12 @@ final class KLMSMacModel: ObservableObject {
 
                 var completedAction = runningAction
                 do {
-                    if runningAction.action == .calendarEdit {
+                    if runningAction.action == .calendarCreate {
+                        serverRelayStatusMessage = "서버 요청 처리 중: \(runningAction.action.displayName)"
+                        remoteProcessingStatusMessage = serverRelayStatusMessage
+                        completedAction.message = try await applyServerRelayCalendarCreateAction(runningAction)
+                        completedAction.status = .completed
+                    } else if runningAction.action == .calendarEdit {
                         serverRelayStatusMessage = "서버 요청 처리 중: \(runningAction.action.displayName)"
                         remoteProcessingStatusMessage = serverRelayStatusMessage
                         completedAction.message = try await applyServerRelayCalendarEditAction(runningAction)
@@ -2390,6 +2454,56 @@ final class KLMSMacModel: ObservableObject {
             event.location = trimmedLocation
         }
 
+        try store.save(event, span: .thisEvent, commit: true)
+    }
+
+    private func createCalendarEvent(title: String, startAt: String, dueAt: String, location: String, notes: String) async throws {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedStart = startAt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedDue = dueAt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLocation = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedTitle.isEmpty else {
+            throw serverRelayItemActionError("일정 제목이 필요합니다.")
+        }
+        guard let startDate = parseCalendarEditDate(trimmedStart) else {
+            throw serverRelayItemActionError("시작 시간을 해석할 수 없습니다. 예: 2026-06-17 13:00")
+        }
+        let endDate: Date
+        if trimmedDue.isEmpty {
+            endDate = startDate.addingTimeInterval(60 * 60)
+        } else {
+            guard let parsedEndDate = parseCalendarEditDate(trimmedDue) else {
+                throw serverRelayItemActionError("종료 시간을 해석할 수 없습니다. 예: 2026-06-17 14:00")
+            }
+            endDate = parsedEndDate
+        }
+        guard endDate >= startDate else {
+            throw serverRelayItemActionError("종료 시간이 시작 시간보다 빠릅니다.")
+        }
+        guard await requestCalendarPermission() else {
+            throw serverRelayItemActionError("Calendar 등록 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 Calendar 권한을 허용해 주세요.")
+        }
+
+        let store = EKEventStore()
+        guard let calendar = store.defaultCalendarForNewEvents ?? store.calendars(for: .event).first(where: { $0.allowsContentModifications }) else {
+            throw serverRelayItemActionError("일정을 추가할 수 있는 Calendar를 찾지 못했습니다.")
+        }
+        let event = EKEvent(eventStore: store)
+        event.calendar = calendar
+        event.title = trimmedTitle
+        event.startDate = startDate
+        event.endDate = endDate
+        if !trimmedLocation.isEmpty {
+            event.location = trimmedLocation
+        }
+        event.notes = [
+            "KLMS Sync 메일 붙여넣기에서 수동 등록",
+            trimmedNotes,
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: "\n\n")
         try store.save(event, span: .thisEvent, commit: true)
     }
 
@@ -2928,6 +3042,7 @@ final class KLMSMacModel: ObservableObject {
     private func showTransientAuthStatus(_ message: String) {
         authStatusClearTask?.cancel()
         authStatusMessage = message
+        lastAuthStatusMessageForRemote = message
         authStatusClearTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 12_000_000_000)
             guard !Task.isCancelled else {

@@ -545,6 +545,41 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertEqual(store.load().records.first?.command, .noticeSync)
     }
 
+    func testCommandRunHistoryPersistsStageDurationSummaryAfterTrim() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("klms-dashboard-history-stage-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let filler = (0..<140).map { "[files] download line-\($0)" }.joined(separator: "\n")
+        let output = """
+        == core finish 2026-06-07 23:25:36 KST status=0 duration_s=18 ==
+        == notice finish 2026-06-07 23:26:35 KST status=0 duration_s=59 ==
+        \(filler)
+        == files finish 2026-06-07 23:32:13 KST status=0 duration_s=338 ==
+        """
+        let store = CommandRunHistoryStore(url: directory.appendingPathComponent("history.json"), maxRecords: 2)
+        let result = KLMSCommandResult(
+            invocation: KLMSEngineCommand.fullSync.invocation(),
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 400),
+            exitCode: 0,
+            standardOutput: output,
+            standardError: "",
+            authDigits: nil
+        )
+
+        let history = try store.append(result)
+        let record = try XCTUnwrap(history.records.first)
+
+        XCTAssertEqual(record.stageDurations.map(\.stage), ["core", "notice", "files"])
+        XCTAssertEqual(record.stageDurations.map(\.seconds), [18, 59, 338])
+        XCTAssertTrue(record.outputTail.contains("== 단계별 실행시간 core=18s notice=59s files=338s"))
+        XCTAssertEqual(KLMSStageDurationParser.parse(from: record.outputTail).map(\.seconds), [18, 59, 338])
+    }
+
     func testCancelledCommandHistoryIsNotAttentionFailure() {
         let record = CommandRunRecord(
             command: .fullSync,
@@ -673,8 +708,8 @@ final class DashboardDataModelTests: XCTestCase {
         let runScreen = try sourceStructBody(named: "CompanionRunScreen", in: ios)
 
         XCTAssertTrue(statusScreen.contains("RemoteStatusHeader"))
-        XCTAssertTrue(statusScreen.contains("RemoteLogSummaryPanel"))
         XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel"))
+        XCTAssertFalse(statusScreen.contains("RemoteLogSummaryPanel"))
         XCTAssertFalse(statusScreen.contains("RemoteCommandPanel"))
         XCTAssertFalse(statusScreen.contains("RemoteCancelControl"))
         XCTAssertFalse(statusScreen.contains("RecentRemoteCommandsView"))
@@ -682,8 +717,199 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(runScreen.contains("RemoteCommandPanel"))
         XCTAssertTrue(runScreen.contains("RemoteCancelControl"))
         XCTAssertTrue(runScreen.contains("RemoteSettingsPanel"))
+        XCTAssertFalse(runScreen.contains("RemoteLogSummaryPanel"))
+        XCTAssertFalse(runScreen.contains("RemoteRunRequestHistoryPanel"))
         XCTAssertFalse(runScreen.contains("RemoteStatusHeader"))
         XCTAssertFalse(runScreen.contains("RemoteChangeSummaryPanel"))
+    }
+
+    func testMacAndIOSUseDedicatedLogScreensForRequestHistory() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let macRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let mac = try String(contentsOf: macRoot, encoding: .utf8)
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let macRootBody = try sourceBody(after: "struct MenuBarRootView: View", in: mac, description: "Mac root view")
+        let iosHistoryScreen = try sourceStructBody(named: "CompanionHistoryScreen", in: ios)
+
+        XCTAssertTrue(mac.contains("case activityLogs"))
+        XCTAssertTrue(mac.contains("case diagnostics"))
+        XCTAssertTrue(mac.contains("\"로그\""))
+        XCTAssertTrue(macRootBody.contains("case .activityLogs:"))
+        XCTAssertTrue(macRootBody.contains("LogSummaryPanelView"))
+        XCTAssertTrue(macRootBody.contains("RemoteActivityPanelView"))
+        XCTAssertTrue(macRootBody.contains("RunLogArchivePanelView"))
+        XCTAssertTrue(mac.contains("CompactStageDurationRowsView(durations: record.visibleStageDurations)"))
+        XCTAssertTrue(mac.contains("record.visibleStageDurations"))
+        XCTAssertTrue(mac.contains(".fixedSize(horizontal: true, vertical: false)"))
+        XCTAssertTrue(mac.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
+        XCTAssertTrue(macRootBody.contains("case .diagnostics:"))
+        XCTAssertTrue(macRootBody.contains("VerifyPanelView"))
+        XCTAssertFalse(mac.contains("case runLogs"))
+
+        let dashboardBody = try sectionBody(in: macRootBody, from: "case .dashboard:", to: "case .activityLogs:")
+        XCTAssertTrue(dashboardBody.contains("DashboardSummaryView"))
+        XCTAssertTrue(dashboardBody.contains("CommandOutputPanelView"))
+        XCTAssertFalse(dashboardBody.contains("LogSummaryPanelView"))
+        XCTAssertFalse(dashboardBody.contains("RemoteActivityPanelView"))
+
+        let diagnosticsBody = try sectionBody(in: macRootBody, from: "case .diagnostics:", to: ".padding(.vertical, 4)")
+        XCTAssertTrue(diagnosticsBody.contains("DiagnosticToolsPanelView"))
+        XCTAssertTrue(diagnosticsBody.contains("DiagnosticCommandLogPanelView"))
+        XCTAssertFalse(diagnosticsBody.contains("RemoteActivityPanelView"))
+
+        XCTAssertTrue(ios.contains("return \"로그\""))
+        XCTAssertTrue(iosHistoryScreen.contains("CompanionScreenContainer(title: \"로그\""))
+        XCTAssertTrue(iosHistoryScreen.contains("RemoteLogSummaryPanel"))
+        XCTAssertTrue(iosHistoryScreen.contains("SharedRunLogsView"))
+        XCTAssertTrue(iosHistoryScreen.contains("RecentServerRequestLogView"))
+        XCTAssertTrue(iosHistoryScreen.contains("RecentFileAccessRequestsView"))
+        XCTAssertTrue(iosHistoryScreen.contains("RecentRemoteCommandsView"))
+        XCTAssertTrue(ios.contains("CompactRemoteStageDurationRowsView(durations: stageDurations)"))
+        XCTAssertTrue(ios.contains("RemoteStageDurationSummaryView(durations: stageDurations)"))
+        XCTAssertTrue(ios.contains(".fixedSize(horizontal: true, vertical: false)"))
+        XCTAssertTrue(ios.contains(".frame(maxWidth: .infinity, alignment: .leading)"))
+    }
+
+    func testIOSCalendarDetailHasMailPasteAnalyzerAndSharedCalendarActionLabels() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let statusScreen = try sourceStructBody(named: "CompanionStatusScreen", in: ios)
+        let dashboardInlineDetail = try sourceStructBody(named: "DashboardCategoryInlineDetailPanel", in: ios)
+
+        XCTAssertTrue(statusScreen.contains("selectedChangeSummary"))
+        XCTAssertTrue(statusScreen.contains("RemoteChangeSummaryDetailPanel"))
+        XCTAssertTrue(statusScreen.contains("MailPasteAnalyzerPanel"))
+        XCTAssertTrue(dashboardInlineDetail.contains("if category == .calendar"))
+        XCTAssertFalse(dashboardInlineDetail.contains("MailPasteAnalyzerPanel"))
+        XCTAssertTrue(ios.contains("private enum RemoteChangeSummaryKind"))
+        XCTAssertTrue(ios.contains("RemoteDashboardChangeSummary("))
+        XCTAssertTrue(ios.contains("onChangeSummaryTap"))
+        XCTAssertTrue(ios.contains("UIPasteboard.general.string"))
+        XCTAssertTrue(ios.contains("MailPasteAnalyzer.analyze"))
+        XCTAssertTrue(ios.contains("메일 본문을 올리지 않습니다"))
+        XCTAssertTrue(ios.contains("메일 내용 자동 판독"))
+        XCTAssertTrue(ios.contains("MailAnalysisProcessView"))
+        XCTAssertTrue(ios.contains("분석 과정"))
+        XCTAssertTrue(ios.contains("analysisSteps"))
+        XCTAssertTrue(ios.contains("assignmentScore"))
+        XCTAssertTrue(ios.contains("examScore"))
+        XCTAssertTrue(ios.contains("메일의 \\(code) 코드를 현재 KLMS 과목명/별칭표로 풀었습니다"))
+        XCTAssertTrue(ios.contains("guard kind == .none || item.kind.matches(mailKind: kind)"))
+        XCTAssertTrue(ios.contains("처리 대상"))
+        XCTAssertTrue(ios.contains("추천 처리"))
+        XCTAssertTrue(ios.contains("dateSnippet(in:"))
+        XCTAssertTrue(ios.contains("keywordScore(lower, weightedKeywords:"))
+        XCTAssertTrue(ios.contains("(\"written assignment\", 7)"))
+        XCTAssertTrue(ios.contains("(\"final\", 2)"))
+        XCTAssertTrue(ios.contains("yyyy MMMM d, HH:mm"))
+        XCTAssertTrue(ios.contains("detectTitle(lines: lines, kind: kind, course: course)"))
+        XCTAssertTrue(ios.contains("TA|조교"))
+        XCTAssertTrue(ios.contains("resolvedCourseDisplay(for: captured, knownCourses: knownCourses)"))
+        XCTAssertTrue(ios.contains("\"EE488\": \"전기 전자공학특강<전자공학을 위한 사이버 보안 개론>\""))
+        XCTAssertTrue(ios.contains("isMailGreetingOrSignature"))
+        XCTAssertTrue(ios.contains("exam schedule"))
+        XCTAssertTrue(ios.contains("yyyy MMMM d h:mm a"))
+        XCTAssertTrue(ios.contains("월요일|화요일|수요일"))
+        XCTAssertTrue(ios.contains("normalizeMailText(item.searchText).contains(normalizedDue)"))
+        XCTAssertTrue(ios.contains("Mac 캘린더에 등록"))
+        XCTAssertTrue(ios.contains("createManualCalendarAction"))
+        XCTAssertTrue(ios.contains("action: .calendarCreate"))
+        XCTAssertTrue(ios.contains("activeCalendarAction(for change: CalendarChange)"))
+        XCTAssertTrue(ios.contains("visibleCalendarChanges()"))
+        XCTAssertTrue(ios.contains("resolvedCalendarChangeIDs"))
+        XCTAssertTrue(ios.contains("recordResolvedCalendarChanges(itemActions)"))
+        XCTAssertTrue(ios.contains("action.action.resolvesCalendarChange"))
+        XCTAssertTrue(ios.contains("activeAction: model.activeCalendarAction(for: change)"))
+        XCTAssertTrue(ios.contains("activeAction.status.displayName"))
+        XCTAssertTrue(ios.contains("let defaults = change.editDefaults"))
+        XCTAssertTrue(ios.contains("case .calendarEdit, .calendarApply, .calendarDelete:"))
+        XCTAssertFalse(ios.contains("didSubmitCommand"))
+        XCTAssertTrue(ios.contains("\"캘린더 일정 등록\""))
+        XCTAssertTrue(ios.contains("\"캘린더 내용 수정\""))
+        XCTAssertFalse(ios.contains("\"등록/캘린더\""))
+        XCTAssertFalse(ios.contains("\"수정/캘린더\""))
+    }
+
+    func testMacCalendarDashboardHasMailPasteCalendarRegistration() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let detailRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/DashboardDetailView.swift")
+        let modelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
+        let detail = try String(contentsOf: detailRoot, encoding: .utf8)
+        let macRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
+        let mac = try String(contentsOf: macRoot, encoding: .utf8)
+        let model = try String(contentsOf: modelRoot, encoding: .utf8)
+        let calendarDetail = try sourceStructBody(named: "CalendarDetailView", in: detail)
+        let dashboardSummary = try sourceStructBody(named: "DashboardSummaryView", in: mac)
+
+        XCTAssertFalse(calendarDetail.contains("MacMailPasteAnalyzerPanel"))
+        XCTAssertTrue(dashboardSummary.contains("MacMailPasteAnalyzerPanel"))
+        XCTAssertTrue(detail.contains("메일 내용 자동 판독"))
+        XCTAssertTrue(detail.contains("MacMailAnalysisProcessView"))
+        XCTAssertTrue(detail.contains("분석 과정"))
+        XCTAssertTrue(detail.contains("analysisSteps"))
+        XCTAssertTrue(detail.contains("assignmentScore"))
+        XCTAssertTrue(detail.contains("examScore"))
+        XCTAssertTrue(detail.contains("메일의 \\(code) 코드를 현재 KLMS 과목명/별칭표로 풀었습니다"))
+        XCTAssertTrue(detail.contains("guard kind == .none || item.matches(kind: kind)"))
+        XCTAssertTrue(detail.contains("처리 대상"))
+        XCTAssertTrue(detail.contains("추천 처리"))
+        XCTAssertTrue(detail.contains("dateSnippet(in:"))
+        XCTAssertTrue(detail.contains("keywordScore(lower, weightedKeywords:"))
+        XCTAssertTrue(detail.contains("(\"written assignment\", 7)"))
+        XCTAssertTrue(detail.contains("(\"final\", 2)"))
+        XCTAssertTrue(detail.contains("yyyy MMMM d, HH:mm"))
+        XCTAssertTrue(detail.contains("detectTitle(lines: lines, kind: kind, course: course)"))
+        XCTAssertTrue(detail.contains("TA|조교"))
+        XCTAssertTrue(detail.contains("resolvedCourseDisplay(for: captured, knownCourses: knownCourses)"))
+        XCTAssertTrue(detail.contains("\"EE488\": \"전기 전자공학특강<전자공학을 위한 사이버 보안 개론>\""))
+        XCTAssertTrue(detail.contains("isMailGreetingOrSignature"))
+        XCTAssertTrue(detail.contains("exam schedule"))
+        XCTAssertTrue(detail.contains("yyyy MMMM d h:mm a"))
+        XCTAssertTrue(detail.contains("월요일|화요일|수요일"))
+        XCTAssertTrue(detail.contains("normalizeMailText(item.searchText).contains(normalizedDue)"))
+        XCTAssertTrue(detail.contains("캘린더에 등록"))
+        XCTAssertTrue(detail.contains("NSPasteboard.general.string"))
+        XCTAssertTrue(detail.contains("MacMailPasteAnalyzer.analyze"))
+        XCTAssertTrue(model.contains("func createManualCalendarEvent"))
+        XCTAssertTrue(model.contains("EKEvent(eventStore: store)"))
+        XCTAssertTrue(model.contains("applyServerRelayCalendarCreateAction"))
+        XCTAssertTrue(model.contains("runningAction.action == .calendarCreate"))
+        XCTAssertTrue(model.contains("resolvedCalendarChangeIDs"))
+        XCTAssertTrue(model.contains("location: serverRelayPublicText(change.location)"))
+        XCTAssertTrue(detail.contains("!model.isCalendarChangeResolved(change)"))
+        XCTAssertTrue(detail.contains("let defaults = change.editDefaults"))
+        XCTAssertTrue(detail.contains("캘린더 내용 수정 요청을 처리했습니다."))
+        XCTAssertTrue(detail.contains("Task.sleep(nanoseconds: 1_500_000_000)"))
+        XCTAssertTrue(detail.contains("editStatusText = nil"))
+    }
+
+    func testAuthStatusDoesNotPromoteAlreadyLoggedInToAuthCompleted() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let macRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let mac = try String(contentsOf: macRoot, encoding: .utf8)
+
+        XCTAssertTrue(mac.contains("lastAuthStatusMessageForRemote"))
+        XCTAssertFalse(mac.contains("authStatusMessage ?? \"인증 완료됨\""))
+        XCTAssertTrue(mac.contains("notifiedAlreadyLoggedInForCurrentRun = false"))
+        XCTAssertTrue(ios.contains("authStatusDisplayTitle"))
+        XCTAssertTrue(ios.contains("isAlreadyLoggedInMessage"))
+        XCTAssertTrue(ios.contains("return !Self.isAlreadyLoggedInMessage(message)"))
     }
 
     func testIOSCompanionUsesAdaptiveIPadNavigation() throws {
@@ -706,6 +932,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct CompanionSectionContent"))
         XCTAssertTrue(ios.contains("CompanionSplitRootView(model: model, selectedSection: $selectedSection)"))
         XCTAssertTrue(ios.contains("CompanionTabRootView(model: model)"))
+        XCTAssertTrue(ios.contains(".navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)"))
+        XCTAssertTrue(ios.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
+        XCTAssertTrue(ios.contains("private var screenContent: some View"))
+        XCTAssertTrue(ios.contains("NavigationStack {\n                    screenContent"))
         XCTAssertTrue(ios.contains("iPhone/iPad는 KLMS를 직접 읽지 않고"))
         XCTAssertTrue(ios.contains("iPhone/iPad/Windows용 클라이언트 토큰"))
         XCTAssertFalse(ios.contains("iPhone은 KLMS를 직접 읽지 않고"))
@@ -1041,5 +1271,15 @@ final class DashboardDataModelTests: XCTestCase {
         throw NSError(domain: "DashboardDataModelTests", code: 2, userInfo: [
             NSLocalizedDescriptionKey: "Unterminated \(description)",
         ])
+    }
+
+    private func sectionBody(in source: String, from startMarker: String, to endMarker: String) throws -> String {
+        guard let startRange = source.range(of: startMarker),
+              let endRange = source[startRange.upperBound...].range(of: endMarker) else {
+            throw NSError(domain: "DashboardDataModelTests", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "Missing section \(startMarker) -> \(endMarker)",
+            ])
+        }
+        return String(source[startRange.upperBound..<endRange.lowerBound])
     }
 }

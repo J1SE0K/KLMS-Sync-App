@@ -214,6 +214,29 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertFalse(decoded.options.dryRun)
     }
 
+    func testServerRelaySyncDataCarriesVerifySummary() throws {
+        let syncData = ServerRelaySyncData(
+            generatedAt: "2026-06-08T07:00:00Z",
+            verifySummary: ServerRelayVerifySummary(
+                status: "fail",
+                updatedAt: "2026-06-08T07:01:00Z",
+                checks: [
+                    VerifyCheck(
+                        name: "calendar_exam_count_matches_state",
+                        status: "fail",
+                        detail: "calendar=1 state=2"
+                    )
+                ]
+            )
+        )
+
+        let encoded = try JSONEncoder.klmsLocalRemote.encode(syncData)
+        let decoded = try JSONDecoder.klmsLocalRemote.decode(ServerRelaySyncData.self, from: encoded)
+
+        XCTAssertEqual(decoded.verifySummary?.status, "fail")
+        XCTAssertEqual(decoded.verifySummary?.issueChecks.first?.diagnosticTitle, "캘린더 시험 1개 누락")
+    }
+
     func testSanitizedRemoteStatusUsesCountsPhaseAndLoginAttention() {
         let report = SyncReport(
             status: "ok",

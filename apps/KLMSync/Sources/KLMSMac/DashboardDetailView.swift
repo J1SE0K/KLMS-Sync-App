@@ -2621,6 +2621,9 @@ private struct CalendarChangeListView: View {
 
     private var filteredChanges: [CalendarChange] {
         changes.filter { change in
+            guard !model.isCalendarChangeResolved(change) else {
+                return false
+            }
             guard filters.selectedCourse == DashboardCourseFilter.all || change.course == filters.selectedCourse else {
                 return false
             }
@@ -2736,6 +2739,8 @@ private struct CalendarChangeRowView: View {
                 Task {
                     await model.editCalendarEvent(change: change, edit: edit)
                     editStatusText = "캘린더 내용 수정 요청을 처리했습니다."
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    editStatusText = nil
                 }
             }
         }
@@ -2796,6 +2801,1207 @@ private struct CalendarChangeRowView: View {
     }
 }
 
+struct MacMailPasteAnalyzerPanel: View {
+    @ObservedObject var model: KLMSMacModel
+    var snapshot: EngineSnapshot
+    @State private var isExpanded = false
+    @State private var mailText = ""
+    @State private var analysis = MacMailPasteAnalysis.empty
+    @State private var isShowingCreateSheet = false
+    @State private var createStatusText: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.snappy(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Label("메일 내용 자동 판독", systemImage: "envelope.open")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 8)
+                    if !analysis.isEmpty {
+                        Text(analysis.kind.title)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(analysis.kind.tint)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(analysis.kind.tint.opacity(0.12), in: Capsule())
+                    }
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("KLMS에 바로 올라오지 않고 메일로만 온 과제, 시험, 공지, 일정 내용을 붙여넣으면 이 Mac 안에서 자동으로 판독합니다.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    TextEditor(text: $mailText)
+                        .font(.caption)
+                        .frame(minHeight: 110)
+                        .padding(7)
+                        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                        }
+
+                    HStack(spacing: 8) {
+                        Button {
+                            pasteFromClipboard()
+                        } label: {
+                            Label("붙여넣기", systemImage: "doc.on.clipboard")
+                        }
+                        Button {
+                            runAnalysis()
+                        } label: {
+                            Label("분석", systemImage: "wand.and.stars")
+                        }
+                        .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Button(role: .destructive) {
+                            mailText = ""
+                            analysis = .empty
+                            createStatusText = nil
+                        } label: {
+                            Label("지우기", systemImage: "trash")
+                        }
+                        .disabled(mailText.isEmpty)
+                        Spacer(minLength: 0)
+                        if analysis.canCreateCalendarEvent {
+                            Button {
+                                isShowingCreateSheet = true
+                            } label: {
+                                Label("캘린더에 등록", systemImage: "calendar.badge.plus")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.green)
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+
+                    MacMailPasteAnalysisResultView(analysis: analysis)
+                    if let createStatusText {
+                        MacInlinePendingActionView(message: createStatusText)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        }
+        .onChange(of: mailText) { _, _ in
+            runAnalysis()
+        }
+        .onChange(of: snapshot.legacyState?.content.assignments.count ?? 0) { _, _ in
+            runAnalysis()
+        }
+        .sheet(isPresented: $isShowingCreateSheet) {
+            MailCalendarCreateSheet(analysis: analysis) { draft in
+                createStatusText = "메일 일정을 Calendar에 등록하는 중입니다."
+                Task {
+                    await model.createManualCalendarEvent(
+                        title: draft.title,
+                        startAt: draft.startAt,
+                        dueAt: draft.dueAt,
+                        location: draft.location,
+                        notes: draft.notes
+                    )
+                    createStatusText = "메일 일정 등록 요청을 처리했습니다."
+                }
+            }
+        }
+    }
+
+    private func pasteFromClipboard() {
+        if let clipboardText = NSPasteboard.general.string(forType: .string) {
+            mailText = clipboardText
+            isExpanded = true
+            runAnalysis()
+        }
+    }
+
+    private func runAnalysis() {
+        analysis = MacMailPasteAnalyzer.analyze(mailText, snapshot: snapshot)
+    }
+}
+
+private struct MacMailPasteAnalysisResultView: View {
+    var analysis: MacMailPasteAnalysis
+
+    var body: some View {
+        if analysis.isEmpty {
+            Text("메일 본문을 붙여넣으면 과제, 시험, 공지, 캘린더 처리 여부를 자동으로 나눠 보여줍니다.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        } else {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: analysis.kind.systemImage)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(analysis.kind.tint)
+                        .frame(width: 28, height: 28)
+                        .background(analysis.kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(analysis.title.nilIfBlank ?? "제목을 찾지 못했습니다.")
+                            .font(.caption.weight(.semibold))
+                        Text(analysis.summary)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 7)], alignment: .leading, spacing: 7) {
+                    MacMailAnalysisPill(title: "분류", value: analysis.kind.title, tint: analysis.kind.tint)
+                    MacMailAnalysisPill(title: "과목", value: analysis.course.nilIfBlank ?? "미확인", tint: .teal)
+                    MacMailAnalysisPill(title: "일시", value: analysis.dueText.nilIfBlank ?? "미확인", tint: .orange)
+                    MacMailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? .green : .orange)
+                }
+
+                MacMailAnalysisProcessView(steps: analysis.analysisSteps)
+
+                if !analysis.detectedTargets.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("처리 대상")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 7)], alignment: .leading, spacing: 7) {
+                            ForEach(analysis.detectedTargets, id: \.self) { target in
+                                MacMailAnalysisPill(title: "판독", value: target, tint: analysis.kind.tint)
+                            }
+                        }
+                    }
+                }
+
+                if !analysis.urls.isEmpty {
+                    Text("본문 링크 \(analysis.urls.count)개 감지")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if analysis.matchedItems.isEmpty {
+                    MacMailActionPlanView(lines: analysis.actionPlan)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("관련 KLMS 항목")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(analysis.matchedItems.prefix(5)) { item in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(item.kindLabel)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(item.tint)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(item.tint.opacity(0.12), in: Capsule())
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.title)
+                                        .font(.caption.weight(.semibold))
+                                        .lineLimit(2)
+                                    Text([item.course, item.due].filter { !$0.isEmpty }.joined(separator: " · "))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(8)
+                            .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+                }
+
+                if !analysis.actionPlan.isEmpty, !analysis.matchedItems.isEmpty {
+                    MacMailActionPlanView(lines: analysis.actionPlan)
+                }
+            }
+            .padding(10)
+            .background(analysis.kind.tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(analysis.kind.tint.opacity(0.18), lineWidth: 1)
+            }
+        }
+    }
+}
+
+private struct MacMailAnalysisPill: View {
+    var title: String
+    var value: String
+    var tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct MacMailAnalysisStep: Identifiable {
+    var id: String
+    var title: String
+    var detail: String
+    var systemImage: String
+    var tint: Color
+}
+
+private struct MacMailAnalysisProcessView: View {
+    var steps: [MacMailAnalysisStep]
+    @State private var isExpanded = true
+
+    var body: some View {
+        if !steps.isEmpty {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(steps) { step in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: step.systemImage)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(step.tint)
+                                .frame(width: 20, height: 20)
+                                .background(step.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(step.title)
+                                    .font(.caption.weight(.semibold))
+                                Text(step.detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(7)
+                        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
+                    }
+                }
+                .padding(.top, 8)
+            } label: {
+                HStack(spacing: 7) {
+                    Label("분석 과정", systemImage: "list.bullet.clipboard")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Text("\(steps.count)단계")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(9)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            }
+        }
+    }
+}
+
+private struct MacMailActionPlanView: View {
+    var lines: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("추천 처리")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(lines, id: \.self) { line in
+                Label(line, systemImage: "checkmark.circle")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct MailCalendarCreateSheet: View {
+    var analysis: MacMailPasteAnalysis
+    var onSave: (MailCalendarDraft) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var startAt: String
+    @State private var dueAt: String
+    @State private var location: String
+
+    init(analysis: MacMailPasteAnalysis, onSave: @escaping (MailCalendarDraft) -> Void) {
+        self.analysis = analysis
+        self.onSave = onSave
+        _title = State(initialValue: analysis.calendarTitle)
+        _startAt = State(initialValue: analysis.calendarStartInput)
+        _dueAt = State(initialValue: analysis.calendarEndInput)
+        _location = State(initialValue: "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("메일 일정 등록")
+                .font(.headline)
+            Text("Apple Calendar에 새 일정을 추가합니다. 시간은 `2026-06-17 13:00` 형식으로 확인해 주세요.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
+                GridRow {
+                    Text("제목")
+                        .foregroundStyle(.secondary)
+                    TextField("일정 제목", text: $title)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("시작")
+                        .foregroundStyle(.secondary)
+                    TextField("2026-06-17 13:00", text: $startAt)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("종료")
+                        .foregroundStyle(.secondary)
+                    TextField("비워 두면 1시간", text: $dueAt)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("장소")
+                        .foregroundStyle(.secondary)
+                    TextField("장소", text: $location)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            HStack {
+                Spacer()
+                Button("취소") {
+                    dismiss()
+                }
+                Button("등록") {
+                    onSave(MailCalendarDraft(
+                        title: title,
+                        startAt: startAt,
+                        dueAt: dueAt,
+                        location: location,
+                        notes: analysis.notes
+                    ))
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(18)
+        .frame(width: 540)
+    }
+}
+
+private struct MailCalendarDraft {
+    var title: String
+    var startAt: String
+    var dueAt: String
+    var location: String
+    var notes: String
+}
+
+private enum MacMailPasteDetectedKind: String {
+    case none
+    case assignment
+    case exam
+    case notice
+
+    var title: String {
+        switch self {
+        case .none:
+            "미분류"
+        case .assignment:
+            "과제 후보"
+        case .exam:
+            "시험 후보"
+        case .notice:
+            "공지 후보"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .none:
+            "questionmark.circle"
+        case .assignment:
+            "checklist"
+        case .exam:
+            "calendar"
+        case .notice:
+            "note.text"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .none:
+            .secondary
+        case .assignment:
+            .orange
+        case .exam:
+            .green
+        case .notice:
+            .brown
+        }
+    }
+}
+
+private struct MacMailPasteMatchedItem: Identifiable {
+    var id: String
+    var kindLabel: String
+    var title: String
+    var course: String
+    var due: String
+    var searchText: String
+    var tint: Color
+}
+
+private struct MacMailPasteAnalysis {
+    var kind: MacMailPasteDetectedKind
+    var title: String
+    var course: String
+    var dueText: String
+    var urls: [String]
+    var confidence: Int
+    var matchedItems: [MacMailPasteMatchedItem]
+    var suggestedAction: String
+    var calendarStartInput: String
+    var calendarEndInput: String
+    var rawText: String
+    var analysisSteps: [MacMailAnalysisStep]
+
+    static let empty = MacMailPasteAnalysis(
+        kind: .none,
+        title: "",
+        course: "",
+        dueText: "",
+        urls: [],
+        confidence: 0,
+        matchedItems: [],
+        suggestedAction: "",
+        calendarStartInput: "",
+        calendarEndInput: "",
+        rawText: "",
+        analysisSteps: []
+    )
+
+    var isEmpty: Bool {
+        kind == .none && title.isEmpty && course.isEmpty && dueText.isEmpty && urls.isEmpty && matchedItems.isEmpty
+    }
+
+    var canCreateCalendarEvent: Bool {
+        kind == .exam || kind == .assignment
+    }
+
+    var calendarTitle: String {
+        let base = title.nilIfBlank ?? kind.title
+        return course.nilIfBlank.map { "\($0) · \(base)" } ?? base
+    }
+
+    var notes: String {
+        [
+            course.nilIfBlank.map { "과목: \($0)" },
+            dueText.nilIfBlank.map { "메일에서 감지한 일시: \($0)" },
+            rawText.nilIfBlank,
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n\n")
+    }
+
+    var summary: String {
+        if !matchedItems.isEmpty {
+            return "현재 KLMS 동기화 결과 \(matchedItems.count)개와 연결될 가능성이 있습니다."
+        }
+        if kind == .none {
+            return "과제, 시험, 공지 중 어느 항목인지 확실하지 않습니다."
+        }
+        return "\(kind.title)로 보입니다. 일정 정보가 있으면 캘린더 처리까지 이어갈 수 있습니다."
+    }
+
+    var detectedTargets: [String] {
+        var targets: [String] = []
+        switch kind {
+        case .assignment:
+            targets.append("과제 후보")
+        case .exam:
+            targets.append("시험/캘린더 후보")
+        case .notice:
+            targets.append("공지 후보")
+        case .none:
+            break
+        }
+        if !dueText.isEmpty {
+            targets.append("일정/마감 감지")
+        }
+        if !matchedItems.isEmpty {
+            targets.append("기존 KLMS 항목 연결")
+        }
+        if !urls.isEmpty {
+            targets.append("링크 포함")
+        }
+        var seen = Set<String>()
+        return targets.filter { seen.insert($0).inserted }
+    }
+
+    var actionPlan: [String] {
+        if isEmpty { return [] }
+        var lines: [String] = []
+        if !matchedItems.isEmpty {
+            lines.append("기존 KLMS 항목과 맞아 보입니다. 대시보드에서 해당 항목을 펼쳐 상태를 확인하세요.")
+        }
+        switch kind {
+        case .assignment:
+            lines.append("과제로 판독했습니다. 마감이 있으면 미리알림/캘린더 등록 대상입니다.")
+        case .exam:
+            lines.append("시험 또는 퀴즈로 판독했습니다. 캘린더 등록 대상입니다.")
+        case .notice:
+            lines.append("공지로 판독했습니다. 일정 문구가 있으면 캘린더 등록 여부를 확인하세요.")
+        case .none:
+            lines.append("분류가 애매합니다. 제목, 과목명, 날짜가 들어간 메일 본문 전체를 붙여넣어 주세요.")
+        }
+        if canCreateCalendarEvent {
+            lines.append("필요하면 아래 버튼으로 Apple Calendar에 직접 등록할 수 있습니다.")
+        }
+        var seen = Set<String>()
+        return lines.filter { seen.insert($0).inserted }
+    }
+}
+
+private enum MacMailPasteAnalyzer {
+    static func analyze(_ rawText: String, snapshot: EngineSnapshot) -> MacMailPasteAnalysis {
+        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return .empty }
+        let urls = regexMatches("https?://[^\\s>\\]]+", in: text)
+        let lines = text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let items = searchableItems(from: snapshot)
+        let knownCourses = Array(Set(items.map(\.course).filter { !$0.isEmpty })).sorted { $0.count > $1.count }
+        let scores = kindScores(in: text)
+        let kind = detectKind(in: text)
+        let course = detectCourse(in: text, lines: lines, knownCourses: knownCourses)
+        let title = detectTitle(lines: lines, kind: kind, course: course)
+        let dueText = detectDueText(in: text)
+        let matchedItems = matchItems(items: items, text: text, kind: kind, title: title, course: course, dueText: dueText)
+        let calendarInput = calendarInputs(from: dueText)
+        let confidence = confidenceScore(kind: kind, title: title, course: course, dueText: dueText, matchedItems: matchedItems)
+        let steps = analysisSteps(
+            kind: kind,
+            assignmentScore: scores.assignmentScore,
+            examScore: scores.examScore,
+            course: course,
+            title: title,
+            dueText: dueText,
+            calendarInput: calendarInput,
+            matchedItems: matchedItems,
+            urls: urls
+        )
+        return MacMailPasteAnalysis(
+            kind: kind,
+            title: title,
+            course: course,
+            dueText: dueText,
+            urls: urls,
+            confidence: confidence,
+            matchedItems: matchedItems,
+            suggestedAction: suggestedAction(kind: kind, matchedItems: matchedItems),
+            calendarStartInput: calendarInput.start,
+            calendarEndInput: calendarInput.end,
+            rawText: text,
+            analysisSteps: steps
+        )
+    }
+
+    private static func searchableItems(from snapshot: EngineSnapshot) -> [MacMailPasteMatchedItem] {
+        let content = snapshot.legacyState?.content
+        var items: [MacMailPasteMatchedItem] = []
+        items += (content?.assignments ?? []).map { matchedItem($0, kindLabel: "과제", tint: .orange) }
+        items += (content?.assignmentCandidates ?? []).map { matchedItem($0, kindLabel: "과제 후보", tint: .orange) }
+        items += (content?.examItems ?? []).map { matchedItem($0, kindLabel: "시험", tint: .green) }
+        items += (content?.examCandidates ?? []).map { matchedItem($0, kindLabel: "시험 후보", tint: .green) }
+        items += (content?.helpDeskItems ?? []).map { matchedItem($0, kindLabel: "헬프데스크", tint: .teal) }
+        items += (snapshot.noticeDigest?.notices ?? []).map { notice in
+            MacMailPasteMatchedItem(
+                id: notice.id,
+                kindLabel: "공지",
+                title: notice.title,
+                course: notice.course,
+                due: notice.postedAt,
+                searchText: [notice.title, notice.course, notice.postedAt, notice.url].joined(separator: " "),
+                tint: .brown
+            )
+        }
+        return items
+    }
+
+    private static func matchedItem(_ item: StateItem, kindLabel: String, tint: Color) -> MacMailPasteMatchedItem {
+        MacMailPasteMatchedItem(
+            id: "\(kindLabel)-\(item.id)",
+            kindLabel: kindLabel,
+            title: item.title,
+            course: item.course,
+            due: item.due.nilIfBlank ?? item.syncDue,
+            searchText: [
+                item.title,
+                item.course,
+                item.due,
+                item.syncDue,
+                item.location,
+                item.coverageSummary,
+                item.url,
+            ].joined(separator: " "),
+            tint: tint
+        )
+    }
+
+    private static func kindScores(in text: String) -> (assignmentScore: Int, examScore: Int) {
+        let lower = text.lowercased()
+        let assignmentScore = keywordScore(lower, weightedKeywords: [
+            ("written assignment", 7),
+            ("problem set", 6),
+            ("due date", 6),
+            ("deadline", 6),
+            ("assignment", 5),
+            ("homework", 5),
+            ("submission", 4),
+            ("submit", 4),
+            ("project", 3),
+            ("essay", 3),
+            ("paper", 3),
+            ("과제", 6),
+            ("숙제", 5),
+            ("제출", 5),
+            ("마감", 5),
+            ("레포트", 4),
+            ("보고서", 4),
+        ])
+        let examScore = keywordScore(lower, weightedKeywords: [
+            ("final exam", 7),
+            ("midterm exam", 7),
+            ("기말고사", 7),
+            ("중간고사", 7),
+            ("quiz", 5),
+            ("exam", 5),
+            ("시험", 5),
+            ("퀴즈", 5),
+            ("midterm", 3),
+            ("final", 2),
+            ("중간", 2),
+            ("기말", 2),
+        ])
+        return (assignmentScore, examScore)
+    }
+
+    private static func detectKind(in text: String) -> MacMailPasteDetectedKind {
+        let scores = kindScores(in: text)
+        let assignmentScore = scores.assignmentScore
+        let examScore = scores.examScore
+        if assignmentScore > examScore {
+            return .assignment
+        }
+        if examScore > assignmentScore {
+            return .exam
+        }
+        if assignmentScore > 0 { return .assignment }
+        if examScore > 0 { return .exam }
+        return .notice
+    }
+
+    private static func analysisSteps(
+        kind: MacMailPasteDetectedKind,
+        assignmentScore: Int,
+        examScore: Int,
+        course: String,
+        title: String,
+        dueText: String,
+        calendarInput: (start: String, end: String),
+        matchedItems: [MacMailPasteMatchedItem],
+        urls: [String]
+    ) -> [MacMailAnalysisStep] {
+        var steps: [MacMailAnalysisStep] = [
+            MacMailAnalysisStep(
+                id: "kind",
+                title: "분류 판단",
+                detail: "과제 키워드 점수 \(assignmentScore), 시험 키워드 점수 \(examScore)를 비교해 \(kind.title)로 분류했습니다.",
+                systemImage: kind.systemImage,
+                tint: kind.tint
+            ),
+        ]
+
+        let courseDetail: String
+        if course.isEmpty {
+            courseDetail = "본문과 현재 KLMS 항목에서 과목명이나 과목 코드를 찾지 못했습니다."
+        } else if let code = firstCapture("\\(([A-Z]{2,}\\d{2,4}[A-Z]?)\\)$", in: course) {
+            courseDetail = "메일의 \(code) 코드를 현재 KLMS 과목명/별칭표로 풀었습니다: \(course)"
+        } else {
+            courseDetail = "본문 또는 현재 KLMS 항목에서 과목명을 찾았습니다: \(course)"
+        }
+        steps.append(MacMailAnalysisStep(id: "course", title: "과목 해석", detail: courseDetail, systemImage: "books.vertical", tint: .teal))
+
+        let titleDetail: String
+        if title.isEmpty {
+            titleDetail = "제목, Subject, 시험/과제 핵심 문구에서 사용할 제목을 찾지 못했습니다."
+        } else if ["기말고사", "중간고사", "퀴즈", "시험 안내", "과제 안내"].contains(title) {
+            titleDetail = "본문의 핵심 키워드로 제목을 추론했습니다: \(title)"
+        } else {
+            titleDetail = "Subject 또는 본문 첫 유효 줄에서 제목을 잡았습니다: \(title)"
+        }
+        steps.append(MacMailAnalysisStep(id: "title", title: "제목 추론", detail: titleDetail, systemImage: "text.quote", tint: .blue))
+
+        let dateDetail: String
+        if dueText.isEmpty {
+            dateDetail = "마감, 일정, 시험 시간 같은 날짜 문구를 찾지 못했습니다."
+        } else if !calendarInput.start.isEmpty {
+            dateDetail = "\(dueText)를 캘린더 입력값 \(calendarInput.start)로 변환했습니다."
+        } else {
+            dateDetail = "날짜 문구 \(dueText)는 찾았지만 캘린더 시간으로 변환하지 못했습니다."
+        }
+        steps.append(MacMailAnalysisStep(id: "date", title: "일정 해석", detail: dateDetail, systemImage: "calendar.badge.clock", tint: .orange))
+
+        let matchDetail = matchedItems.isEmpty
+            ? "현재 동기화된 KLMS 항목과 직접 연결되는 항목은 아직 없습니다."
+            : "현재 동기화된 KLMS 항목 \(matchedItems.count)개와 제목, 과목, 일정 정보가 겹칩니다."
+        steps.append(MacMailAnalysisStep(id: "match", title: "기존 항목 비교", detail: matchDetail, systemImage: "link", tint: matchedItems.isEmpty ? .secondary : .green))
+
+        if !urls.isEmpty {
+            steps.append(MacMailAnalysisStep(id: "links", title: "링크 감지", detail: "본문에서 URL \(urls.count)개를 찾았습니다. KLMS 링크가 있으면 다음 동기화와 대조할 수 있습니다.", systemImage: "link.circle", tint: .purple))
+        }
+        return steps
+    }
+
+    private static func detectCourse(in text: String, lines: [String], knownCourses: [String]) -> String {
+        if let known = knownCourses.first(where: { text.localizedCaseInsensitiveContains($0) }) {
+            return known
+        }
+        if let captured = firstCapture("(?:과목|강의|Course)[:：]\\s*([^\\n]+)", in: text) {
+            return resolvedCourseDisplay(for: captured, knownCourses: knownCourses) ?? captured
+        }
+        if let captured = firstCapture("(?:TA|조교)\\s*(?:for|of|[:：])\\s*([A-Z]{2,}\\s*\\d{2,4}[A-Z]?)", in: text) {
+            return resolvedCourseDisplay(for: captured, knownCourses: knownCourses) ?? captured.replacingOccurrences(of: " ", with: "")
+        }
+        if let captured = firstCapture("([A-Z]{2,}\\s*\\d{2,4}[A-Z]?)\\s*(?:TA|조교)", in: text) {
+            return resolvedCourseDisplay(for: captured, knownCourses: knownCourses) ?? captured.replacingOccurrences(of: " ", with: "")
+        }
+        if let captured = firstCapture("\\b([A-Z]{2,}\\s*\\.?\\s*\\d{2,4}[A-Z]?)\\b", in: text),
+           let resolved = resolvedCourseDisplay(for: captured, knownCourses: knownCourses) {
+            return resolved
+        }
+        if let bracket = firstCapture("^\\s*\\[([^\\]\\n]{2,40})\\]", in: lines.first ?? "") {
+            return resolvedCourseDisplay(for: bracket, knownCourses: knownCourses) ?? bracket
+        }
+        return ""
+    }
+
+    private static func resolvedCourseDisplay(for rawCourseOrCode: String, knownCourses: [String]) -> String? {
+        let code = normalizedCourseCode(rawCourseOrCode)
+        guard !code.isEmpty else { return nil }
+        if let known = knownCourseName(for: code, knownCourses: knownCourses) {
+            return "\(known) (\(code))"
+        }
+        if let fallback = fallbackCourseCodeAliases[code] {
+            return "\(fallback) (\(code))"
+        }
+        return code == rawCourseOrCode.trimmingCharacters(in: .whitespacesAndNewlines) ? nil : code
+    }
+
+    private static func normalizedCourseCode(_ raw: String) -> String {
+        let compact = raw
+            .uppercased()
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard compact.range(of: #"^[A-Z]{2,}\d{2,4}[A-Z]?$"#, options: .regularExpression) != nil else {
+            return ""
+        }
+        return compact
+    }
+
+    private static func knownCourseName(for code: String, knownCourses: [String]) -> String? {
+        switch code {
+        case "EE488":
+            return knownCourses.first {
+                $0.localizedCaseInsensitiveContains("전자공학을 위한 사이버 보안 개론")
+            } ?? knownCourses.first {
+                $0.localizedCaseInsensitiveContains("Introduction to Cybersecurity for EE")
+            }
+        default:
+            return nil
+        }
+    }
+
+    private static let fallbackCourseCodeAliases: [String: String] = [
+        "EE488": "전기 전자공학특강<전자공학을 위한 사이버 보안 개론>",
+    ]
+
+    private static func detectTitle(lines: [String], kind: MacMailPasteDetectedKind, course: String) -> String {
+        if let subject = lines.first(where: { line in
+            let lower = line.lowercased()
+            return lower.hasPrefix("subject:") || line.hasPrefix("제목:") || line.hasPrefix("제목：")
+        }) {
+            return cleanTitle(subject)
+        }
+        if let inferred = inferredTitle(lines: lines, kind: kind, course: course) {
+            return inferred
+        }
+        if let title = lines.first(where: { line in
+            let lower = line.lowercased()
+            return !lower.hasPrefix("from:")
+                && !lower.hasPrefix("to:")
+                && !lower.hasPrefix("date:")
+                && !lower.hasPrefix("sent:")
+                && !line.hasPrefix("보낸 사람:")
+                && !line.hasPrefix("받는 사람:")
+                && !line.hasPrefix("날짜:")
+                && !line.hasPrefix("https://")
+                && !line.hasPrefix("http://")
+                && !isMailGreetingOrSignature(line)
+        }) {
+            return cleanTitle(title)
+        }
+        return ""
+    }
+
+    private static func inferredTitle(lines: [String], kind: MacMailPasteDetectedKind, course: String) -> String? {
+        let joined = lines.joined(separator: "\n").lowercased()
+        switch kind {
+        case .exam:
+            if joined.contains("final exam") || joined.contains("기말고사") {
+                return "기말고사"
+            }
+            if joined.contains("midterm exam") || joined.contains("중간고사") {
+                return "중간고사"
+            }
+            if joined.contains("quiz") || joined.contains("퀴즈") {
+                return "퀴즈"
+            }
+            return "시험 안내"
+        case .assignment:
+            if let line = lines.first(where: { line in
+                let lower = line.lowercased()
+                return lower.contains("assignment") || lower.contains("homework") || lower.contains("과제")
+            }) {
+                return cleanTitle(line)
+            }
+            return "과제 안내"
+        case .notice:
+            return nil
+        case .none:
+            return nil
+        }
+    }
+
+    private static func isMailGreetingOrSignature(_ line: String) -> Bool {
+        let lower = line.lowercased()
+        return lower.hasPrefix("dear ")
+            || lower == "hi,"
+            || lower.hasPrefix("hi, ")
+            || lower.hasPrefix("hello")
+            || lower.hasPrefix("best regards")
+            || lower.hasPrefix("regards")
+            || lower.hasPrefix("thanks")
+            || line.hasPrefix("학생 여러분")
+            || line.hasPrefix("안녕하세요")
+            || line.hasPrefix("감사합니다")
+            || line.hasPrefix("질문이 있으면")
+    }
+
+    private static func cleanTitle(_ raw: String) -> String {
+        var title = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in ["Subject:", "subject:", "제목:", "제목：", "[KLMS]", "KLMS:"] {
+            if title.hasPrefix(prefix) {
+                title.removeFirst(prefix.count)
+                title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        if let range = title.range(of: "^\\[[^\\]]+\\]\\s*", options: .regularExpression) {
+            title.removeSubrange(range)
+        }
+        return title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func detectDueText(in text: String) -> String {
+        if let captured = firstCapture("(?:due|deadline|exam schedule|schedule|마감|제출|일시|일정|시험일|시험 일정|시험일정|시험 시간|시험시간)[:：]?\\s*([^\\n]{1,160})", in: text) {
+            return dateSnippet(in: captured) ?? captured
+        }
+        if let subjectDate = dateSnippet(in: text) {
+            return subjectDate
+        }
+        let datePatterns = [
+            "\\d{4}\\s*[년.-]\\s*\\d{1,2}\\s*[월.-]\\s*\\d{1,2}\\s*일?(?:[^\\n]{0,40})?",
+            "(?:January|Jan|February|Feb|March|Mar|April|Apr|May|June|Jun|July|Jul|August|Aug|September|Sep|October|Oct|November|Nov|December|Dec)\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s*\\d{4})?(?:[^\\n]{0,50})?",
+            "\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?(?:[^\\n]{0,30})?",
+        ]
+        for pattern in datePatterns {
+            if let match = regexMatches(pattern, in: text).first {
+                return match.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return ""
+    }
+
+    private static func matchItems(
+        items: [MacMailPasteMatchedItem],
+        text: String,
+        kind: MacMailPasteDetectedKind,
+        title: String,
+        course: String,
+        dueText: String
+    ) -> [MacMailPasteMatchedItem] {
+        let lowerText = text.lowercased()
+        let normalizedText = normalizeMailText(text)
+        let normalizedCourse = normalizeMailText(course)
+        let normalizedDue = normalizeMailText(dueText)
+        let detectedTitleTokens = titleTokens(title).map(normalizeMailText)
+        let scored = items.compactMap { item -> (MacMailPasteMatchedItem, Int)? in
+            guard kind == .none || item.matches(kind: kind) else {
+                return nil
+            }
+            var score = 0
+            if item.matches(kind: kind) {
+                score += 2
+            }
+            let itemCourse = normalizeMailText(item.course)
+            if !normalizedCourse.isEmpty,
+               !itemCourse.isEmpty,
+               (itemCourse.contains(normalizedCourse) || normalizedCourse.contains(itemCourse)) {
+                score += 3
+            }
+            if !item.title.isEmpty && lowerText.contains(item.title.lowercased()) {
+                score += 8
+            } else {
+                let itemTitleText = normalizeMailText(item.title)
+                var tokenHits = titleTokens(item.title)
+                    .map(normalizeMailText)
+                    .filter { !$0.isEmpty && normalizedText.contains($0) }
+                    .count
+                if !detectedTitleTokens.isEmpty, !itemTitleText.isEmpty {
+                    tokenHits += detectedTitleTokens.filter { !$0.isEmpty && itemTitleText.contains($0) }.count
+                }
+                if tokenHits >= 2 {
+                    score += min(5, tokenHits)
+                }
+            }
+            if !normalizedDue.isEmpty && normalizeMailText(item.searchText).contains(normalizedDue) {
+                score += 1
+            }
+            guard score >= 5 else { return nil }
+            return (item, score)
+        }
+        return scored
+            .sorted {
+                if $0.1 != $1.1 {
+                    return $0.1 > $1.1
+                }
+                return $0.0.title.localizedStandardCompare($1.0.title) == .orderedAscending
+            }
+            .map(\.0)
+    }
+
+    private static func confidenceScore(
+        kind: MacMailPasteDetectedKind,
+        title: String,
+        course: String,
+        dueText: String,
+        matchedItems: [MacMailPasteMatchedItem]
+    ) -> Int {
+        if !matchedItems.isEmpty {
+            return 90
+        }
+        var score = kind == .none ? 20 : 42
+        if !title.isEmpty {
+            score += 18
+        }
+        if !course.isEmpty {
+            score += 14
+        }
+        if !dueText.isEmpty {
+            score += 16
+        }
+        return min(score, 82)
+    }
+
+    private static func suggestedAction(kind: MacMailPasteDetectedKind, matchedItems: [MacMailPasteMatchedItem]) -> String {
+        if !matchedItems.isEmpty {
+            return "기존 KLMS 항목과 맞아 보입니다. 대시보드에서 해당 항목의 상태를 확인하세요."
+        }
+        switch kind {
+        case .assignment:
+            return "과제 후보로 보입니다. KLMS에 없는 메일 전용 마감이라면 캘린더에 수동 등록하세요."
+        case .exam:
+            return "시험 후보로 보입니다. KLMS 동기화에 아직 잡히지 않았다면 캘린더에 수동 등록하세요."
+        case .notice:
+            return "공지 후보로 보입니다. 일정이 포함된 공지라면 날짜를 확인한 뒤 캘린더에 등록할 수 있습니다."
+        case .none:
+            return "분류가 확실하지 않습니다. 제목, 과목명, 마감일이 포함된 본문 전체를 붙여넣어 주세요."
+        }
+    }
+
+    private static func calendarInputs(from dueText: String) -> (start: String, end: String) {
+        guard let date = parseMailDate(dueText) else {
+            return ("", "")
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return (formatter.string(from: date), formatter.string(from: date.addingTimeInterval(60 * 60)))
+    }
+
+    private static func parseMailDate(_ raw: String) -> Date? {
+        var text = (dateSnippet(in: raw) ?? raw)
+            .replacingOccurrences(of: #"(\d)(st|nd|rd|th)"#, with: "$1", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"(?i)\bat\s+"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: "오전", with: "AM")
+            .replacingOccurrences(of: "오후", with: "PM")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        text = text.replacingOccurrences(of: #"[()]"#, with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\s*(월요일|화요일|수요일|목요일|금요일|토요일|일요일|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s*"#, with: " ", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: #"(\d{1,2})\s*시\s*(\d{1,2})\s*분"#, with: "$1:$2", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"(\d{1,2})\s*시"#, with: "$1:00", options: .regularExpression)
+        let currentYear = Calendar(identifier: .gregorian).component(.year, from: Date())
+        let candidates = [
+            text,
+            "\(currentYear) \(text)",
+        ]
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        let formats = [
+            ("ko_KR", "yyyy년 M월 d일 a h:mm"),
+            ("ko_KR", "yyyy년 M월 d일 H:mm"),
+            ("ko_KR", "yyyy M월 d일 a h:mm"),
+            ("ko_KR", "yyyy M월 d일 H:mm"),
+            ("en_US_POSIX", "yyyy MMMM d, h:mm a"),
+            ("en_US_POSIX", "yyyy MMM d, h:mm a"),
+            ("en_US_POSIX", "yyyy MMMM d h:mm a"),
+            ("en_US_POSIX", "yyyy MMM d h:mm a"),
+            ("en_US_POSIX", "yyyy MMMM d, HH:mm"),
+            ("en_US_POSIX", "yyyy MMM d, HH:mm"),
+            ("en_US_POSIX", "yyyy MMMM d HH:mm"),
+            ("en_US_POSIX", "yyyy MMM d HH:mm"),
+            ("en_US_POSIX", "yyyy M/d HH:mm"),
+            ("en_US_POSIX", "yyyy M/d/yyyy HH:mm"),
+        ]
+        for candidate in candidates {
+            for (locale, format) in formats {
+                formatter.locale = Locale(identifier: locale)
+                formatter.dateFormat = format
+                if let date = formatter.date(from: candidate) {
+                    return date
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func dateSnippet(in text: String) -> String? {
+        let patterns = [
+            "(?:\\d{4}\\s*년\\s*)?\\d{1,2}\\s*월\\s*\\d{1,2}\\s*일(?:\\s*(?:월요일|화요일|수요일|목요일|금요일|토요일|일요일))?(?:\\s*(?:오전|오후|AM|PM)?\\s*\\d{1,2}(?::\\d{2}|\\s*시(?:\\s*\\d{1,2}\\s*분)?))?",
+            "\\d{4}\\s*[.-]\\s*\\d{1,2}\\s*[.-]\\s*\\d{1,2}(?:\\s*(?:오전|오후|AM|PM)?\\s*\\d{1,2}:\\d{2})?",
+            "(?:January|Jan|February|Feb|March|Mar|April|Apr|May|June|Jun|July|Jul|August|Aug|September|Sep|October|Oct|November|Nov|December|Dec)\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s*\\d{4})?(?:,?\\s*(?:at\\s*)?(?:(?:AM|PM|오전|오후)\\s*)?\\d{1,2}:\\d{2}(?:\\s*(?:AM|PM))?)?",
+            "\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?(?:\\s*(?:AM|PM|오전|오후)?\\s*\\d{1,2}:\\d{2})?",
+        ]
+        for pattern in patterns {
+            if let match = regexMatches(pattern, in: text).first {
+                return match
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "().,"))
+            }
+        }
+        return nil
+    }
+
+    private static func titleTokens(_ title: String) -> [String] {
+        title
+            .components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.count >= 3 }
+    }
+
+    private static func keywordScore(_ text: String, weightedKeywords: [(String, Int)]) -> Int {
+        weightedKeywords.reduce(0) { partialResult, keyword in
+            partialResult + (text.contains(keyword.0) ? keyword.1 : 0)
+        }
+    }
+
+    private static func normalizeMailText(_ text: String) -> String {
+        text
+            .lowercased()
+            .components(separatedBy: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    private static func regexMatches(_ pattern: String, in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return []
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.matches(in: text, options: [], range: range).compactMap { match in
+            guard let swiftRange = Range(match.range, in: text) else { return nil }
+            return String(text[swiftRange])
+        }
+    }
+
+    private static func firstCapture(_ pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, options: [], range: range),
+              match.numberOfRanges > 1,
+              let captureRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[captureRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private extension MacMailPasteMatchedItem {
+    func matches(kind: MacMailPasteDetectedKind) -> Bool {
+        switch kind {
+        case .assignment:
+            return kindLabel.contains("과제")
+        case .exam:
+            return kindLabel.contains("시험")
+        case .notice:
+            return kindLabel == "공지"
+        case .none:
+            return false
+        }
+    }
+}
+
 private struct CalendarEventEditSheet: View {
     var change: CalendarChange
     var onSave: (CalendarEventEdit) -> Void
@@ -2808,10 +4014,11 @@ private struct CalendarEventEditSheet: View {
     init(change: CalendarChange, onSave: @escaping (CalendarEventEdit) -> Void) {
         self.change = change
         self.onSave = onSave
-        _title = State(initialValue: change.title)
-        _startAt = State(initialValue: calendarEditInputDate(change.startAt))
-        _dueAt = State(initialValue: calendarEditInputDate(change.dueAt))
-        _location = State(initialValue: change.location)
+        let defaults = change.editDefaults
+        _title = State(initialValue: defaults.title)
+        _startAt = State(initialValue: defaults.startAt)
+        _dueAt = State(initialValue: defaults.dueAt)
+        _location = State(initialValue: defaults.location)
     }
 
     var body: some View {
@@ -2905,15 +4112,6 @@ private func displayCalendarDate(_ text: String) -> String {
     return formatter.string(from: date)
 }
 
-private func calendarEditInputDate(_ text: String) -> String {
-    guard let date = parseCalendarDetailDate(text) else { return text }
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "ko_KR")
-    formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
-    formatter.dateFormat = "yyyy-MM-dd HH:mm"
-    return formatter.string(from: date)
-}
-
 private func parseCalendarDetailDate(_ text: String) -> Date? {
     let fractionalFormatter = ISO8601DateFormatter()
     fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -2923,6 +4121,13 @@ private func parseCalendarDetailDate(_ text: String) -> Date? {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime]
     return formatter.date(from: text)
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
 private struct EmptyDetailText: View {

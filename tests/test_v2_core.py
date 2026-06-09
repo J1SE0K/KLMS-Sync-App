@@ -232,6 +232,79 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(state.completed_assignments[0].record_status, "completed")
         self.assertEqual(state.completed_assignments[0].completion_reason, "manual_completed")
 
+    def test_logical_duplicate_exam_events_with_different_notice_urls_merge(self) -> None:
+        first = Event(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
+            course="데이타베이스 개론",
+            title="기말고사",
+            due="2026년 6월 17일(수요일) 오후 1:00 - 오후 4:00",
+            sync_due="2026-06-17T16:00:00+09:00",
+            sync_start="2026-06-17T13:00:00+09:00",
+            source="notice",
+            instructions="시험 범위: 전체",
+            category="exam",
+        )
+        second = Event(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432002",
+            course="데이타베이스 개론",
+            title="기말고사",
+            due="2026년 6월 17일(수요일) 오후 1:00 - 오후 4:00",
+            sync_due="2026-06-17T16:00:00+09:00",
+            sync_start="2026-06-17T13:00:00+09:00",
+            source="notice",
+            instructions="시험 범위: 전체 및 SQL",
+            location="Auditorium",
+            category="exam",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-06-02 12:20 KST",
+            detail_pages=[],
+            notices=[],
+            source_events=[first, second],
+        )
+
+        self.assertEqual(len(state.exams), 1)
+        self.assertEqual(state.exams[0].course, "데이타베이스 개론")
+        self.assertEqual(state.exams[0].title, "기말고사")
+        self.assertIn("SQL", state.exams[0].instructions)
+        self.assertEqual(state.exams[0].location, "Auditorium")
+
+    def test_approved_exam_removes_matching_exam_candidate(self) -> None:
+        approved = Event(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
+            course="데이타베이스 개론",
+            title="기말고사",
+            due="2026년 6월 17일(수요일) 오후 1:00 - 오후 4:00",
+            sync_due="2026-06-17T16:00:00+09:00",
+            sync_start="2026-06-17T13:00:00+09:00",
+            source="notice",
+            category="exam",
+        )
+        candidate = Event(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432002",
+            course="데이타베이스 개론",
+            title="기말고사",
+            due="2026년 6월 17일(수요일) 오후 1:00 - 오후 4:00",
+            sync_due="2026-06-17T16:00:00+09:00",
+            sync_start="2026-06-17T13:00:00+09:00",
+            source="file",
+            instructions="시험 후보에서 가져온 범위",
+            category="exam_candidate",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-06-02 12:20 KST",
+            detail_pages=[],
+            notices=[],
+            source_events=[approved, candidate],
+        )
+
+        self.assertEqual(len(state.exams), 1)
+        self.assertEqual(state.exams[0].category, "exam")
+        self.assertEqual(state.exam_candidates, [])
+        self.assertEqual(state.exams[0].instructions, candidate.instructions)
+
     def test_same_courseboard_course_id_does_not_merge_different_assignments(self) -> None:
         written = Assignment(
             url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",

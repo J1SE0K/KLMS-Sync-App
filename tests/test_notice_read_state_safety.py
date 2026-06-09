@@ -650,7 +650,17 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("noticeTargetRequiresPostCaptureRender", js)
         self.assertIn("targetComparison && targetComparison.matches && !mustRenderAfterCapture", js)
         self.assertIn("NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER", js)
-        self.assertIn("allowNoOpSkip: true", renderer)
+        self.assertIn("let archivedCollapsedSections = arguments.target == \"primary\" ? 0 : renderManagedNoticeNote", renderer)
+        archive_render_call = renderer[
+            renderer.index("let archivedCollapsedSections = arguments.target == \"primary\"") :
+            renderer.index("let collapsedSections = arguments.target == \"archive\"")
+        ]
+        primary_render_call = renderer[
+            renderer.index("let collapsedSections = arguments.target == \"archive\"") :
+            renderer.index("if !arguments.skipNoteActivation, arguments.target != \"archive\"")
+        ]
+        self.assertIn("allowNoOpSkip: false", archive_render_call)
+        self.assertIn("allowNoOpSkip: true", primary_render_call)
 
     def test_notice_native_config_is_passed_to_swift_wrapper(self) -> None:
         js = read_notice_js()
@@ -846,6 +856,7 @@ console.log(JSON.stringify({ off: runCase("0"), on: runCase("1") }));
         self.assertIn('NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": "1"', app_model)
+        self.assertIn('NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_POST_RENDER_VERIFY": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED": "1"', app_model)

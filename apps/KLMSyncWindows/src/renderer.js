@@ -50,6 +50,7 @@ const state = {
   message: "",
   items: [],
   calendarChanges: [],
+  verifySummary: null,
   recentCommands: [],
   recentActions: [],
   recentFileAccess: [],
@@ -159,6 +160,7 @@ async function clearConnection() {
     state.message = "";
     state.items = [];
     state.calendarChanges = [];
+    state.verifySummary = null;
     state.recentCommands = [];
     state.recentActions = [];
     state.selectedKind = "all";
@@ -236,6 +238,7 @@ async function refreshAll(options = {}) {
     state.recentCommands = commandResponse.commands || [];
     state.items = syncData.items || [];
     state.calendarChanges = syncData.calendarChanges || [];
+    state.verifySummary = syncData.verifySummary || null;
     state.recentActions = actionResponse.actions || [];
     state.recentFileAccess = fileAccessResponse.requests || [];
     updateConnectionState("연결됨", "ok");
@@ -506,6 +509,7 @@ function applyOptimisticItemAction(action, item) {
 function renderAll() {
   renderHeader();
   renderDashboard();
+  renderVerifySummary();
   renderItems();
   renderDetail();
   renderHistory();
@@ -563,6 +567,53 @@ function renderDashboard() {
       return button;
     });
   $("dashboardCards").replaceChildren(...cards);
+}
+
+function renderVerifySummary() {
+  const panel = $("verifySummaryPanel");
+  const summary = state.verifySummary;
+  if (!panel || !summary) {
+    panel?.classList.add("hidden");
+    return;
+  }
+  const checks = Array.isArray(summary.checks) ? summary.checks : [];
+  const issueChecks = checks.filter((check) => isIssueStatus(check.status));
+  const okCount = checks.filter((check) => String(check.status || "").trim().toLowerCase() === "ok").length;
+  panel.classList.remove("hidden");
+  panel.innerHTML = `
+    <div class="panel-heading">
+      <div>
+        <h2>상태 검사 해설</h2>
+        <p class="hint">${escapeHTML(issueChecks.length ? `확인 필요 ${issueChecks.length}개 · 정상 ${okCount}개` : `상태 ${localizedStatus(summary.status)} · 정상 ${okCount}개`)}</p>
+      </div>
+      <span class="status-pill ${issueChecks.length ? "warn" : "ok"}">${escapeHTML(issueChecks.length ? "확인 필요" : "정상")}</span>
+    </div>
+    ${issueChecks.length ? issueChecks.map((check) => verifyCheckHTML(check)).join("") : `<p class="hint">메모, 파일, 캘린더, 미리 알림 검사에서 설명이 필요한 실패 항목이 없습니다.</p>`}
+    <details class="verify-details">
+      <summary>전체 상태 검사 항목 ${checks.length}개</summary>
+      <div class="verify-check-list">
+        ${checks.map((check) => verifyCheckHTML(check, true)).join("")}
+      </div>
+    </details>
+  `;
+}
+
+function verifyCheckHTML(check, compact = false) {
+  const info = verifyCheckDiagnostic(check);
+  const status = String(check.status || "").trim().toLowerCase();
+  const tone = ["fail", "failed", "error"].includes(status) ? "fail" : (["warn", "warning"].includes(status) ? "warn" : "ok");
+  return `
+    <article class="verify-check ${tone} ${compact ? "compact" : ""}">
+      <div class="verify-check-title">
+        <strong>${escapeHTML(info.title)} · ${escapeHTML(localizedStatus(check.status))}</strong>
+        ${check.detail ? `<code>${escapeHTML(check.detail)}</code>` : ""}
+      </div>
+      ${compact ? "" : `
+        <p>${escapeHTML(info.explanation)}</p>
+        <p class="hint">${escapeHTML(info.nextAction)}</p>
+      `}
+    </article>
+  `;
 }
 
 function renderItems() {
@@ -1090,6 +1141,7 @@ function actionLabel(action) {
     fileUnhide: "파일 숨김 해제",
     calendarVerify: "캘린더 상태 확인",
     calendarApply: "KLMS 기준 반영",
+    calendarCreate: "캘린더 일정 등록",
     calendarEdit: "캘린더 내용 수정",
     calendarDelete: "KLMS 기준 반영"
   }[action] || action;
@@ -1127,6 +1179,144 @@ function commandStatusClass(status) {
     return "warn";
   }
   return "muted";
+}
+
+function isIssueStatus(status) {
+  return ["fail", "failed", "error", "warn", "warning"].includes(String(status || "").trim().toLowerCase());
+}
+
+function localizedStatus(status) {
+  return {
+    ok: "정상",
+    fail: "실패",
+    failed: "실패",
+    error: "오류",
+    warn: "주의",
+    warning: "주의",
+    missing: "없음"
+  }[String(status || "").trim().toLowerCase()] || status || "상태 없음";
+}
+
+function verifyCheckDiagnostic(check) {
+  const name = String(check?.name || "");
+  const detail = String(check?.detail || check?.message || "");
+  const number = (key) => numericValue(detail, key);
+  switch (name) {
+    case "manifest_files_exist": {
+      const missing = number("missing");
+      return {
+        title: Number.isFinite(missing) ? `파일 ${missing}개 누락` : "파일 목록 불일치",
+        explanation: Number.isFinite(missing)
+          ? `파일 목록에는 있는데 Mac 로컬 저장소에서 찾지 못한 파일이 ${missing}개 있다는 뜻입니다.`
+          : "파일 목록과 실제 저장된 파일 목록이 서로 맞지 않습니다.",
+        nextAction: "파일 동기화를 다시 실행하세요. 그래도 계속 실패하면 파일 탭에서 누락 파일을 확인하고 새 파일/수정 파일만 다시 받으면 됩니다."
+      };
+    }
+    case "notice_render_complete": {
+      const missing = number("missing");
+      return {
+        title: Number.isFinite(missing) ? `공지 메모 ${missing}개 누락` : "공지 메모 반영 불일치",
+        explanation: Number.isFinite(missing)
+          ? `KLMS에서 읽은 공지 중 Notes 메모에 반영되지 않은 공지가 ${missing}개 있다는 뜻입니다.`
+          : "공지 수집 결과와 Notes 메모 렌더 결과가 서로 맞지 않습니다.",
+        nextAction: "공지 동기화를 다시 실행하세요. Notes 메모가 열려 있거나 권한이 흔들렸다면 권한/환경 진단도 같이 실행하세요."
+      };
+    }
+    case "notice_exam_detection_covered_by_state":
+      return {
+        title: "공지 속 시험 감지 상태 확인",
+        explanation: "공지 본문에서 시험처럼 보이는 항목을 찾았고, 그 항목이 앱 상태와 캘린더 후보에 반영됐는지 검사합니다.",
+        nextAction: "대시보드의 시험 후보를 확인하고, 빠진 항목이 있으면 시험으로 반영한 뒤 과제/시험 동기화를 다시 실행하세요."
+      };
+    case "notice_assignment_detection_covered_by_state":
+      return {
+        title: "공지 속 과제 감지 상태 확인",
+        explanation: "공지 본문에서 과제처럼 보이는 항목을 찾았고, 그 항목이 앱 상태와 미리 알림 후보에 반영됐는지 검사합니다.",
+        nextAction: "대시보드의 과제 후보를 확인하고, 빠진 항목이 있으면 과제로 반영한 뒤 과제/시험 동기화를 다시 실행하세요."
+      };
+    case "calendar_exam_count_matches_state":
+      return countMismatchDiagnostic({
+        detail,
+        currentKey: "calendar",
+        expectedKey: "state",
+        titlePrefix: "캘린더 시험",
+        explanationName: "Apple Calendar의 시험",
+        nextAction: "과제/시험 동기화를 다시 실행한 뒤 상태 검사를 한 번 더 누르세요. 계속 남으면 Calendar 앱의 KLMS 캘린더에서 누락된 시험 일정을 확인하세요."
+      });
+    case "calendar_result_exam_matches_state":
+      return countMismatchDiagnostic({
+        detail,
+        currentKey: "result",
+        expectedKey: "state",
+        titlePrefix: "마지막 캘린더 반영에서 시험",
+        explanationName: "마지막 캘린더 반영 결과의 시험",
+        nextAction: "과제/시험 동기화를 다시 실행한 뒤 상태 검사를 한 번 더 누르세요. 계속 남으면 Mac의 캘린더 권한과 KLMS 캘린더를 확인하세요."
+      });
+    case "calendar_helpdesk_count_matches_state":
+      return countMismatchDiagnostic({
+        detail,
+        currentKey: "calendar",
+        expectedKey: "state",
+        titlePrefix: "캘린더 헬프데스크",
+        explanationName: "Apple Calendar의 헬프데스크",
+        nextAction: "과제/시험 동기화를 다시 실행한 뒤 상태 검사를 한 번 더 누르세요."
+      });
+    case "calendar_result_helpdesk_matches_state":
+      return countMismatchDiagnostic({
+        detail,
+        currentKey: "result",
+        expectedKey: "state",
+        titlePrefix: "마지막 캘린더 반영에서 헬프데스크",
+        explanationName: "마지막 캘린더 반영 결과의 헬프데스크",
+        nextAction: "과제/시험 동기화를 다시 실행한 뒤 상태 검사를 한 번 더 누르세요."
+      });
+    case "reminders_assignment_count_matches_state":
+      return {
+        title: "미리 알림 과제 수 불일치",
+        explanation: "앱 상태의 과제 수와 Apple Reminders의 과제 미리 알림 수가 다릅니다.",
+        nextAction: "과제/시험 동기화를 다시 실행하세요. 직접 체크한 완료 상태는 보존되어야 하므로, 중복 항목이 보이면 미리 알림 목록에서 같은 제목을 확인하세요."
+      };
+    case "past_exam_items_absent":
+      return {
+        title: "지난 시험 정리 상태 확인",
+        explanation: "지난 시험이 앱 상태나 캘린더에 남아 있는지 확인하는 검사입니다.",
+        nextAction: "지난 시험이 남아 있으면 과제/시험 동기화를 다시 실행해서 오래된 시험을 정리하세요."
+      };
+    case "exam_information_present":
+      return {
+        title: "시험 세부 정보 확인",
+        explanation: "시험 일정에 시간, 범위, 장소 같은 세부 정보가 충분히 들어 있는지 확인하는 검사입니다.",
+        nextAction: "시험 상세가 부족하면 해당 시험 항목을 열어 범위/장소를 직접 보강하거나 공지 후보를 다시 확인하세요."
+      };
+    default:
+      return {
+        title: `상태 검사 · ${name || "알 수 없음"}`,
+        explanation: detail || "상태 검사 항목입니다.",
+        nextAction: isIssueStatus(check?.status) ? "원본 로그에서 같은 항목명을 검색하고, 관련 동기화를 다시 실행하세요." : "문제가 없으면 별도 조치가 필요 없습니다."
+      };
+  }
+}
+
+function countMismatchDiagnostic({ detail, currentKey, expectedKey, titlePrefix, explanationName, nextAction }) {
+  const current = numericValue(detail, currentKey);
+  const expected = numericValue(detail, expectedKey);
+  const missing = Number.isFinite(current) && Number.isFinite(expected) ? Math.max(0, expected - current) : NaN;
+  return {
+    title: Number.isFinite(missing) && missing > 0 ? `${titlePrefix} ${missing}개 누락` : `${titlePrefix} 수 불일치`,
+    explanation: Number.isFinite(current) && Number.isFinite(expected)
+      ? `앱 상태 파일에는 ${expected}개가 있는데 ${explanationName} 수는 ${current}개입니다. 직접 삭제됐거나 반영 단계가 일부 실패했을 수 있습니다.`
+      : "앱 상태와 실제 반영 결과의 수가 다릅니다.",
+    nextAction
+  };
+}
+
+function numericValue(detail, key) {
+  const match = String(detail || "").match(new RegExp(`(?:^|[\\s,])${escapeRegExp(key)}=([0-9]+)(?:$|[\\s,])`));
+  return match ? Number(match[1]) : NaN;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function updateConnectionState(text, klass) {

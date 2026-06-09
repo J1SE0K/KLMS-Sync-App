@@ -168,7 +168,7 @@ async function runSmoke() {
         dryRun: false,
         wasCancelled: false,
         needsAttention: false,
-        outputTail: "KAIST 인증 번호: 57\n/Users/example/private\nhttps://klms.kaist.ac.kr/mod/courseboard/article.php?id=123\n정상 완료",
+        outputTail: "KAIST 인증 번호: 57\n/Users/example/Library/Application Support/KLMSNotesSync/course_files/과목 폴더/자료.pdf\n/var/folders/qz/private temp/file\nhttps://klms.kaist.ac.kr/mod/courseboard/article.php?id=123\n정상 완료",
       },
     ],
   }, { method: "POST", role: "worker" });
@@ -196,10 +196,12 @@ async function runSmoke() {
     assert.equal(payload.calendarChanges[0].location, "");
     assert.equal(payload.runLogs.length, 1);
     assert.match(payload.runLogs[0].outputTail, /KAIST 인증 번호: --/);
-    assert.match(payload.runLogs[0].outputTail, /\[local-path\]/);
     assert.match(payload.runLogs[0].outputTail, /\[KLMS URL\]/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /57/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /\/Users/);
+    assert.doesNotMatch(payload.runLogs[0].outputTail, /Application Support/);
+    assert.doesNotMatch(payload.runLogs[0].outputTail, /과목 폴더/);
+    assert.doesNotMatch(payload.runLogs[0].outputTail, /\/var\/folders/);
   }
 
   {
@@ -406,19 +408,33 @@ async function runSmoke() {
     const pageResponse = await worker.fetch(new Request(uploaded.downloadURL), env);
     assert.equal(pageResponse.status, 200);
     const pageHTML = await pageResponse.text();
-    assert.match(pageHTML, /KLMS 파일 미리보기/);
+    assert.match(pageHTML, /KLMS 파일 다운로드/);
+    assert.match(pageHTML, />미리보기</);
+    assert.match(pageHTML, />파일 다운로드</);
     assert.match(pageHTML, /download=1/);
     assert.match(pageHTML, /preview=1/);
     assert.match(pageHTML, /data-download-count="0"/);
-    assert.match(pageHTML, /data-preview-text-url/);
+    assert.doesNotMatch(pageHTML, /data-preview-text-url/);
 
     const previewURL = new URL(uploaded.downloadURL);
     previewURL.searchParams.set("preview", "1");
     const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
     assert.equal(previewResponse.status, 200);
-    assert.match(previewResponse.headers.get("Content-Disposition"), /^inline;/);
-    assert.match(previewResponse.headers.get("Content-Type"), /^text\/plain/);
-    assert.equal(await previewResponse.text(), "hello file");
+    assert.match(previewResponse.headers.get("Content-Type"), /^text\/html/);
+    const previewHTML = await previewResponse.text();
+    assert.match(previewHTML, /KLMS 파일 미리보기/);
+    assert.match(previewHTML, /data-action="zoom-in"/);
+    assert.match(previewHTML, /data-action="next"/);
+    assert.match(previewHTML, /raw=1/);
+
+    const rawPreviewURL = new URL(uploaded.downloadURL);
+    rawPreviewURL.searchParams.set("preview", "1");
+    rawPreviewURL.searchParams.set("raw", "1");
+    const rawPreviewResponse = await worker.fetch(new Request(rawPreviewURL.toString()), env);
+    assert.equal(rawPreviewResponse.status, 200);
+    assert.match(rawPreviewResponse.headers.get("Content-Disposition"), /^inline;/);
+    assert.match(rawPreviewResponse.headers.get("Content-Type"), /^text\/plain/);
+    assert.equal(await rawPreviewResponse.text(), "hello file");
 
     const downloadURL = new URL(uploaded.downloadURL);
     downloadURL.searchParams.set("download", "1");
@@ -442,6 +458,7 @@ async function runSmoke() {
     });
     const previewURL = new URL(pdf.downloadURL);
     previewURL.searchParams.set("preview", "1");
+    previewURL.searchParams.set("raw", "1");
     const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
     assert.equal(previewResponse.status, 200);
     assert.match(previewResponse.headers.get("Content-Type"), /^application\/pdf/);
@@ -456,6 +473,7 @@ async function runSmoke() {
     });
     const previewURL = new URL(png.downloadURL);
     previewURL.searchParams.set("preview", "1");
+    previewURL.searchParams.set("raw", "1");
     const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
     assert.equal(previewResponse.status, 200);
     assert.match(previewResponse.headers.get("Content-Type"), /^image\/png/);
@@ -472,7 +490,7 @@ async function runSmoke() {
     const pageResponse = await worker.fetch(new Request(large.downloadURL), env);
     assert.equal(pageResponse.status, 200);
     const pageHTML = await pageResponse.text();
-    assert.match(pageHTML, /파일 미리보기/);
+    assert.match(pageHTML, /미리보기 불가/);
     assert.doesNotMatch(pageHTML, /preview=1/);
     assert.match(pageHTML, /미리보기를 생략/);
   }

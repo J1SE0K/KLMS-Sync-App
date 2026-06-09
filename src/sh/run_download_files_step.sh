@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ "$#" -lt 9 ]]; then
-  print -r -- "usage: run_download_files_step.sh script manifest output-root download-log archive-root result-json timeout max-attempts retry-delay [force] [preserve-archive] [new-files-root] [quarantine-root] [download-start-timeout] [download-stall-timeout]" >&2
+  print -r -- "usage: run_download_files_step.sh script manifest output-root download-log archive-root result-json timeout max-attempts retry-delay [force] [preserve-archive] [new-files-root] [quarantine-root] [download-start-timeout] [download-stall-timeout] [download-parallelism] [direct-fetch-max-bytes] [direct-fetch-batch-timeout]" >&2
   exit 64
 fi
 
@@ -21,6 +21,9 @@ NEW_FILES_ROOT="${12:-}"
 QUARANTINE_ROOT="${13:-}"
 DOWNLOAD_START_TIMEOUT_SECONDS="${14:-180}"
 DOWNLOAD_STALL_TIMEOUT_SECONDS="${15:-900}"
+DOWNLOAD_PARALLELISM="${16:-1}"
+DIRECT_FETCH_MAX_BYTES="${17:-26214400}"
+DIRECT_FETCH_BATCH_TIMEOUT_SECONDS="${18:-180}"
 
 download_args=(
   /usr/bin/osascript
@@ -35,6 +38,9 @@ download_args=(
   "--timeout=$TIMEOUT_SECONDS"
   "--download-start-timeout=$DOWNLOAD_START_TIMEOUT_SECONDS"
   "--download-stall-timeout=$DOWNLOAD_STALL_TIMEOUT_SECONDS"
+  "--download-parallelism=$DOWNLOAD_PARALLELISM"
+  "--direct-fetch-max-bytes=$DIRECT_FETCH_MAX_BYTES"
+  "--direct-fetch-batch-timeout=$DIRECT_FETCH_BATCH_TIMEOUT_SECONDS"
   "--max-file-attempts=$MAX_ATTEMPTS"
   "--retry-delay-seconds=$RETRY_DELAY_SECONDS"
 )

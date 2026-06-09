@@ -5797,7 +5797,7 @@ enum NoticeNativeNoteMain {
             plan: archiveBuildResult.plan,
             previousRenderState: previousArchiveRenderState,
             renderStatePath: arguments.archiveRenderStatePath,
-            allowNoOpSkip: true,
+            allowNoOpSkip: false,
             skipActivation: arguments.skipNoteActivation,
             notesPID: arguments.notesPID
         )

@@ -87,6 +87,18 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(durations[2].secondsText, "5분 38초")
     }
 
+    func testStageDurationParserExtractsPersistedSummaryLine() {
+        let log = """
+        download-summary total=91 skipped_existing=89 downloaded_fresh=2
+        == 단계별 실행시간 core=18s notice=59s files=338s (과제/시험 18초 · 공지 59초 · 파일 5분 38초) ==
+        """
+
+        let durations = KLMSStageDurationParser.parse(from: log)
+
+        XCTAssertEqual(durations.map(\.stage), ["core", "notice", "files"])
+        XCTAssertEqual(durations.map(\.seconds), [18, 59, 338])
+    }
+
     func testReadableLogParserExtractsImportantLogHighlights() {
         let log = """
         KAIST 인증 번호: 11
@@ -117,6 +129,15 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertTrue(highlights[0].nextAction.contains("휴대폰"))
         XCTAssertTrue(highlights[4].explanation.contains("로그인 세션"))
         XCTAssertTrue(highlights[4].nextAction.contains("Safari"))
+    }
+
+    func testReadableLogParserExtractsPersistedStageDurationSummary() {
+        let log = "== 단계별 실행시간 core=18s notice=59s files=338s (과제/시험 18초 · 공지 59초 · 파일 5분 38초) =="
+
+        let highlights = KLMSReadableLogParser.highlights(from: log)
+
+        XCTAssertEqual(highlights.first?.title, "단계별 실행시간")
+        XCTAssertEqual(highlights.first?.detail, "과제/시험 18초 · 공지 59초 · 파일 5분 38초")
     }
 
     func testLivePhaseKeepsCleanupAboveFilesForLatestFileCleanupLine() {
