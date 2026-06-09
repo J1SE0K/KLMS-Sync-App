@@ -456,6 +456,16 @@ async function runSmoke() {
       body: "%PDF-1.4\n",
       contentType: "application/octet-stream",
     });
+    const previewPageURL = new URL(pdf.downloadURL);
+    previewPageURL.searchParams.set("preview", "1");
+    const previewPageResponse = await worker.fetch(new Request(previewPageURL.toString()), env);
+    assert.equal(previewPageResponse.status, 200);
+    const previewPageHTML = await previewPageResponse.text();
+    assert.match(previewPageHTML, /PDF 쪽수\/배율은 아래 뷰어 안쪽 표시가 실제 상태입니다/);
+    assert.match(previewPageHTML, /브라우저 내장 뷰어가 현재 쪽수와 배율을 실시간으로 표시/);
+    assert.doesNotMatch(previewPageHTML, /data-action="zoom-in"/);
+    assert.doesNotMatch(previewPageHTML, /data-action="next"/);
+
     const previewURL = new URL(pdf.downloadURL);
     previewURL.searchParams.set("preview", "1");
     previewURL.searchParams.set("raw", "1");

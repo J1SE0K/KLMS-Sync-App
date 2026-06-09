@@ -2085,6 +2085,7 @@ function fileAccessPreviewPage({
   const expiresText = fileRequest?.expiresAt || "";
   const downloadCount = Number.isFinite(Number(fileRequest?.downloadCount)) ? Number(fileRequest.downloadCount) : 0;
   const viewerMarkup = filePreviewViewerMarkup(preview, rawURL);
+  const isPDFPreview = preview?.kind === "pdf";
   const html = `<!doctype html>
 <html lang="ko">
 <head>
@@ -2136,7 +2137,7 @@ function fileAccessPreviewPage({
       </div>
       <div class="toolbar">
         <a class="button" href="${escapeHTML(backURL)}">뒤로</a>
-        <div class="tool-group">
+        ${isPDFPreview ? "" : `<div class="tool-group">
           <button type="button" data-action="prev">이전</button>
           <button type="button" data-action="next">다음</button>
         </div>
@@ -2144,12 +2145,12 @@ function fileAccessPreviewPage({
           <button type="button" data-action="zoom-out">축소</button>
           <button type="button" data-action="fit">맞춤</button>
           <button type="button" data-action="zoom-in">확대</button>
-        </div>
+        </div>`}
         <a class="button primary" href="${escapeHTML(downloadURL)}">다운로드</a>
-        <div class="status" data-status>1 / 1 · 100%</div>
+        ${isPDFPreview ? `<div class="status">PDF 쪽수/배율은 아래 뷰어 안쪽 표시가 실제 상태입니다.</div>` : `<div class="status" data-status>1 / 1 · 100%</div>`}
       </div>
       <div class="viewer">${viewerMarkup}</div>
-      <div class="note">PDF는 브라우저 PDF 뷰어의 자체 페이지/확대 기능도 같이 사용할 수 있습니다.</div>
+      <div class="note">${isPDFPreview ? "PDF는 브라우저 내장 뷰어가 현재 쪽수와 배율을 실시간으로 표시합니다. 바깥 화면은 다운로드와 파일 정보만 담당합니다." : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다."}</div>
     </section>
   </main>
   <script>
@@ -2171,6 +2172,7 @@ function fileAccessPreviewPage({
       usageChip.textContent = "열람/다운로드 " + next + "회";
     };
     const setStatus = () => {
+      if (!status) return;
       if (kind === "pdf") {
         status.textContent = "PDF " + page + "쪽 · " + Math.round(zoom * 100) + "%";
         return;
@@ -2230,11 +2232,15 @@ function fileAccessPreviewPage({
         if (resource.tagName === "IMG" && resource.complete && resource.naturalWidth > 0) bumpUsage();
       }
     }
-    document.querySelector("[data-action='prev']").addEventListener("click", () => { page -= 1; render(); });
-    document.querySelector("[data-action='next']").addEventListener("click", () => { page += 1; render(); });
-    document.querySelector("[data-action='zoom-out']").addEventListener("click", () => { zoom = Math.max(.35, +(zoom - .15).toFixed(2)); render(); });
-    document.querySelector("[data-action='zoom-in']").addEventListener("click", () => { zoom = Math.min(3, +(zoom + .15).toFixed(2)); render(); });
-    document.querySelector("[data-action='fit']").addEventListener("click", () => { zoom = 1; render(); });
+    const bindAction = (name, handler) => {
+      const button = document.querySelector("[data-action='" + name + "']");
+      if (button) button.addEventListener("click", handler);
+    };
+    bindAction("prev", () => { page -= 1; render(); });
+    bindAction("next", () => { page += 1; render(); });
+    bindAction("zoom-out", () => { zoom = Math.max(.35, +(zoom - .15).toFixed(2)); render(); });
+    bindAction("zoom-in", () => { zoom = Math.min(3, +(zoom + .15).toFixed(2)); render(); });
+    bindAction("fit", () => { zoom = 1; render(); });
     for (const el of document.querySelectorAll("[data-expires]")) {
       const d = new Date(el.dataset.expires);
       if (!Number.isNaN(d.getTime())) el.textContent = "만료 " + d.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
