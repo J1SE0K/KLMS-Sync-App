@@ -1143,7 +1143,8 @@ function actionLabel(action) {
     calendarApply: "KLMS 기준 반영",
     calendarCreate: "캘린더 일정 등록",
     calendarEdit: "캘린더 내용 수정",
-    calendarDelete: "KLMS 기준 반영"
+    calendarDelete: "KLMS 기준 반영",
+    mailDashboardAdd: "메일 항목 반영"
   }[action] || action;
 }
 

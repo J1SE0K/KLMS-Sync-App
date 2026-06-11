@@ -25,7 +25,9 @@ Windows companion app for the KLMS Sync server relay.
 - 전체/과제/공지/파일/진단 원격 실행 요청
 - 로그 화면에서 최근 요청, 서버 요청, 파일 요청 상태 확인
 - 로그 화면에서 로그 요약 카드 확인: 인증, 실패, 단계 완료, 파일 변경량, 다운로드 요약
-- 참고: 메일 본문을 붙여넣어 과제, 시험, 공지, 일정 처리 대상을 자동 판독하고 Apple Calendar에 수동 등록하는 기능은 현재 Mac/iPhone/iPad 앱에 먼저 반영되어 있다. Windows 앱은 같은 UI 패턴으로 추가 구현할 때 `calendarCreate` 서버 액션을 사용한다.
+- 참고: 메일 본문을 붙여넣어 과제, 시험, 공지, 파일 처리 대상을 자동 판독하는 기능은 현재 Mac/iPhone/iPad 앱에 먼저 반영되어 있다.
+- Windows 앱도 같은 UI 패턴으로 추가 구현할 때 `대시보드에 반영`은 `mailDashboardAdd`, Apple Calendar 수동 등록은 `calendarCreate` 서버 액션을 사용한다.
+- 메일 판독 결과를 대시보드에 반영하면 과제, 시험, 공지, 파일 상단 카운트와 상세 목록에도 같이 잡혀야 한다.
 
 ## 개발 실행
 

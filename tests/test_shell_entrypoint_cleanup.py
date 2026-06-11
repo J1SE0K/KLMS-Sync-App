@@ -212,8 +212,9 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         kaikey = (PROJECT_DIR / "bin" / "kaikey_auto_login.sh").read_text(encoding="utf-8")
 
-        self.assertIn('KLMS_LOGIN_ASSIST_ENABLED": "1"', app_model)
-        self.assertIn('KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": "1"', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_ENABLED": runtimeBoolConfigValue(.loginAssistEnabled, default: true)', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": runtimeBoolConfigValue(.loginAssistAllowNoninteractive, default: true)', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_MODE": runtimeConfigValue(.loginAssistMode, default: "manual-digits")', app_model)
         self.assertIn('KLMS_FORCE_LOGIN_PREFLIGHT": "1"', app_model)
         self.assertIn('KLMS_LOGIN_STATUS_REUSE_SECONDS": "21600"', app_model)
         self.assertIn('KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS": "0"', app_model)
@@ -525,6 +526,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn('"$FILE_PRESERVE_DOWNLOAD_ARCHIVE"', text)
         self.assertIn("existing_file_needs_refresh", text)
         self.assertIn('entry.get("klms_timestamp_epoch")', text)
+        self.assertIn("previous_epoch > 0 and current_epoch > previous_epoch + 1", text)
+        self.assertNotIn("current_epoch > file_mtime", text)
         self.assertIn("FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS", text)
         self.assertIn("--always-fetch-min-interval-seconds=$FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS", text)
         self.assertIn("FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED", text)
@@ -535,9 +538,13 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("build_files_stage_timings.py", text)
         self.assertIn("klms_cleanup_runtime_tmp_if_enabled", text)
         self.assertIn('if is_truthy "${KLMS_APP_RUN:-0}"; then', text)
-        self.assertIn('FILE_REFRESH_MODE="auto"', text)
-        self.assertIn('FILE_FORCE_DOWNLOAD="0"', text)
-        self.assertIn('FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY="1"', text)
+        app_run_block = text[
+            text.index('if is_truthy "${KLMS_APP_RUN:-0}"; then')
+            : text.index('if is_truthy "$FILE_DRY_RUN"; then')
+        ]
+        self.assertIn('FILE_REFRESH_MODE="auto"', app_run_block)
+        self.assertIn('FILE_FORCE_DOWNLOAD="0"', app_run_block)
+        self.assertNotIn("FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY=", app_run_block)
         self.assertIn("manifest_layout_matches()", text)
         self.assertIn('"${FILE_REFRESH_MODE:l}" != "full"', text)
         self.assertIn('"$COURSE_CHANGED_COUNT" == "0"', text)
@@ -564,10 +571,12 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "SettingsView.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('"FILE_REFRESH_MODE": "auto"', model)
+        self.assertIn('"FILE_REFRESH_MODE": runtimeConfigValue(.fileRefreshMode, default: "auto")', model)
         self.assertIn('"FILE_FORCE_DOWNLOAD": "0"', model)
-        self.assertIn('"FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": "1"', model)
-        self.assertIn('"FILE_WEEKLY_FOLDERS_ENABLED": "1"', model)
+        self.assertIn('"FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": runtimeBoolConfigValue(.fileSkipDownloadWhenPreviewEmpty, default: true)', model)
+        self.assertIn('"FILE_KEEP_FRESH_DOWNLOADS": runtimeBoolConfigValue(.fileKeepFreshDownloads, default: false)', model)
+        self.assertIn('"FILE_WEEKLY_FOLDERS_ENABLED": runtimeBoolConfigValue(.fileWeeklyFoldersEnabled, default: true)', model)
+        self.assertIn('"FILE_PRESERVE_DOWNLOAD_ARCHIVE": runtimeBoolConfigValue(.filePreserveDownloadArchive, default: false)', model)
         self.assertIn('"FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS": "21600"', model)
         self.assertIn('Picker("파일 탐색 모드"', settings)
         self.assertIn('allowedValues: ["auto", "quick"]', settings)
@@ -576,6 +585,27 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         file_picker = settings.split('Picker("파일 탐색 모드"', 1)[1].split("}", 1)[0]
         self.assertNotIn('Text("전체").tag("full")', file_picker)
         self.assertNotIn('configToggle("강제 재다운로드"', settings)
+
+    def test_app_important_sync_alerts_render_above_command_controls(self) -> None:
+        mac_view = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
+        ios_view = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
+        ).read_text(encoding="utf-8")
+
+        mac_root = mac_view[
+            mac_view.index("struct MenuBarRootView")
+            : mac_view.index("private struct WholeScreenVerticalScrollView")
+        ]
+        self.assertLess(mac_root.index("ImportantLogPanelView("), mac_root.index("CommandPanelView(model: model)"))
+
+        container = ios_view[
+            ios_view.index("private struct CompanionScreenContainer")
+            : ios_view.index("private struct CompanionScreenHeader")
+        ]
+        self.assertLess(container.index("RemoteAttentionStack(model: model)"), container.index("CompanionScreenHeader(title: title, model: model)"))
+        self.assertEqual(ios_view.count("RemoteAttentionStack(model: model)"), 1)
 
     def test_mac_settings_are_grouped_by_tabs_without_duplicate_file_controls(self) -> None:
         settings = (
@@ -646,10 +676,14 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "DashboardDetailView.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('Metric("파일", snapshot.courseFileManifest.count, detail: .files)', menu)
+        self.assertIn(
+            'Metric("파일", snapshot.courseFileManifest.count + model.mailDashboardItems(kind: "file").count, detail: .files)',
+            menu,
+        )
         self.assertIn("@State private var selectedDetail = DashboardDetailKind.assignments", menu)
         self.assertIn("case files", detail)
         self.assertIn("FileManifestListView(filters: filters, model: model)", detail)
+        self.assertIn('MailDashboardItemListView(items: model.mailDashboardItems(kind: "file")', detail)
         self.assertIn("model.snapshot.courseFileManifest.compactMap", detail)
         self.assertIn("NoticeAttachmentDisplay", detail)
         self.assertIn('Text("첨부 파일")', detail)
@@ -777,11 +811,16 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             : model_text.index("var serverRelayConfigured")
         ]
         self.assertIn('"KLMS_APP_NON_INTRUSIVE_SAFARI": "1"', app_environment)
-        self.assertIn('"KLMS_SAFARI_BACKGROUND_WINDOW_MODE": "minimize"', app_environment)
+        self.assertIn('"KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED": runtimeBoolConfigValue(.safariBackgroundWindowEnabled, default: true)', app_environment)
+        self.assertIn('"KLMS_SAFARI_BACKGROUND_WINDOW_MODE": runtimeConfigValue(.safariBackgroundWindowMode, default: "minimize")', app_environment)
         self.assertIn('"KLMS_SAFARI_RESTORE_FRONTMOST_ENABLED": "0"', app_environment)
         self.assertIn('"KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE": "0"', app_environment)
         self.assertIn('"LOGIN_PROMPT_OPEN_SAFARI": "0"', app_environment)
+        self.assertIn('"KLMS_LOGIN_ASSIST_ENABLED": runtimeBoolConfigValue(.loginAssistEnabled, default: true)', app_environment)
+        self.assertIn('"KLMS_LOGIN_ASSIST_MODE": runtimeConfigValue(.loginAssistMode, default: "manual-digits")', app_environment)
+        self.assertIn('"KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": runtimeBoolConfigValue(.loginAssistAllowNoninteractive, default: true)', app_environment)
         self.assertNotIn('"KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED": "1"', app_environment)
+        self.assertIn('"KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED": runtimeBoolConfigValue(.safariReuseExistingWindowEnabled, default: true)', app_environment)
         self.assertIn("safariRestoreFrontmostEnabled", fetch_text)
         self.assertIn("safariRestoreFrontmostEnabled", download_text)
         self.assertIn('title: "KLMS Sync Safari 창 재사용"', model_text)
@@ -1020,8 +1059,8 @@ const crossSourceEntries = [
     category: "assignment",
     course: "알고리즘 개론",
     title: "Written Assignment 4",
-    due: "2026년 6월 9일 오후 11:59",
-    sync_due: "2026-06-09T23:59:00+09:00",
+    due: "2099년 6월 9일 오후 11:59",
+    sync_due: "2099-06-09T23:59:00+09:00",
     url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=1234595",
     instructions: "source assignment",
   },
@@ -1029,8 +1068,8 @@ const crossSourceEntries = [
     category: "assignment",
     course: "알고리즘 개론",
     title: "Written Assignment 4",
-    due: "2026년 6월 9일 오후 11:59",
-    sync_due: "2026-06-09T23:59:00+09:00",
+    due: "2099년 6월 9일 오후 11:59",
+    sync_due: "2099-06-09T23:59:00+09:00",
     url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=435776",
     instructions: "notice assignment with details",
   },
@@ -1040,13 +1079,13 @@ assert.equal(crossSourceDesired.active.length, 1);
 assert.equal(crossSourceDesired.issues.length, 0);
 assert.equal(
   crossSourceDesired.active[0].identifier,
-  "assignment:%EC%95%8C%EA%B3%A0%EB%A6%AC%EC%A6%98%20%EA%B0%9C%EB%A1%A0:written%20assignment%204:2026-06-09t23%3A59%3A00%2B09%3A00"
+  "assignment:%EC%95%8C%EA%B3%A0%EB%A6%AC%EC%A6%98%20%EA%B0%9C%EB%A1%A0:written%20assignment%204:2099-06-09t23%3A59%3A00%2B09%3A00"
 );
 assert.ok(crossSourceDesired.active[0].aliasIdentifiers.includes("1234595"));
 assert.ok(crossSourceDesired.active[0].aliasIdentifiers.includes("435776"));
 assert.ok(
   assignmentOverrideKeysForEntry(crossSourceEntries[1]).includes(
-    "알고리즘 개론::Written Assignment 4::2026-06-09T23:59:00+09:00"
+    "알고리즘 개론::Written Assignment 4::2099-06-09T23:59:00+09:00"
   )
 );
 

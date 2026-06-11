@@ -11,12 +11,12 @@ struct MenuBarRootView: View {
         WholeScreenVerticalScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 HeaderView(model: model)
-                CommandPanelView(model: model)
                 ImportantLogPanelView(
                     model: model,
                     selectedSection: $selectedSection,
                     expandedLogSummaryKind: $expandedLogSummaryKind
                 )
+                CommandPanelView(model: model)
                 QuickStatusStripView(model: model)
                 ExternalIntegrationStatusView(model: model)
 
@@ -1923,10 +1923,10 @@ private struct DashboardSummaryView: View {
             let prunedCount = report?.files.pruned ?? 0
             let hiddenCount = snapshot.hiddenSummary.total
             let primaryMetrics = [
-                Metric("과제", counts.assignments, detail: .assignments),
-                Metric("시험", counts.exams, detail: .exams),
-                Metric("공지", counts.notices, detail: .notices),
-                Metric("파일", snapshot.courseFileManifest.count, detail: .files),
+                Metric("과제", counts.assignments + model.mailDashboardItems(kind: "assignment").count, detail: .assignments),
+                Metric("시험", counts.exams + model.mailDashboardItems(kind: "exam").count, detail: .exams),
+                Metric("공지", counts.notices + model.mailDashboardItems(kind: "notice").count, detail: .notices),
+                Metric("파일", snapshot.courseFileManifest.count + model.mailDashboardItems(kind: "file").count, detail: .files),
                 Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
             ].filter { $0.value > 0 }
             let attentionMetrics = [
@@ -1946,7 +1946,6 @@ private struct DashboardSummaryView: View {
             let activeDetail = visibleMetrics.first { $0.detail == selectedDetail }?.detail
                 ?? visibleMetrics.first?.detail
             IssueSummaryView(issues: snapshot.issues)
-            MacMailPasteAnalyzerPanel(model: model, snapshot: snapshot)
             if visibleMetrics.isEmpty {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.caption)
@@ -2619,6 +2618,7 @@ private struct CommandPanelView: View {
             title: "동기화"
         ) {
             VStack(alignment: .leading, spacing: 10) {
+                MacMailPasteAnalyzerPanel(model: model, snapshot: model.snapshot)
                 primaryCommandActionCard(primaryCommand)
 
                 LazyVGrid(columns: secondaryCommandColumns, spacing: 8) {

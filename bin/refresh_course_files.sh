@@ -128,7 +128,6 @@ if is_truthy "${KLMS_APP_RUN:-0}"; then
       ;;
   esac
   FILE_FORCE_DOWNLOAD="0"
-  FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY="1"
 fi
 
 if is_truthy "$FILE_DRY_RUN"; then
@@ -568,18 +567,8 @@ def normalized_epoch(value) -> int:
 
 def existing_file_needs_refresh(entry: dict, destination_path: Path, previous: dict) -> bool:
     current_epoch = normalized_epoch(entry.get("klms_timestamp_epoch"))
-    if current_epoch <= 0:
-        return False
-
     previous_epoch = normalized_epoch(previous.get("klms_timestamp_epoch"))
-    if previous_epoch > 0 and current_epoch > previous_epoch + 1:
-        return True
-
-    try:
-        file_mtime = int(destination_path.stat().st_mtime)
-    except Exception:
-        file_mtime = 0
-    return file_mtime > 0 and current_epoch > file_mtime + 1
+    return current_epoch > 0 and previous_epoch > 0 and current_epoch > previous_epoch + 1
 
 results = []
 for index, entry in enumerate(manifest, start=1):

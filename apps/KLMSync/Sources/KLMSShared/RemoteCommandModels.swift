@@ -1533,6 +1533,52 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
     }
 }
 
+public extension SanitizedRemoteStatus {
+    mutating func applyMailDashboardItems(_ items: [ServerRelaySyncItem]) {
+        let visibleItems = items.filter { !$0.isHidden }
+        assignments += visibleItems.filter { $0.kind == "assignment" || $0.kind == "assignmentCandidate" }.count
+        exams += visibleItems.filter { $0.kind == "exam" || $0.kind == "examCandidate" }.count
+        notices += visibleItems.filter { $0.kind == "notice" }.count
+        fileTotal += visibleItems.filter { $0.kind == "file" }.count
+    }
+}
+
+public extension Array where Element == ServerRelaySyncItem {
+    func dedupedForServerRelay() -> [ServerRelaySyncItem] {
+        var seen = Set<String>()
+        var result: [ServerRelaySyncItem] = []
+        for item in self {
+            let key = item.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, seen.insert(key).inserted else {
+                continue
+            }
+            result.append(item)
+        }
+        return result
+    }
+}
+
+public extension String {
+    var klmsMailDashboardKindName: String {
+        switch self {
+        case "assignment":
+            "과제"
+        case "assignmentCandidate":
+            "과제 후보"
+        case "exam":
+            "시험"
+        case "examCandidate":
+            "시험 후보"
+        case "notice":
+            "공지"
+        case "file":
+            "파일"
+        default:
+            self
+        }
+    }
+}
+
 public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, Identifiable {
     case assignmentComplete
     case assignmentRestore
@@ -1555,6 +1601,7 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
     case calendarCreate
     case calendarEdit
     case calendarDelete
+    case mailDashboardAdd
 
     public var id: String { rawValue }
 
@@ -1602,6 +1649,8 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
             "캘린더 내용 수정"
         case .calendarDelete:
             "KLMS 기준 반영"
+        case .mailDashboardAdd:
+            "메일 항목 반영"
         }
     }
 }

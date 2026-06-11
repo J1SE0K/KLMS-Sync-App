@@ -52,8 +52,8 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private static let serverRelayEditableSettings: [ServerRelaySettingDefinition] = [
-        ServerRelaySettingDefinition(.loginAssistEnabled, title: "로그인 보조", valueKind: .bool, defaultValue: "0"),
-        ServerRelaySettingDefinition(.loginAssistAllowNoninteractive, title: "백그라운드 로그인 보조", valueKind: .bool, defaultValue: "0"),
+        ServerRelaySettingDefinition(.loginAssistEnabled, title: "로그인 보조", valueKind: .bool, defaultValue: "1"),
+        ServerRelaySettingDefinition(.loginAssistAllowNoninteractive, title: "백그라운드 로그인 보조", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.autoSyncEnabled, title: "자동 실행", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.syncIntervalSeconds, title: "동기화 주기(초)", valueKind: .number, defaultValue: "21600"),
         ServerRelaySettingDefinition(.minIdleSeconds, title: "유휴 조건(초)", valueKind: .number, defaultValue: "0"),
@@ -86,6 +86,7 @@ final class KLMSMacModel: ObservableObject {
     @Published var serverRelayRecentRequestLog: [ServerRelayRequestLogEntry] = []
     @Published var serverRelayRecentFileAccessRequests: [ServerRelayFileAccessRequest] = []
     @Published var serverRelaySharedRunLogs: [ServerRelayRunLog] = []
+    @Published var mailDashboardItems: [ServerRelaySyncItem] = []
     @Published var remoteProcessingStatusMessage: String?
     @Published var isCheckingRemoteCommands = false
     @Published var serverRelayEnabled: Bool
@@ -135,6 +136,7 @@ final class KLMSMacModel: ObservableObject {
     private static let serverRelayClientTokenKey = "KLMSServerRelayClientToken"
     private static let serverRelayWorkerTokenKey = "KLMSServerRelayWorkerToken"
     private static let deprecatedServerRelayTokenKey = "KLMSServerRelayToken"
+    private static let mailDashboardItemsKey = "KLMSMailDashboardItems"
     private static let serverRelayIdleStatusPublishMinimumInterval: TimeInterval = 30
     private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 0.5
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
@@ -166,6 +168,7 @@ final class KLMSMacModel: ObservableObject {
             ?? legacyToken
         serverRelayClientToken = clientToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         serverRelayWorkerToken = workerToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        mailDashboardItems = Self.loadMailDashboardItems()
         let clientTokenSaved = Self.persistRelayToken(
             serverRelayClientToken,
             account: "server-relay-client-mac",
@@ -247,10 +250,12 @@ final class KLMSMacModel: ObservableObject {
     }
 
     var appRunEnvironment: [String: String] {
-        [
+        var environment = [
             "KLMS_APP_RUN": "1",
             "KLMS_APP_NON_INTRUSIVE_SAFARI": "1",
-            "KLMS_SAFARI_BACKGROUND_WINDOW_MODE": "minimize",
+            "KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED": runtimeBoolConfigValue(.safariBackgroundWindowEnabled, default: true),
+            "KLMS_SAFARI_BACKGROUND_WINDOW_MODE": runtimeConfigValue(.safariBackgroundWindowMode, default: "minimize"),
+            "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED": runtimeBoolConfigValue(.safariReuseExistingWindowEnabled, default: true),
             "KLMS_SAFARI_RESTORE_FRONTMOST_ENABLED": "0",
             "NOTICE_NATIVE_NOTE_BIN_PATH": nativeNoticeHelperPath,
             "KLMS_PYTHONPATH_DIR": paths.appPythonPackagesURL.path,
@@ -258,8 +263,9 @@ final class KLMSMacModel: ObservableObject {
             "KLMS_SCRIPT_NOTIFICATIONS_ENABLED": "0",
             "KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE": "0",
             "LOGIN_PROMPT_OPEN_SAFARI": "0",
-            "KLMS_LOGIN_ASSIST_ENABLED": "1",
-            "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": "1",
+            "KLMS_LOGIN_ASSIST_ENABLED": runtimeBoolConfigValue(.loginAssistEnabled, default: true),
+            "KLMS_LOGIN_ASSIST_MODE": runtimeConfigValue(.loginAssistMode, default: "manual-digits"),
+            "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": runtimeBoolConfigValue(.loginAssistAllowNoninteractive, default: true),
             "KLMS_FORCE_LOGIN_PREFLIGHT": "1",
             "KLMS_LOGIN_STATUS_REUSE_SECONDS": "21600",
             "KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS": "0",
@@ -267,37 +273,48 @@ final class KLMSMacModel: ObservableObject {
             "KAIKEY_AUTHENTICATED_RECHECK_SECONDS": "1",
             "KAIKEY_AUTH_CHECK_SECONDS": "1.2",
             "KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS": "60",
-            "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": "1",
-            "NOTICE_NATIVE_STABLE_NOOP_SKIP": "1",
+            "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": runtimeBoolConfigValue(.noticeAlwaysCaptureState, default: true),
+            "NOTICE_NATIVE_STABLE_NOOP_SKIP": runtimeBoolConfigValue(.noticeStableNoopSkip, default: true),
             "NOTICE_NATIVE_DEFER_STATE_ONLY_RENDER": "0",
             "NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER": "1",
-            "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": "0",
+            "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT": runtimeBoolConfigValue(.noticeVerifyStableSkipFormat, default: false),
             "NOTICE_NATIVE_POST_RENDER_VERIFY": "0",
             "NOTICE_NATIVE_INITIAL_COLLAPSE_ENABLED": "1",
             "NOTICE_NATIVE_CONSERVATIVE_RENDER_FALLBACK": "0",
             "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT": "1",
             "NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT": "1",
-            "NOTICE_COLLAPSE_SECTIONS": "0",
-            "NOTICE_COLLAPSE_COURSES": "1",
-            "NOTICE_COLLAPSE_NOTICE_ITEMS": "0",
-            "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS": "0",
+            "NOTICE_COLLAPSE_SECTIONS": runtimeBoolConfigValue(.noticeCollapseSections, default: false),
+            "NOTICE_COLLAPSE_COURSES": runtimeBoolConfigValue(.noticeCollapseCourses, default: true),
+            "NOTICE_COLLAPSE_NOTICE_ITEMS": runtimeBoolConfigValue(.noticeCollapseItems, default: false),
+            "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS": runtimeBoolConfigValue(.noticeStyleItemsAsHeadings, default: false),
+            "NOTICE_HIDE_HIDDEN_ITEMS": runtimeBoolConfigValue(.noticeHideHiddenItems, default: true),
             "NOTICE_NATIVE_BOLD_REINFORCE_LIMIT": "0",
             "NOTICE_NATIVE_VALIDATE_STYLE": "0",
             "NOTICE_NATIVE_SELECTION_SETTLE_SECONDS": "0.012",
             "NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US": "15000",
-            "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": "0",
-            "NOTICE_NATIVE_PLAIN_TEXT_PASTE": "0",
+            "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": runtimeBoolConfigValue(.noticePreformattedPasteOnly, default: false),
+            "NOTICE_NATIVE_PLAIN_TEXT_PASTE": runtimeBoolConfigValue(.noticePlainTextPaste, default: false),
             "NOTICE_NATIVE_STYLE_BUDGET_SECONDS": "60",
-            "FILE_REFRESH_MODE": "auto",
+            "SYNC_MODE": runtimeConfigValue(.syncMode, default: "auto"),
+            "FILE_REFRESH_MODE": runtimeConfigValue(.fileRefreshMode, default: "auto"),
             "FILE_FORCE_DOWNLOAD": "0",
-            "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": "1",
-            "FILE_WEEKLY_FOLDERS_ENABLED": "1",
+            "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": runtimeBoolConfigValue(.fileSkipDownloadWhenPreviewEmpty, default: true),
+            "FILE_KEEP_FRESH_DOWNLOADS": runtimeBoolConfigValue(.fileKeepFreshDownloads, default: false),
+            "FILE_WEEKLY_FOLDERS_ENABLED": runtimeBoolConfigValue(.fileWeeklyFoldersEnabled, default: true),
+            "FILE_PRESERVE_DOWNLOAD_ARCHIVE": runtimeBoolConfigValue(.filePreserveDownloadArchive, default: false),
             "FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS": "21600",
             "FILE_DOWNLOAD_PARALLELISM": "3",
             "FILE_DIRECT_FETCH_MAX_BYTES": "26214400",
             "FILE_DIRECT_FETCH_BATCH_TIMEOUT_SECONDS": "180",
             "REMINDER_RECREATE_STAGE_ALERT_LIST": "0",
         ]
+        if let newFilesRoot = runtimeOptionalConfigValue(.fileNewFilesRoot) {
+            environment["FILE_NEW_FILES_ROOT"] = newFilesRoot
+        }
+        if let quarantineRoot = runtimeOptionalConfigValue(.fileQuarantineRoot) {
+            environment["FILE_QUARANTINE_ROOT"] = quarantineRoot
+        }
+        return environment
     }
 
     var serverRelayConfigured: Bool {
@@ -666,6 +683,7 @@ final class KLMSMacModel: ObservableObject {
 
     private func sanitizedRemoteStatus(snapshot: EngineSnapshot, phase: String) -> SanitizedRemoteStatus {
         var status = SanitizedRemoteStatus(snapshot: snapshot, phase: phase)
+        status.applyMailDashboardItems(mailDashboardItems)
         if phase == "running" {
             status.phaseDetail = currentPhaseText ?? runningCommand?.displayName ?? "실행 중"
         }
@@ -936,10 +954,11 @@ final class KLMSMacModel: ObservableObject {
                 isHidden: snapshot.appUserState?.files[serverRelayFileUserStateKey($0)]?.isHiddenLike == true
             )
         }
+        items += mailDashboardItems
 
         return ServerRelaySyncData(
             generatedAt: generatedAt,
-            items: items,
+            items: items.dedupedForServerRelay(),
             dryRunReports: serverRelayDryRunReports(from: snapshot),
             calendarChanges: snapshot.calendarSyncResult?.changes
                 .filter { !isCalendarChangeResolved($0) }
@@ -1049,6 +1068,86 @@ final class KLMSMacModel: ObservableObject {
             detail: serverRelayPublicText(item.coverageSummary.nilIfBlank),
             updatedAt: updatedAt
         )
+    }
+
+    func addMailDashboardItem(_ item: ServerRelaySyncItem) {
+        guard Self.isMailDashboardItem(item) else {
+            return
+        }
+        mailDashboardItems = ([item] + mailDashboardItems.filter { $0.id != item.id })
+            .dedupedForServerRelay()
+            .prefix(80)
+            .map { $0 }
+        persistMailDashboardItems()
+        serverRelayStatusMessage = "\(item.kind.klmsMailDashboardKindName) 대시보드에 반영됨"
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.publishServerRelayStatusIfNeeded(force: true)
+        }
+    }
+
+    private func applyServerRelayMailDashboardAddAction(_ action: ServerRelayItemAction) throws {
+        let item: ServerRelaySyncItem
+        if let data = action.message.data(using: .utf8),
+           let decoded = try? JSONDecoder().decode(ServerRelaySyncItem.self, from: data) {
+            item = decoded
+        } else {
+            item = ServerRelaySyncItem(
+                id: action.itemID,
+                kind: action.itemKind,
+                title: action.itemTitle,
+                status: "메일 분석",
+                detail: "메일 분석에서 대시보드에 반영한 항목입니다."
+            )
+        }
+        addMailDashboardItem(item)
+    }
+
+    func removeMailDashboardItem(_ item: ServerRelaySyncItem) {
+        mailDashboardItems.removeAll { $0.id == item.id }
+        persistMailDashboardItems()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.publishServerRelayStatusIfNeeded(force: true)
+        }
+    }
+
+    func mailDashboardItems(kind: String) -> [ServerRelaySyncItem] {
+        mailDashboardItems
+            .filter { $0.kind == kind }
+            .sorted { lhs, rhs in
+                if lhs.timestamp != rhs.timestamp {
+                    return lhs.timestamp > rhs.timestamp
+                }
+                if lhs.updatedAt != rhs.updatedAt {
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+            }
+    }
+
+    private static func isMailDashboardItem(_ item: ServerRelaySyncItem) -> Bool {
+        item.status.localizedCaseInsensitiveContains("메일")
+            || item.id.hasPrefix("mail-")
+            || item.detail.localizedCaseInsensitiveContains("메일")
+    }
+
+    private static func loadMailDashboardItems() -> [ServerRelaySyncItem] {
+        guard let data = UserDefaults.standard.data(forKey: mailDashboardItemsKey),
+              let decoded = try? JSONDecoder().decode([ServerRelaySyncItem].self, from: data) else {
+            return []
+        }
+        return decoded.filter(Self.isMailDashboardItem).dedupedForServerRelay()
+    }
+
+    private func persistMailDashboardItems() {
+        if mailDashboardItems.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.mailDashboardItemsKey)
+            return
+        }
+        if let data = try? JSONEncoder().encode(mailDashboardItems) {
+            UserDefaults.standard.set(data, forKey: Self.mailDashboardItemsKey)
+        }
     }
 
     private func serverRelayPublicText(_ text: String?) -> String {
@@ -1184,6 +1283,8 @@ final class KLMSMacModel: ObservableObject {
             try setServerRelayFileHidden(false, for: try serverRelayFile(for: action))
         case .fileTrash:
             try trashServerRelayFile(try serverRelayFile(for: action))
+        case .mailDashboardAdd:
+            try applyServerRelayMailDashboardAddAction(action)
         case .calendarVerify, .calendarApply, .calendarCreate, .calendarEdit, .calendarDelete:
             throw serverRelayItemActionError("캘린더 요청은 실행 큐에서 처리해야 합니다.")
         }
@@ -1198,6 +1299,8 @@ final class KLMSMacModel: ObservableObject {
         case .calendarApply, .calendarDelete:
             .coreSync
         case .calendarCreate, .calendarEdit:
+            nil
+        case .mailDashboardAdd:
             nil
         default:
             nil
@@ -1540,6 +1643,11 @@ final class KLMSMacModel: ObservableObject {
         authDigitsSeenForCurrentRun = false
         lastAuthCompletionAt = nil
         let runStartedAt = Date()
+        do {
+            try loadConfig()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
         let effectiveEnvironment = appRunEnvironment.merging(environmentOverrides) { _, new in new }
         let skipsNoticeNativeRender = effectiveEnvironment["NOTICE_NATIVE_RENDER_ENABLED"] == "0"
         startRunningCommandStatusPoll(startedAt: runStartedAt)
@@ -1660,6 +1768,27 @@ final class KLMSMacModel: ObservableObject {
 
     func boolConfigValue(_ key: EnvKnownKey, default defaultValue: Bool = false) -> Bool {
         envDocument?.boolValue(for: key, default: defaultValue) ?? defaultValue
+    }
+
+    private func runtimeConfigValue(_ key: EnvKnownKey, default defaultValue: String) -> String {
+        let value = envDocument?.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? defaultValue : value
+    }
+
+    private func runtimeOptionalConfigValue(_ key: EnvKnownKey) -> String? {
+        let value = envDocument?.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? nil : value
+    }
+
+    private func runtimeBoolConfigValue(_ key: EnvKnownKey, default defaultValue: Bool) -> String {
+        let value = envDocument?.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if ["1", "true", "yes", "on"].contains(value) {
+            return "1"
+        }
+        if ["0", "false", "no", "off"].contains(value) {
+            return "0"
+        }
+        return defaultValue ? "1" : "0"
     }
 
     func setConfigValue(_ value: String, for key: EnvKnownKey) {
@@ -2101,7 +2230,9 @@ final class KLMSMacModel: ObservableObject {
                 var runningAction = action
                 runningAction.status = .running
                 runningAction.updatedAt = Date()
-                runningAction.message = "\(action.action.displayName) 처리 중"
+                if action.action != .mailDashboardAdd {
+                    runningAction.message = "\(action.action.displayName) 처리 중"
+                }
                 try await store.updateItemAction(runningAction)
 
                 var completedAction = runningAction

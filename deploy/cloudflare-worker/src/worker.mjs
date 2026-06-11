@@ -3132,6 +3132,8 @@ function displayItemActionName(action) {
       return "캘린더 내용 수정";
     case "calendarDelete":
       return "KLMS 기준 반영";
+    case "mailDashboardAdd":
+      return "메일 항목 반영";
     default:
       return action || "항목 처리";
   }

@@ -65,6 +65,7 @@ struct SettingsView: View {
                 configToggle(
                     "로그인 보조",
                     .loginAssistEnabled,
+                    defaultValue: true,
                     description: "동기화 전에 로그인 여부를 확인하고, 필요하면 인증번호를 앱에 표시합니다."
                 )
                 described("수동 인증번호는 앱에 표시된 번호를 휴대폰에서 선택하는 방식입니다. Kaikey 자동은 가능한 경우 그 선택 과정까지 자동으로 처리합니다.") {
@@ -76,6 +77,7 @@ struct SettingsView: View {
                 configToggle(
                     "백그라운드 실행 허용",
                     .loginAssistAllowNoninteractive,
+                    defaultValue: true,
                     description: "자동 실행이나 iPhone 요청처럼 앱 창이 앞에 없을 때도 로그인 보조를 허용합니다."
                 )
             }

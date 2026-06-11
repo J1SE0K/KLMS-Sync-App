@@ -638,6 +638,57 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertFalse(rawJSON.contains("https://klms.example/private/notice"))
     }
 
+    func testMailDashboardItemsAugmentRemoteCountsAndDeduplicate() throws {
+        let assignment = ServerRelaySyncItem(
+            id: "mail-assignment",
+            kind: "assignment",
+            course: "알고리즘 개론",
+            title: "메일 과제",
+            status: "메일 분석"
+        )
+        let exam = ServerRelaySyncItem(
+            id: "mail-exam",
+            kind: "exam",
+            course: "영미 단편소설",
+            title: "메일 시험",
+            status: "메일 분석"
+        )
+        let notice = ServerRelaySyncItem(
+            id: "mail-notice",
+            kind: "notice",
+            course: "데이터베이스 개론",
+            title: "메일 공지",
+            status: "메일 분석"
+        )
+        let file = ServerRelaySyncItem(
+            id: "mail-file",
+            kind: "file",
+            course: "운영체제",
+            title: "메일 파일",
+            status: "메일 분석"
+        )
+        let hidden = ServerRelaySyncItem(
+            id: "mail-hidden",
+            kind: "assignment",
+            course: "운영체제",
+            title: "숨긴 메일 과제",
+            status: "메일 분석",
+            isHidden: true
+        )
+
+        var status = SanitizedRemoteStatus(assignments: 1, exams: 2, notices: 3, fileTotal: 4)
+        status.applyMailDashboardItems([assignment, exam, notice, file, hidden])
+
+        XCTAssertEqual(status.assignments, 2)
+        XCTAssertEqual(status.exams, 3)
+        XCTAssertEqual(status.notices, 4)
+        XCTAssertEqual(status.fileTotal, 5)
+        XCTAssertEqual([assignment, assignment, exam].dedupedForServerRelay().map(\.id), [
+            "mail-assignment",
+            "mail-exam"
+        ])
+    }
+
     func testServerRelaySyncItemDecodesOlderPayloadWithoutInteractionFlags() throws {
         let payload = """
         {

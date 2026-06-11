@@ -50,6 +50,7 @@ final class CompanionModel: ObservableObject {
     @Published var remoteSettings: [ServerRelaySetting] = []
     @Published var sharedRunLogs: [ServerRelayRunLog] = []
     @Published var verifySummary: ServerRelayVerifySummary?
+    @Published var mailDashboardItems: [ServerRelaySyncItem] = []
     @Published var status = SanitizedRemoteStatus()
     @Published var errorMessage = ""
     @Published var connectionMessage = ""
@@ -104,6 +105,7 @@ final class CompanionModel: ObservableObject {
     private static let serverTokenKey = "KLMSServerRelayToken"
     private static let shouldUpdateNoticeNotesKey = "KLMSShouldUpdateNoticeNotes"
     private static let trackedReportNotificationCommandIDsKey = "KLMSTrackedReportNotificationCommandIDs"
+    private static let mailDashboardItemsKey = "KLMSCompanionMailDashboardItems"
 
     private struct PendingRefreshRequest {
         var silentErrors: Bool
@@ -148,9 +150,78 @@ final class CompanionModel: ObservableObject {
         }
         serverToken = storedServerToken
         shouldUpdateNoticeNotes = UserDefaults.standard.object(forKey: Self.shouldUpdateNoticeNotesKey) as? Bool ?? true
+        mailDashboardItems = Self.loadMailDashboardItems()
         trackedReportNotificationCommandIDs = Self.loadTrackedReportNotificationCommandIDs()
         Self.persistServerToken(storedServerToken)
         Self.clearDeprecatedLocalConnectionInfo()
+    }
+
+    var dashboardSyncItems: [ServerRelaySyncItem] {
+        (syncItems + mailDashboardItems).dedupedForServerRelay()
+    }
+
+    var dashboardStatus: SanitizedRemoteStatus {
+        var next = status
+        next.applyMailDashboardItems(mailDashboardItems)
+        return next
+    }
+
+    func addMailDashboardItem(_ item: ServerRelaySyncItem) {
+        mailDashboardItems = ([item] + mailDashboardItems.filter { $0.id != item.id })
+            .dedupedForServerRelay()
+            .prefix(80)
+            .map { $0 }
+        persistMailDashboardItems()
+        connectionSucceeded = true
+        connectionMessage = "\(item.kind.klmsMailDashboardKindName) 대시보드에 반영했습니다."
+    }
+
+    func submitMailDashboardItem(_ item: ServerRelaySyncItem) async {
+        addMailDashboardItem(item)
+        guard let serverRelayStore else {
+            return
+        }
+        do {
+            let payload = try JSONEncoder().encode(item)
+            let message = String(data: payload, encoding: .utf8) ?? ""
+            try await serverRelayStore.createItemAction(ServerRelayItemAction(
+                action: .mailDashboardAdd,
+                itemID: item.id,
+                itemKind: item.kind,
+                itemTitle: item.title,
+                message: message
+            ))
+            await refreshRecent(includeSyncData: false, showsActivity: false)
+        } catch {
+            errorMessage = userFacingMessage(for: error)
+        }
+    }
+
+    func removeMailDashboardItem(_ item: ServerRelaySyncItem) {
+        mailDashboardItems.removeAll { $0.id == item.id }
+        persistMailDashboardItems()
+        connectionSucceeded = true
+        connectionMessage = "\(item.kind.klmsMailDashboardKindName) 메일 항목을 대시보드에서 제거했습니다."
+    }
+
+    private static func loadMailDashboardItems() -> [ServerRelaySyncItem] {
+        guard let data = UserDefaults.standard.data(forKey: mailDashboardItemsKey),
+              let decoded = try? JSONDecoder().decode([ServerRelaySyncItem].self, from: data) else {
+            return []
+        }
+        return decoded
+            .filter { $0.id.hasPrefix("mail-") || $0.status.localizedCaseInsensitiveContains("메일") }
+            .dedupedForServerRelay()
+    }
+
+    private func persistMailDashboardItems() {
+        if mailDashboardItems.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.mailDashboardItemsKey)
+            return
+        }
+        if let data = try? JSONEncoder().encode(mailDashboardItems) {
+            UserDefaults.standard.set(data, forKey: Self.mailDashboardItemsKey)
+        }
     }
 
     var isRemoteAvailable: Bool {
@@ -1700,7 +1771,6 @@ private struct CompanionStatusScreen: View {
     var body: some View {
         CompanionScreenContainer(title: "상태", model: model) {
             Group {
-                RemoteAttentionStack(model: model)
                 RemoteStatusHeader(
                     model: model,
                     selectedCategory: $selectedDashboardPreview,
@@ -1714,7 +1784,6 @@ private struct CompanionStatusScreen: View {
                         selectedChangeSummary = kind
                     }
                 )
-                MailPasteAnalyzerPanel(model: model)
                 if let kind = selectedChangeSummary {
                     RemoteChangeSummaryDetailPanel(kind: kind, model: model)
                         .id(kind)
@@ -1738,7 +1807,6 @@ private struct CompanionRunScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: "실행", model: model) {
-            RemoteAttentionStack(model: model)
             RemoteCommandPanel(model: model, compact: false)
             RemoteCancelControl(model: model, compact: false)
             RemoteSettingsPanel(model: model)
@@ -1767,7 +1835,6 @@ private struct CompanionHistoryScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: "로그", model: model) {
-            RemoteAttentionStack(model: model)
             RemoteLogSummaryPanel(model: model, compact: false)
             SharedRunLogsView(
                 logs: model.sharedRunLogs,
@@ -1838,6 +1905,7 @@ private struct CompanionScreenContainer<Content: View>: View {
             Color.klmsScreenBackground.ignoresSafeArea()
             WholeScreenVerticalScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    RemoteAttentionStack(model: model)
                     CompanionScreenHeader(title: title, model: model)
                     content()
                 }
@@ -2810,7 +2878,7 @@ private struct RemoteStatusHeader: View {
             if model.status.hasCompanionChangeSummary {
                 Divider()
                 RemoteDashboardChangeSummary(
-                    status: model.status,
+                    status: displayStatus,
                     selectedKind: selectedChangeSummary,
                     onSelect: onChangeSummaryTap
                 )
@@ -2847,13 +2915,17 @@ private struct RemoteStatusHeader: View {
     ) -> some View {
         RemoteMetricTile(
             label ?? category.title,
-            category.value(from: model.status),
+            category.value(from: displayStatus),
             systemImage: category.systemImage,
             isSelected: selectedCategory == category
         ) {
             selectedCategory = category
             onCategoryTap(category)
         }
+    }
+
+    private var displayStatus: SanitizedRemoteStatus {
+        model.dashboardStatus
     }
 
     private var primaryMetricCategories: [DashboardMetricCategory] {
@@ -2863,14 +2935,14 @@ private struct RemoteStatusHeader: View {
             .notices,
             .files,
             .helpDesk,
-        ].filter { $0.value(from: model.status) > 0 }
+        ].filter { $0.value(from: displayStatus) > 0 }
     }
 
     private var attentionMetricCategories: [DashboardMetricCategory] {
         [
             .quarantine,
             .calendar,
-        ].filter { $0.value(from: model.status) > 0 }
+        ].filter { $0.value(from: displayStatus) > 0 }
     }
 
     private var statusTitle: String {
@@ -3360,7 +3432,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     }
 
     private var status: SanitizedRemoteStatus {
-        model.status
+        model.dashboardStatus
     }
 
     private var calendarChanges: [CalendarChange] {
@@ -3368,7 +3440,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     }
 
     private var baseItems: [ServerRelaySyncItem] {
-        model.syncItems.filter { category.includes($0) }
+        model.dashboardSyncItems.filter { category.includes($0) }
     }
 
     private var courseOptions: [String] {
@@ -3769,7 +3841,7 @@ private struct MailPasteAnalyzerPanel: View {
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("KLMS와 별도로 메일로 온 과제, 시험, 공지, 일정 내용을 붙여넣으면 이 기기 안에서만 자동으로 판독합니다. 서버에는 메일 본문을 올리지 않습니다.")
+                Text("KLMS와 별도로 온 메일이나 캘린더 안내문을 붙여넣으면 이 기기 안에서만 과제, 시험, 공지, 파일, 일정 후보로 판독합니다. 서버에는 메일 본문을 올리지 않습니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3818,7 +3890,7 @@ private struct MailPasteAnalyzerPanel: View {
             .padding(.top, 10)
         } label: {
             HStack(spacing: 8) {
-                Label("메일 내용 자동 판독", systemImage: "envelope.open")
+                Label("메일 내용 자동 판독 · 캘린더 반영", systemImage: "envelope.open")
                     .font(.headline)
                 Spacer(minLength: 0)
                 if !analysis.isEmpty {
@@ -3858,7 +3930,7 @@ private struct MailPasteAnalyzerPanel: View {
     }
 
     private func runAnalysis() {
-        analysis = MailPasteAnalyzer.analyze(mailText, syncItems: model.syncItems)
+        analysis = MailPasteAnalyzer.analyze(mailText, syncItems: model.dashboardSyncItems)
     }
 }
 
@@ -3972,6 +4044,35 @@ private struct MailPasteAnalysisResultView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
                     .disabled(model.isSubmitting)
+                }
+
+                if let dashboardItem = analysis.dashboardItem {
+                    if model.mailDashboardItems.contains(where: { $0.id == dashboardItem.id }) {
+                        HStack(spacing: 8) {
+                            Label("대시보드에 반영됨", systemImage: "checkmark.circle.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.green)
+                            Spacer(minLength: 0)
+                            Button(role: .destructive) {
+                                model.removeMailDashboardItem(dashboardItem)
+                            } label: {
+                                Label("반영 취소", systemImage: "minus.circle")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    } else {
+                        Button {
+                            Task {
+                                await model.submitMailDashboardItem(dashboardItem)
+                            }
+                        } label: {
+                            Label("대시보드에 반영", systemImage: "plus.circle")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(analysis.kind.tint)
+                        .disabled(model.isSubmitting)
+                    }
                 }
             }
             .padding(12)
@@ -4180,6 +4281,7 @@ private enum MailPasteDetectedKind: String {
     case assignment
     case exam
     case notice
+    case file
 
     var title: String {
         switch self {
@@ -4191,6 +4293,8 @@ private enum MailPasteDetectedKind: String {
             "시험 후보"
         case .notice:
             "공지 후보"
+        case .file:
+            "파일 후보"
         }
     }
 
@@ -4204,6 +4308,8 @@ private enum MailPasteDetectedKind: String {
             "calendar"
         case .notice:
             "note.text"
+        case .file:
+            "doc"
         }
     }
 
@@ -4217,6 +4323,23 @@ private enum MailPasteDetectedKind: String {
             .green
         case .notice:
             .brown
+        case .file:
+            .blue
+        }
+    }
+
+    var dashboardKind: String? {
+        switch self {
+        case .assignment:
+            "assignment"
+        case .exam:
+            "exam"
+        case .notice:
+            "notice"
+        case .file:
+            "file"
+        case .none:
+            nil
         }
     }
 }
@@ -4271,6 +4394,32 @@ private struct MailPasteAnalysis: Equatable {
         kind == .assignment || kind == .exam
     }
 
+    var dashboardItem: ServerRelaySyncItem? {
+        guard let dashboardKind = kind.dashboardKind else {
+            return nil
+        }
+        let itemTitle = title.nilIfEmpty ?? kind.title
+        let id = "mail-\(ServerRelaySyncItem.stableID(kind: dashboardKind, parts: [course, itemTitle, dueText]))"
+        let detail = [
+            "메일 분석",
+            confidence > 0 ? "신뢰도 \(confidence)%" : nil,
+            urls.isEmpty ? nil : "링크 \(urls.count)개",
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+        return ServerRelaySyncItem(
+            id: id,
+            kind: dashboardKind,
+            course: course,
+            title: itemTitle,
+            timestamp: calendarStartInput.nilIfEmpty ?? dueText,
+            status: "메일 분석",
+            detail: detail,
+            attachmentCount: kind == .file ? max(1, urls.count) : urls.count,
+            updatedAt: ServerRelaySyncItem.isoTimestamp()
+        )
+    }
+
     var calendarTitle: String {
         let base = title.nilIfEmpty ?? kind.title
         return course.nilIfEmpty.map { "\($0) · \(base)" } ?? base
@@ -4285,6 +4434,8 @@ private struct MailPasteAnalysis: Equatable {
             targets.append("시험/캘린더 후보")
         case .notice:
             targets.append("공지 후보")
+        case .file:
+            targets.append("파일 후보")
         case .none:
             break
         }
@@ -4314,6 +4465,8 @@ private struct MailPasteAnalysis: Equatable {
             lines.append("시험 또는 퀴즈로 판독했습니다. 캘린더 등록 대상입니다.")
         case .notice:
             lines.append("공지로 판독했습니다. 일정 문구가 있으면 캘린더 등록 여부를 확인하세요.")
+        case .file:
+            lines.append("파일 또는 첨부 자료 안내로 판독했습니다. 파일 동기화 후 파일 대시보드와 대조하세요.")
         case .none:
             lines.append("분류가 애매합니다. 제목, 과목명, 날짜가 들어간 메일 본문 전체를 붙여넣어 주세요.")
         }
@@ -4356,6 +4509,7 @@ private enum MailPasteAnalyzer {
             kind: kind,
             assignmentScore: scores.assignmentScore,
             examScore: scores.examScore,
+            fileScore: scores.fileScore,
             course: course,
             title: title,
             dueText: dueText,
@@ -4378,7 +4532,7 @@ private enum MailPasteAnalyzer {
         )
     }
 
-    private static func kindScores(in text: String) -> (assignmentScore: Int, examScore: Int) {
+    private static func kindScores(in text: String) -> (assignmentScore: Int, examScore: Int, fileScore: Int) {
         let lower = text.lowercased()
         let assignmentScore = keywordScore(lower, weightedKeywords: [
             ("written assignment", 7),
@@ -4413,21 +4567,34 @@ private enum MailPasteAnalyzer {
             ("중간", 2),
             ("기말", 2),
         ])
-        return (assignmentScore, examScore)
+        let fileScore = keywordScore(lower, weightedKeywords: [
+            ("attachment", 6),
+            ("attached", 6),
+            ("file", 5),
+            ("pdf", 5),
+            ("slides", 4),
+            ("material", 4),
+            ("첨부", 6),
+            ("파일", 5),
+            ("자료", 5),
+            ("강의자료", 5),
+            ("슬라이드", 4),
+        ])
+        return (assignmentScore, examScore, fileScore)
     }
 
     private static func detectKind(in text: String) -> MailPasteDetectedKind {
         let scores = kindScores(in: text)
         let assignmentScore = scores.assignmentScore
         let examScore = scores.examScore
-        if assignmentScore > examScore {
+        let fileScore = scores.fileScore
+        if assignmentScore >= examScore, assignmentScore >= fileScore, assignmentScore > 0 {
             return .assignment
         }
-        if examScore > assignmentScore {
+        if examScore >= assignmentScore, examScore >= fileScore, examScore > 0 {
             return .exam
         }
-        if assignmentScore > 0 { return .assignment }
-        if examScore > 0 { return .exam }
+        if fileScore > 0 { return .file }
         return .notice
     }
 
@@ -4435,6 +4602,7 @@ private enum MailPasteAnalyzer {
         kind: MailPasteDetectedKind,
         assignmentScore: Int,
         examScore: Int,
+        fileScore: Int,
         course: String,
         title: String,
         dueText: String,
@@ -4446,7 +4614,7 @@ private enum MailPasteAnalyzer {
             MailAnalysisStep(
                 id: "kind",
                 title: "분류 판단",
-                detail: "과제 키워드 점수 \(assignmentScore), 시험 키워드 점수 \(examScore)를 비교해 \(kind.title)로 분류했습니다.",
+                detail: "과제 \(assignmentScore), 시험 \(examScore), 파일 \(fileScore) 점수를 비교해 \(kind.title)로 분류했습니다.",
                 systemImage: kind.systemImage,
                 tone: tone(for: kind)
             ),
@@ -4503,6 +4671,8 @@ private enum MailPasteAnalyzer {
             .green
         case .notice:
             .brown
+        case .file:
+            .blue
         }
     }
 
@@ -4620,6 +4790,14 @@ private enum MailPasteAnalyzer {
                 return cleanTitle(line)
             }
             return "과제 안내"
+        case .file:
+            if let line = lines.first(where: { line in
+                let lower = line.lowercased()
+                return lower.contains("attachment") || lower.contains("file") || lower.contains("첨부") || lower.contains("파일") || lower.contains("자료")
+            }) {
+                return cleanTitle(line)
+            }
+            return "파일 안내"
         case .notice:
             return nil
         case .none:
@@ -4768,6 +4946,8 @@ private enum MailPasteAnalyzer {
             return "시험 후보로 보입니다. 캘린더에 자동 반영되지 않으면 시험 대시보드에서 후보 승격 또는 캘린더 내용 수정을 사용하세요."
         case .notice:
             return "공지 후보로 보입니다. KLMS 공지가 아니라 메일 전용 공지라면 앱 안의 기록용 항목으로 따로 저장하는 기능을 추가할 수 있습니다."
+        case .file:
+            return "파일 후보로 보입니다. 파일 대시보드에 임시로 반영한 뒤 실제 파일 동기화와 대조하세요."
         case .none:
             return "분류가 확실하지 않습니다. 제목, 과목명, 마감일이 들어간 메일 본문 전체를 붙여넣으면 분석이 더 정확해집니다."
         }
@@ -4905,6 +5085,8 @@ private extension String {
             self == "exam" || self == "examCandidate"
         case .notice:
             self == "notice"
+        case .file:
+            self == "file"
         case .none:
             false
         }
@@ -6545,6 +6727,8 @@ private extension ServerRelayItemActionKind {
             "캘린더 내용 수정"
         case .calendarDelete:
             "KLMS 기준 반영"
+        case .mailDashboardAdd:
+            "메일 항목 반영"
         }
     }
 
@@ -6568,6 +6752,8 @@ private extension ServerRelayItemActionKind {
             "pencil"
         case .calendarDelete:
             "calendar.badge.checkmark"
+        case .mailDashboardAdd:
+            "envelope.badge"
         case .examPromote:
             "checkmark.seal"
         case .noticeRead:
@@ -6756,6 +6942,7 @@ private struct RemoteCommandPanel: View {
                 }
             }
             .toggleStyle(.switch)
+            MailPasteAnalyzerPanel(model: model)
             primaryCommandActionCard(primaryCommand)
             LazyVGrid(columns: secondaryColumns, spacing: 8) {
                 ForEach(secondaryCommands, id: \.self) { command in

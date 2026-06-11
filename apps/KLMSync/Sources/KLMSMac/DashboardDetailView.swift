@@ -97,13 +97,16 @@ struct DashboardDetailPanelView: View {
 
             switch kind {
             case .assignments:
-                StateItemListView(
-                    items: model.snapshot.legacyState?.content.assignments ?? [],
-                    emptyText: "과제가 없습니다.",
-                    editor: .assignment,
-                    filters: filters,
-                    model: model
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    StateItemListView(
+                        items: model.snapshot.legacyState?.content.assignments ?? [],
+                        emptyText: model.mailDashboardItems(kind: "assignment").isEmpty ? "과제가 없습니다." : "KLMS 과제는 없고 메일 분석 항목만 있습니다.",
+                        editor: .assignment,
+                        filters: filters,
+                        model: model
+                    )
+                    MailDashboardItemListView(items: model.mailDashboardItems(kind: "assignment"), filters: filters, model: model)
+                }
             case .assignmentRecords:
                 StateItemListView(
                     items: model.snapshot.legacyState?.content.completedAssignments ?? [],
@@ -121,13 +124,16 @@ struct DashboardDetailPanelView: View {
                     model: model
                 )
             case .exams:
-                StateItemListView(
-                    items: model.snapshot.legacyState?.content.examItems ?? [],
-                    emptyText: "시험 항목이 없습니다.",
-                    editor: .exam,
-                    filters: filters,
-                    model: model
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    StateItemListView(
+                        items: model.snapshot.legacyState?.content.examItems ?? [],
+                        emptyText: model.mailDashboardItems(kind: "exam").isEmpty ? "시험 항목이 없습니다." : "KLMS 시험은 없고 메일 분석 항목만 있습니다.",
+                        editor: .exam,
+                        filters: filters,
+                        model: model
+                    )
+                    MailDashboardItemListView(items: model.mailDashboardItems(kind: "exam"), filters: filters, model: model)
+                }
             case .examCandidates:
                 StateItemListView(
                     items: model.snapshot.legacyState?.content.examCandidates ?? [],
@@ -145,9 +151,15 @@ struct DashboardDetailPanelView: View {
                     model: model
                 )
             case .notices:
-                NoticeListView(filters: filters, model: model)
+                VStack(alignment: .leading, spacing: 8) {
+                    NoticeListView(filters: filters, model: model)
+                    MailDashboardItemListView(items: model.mailDashboardItems(kind: "notice"), filters: filters, model: model)
+                }
             case .files:
-                FileManifestListView(filters: filters, model: model)
+                VStack(alignment: .leading, spacing: 8) {
+                    FileManifestListView(filters: filters, model: model)
+                    MailDashboardItemListView(items: model.mailDashboardItems(kind: "file"), filters: filters, model: model)
+                }
             case .missingFiles:
                 MissingFilesListView(filters: filters, model: model)
             case .newFiles:
@@ -748,6 +760,117 @@ private struct StateItemListView: View {
         let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return true }
         return fields.joined(separator: " ").localizedCaseInsensitiveContains(query)
+    }
+}
+
+private struct MailDashboardItemListView: View {
+    var items: [ServerRelaySyncItem]
+    var filters: DashboardDetailFilters
+    @ObservedObject var model: KLMSMacModel
+
+    private var filteredItems: [ServerRelaySyncItem] {
+        items.filter { item in
+            guard filters.selectedCourse == DashboardCourseFilter.all || item.course == filters.selectedCourse else {
+                return false
+            }
+            guard DashboardTermFilter.matches(
+                nil,
+                selectedYear: filters.selectedYear,
+                selectedSemester: filters.selectedSemester
+            ) else {
+                return false
+            }
+            let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !query.isEmpty else { return true }
+            return [
+                item.kind.klmsMailDashboardKindName,
+                item.course,
+                item.title,
+                item.timestamp,
+                item.status,
+                item.detail,
+            ]
+            .joined(separator: " ")
+            .localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    var body: some View {
+        if !filteredItems.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("메일 분석 항목", systemImage: "envelope.badge")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ForEach(filteredItems) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: systemImage(for: item.kind))
+                            .foregroundStyle(tint(for: item.kind))
+                            .frame(width: 20)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(item.kind.klmsMailDashboardKindName)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(tint(for: item.kind))
+                                Text(item.status)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(item.title.isEmpty ? "제목 없음" : item.title)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(2)
+                            Text([item.course, item.timestamp, item.detail].filter { !$0.isEmpty }.joined(separator: " · "))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 8)
+                        Button(role: .destructive) {
+                            model.removeMailDashboardItem(item)
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("메일 분석 항목 제거")
+                    }
+                    .padding(8)
+                    .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    }
+                }
+            }
+        }
+    }
+
+    private func systemImage(for kind: String) -> String {
+        switch kind {
+        case "assignment":
+            "checklist"
+        case "exam":
+            "calendar"
+        case "notice":
+            "note.text"
+        case "file":
+            "doc"
+        default:
+            "envelope"
+        }
+    }
+
+    private func tint(for kind: String) -> Color {
+        switch kind {
+        case "assignment":
+            .orange
+        case "exam":
+            .green
+        case "notice":
+            .brown
+        case "file":
+            .blue
+        default:
+            .secondary
+        }
     }
 }
 
@@ -2818,7 +2941,7 @@ struct MacMailPasteAnalyzerPanel: View {
                 }
             } label: {
                 HStack(spacing: 8) {
-                    Label("메일 내용 자동 판독", systemImage: "envelope.open")
+                    Label("메일 내용 자동 판독 · 캘린더 반영", systemImage: "envelope.open")
                         .font(.caption.weight(.semibold))
                     Spacer(minLength: 8)
                     if !analysis.isEmpty {
@@ -2839,7 +2962,7 @@ struct MacMailPasteAnalyzerPanel: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("KLMS에 바로 올라오지 않고 메일로만 온 과제, 시험, 공지, 일정 내용을 붙여넣으면 이 Mac 안에서 자동으로 판독합니다.")
+                    Text("KLMS에 바로 올라오지 않은 메일이나 캘린더 안내문을 붙여넣으면 이 Mac 안에서 과제, 시험, 공지, 파일, 일정 후보로 판독하고 대시보드에 반영할 수 있습니다.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -2888,7 +3011,7 @@ struct MacMailPasteAnalyzerPanel: View {
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.bordered)
 
-                    MacMailPasteAnalysisResultView(analysis: analysis)
+                    MacMailPasteAnalysisResultView(analysis: analysis, model: model)
                     if let createStatusText {
                         MacInlinePendingActionView(message: createStatusText)
                     }
@@ -2940,6 +3063,7 @@ struct MacMailPasteAnalyzerPanel: View {
 
 private struct MacMailPasteAnalysisResultView: View {
     var analysis: MacMailPasteAnalysis
+    @ObservedObject var model: KLMSMacModel
 
     var body: some View {
         if analysis.isEmpty {
@@ -3030,6 +3154,32 @@ private struct MacMailPasteAnalysisResultView: View {
 
                 if !analysis.actionPlan.isEmpty, !analysis.matchedItems.isEmpty {
                     MacMailActionPlanView(lines: analysis.actionPlan)
+                }
+
+                if let dashboardItem = analysis.dashboardItem {
+                    HStack(spacing: 8) {
+                        if model.mailDashboardItems.contains(where: { $0.id == dashboardItem.id }) {
+                            Label("대시보드에 반영됨", systemImage: "checkmark.circle.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.green)
+                            Spacer(minLength: 0)
+                            Button(role: .destructive) {
+                                model.removeMailDashboardItem(dashboardItem)
+                            } label: {
+                                Label("반영 취소", systemImage: "minus.circle")
+                            }
+                        } else {
+                            Button {
+                                model.addMailDashboardItem(dashboardItem)
+                            } label: {
+                                Label("대시보드에 반영", systemImage: "plus.circle")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(analysis.kind.tint)
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
                 }
             }
             .padding(10)
@@ -3234,6 +3384,7 @@ private enum MacMailPasteDetectedKind: String {
     case assignment
     case exam
     case notice
+    case file
 
     var title: String {
         switch self {
@@ -3245,6 +3396,8 @@ private enum MacMailPasteDetectedKind: String {
             "시험 후보"
         case .notice:
             "공지 후보"
+        case .file:
+            "파일 후보"
         }
     }
 
@@ -3258,6 +3411,8 @@ private enum MacMailPasteDetectedKind: String {
             "calendar"
         case .notice:
             "note.text"
+        case .file:
+            "doc"
         }
     }
 
@@ -3271,6 +3426,23 @@ private enum MacMailPasteDetectedKind: String {
             .green
         case .notice:
             .brown
+        case .file:
+            .blue
+        }
+    }
+
+    var dashboardKind: String? {
+        switch self {
+        case .assignment:
+            "assignment"
+        case .exam:
+            "exam"
+        case .notice:
+            "notice"
+        case .file:
+            "file"
+        case .none:
+            nil
         }
     }
 }
@@ -3322,6 +3494,32 @@ private struct MacMailPasteAnalysis {
         kind == .exam || kind == .assignment
     }
 
+    var dashboardItem: ServerRelaySyncItem? {
+        guard let dashboardKind = kind.dashboardKind else {
+            return nil
+        }
+        let itemTitle = title.nilIfBlank ?? kind.title
+        let id = "mail-\(ServerRelaySyncItem.stableID(kind: dashboardKind, parts: [course, itemTitle, dueText]))"
+        let detail = [
+            "메일 분석",
+            confidence > 0 ? "신뢰도 \(confidence)%" : nil,
+            urls.isEmpty ? nil : "링크 \(urls.count)개",
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+        return ServerRelaySyncItem(
+            id: id,
+            kind: dashboardKind,
+            course: course,
+            title: itemTitle,
+            timestamp: calendarStartInput.nilIfBlank ?? dueText,
+            status: "메일 분석",
+            detail: detail,
+            attachmentCount: kind == .file ? max(1, urls.count) : urls.count,
+            updatedAt: ServerRelaySyncItem.isoTimestamp()
+        )
+    }
+
     var calendarTitle: String {
         let base = title.nilIfBlank ?? kind.title
         return course.nilIfBlank.map { "\($0) · \(base)" } ?? base
@@ -3356,6 +3554,8 @@ private struct MacMailPasteAnalysis {
             targets.append("시험/캘린더 후보")
         case .notice:
             targets.append("공지 후보")
+        case .file:
+            targets.append("파일 후보")
         case .none:
             break
         }
@@ -3385,6 +3585,8 @@ private struct MacMailPasteAnalysis {
             lines.append("시험 또는 퀴즈로 판독했습니다. 캘린더 등록 대상입니다.")
         case .notice:
             lines.append("공지로 판독했습니다. 일정 문구가 있으면 캘린더 등록 여부를 확인하세요.")
+        case .file:
+            lines.append("파일 또는 첨부 자료 안내로 판독했습니다. 파일 동기화 후 파일 대시보드와 대조하세요.")
         case .none:
             lines.append("분류가 애매합니다. 제목, 과목명, 날짜가 들어간 메일 본문 전체를 붙여넣어 주세요.")
         }
@@ -3419,6 +3621,7 @@ private enum MacMailPasteAnalyzer {
             kind: kind,
             assignmentScore: scores.assignmentScore,
             examScore: scores.examScore,
+            fileScore: scores.fileScore,
             course: course,
             title: title,
             dueText: dueText,
@@ -3450,6 +3653,17 @@ private enum MacMailPasteAnalyzer {
         items += (content?.examItems ?? []).map { matchedItem($0, kindLabel: "시험", tint: .green) }
         items += (content?.examCandidates ?? []).map { matchedItem($0, kindLabel: "시험 후보", tint: .green) }
         items += (content?.helpDeskItems ?? []).map { matchedItem($0, kindLabel: "헬프데스크", tint: .teal) }
+        items += snapshot.courseFileManifest.map { file in
+            MacMailPasteMatchedItem(
+                id: "파일-\(file.url.nilIfBlank ?? file.relativePath)",
+                kindLabel: "파일",
+                title: file.filename,
+                course: file.course,
+                due: file.klmsTimestampText.nilIfBlank ?? file.klmsTimestamp,
+                searchText: [file.filename, file.course, file.relativePath, file.klmsTimestampText, file.url].joined(separator: " "),
+                tint: .blue
+            )
+        }
         items += (snapshot.noticeDigest?.notices ?? []).map { notice in
             MacMailPasteMatchedItem(
                 id: notice.id,
@@ -3484,7 +3698,7 @@ private enum MacMailPasteAnalyzer {
         )
     }
 
-    private static func kindScores(in text: String) -> (assignmentScore: Int, examScore: Int) {
+    private static func kindScores(in text: String) -> (assignmentScore: Int, examScore: Int, fileScore: Int) {
         let lower = text.lowercased()
         let assignmentScore = keywordScore(lower, weightedKeywords: [
             ("written assignment", 7),
@@ -3519,21 +3733,34 @@ private enum MacMailPasteAnalyzer {
             ("중간", 2),
             ("기말", 2),
         ])
-        return (assignmentScore, examScore)
+        let fileScore = keywordScore(lower, weightedKeywords: [
+            ("attachment", 6),
+            ("attached", 6),
+            ("file", 5),
+            ("pdf", 5),
+            ("slides", 4),
+            ("material", 4),
+            ("첨부", 6),
+            ("파일", 5),
+            ("자료", 5),
+            ("강의자료", 5),
+            ("슬라이드", 4),
+        ])
+        return (assignmentScore, examScore, fileScore)
     }
 
     private static func detectKind(in text: String) -> MacMailPasteDetectedKind {
         let scores = kindScores(in: text)
         let assignmentScore = scores.assignmentScore
         let examScore = scores.examScore
-        if assignmentScore > examScore {
+        let fileScore = scores.fileScore
+        if assignmentScore >= examScore, assignmentScore >= fileScore, assignmentScore > 0 {
             return .assignment
         }
-        if examScore > assignmentScore {
+        if examScore >= assignmentScore, examScore >= fileScore, examScore > 0 {
             return .exam
         }
-        if assignmentScore > 0 { return .assignment }
-        if examScore > 0 { return .exam }
+        if fileScore > 0 { return .file }
         return .notice
     }
 
@@ -3541,6 +3768,7 @@ private enum MacMailPasteAnalyzer {
         kind: MacMailPasteDetectedKind,
         assignmentScore: Int,
         examScore: Int,
+        fileScore: Int,
         course: String,
         title: String,
         dueText: String,
@@ -3552,7 +3780,7 @@ private enum MacMailPasteAnalyzer {
             MacMailAnalysisStep(
                 id: "kind",
                 title: "분류 판단",
-                detail: "과제 키워드 점수 \(assignmentScore), 시험 키워드 점수 \(examScore)를 비교해 \(kind.title)로 분류했습니다.",
+                detail: "과제 \(assignmentScore), 시험 \(examScore), 파일 \(fileScore) 점수를 비교해 \(kind.title)로 분류했습니다.",
                 systemImage: kind.systemImage,
                 tint: kind.tint
             ),
@@ -3713,6 +3941,14 @@ private enum MacMailPasteAnalyzer {
                 return cleanTitle(line)
             }
             return "과제 안내"
+        case .file:
+            if let line = lines.first(where: { line in
+                let lower = line.lowercased()
+                return lower.contains("attachment") || lower.contains("file") || lower.contains("첨부") || lower.contains("파일") || lower.contains("자료")
+            }) {
+                return cleanTitle(line)
+            }
+            return "파일 안내"
         case .notice:
             return nil
         case .none:
@@ -3861,6 +4097,8 @@ private enum MacMailPasteAnalyzer {
             return "시험 후보로 보입니다. KLMS 동기화에 아직 잡히지 않았다면 캘린더에 수동 등록하세요."
         case .notice:
             return "공지 후보로 보입니다. 일정이 포함된 공지라면 날짜를 확인한 뒤 캘린더에 등록할 수 있습니다."
+        case .file:
+            return "파일 후보로 보입니다. 파일 대시보드에 임시로 반영한 뒤 실제 파일 동기화와 대조하세요."
         case .none:
             return "분류가 확실하지 않습니다. 제목, 과목명, 마감일이 포함된 본문 전체를 붙여넣어 주세요."
         }
@@ -3996,6 +4234,8 @@ private extension MacMailPasteMatchedItem {
             return kindLabel.contains("시험")
         case .notice:
             return kindLabel == "공지"
+        case .file:
+            return kindLabel == "파일"
         case .none:
             return false
         }
