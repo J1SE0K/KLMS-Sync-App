@@ -443,6 +443,8 @@ def status_from_state(state_payload: dict[str, Any], previous_state: dict[str, A
         "assignment_record_count": len(content.get("assignment_records") or []),
         "exam_count": len(content.get("exam_items") or []),
         "exam_candidate_count": len(content.get("exam_candidates") or []),
+        "past_exam_count": len(content.get("past_exams") or []),
+        "exam_record_count": len(content.get("exam_records") or []),
         "assignment_candidate_count": len(content.get("assignment_candidates") or []),
         "help_desk_count": len(content.get("help_desk_items") or []),
     }

@@ -79,6 +79,8 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("preserveDownloadArchive", text)
         self.assertIn("buildPreviousDownloadStateIndex", text)
         self.assertIn("existingFileRefreshDecision", text)
+        self.assertIn("local-klms-timestamp-current", text)
+        self.assertIn("local-file-mtime-matches-klms-timestamp", text)
         self.assertIn("klms-timestamp-newer-than-previous-record", text)
         self.assertNotIn("klms-timestamp-newer-than-local-file", text)
         self.assertIn("refreshed_existing_file", text)
@@ -111,13 +113,16 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         script = "\n".join(
             [
                 "const $ = { NSFileModificationDate: 'mtime' };",
-                "function fileDateEpoch() { return 100; }",
+                "function fileDateEpoch(path) { return String(path).includes('current') ? 200 : 100; }",
                 helpers,
                 "const entry = { url: 'https://klms.kaist.ac.kr/mod/resource/view.php?id=1', filename: 'file.pdf', klms_timestamp_epoch: 200 };",
-                "const newer = existingFileRefreshDecision(entry, '/tmp/file.pdf', {});",
+                "const staleWithoutPrevious = existingFileRefreshDecision(entry, '/tmp/stale.pdf', {});",
+                "const matchingPreviousIndex = { [reusableUrlKey(entry.url)]: { filename: 'file.pdf', klms_timestamp_epoch: 200 } };",
+                "const matchingPrevious = existingFileRefreshDecision(entry, '/tmp/stale.pdf', matchingPreviousIndex);",
                 "const previousIndex = { [reusableUrlKey(entry.url)]: { filename: 'file.pdf', klms_timestamp_epoch: 150 } };",
-                "const changed = existingFileRefreshDecision(entry, '/tmp/file.pdf', previousIndex);",
-                "console.log(JSON.stringify({ newer, changed }));",
+                "const currentLocal = existingFileRefreshDecision(entry, '/tmp/current.pdf', previousIndex);",
+                "const staleWithPrevious = existingFileRefreshDecision(entry, '/tmp/stale.pdf', previousIndex);",
+                "console.log(JSON.stringify({ staleWithoutPrevious, matchingPrevious, currentLocal, staleWithPrevious }));",
             ]
         )
         result = subprocess.run(
@@ -128,11 +133,15 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         )
         payload = json.loads(result.stdout)
 
-        self.assertFalse(payload["newer"]["refresh"])
-        self.assertEqual(payload["newer"]["reason"], "existing-file-current")
-        self.assertTrue(payload["changed"]["refresh"])
+        self.assertFalse(payload["staleWithoutPrevious"]["refresh"])
+        self.assertEqual(payload["staleWithoutPrevious"]["reason"], "existing-file-current")
+        self.assertFalse(payload["matchingPrevious"]["refresh"])
+        self.assertEqual(payload["matchingPrevious"]["reason"], "local-klms-timestamp-current")
+        self.assertFalse(payload["currentLocal"]["refresh"])
+        self.assertEqual(payload["currentLocal"]["reason"], "local-file-mtime-matches-klms-timestamp")
+        self.assertTrue(payload["staleWithPrevious"]["refresh"])
         self.assertEqual(
-            payload["changed"]["reason"],
+            payload["staleWithPrevious"]["reason"],
             "klms-timestamp-newer-than-previous-record",
         )
 

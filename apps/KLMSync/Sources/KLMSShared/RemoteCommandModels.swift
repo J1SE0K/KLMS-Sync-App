@@ -1602,6 +1602,7 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
     case calendarEdit
     case calendarDelete
     case mailDashboardAdd
+    case mailDashboardRemove
 
     public var id: String { rawValue }
 
@@ -1648,9 +1649,11 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
         case .calendarEdit:
             "캘린더 내용 수정"
         case .calendarDelete:
-            "KLMS 기준 반영"
+            "캘린더 일정 삭제"
         case .mailDashboardAdd:
             "메일 항목 반영"
+        case .mailDashboardRemove:
+            "메일 항목 제거"
         }
     }
 }

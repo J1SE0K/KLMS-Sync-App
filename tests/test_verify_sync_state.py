@@ -412,6 +412,58 @@ class VerifySyncStateTests(unittest.TestCase):
         self.assertEqual(payload["status"], "fail")
         self.assertEqual(checks["past_exam_items_absent"]["status"], "fail")
 
+    def test_past_exam_records_are_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_dir = root / "cache"
+            cache_dir.mkdir()
+            (cache_dir / "notice_digest.json").write_text(
+                json.dumps({"generated_at": "2026-06-02 12:20 KST", "courses": []}),
+                encoding="utf-8",
+            )
+            state_json = root / "state.json"
+            past_exam = {
+                "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=11",
+                "course": "전기 전자공학특강<전자공학을 위한 사이버 보안 개론>",
+                "title": "Midterm 2",
+                "due": "2026년 5월 6일(수요일) 오전 10:30 - 오후 12:00",
+                "sync_due": "2026-05-06T12:00:00+09:00",
+                "instructions": "시험 범위: Lecture 3",
+                "coverage_summary": "Lecture 3",
+                "record_status": "completed",
+                "completion_reason": "past_due",
+            }
+            state_json.write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "generated_at": "2026-06-02 12:20 KST",
+                        "content": {
+                            "kind": "success",
+                            "assignments": [],
+                            "assignment_records": [],
+                            "completed_assignments": [],
+                            "assignment_candidates": [],
+                            "exam_items": [],
+                            "exam_candidates": [],
+                            "past_exams": [past_exam],
+                            "exam_records": [past_exam],
+                            "help_desk_items": [],
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            payload = verify_sync_state.build_payload(cache_dir, state_json, None)
+
+        checks = {item["name"]: item for item in payload["checks"]}
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(checks["past_exam_items_absent"]["status"], "ok")
+        self.assertEqual(payload["state"]["past_exam_count"], 1)
+        self.assertEqual(payload["state"]["exam_record_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

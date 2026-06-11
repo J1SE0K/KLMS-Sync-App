@@ -7,7 +7,7 @@ final class StatusModelTests: XCTestCase {
         {
           "status": "ok",
           "runs": {"files": {"scope": "files", "status": "ok", "completed_at": "now", "elapsed_ms": 1500}},
-          "state": {"assignments": 2, "exams": 1, "helpdesk": 1},
+          "state": {"assignments": 2, "exams": 1, "past_exams": 3, "exam_records": 4, "helpdesk": 1},
           "notices": {"total": 9, "new": 2, "updated": 1, "ignored": 0},
           "files": {"total": 12, "new_files": 3, "quarantine": 1, "pruned": 4, "archive_pruned": 5},
           "calendar": {"created": 1, "updated": 2, "deleted": 3},
@@ -18,6 +18,8 @@ final class StatusModelTests: XCTestCase {
         let report = try JSONDecoder().decode(SyncReport.self, from: Data(json.utf8))
 
         XCTAssertEqual(report.state.assignments, 2)
+        XCTAssertEqual(report.state.pastExams, 3)
+        XCTAssertEqual(report.state.examRecords, 4)
         XCTAssertEqual(report.files.newFiles, 3)
         XCTAssertEqual(report.files.quarantine, 1)
         XCTAssertEqual(report.runs["files"]?.elapsedSecondsText, "1.50s")

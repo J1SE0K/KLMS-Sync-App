@@ -15,6 +15,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedTab: SettingsTab = .login
+    @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -330,6 +331,16 @@ struct SettingsView: View {
 
     private var appSettings: some View {
         settingsForm {
+            Section("화면") {
+                Picker("색상 모드", selection: $appearanceMode) {
+                    ForEach(KLMSAppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                SettingsHelpText("시스템은 macOS 설정을 따릅니다. 라이트/다크를 고르면 KLMS Sync 창에서만 바로 적용됩니다.")
+            }
+
             Section("설치") {
                 LabeledContent("엔진 위치") {
                     Text(model.paths.engineRoot.path)

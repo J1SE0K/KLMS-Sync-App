@@ -147,7 +147,10 @@ def event_key_set(content: dict[str, Any]) -> set[tuple[str, str, str]]:
             comparable_title(item.get("title")),
             compact_text(item.get("sync_due") or item.get("due")),
         )
-        for item in state_items(content, ("exam_items", "exam_candidates", "help_desk_items"))
+        for item in state_items(
+            content,
+            ("exam_items", "exam_candidates", "past_exams", "exam_records", "help_desk_items"),
+        )
         if compact_text(item.get("course")) and comparable_title(item.get("title"))
     }
 
@@ -184,11 +187,10 @@ def classified_notice_records(
                 payload["source_title"] = compact_text(notice.title)
                 assignment_records.append(payload)
             elif isinstance(item, Event) and item.category in {"exam", "exam_candidate"}:
-                if not is_past(item.sync_due, generated_at):
-                    payload["title"] = compact_text(item.title)
-                    payload["source_title"] = compact_text(notice.title)
-                    payload["sync_due"] = compact_text(item.sync_due)
-                    exam_records.append(payload)
+                payload["title"] = compact_text(item.title)
+                payload["source_title"] = compact_text(notice.title)
+                payload["sync_due"] = compact_text(item.sync_due)
+                exam_records.append(payload)
 
     return assignment_records, exam_records
 
@@ -351,6 +353,8 @@ def build_payload(
     generated_at = str(state.get("generated_at") or notice_digest.get("generated_at") or "")
     exam_items = content.get("exam_items", []) if isinstance(content, dict) else []
     exam_candidates = content.get("exam_candidates", []) if isinstance(content, dict) else []
+    past_exams = content.get("past_exams", []) if isinstance(content, dict) else []
+    exam_records = content.get("exam_records", []) if isinstance(content, dict) else []
     helpdesk_items = content.get("help_desk_items", []) if isinstance(content, dict) else []
     assignments = content.get("assignments", []) if isinstance(content, dict) else []
     assignment_candidates = content.get("assignment_candidates", []) if isinstance(content, dict) else []
@@ -361,7 +365,7 @@ def build_payload(
     ignored_exam_urls = ignored_override_urls(overrides, "exams")
     ignored_assignment_urls = ignored_override_urls(overrides, "assignments")
 
-    exam_urls = state_url_set(content, ("exam_items", "exam_candidates"))
+    exam_urls = state_url_set(content, ("exam_items", "exam_candidates", "past_exams", "exam_records"))
     assignment_urls = state_url_set(
         content,
         ("assignments", "assignment_candidates", "completed_assignments", "assignment_records"),
@@ -433,6 +437,11 @@ def build_payload(
         item
         for item in exam_items
         if isinstance(item, dict) and is_past(str(item.get("sync_due") or ""), generated_at)
+    ]
+    past_exam_records = [
+        item
+        for item in past_exams
+        if isinstance(item, dict)
     ]
     missing_exam_info = [
         item
@@ -593,7 +602,8 @@ def build_payload(
             "assignment_record_count": len(assignment_records),
             "exam_count": len(exam_items),
             "exam_candidate_count": len(exam_candidates),
-            "past_exam_count": len(past_exam_items),
+            "past_exam_count": len(past_exam_records),
+            "exam_record_count": len(exam_records),
             "missing_exam_info_count": len(missing_exam_info),
             "helpdesk_count": len(helpdesk_items),
             "exam_items": [

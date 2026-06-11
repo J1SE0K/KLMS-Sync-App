@@ -6,7 +6,7 @@ from typing import Any
 
 from .exam_fields import extract_coverage, extract_location, online_exam_location
 from .dates import is_past
-from .models import Event, SyncState
+from .models import Assignment, Event, SyncState
 from .text import clipped, one_line
 
 
@@ -15,6 +15,26 @@ def split_override_key(key: str) -> tuple[str, str]:
         return key, ""
     url, title = key.rsplit("::", 1)
     return url, title
+
+
+def exam_override_candidate_keys(item: Event) -> list[str]:
+    url = one_line(item.url)
+    title = one_line(item.title)
+    course = one_line(item.course)
+    due = one_line(item.sync_due or item.due)
+    return [
+        url,
+        f"{url}::{title}" if url and title else "",
+        f"{course}::{title}::{due}" if course and title and due else "",
+        f"{course}::{title}" if course and title else "",
+    ]
+
+
+def exam_override_identity(item: Event) -> str:
+    for key in exam_override_candidate_keys(item)[2:] + exam_override_candidate_keys(item)[:2]:
+        if key:
+            return key
+    return ""
 
 
 def assignment_override_candidate_keys(item: Assignment) -> list[str]:
@@ -127,14 +147,51 @@ def apply_overrides(
         ]
 
     exam_overrides = overrides.get("exams") or {}
+    existing_exam_record_keys = {
+        exam_override_identity(item) for item in updated.exam_records
+    }
+    existing_past_exam_keys = {
+        exam_override_identity(item) for item in updated.past_exams
+    }
+
+    def append_exam_record(item: Event) -> None:
+        identity = exam_override_identity(item)
+        if identity and identity in existing_exam_record_keys:
+            return
+        updated.exam_records.append(item)
+        if identity:
+            existing_exam_record_keys.add(identity)
+
+    def append_past_exam(item: Event) -> None:
+        identity = exam_override_identity(item)
+        if identity and identity not in existing_past_exam_keys:
+            updated.past_exams.append(item)
+            existing_past_exam_keys.add(identity)
+        append_exam_record(item)
+
     for key, spec in exam_overrides.items():
         url, title_from_key = split_override_key(str(key))
         spec = spec if isinstance(spec, dict) else {"status": spec}
         status = str(spec.get("status") or "").lower()
 
+        removed_items = [
+            item
+            for item in updated.exams + updated.exam_candidates + updated.past_exams
+            if item.url == url
+        ]
         updated.exams = [item for item in updated.exams if item.url != url]
         updated.exam_candidates = [item for item in updated.exam_candidates if item.url != url]
+        updated.past_exams = [item for item in updated.past_exams if item.url != url]
         if status != "approved":
+            if status in {"ignored", "hidden", "skip", "completed"}:
+                for item in removed_items:
+                    append_exam_record(
+                        replace(
+                            item,
+                            record_status=status,
+                            completion_reason="manual_completed" if status == "completed" else "",
+                        )
+                    )
             continue
 
         source = source_by_url.get(url, {})
@@ -142,8 +199,6 @@ def apply_overrides(
         due = one_line(str(spec.get("due") or ""))
         sync_due = one_line(str(spec.get("sync_due") or ""))
         if not due or not sync_due:
-            continue
-        if not include_past and is_past(sync_due, generated_at or state.generated_at):
             continue
         instructions = one_line(source.get("instructions") or "")
         append = one_line(str(spec.get("instructions_append") or ""))
@@ -156,25 +211,34 @@ def apply_overrides(
         if not coverage:
             coverage = extract_coverage(instructions)
 
-        updated.exams.append(
-            Event(
-                url=url,
-                course=one_line(str(spec.get("course") or source.get("course") or "")),
-                title=title,
-                due=due,
-                sync_due=sync_due,
-                sync_start=one_line(str(spec.get("sync_start") or "")),
-                source="override",
-                source_title=one_line(source.get("title") or title),
-                instructions=clipped(instructions),
-                location=location,
-                coverage=coverage,
-                category="exam",
-                type="exam",
-            )
+        event = Event(
+            url=url,
+            course=one_line(str(spec.get("course") or source.get("course") or "")),
+            title=title,
+            due=due,
+            sync_due=sync_due,
+            sync_start=one_line(str(spec.get("sync_start") or "")),
+            source="override",
+            source_title=one_line(source.get("title") or title),
+            instructions=clipped(instructions),
+            location=location,
+            coverage=coverage,
+            category="exam",
+            type="exam",
         )
+        if not include_past and is_past(sync_due, generated_at or state.generated_at):
+            append_past_exam(
+                replace(event, record_status="completed", completion_reason="past_due")
+            )
+            continue
+
+        active = replace(event, record_status="active")
+        updated.exams.append(active)
+        append_exam_record(active)
 
     updated.exams.sort(key=lambda item: (item.sync_due, item.course, item.title))
+    updated.past_exams.sort(key=lambda item: (item.sync_due, item.course, item.title))
+    updated.exam_records.sort(key=lambda item: (item.sync_due, item.course, item.title))
     updated.completed_assignments.sort(key=lambda item: (item.sync_due, item.course, item.title))
     updated.assignment_records.sort(key=lambda item: (item.sync_due, item.course, item.title))
     return updated

@@ -64,15 +64,18 @@ Windows 앱은 KLMS를 직접 읽지 않는다. Cloudflare 서버 릴레이의 s
 - 메일 본문은 Windows 기기 안에서만 분석하고 서버에는 올리지 않는다.
 - 분석 결과는 `과제 후보`, `시험 후보`, `공지 후보`, `파일 후보`, `미분류`로 나눈다.
 - 표시 항목은 제목, 과목, 감지된 일시, 신뢰도, 처리 대상, 추천 처리, 관련 KLMS 항목이다.
-- 분석 결과가 과제, 시험, 공지, 파일로 분류되면 `대시보드에 반영` 액션을 제공한다.
-- 대시보드에 반영된 메일 항목은 상단 과제/시험/공지/파일 카운트와 상세 목록에 같이 잡혀야 한다.
-- 사용자가 `반영 취소`를 누르면 해당 메일 항목은 로컬 목록과 대시보드 카운트에서 빠져야 한다.
-- 서버 연결 상태에서는 `mailDashboardAdd` item action으로 sanitized 항목만 Mac worker에 전달한다.
-- `mailDashboardAdd` 메시지는 `ServerRelaySyncItem` JSON이며, 원문 메일 본문, 개인 메일 주소, KLMS raw URL, 로컬 경로를 포함하지 않는다.
+- 분석 결과가 과제, 시험, 공지, 파일로 분류되면 `등록`, `수정`, `제거` 액션을 제공한다.
+- `등록`은 메일 항목을 상단 과제/시험/공지/파일 카운트와 상세 목록에 같이 반영한다.
+- `수정`은 같은 메일 항목 ID를 유지한 채 분류, 제목, 과목, 일시, 설명, 첨부/링크 수를 바꾼 뒤 다시 반영한다. 같은 ID를 유지해야 중복 카운트가 생기지 않는다.
+- `제거`를 누르면 해당 메일 항목은 로컬 목록과 대시보드 카운트에서 빠지고, 서버 연결 상태에서는 Mac worker에도 제거 요청을 보낸다.
+- 서버 연결 상태에서는 등록/수정은 `mailDashboardAdd`, 제거는 `mailDashboardRemove` item action으로 sanitized 항목만 Mac worker에 전달한다.
+- `mailDashboardAdd`와 `mailDashboardRemove` 메시지는 `ServerRelaySyncItem` JSON이며, 원문 메일 본문, 개인 메일 주소, KLMS raw URL, 로컬 경로를 포함하지 않는다.
 - 과제/시험 후보는 별도로 `Mac 캘린더에 등록` 액션도 제공한다.
 - 등록 요청은 서버 릴레이 `item-actions`에 `calendarCreate`로 보낸다.
 - `calendarCreate` 메시지는 `CalendarEventEdit` JSON 형식의 제목, 시작, 종료, 장소만 포함한다.
 - Mac worker가 Apple Calendar 권한으로 실제 일정을 생성한다. Windows는 Apple Calendar에 직접 접근하지 않는다.
+- 캘린더 상세 항목 버튼은 `등록`, `수정`, `삭제`로 분리한다. `등록`은 `calendarCreate`, `수정`은 `calendarEdit`, `삭제`는 `calendarDelete` item action을 보낸다.
+- 요청을 보낸 뒤 Mac worker가 WebSocket 이벤트를 놓쳐도 몇 초 안에 fallback 확인으로 pending action을 처리한다는 전제의 UX를 둔다. 화면에는 먼저 `요청 전송됨`, 이후 `처리 중/완료/실패`를 표시한다.
 
 ## 서버 연결
 

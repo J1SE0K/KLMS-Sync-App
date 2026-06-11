@@ -101,6 +101,8 @@ class Event:
     sync_start: str = ""
     location: str = ""
     coverage: str = ""
+    record_status: str = ""
+    completion_reason: str = ""
 
     def to_legacy_dict(self) -> dict[str, Any]:
         return {
@@ -121,6 +123,8 @@ class Event:
             "coverage": self.coverage,
             "coverage_summary": self.coverage,
             "auto_completed": False,
+            "record_status": self.record_status,
+            "completion_reason": self.completion_reason,
         }
 
 
@@ -133,6 +137,8 @@ class SyncState:
     assignment_candidates: list[Assignment] = field(default_factory=list)
     exams: list[Event] = field(default_factory=list)
     exam_candidates: list[Event] = field(default_factory=list)
+    past_exams: list[Event] = field(default_factory=list)
+    exam_records: list[Event] = field(default_factory=list)
     help_desk_items: list[Event] = field(default_factory=list)
 
     def to_legacy_state(self) -> dict[str, Any]:
@@ -150,6 +156,8 @@ class SyncState:
                 ],
                 "exam_items": [item.to_legacy_dict() for item in self.exams],
                 "exam_candidates": [item.to_legacy_dict() for item in self.exam_candidates],
+                "past_exams": [item.to_legacy_dict() for item in self.past_exams],
+                "exam_records": [item.to_legacy_dict() for item in self.exam_records],
                 "assignment_candidates": [
                     item.to_legacy_dict() for item in self.assignment_candidates
                 ],
@@ -166,6 +174,8 @@ class SyncState:
             "assignment_candidate_count": len(self.assignment_candidates),
             "exam_count": len(self.exams),
             "exam_candidate_count": len(self.exam_candidates),
+            "past_exam_count": len(self.past_exams),
+            "exam_record_count": len(self.exam_records),
             "help_desk_count": len(self.help_desk_items),
         }
 

@@ -5,7 +5,7 @@ import re
 from .dates import parse_due_date_only, parse_due_datetime
 from .exam_fields import extract_coverage, extract_location, online_exam_location
 from .models import Assignment, Event, Notice, Page
-from .text import clipped, html_to_text, one_line, split_course_title, strip_access_suffix
+from .text import clipped, clean_course_candidate, html_to_text, one_line, split_course_title, strip_access_suffix
 
 
 SUBMITTED_RE = re.compile(
@@ -53,22 +53,10 @@ def course_name_from_text(course: str, text: str) -> str:
     if "_2026_" in course:
         course_patterns.append(re.escape(course.split("_2026_", 1)[0]))
 
-    menu_markers = [
-        "포럼 선택",
-        "기출문제은행",
-        "마이크로러닝",
-        "CELT 교수법",
-        "Panopto 사용법",
-        "CELT 학습법 특강",
-    ]
     for course_pattern in course_patterns:
         for match in re.finditer(r"\(" + course_pattern, text):
             prefix = one_line(text[max(0, match.start() - 240) : match.start()])
-            candidate = prefix
-            for marker in menu_markers:
-                if marker in candidate:
-                    candidate = candidate.split(marker)[-1]
-            candidate = one_line(candidate).strip(" -–—:/")
+            candidate = clean_course_candidate(prefix)
             if candidate and len(candidate) <= 120:
                 return candidate
 
@@ -79,11 +67,7 @@ def course_name_from_text(course: str, text: str) -> str:
             break
     if not match:
         return course
-    candidate = one_line(match.group(1))
-    for marker in menu_markers:
-        if marker in candidate:
-            candidate = candidate.split(marker)[-1]
-    return one_line(candidate)
+    return clean_course_candidate(match.group(1))
 
 
 def clean_detail_instructions(text: str) -> str:
@@ -133,10 +117,11 @@ def classify_detail_page(page: Page, generated_at: str) -> tuple[Assignment | Ev
     title_and_text = f"{title} {text}"
     if HELP_DESK_RE.search(title_and_text):
         instructions = clean_detail_instructions(text)
+        help_desk_title = "중간고사 헬프데스크" if re.search(r"(midterm|중간)", title_and_text, re.IGNORECASE) else "헬프데스크"
         return Event(
             url=page.url,
             course=course,
-            title="헬프데스크",
+            title=help_desk_title,
             due=due.display,
             sync_due=due.iso,
             sync_start=due.start_iso,

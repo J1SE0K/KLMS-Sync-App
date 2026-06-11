@@ -43,7 +43,16 @@ class SyncReportTests(unittest.TestCase):
 
             report = sync_report.build_report(cache_dir, state_dir / "state.json")
 
-        self.assertEqual(report["state"], {"assignments": 1, "exams": 1, "helpdesk": 1})
+        self.assertEqual(
+            report["state"],
+            {
+                "assignments": 1,
+                "exams": 1,
+                "past_exams": 0,
+                "exam_records": 0,
+                "helpdesk": 1,
+            },
+        )
 
     def test_report_uses_scoped_file_cache_when_top_level_file_cache_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

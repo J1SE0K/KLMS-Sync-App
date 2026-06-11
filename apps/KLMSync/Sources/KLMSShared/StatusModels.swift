@@ -77,12 +77,39 @@ public struct SyncReport: Decodable, Sendable, Equatable {
     public struct StateCounts: Decodable, Sendable, Equatable {
         public var assignments: Int
         public var exams: Int
+        public var pastExams: Int
+        public var examRecords: Int
         public var helpdesk: Int
 
-        public init(assignments: Int = 0, exams: Int = 0, helpdesk: Int = 0) {
+        enum CodingKeys: String, CodingKey {
+            case assignments
+            case exams
+            case pastExams = "past_exams"
+            case examRecords = "exam_records"
+            case helpdesk
+        }
+
+        public init(
+            assignments: Int = 0,
+            exams: Int = 0,
+            pastExams: Int = 0,
+            examRecords: Int = 0,
+            helpdesk: Int = 0
+        ) {
             self.assignments = assignments
             self.exams = exams
+            self.pastExams = pastExams
+            self.examRecords = examRecords
             self.helpdesk = helpdesk
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            assignments = container.decodeIfPresentDefault(Int.self, forKey: .assignments, default: 0)
+            exams = container.decodeIfPresentDefault(Int.self, forKey: .exams, default: 0)
+            pastExams = container.decodeIfPresentDefault(Int.self, forKey: .pastExams, default: 0)
+            examRecords = container.decodeIfPresentDefault(Int.self, forKey: .examRecords, default: 0)
+            helpdesk = container.decodeIfPresentDefault(Int.self, forKey: .helpdesk, default: 0)
         }
     }
 

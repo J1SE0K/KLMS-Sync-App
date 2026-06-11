@@ -129,6 +129,14 @@ DOCUMENT_EXTENSIONS = (".pdf", ".doc", ".docx", ".hwp", ".hwpx")
 IGNORED_COURSE_NAMES = ("기출문제은행", "조교 과정", "조교", "선형대수학")
 EXACT_IGNORED_COURSE_NAMES = {"klms"}
 IGNORED_COURSE_IDS = {"147806", "178264"}
+KLMS_MENU_COURSE_PREFIX_MARKERS = (
+    "포럼 선택",
+    "기출문제은행",
+    "마이크로러닝",
+    "CELT 교수법",
+    "Panopto 사용법",
+    "CELT 학습법 특강",
+)
 COMPACT_IGNORED_COURSE_NAMES = {
     re.sub(r"\s+", "", keyword.lower()) for keyword in IGNORED_COURSE_NAMES
 }
@@ -537,12 +545,24 @@ def cmd_build_note(args: argparse.Namespace) -> None:
                 assignments.append(item)
                 assignment_records.append(assignment_record(item, "active"))
         help_desk_items = extract_help_desk_items(exam_sources, course_lookup)
-        approved_exam_items, exam_candidates = split_exam_items_for_confirmation(resolved_exam_items)
-        direct_approved_exam_items, direct_exam_candidates = split_exam_items_for_confirmation(
+        (
+            approved_exam_items,
+            exam_candidates,
+            past_exam_items,
+            exam_records,
+        ) = split_exam_items_for_confirmation_with_records(resolved_exam_items)
+        (
+            direct_approved_exam_items,
+            direct_exam_candidates,
+            direct_past_exam_items,
+            direct_exam_records,
+        ) = split_exam_items_for_confirmation_with_records(
             resolved_direct_exam_items
         )
         approved_exam_items = dedupe_sync_items(approved_exam_items + direct_approved_exam_items)
         exam_candidates = dedupe_sync_items(exam_candidates + direct_exam_candidates)
+        past_exam_items = dedupe_sync_items(past_exam_items + direct_past_exam_items)
+        exam_records = dedupe_sync_items(exam_records + direct_exam_records)
         payload = build_success_payload(
             assignments,
             approved_exam_items,
@@ -551,6 +571,8 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             help_desk_items,
             completed_assignments,
             assignment_records,
+            past_exam_items,
+            exam_records,
         )
 
     changed = payload.get("content") != previous_state.get("content")
@@ -570,6 +592,8 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             ),
             "exam_count": len(payload.get("content", {}).get("exam_items", [])),
             "exam_candidate_count": len(payload.get("content", {}).get("exam_candidates", [])),
+            "past_exam_count": len(payload.get("content", {}).get("past_exams", [])),
+            "exam_record_count": len(payload.get("content", {}).get("exam_records", [])),
             "assignment_candidate_count": len(
                 payload.get("content", {}).get("assignment_candidates", [])
             ),
@@ -2610,7 +2634,8 @@ def normalize_course_link_title(text: str) -> str:
     candidate = clean_title(normalize_whitespace(text))
     if not candidate:
         return ""
-    return normalize_whitespace(re.sub(r"\s*\([^)]+_20\d{2}_\d[^)]*\)\s*$", "", candidate))
+    candidate = normalize_whitespace(re.sub(r"\s*\([^)]+_20\d{2}_\d[^)]*\)\s*$", "", candidate))
+    return clean_klms_course_candidate(candidate)
 
 
 def extract_course_name(page: dict[str, Any], soup: BeautifulSoup) -> str:
@@ -3626,25 +3651,61 @@ def is_past_schedule_item(item: dict[str, Any]) -> bool:
 def split_exam_items_for_confirmation(
     items: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    approved, candidates, _past_records, _exam_records = split_exam_items_for_confirmation_with_records(items)
+    return approved, candidates
+
+
+def exam_record(
+    item: dict[str, Any],
+    status: str,
+    completion_reason: str = "",
+) -> dict[str, Any]:
+    record = dict(item)
+    record["type"] = "exam"
+    record["record_status"] = status
+    record["completion_reason"] = completion_reason
+    return record
+
+
+def split_exam_items_for_confirmation_with_records(
+    items: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     approved: list[dict[str, Any]] = []
     candidates: list[dict[str, Any]] = []
+    past_records: list[dict[str, Any]] = []
+    exam_records: list[dict[str, Any]] = []
 
     for item in items:
         normalized = dict(item)
-        if is_past_schedule_item(normalized):
-            continue
         status = str(normalized.pop("approval_status", "candidate")).strip().lower()
         if status in {"ignored", "hidden", "skip", "completed"}:
+            normalized["category"] = "exam"
+            exam_records.append(exam_record(normalized, status))
             continue
-        if status in {"approved", "confirmed", "active"}:
+        is_approved = status in {"approved", "confirmed", "active"}
+        if is_past_schedule_item(normalized):
+            normalized["category"] = "exam" if is_approved else "exam_candidate"
+            record_status = "completed" if is_approved else "candidate"
+            record = exam_record(
+                normalized,
+                record_status,
+                "past_due" if is_approved else "",
+            )
+            exam_records.append(record)
+            if is_approved:
+                past_records.append(record)
+            continue
+        if is_approved:
             normalized["category"] = "exam"
             approved.append(normalized)
+            exam_records.append(exam_record(normalized, "active"))
             continue
 
         normalized["category"] = "exam_candidate"
         candidates.append(normalized)
+        exam_records.append(exam_record(normalized, "candidate"))
 
-    return approved, candidates
+    return approved, candidates, past_records, exam_records
 
 
 def resolve_exam_override(
@@ -4538,6 +4599,8 @@ def build_success_payload(
     help_desk_items: list[dict[str, Any]],
     completed_assignments: list[dict[str, Any]] | None = None,
     assignment_records: list[dict[str, Any]] | None = None,
+    past_exams: list[dict[str, Any]] | None = None,
+    exam_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     assignments = dedupe_assignment_items(assignments)
     completed_assignments = dedupe_assignment_items(completed_assignments or [])
@@ -4546,11 +4609,15 @@ def build_success_payload(
     assignment_records = dedupe_assignment_items(
         assignment_records or assignments + completed_assignments + assignment_candidates
     )
+    past_exams = dedupe_sync_items(past_exams or [])
+    exam_records = dedupe_sync_items(exam_records or exam_items + exam_candidates + past_exams)
     sorted_assignments = sorted(assignments, key=assignment_sort_key)
     sorted_completed_assignments = sorted(completed_assignments, key=assignment_sort_key)
     sorted_assignment_records = sorted(assignment_records, key=assignment_sort_key)
     sorted_exam_items = sorted(exam_items, key=assignment_sort_key)
     sorted_exam_candidates = sorted(exam_candidates, key=assignment_sort_key)
+    sorted_past_exams = sorted(past_exams, key=assignment_sort_key)
+    sorted_exam_records = sorted(exam_records, key=assignment_sort_key)
     sorted_assignment_candidates = sorted(assignment_candidates, key=assignment_sort_key)
     sorted_help_desk_items = sorted(help_desk_items, key=assignment_sort_key)
     generated_at = now_seoul()
@@ -4561,6 +4628,8 @@ def build_success_payload(
         "assignment_records": [serialize_sync_item(item) for item in sorted_assignment_records],
         "exam_items": [serialize_sync_item(item) for item in sorted_exam_items],
         "exam_candidates": [serialize_sync_item(item) for item in sorted_exam_candidates],
+        "past_exams": [serialize_sync_item(item) for item in sorted_past_exams],
+        "exam_records": [serialize_sync_item(item) for item in sorted_exam_records],
         "assignment_candidates": [serialize_sync_item(item) for item in sorted_assignment_candidates],
         "help_desk_items": [serialize_sync_item(item) for item in sorted_help_desk_items],
     }
@@ -4572,6 +4641,7 @@ def build_success_payload(
         sorted_help_desk_items,
         generated_at,
         sorted_completed_assignments,
+        sorted_past_exams,
     )
     return {
         "status": "ok",
@@ -4855,8 +4925,10 @@ def render_success_html(
     help_desk_items: list[dict[str, Any]],
     generated_at: str,
     completed_assignments: list[dict[str, Any]] | None = None,
+    past_exams: list[dict[str, Any]] | None = None,
 ) -> str:
     completed_assignments = completed_assignments or []
+    past_exams = past_exams or []
     if (
         not assignments
         and not exam_items
@@ -4864,6 +4936,7 @@ def render_success_html(
         and not assignment_candidates
         and not help_desk_items
         and not completed_assignments
+        and not past_exams
     ):
         return "\n".join(
             [
@@ -4876,7 +4949,8 @@ def render_success_html(
         div(
             f"총 {len(assignments)}개 과제 / {len(exam_items)}개 시험 일정 / "
             f"{len(help_desk_items)}개 헬프데스크 안내 / {len(assignment_candidates)}개 과제 후보 / "
-            f"{len(exam_candidates)}개 시험 후보 / {len(completed_assignments)}개 완료 기록"
+            f"{len(exam_candidates)}개 시험 후보 / {len(completed_assignments)}개 완료 기록 / "
+            f"{len(past_exams)}개 지난 시험 기록"
         ),
         div(f"마지막 반영: {escape(generated_at)}"),
         div("과제, 확인 필요 후보, 시험 일정, 헬프데스크 안내를 함께 정리했어. 자세한 내용은 링크에서 바로 열 수 있어."),
@@ -4929,6 +5003,21 @@ def render_success_html(
                 lines.append(div(f"출처: {escape(item['source_title'])}"))
             if item.get("timing_precision") == "date":
                 lines.append(div("시간: KLMS에서 날짜만 확인됨"))
+            append_exam_scope_location_lines(lines, item)
+            if item["instructions"]:
+                lines.append(div(f"메모: {escape(summarize_instructions(item['instructions']))}"))
+            lines.append(div(f'링크: <a href="{escape(item["url"], quote=True)}">KLMS 열기</a>'))
+            lines.append(br())
+
+    if past_exams:
+        lines.append(div("<b>지난 시험 기록</b>"))
+        for item in past_exams:
+            lines.append(div(f"☑ <b>[시험 기록] {escape(item['title'])}</b>"))
+            lines.append(div(f"일정: {escape(normalize_whitespace(item['due']) or '확인 필요')}"))
+            if item["course"]:
+                lines.append(div(f"과목: {escape(item['course'])}"))
+            if item.get("source_title"):
+                lines.append(div(f"출처: {escape(item['source_title'])}"))
             append_exam_scope_location_lines(lines, item)
             if item["instructions"]:
                 lines.append(div(f"메모: {escape(summarize_instructions(item['instructions']))}"))
@@ -5326,6 +5415,28 @@ def clean_title(title: str) -> str:
     title = normalize_whitespace(title)
     title = re.sub(r"^[A-Z0-9._-]+:\s*", "", title)
     return title
+
+
+def clean_klms_course_candidate(text: str) -> str:
+    candidate = normalize_whitespace(text)
+    for marker in KLMS_MENU_COURSE_PREFIX_MARKERS:
+        if marker in candidate:
+            candidate = candidate.rsplit(marker, 1)[-1]
+    candidate = re.sub(r"^[\])>\\|/:;,\s-]+", "", candidate)
+    candidate = re.sub(r"^\[?KLMS[^\]]*\]?\s*", "", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(
+        r"\s*[-–—]\s*(?:중간|기말)?(?:고사|시험)?\s*헬프\s*데스크.*$",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(
+        r"\s*[-–—]\s*(?:midterm|final)?(?:\s+exam)?\s+help\s*desk.*$",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    return normalize_whitespace(candidate).strip(" -–—:/")
 
 
 def page_requested_url(page: dict[str, Any]) -> str:

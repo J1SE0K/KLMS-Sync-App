@@ -348,10 +348,23 @@ class CourseItemParsingTests(unittest.TestCase):
         }
 
         approved, candidates = klms_sync.split_exam_items_for_confirmation([past, future])
+        (
+            approved_with_records,
+            candidates_with_records,
+            past_records,
+            exam_records,
+        ) = klms_sync.split_exam_items_for_confirmation_with_records([past, future])
 
         self.assertEqual(candidates, [])
         self.assertEqual(len(approved), 1)
         self.assertEqual(approved[0]["title"], "기말고사")
+        self.assertEqual(candidates_with_records, [])
+        self.assertEqual(approved_with_records[0]["title"], "기말고사")
+        self.assertEqual(len(past_records), 1)
+        self.assertEqual(past_records[0]["title"], "중간고사")
+        self.assertEqual(past_records[0]["record_status"], "completed")
+        self.assertEqual(past_records[0]["completion_reason"], "past_due")
+        self.assertEqual(len(exam_records), 2)
 
     def test_duplicate_exam_items_are_deduped_by_course_title_and_time(self) -> None:
         first = {
@@ -400,6 +413,32 @@ class CourseItemParsingTests(unittest.TestCase):
         self.assertEqual(len(content["assignment_records"]), 1)
         self.assertEqual(content["completed_assignments"][0]["record_status"], "completed")
         self.assertIn("완료 기록", payload["html"])
+
+    def test_success_payload_keeps_past_exam_records(self) -> None:
+        past_exam = {
+            "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=100010",
+            "type": "exam",
+            "category": "exam",
+            "course": "Example Course",
+            "title": "Midterm 2",
+            "due": "2026년 5월 6일 오전 10:30 - 오후 12:00",
+            "sync_due": "2026-05-06T12:00:00+09:00",
+            "sync_start": "2026-05-06T10:30:00+09:00",
+            "instructions": "시험 범위: Lecture 3",
+            "record_status": "completed",
+            "completion_reason": "past_due",
+        }
+
+        payload = klms_sync.build_success_payload(
+            [], [], [], [], [], past_exams=[past_exam], exam_records=[past_exam]
+        )
+        content = payload["content"]
+
+        self.assertEqual(content["exam_items"], [])
+        self.assertEqual(len(content["past_exams"]), 1)
+        self.assertEqual(len(content["exam_records"]), 1)
+        self.assertEqual(content["past_exams"][0]["completion_reason"], "past_due")
+        self.assertIn("지난 시험 기록", payload["html"])
 
 
 if __name__ == "__main__":

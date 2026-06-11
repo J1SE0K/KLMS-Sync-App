@@ -156,7 +156,7 @@ last_auth_check_epoch=0
 submitted_login_this_run=0
 preexisting_twofactor_refresh_attempted=0
 
-while (( $(date +%s) < deadline_epoch )); do
+while (( $(date +%s) <= deadline_epoch )); do
   step_json="$("$KAIKEY_OSASCRIPT_BIN" -l JavaScript "$KLMS_JS_DIR/kaikey_safari_step.js" \
     "--url=$KLMS_LOGIN_URL" \
     "--display-name=$DISPLAY_NAME" \

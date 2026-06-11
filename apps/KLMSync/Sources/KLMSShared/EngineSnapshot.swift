@@ -868,6 +868,7 @@ public struct VerifyStateSummary: Decodable, Sendable, Equatable {
     public var examCount: Int
     public var examCandidateCount: Int
     public var pastExamCount: Int
+    public var examRecordCount: Int
     public var missingExamInfoCount: Int
     public var helpdeskCount: Int
 
@@ -879,6 +880,7 @@ public struct VerifyStateSummary: Decodable, Sendable, Equatable {
         case examCount = "exam_count"
         case examCandidateCount = "exam_candidate_count"
         case pastExamCount = "past_exam_count"
+        case examRecordCount = "exam_record_count"
         case missingExamInfoCount = "missing_exam_info_count"
         case helpdeskCount = "helpdesk_count"
     }
@@ -891,6 +893,7 @@ public struct VerifyStateSummary: Decodable, Sendable, Equatable {
         examCount: Int = 0,
         examCandidateCount: Int = 0,
         pastExamCount: Int = 0,
+        examRecordCount: Int = 0,
         missingExamInfoCount: Int = 0,
         helpdeskCount: Int = 0
     ) {
@@ -901,6 +904,7 @@ public struct VerifyStateSummary: Decodable, Sendable, Equatable {
         self.examCount = examCount
         self.examCandidateCount = examCandidateCount
         self.pastExamCount = pastExamCount
+        self.examRecordCount = examRecordCount
         self.missingExamInfoCount = missingExamInfoCount
         self.helpdeskCount = helpdeskCount
     }
@@ -914,6 +918,7 @@ public struct VerifyStateSummary: Decodable, Sendable, Equatable {
         examCount = container.decodeIfPresentDefault(Int.self, forKey: .examCount, default: 0)
         examCandidateCount = container.decodeIfPresentDefault(Int.self, forKey: .examCandidateCount, default: 0)
         pastExamCount = container.decodeIfPresentDefault(Int.self, forKey: .pastExamCount, default: 0)
+        examRecordCount = container.decodeIfPresentDefault(Int.self, forKey: .examRecordCount, default: 0)
         missingExamInfoCount = container.decodeIfPresentDefault(Int.self, forKey: .missingExamInfoCount, default: 0)
         helpdeskCount = container.decodeIfPresentDefault(Int.self, forKey: .helpdeskCount, default: 0)
     }

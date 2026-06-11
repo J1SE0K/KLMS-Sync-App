@@ -2,10 +2,41 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
+enum KLMSAppearanceMode: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system:
+            "시스템"
+        case .light:
+            "라이트"
+        case .dark:
+            "다크"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system:
+            nil
+        case .light:
+            .light
+        case .dark:
+            .dark
+        }
+    }
+}
+
 @main
 struct KLMSMacApp: App {
     @NSApplicationDelegateAdaptor(KLMSAppDelegate.self) private var appDelegate
     @StateObject private var model = KLMSMacModel()
+    @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
 
     var body: some Scene {
         WindowGroup("KLMS Sync") {
@@ -22,6 +53,7 @@ struct KLMSMacApp: App {
                     appDelegate.model = model
                     await model.bootstrap()
                 }
+                .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
         }
 
         Window("KLMS Sync 진단", id: KLMSMacWindowID.diagnostics) {
@@ -38,6 +70,7 @@ struct KLMSMacApp: App {
                     appDelegate.model = model
                     await model.bootstrap()
                 }
+                .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
         }
         .defaultSize(width: 920, height: 760)
 
@@ -48,6 +81,7 @@ struct KLMSMacApp: App {
                     appDelegate.model = model
                     await model.bootstrap()
                 }
+                .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
         } label: {
             Label("KLMS Sync", systemImage: model.menuBarSystemImage)
         }
@@ -56,6 +90,7 @@ struct KLMSMacApp: App {
         Settings {
             SettingsView(model: model)
                 .frame(width: KLMSWindowMetrics.settingsWidth, height: KLMSWindowMetrics.settingsHeight)
+                .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
         }
     }
 }

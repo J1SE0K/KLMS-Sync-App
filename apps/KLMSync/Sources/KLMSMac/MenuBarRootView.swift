@@ -52,6 +52,7 @@ struct MenuBarRootView: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
     }
 }

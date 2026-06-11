@@ -565,10 +565,28 @@ def normalized_epoch(value) -> int:
         return 0
     return epoch if epoch > 0 else 0
 
+def local_file_epoch(path: Path) -> int:
+    try:
+        return int(path.stat().st_mtime)
+    except Exception:
+        return 0
+
+def epochs_match(left: int, right: int) -> bool:
+    return left > 0 and right > 0 and abs(left - right) <= 1
+
 def existing_file_needs_refresh(entry: dict, destination_path: Path, previous: dict) -> bool:
     current_epoch = normalized_epoch(entry.get("klms_timestamp_epoch"))
+    if current_epoch <= 0:
+        return False
     previous_epoch = normalized_epoch(previous.get("klms_timestamp_epoch"))
-    return current_epoch > 0 and previous_epoch > 0 and current_epoch > previous_epoch + 1
+    if epochs_match(current_epoch, previous_epoch):
+        return False
+    local_epoch = local_file_epoch(destination_path)
+    if epochs_match(current_epoch, local_epoch):
+        return False
+    if previous_epoch > 0:
+        return current_epoch > previous_epoch + 1
+    return False
 
 results = []
 for index, entry in enumerate(manifest, start=1):
@@ -589,7 +607,7 @@ for index, entry in enumerate(manifest, start=1):
         shutil.copy2(destination_path, archive_path)
 
     current_epoch = normalized_epoch(entry.get("klms_timestamp_epoch"))
-    if allow_timestamp_reuse and current_epoch > 0:
+    if current_epoch > 0:
         for path in (destination_path, archive_path if preserve_archive else None):
             if path is None or not path.is_file():
                 continue

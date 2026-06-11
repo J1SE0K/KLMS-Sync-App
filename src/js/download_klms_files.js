@@ -1296,6 +1296,34 @@ function existingFileRefreshDecision(entry, destinationPath, previousDownloadSta
   const fileModifiedEpoch = fileDateEpoch(destinationPath, $.NSFileModificationDate);
   const toleranceSeconds = 1;
 
+  if (
+    currentEpoch > 0 &&
+    previousEpoch > 0 &&
+    Math.abs(currentEpoch - previousEpoch) <= toleranceSeconds
+  ) {
+    return {
+      refresh: false,
+      reason: "local-klms-timestamp-current",
+      current_klms_timestamp_epoch: currentEpoch,
+      previous_klms_timestamp_epoch: previousEpoch,
+      file_modified_epoch: fileModifiedEpoch || null,
+    };
+  }
+
+  if (
+    currentEpoch > 0 &&
+    fileModifiedEpoch > 0 &&
+    Math.abs(currentEpoch - fileModifiedEpoch) <= toleranceSeconds
+  ) {
+    return {
+      refresh: false,
+      reason: "local-file-mtime-matches-klms-timestamp",
+      current_klms_timestamp_epoch: currentEpoch,
+      previous_klms_timestamp_epoch: previousEpoch || null,
+      file_modified_epoch: fileModifiedEpoch,
+    };
+  }
+
   if (currentEpoch > 0 && previousEpoch > 0 && currentEpoch > previousEpoch + toleranceSeconds) {
     return {
       refresh: true,

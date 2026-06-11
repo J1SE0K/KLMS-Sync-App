@@ -106,6 +106,8 @@ def build_report(cache_dir: Path, state_json: Path) -> dict[str, Any]:
         "state": {
             "assignments": len(content.get("assignments", [])) if isinstance(content, dict) else 0,
             "exams": len(content.get("exam_items", [])) if isinstance(content, dict) else 0,
+            "past_exams": len(content.get("past_exams", [])) if isinstance(content, dict) else 0,
+            "exam_records": len(content.get("exam_records", [])) if isinstance(content, dict) else 0,
             "helpdesk": len(content.get("help_desk_items", [])) if isinstance(content, dict) else 0,
         },
         "notices": {

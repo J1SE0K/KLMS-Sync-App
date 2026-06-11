@@ -78,6 +78,7 @@ def render_success_html(state: dict[str, Any]) -> str:
     completed_assignments = content.get("completed_assignments") or []
     exams = content.get("exam_items") or []
     exam_candidates = content.get("exam_candidates") or []
+    past_exams = content.get("past_exams") or []
     assignment_candidates = content.get("assignment_candidates") or []
     help_desk = content.get("help_desk_items") or []
     generated_at = state.get("generated_at") or ""
@@ -86,7 +87,8 @@ def render_success_html(state: dict[str, Any]) -> str:
         div(
             f"총 {len(assignments)}개 과제 / {len(exams)}개 시험 일정 / "
             f"{len(help_desk)}개 헬프데스크 안내 / {len(assignment_candidates)}개 과제 후보 / "
-            f"{len(exam_candidates)}개 시험 후보 / {len(completed_assignments)}개 완료 기록"
+            f"{len(exam_candidates)}개 시험 후보 / {len(completed_assignments)}개 완료 기록 / "
+            f"{len(past_exams)}개 지난 시험 기록"
         ),
         div(f"마지막 반영: {escape(str(generated_at))}"),
     ]
@@ -95,6 +97,7 @@ def render_success_html(state: dict[str, Any]) -> str:
         and not completed_assignments
         and not exams
         and not exam_candidates
+        and not past_exams
         and not assignment_candidates
         and not help_desk
     ):
@@ -106,6 +109,7 @@ def render_success_html(state: dict[str, Any]) -> str:
         ("시험 후보 (확인 필요)", exam_candidates, "일정"),
         ("헬프데스크", help_desk, "일정"),
         ("시험 일정", exams, "일정"),
+        ("지난 시험 기록", past_exams, "일정"),
         ("과제", assignments, "마감"),
         ("과제 후보 (확인 필요)", assignment_candidates, "마감"),
     ]

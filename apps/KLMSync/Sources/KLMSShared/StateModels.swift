@@ -32,6 +32,8 @@ public struct LegacySyncState: Decodable, Sendable, Equatable {
         public var assignmentCandidates: [StateItem]
         public var examItems: [StateItem]
         public var examCandidates: [StateItem]
+        public var pastExams: [StateItem]
+        public var examRecords: [StateItem]
         public var helpDeskItems: [StateItem]
 
         enum CodingKeys: String, CodingKey {
@@ -42,6 +44,8 @@ public struct LegacySyncState: Decodable, Sendable, Equatable {
             case assignmentCandidates = "assignment_candidates"
             case examItems = "exam_items"
             case examCandidates = "exam_candidates"
+            case pastExams = "past_exams"
+            case examRecords = "exam_records"
             case helpDeskItems = "help_desk_items"
         }
 
@@ -53,6 +57,8 @@ public struct LegacySyncState: Decodable, Sendable, Equatable {
             assignmentCandidates: [StateItem] = [],
             examItems: [StateItem] = [],
             examCandidates: [StateItem] = [],
+            pastExams: [StateItem] = [],
+            examRecords: [StateItem] = [],
             helpDeskItems: [StateItem] = []
         ) {
             self.kind = kind
@@ -62,6 +68,8 @@ public struct LegacySyncState: Decodable, Sendable, Equatable {
             self.assignmentCandidates = assignmentCandidates
             self.examItems = examItems
             self.examCandidates = examCandidates
+            self.pastExams = pastExams
+            self.examRecords = examRecords
             self.helpDeskItems = helpDeskItems
         }
 
@@ -74,6 +82,8 @@ public struct LegacySyncState: Decodable, Sendable, Equatable {
             assignmentCandidates = container.decodeIfPresentDefault([StateItem].self, forKey: .assignmentCandidates, default: [])
             examItems = container.decodeIfPresentDefault([StateItem].self, forKey: .examItems, default: [])
             examCandidates = container.decodeIfPresentDefault([StateItem].self, forKey: .examCandidates, default: [])
+            pastExams = container.decodeIfPresentDefault([StateItem].self, forKey: .pastExams, default: [])
+            examRecords = container.decodeIfPresentDefault([StateItem].self, forKey: .examRecords, default: [])
             helpDeskItems = container.decodeIfPresentDefault([StateItem].self, forKey: .helpDeskItems, default: [])
         }
     }
@@ -150,6 +160,8 @@ public extension LegacySyncState.Content {
         var nextAssignmentRecords: [StateItem] = []
         var nextExamItems: [StateItem] = []
         var nextExamCandidates: [StateItem] = []
+        var nextPastExams: [StateItem] = []
+        var nextExamRecords: [StateItem] = []
         var nextHelpDeskItems: [StateItem] = []
         var assignmentIndexes: [String: Int] = [:]
         var candidateIndexes: [String: Int] = [:]
@@ -157,6 +169,8 @@ public extension LegacySyncState.Content {
         var recordIndexes: [String: Int] = [:]
         var examIndexes: [String: Int] = [:]
         var examCandidateIndexes: [String: Int] = [:]
+        var pastExamIndexes: [String: Int] = [:]
+        var examRecordIndexes: [String: Int] = [:]
         var helpDeskIndexes: [String: Int] = [:]
 
         func upsert(_ item: StateItem, into items: inout [StateItem], indexes: inout [String: Int]) {
@@ -183,6 +197,10 @@ public extension LegacySyncState.Content {
             upsert(item, into: &nextAssignmentRecords, indexes: &recordIndexes)
         }
 
+        func appendExamRecord(_ item: StateItem) {
+            upsertExam(item, into: &nextExamRecords, indexes: &examRecordIndexes)
+        }
+
         func processActive(_ item: StateItem, asCandidate: Bool) {
             let status = overrides.assignmentStatus(for: item)
             if status == "completed" {
@@ -201,27 +219,41 @@ public extension LegacySyncState.Content {
         }
 
         func processExam(_ item: StateItem, asCandidate: Bool) {
-            if item.isDashboardPastExam {
-                return
-            }
             let override = overrides.examOverride(for: item)
             let status = override.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if status.isDashboardIgnoredExamStatus {
+                appendExamRecord(item.dashboardMarkedExamRecordStatus(status))
                 return
             }
 
             var next = item.dashboardApplyingExamOverride(override)
+            if next.isDashboardPastExam {
+                if asCandidate || next.category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "exam_candidate" {
+                    appendExamRecord(next.dashboardMarkedExamRecordStatus("candidate"))
+                    return
+                }
+                let past = next.dashboardMarkedPastExamRecord()
+                upsertExam(past, into: &nextPastExams, indexes: &pastExamIndexes)
+                appendExamRecord(past)
+                return
+            }
             if status == "approved" || status == "confirmed" || status == "active" {
                 next.type = "exam"
                 next.category = "exam"
-                upsertExam(next, into: &nextExamItems, indexes: &examIndexes)
+                let active = next.dashboardMarkedExamRecordStatus("active")
+                upsertExam(active, into: &nextExamItems, indexes: &examIndexes)
+                appendExamRecord(active)
             } else if asCandidate {
                 next.category = "exam_candidate"
-                upsertExam(next, into: &nextExamCandidates, indexes: &examCandidateIndexes)
+                let candidate = next.dashboardMarkedExamRecordStatus("candidate")
+                upsertExam(candidate, into: &nextExamCandidates, indexes: &examCandidateIndexes)
+                appendExamRecord(candidate)
             } else {
                 next.type = "exam"
                 next.category = "exam"
-                upsertExam(next, into: &nextExamItems, indexes: &examIndexes)
+                let active = next.dashboardMarkedExamRecordStatus("active")
+                upsertExam(active, into: &nextExamItems, indexes: &examIndexes)
+                appendExamRecord(active)
             }
         }
 
@@ -281,6 +313,14 @@ public extension LegacySyncState.Content {
         updated.completedAssignments = nextCompletedAssignments.sorted(by: StateItem.dashboardSort)
         updated.assignmentRecords = nextAssignmentRecords.sorted(by: StateItem.dashboardSort)
 
+        for item in examRecords {
+            appendExamRecord(item)
+        }
+        for item in pastExams {
+            let past = item.dashboardMarkedPastExamRecord()
+            upsertExam(past, into: &nextPastExams, indexes: &pastExamIndexes)
+            appendExamRecord(past)
+        }
         for item in examItems {
             processExam(item, asCandidate: false)
         }
@@ -289,6 +329,8 @@ public extension LegacySyncState.Content {
         }
         updated.examItems = nextExamItems.sorted(by: StateItem.dashboardSort)
         updated.examCandidates = nextExamCandidates.sorted(by: StateItem.dashboardSort)
+        updated.pastExams = nextPastExams.sorted(by: StateItem.dashboardSort)
+        updated.examRecords = nextExamRecords.sorted(by: StateItem.dashboardSort)
 
         for item in helpDeskItems {
             processHelpDesk(item)
@@ -416,6 +458,26 @@ private extension StateItem {
         var item = self
         item.recordStatus = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         item.completionReason = ""
+        item.autoCompleted = false
+        return item
+    }
+
+    func dashboardMarkedExamRecordStatus(_ status: String) -> StateItem {
+        var item = self
+        item.recordStatus = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        item.completionReason = ""
+        item.autoCompleted = false
+        return item
+    }
+
+    func dashboardMarkedPastExamRecord() -> StateItem {
+        var item = self
+        item.type = "exam"
+        item.category = "exam"
+        item.recordStatus = "completed"
+        item.completionReason = item.completionReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "past_due"
+            : item.completionReason
         item.autoCompleted = false
         return item
     }

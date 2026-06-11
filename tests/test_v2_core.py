@@ -305,6 +305,35 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(state.exam_candidates, [])
         self.assertEqual(state.exams[0].instructions, candidate.instructions)
 
+    def test_past_approved_exam_moves_to_records(self) -> None:
+        past = Event(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432010",
+            course="전기 전자공학특강<전자공학을 위한 사이버 보안 개론>",
+            title="Midterm 2",
+            due="2026년 5월 6일(수요일) 오전 10:30 - 오후 12:00",
+            sync_due="2026-05-06T12:00:00+09:00",
+            sync_start="2026-05-06T10:30:00+09:00",
+            source="override",
+            instructions="시험 범위: Lecture 3",
+            coverage="Lecture 3",
+            category="exam",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-06-02 12:20 KST",
+            detail_pages=[],
+            notices=[],
+            source_events=[past],
+        )
+        payload = state.to_legacy_state()["content"]
+
+        self.assertEqual(state.exams, [])
+        self.assertEqual(len(state.past_exams), 1)
+        self.assertEqual(len(state.exam_records), 1)
+        self.assertEqual(state.past_exams[0].record_status, "completed")
+        self.assertEqual(state.past_exams[0].completion_reason, "past_due")
+        self.assertEqual(payload["past_exams"][0]["coverage_summary"], "Lecture 3")
+
     def test_same_courseboard_course_id_does_not_merge_different_assignments(self) -> None:
         written = Assignment(
             url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
@@ -627,6 +656,23 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(reason, "assignment")
         self.assertEqual(item.course, "기술을 통한 사회적 혁신실험 (III) <디자인>")
         self.assertEqual(item.title, "[11주차] 필드트립, PRD, IA")
+
+    def test_help_desk_detail_strips_klms_menu_prefix_from_course(self) -> None:
+        page = Page(
+            url="https://klms.kaist.ac.kr/mod/url/view.php?id=1234567",
+            title="CS.30000_2026_1: 중간고사 헬프데스크",
+            html="""
+            <div>)&gt; 기출문제은행 마이크로러닝 CELT 교수법 Panopto 사용법 CELT 학습법 특강 알고리즘 개론(CS.30000_2026_1)</div>
+            <div>중간고사 헬프데스크는 2026년 4월 10일(금요일) 오후 1:00 - 오후 2:00에 진행됩니다.</div>
+            """,
+        )
+
+        item, reason = classify_detail_page(page, "2026-04-01 10:00 KST")
+
+        self.assertEqual(reason, "help-desk")
+        self.assertIsNotNone(item)
+        self.assertEqual(item.course, "알고리즘 개론")
+        self.assertEqual(item.title, "중간고사 헬프데스크")
 
     def test_pipeline_builds_legacy_state_shape(self) -> None:
         detail_pages = [

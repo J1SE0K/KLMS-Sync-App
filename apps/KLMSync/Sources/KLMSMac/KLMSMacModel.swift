@@ -763,6 +763,16 @@ final class KLMSMacModel: ObservableObject {
                 serverRelayEventWebSocketTask = task
                 task.resume()
                 await processServerRelayCommands(silent: true)
+                let fallbackPoller = Task { [weak self] in
+                    while !Task.isCancelled {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        guard !Task.isCancelled else { return }
+                        await self?.processServerRelayCommands(silent: true)
+                    }
+                }
+                defer {
+                    fallbackPoller.cancel()
+                }
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
                     let message = try await task.receive()
                     handleServerRelayEvent(message)
@@ -1103,13 +1113,32 @@ final class KLMSMacModel: ObservableObject {
         addMailDashboardItem(item)
     }
 
+    private func applyServerRelayMailDashboardRemoveAction(_ action: ServerRelayItemAction) {
+        let removed = removeMailDashboardItem(id: action.itemID, kind: action.itemKind)
+        if !removed {
+            serverRelayStatusMessage = "\(action.itemKind.klmsMailDashboardKindName) 메일 항목은 이미 제거되어 있습니다."
+        }
+    }
+
     func removeMailDashboardItem(_ item: ServerRelaySyncItem) {
-        mailDashboardItems.removeAll { $0.id == item.id }
+        _ = removeMailDashboardItem(id: item.id, kind: item.kind)
+    }
+
+    @discardableResult
+    private func removeMailDashboardItem(id: String, kind: String = "") -> Bool {
+        let previousCount = mailDashboardItems.count
+        mailDashboardItems.removeAll { $0.id == id }
+        let removed = mailDashboardItems.count != previousCount
         persistMailDashboardItems()
+        let label = kind.nilIfBlank?.klmsMailDashboardKindName ?? "메일"
+        serverRelayStatusMessage = removed
+            ? "\(label) 항목을 대시보드에서 제거했습니다."
+            : "\(label) 항목은 이미 대시보드에 없습니다."
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.publishServerRelayStatusIfNeeded(force: true)
         }
+        return removed
     }
 
     func mailDashboardItems(kind: String) -> [ServerRelaySyncItem] {
@@ -1285,6 +1314,8 @@ final class KLMSMacModel: ObservableObject {
             try trashServerRelayFile(try serverRelayFile(for: action))
         case .mailDashboardAdd:
             try applyServerRelayMailDashboardAddAction(action)
+        case .mailDashboardRemove:
+            applyServerRelayMailDashboardRemoveAction(action)
         case .calendarVerify, .calendarApply, .calendarCreate, .calendarEdit, .calendarDelete:
             throw serverRelayItemActionError("캘린더 요청은 실행 큐에서 처리해야 합니다.")
         }
@@ -1296,11 +1327,11 @@ final class KLMSMacModel: ObservableObject {
         switch action {
         case .calendarVerify:
             .verify
-        case .calendarApply, .calendarDelete:
+        case .calendarApply:
             .coreSync
-        case .calendarCreate, .calendarEdit:
+        case .calendarCreate, .calendarEdit, .calendarDelete:
             nil
-        case .mailDashboardAdd:
+        case .mailDashboardAdd, .mailDashboardRemove:
             nil
         default:
             nil
@@ -1329,6 +1360,36 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    func createCalendarEvent(change: CalendarChange, edit: CalendarEventEdit) async {
+        do {
+            try await createCalendarEvent(
+                title: edit.title.nilIfBlank ?? change.title,
+                startAt: edit.startAt.nilIfBlank ?? change.startAt,
+                dueAt: edit.dueAt.nilIfBlank ?? change.dueAt,
+                location: edit.location.nilIfBlank ?? change.location,
+                notes: "KLMS Sync 캘린더 변경 항목에서 수동 등록"
+            )
+            markCalendarChangeResolved(change)
+            reloadSnapshot()
+            errorMessage = nil
+            serverRelayStatusMessage = "캘린더 일정 등록 완료"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteCalendarEvent(change: CalendarChange) async {
+        do {
+            try await performCalendarEventDeletion(change: change)
+            markCalendarChangeResolved(change)
+            reloadSnapshot()
+            errorMessage = nil
+            serverRelayStatusMessage = "캘린더 일정 삭제 완료"
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func applyServerRelayCalendarEditAction(_ action: ServerRelayItemAction) async throws -> String {
         let edit = try CalendarEventEdit.decodeMessage(action.message)
         let change = try serverRelayCalendarChange(for: action)
@@ -1336,6 +1397,14 @@ final class KLMSMacModel: ObservableObject {
         markCalendarChangeResolved(change)
         reloadSnapshot()
         return "캘린더 내용 수정 완료"
+    }
+
+    private func applyServerRelayCalendarDeleteAction(_ action: ServerRelayItemAction) async throws -> String {
+        let change = try serverRelayCalendarChange(for: action)
+        try await performCalendarEventDeletion(change: change)
+        markCalendarChangeResolved(change)
+        reloadSnapshot()
+        return "캘린더 일정 삭제 완료"
     }
 
     private func applyServerRelayCalendarCreateAction(_ action: ServerRelayItemAction) async throws -> String {
@@ -2247,6 +2316,11 @@ final class KLMSMacModel: ObservableObject {
                         remoteProcessingStatusMessage = serverRelayStatusMessage
                         completedAction.message = try await applyServerRelayCalendarEditAction(runningAction)
                         completedAction.status = .completed
+                    } else if runningAction.action == .calendarDelete {
+                        serverRelayStatusMessage = "서버 요청 처리 중: \(runningAction.action.displayName)"
+                        remoteProcessingStatusMessage = serverRelayStatusMessage
+                        completedAction.message = try await applyServerRelayCalendarDeleteAction(runningAction)
+                        completedAction.status = .completed
                     } else if let commandKind = serverRelayCalendarCommand(for: runningAction.action) {
                         serverRelayStatusMessage = "서버 요청 처리 중: \(runningAction.action.displayName)"
                         remoteProcessingStatusMessage = serverRelayStatusMessage
@@ -2586,6 +2660,15 @@ final class KLMSMacModel: ObservableObject {
         }
 
         try store.save(event, span: .thisEvent, commit: true)
+    }
+
+    private func performCalendarEventDeletion(change: CalendarChange) async throws {
+        guard await requestCalendarPermission() else {
+            throw serverRelayItemActionError("Calendar 삭제 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 Calendar 권한을 허용해 주세요.")
+        }
+        let store = EKEventStore()
+        let event = try findCalendarEvent(change: change, store: store)
+        try store.remove(event, span: .thisEvent, commit: true)
     }
 
     private func createCalendarEvent(title: String, startAt: String, dueAt: String, location: String, notes: String) async throws {

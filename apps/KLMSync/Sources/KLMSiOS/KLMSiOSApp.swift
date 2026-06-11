@@ -27,12 +27,45 @@ private final class KLMSCompanionNotificationDelegate: NSObject, UNUserNotificat
 }
 #endif
 
+private enum KLMSAppearanceMode: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system:
+            "시스템"
+        case .light:
+            "라이트"
+        case .dark:
+            "다크"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system:
+            nil
+        case .light:
+            .light
+        case .dark:
+            .dark
+        }
+    }
+}
+
 @main
 struct KLMSiOSApp: App {
+    @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
+
     var body: some Scene {
         WindowGroup {
             CompanionRootView()
                 .background(Color.klmsScreenBackground.ignoresSafeArea())
+                .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
         }
     }
 }
@@ -202,6 +235,27 @@ final class CompanionModel: ObservableObject {
         persistMailDashboardItems()
         connectionSucceeded = true
         connectionMessage = "\(item.kind.klmsMailDashboardKindName) 메일 항목을 대시보드에서 제거했습니다."
+    }
+
+    func submitRemoveMailDashboardItem(_ item: ServerRelaySyncItem) async {
+        removeMailDashboardItem(item)
+        guard let serverRelayStore else {
+            return
+        }
+        do {
+            let payload = try JSONEncoder().encode(item)
+            let message = String(data: payload, encoding: .utf8) ?? ""
+            try await serverRelayStore.createItemAction(ServerRelayItemAction(
+                action: .mailDashboardRemove,
+                itemID: item.id,
+                itemKind: item.kind,
+                itemTitle: item.title,
+                message: message
+            ))
+            await refreshRecent(includeSyncData: false, showsActivity: false)
+        } catch {
+            errorMessage = userFacingMessage(for: error)
+        }
     }
 
     private static func loadMailDashboardItems() -> [ServerRelaySyncItem] {
@@ -601,7 +655,9 @@ final class CompanionModel: ObservableObject {
         case .calendarEdit:
             return "Mac 앱이 Apple Calendar 일정을 직접 수정합니다."
         case .calendarApply, .calendarDelete:
-            return "Mac 앱이 과제/시험 동기화를 다시 실행합니다."
+            return actionKind == .calendarDelete
+                ? "Mac 앱이 Apple Calendar 일정을 직접 삭제합니다."
+                : "Mac 앱이 과제/시험 동기화를 다시 실행합니다."
         case .calendarVerify:
             return "Mac 앱이 캘린더 상태를 다시 확인합니다."
         default:
@@ -1822,11 +1878,50 @@ private struct CompanionConnectionScreen: View {
     var body: some View {
         CompanionScreenContainer(title: "서버 연결", model: model) {
             ServerRelayConnectionPanel(model: model)
+            CompanionAppearancePanel()
             if !model.serverRelayConfigured {
                 InfoBanner(message: model.remoteAvailabilityMessage)
             }
             RemotePrivacyNote()
         }
+    }
+}
+
+private struct CompanionAppearancePanel: View {
+    @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "circle.lefthalf.filled")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 28, height: 28)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("화면 모드")
+                        .font(.headline)
+                    Text("시스템 설정을 따르거나, 이 앱만 라이트/다크로 고정합니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Picker("화면 모드", selection: $appearanceMode) {
+                ForEach(KLMSAppearanceMode.allCases) { mode in
+                    Text(mode.title).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -3837,72 +3932,96 @@ private struct MailPasteAnalyzerPanel: View {
     @State private var isExpanded = false
     @State private var mailText = ""
     @State private var analysis = MailPasteAnalysis.empty
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var accent: Color {
+        companionMailThemeAccent(for: colorScheme)
+    }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("KLMS와 별도로 온 메일이나 캘린더 안내문을 붙여넣으면 이 기기 안에서만 과제, 시험, 공지, 파일, 일정 후보로 판독합니다. 서버에는 메일 본문을 올리지 않습니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                TextEditor(text: $mailText)
-                    .font(.callout)
-                    .frame(minHeight: 136)
-                    .padding(8)
-                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.klmsBorder, lineWidth: 1)
-                    )
-
-                HStack(spacing: 8) {
-                    Button {
-                        pasteFromClipboard()
-                    } label: {
-                        Label("붙여넣기", systemImage: "doc.on.clipboard")
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "envelope.open")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(accent)
+                        .frame(width: 30, height: 30)
+                        .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.14), in: RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("메일 내용 자동 판독")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("메일 본문에서 과제·시험·일정을 찾아 캘린더 반영 후보로 정리합니다.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        runAnalysis()
-                    } label: {
-                        Label("다시 분석", systemImage: "wand.and.stars")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
                     Spacer(minLength: 0)
-
-                    Button(role: .destructive) {
-                        mailText = ""
-                        analysis = .empty
-                    } label: {
-                        Label("지우기", systemImage: "trash")
+                    if !analysis.isEmpty {
+                        Text(analysis.kind.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(analysis.kind.tint)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(analysis.kind.tint.opacity(0.12), in: Capsule())
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(mailText.isEmpty)
-                }
-                .font(.caption.weight(.semibold))
-
-                MailPasteAnalysisResultView(analysis: analysis, model: model)
-            }
-            .padding(.top, 10)
-        } label: {
-            HStack(spacing: 8) {
-                Label("메일 내용 자동 판독 · 캘린더 반영", systemImage: "envelope.open")
-                    .font(.headline)
-                Spacer(minLength: 0)
-                if !analysis.isEmpty {
-                    Text(analysis.kind.title)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(analysis.kind.tint)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(analysis.kind.tint.opacity(0.12), in: Capsule())
+                        .foregroundStyle(.secondary)
                 }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(accent.opacity(colorScheme == .dark ? 0.13 : 0.075), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(accent.opacity(colorScheme == .dark ? 0.34 : 0.22), lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 8))
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityHint(isExpanded ? "메일 판독 입력 접기" : "메일 판독 입력 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    MailPasteInputBox(mailText: $mailText)
+
+                    HStack(spacing: 8) {
+                        Button {
+                            pasteFromClipboard()
+                        } label: {
+                            Label("클립보드 붙여넣기", systemImage: "doc.on.clipboard")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button {
+                            runAnalysis()
+                        } label: {
+                            Label("판독하기", systemImage: "wand.and.stars")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                        Spacer(minLength: 0)
+
+                        Button(role: .destructive) {
+                            mailText = ""
+                            analysis = .empty
+                        } label: {
+                            Label("입력 비우기", systemImage: "trash")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(mailText.isEmpty)
+                    }
+                    .font(.caption.weight(.semibold))
+
+                    MailPasteAnalysisResultView(analysis: analysis, model: model)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -3934,23 +4053,132 @@ private struct MailPasteAnalyzerPanel: View {
     }
 }
 
+private struct MailPasteInputBox: View {
+    @Binding var mailText: String
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var accent: Color {
+        companionMailThemeAccent(for: colorScheme)
+    }
+
+    private var trimmedText: String {
+        mailText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var lineCount: Int {
+        let lines = trimmedText.split(whereSeparator: \.isNewline)
+        return lines.isEmpty ? 0 : lines.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "text.badge.checkmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 28, height: 28)
+                    .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.13), in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("메일 원문 붙여넣기")
+                        .font(.subheadline.weight(.semibold))
+                    Text("메일 본문, LMS 외부 공지, 캘린더 안내문을 그대로 붙여넣으면 이 기기 안에서만 판독합니다. 원문은 저장하지 않습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Text("1단계")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(accent.opacity(colorScheme == .dark ? 0.18 : 0.11), in: Capsule())
+            }
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $mailText)
+                    .font(.callout)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 144)
+                    .padding(8)
+                    .background(accent.opacity(colorScheme == .dark ? 0.10 : 0.045), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(accent.opacity(colorScheme == .dark ? 0.28 : 0.18), lineWidth: 1)
+                    )
+                if mailText.isEmpty {
+                    Text("예: 시험 일정, 과제 마감, 첨부파일 안내가 들어 있는 메일 본문")
+                        .font(.callout)
+                        .foregroundStyle(Color.primary.opacity(0.48))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 16)
+                        .allowsHitTesting(false)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Label(trimmedText.isEmpty ? "입력 대기" : "\(lineCount)줄 · \(trimmedText.count)자", systemImage: trimmedText.isEmpty ? "square.and.pencil" : "doc.text.magnifyingglass")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(trimmedText.isEmpty ? Color.secondary : accent)
+                Spacer(minLength: 0)
+                Label("원문은 서버로 보내지 않음", systemImage: "lock.shield")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(accent.opacity(colorScheme == .dark ? 0.08 : 0.04), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(accent.opacity(colorScheme == .dark ? 0.22 : 0.14), lineWidth: 1)
+        )
+    }
+}
+
+private func companionMailThemeAccent(for colorScheme: ColorScheme) -> Color {
+    colorScheme == .dark
+        ? Color(red: 0.58, green: 0.75, blue: 0.68)
+        : Color(red: 0.12, green: 0.34, blue: 0.29)
+}
+
 private struct MailPasteAnalysisResultView: View {
     var analysis: MailPasteAnalysis
     @ObservedObject var model: CompanionModel
     @State private var selectedItemID: String?
     @State private var isShowingCreateSheet = false
+    @State private var dashboardEditItem: ServerRelaySyncItem?
 
     var body: some View {
         if analysis.isEmpty {
-            Text("메일 본문을 붙여넣으면 과제, 시험, 공지, 캘린더 처리 여부를 자동으로 나눠 보여줍니다.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 8) {
+                Label("판독 결과", systemImage: "sparkles")
+                    .font(.caption.weight(.semibold))
+                Text("메일 원문을 붙여넣고 `판독하기`를 누르면 분류, 과목, 일정, 대시보드 반영 후보를 여기에서 확인합니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(.primary.opacity(0.14), lineWidth: 1)
+            )
         } else {
             VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Label("판독 결과", systemImage: "sparkles")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Text("2단계")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(analysis.kind.tint)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(analysis.kind.tint.opacity(0.12), in: Capsule())
+                }
+
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: analysis.kind.systemImage)
                         .font(.title3.weight(.semibold))
@@ -4047,31 +4275,53 @@ private struct MailPasteAnalysisResultView: View {
                 }
 
                 if let dashboardItem = analysis.dashboardItem {
-                    if model.mailDashboardItems.contains(where: { $0.id == dashboardItem.id }) {
+                    let registeredItem = model.mailDashboardItems.first { $0.id == dashboardItem.id }
+                    let editableItem = registeredItem ?? dashboardItem
+                    if registeredItem != nil {
                         HStack(spacing: 8) {
-                            Label("대시보드에 반영됨", systemImage: "checkmark.circle.fill")
+                            Label("대시보드 등록됨", systemImage: "checkmark.circle.fill")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.green)
                             Spacer(minLength: 0)
-                            Button(role: .destructive) {
-                                model.removeMailDashboardItem(dashboardItem)
+                            Button {
+                                dashboardEditItem = editableItem
                             } label: {
-                                Label("반영 취소", systemImage: "minus.circle")
+                                Label("수정", systemImage: "pencil")
                             }
                             .buttonStyle(.bordered)
+                            .disabled(model.isSubmitting)
+                            Button(role: .destructive) {
+                                Task {
+                                    await model.submitRemoveMailDashboardItem(editableItem)
+                                }
+                            } label: {
+                                Label("제거", systemImage: "minus.circle")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(model.isSubmitting)
                         }
                     } else {
-                        Button {
-                            Task {
-                                await model.submitMailDashboardItem(dashboardItem)
+                        HStack(spacing: 8) {
+                            Button {
+                                dashboardEditItem = editableItem
+                            } label: {
+                                Label("수정", systemImage: "pencil")
+                                    .frame(maxWidth: .infinity)
                             }
-                        } label: {
-                            Label("대시보드에 반영", systemImage: "plus.circle")
-                                .frame(maxWidth: .infinity)
+                            .buttonStyle(.bordered)
+                            .disabled(model.isSubmitting)
+                            Button {
+                                Task {
+                                    await model.submitMailDashboardItem(dashboardItem)
+                                }
+                            } label: {
+                                Label("등록", systemImage: "plus.circle")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(analysis.kind.tint)
+                            .disabled(model.isSubmitting)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(analysis.kind.tint)
-                        .disabled(model.isSubmitting)
                     }
                 }
             }
@@ -4085,6 +4335,13 @@ private struct MailPasteAnalysisResultView: View {
                 MailCalendarCreateForm(analysis: analysis) { edit in
                     Task {
                         await model.createManualCalendarAction(title: analysis.calendarTitle, edit: edit)
+                    }
+                }
+            }
+            .sheet(item: $dashboardEditItem) { item in
+                MailDashboardItemEditForm(item: item) { edited in
+                    Task {
+                        await model.submitMailDashboardItem(edited)
                     }
                 }
             }
@@ -4141,6 +4398,91 @@ private struct MailCalendarCreateForm: View {
                 }
             }
         }
+    }
+}
+
+private struct MailDashboardItemEditForm: View {
+    var item: ServerRelaySyncItem
+    var onSave: (ServerRelaySyncItem) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var kind: String
+    @State private var title: String
+    @State private var course: String
+    @State private var timestamp: String
+    @State private var detail: String
+    @State private var attachmentCount: String
+
+    private static let kindOptions = ["assignment", "exam", "notice", "file", "assignmentCandidate", "examCandidate"]
+
+    init(item: ServerRelaySyncItem, onSave: @escaping (ServerRelaySyncItem) -> Void) {
+        self.item = item
+        self.onSave = onSave
+        _kind = State(initialValue: Self.kindOptions.contains(item.kind) ? item.kind : "notice")
+        _title = State(initialValue: item.title)
+        _course = State(initialValue: item.course)
+        _timestamp = State(initialValue: item.timestamp)
+        _detail = State(initialValue: item.detail)
+        _attachmentCount = State(initialValue: String(item.attachmentCount))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("분류", selection: $kind) {
+                        ForEach(Self.kindOptions, id: \.self) { value in
+                            Text(value.klmsMailDashboardKindName).tag(value)
+                        }
+                    }
+                    TextField("제목", text: $title)
+                    TextField("과목", text: $course)
+                    TextField("일시", text: $timestamp)
+                    TextField("설명", text: $detail, axis: .vertical)
+                        .lineLimit(2...4)
+                    TextField("첨부/링크 수", text: $attachmentCount)
+                } header: {
+                    Text("대시보드 항목")
+                } footer: {
+                    Text("메일 분석 결과를 대시보드에 등록할 형태로 정리합니다. 원문 메일은 저장하지 않습니다.")
+                }
+            }
+            .navigationTitle("메일 항목 수정")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("취소") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("저장") {
+                        onSave(editedItem)
+                        dismiss()
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    private var editedItem: ServerRelaySyncItem {
+        let count = max(0, Int(attachmentCount.trimmingCharacters(in: .whitespacesAndNewlines)) ?? item.attachmentCount)
+        return ServerRelaySyncItem(
+            id: item.id,
+            kind: kind,
+            course: course.trimmingCharacters(in: .whitespacesAndNewlines),
+            academicTerm: item.academicTerm,
+            academicYear: item.academicYear,
+            academicSemester: item.academicSemester,
+            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+            timestamp: timestamp.trimmingCharacters(in: .whitespacesAndNewlines),
+            status: "메일 분석",
+            detail: detail.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "메일 분석에서 등록한 항목입니다.",
+            attachmentCount: count,
+            updatedAt: ServerRelaySyncItem.isoTimestamp(),
+            isRead: item.isRead,
+            isImportant: item.isImportant,
+            isHidden: item.isHidden
+        )
     }
 }
 
@@ -5358,7 +5700,7 @@ private struct DashboardCalendarChangeDetailRow: View {
     var change: CalendarChange
     var activeAction: ServerRelayItemAction?
     var onAction: ((ServerRelayItemActionKind, CalendarEventEdit?) async -> Void)?
-    @State private var isShowingEditSheet = false
+    @State private var calendarSheetAction: ServerRelayItemActionKind?
 
     init(
         change: CalendarChange,
@@ -5401,11 +5743,25 @@ private struct DashboardCalendarChangeDetailRow: View {
                     message: "Mac이 \(activeAction.status.displayName)입니다."
                 )
             } else if onAction != nil {
-                HStack(spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
                     Button {
-                        isShowingEditSheet = true
+                        calendarSheetAction = .calendarCreate
                     } label: {
-                        Label("내용 수정", systemImage: "pencil")
+                        Label("등록", systemImage: "calendar.badge.plus")
+                    }
+                    Button {
+                        calendarSheetAction = .calendarEdit
+                    } label: {
+                        Label("수정", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        Task {
+                            if let onAction {
+                                await onAction(.calendarDelete, nil)
+                            }
+                        }
+                    } label: {
+                        Label("삭제", systemImage: "calendar.badge.minus")
                     }
                     Button {
                         openSystemCalendar()
@@ -5419,11 +5775,17 @@ private struct DashboardCalendarChangeDetailRow: View {
             }
         }
         .padding(.vertical, 4)
-        .sheet(isPresented: $isShowingEditSheet) {
-            CalendarEventEditForm(change: change) { edit in
+        .sheet(
+            isPresented: Binding(
+                get: { calendarSheetAction != nil },
+                set: { if !$0 { calendarSheetAction = nil } }
+            )
+        ) {
+            let action = calendarSheetAction ?? .calendarEdit
+            CalendarEventEditForm(change: change, action: action) { edit in
                 Task {
                     if let onAction {
-                        await onAction(.calendarEdit, edit)
+                        await onAction(action, edit)
                     }
                 }
             }
@@ -5461,6 +5823,7 @@ private struct DashboardCalendarChangeDetailRow: View {
 
 private struct CalendarEventEditForm: View {
     var change: CalendarChange
+    var action: ServerRelayItemActionKind
     var onSave: (CalendarEventEdit) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var title: String
@@ -5468,8 +5831,9 @@ private struct CalendarEventEditForm: View {
     @State private var dueAt: String
     @State private var location: String
 
-    init(change: CalendarChange, onSave: @escaping (CalendarEventEdit) -> Void) {
+    init(change: CalendarChange, action: ServerRelayItemActionKind, onSave: @escaping (CalendarEventEdit) -> Void) {
         self.change = change
+        self.action = action
         self.onSave = onSave
         let defaults = change.editDefaults
         _title = State(initialValue: defaults.title)
@@ -5487,10 +5851,12 @@ private struct CalendarEventEditForm: View {
                     TextField("종료 시간", text: $dueAt)
                     TextField("장소", text: $location)
                 } footer: {
-                    Text("Mac이 Apple Calendar 이벤트를 찾아 직접 수정합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있고, 비어 있는 시간/장소는 변경하지 않습니다.")
+                    Text(action == .calendarCreate
+                        ? "Mac이 Apple Calendar에 새 이벤트를 등록합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있습니다."
+                        : "Mac이 Apple Calendar 이벤트를 찾아 직접 수정합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있고, 비어 있는 시간/장소는 변경하지 않습니다.")
                 }
             }
-            .navigationTitle("캘린더 내용 수정")
+            .navigationTitle(action == .calendarCreate ? "캘린더 일정 등록" : "캘린더 내용 수정")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("취소") {
@@ -5498,7 +5864,7 @@ private struct CalendarEventEditForm: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("저장") {
+                    Button(action == .calendarCreate ? "등록" : "저장") {
                         onSave(CalendarEventEdit(title: title, startAt: startAt, dueAt: dueAt, location: location))
                         dismiss()
                     }
@@ -6726,9 +7092,11 @@ private extension ServerRelayItemActionKind {
         case .calendarEdit:
             "캘린더 내용 수정"
         case .calendarDelete:
-            "KLMS 기준 반영"
+            "캘린더 일정 삭제"
         case .mailDashboardAdd:
             "메일 항목 반영"
+        case .mailDashboardRemove:
+            "메일 항목 제거"
         }
     }
 
@@ -6751,9 +7119,11 @@ private extension ServerRelayItemActionKind {
         case .calendarEdit:
             "pencil"
         case .calendarDelete:
-            "calendar.badge.checkmark"
+            "calendar.badge.minus"
         case .mailDashboardAdd:
             "envelope.badge"
+        case .mailDashboardRemove:
+            "minus.circle"
         case .examPromote:
             "checkmark.seal"
         case .noticeRead:

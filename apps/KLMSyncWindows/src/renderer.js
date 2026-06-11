@@ -398,10 +398,14 @@ async function createItemAction(action, item) {
 }
 
 function itemActionMessage(action, item) {
-  if (action !== "calendarEdit") {
+  if (action === "calendarDelete") {
     return "";
   }
-  const title = window.prompt("캘린더 제목", item.title || "");
+  if (action !== "calendarEdit" && action !== "calendarCreate") {
+    return "";
+  }
+  const isCreate = action === "calendarCreate";
+  const title = window.prompt(isCreate ? "등록할 캘린더 제목" : "수정할 캘린더 제목", item.title || "");
   if (title === null) {
     return null;
   }
@@ -413,12 +417,20 @@ function itemActionMessage(action, item) {
   if (dueAt === null) {
     return null;
   }
-  const location = window.prompt("장소 (비워 두면 변경하지 않음)", item.location || "");
+  const location = window.prompt(isCreate ? "장소" : "장소 (비워 두면 변경하지 않음)", item.location || "");
   if (location === null) {
     return null;
   }
-  if (![title, startAt, dueAt, location].some((value) => String(value || "").trim())) {
+  if (!isCreate && ![title, startAt, dueAt, location].some((value) => String(value || "").trim())) {
     showError(new Error("수정할 캘린더 내용이 없습니다."));
+    return null;
+  }
+  if (isCreate && !String(title || "").trim()) {
+    showError(new Error("등록할 캘린더 제목이 필요합니다."));
+    return null;
+  }
+  if (isCreate && !String(startAt || "").trim()) {
+    showError(new Error("등록할 캘린더 시작 시간이 필요합니다."));
     return null;
   }
   return JSON.stringify({
@@ -989,7 +1001,9 @@ function detailActions(item) {
       ];
     case "calendar":
       return [
-        { title: "내용 수정", action: "calendarEdit" }
+        { title: "등록", action: "calendarCreate" },
+        { title: "수정", action: "calendarEdit" },
+        { title: "삭제", action: "calendarDelete" }
       ];
     default:
       return [];
@@ -1143,8 +1157,9 @@ function actionLabel(action) {
     calendarApply: "KLMS 기준 반영",
     calendarCreate: "캘린더 일정 등록",
     calendarEdit: "캘린더 내용 수정",
-    calendarDelete: "KLMS 기준 반영",
-    mailDashboardAdd: "메일 항목 반영"
+    calendarDelete: "캘린더 일정 삭제",
+    mailDashboardAdd: "메일 항목 반영",
+    mailDashboardRemove: "메일 항목 제거"
   }[action] || action;
 }
 

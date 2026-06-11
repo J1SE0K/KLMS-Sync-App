@@ -180,6 +180,8 @@ def merge_event(existing: Event, candidate: Event) -> Event:
         "source_title",
         "type",
         "location",
+        "record_status",
+        "completion_reason",
     ):
         if not getattr(base, field) and getattr(fallback, field):
             updates[field] = getattr(fallback, field)
@@ -213,6 +215,8 @@ def dedupe_events(items: Iterable[Event]) -> list[Event]:
 def dedupe_event_state(state: SyncState) -> SyncState:
     state.exams = dedupe_events(state.exams)
     state.help_desk_items = dedupe_events(state.help_desk_items)
+    state.past_exams = dedupe_events(state.past_exams)
+    state.exam_records = dedupe_events(state.exam_records)
 
     approved_indexes = {event_identity_key(item): index for index, item in enumerate(state.exams)}
     remaining_candidates: list[Event] = []
@@ -228,6 +232,21 @@ def dedupe_event_state(state: SyncState) -> SyncState:
         else:
             remaining_candidates.append(candidate)
     state.exam_candidates = dedupe_events(remaining_candidates)
+    record_indexes = {event_identity_key(item): index for index, item in enumerate(state.exam_records)}
+    for item in state.exams + state.exam_candidates + state.past_exams:
+        record = item
+        if item.category == "exam":
+            record = replace(item, record_status=item.record_status or "active")
+        elif item.category == "exam_candidate":
+            record = replace(item, record_status=item.record_status or "candidate")
+        key = event_identity_key(record)
+        if key in record_indexes:
+            index = record_indexes[key]
+            state.exam_records[index] = merge_event(state.exam_records[index], record)
+        else:
+            record_indexes[key] = len(state.exam_records)
+            state.exam_records.append(record)
+    state.exam_records = dedupe_events(state.exam_records)
     return state
 
 
@@ -272,6 +291,7 @@ def build_sync_state(
     state = SyncState(generated_at=generated_at)
     seen_assignments: set[str] = set()
     seen_events: set[tuple[str, str]] = set()
+    seen_exam_records: set[tuple[str, str, str, str, str]] = set()
     submitted_tokens: set[str] = set()
     materialized_detail_pages = list(detail_pages)
     materialized_notices = list(notices)
@@ -392,7 +412,27 @@ def build_sync_state(
             state.assignments.append(active)
 
     def add_event(item: Event) -> None:
+        def record_exam(record: Event) -> bool:
+            key = event_identity_key(record)
+            if key in seen_exam_records:
+                return False
+            seen_exam_records.add(key)
+            state.exam_records.append(record)
+            return True
+
         if item.category in {"exam", "exam_candidate"} and not include_past and is_past(item.sync_due, generated_at):
+            if item.category == "exam_candidate":
+                record_exam(replace(item, record_status=item.record_status or "candidate"))
+                return
+            completed = replace(
+                item,
+                category="exam",
+                type="exam",
+                record_status="completed",
+                completion_reason=item.completion_reason or "past_due",
+            )
+            if record_exam(completed):
+                state.past_exams.append(completed)
             return
         key = (item.url, item.category)
         if key in seen_events:
@@ -401,9 +441,13 @@ def build_sync_state(
         if item.category == "help_desk":
             state.help_desk_items.append(item)
         elif item.category == "exam_candidate":
-            state.exam_candidates.append(item)
+            candidate = replace(item, record_status=item.record_status or "candidate")
+            record_exam(candidate)
+            state.exam_candidates.append(candidate)
         else:
-            state.exams.append(item)
+            active = replace(item, record_status=item.record_status or "active")
+            record_exam(active)
+            state.exams.append(active)
 
     for page in materialized_detail_pages:
         item, _reason = classify_detail_page(page, generated_at)
@@ -431,6 +475,8 @@ def build_sync_state(
     state.assignment_candidates.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.exams.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.exam_candidates.sort(key=lambda item: (item.sync_due, item.course, item.title))
+    state.past_exams.sort(key=lambda item: (item.sync_due, item.course, item.title))
+    state.exam_records.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state.help_desk_items.sort(key=lambda item: (item.sync_due, item.course, item.title))
     state = dedupe_state(state)
     state = apply_overrides(
