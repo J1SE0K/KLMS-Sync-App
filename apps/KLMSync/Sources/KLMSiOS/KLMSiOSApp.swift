@@ -4141,7 +4141,7 @@ private struct MailPasteInputBox: View {
 
 private func companionMailThemeAccent(for colorScheme: ColorScheme) -> Color {
     colorScheme == .dark
-        ? Color(red: 0.498, green: 0.655, blue: 0.969)
+        ? Color(red: 0.620, green: 0.690, blue: 0.800)
         : Color(red: 0.141, green: 0.341, blue: 0.651)
 }
 
@@ -9357,8 +9357,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.055, green: 0.067, blue: 0.086, alpha: 1.0)
-                : UIColor(red: 0.941, green: 0.957, blue: 0.976, alpha: 1.0)
+                ? UIColor(red: 0.027, green: 0.031, blue: 0.043, alpha: 1.0)
+                : UIColor(red: 0.976, green: 0.984, blue: 0.992, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: .windowBackgroundColor)
@@ -9371,7 +9371,7 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.090, green: 0.106, blue: 0.133, alpha: 1.0)
+                ? UIColor(red: 0.063, green: 0.067, blue: 0.086, alpha: 1.0)
                 : UIColor(red: 1.000, green: 1.000, blue: 1.000, alpha: 1.0)
         })
         #elseif canImport(AppKit)
@@ -9385,8 +9385,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.125, green: 0.149, blue: 0.200, alpha: 1.0)
-                : UIColor(red: 0.895, green: 0.918, blue: 0.945, alpha: 1.0)
+                ? UIColor(red: 0.094, green: 0.102, blue: 0.133, alpha: 1.0)
+                : UIColor(red: 0.925, green: 0.945, blue: 0.969, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: .quaternaryLabelColor).opacity(0.14)
@@ -9399,7 +9399,7 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.188, green: 0.224, blue: 0.290, alpha: 1.0)
+                ? UIColor(red: 0.165, green: 0.180, blue: 0.210, alpha: 1.0)
                 : UIColor(red: 0.690, green: 0.741, blue: 0.808, alpha: 1.0)
         })
         #elseif canImport(AppKit)
@@ -9413,7 +9413,7 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.498, green: 0.655, blue: 0.969, alpha: 1.0)
+                ? UIColor(red: 0.620, green: 0.690, blue: 0.800, alpha: 1.0)
                 : UIColor(red: 0.141, green: 0.341, blue: 0.651, alpha: 1.0)
         })
         #elseif canImport(AppKit)
@@ -9427,8 +9427,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.095, green: 0.157, blue: 0.271, alpha: 1.0)
-                : UIColor(red: 0.850, green: 0.894, blue: 0.965, alpha: 1.0)
+                ? UIColor(red: 0.100, green: 0.112, blue: 0.133, alpha: 1.0)
+                : UIColor(red: 0.898, green: 0.929, blue: 0.980, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color.klmsCommandAccent.opacity(0.10)
@@ -9441,7 +9441,7 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.188, green: 0.224, blue: 0.290, alpha: 1.0)
+                ? UIColor(red: 0.165, green: 0.180, blue: 0.210, alpha: 1.0)
                 : UIColor(red: 0.620, green: 0.700, blue: 0.820, alpha: 1.0)
         })
         #else
