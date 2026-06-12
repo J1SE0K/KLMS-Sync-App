@@ -4098,7 +4098,7 @@ private extension Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
-                ? NSColor(red: 0.886, green: 0.824, blue: 0.667, alpha: 1.0)
+                ? NSColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
                 : NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
     }
