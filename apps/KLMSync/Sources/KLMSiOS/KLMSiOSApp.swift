@@ -7354,7 +7354,7 @@ private struct RemoteCommandPanel: View {
                         .font(.headline.weight(.semibold))
                     Text(kind.engineCommand.shortDescription)
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.84))
+                        .foregroundStyle(.white.opacity(0.90))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -7366,7 +7366,7 @@ private struct RemoteCommandPanel: View {
             .frame(maxWidth: .infinity, minHeight: compact ? 58 : 64, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color.klmsCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.klmsCommandButtonBorder, lineWidth: 1)
@@ -9477,6 +9477,25 @@ private extension Color {
         })
         #else
         Color.black.opacity(0.82)
+        #endif
+    }
+
+    static var klmsPrimaryCommandButtonBackground: Color {
+        #if canImport(UIKit)
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.260, alpha: 1.0)
+                : UIColor(white: 0.220, alpha: 1.0)
+        })
+        #elseif canImport(AppKit)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.260, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.220, alpha: 1.0)
+        })
+        #else
+        Color.black.opacity(0.76)
         #endif
     }
 

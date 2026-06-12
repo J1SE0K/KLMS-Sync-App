@@ -2669,7 +2669,7 @@ private struct CommandPanelView: View {
                         .font(.caption)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                        .foregroundStyle(.white.opacity(0.84))
+                        .foregroundStyle(.white.opacity(0.90))
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "play.fill")
@@ -2679,7 +2679,7 @@ private struct CommandPanelView: View {
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color.klmsMacCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.klmsMacCommandButtonBorder, lineWidth: 1)
@@ -4090,6 +4090,15 @@ private extension Color {
             return isDark
                 ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
                 : NSColor(calibratedWhite: 0.190, alpha: 1.0)
+        })
+    }
+
+    static var klmsMacPrimaryCommandButtonBackground: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.260, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.220, alpha: 1.0)
         })
     }
 
