@@ -4026,7 +4026,7 @@ private extension Color {
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
                 ? NSColor(calibratedWhite: 0.010, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.965, alpha: 1.0)
+                : NSColor(red: 0.969, green: 0.969, blue: 0.957, alpha: 1.0)
         })
     }
 
@@ -4044,7 +4044,7 @@ private extension Color {
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
                 ? NSColor(calibratedWhite: 0.120, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.910, alpha: 1.0)
+                : NSColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
         })
     }
 
@@ -4053,7 +4053,7 @@ private extension Color {
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
                 ? NSColor(calibratedWhite: 0.200, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.860, alpha: 1.0)
+                : NSColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
         })
     }
 
@@ -4062,7 +4062,7 @@ private extension Color {
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
                 ? NSColor(calibratedWhite: 0.980, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.050, alpha: 1.0)
+                : NSColor(red: 0.082, green: 0.082, blue: 0.082, alpha: 1.0)
         })
     }
 
@@ -4071,7 +4071,7 @@ private extension Color {
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
                 ? NSColor(calibratedWhite: 0.200, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.860, alpha: 1.0)
+                : NSColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
         })
     }
 
@@ -4080,7 +4080,7 @@ private extension Color {
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
                 ? NSColor(calibratedWhite: 0.360, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.550, alpha: 1.0)
+                : NSColor(red: 0.847, green: 0.835, blue: 0.800, alpha: 1.0)
         })
     }
 
@@ -4089,7 +4089,7 @@ private extension Color {
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
                 ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.190, alpha: 1.0)
+                : NSColor(red: 0.188, green: 0.204, blue: 0.227, alpha: 1.0)
         })
     }
 
@@ -4120,7 +4120,7 @@ private extension Color {
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
                 ? NSColor(calibratedWhite: 0.420, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.120, alpha: 1.0)
+                : NSColor(red: 0.082, green: 0.082, blue: 0.082, alpha: 1.0)
         })
     }
 
@@ -4129,7 +4129,7 @@ private extension Color {
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
                 ? NSColor(calibratedWhite: 0.260, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.760, alpha: 1.0)
+                : NSColor(red: 0.847, green: 0.835, blue: 0.800, alpha: 1.0)
         })
     }
 }

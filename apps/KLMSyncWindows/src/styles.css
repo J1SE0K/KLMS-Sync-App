@@ -1,22 +1,22 @@
 :root {
   color-scheme: light;
-  --bg: #f5f7fb;
+  --bg: #f7f7f4;
   --panel: #ffffff;
-  --panel-soft: #eef3f8;
-  --line: #d7e0ea;
-  --text: #17212f;
-  --muted: #66758a;
+  --panel-soft: #f0f0eb;
+  --line: #d8d5cc;
+  --text: #151515;
+  --muted: #6b6760;
   --accent: #c8b892;
   --accent-ink: #0e0d0a;
   --neutral-button: #30343a;
-  --active-bg: #eef3f8;
-  --active-border: #b8c4d0;
+  --active-bg: #f0f0eb;
+  --active-border: #d8d5cc;
   --blue: #2266d2;
   --green: #16845f;
   --orange: #c96a14;
   --purple: #7b4dc7;
   --red: #c64040;
-  --shadow: 0 12px 28px rgba(28, 42, 67, 0.10);
+  --shadow: 0 12px 28px rgba(21, 21, 21, 0.08);
 }
 
 * {
@@ -99,7 +99,7 @@ label {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #f7fafc;
+  background: var(--panel-soft);
   color: var(--text);
 }
 
@@ -133,7 +133,7 @@ label {
   height: 100vh;
   overflow: auto;
   padding: 20px;
-  background: #eaf0f7;
+  background: var(--panel-soft);
   border-right: 1px solid var(--line);
 }
 
@@ -155,7 +155,7 @@ label {
   width: 46px;
   height: 46px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #2459c8, #24a37b);
+  background: #30343a;
   color: #fff;
   font-size: 23px;
   font-weight: 900;
@@ -643,7 +643,7 @@ label {
   max-width: 420px;
   padding: 12px 14px;
   border-radius: 8px;
-  background: #17212f;
+  background: #30343a;
   color: #fff;
   box-shadow: var(--shadow);
   font-weight: 700;

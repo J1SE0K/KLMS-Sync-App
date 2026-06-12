@@ -9370,7 +9370,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.010, alpha: 1.0)
-                : UIColor(white: 0.965, alpha: 1.0)
+                : UIColor(red: 0.969, green: 0.969, blue: 0.957, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: .windowBackgroundColor)
@@ -9398,7 +9398,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.120, alpha: 1.0)
-                : UIColor(white: 0.910, alpha: 1.0)
+                : UIColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: .quaternaryLabelColor).opacity(0.14)
@@ -9412,7 +9412,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.260, alpha: 1.0)
-                : UIColor(white: 0.760, alpha: 1.0)
+                : UIColor(red: 0.847, green: 0.835, blue: 0.800, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color.black.opacity(0.05)
@@ -9426,7 +9426,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.980, alpha: 1.0)
-                : UIColor(white: 0.050, alpha: 1.0)
+                : UIColor(red: 0.082, green: 0.082, blue: 0.082, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(red: 0.090, green: 0.090, blue: 0.090)
@@ -9440,7 +9440,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.200, alpha: 1.0)
-                : UIColor(white: 0.860, alpha: 1.0)
+                : UIColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color.klmsCommandAccent.opacity(0.10)
@@ -9454,7 +9454,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.360, alpha: 1.0)
-                : UIColor(white: 0.550, alpha: 1.0)
+                : UIColor(red: 0.847, green: 0.835, blue: 0.800, alpha: 1.0)
         })
         #else
         Color.klmsCommandAccent.opacity(0.30)
@@ -9466,7 +9466,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.230, alpha: 1.0)
-                : UIColor(white: 0.190, alpha: 1.0)
+                : UIColor(red: 0.188, green: 0.204, blue: 0.227, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -9525,7 +9525,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.420, alpha: 1.0)
-                : UIColor(white: 0.120, alpha: 1.0)
+                : UIColor(red: 0.082, green: 0.082, blue: 0.082, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
