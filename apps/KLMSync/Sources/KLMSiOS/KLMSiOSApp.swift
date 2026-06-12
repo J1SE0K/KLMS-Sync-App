@@ -9483,13 +9483,16 @@ private extension Color {
     static var klmsPrimaryCommandButtonBackground: Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
-            _ = traits
-            return UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.847, green: 0.780, blue: 0.631, alpha: 1.0)
+                : UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
-            _ = appearance
-            return NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(red: 0.847, green: 0.780, blue: 0.631, alpha: 1.0)
+                : NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
         #else
         Color(red: 0.784, green: 0.722, blue: 0.573)
