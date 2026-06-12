@@ -76,62 +76,43 @@ struct SettingsView: View {
                     }
                 }
                 configToggle(
-                    "백그라운드 실행 허용",
+                    "앱이 앞에 없어도 로그인 보조",
                     .loginAssistAllowNoninteractive,
                     defaultValue: true,
-                    description: "자동 실행이나 iPhone 요청처럼 앱 창이 앞에 없을 때도 로그인 보조를 허용합니다."
+                    description: "자동 실행이나 iPhone 요청처럼 KLMS Sync 창이 앞에 없을 때도 로그인 확인과 인증번호 표시를 허용합니다."
                 )
             }
             Section {
-                SettingsHelpText("인증번호 표시와 로그인 보조 설정은 이 화면에서만 관리합니다. 동기화 중 필요한 인증번호는 대시보드 상단에 바로 표시됩니다.")
+                SettingsHelpText("동기화 중 인증번호가 필요하면 대시보드 맨 위에 바로 표시됩니다.")
             }
         }
     }
 
     private var syncSettings: some View {
         settingsForm {
-            Section("자동 실행") {
-                configToggle(
-                    "자동 실행",
-                    .autoSyncEnabled,
-                    description: "Mac이 켜져 있고 사용자 세션이 살아 있을 때 자동 실행 서비스가 주기적으로 동기화를 시도합니다."
-                )
-                configText(
-                    "동기화 주기(초)",
-                    .syncIntervalSeconds,
-                    description: "자동 실행이 다음 실행 여부를 확인하는 간격입니다. 수동 실행 버튼에는 영향을 주지 않습니다."
-                )
-                configText(
-                    "유휴 조건(초)",
-                    .minIdleSeconds,
-                    description: "키보드나 마우스를 이 시간 이상 사용하지 않았을 때만 자동 실행을 허용합니다."
-                )
-                configToggle(
-                    "사용자 활동 시 자동실행 중단",
-                    .syncAbortOnUserActivity,
-                    description: "자동 동기화 중 사용자가 Mac을 다시 사용하면 Safari와 Notes가 방해되지 않도록 실행을 멈춥니다."
-                )
-                configText(
-                    "중단 유휴 기준(초)",
-                    .syncActiveAbortIdleSeconds,
-                    description: "자동 실행 중 사용자 활동으로 판단할 기준입니다. 값이 작을수록 더 빨리 중단합니다."
-                )
-            }
-
             Section("실행 방식") {
-                described("자동은 캐시와 변경 여부를 보고 필요한 범위를 고릅니다. 빠르게는 기존 데이터를 우선 재사용하고, 전체는 가능한 데이터를 다시 읽습니다.") {
+                described("자동은 캐시와 변경 여부를 보고 필요한 범위를 고릅니다. 빠른 모드는 기존 데이터를 우선 재사용하고, 전체는 가능한 데이터를 다시 읽습니다.") {
                     Picker("동기화 모드", selection: binding(.syncMode, defaultValue: "auto")) {
                         Text("자동").tag("auto")
-                        Text("빠르게").tag("quick")
+                        Text("빠른 모드").tag("quick")
                         Text("전체").tag("full")
                     }
                 }
                 configToggle(
+                    "캘린더 내용이 같으면 건너뛰기",
+                    .calendarSkipUnchangedDesired,
+                    defaultValue: true,
+                    description: "시험과 헬프데스크 일정이 이미 같으면 Calendar 이벤트를 다시 쓰지 않습니다."
+                )
+            }
+
+            Section("Safari 자동화") {
+                configToggle(
                     "Safari 백그라운드 창 사용",
                     .safariBackgroundWindowEnabled,
-                    description: "KLMS를 읽을 때 사용하는 Safari 전용 창을 최소화해서 작업 화면을 방해하지 않게 합니다."
+                    description: "KLMS를 읽을 때 쓰는 전용 Safari 창을 최소화해 현재 작업 화면을 덜 가리게 합니다."
                 )
-                described("옆으로 치우는 방식은 사용하지 않습니다. 앱은 KLMS 전용 Safari 창을 만들고 최소화한 상태로 재사용합니다.") {
+                described("옆으로 치우는 방식은 쓰지 않습니다. KLMS 전용 Safari 창을 만들고, 필요할 때 최소화한 채 재사용합니다.") {
                     Picker("Safari 백그라운드 방식", selection: binding(.safariBackgroundWindowMode, defaultValue: "minimize")) {
                         Text("최소화").tag("minimize")
                         Text("사용 안 함").tag("none")
@@ -142,11 +123,33 @@ struct SettingsView: View {
                     .safariReuseExistingWindowEnabled,
                     description: "사용자가 쓰는 Safari 창 대신 KLMS Sync 전용 창을 다음 실행에서도 재사용합니다."
                 )
+            }
+
+            Section("자동 실행") {
                 configToggle(
-                    "캘린더 내용 같으면 건너뛰기",
-                    .calendarSkipUnchangedDesired,
-                    defaultValue: true,
-                    description: "시험과 헬프데스크 일정이 이미 같으면 캘린더 이벤트를 다시 쓰지 않습니다."
+                    "자동 실행",
+                    .autoSyncEnabled,
+                    description: "Mac이 켜져 있고 사용자 세션이 살아 있을 때, 자동 실행 서비스가 정해진 주기로 동기화를 시도합니다."
+                )
+                configText(
+                    "자동 실행 주기(초)",
+                    .syncIntervalSeconds,
+                    description: "자동 실행 서비스가 얼마나 자주 깨어날지 정합니다. 위쪽의 수동 실행 버튼에는 영향을 주지 않습니다."
+                )
+                configText(
+                    "Mac을 쓰지 않은 시간(초)",
+                    .minIdleSeconds,
+                    description: "키보드나 마우스를 이 시간 이상 사용하지 않았을 때만 자동 실행합니다."
+                )
+                configToggle(
+                    "사용 중이면 자동 실행 중단",
+                    .syncAbortOnUserActivity,
+                    description: "자동 동기화 중 사용자가 Mac을 다시 쓰기 시작하면 Safari와 Notes가 방해되지 않도록 실행을 멈춥니다."
+                )
+                configText(
+                    "중단 기준 시간(초)",
+                    .syncActiveAbortIdleSeconds,
+                    description: "자동 실행 중 사용자 활동으로 볼 기준입니다. 값이 작을수록 더 빨리 멈춥니다."
                 )
             }
         }
@@ -154,7 +157,7 @@ struct SettingsView: View {
 
     private var noticeSettings: some View {
         settingsForm {
-            Section("메모") {
+            Section("메모 이름") {
                 configText(
                     "공지 메모",
                     .noticeNoteName,
@@ -165,33 +168,36 @@ struct SettingsView: View {
                     .noticeArchiveNoteName,
                     description: "읽음 처리한 공지를 따로 모아 둘 Apple Notes 메모 이름입니다."
                 )
+            }
+
+            Section("메모 업데이트") {
                 configToggle(
                     "숨긴 공지는 메모에서 제외",
                     .noticeHideHiddenItems,
                     defaultValue: true,
-                    description: "앱에서 숨긴 공지는 Notes 메모에 쓰지 않습니다. KLMS 원본은 건드리지 않습니다."
+                    description: "앱에서 숨긴 공지는 Notes 메모에 쓰지 않습니다. KLMS 원본 공지는 그대로 둡니다."
                 )
                 configInvertedToggle(
                     "변경 없어도 공지 메모 다시 쓰기",
                     .noticeStableNoopSkip,
                     defaultValue: true,
-                    description: "동기화할 때마다 Notes 체크리스트 상태를 다시 읽어 읽음/중요 표시를 유지합니다. 공지 내용이 같아도 Notes 서식을 다시 적용하면 조금 느릴 수 있지만 깨진 서식을 복구하는 데 도움이 됩니다."
+                    description: "공지 내용이 같아도 Notes 서식을 다시 적용합니다. 조금 느릴 수 있지만, 깨진 체크리스트나 접기 서식을 복구할 때 도움이 됩니다."
                 )
             }
 
             Section {
-                SettingsHelpText("공지 메모는 체크리스트와 문단 구분을 기본 서식으로 사용합니다. 읽음/중요 상태는 항상 동기화합니다. 메모 자체를 건드리지 않으려면 실행 화면에서 '공지 메모도 업데이트'를 끄세요.")
+                SettingsHelpText("읽음/중요 표시는 항상 동기화합니다. Notes 메모 자체를 건드리고 싶지 않을 때는 실행 화면에서 ‘공지 메모도 업데이트’를 끄면 됩니다.")
             }
         }
     }
 
     private var fileSettings: some View {
         settingsForm {
-            Section("탐색") {
-                described("자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠르게는 기존 캐시 재사용을 우선합니다.") {
+            Section("파일 확인") {
+                described("자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠른 모드는 기존 캐시 재사용을 우선합니다.") {
                     Picker("파일 탐색 모드", selection: sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick"])) {
                         Text("자동").tag("auto")
-                        Text("빠르게").tag("quick")
+                        Text("빠른 모드").tag("quick")
                     }
                 }
                 configToggle(
@@ -200,25 +206,15 @@ struct SettingsView: View {
                     defaultValue: true,
                     description: "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다."
                 )
-            }
-
-            Section("저장") {
-                configToggle(
-                    "새 다운로드 임시 폴더 유지",
-                    .fileKeepFreshDownloads,
-                    description: "이번 실행에서 새로 받은 파일의 임시 복사본을 정리하지 않고 남깁니다."
-                )
                 configToggle(
                     "주차/출처 폴더 사용",
                     .fileWeeklyFoldersEnabled,
                     defaultValue: true,
-                    description: "파일 목록을 과목, 주차 같은 KLMS 출처 구조에 맞춰 정리합니다."
+                    description: "파일을 과목, 주차 같은 KLMS 출처 구조에 맞춰 정리합니다."
                 )
-                configToggle(
-                    "임시 다운로드 보관",
-                    .filePreserveDownloadArchive,
-                    description: "다운로드 중간 파일을 보존합니다. 문제를 분석할 때는 도움이 되지만 저장 공간을 더 사용합니다."
-                )
+            }
+
+            Section("저장 위치") {
                 configText(
                     "새 파일 보관함",
                     .fileNewFilesRoot,
@@ -231,24 +227,28 @@ struct SettingsView: View {
                 )
             }
 
+            Section("문제 분석용 보관") {
+                configToggle(
+                    "새 다운로드 임시 폴더 유지",
+                    .fileKeepFreshDownloads,
+                    description: "이번 실행에서 새로 받은 파일의 임시 복사본을 정리하지 않고 남깁니다."
+                )
+                configToggle(
+                    "임시 다운로드 보관",
+                    .filePreserveDownloadArchive,
+                    description: "다운로드 중간 파일을 보존합니다. 문제를 분석할 때는 도움이 되지만 저장 공간을 더 사용합니다."
+                )
+            }
+
             Section {
-                SettingsHelpText("기본적으로 새로 확인됐거나 변경된 파일만 처리합니다. KLMS 원본 파일은 삭제하지 않으며, 앱의 숨김/휴지통 처리는 Mac 로컬 상태에만 적용됩니다.")
+                SettingsHelpText("기본적으로 KLMS 등록 시각과 로컬 파일 상태가 달라진 파일만 처리합니다. KLMS 원본 파일은 삭제하지 않고, 앱의 숨김/휴지통 처리는 Mac 로컬 상태에만 적용됩니다.")
             }
         }
     }
 
     private var relaySettings: some View {
         settingsForm {
-            Section("서버 릴레이") {
-                described("iPhone/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다.") {
-                    Toggle(
-                        "서버 릴레이 사용",
-                        isOn: Binding(
-                            get: { model.serverRelayEnabled },
-                            set: { model.setServerRelayEnabled($0) }
-                        )
-                    )
-                }
+            Section("연결 정보") {
                 described("Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.") {
                     TextField(
                         "서버 URL",
@@ -276,13 +276,25 @@ struct SettingsView: View {
                         )
                     )
                 }
+            }
+
+            Section("릴레이 동작") {
+                described("iPhone/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다.") {
+                    Toggle(
+                        "서버 릴레이 사용",
+                        isOn: Binding(
+                            get: { model.serverRelayEnabled },
+                            set: { model.setServerRelayEnabled($0) }
+                        )
+                    )
+                }
                 LabeledContent("서버 상태") {
                     Text(model.serverRelayStatusMessage ?? "대기 중")
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Section("연결") {
+            Section("연결 확인") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Button("붙여넣기") {

@@ -727,6 +727,70 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(runScreen.contains("RemoteChangeSummaryPanel"))
     }
 
+    func testFileCleanupCardsRequireActualCleanupDetails() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let macRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
+        let macDetail = packageRoot.appendingPathComponent("Sources/KLMSMac/DashboardDetailView.swift")
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let mac = try String(contentsOf: macRoot, encoding: .utf8)
+        let detail = try String(contentsOf: macDetail, encoding: .utf8)
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+
+        XCTAssertTrue(mac.contains("snapshot.cleanupResult?.actions.filter { $0.action == \"deleted\" }.count ?? 0"))
+        XCTAssertFalse(mac.contains("let prunedCount = report?.files.pruned ?? 0"))
+        XCTAssertTrue(mac.contains("Metric(\"정리된 파일\", prunedCount, detail: .pruned)"))
+        XCTAssertTrue(detail.contains("case .pruned:"))
+        XCTAssertTrue(detail.contains("\"정리된 파일\""))
+        XCTAssertTrue(detail.contains("정리된 파일 기록이 없습니다."))
+        XCTAssertFalse(detail.contains("\"삭제된 파일\""))
+
+        XCTAssertTrue(ios.contains("private var hasFileCleanupDetails"))
+        XCTAssertTrue(ios.contains("if hasVisibleChangeSummary"))
+        XCTAssertTrue(ios.contains("hasFileCleanupDetails: hasFileCleanupDetails"))
+        XCTAssertTrue(ios.contains("guard kind != .fileCleanup || hasFileCleanupDetails else { return nil }"))
+    }
+
+    func testSettingsPanelsAreGroupedAndUseNaturalKoreanCopy() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let macSettingsRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/SettingsView.swift")
+        let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let macSettings = try String(contentsOf: macSettingsRoot, encoding: .utf8)
+        let macModel = try String(contentsOf: macModelRoot, encoding: .utf8)
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+
+        XCTAssertTrue(macSettings.contains("Section(\"실행 방식\")"))
+        XCTAssertTrue(macSettings.contains("Section(\"Safari 자동화\")"))
+        XCTAssertTrue(macSettings.contains("Section(\"자동 실행\")"))
+        XCTAssertTrue(macSettings.contains("Section(\"파일 확인\")"))
+        XCTAssertTrue(macSettings.contains("Section(\"저장 위치\")"))
+        XCTAssertTrue(macSettings.contains("Section(\"문제 분석용 보관\")"))
+        XCTAssertTrue(macSettings.contains("Section(\"연결 정보\")"))
+        XCTAssertTrue(macSettings.contains("Section(\"릴레이 동작\")"))
+        XCTAssertTrue(macSettings.contains("Section(\"연결 확인\")"))
+        XCTAssertFalse(macSettings.contains("백그라운드 실행 허용"))
+        XCTAssertFalse(macSettings.contains("동기화 주기(초)"))
+        XCTAssertFalse(macSettings.contains("빠르게"))
+
+        XCTAssertTrue(macModel.contains("앱이 앞에 없어도 로그인 보조"))
+        XCTAssertTrue(macModel.contains("자동 실행 주기(초)"))
+        XCTAssertTrue(macModel.contains("Mac을 쓰지 않은 시간(초)"))
+        XCTAssertTrue(macModel.contains("공지 내용이 같으면 메모 다시 쓰지 않기"))
+
+        XCTAssertTrue(ios.contains("private struct RemoteSettingGroup"))
+        XCTAssertTrue(ios.contains("RemoteSettingGroupSection"))
+        XCTAssertTrue(ios.contains("\"Safari\""))
+        XCTAssertTrue(ios.contains("\"공지 메모\""))
+        XCTAssertTrue(ios.contains("\"자동 실행\""))
+        XCTAssertFalse(ios.contains("Text(setting.key)"))
+    }
+
     func testMacAndIOSUseDedicatedLogScreensForRequestHistory() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

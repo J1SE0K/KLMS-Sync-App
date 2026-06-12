@@ -2974,10 +2974,11 @@ private struct RemoteStatusHeader: View {
             metricSection("주요 항목", categories: primaryMetricCategories)
             metricSection("확인 필요", categories: attentionMetricCategories)
 
-            if model.status.hasCompanionChangeSummary {
+            if hasVisibleChangeSummary {
                 Divider()
                 RemoteDashboardChangeSummary(
                     status: displayStatus,
+                    hasFileCleanupDetails: hasFileCleanupDetails,
                     selectedKind: selectedChangeSummary,
                     onSelect: onChangeSummaryTap
                 )
@@ -3042,6 +3043,20 @@ private struct RemoteStatusHeader: View {
             .quarantine,
             .calendar,
         ].filter { $0.value(from: displayStatus) > 0 }
+    }
+
+    private var hasFileCleanupDetails: Bool {
+        model.dryRunReports.contains { report in
+            report.scope == "files"
+                && (report.wouldPrune > 0 || report.wouldPruneCourseFiles > 0 || report.wouldPruneArchive > 0 || report.wouldDelete > 0)
+        }
+    }
+
+    private var hasVisibleChangeSummary: Bool {
+        RemoteChangeSummaryKind.allCases.contains { kind in
+            guard kind.value(from: displayStatus) > 0 else { return false }
+            return kind != .fileCleanup || hasFileCleanupDetails
+        }
     }
 
     private var statusTitle: String {
@@ -3302,6 +3317,7 @@ private struct RemoteChangeSummaryEntry: Identifiable {
 
 private struct RemoteDashboardChangeSummary: View {
     var status: SanitizedRemoteStatus
+    var hasFileCleanupDetails: Bool
     var selectedKind: RemoteChangeSummaryKind?
     var onSelect: (RemoteChangeSummaryKind) -> Void
 
@@ -3309,6 +3325,7 @@ private struct RemoteDashboardChangeSummary: View {
         RemoteChangeSummaryKind.allCases.compactMap { kind in
             let value = kind.value(from: status)
             guard value > 0 else { return nil }
+            guard kind != .fileCleanup || hasFileCleanupDetails else { return nil }
             return RemoteChangeSummaryEntry(kind: kind, value: value)
         }
     }
@@ -7956,17 +7973,21 @@ private struct RemoteSettingsPanel: View {
     @ObservedObject var model: CompanionModel
     @State private var isExpanded = false
 
+    private var settingGroups: [RemoteSettingGroup] {
+        RemoteSettingGroup.grouped(settings: model.remoteSettings)
+    }
+
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 8) {
-                CompanionSettingHelpText("여기에서 바꾼 값은 서버 요청으로 올라가고, Mac 앱이 받아서 설정 파일(config.env)에 반영합니다. 알 수 없는 설정이나 개인정보처럼 보이는 값은 Mac 쪽에서 거부합니다.")
+                CompanionSettingHelpText("여기에서 바꾼 값은 서버 요청으로 올라가고, Mac 앱이 확인한 뒤 config.env에 반영합니다. 알 수 없는 설정이나 개인정보처럼 보이는 값은 Mac 쪽에서 거부합니다.")
                 if model.remoteSettings.isEmpty {
-                    Text("Mac이 설정 목록을 서버에 올리면 여기에서 일부 설정을 바꿀 수 있습니다.")
+                    Text("Mac 앱이 설정 목록을 서버에 올리면 여기에서 일부 설정을 바꿀 수 있습니다.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(model.remoteSettings) { setting in
-                        RemoteSettingRow(setting: setting, model: model)
+                    ForEach(settingGroups) { group in
+                        RemoteSettingGroupSection(group: group, model: model)
                     }
                 }
             }
@@ -7984,6 +8005,104 @@ private struct RemoteSettingsPanel: View {
         .padding(12)
         .background(.quinary)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct RemoteSettingGroup: Identifiable {
+    var title: String
+    var systemImage: String
+    var detail: String
+    var settings: [ServerRelaySetting]
+
+    var id: String { title }
+
+    static func grouped(settings: [ServerRelaySetting]) -> [RemoteSettingGroup] {
+        let byKey = Dictionary(settings.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
+        var used = Set<String>()
+        let specs: [(String, String, String, [String])] = [
+            (
+                "로그인",
+                "person.badge.key",
+                "로그인 확인과 인증번호 표시 방식을 정합니다.",
+                ["KLMS_LOGIN_ASSIST_ENABLED", "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE"]
+            ),
+            (
+                "실행",
+                "arrow.triangle.2.circlepath",
+                "동기화 범위와 Calendar 반영 방식을 정합니다.",
+                ["SYNC_MODE", "CALENDAR_SKIP_UNCHANGED_DESIRED"]
+            ),
+            (
+                "Safari",
+                "safari",
+                "KLMS를 읽을 때 쓰는 전용 Safari 창의 동작을 정합니다.",
+                ["KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "KLMS_SAFARI_BACKGROUND_WINDOW_MODE", "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED"]
+            ),
+            (
+                "파일",
+                "folder",
+                "파일 탐색, 다운로드 건너뛰기, 폴더 정리 방식을 정합니다.",
+                ["FILE_REFRESH_MODE", "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY", "FILE_WEEKLY_FOLDERS_ENABLED", "FILE_KEEP_FRESH_DOWNLOADS", "FILE_PRESERVE_DOWNLOAD_ARCHIVE"]
+            ),
+            (
+                "공지 메모",
+                "checklist",
+                "Notes 메모에 숨긴 공지를 쓸지, 변경 없는 메모를 다시 쓸지 정합니다.",
+                ["NOTICE_HIDE_HIDDEN_ITEMS", "NOTICE_NATIVE_STABLE_NOOP_SKIP"]
+            ),
+            (
+                "자동 실행",
+                "clock.arrow.circlepath",
+                "Mac이 혼자 동기화할 때의 주기와 중단 조건을 정합니다.",
+                ["KLMS_AUTO_SYNC_ENABLED", "SYNC_INTERVAL_SECONDS", "MIN_IDLE_SECONDS", "SYNC_ABORT_ON_USER_ACTIVITY", "SYNC_ACTIVE_ABORT_IDLE_SECONDS"]
+            ),
+        ]
+
+        var groups: [RemoteSettingGroup] = specs.compactMap { spec in
+            let (title, systemImage, detail, keys) = spec
+            let groupSettings = keys.compactMap { key -> ServerRelaySetting? in
+                guard let setting = byKey[key] else { return nil }
+                used.insert(key)
+                return setting
+            }
+            guard !groupSettings.isEmpty else { return nil }
+            return RemoteSettingGroup(title: title, systemImage: systemImage, detail: detail, settings: groupSettings)
+        }
+
+        let extras = settings.filter { !used.contains($0.key) }
+        if !extras.isEmpty {
+            groups.append(
+                RemoteSettingGroup(
+                    title: "고급",
+                    systemImage: "slider.horizontal.3",
+                    detail: "기본 화면에 분류되지 않은 설정입니다.",
+                    settings: extras
+                )
+            )
+        }
+        return groups
+    }
+}
+
+private struct RemoteSettingGroupSection: View {
+    var group: RemoteSettingGroup
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(group.title, systemImage: group.systemImage)
+                .font(.subheadline.weight(.semibold))
+            CompanionSettingHelpText(group.detail)
+            ForEach(group.settings) { setting in
+                RemoteSettingRow(setting: setting, model: model)
+            }
+        }
+        .padding(10)
+        .background(.background, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(.quaternary, lineWidth: 1)
+        )
     }
 }
 
@@ -8922,9 +9041,6 @@ private struct RemoteSettingRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(setting.title)
                         .font(.subheadline.weight(.semibold))
-                    Text(setting.key)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                     if let detail = settingExplanation {
                         CompanionSettingHelpText(detail)
                     }
@@ -8995,13 +9111,13 @@ private struct RemoteSettingRow: View {
     private var settingExplanation: String? {
         switch setting.key {
         case "SYNC_INTERVAL_SECONDS":
-            return "자동 실행이 다음 실행 여부를 확인하는 간격입니다. iPhone/iPad에서 누르는 수동 실행에는 영향을 주지 않습니다."
+            return "자동 실행 서비스가 얼마나 자주 깨어날지 정합니다. iPhone/iPad에서 누르는 수동 실행에는 영향을 주지 않습니다."
         case "MIN_IDLE_SECONDS":
             return "Mac에서 키보드나 마우스를 이 시간 이상 사용하지 않았을 때만 자동 실행을 허용합니다."
         case "SYNC_MODE":
-            return "자동은 캐시와 변경 여부를 보고 필요한 범위를 고릅니다. 빠르게는 기존 데이터를 우선 재사용하고, 전체는 가능한 데이터를 다시 읽습니다."
+            return "자동은 캐시와 변경 여부를 보고 필요한 범위를 고릅니다. 빠른 모드는 기존 데이터를 우선 재사용하고, 전체는 가능한 데이터를 다시 읽습니다."
         case "FILE_REFRESH_MODE":
-            return "자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠르게는 기존 캐시 재사용을 우선합니다."
+            return "자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠른 모드는 기존 캐시 재사용을 우선합니다."
         case "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY":
             return "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다."
         case "FILE_WEEKLY_FOLDERS_ENABLED":
@@ -9009,13 +9125,13 @@ private struct RemoteSettingRow: View {
         case "NOTICE_HIDE_HIDDEN_ITEMS":
             return "숨긴 공지는 Notes 메모에 쓰지 않습니다. KLMS 원본 공지는 그대로 둡니다."
         case "NOTICE_NATIVE_STABLE_NOOP_SKIP":
-            return "동기화할 때마다 Notes 체크리스트 상태를 다시 읽어 읽음/중요 표시를 유지합니다. 변경이 없으면 메모 다시 쓰기는 건너뜁니다."
+            return "읽음/중요 표시는 유지하되, 공지 내용이 그대로면 Notes 메모를 다시 쓰지 않습니다."
         case "SYNC_ABORT_ON_USER_ACTIVITY":
             return "자동 동기화 중 사용자가 Mac을 다시 쓰기 시작하면 Safari와 Notes가 방해되지 않도록 실행을 멈춥니다."
         case "SYNC_ACTIVE_ABORT_IDLE_SECONDS":
-            return "사용자 활동으로 판단할 유휴 기준입니다. 값이 작을수록 자동 실행을 더 빨리 멈춥니다."
+            return "사용자 활동으로 판단할 기준 시간입니다. 값이 작을수록 자동 실행을 더 빨리 멈춥니다."
         case "KLMS_SAFARI_BACKGROUND_WINDOW_MODE":
-            return "Safari 자동화 창을 처리하는 방식입니다. 앱은 KLMS 전용 Safari 창을 최소화해 백그라운드에서 사용합니다."
+            return "KLMS 전용 Safari 창을 처리하는 방식입니다. 기본값은 최소화입니다."
         default:
             return nil
         }

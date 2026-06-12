@@ -45,7 +45,7 @@ enum DashboardDetailKind: String, CaseIterable, Identifiable {
         case .quarantine:
             "격리"
         case .pruned:
-            "삭제된 파일"
+            "정리된 파일"
         case .calendar:
             "캘린더"
         case .hidden:
@@ -2122,7 +2122,7 @@ private struct PrunedListView: View {
         let sortedDeleted = deleted.sorted(by: sortOption)
         let visibleDeleted = Array(sortedDeleted.prefix(visibleLimit))
         if deleted.isEmpty {
-            EmptyDetailText(text: "삭제된 파일 기록이 없습니다.")
+            EmptyDetailText(text: "정리된 파일 기록이 없습니다.")
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 FileSortPickerView(selection: $sortOption)

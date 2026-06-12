@@ -1921,7 +1921,7 @@ private struct DashboardSummaryView: View {
             let examCandidateCount = state?.examCandidates.count ?? 0
             let completedAssignmentCount = state?.completedAssignments.count ?? 0
             let localMissingFileCount = snapshot.verifyResult?.files?.missingFileCount ?? 0
-            let prunedCount = report?.files.pruned ?? 0
+            let prunedCount = snapshot.cleanupResult?.actions.filter { $0.action == "deleted" }.count ?? 0
             let hiddenCount = snapshot.hiddenSummary.total
             let primaryMetrics = [
                 Metric("과제", counts.assignments + model.mailDashboardItems(kind: "assignment").count, detail: .assignments),
@@ -1937,7 +1937,7 @@ private struct DashboardSummaryView: View {
                 Metric("과제 후보", assignmentCandidateCount, detail: .assignmentCandidates),
                 Metric("시험 후보", examCandidateCount, detail: .examCandidates),
                 Metric("누락 파일", localMissingFileCount, detail: .missingFiles),
-                Metric("삭제된 파일", prunedCount, detail: .pruned),
+                Metric("정리된 파일", prunedCount, detail: .pruned),
             ].filter { $0.value > 0 }
             let archiveMetrics = [
                 Metric("완료 기록", completedAssignmentCount, detail: .assignmentRecords),

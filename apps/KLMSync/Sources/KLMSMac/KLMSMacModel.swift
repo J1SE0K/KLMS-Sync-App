@@ -53,12 +53,12 @@ final class KLMSMacModel: ObservableObject {
 
     private static let serverRelayEditableSettings: [ServerRelaySettingDefinition] = [
         ServerRelaySettingDefinition(.loginAssistEnabled, title: "로그인 보조", valueKind: .bool, defaultValue: "1"),
-        ServerRelaySettingDefinition(.loginAssistAllowNoninteractive, title: "백그라운드 로그인 보조", valueKind: .bool, defaultValue: "1"),
+        ServerRelaySettingDefinition(.loginAssistAllowNoninteractive, title: "앱이 앞에 없어도 로그인 보조", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.autoSyncEnabled, title: "자동 실행", valueKind: .bool, defaultValue: "0"),
-        ServerRelaySettingDefinition(.syncIntervalSeconds, title: "동기화 주기(초)", valueKind: .number, defaultValue: "21600"),
-        ServerRelaySettingDefinition(.minIdleSeconds, title: "유휴 조건(초)", valueKind: .number, defaultValue: "0"),
-        ServerRelaySettingDefinition(.syncAbortOnUserActivity, title: "사용자 활동 시 자동실행 중단", valueKind: .bool, defaultValue: "0"),
-        ServerRelaySettingDefinition(.syncActiveAbortIdleSeconds, title: "중단 유휴 기준(초)", valueKind: .number, defaultValue: "0"),
+        ServerRelaySettingDefinition(.syncIntervalSeconds, title: "자동 실행 주기(초)", valueKind: .number, defaultValue: "21600"),
+        ServerRelaySettingDefinition(.minIdleSeconds, title: "Mac을 쓰지 않은 시간(초)", valueKind: .number, defaultValue: "0"),
+        ServerRelaySettingDefinition(.syncAbortOnUserActivity, title: "사용 중이면 자동 실행 중단", valueKind: .bool, defaultValue: "0"),
+        ServerRelaySettingDefinition(.syncActiveAbortIdleSeconds, title: "중단 기준 시간(초)", valueKind: .number, defaultValue: "0"),
         ServerRelaySettingDefinition(.safariBackgroundWindowEnabled, title: "Safari 백그라운드 창", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.safariBackgroundWindowMode, title: "Safari 백그라운드 방식", valueKind: .choice, defaultValue: "minimize", options: ["minimize", "none"]),
         ServerRelaySettingDefinition(.safariReuseExistingWindowEnabled, title: "KLMS Sync Safari 창 재사용", valueKind: .bool, defaultValue: "1"),
@@ -70,7 +70,7 @@ final class KLMSMacModel: ObservableObject {
         ServerRelaySettingDefinition(.fileWeeklyFoldersEnabled, title: "주차/출처 폴더 사용", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.filePreserveDownloadArchive, title: "임시 다운로드 보관", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.noticeHideHiddenItems, title: "숨긴 공지는 메모에서 제외", valueKind: .bool, defaultValue: "1"),
-        ServerRelaySettingDefinition(.noticeStableNoopSkip, title: "변경 없으면 공지 메모 건너뛰기", valueKind: .bool, defaultValue: "1"),
+        ServerRelaySettingDefinition(.noticeStableNoopSkip, title: "공지 내용이 같으면 메모 다시 쓰지 않기", valueKind: .bool, defaultValue: "1"),
     ]
 
     @Published var paths = KLMSPaths()
