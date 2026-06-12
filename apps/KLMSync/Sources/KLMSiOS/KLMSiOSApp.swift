@@ -9505,12 +9505,12 @@ private extension Color {
     static var klmsScreenBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.988, green: 0.988, blue: 0.980, alpha: 1.0),
+            light: UIColor(white: 0.982, alpha: 1.0),
             dark: UIColor(white: 0.010, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.988, green: 0.988, blue: 0.980, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.982, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.010, alpha: 1.0)
         )
         #else
@@ -9537,12 +9537,12 @@ private extension Color {
     static var klmsSubtleCardBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.964, green: 0.963, blue: 0.949, alpha: 1.0),
+            light: UIColor(white: 0.956, alpha: 1.0),
             dark: UIColor(white: 0.120, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.964, green: 0.963, blue: 0.949, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.956, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.120, alpha: 1.0)
         )
         #else
@@ -9553,12 +9553,12 @@ private extension Color {
     static var klmsBorder: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.812, green: 0.800, blue: 0.760, alpha: 1.0),
+            light: UIColor(white: 0.776, alpha: 1.0),
             dark: UIColor(white: 0.260, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.812, green: 0.800, blue: 0.760, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.776, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.260, alpha: 1.0)
         )
         #else
@@ -9585,12 +9585,12 @@ private extension Color {
     static var klmsCommandBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.952, green: 0.949, blue: 0.929, alpha: 1.0),
+            light: UIColor(white: 0.929, alpha: 1.0),
             dark: UIColor(white: 0.200, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.952, green: 0.949, blue: 0.929, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.929, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.200, alpha: 1.0)
         )
         #else
@@ -9601,12 +9601,12 @@ private extension Color {
     static var klmsCommandBorder: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.788, green: 0.776, blue: 0.733, alpha: 1.0),
+            light: UIColor(white: 0.690, alpha: 1.0),
             dark: UIColor(white: 0.360, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.788, green: 0.776, blue: 0.733, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.690, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.360, alpha: 1.0)
         )
         #else
@@ -9617,12 +9617,12 @@ private extension Color {
     static var klmsCommandButtonBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.180, green: 0.196, blue: 0.220, alpha: 1.0),
+            light: UIColor(white: 0.118, alpha: 1.0),
             dark: UIColor(white: 0.230, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.180, green: 0.196, blue: 0.220, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.118, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.230, alpha: 1.0)
         )
         #else
@@ -9633,12 +9633,12 @@ private extension Color {
     static var klmsPrimaryCommandButtonBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.847, green: 0.792, blue: 0.635, alpha: 1.0),
+            light: UIColor(red: 0.878, green: 0.819, blue: 0.631, alpha: 1.0),
             dark: UIColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.847, green: 0.792, blue: 0.635, alpha: 1.0),
+            light: NSColor(red: 0.878, green: 0.819, blue: 0.631, alpha: 1.0),
             dark: NSColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
         )
         #else
@@ -9657,12 +9657,12 @@ private extension Color {
     static var klmsPrimaryCommandButtonBorder: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.635, green: 0.557, blue: 0.353, alpha: 1.0),
+            light: UIColor(red: 0.612, green: 0.525, blue: 0.302, alpha: 1.0),
             dark: UIColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.635, green: 0.557, blue: 0.353, alpha: 1.0),
+            light: NSColor(red: 0.612, green: 0.525, blue: 0.302, alpha: 1.0),
             dark: NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
         )
         #else
@@ -9673,12 +9673,12 @@ private extension Color {
     static var klmsCommandButtonBorder: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
+            light: UIColor(white: 0.118, alpha: 1.0),
             dark: UIColor(white: 0.420, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.118, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.420, alpha: 1.0)
         )
         #else

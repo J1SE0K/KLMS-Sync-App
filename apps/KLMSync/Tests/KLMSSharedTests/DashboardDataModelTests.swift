@@ -713,15 +713,17 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(mac.contains("static func klmsMacAdaptiveColor(light: NSColor, dark: NSColor)"))
         XCTAssertTrue(mac.contains("var borderColor: Color = .klmsMacBorder"))
-        XCTAssertTrue(mac.contains("light: NSColor(red: 0.988, green: 0.988, blue: 0.980"))
+        XCTAssertTrue(mac.contains("light: NSColor(calibratedWhite: 0.982"))
         XCTAssertTrue(mac.contains("dark: NSColor(calibratedWhite: 0.010"))
-        XCTAssertTrue(mac.contains("light: NSColor(red: 0.847, green: 0.792, blue: 0.635"))
+        XCTAssertTrue(mac.contains("light: NSColor(red: 0.878, green: 0.819, blue: 0.631"))
+        XCTAssertTrue(mac.contains("light: NSColor(calibratedWhite: 0.118"))
 
         XCTAssertTrue(ios.contains("static func klmsAdaptiveColor(light: UIColor, dark: UIColor)"))
         XCTAssertTrue(ios.contains("static func klmsAppKitAdaptiveColor(light: NSColor, dark: NSColor)"))
-        XCTAssertTrue(ios.contains("light: UIColor(red: 0.988, green: 0.988, blue: 0.980"))
+        XCTAssertTrue(ios.contains("light: UIColor(white: 0.982"))
         XCTAssertTrue(ios.contains("dark: UIColor(white: 0.010"))
-        XCTAssertTrue(ios.contains("light: UIColor(red: 0.847, green: 0.792, blue: 0.635"))
+        XCTAssertTrue(ios.contains("light: UIColor(red: 0.878, green: 0.819, blue: 0.631"))
+        XCTAssertTrue(ios.contains("light: UIColor(white: 0.118"))
     }
 
     func testIOSStatusAndRunScreensDoNotDuplicatePrimaryControls() throws {
