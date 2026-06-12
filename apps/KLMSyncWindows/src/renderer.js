@@ -1,8 +1,8 @@
 const commands = [
   { kind: "fullSync", label: "전체 동기화", icon: "↻" },
+  { kind: "filesSync", label: "파일 동기화", icon: "□" },
   { kind: "coreSync", label: "과제/시험", icon: "✓" },
   { kind: "noticeSync", label: "공지 메모", icon: "⌑" },
-  { kind: "filesSync", label: "파일 동기화", icon: "□" },
   { kind: "report", label: "요약 갱신", icon: "↺" },
   { kind: "doctor", label: "진단", icon: "!" }
 ];
@@ -530,7 +530,7 @@ function renderAll() {
 function renderCommands() {
   $("commandButtons").replaceChildren(...commands.map((command) => {
     const button = document.createElement("button");
-    button.className = "secondary";
+    button.className = command.kind === "fullSync" ? "command-primary" : "secondary";
     button.textContent = `${command.icon} ${command.label}`;
     button.addEventListener("click", () => createCommand(command.kind));
     return button;

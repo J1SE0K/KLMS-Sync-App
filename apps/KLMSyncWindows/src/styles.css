@@ -258,6 +258,9 @@ label {
 .command-grid button {
   min-height: 46px;
   text-align: left;
+}
+
+.command-grid button.command-primary {
   background: var(--accent);
   color: var(--accent-ink);
 }

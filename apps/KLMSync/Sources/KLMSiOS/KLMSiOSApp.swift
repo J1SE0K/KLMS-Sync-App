@@ -7369,7 +7369,7 @@ private struct RemoteCommandPanel: View {
             .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.klmsCommandButtonBorder, lineWidth: 1)
+                    .stroke(Color.klmsPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -7401,7 +7401,7 @@ private struct RemoteCommandPanel: View {
                     .minimumScaleFactor(0.72)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .foregroundStyle(Color.klmsCommandButtonForeground)
+            .foregroundStyle(Color.klmsSecondaryCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: compact ? 54 : 60, alignment: .leading)
             .padding(.horizontal, 9)
             .padding(.vertical, 8)
@@ -9464,16 +9464,19 @@ private extension Color {
     static var klmsCommandButtonBackground: Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
-            _ = traits
-            return UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.230, alpha: 1.0)
+                : UIColor(white: 0.190, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
-            _ = appearance
-            return NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.190, alpha: 1.0)
         })
         #else
-        Color(red: 0.784, green: 0.722, blue: 0.573)
+        Color.black.opacity(0.82)
         #endif
     }
 
@@ -9497,7 +9500,11 @@ private extension Color {
         Color(red: 0.055, green: 0.049, blue: 0.039)
     }
 
-    static var klmsCommandButtonBorder: Color {
+    static var klmsSecondaryCommandButtonForeground: Color {
+        Color.white
+    }
+
+    static var klmsPrimaryCommandButtonBorder: Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             _ = traits
@@ -9510,6 +9517,25 @@ private extension Color {
         })
         #else
         Color(red: 0.500, green: 0.430, blue: 0.270)
+        #endif
+    }
+
+    static var klmsCommandButtonBorder: Color {
+        #if canImport(UIKit)
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.420, alpha: 1.0)
+                : UIColor(white: 0.120, alpha: 1.0)
+        })
+        #elseif canImport(AppKit)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.420, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.120, alpha: 1.0)
+        })
+        #else
+        Color.black.opacity(0.92)
         #endif
     }
 }

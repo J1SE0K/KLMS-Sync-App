@@ -2682,7 +2682,7 @@ private struct CommandPanelView: View {
             .background(Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.klmsMacCommandButtonBorder, lineWidth: 1)
+                    .stroke(Color.klmsMacPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -2707,9 +2707,9 @@ private struct CommandPanelView: View {
                     .minimumScaleFactor(0.70)
                 Text("실행")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacCommandButtonForeground.opacity(0.72))
+                    .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground.opacity(0.72))
             }
-            .foregroundStyle(Color.klmsMacCommandButtonForeground)
+            .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
             .padding(9)
             .background(Color.klmsMacCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
@@ -4086,8 +4086,10 @@ private extension Color {
 
     static var klmsMacCommandButtonBackground: Color {
         Color(nsColor: NSColor(name: nil) { appearance in
-            _ = appearance
-            return NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.190, alpha: 1.0)
         })
     }
 
@@ -4102,10 +4104,23 @@ private extension Color {
         Color(red: 0.055, green: 0.049, blue: 0.039)
     }
 
-    static var klmsMacCommandButtonBorder: Color {
+    static var klmsMacSecondaryCommandButtonForeground: Color {
+        Color.white
+    }
+
+    static var klmsMacPrimaryCommandButtonBorder: Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             _ = appearance
             return NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
+        })
+    }
+
+    static var klmsMacCommandButtonBorder: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.420, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.120, alpha: 1.0)
         })
     }
 
