@@ -107,6 +107,38 @@ public struct StateItem: Decodable, Sendable, Equatable, Identifiable {
 
     public var id: String { url.isEmpty ? "\(course)-\(title)-\(syncDue)" : url }
 
+    public init(
+        url: String = "",
+        type: String = "",
+        category: String = "",
+        course: String = "",
+        title: String = "",
+        due: String = "",
+        submission: String = "",
+        syncDue: String = "",
+        syncStart: String = "",
+        location: String = "",
+        coverageSummary: String = "",
+        autoCompleted: Bool = false,
+        recordStatus: String = "",
+        completionReason: String = ""
+    ) {
+        self.url = url
+        self.type = type
+        self.category = category
+        self.course = course
+        self.title = title
+        self.due = due
+        self.submission = submission
+        self.syncDue = syncDue
+        self.syncStart = syncStart
+        self.location = location
+        self.coverageSummary = coverageSummary
+        self.autoCompleted = autoCompleted
+        self.recordStatus = recordStatus
+        self.completionReason = completionReason
+    }
+
     enum CodingKeys: String, CodingKey {
         case url
         case type

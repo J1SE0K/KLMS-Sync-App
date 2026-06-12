@@ -1588,6 +1588,40 @@ public extension ServerRelaySyncItem {
         )
     }
 
+    var mailStateItem: StateItem? {
+        guard !isHidden,
+              isMailDashboardItemLike,
+              let category = stateItemCategoryForMailDashboard else {
+            return nil
+        }
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanTitle.isEmpty else {
+            return nil
+        }
+        let dueText = timestamp.trimmingCharacters(in: .whitespacesAndNewlines)
+        let statusText = status.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detailText = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourceText = [statusText, detailText]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        return StateItem(
+            url: "",
+            type: "mail",
+            category: category,
+            course: course.trimmingCharacters(in: .whitespacesAndNewlines),
+            title: cleanTitle,
+            due: dueText,
+            submission: "",
+            syncDue: dueText,
+            syncStart: "",
+            location: "",
+            coverageSummary: sourceText,
+            autoCompleted: false,
+            recordStatus: "",
+            completionReason: ""
+        )
+    }
+
     private var isMailDashboardItemLike: Bool {
         id.hasPrefix("mail-")
             || status.localizedCaseInsensitiveContains("메일")
@@ -1600,6 +1634,21 @@ public extension ServerRelaySyncItem {
             true
         default:
             false
+        }
+    }
+
+    private var stateItemCategoryForMailDashboard: String? {
+        switch kind {
+        case "assignment":
+            "assignment"
+        case "assignmentCandidate":
+            "assignment_candidate"
+        case "exam":
+            "exam"
+        case "examCandidate":
+            "exam_candidate"
+        default:
+            nil
         }
     }
 

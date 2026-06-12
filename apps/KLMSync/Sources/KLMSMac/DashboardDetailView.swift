@@ -97,16 +97,13 @@ struct DashboardDetailPanelView: View {
 
             switch kind {
             case .assignments:
-                VStack(alignment: .leading, spacing: 8) {
-                    StateItemListView(
-                        items: model.snapshot.legacyState?.content.assignments ?? [],
-                        emptyText: model.mailDashboardItems(kind: "assignment").isEmpty ? "과제가 없습니다." : "KLMS 과제는 없고 메일 분석 항목만 있습니다.",
-                        editor: .assignment,
-                        filters: filters,
-                        model: model
-                    )
-                    MailDashboardItemListView(items: model.mailDashboardItems(kind: "assignment"), filters: filters, model: model)
-                }
+                StateItemListView(
+                    items: ((model.snapshot.legacyState?.content.assignments ?? []) + model.mailDashboardStateItems(kind: "assignment")).dedupedDashboardItems(),
+                    emptyText: "과제가 없습니다.",
+                    editor: .assignment,
+                    filters: filters,
+                    model: model
+                )
             case .assignmentRecords:
                 StateItemListView(
                     items: model.snapshot.legacyState?.content.completedAssignments ?? [],
@@ -124,16 +121,13 @@ struct DashboardDetailPanelView: View {
                     model: model
                 )
             case .exams:
-                VStack(alignment: .leading, spacing: 8) {
-                    StateItemListView(
-                        items: model.snapshot.legacyState?.content.examItems ?? [],
-                        emptyText: model.mailDashboardItems(kind: "exam").isEmpty ? "시험 항목이 없습니다." : "KLMS 시험은 없고 메일 분석 항목만 있습니다.",
-                        editor: .exam,
-                        filters: filters,
-                        model: model
-                    )
-                    MailDashboardItemListView(items: model.mailDashboardItems(kind: "exam"), filters: filters, model: model)
-                }
+                StateItemListView(
+                    items: ((model.snapshot.legacyState?.content.examItems ?? []) + model.mailDashboardStateItems(kind: "exam")).dedupedDashboardItems(),
+                    emptyText: "시험 항목이 없습니다.",
+                    editor: .exam,
+                    filters: filters,
+                    model: model
+                )
             case .examCandidates:
                 StateItemListView(
                     items: model.snapshot.legacyState?.content.examCandidates ?? [],

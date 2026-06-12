@@ -689,6 +689,10 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(exam.mailCalendarChange?.action, "mail")
         XCTAssertEqual(exam.mailCalendarChange?.bucket, "exam")
         XCTAssertEqual(assignment.mailCalendarChange?.bucket, "assignment")
+        XCTAssertEqual(exam.mailStateItem?.category, "exam")
+        XCTAssertEqual(exam.mailStateItem?.title, "메일 시험")
+        XCTAssertEqual(assignment.mailStateItem?.category, "assignment")
+        XCTAssertNil(notice.mailStateItem)
         XCTAssertNil(notice.mailCalendarChange)
         XCTAssertEqual([assignment, assignment, exam].dedupedForServerRelay().map(\.id), [
             "mail-assignment",

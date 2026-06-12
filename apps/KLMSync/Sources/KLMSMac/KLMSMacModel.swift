@@ -1159,6 +1159,10 @@ final class KLMSMacModel: ObservableObject {
             }
     }
 
+    func mailDashboardStateItems(kind: String) -> [StateItem] {
+        mailDashboardItems(kind: kind).compactMap(\.mailStateItem)
+    }
+
     func mailCalendarChanges() -> [CalendarChange] {
         mailDashboardItems
             .compactMap(\.mailCalendarChange)
