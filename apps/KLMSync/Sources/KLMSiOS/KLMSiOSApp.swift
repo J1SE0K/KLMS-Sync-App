@@ -4141,8 +4141,8 @@ private struct MailPasteInputBox: View {
 
 private func companionMailThemeAccent(for colorScheme: ColorScheme) -> Color {
     colorScheme == .dark
-        ? Color(red: 0.620, green: 0.690, blue: 0.800)
-        : Color(red: 0.141, green: 0.341, blue: 0.651)
+        ? Color(red: 0.780, green: 0.640, blue: 0.400)
+        : Color(red: 0.145, green: 0.390, blue: 0.318)
 }
 
 private struct MailPasteAnalysisResultView: View {
@@ -9357,8 +9357,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.027, green: 0.031, blue: 0.043, alpha: 1.0)
-                : UIColor(red: 0.976, green: 0.984, blue: 0.992, alpha: 1.0)
+                ? UIColor(red: 0.018, green: 0.019, blue: 0.022, alpha: 1.0)
+                : UIColor(red: 0.988, green: 0.990, blue: 0.988, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: .windowBackgroundColor)
@@ -9371,7 +9371,7 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.063, green: 0.067, blue: 0.086, alpha: 1.0)
+                ? UIColor(red: 0.045, green: 0.046, blue: 0.050, alpha: 1.0)
                 : UIColor(red: 1.000, green: 1.000, blue: 1.000, alpha: 1.0)
         })
         #elseif canImport(AppKit)
@@ -9385,8 +9385,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.094, green: 0.102, blue: 0.133, alpha: 1.0)
-                : UIColor(red: 0.925, green: 0.945, blue: 0.969, alpha: 1.0)
+                ? UIColor(red: 0.073, green: 0.075, blue: 0.082, alpha: 1.0)
+                : UIColor(red: 0.953, green: 0.961, blue: 0.957, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: .quaternaryLabelColor).opacity(0.14)
@@ -9399,8 +9399,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.165, green: 0.180, blue: 0.210, alpha: 1.0)
-                : UIColor(red: 0.690, green: 0.741, blue: 0.808, alpha: 1.0)
+                ? UIColor(red: 0.160, green: 0.165, blue: 0.170, alpha: 1.0)
+                : UIColor(red: 0.827, green: 0.855, blue: 0.843, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color.black.opacity(0.05)
@@ -9413,8 +9413,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.620, green: 0.690, blue: 0.800, alpha: 1.0)
-                : UIColor(red: 0.141, green: 0.341, blue: 0.651, alpha: 1.0)
+                ? UIColor(red: 0.780, green: 0.640, blue: 0.400, alpha: 1.0)
+                : UIColor(red: 0.145, green: 0.390, blue: 0.318, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(red: 0.31, green: 0.24, blue: 0.35)
@@ -9427,8 +9427,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.100, green: 0.112, blue: 0.133, alpha: 1.0)
-                : UIColor(red: 0.898, green: 0.929, blue: 0.980, alpha: 1.0)
+                ? UIColor(red: 0.086, green: 0.078, blue: 0.063, alpha: 1.0)
+                : UIColor(red: 0.914, green: 0.953, blue: 0.937, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color.klmsCommandAccent.opacity(0.10)
@@ -9441,8 +9441,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.165, green: 0.180, blue: 0.210, alpha: 1.0)
-                : UIColor(red: 0.620, green: 0.700, blue: 0.820, alpha: 1.0)
+                ? UIColor(red: 0.240, green: 0.214, blue: 0.160, alpha: 1.0)
+                : UIColor(red: 0.553, green: 0.714, blue: 0.655, alpha: 1.0)
         })
         #else
         Color.klmsCommandAccent.opacity(0.30)
