@@ -4083,7 +4083,7 @@ private extension Color {
 
     static var klmsMacCommandButtonBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.810, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.760, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.230, alpha: 1.0)
         )
     }
