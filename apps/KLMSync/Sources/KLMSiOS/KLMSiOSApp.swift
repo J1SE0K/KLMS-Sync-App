@@ -7361,6 +7361,7 @@ private struct RemoteCommandPanel: View {
                 Spacer(minLength: 0)
                 Image(systemName: "play.fill")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
             }
             .foregroundStyle(Color.klmsCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: compact ? 58 : 64, alignment: .leading)
@@ -9484,14 +9485,14 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.847, green: 0.780, blue: 0.631, alpha: 1.0)
+                ? UIColor(red: 0.886, green: 0.824, blue: 0.667, alpha: 1.0)
                 : UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
-                ? NSColor(red: 0.847, green: 0.780, blue: 0.631, alpha: 1.0)
+                ? NSColor(red: 0.886, green: 0.824, blue: 0.667, alpha: 1.0)
                 : NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
         #else

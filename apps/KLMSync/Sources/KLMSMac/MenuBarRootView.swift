@@ -2674,6 +2674,7 @@ private struct CommandPanelView: View {
                 Spacer(minLength: 0)
                 Image(systemName: "play.fill")
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
             }
             .foregroundStyle(Color.klmsMacCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
@@ -4097,7 +4098,7 @@ private extension Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
-                ? NSColor(red: 0.847, green: 0.780, blue: 0.631, alpha: 1.0)
+                ? NSColor(red: 0.886, green: 0.824, blue: 0.667, alpha: 1.0)
                 : NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
     }
