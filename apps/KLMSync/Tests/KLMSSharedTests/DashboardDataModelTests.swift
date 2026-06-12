@@ -713,17 +713,21 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(mac.contains("static func klmsMacAdaptiveColor(light: NSColor, dark: NSColor)"))
         XCTAssertTrue(mac.contains("var borderColor: Color = .klmsMacBorder"))
-        XCTAssertTrue(mac.contains("light: NSColor(calibratedWhite: 0.982"))
+        XCTAssertTrue(mac.contains("light: NSColor(calibratedWhite: 0.995"))
         XCTAssertTrue(mac.contains("dark: NSColor(calibratedWhite: 0.010"))
-        XCTAssertTrue(mac.contains("light: NSColor(red: 0.878, green: 0.819, blue: 0.631"))
-        XCTAssertTrue(mac.contains("light: NSColor(calibratedWhite: 0.118"))
+        XCTAssertTrue(mac.contains("light: NSColor(calibratedWhite: 0.055"))
+        XCTAssertTrue(mac.contains("light: NSColor(calibratedWhite: 0.150"))
+        XCTAssertTrue(mac.contains("light: NSColor(calibratedWhite: 0.985"))
+        XCTAssertTrue(mac.contains(".foregroundStyle(Color.klmsMacCommandButtonForeground.opacity(0.88))"))
 
         XCTAssertTrue(ios.contains("static func klmsAdaptiveColor(light: UIColor, dark: UIColor)"))
         XCTAssertTrue(ios.contains("static func klmsAppKitAdaptiveColor(light: NSColor, dark: NSColor)"))
-        XCTAssertTrue(ios.contains("light: UIColor(white: 0.982"))
+        XCTAssertTrue(ios.contains("light: UIColor(white: 0.995"))
         XCTAssertTrue(ios.contains("dark: UIColor(white: 0.010"))
-        XCTAssertTrue(ios.contains("light: UIColor(red: 0.878, green: 0.819, blue: 0.631"))
-        XCTAssertTrue(ios.contains("light: UIColor(white: 0.118"))
+        XCTAssertTrue(ios.contains("light: UIColor(white: 0.055"))
+        XCTAssertTrue(ios.contains("light: UIColor(white: 0.150"))
+        XCTAssertTrue(ios.contains("light: UIColor(white: 0.985"))
+        XCTAssertTrue(ios.contains(".foregroundStyle(Color.klmsCommandButtonForeground.opacity(0.88))"))
     }
 
     func testIOSStatusAndRunScreensDoNotDuplicatePrimaryControls() throws {
