@@ -7362,12 +7362,18 @@ private struct RemoteCommandPanel: View {
                 Image(systemName: "play.fill")
                     .font(.subheadline.weight(.semibold))
             }
+            .foregroundStyle(Color.klmsCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: compact ? 58 : 64, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+            .background(Color.klmsCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsCommandButtonBorder, lineWidth: 1)
+            }
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.klmsCommandAccent)
+        .buttonStyle(.plain)
+        .opacity(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest ? 0.48 : 1)
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         .accessibilityLabel("\(kind.displayName) 실행")
         .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
@@ -7395,12 +7401,18 @@ private struct RemoteCommandPanel: View {
                     .minimumScaleFactor(0.72)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .foregroundStyle(Color.klmsCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: compact ? 54 : 60, alignment: .leading)
             .padding(.horizontal, 9)
             .padding(.vertical, 8)
+            .background(Color.klmsCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsCommandButtonBorder.opacity(0.88), lineWidth: 1)
+            }
         }
-        .buttonStyle(.bordered)
-        .tint(.klmsCommandAccent)
+        .buttonStyle(.plain)
+        .opacity(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest ? 0.48 : 1)
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         .accessibilityLabel("\(kind.displayName) 실행")
         .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
@@ -9446,6 +9458,48 @@ private extension Color {
         })
         #else
         Color.klmsCommandAccent.opacity(0.30)
+        #endif
+    }
+
+    static var klmsCommandButtonBackground: Color {
+        #if canImport(UIKit)
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.230, alpha: 1.0)
+                : UIColor(white: 0.190, alpha: 1.0)
+        })
+        #elseif canImport(AppKit)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.190, alpha: 1.0)
+        })
+        #else
+        Color.black.opacity(0.82)
+        #endif
+    }
+
+    static var klmsCommandButtonForeground: Color {
+        Color.white
+    }
+
+    static var klmsCommandButtonBorder: Color {
+        #if canImport(UIKit)
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.420, alpha: 1.0)
+                : UIColor(white: 0.120, alpha: 1.0)
+        })
+        #elseif canImport(AppKit)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.420, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.120, alpha: 1.0)
+        })
+        #else
+        Color.black.opacity(0.92)
         #endif
     }
 }

@@ -2675,13 +2675,19 @@ private struct CommandPanelView: View {
                 Image(systemName: "play.fill")
                     .font(.subheadline.weight(.semibold))
             }
+            .foregroundStyle(Color.klmsMacCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+            .background(Color.klmsMacCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsMacCommandButtonBorder, lineWidth: 1)
+            }
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.plain)
         .controlSize(.regular)
-        .tint(.klmsMacCommandAccent)
+        .opacity(model.runningCommand == nil ? 1 : 0.48)
         .help(command.shortDescription)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
@@ -2701,14 +2707,20 @@ private struct CommandPanelView: View {
                     .minimumScaleFactor(0.70)
                 Text("실행")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacCommandButtonForeground.opacity(0.72))
             }
+            .foregroundStyle(Color.klmsMacCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
             .padding(9)
+            .background(Color.klmsMacCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsMacCommandButtonBorder.opacity(0.88), lineWidth: 1)
+            }
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.plain)
         .controlSize(.small)
-        .tint(.klmsMacCommandAccent)
+        .opacity(model.runningCommand == nil ? 1 : 0.48)
         .help(command.shortDescription)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
@@ -4069,6 +4081,28 @@ private extension Color {
             return isDark
                 ? NSColor(calibratedWhite: 0.360, alpha: 1.0)
                 : NSColor(calibratedWhite: 0.550, alpha: 1.0)
+        })
+    }
+
+    static var klmsMacCommandButtonBackground: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.190, alpha: 1.0)
+        })
+    }
+
+    static var klmsMacCommandButtonForeground: Color {
+        Color.white
+    }
+
+    static var klmsMacCommandButtonBorder: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedWhite: 0.420, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.120, alpha: 1.0)
         })
     }
 
