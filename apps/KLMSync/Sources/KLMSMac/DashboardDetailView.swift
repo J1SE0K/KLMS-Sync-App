@@ -3083,8 +3083,8 @@ private struct MacMailPasteInputBox: View {
 
 private func macMailThemeAccent(for colorScheme: ColorScheme) -> Color {
     colorScheme == .dark
-        ? Color(red: 0.920, green: 0.920, blue: 0.920)
-        : Color(red: 0.090, green: 0.090, blue: 0.090)
+        ? Color(red: 0.980, green: 0.980, blue: 0.980)
+        : Color(red: 0.050, green: 0.050, blue: 0.050)
 }
 
 private struct MacMailPasteAnalysisResultView: View {
