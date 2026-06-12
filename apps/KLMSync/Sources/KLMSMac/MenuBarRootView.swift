@@ -1926,8 +1926,8 @@ private struct DashboardSummaryView: View {
             let primaryMetrics = [
                 Metric("과제", counts.assignments + model.mailDashboardItems(kind: "assignment").count, detail: .assignments),
                 Metric("시험", counts.exams + model.mailDashboardItems(kind: "exam").count, detail: .exams),
-                Metric("공지", counts.notices + model.mailDashboardItems(kind: "notice").count, detail: .notices),
-                Metric("파일", snapshot.courseFileManifest.count + model.mailDashboardItems(kind: "file").count, detail: .files),
+                Metric("공지", counts.notices, detail: .notices),
+                Metric("파일", snapshot.courseFileManifest.count, detail: .files),
                 Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
             ].filter { $0.value > 0 }
             let attentionMetrics = [

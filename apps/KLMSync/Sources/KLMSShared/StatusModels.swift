@@ -288,7 +288,7 @@ public struct CalendarChange: Codable, Sendable, Equatable, Identifiable {
         case "deleted":
             "정리됨"
         case "mail":
-            "메일 분석"
+            "추가 일정"
         default:
             action.isEmpty ? "변경" : action
         }

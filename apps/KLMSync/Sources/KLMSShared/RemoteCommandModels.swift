@@ -1560,6 +1560,31 @@ public extension Array where Element == ServerRelaySyncItem {
 }
 
 public extension ServerRelaySyncItem {
+    var normalizedDashboardItem: ServerRelaySyncItem {
+        let trimmedStatus = status.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedStatus = trimmedStatus.localizedCaseInsensitiveContains("메일 분석") ? "추가됨" : status
+        let normalizedDetail = detail
+            .replacingOccurrences(of: "메일 분석에서 등록한 항목입니다.", with: "추가로 반영한 항목입니다.")
+            .replacingOccurrences(of: "메일 분석에서 대시보드에 반영한 항목입니다.", with: "추가로 반영한 항목입니다.")
+        return ServerRelaySyncItem(
+            id: id,
+            kind: kind,
+            course: course,
+            academicTerm: academicTerm,
+            academicYear: academicYear,
+            academicSemester: academicSemester,
+            title: title,
+            timestamp: timestamp,
+            status: normalizedStatus,
+            detail: normalizedDetail,
+            attachmentCount: attachmentCount,
+            updatedAt: updatedAt,
+            isRead: isRead,
+            isImportant: isImportant,
+            isHidden: isHidden
+        )
+    }
+
     var mailCalendarChange: CalendarChange? {
         guard !isHidden,
               isMailDashboardItemLike,
@@ -1573,7 +1598,7 @@ public extension ServerRelaySyncItem {
         }
         return CalendarChange(
             action: "mail",
-            calendar: "메일 분석",
+            calendar: "캘린더",
             bucket: calendarBucket,
             identifier: id,
             title: title,
@@ -1582,7 +1607,7 @@ public extension ServerRelaySyncItem {
             startAt: timeText,
             dueAt: timeText,
             location: "",
-            changes: ["메일 분석"],
+            changes: ["추가 후보"],
             raw: detail,
             parseError: ""
         )
@@ -1598,9 +1623,10 @@ public extension ServerRelaySyncItem {
         guard !cleanTitle.isEmpty else {
             return nil
         }
+        let normalized = normalizedDashboardItem
         let dueText = timestamp.trimmingCharacters(in: .whitespacesAndNewlines)
-        let statusText = status.trimmingCharacters(in: .whitespacesAndNewlines)
-        let detailText = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let statusText = normalized.status.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detailText = normalized.detail.trimmingCharacters(in: .whitespacesAndNewlines)
         let sourceText = [statusText, detailText]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
@@ -1608,7 +1634,7 @@ public extension ServerRelaySyncItem {
             url: "",
             type: "mail",
             category: category,
-            course: course.trimmingCharacters(in: .whitespacesAndNewlines),
+            course: normalized.course.trimmingCharacters(in: .whitespacesAndNewlines),
             title: cleanTitle,
             due: dueText,
             submission: "",
@@ -1755,9 +1781,9 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
         case .calendarDelete:
             "캘린더 일정 삭제"
         case .mailDashboardAdd:
-            "메일 항목 반영"
+            "항목 반영"
         case .mailDashboardRemove:
-            "메일 항목 제거"
+            "항목 제거"
         }
     }
 }

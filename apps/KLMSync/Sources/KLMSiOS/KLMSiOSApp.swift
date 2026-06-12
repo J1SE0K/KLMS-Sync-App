@@ -200,28 +200,30 @@ final class CompanionModel: ObservableObject {
     }
 
     func addMailDashboardItem(_ item: ServerRelaySyncItem) {
-        mailDashboardItems = ([item] + mailDashboardItems.filter { $0.id != item.id })
+        let normalizedItem = item.normalizedDashboardItem
+        mailDashboardItems = ([normalizedItem] + mailDashboardItems.filter { $0.id != normalizedItem.id })
             .dedupedForServerRelay()
             .prefix(80)
             .map { $0 }
         persistMailDashboardItems()
         connectionSucceeded = true
-        connectionMessage = "\(item.kind.klmsMailDashboardKindName) 대시보드에 반영했습니다."
+        connectionMessage = "\(normalizedItem.kind.klmsMailDashboardKindName) 대시보드에 반영했습니다."
     }
 
     func submitMailDashboardItem(_ item: ServerRelaySyncItem) async {
-        addMailDashboardItem(item)
+        let normalizedItem = item.normalizedDashboardItem
+        addMailDashboardItem(normalizedItem)
         guard let serverRelayStore else {
             return
         }
         do {
-            let payload = try JSONEncoder().encode(item)
+            let payload = try JSONEncoder().encode(normalizedItem)
             let message = String(data: payload, encoding: .utf8) ?? ""
             try await serverRelayStore.createItemAction(ServerRelayItemAction(
                 action: .mailDashboardAdd,
-                itemID: item.id,
-                itemKind: item.kind,
-                itemTitle: item.title,
+                itemID: normalizedItem.id,
+                itemKind: normalizedItem.kind,
+                itemTitle: normalizedItem.title,
                 message: message
             ))
             await refreshRecent(includeSyncData: false, showsActivity: false)
@@ -234,7 +236,7 @@ final class CompanionModel: ObservableObject {
         mailDashboardItems.removeAll { $0.id == item.id }
         persistMailDashboardItems()
         connectionSucceeded = true
-        connectionMessage = "\(item.kind.klmsMailDashboardKindName) 메일 항목을 대시보드에서 제거했습니다."
+        connectionMessage = "\(item.kind.klmsMailDashboardKindName) 항목을 대시보드에서 제거했습니다."
     }
 
     func submitRemoveMailDashboardItem(_ item: ServerRelaySyncItem) async {
@@ -265,6 +267,7 @@ final class CompanionModel: ObservableObject {
         }
         return decoded
             .filter { $0.id.hasPrefix("mail-") || $0.status.localizedCaseInsensitiveContains("메일") }
+            .map(\.normalizedDashboardItem)
             .dedupedForServerRelay()
     }
 
@@ -4444,10 +4447,10 @@ private struct MailDashboardItemEditForm: View {
                 } header: {
                     Text("대시보드 항목")
                 } footer: {
-                    Text("메일 분석 결과를 대시보드에 등록할 형태로 정리합니다. 원문 메일은 저장하지 않습니다.")
+                    Text("붙여넣은 내용을 대시보드에 반영할 형태로 정리합니다. 원문은 저장하지 않습니다.")
                 }
             }
-            .navigationTitle("메일 항목 수정")
+            .navigationTitle("대시보드 항목 수정")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("취소") {
@@ -4476,8 +4479,8 @@ private struct MailDashboardItemEditForm: View {
             academicSemester: item.academicSemester,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             timestamp: timestamp.trimmingCharacters(in: .whitespacesAndNewlines),
-            status: "메일 분석",
-            detail: detail.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "메일 분석에서 등록한 항목입니다.",
+            status: "추가됨",
+            detail: detail.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "추가로 반영한 항목입니다.",
             attachmentCount: count,
             updatedAt: ServerRelaySyncItem.isoTimestamp(),
             isRead: item.isRead,
@@ -4744,7 +4747,7 @@ private struct MailPasteAnalysis: Equatable {
         let itemTitle = title.nilIfEmpty ?? kind.title
         let id = "mail-\(ServerRelaySyncItem.stableID(kind: dashboardKind, parts: [course, itemTitle, dueText]))"
         let detail = [
-            "메일 분석",
+            "추가됨",
             confidence > 0 ? "신뢰도 \(confidence)%" : nil,
             urls.isEmpty ? nil : "링크 \(urls.count)개",
         ]
@@ -4756,7 +4759,7 @@ private struct MailPasteAnalysis: Equatable {
             course: course,
             title: itemTitle,
             timestamp: calendarStartInput.nilIfEmpty ?? dueText,
-            status: "메일 분석",
+            status: "추가됨",
             detail: detail,
             attachmentCount: kind == .file ? max(1, urls.count) : urls.count,
             updatedAt: ServerRelaySyncItem.isoTimestamp()
@@ -7095,9 +7098,9 @@ private extension ServerRelayItemActionKind {
         case .calendarDelete:
             "캘린더 일정 삭제"
         case .mailDashboardAdd:
-            "메일 항목 반영"
+            "항목 반영"
         case .mailDashboardRemove:
-            "메일 항목 제거"
+            "항목 제거"
         }
     }
 

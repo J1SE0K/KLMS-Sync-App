@@ -145,15 +145,9 @@ struct DashboardDetailPanelView: View {
                     model: model
                 )
             case .notices:
-                VStack(alignment: .leading, spacing: 8) {
-                    NoticeListView(filters: filters, model: model)
-                    MailDashboardItemListView(items: model.mailDashboardItems(kind: "notice"), filters: filters, model: model)
-                }
+                NoticeListView(filters: filters, model: model)
             case .files:
-                VStack(alignment: .leading, spacing: 8) {
-                    FileManifestListView(filters: filters, model: model)
-                    MailDashboardItemListView(items: model.mailDashboardItems(kind: "file"), filters: filters, model: model)
-                }
+                FileManifestListView(filters: filters, model: model)
             case .missingFiles:
                 MissingFilesListView(filters: filters, model: model)
             case .newFiles:
@@ -754,117 +748,6 @@ private struct StateItemListView: View {
         let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return true }
         return fields.joined(separator: " ").localizedCaseInsensitiveContains(query)
-    }
-}
-
-private struct MailDashboardItemListView: View {
-    var items: [ServerRelaySyncItem]
-    var filters: DashboardDetailFilters
-    @ObservedObject var model: KLMSMacModel
-
-    private var filteredItems: [ServerRelaySyncItem] {
-        items.filter { item in
-            guard filters.selectedCourse == DashboardCourseFilter.all || item.course == filters.selectedCourse else {
-                return false
-            }
-            guard DashboardTermFilter.matches(
-                nil,
-                selectedYear: filters.selectedYear,
-                selectedSemester: filters.selectedSemester
-            ) else {
-                return false
-            }
-            let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !query.isEmpty else { return true }
-            return [
-                item.kind.klmsMailDashboardKindName,
-                item.course,
-                item.title,
-                item.timestamp,
-                item.status,
-                item.detail,
-            ]
-            .joined(separator: " ")
-            .localizedCaseInsensitiveContains(query)
-        }
-    }
-
-    var body: some View {
-        if !filteredItems.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("메일 분석 항목", systemImage: "envelope.badge")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                ForEach(filteredItems) { item in
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: systemImage(for: item.kind))
-                            .foregroundStyle(tint(for: item.kind))
-                            .frame(width: 20)
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(item.kind.klmsMailDashboardKindName)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(tint(for: item.kind))
-                                Text(item.status)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Text(item.title.isEmpty ? "제목 없음" : item.title)
-                                .font(.caption.weight(.semibold))
-                                .lineLimit(2)
-                            Text([item.course, item.timestamp, item.detail].filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                        }
-                        Spacer(minLength: 8)
-                        Button(role: .destructive) {
-                            model.removeMailDashboardItem(item)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("메일 분석 항목 제거")
-                    }
-                    .padding(8)
-                    .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
-                    }
-                }
-            }
-        }
-    }
-
-    private func systemImage(for kind: String) -> String {
-        switch kind {
-        case "assignment":
-            "checklist"
-        case "exam":
-            "calendar"
-        case "notice":
-            "note.text"
-        case "file":
-            "doc"
-        default:
-            "envelope"
-        }
-    }
-
-    private func tint(for kind: String) -> Color {
-        switch kind {
-        case "assignment":
-            .orange
-        case "exam":
-            .green
-        case "notice":
-            .brown
-        case "file":
-            .blue
-        default:
-            .secondary
-        }
     }
 }
 
@@ -3405,9 +3288,9 @@ private struct MailDashboardItemEditSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("메일 항목 수정")
+            Text("대시보드 항목 수정")
                 .font(.headline)
-            Text("메일에서 판독한 항목을 대시보드에 어떻게 반영할지 조정합니다. 원문 메일은 저장하지 않습니다.")
+            Text("대시보드에 반영할 항목의 분류와 내용을 조정합니다. 원문은 저장하지 않습니다.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -3484,8 +3367,8 @@ private struct MailDashboardItemEditSheet: View {
             academicSemester: item.academicSemester,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             timestamp: timestamp.trimmingCharacters(in: .whitespacesAndNewlines),
-            status: "메일 분석",
-            detail: detail.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank ?? "메일 분석에서 등록한 항목입니다.",
+            status: "추가됨",
+            detail: detail.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank ?? "추가로 반영한 항목입니다.",
             attachmentCount: count,
             updatedAt: ServerRelaySyncItem.isoTimestamp(),
             isRead: item.isRead,
@@ -3804,7 +3687,7 @@ private struct MacMailPasteAnalysis {
         let itemTitle = title.nilIfBlank ?? kind.title
         let id = "mail-\(ServerRelaySyncItem.stableID(kind: dashboardKind, parts: [course, itemTitle, dueText]))"
         let detail = [
-            "메일 분석",
+            "추가됨",
             confidence > 0 ? "신뢰도 \(confidence)%" : nil,
             urls.isEmpty ? nil : "링크 \(urls.count)개",
         ]
@@ -3816,7 +3699,7 @@ private struct MacMailPasteAnalysis {
             course: course,
             title: itemTitle,
             timestamp: calendarStartInput.nilIfBlank ?? dueText,
-            status: "메일 분석",
+            status: "추가됨",
             detail: detail,
             attachmentCount: kind == .file ? max(1, urls.count) : urls.count,
             updatedAt: ServerRelaySyncItem.isoTimestamp()

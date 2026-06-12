@@ -1088,12 +1088,13 @@ final class KLMSMacModel: ObservableObject {
         guard Self.isMailDashboardItem(item) else {
             return
         }
-        mailDashboardItems = ([item] + mailDashboardItems.filter { $0.id != item.id })
+        let normalizedItem = item.normalizedDashboardItem
+        mailDashboardItems = ([normalizedItem] + mailDashboardItems.filter { $0.id != normalizedItem.id })
             .dedupedForServerRelay()
             .prefix(80)
             .map { $0 }
         persistMailDashboardItems()
-        serverRelayStatusMessage = "\(item.kind.klmsMailDashboardKindName) 대시보드에 반영됨"
+        serverRelayStatusMessage = "\(normalizedItem.kind.klmsMailDashboardKindName) 대시보드에 반영됨"
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.publishServerRelayStatusIfNeeded(force: true)
@@ -1110,8 +1111,8 @@ final class KLMSMacModel: ObservableObject {
                 id: action.itemID,
                 kind: action.itemKind,
                 title: action.itemTitle,
-                status: "메일 분석",
-                detail: "메일 분석에서 대시보드에 반영한 항목입니다."
+                status: "추가됨",
+                detail: "추가로 반영한 항목입니다."
             )
         }
         addMailDashboardItem(item)
@@ -1120,7 +1121,7 @@ final class KLMSMacModel: ObservableObject {
     private func applyServerRelayMailDashboardRemoveAction(_ action: ServerRelayItemAction) {
         let removed = removeMailDashboardItem(id: action.itemID, kind: action.itemKind)
         if !removed {
-            serverRelayStatusMessage = "\(action.itemKind.klmsMailDashboardKindName) 메일 항목은 이미 제거되어 있습니다."
+            serverRelayStatusMessage = "\(action.itemKind.klmsMailDashboardKindName) 항목은 이미 제거되어 있습니다."
         }
     }
 
@@ -1134,7 +1135,7 @@ final class KLMSMacModel: ObservableObject {
         mailDashboardItems.removeAll { $0.id == id }
         let removed = mailDashboardItems.count != previousCount
         persistMailDashboardItems()
-        let label = kind.nilIfBlank?.klmsMailDashboardKindName ?? "메일"
+        let label = kind.nilIfBlank?.klmsMailDashboardKindName ?? "항목"
         serverRelayStatusMessage = removed
             ? "\(label) 항목을 대시보드에서 제거했습니다."
             : "\(label) 항목은 이미 대시보드에 없습니다."
@@ -1148,6 +1149,7 @@ final class KLMSMacModel: ObservableObject {
     func mailDashboardItems(kind: String) -> [ServerRelaySyncItem] {
         mailDashboardItems
             .filter { $0.kind == kind }
+            .map(\.normalizedDashboardItem)
             .sorted { lhs, rhs in
                 if lhs.timestamp != rhs.timestamp {
                     return lhs.timestamp > rhs.timestamp
@@ -1181,7 +1183,7 @@ final class KLMSMacModel: ObservableObject {
               let decoded = try? JSONDecoder().decode([ServerRelaySyncItem].self, from: data) else {
             return []
         }
-        return decoded.filter(Self.isMailDashboardItem).dedupedForServerRelay()
+        return decoded.filter(Self.isMailDashboardItem).map(\.normalizedDashboardItem).dedupedForServerRelay()
     }
 
     private func persistMailDashboardItems() {
