@@ -321,12 +321,11 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         phaseDetail = nil
         authDigits = nil
         authStatusMessage = nil
-        loginRequired = snapshot.loginPromptDetected
-            || snapshot.issues.contains { issue in
-                issue.sourceName == "auth-digits"
-                    || issue.sourceName == "login-required"
-                    || issue.sourceName == "klms-login-cache"
-            }
+        loginRequired = snapshot.issues.contains { issue in
+            issue.sourceName == "auth-digits"
+                || issue.sourceName == "login-required"
+                || issue.sourceName == "klms-login-cache"
+        }
     }
 
     public init(from decoder: Decoder) throws {

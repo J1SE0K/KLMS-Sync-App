@@ -148,11 +148,6 @@ private struct QuickStatusStripView: View {
     var body: some View {
         HStack(spacing: 6) {
             StatusChipView(
-                title: model.launchAgentState?.isInstalled == true ? "자동실행 켜짐" : "자동실행 꺼짐",
-                systemImage: model.launchAgentState?.isInstalled == true ? "bell.fill" : "bell.slash",
-                color: model.launchAgentState?.isInstalled == true ? .green : .secondary
-            )
-            StatusChipView(
                 title: "공지 체크리스트",
                 systemImage: "checklist.checked",
                 color: .blue
@@ -1285,7 +1280,7 @@ private struct HeaderView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if let lock = model.launchAgentState?.lock {
+            if let lock = model.sharedLockInfo {
                 Label("실행 잠금: 프로세스 \(lock.pid) · 명령 \(lock.command) · \(lock.acquiredAt)", systemImage: "lock.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -1663,17 +1658,6 @@ private struct DiagnosticCommandLogPanelView: View {
                 isWarning: relayLog.localizedCaseInsensitiveContains("error")
                     || relayLog.localizedCaseInsensitiveContains("required")
                     || relayLog.localizedCaseInsensitiveContains("failed")
-            )
-        }
-
-        let launchAgentLog = cleaned(model.snapshot.launchAgentLogTail)
-        if !launchAgentLog.isEmpty {
-            return DiagnosticLogSource(
-                title: "자동실행 로그",
-                detail: "runtime/logs/launch-agent.log의 최근 항목입니다.",
-                systemImage: "clock.arrow.circlepath",
-                text: launchAgentLog,
-                isWarning: false
             )
         }
 
@@ -3314,21 +3298,16 @@ private struct RunLogArchivePanelView: View {
                 }
             }
 
-            SectionBox(title: "자동실행/서버 로그") {
+            SectionBox(title: "서버 로그") {
                 DisclosureGroup(isExpanded: $showingSystemLogs) {
                     VStack(alignment: .leading, spacing: 10) {
-                        if !model.snapshot.launchAgentLogTail.isEmpty {
-                            Text("자동실행 로그")
-                                .font(.caption.weight(.semibold))
-                            LogTextBlock(text: model.snapshot.launchAgentLogTail.klmsDisplayText)
-                        }
                         if !model.snapshot.relayLogTail.isEmpty {
                             Text("서버 릴레이 로그")
                                 .font(.caption.weight(.semibold))
                             LogTextBlock(text: model.snapshot.relayLogTail.klmsDisplayText)
                         }
-                        if model.snapshot.launchAgentLogTail.isEmpty && model.snapshot.relayLogTail.isEmpty {
-                            Text("저장된 자동실행/서버 로그가 아직 없습니다.")
+                        if model.snapshot.relayLogTail.isEmpty {
+                            Text("저장된 서버 로그가 아직 없습니다.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -3336,7 +3315,7 @@ private struct RunLogArchivePanelView: View {
                     .padding(.top, 6)
                 } label: {
                     HStack(spacing: 8) {
-                        Label("백그라운드 로그 보기", systemImage: "clock.arrow.circlepath")
+                        Label("서버 로그 보기", systemImage: "network")
                             .font(.caption.weight(.semibold))
                         Spacer()
                         Text(systemLogSummary)
@@ -3356,18 +3335,8 @@ private struct RunLogArchivePanelView: View {
     }
 
     private var systemLogSummary: String {
-        let launchHasLog = !model.snapshot.launchAgentLogTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let relayHasLog = !model.snapshot.relayLogTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        switch (launchHasLog, relayHasLog) {
-        case (true, true):
-            return "자동실행, 서버"
-        case (true, false):
-            return "자동실행"
-        case (false, true):
-            return "서버"
-        case (false, false):
-            return "없음"
-        }
+        return relayHasLog ? "서버" : "없음"
     }
 }
 
@@ -3589,19 +3558,13 @@ private struct LogPanelView: View {
             }
         }
 
-        if !snapshot.launchAgentLogTail.isEmpty {
-            SectionBox(title: "자동실행 로그") {
-                LogTextBlock(text: snapshot.launchAgentLogTail.klmsDisplayText)
-            }
-        }
-
         if !snapshot.relayLogTail.isEmpty {
             SectionBox(title: "서버 릴레이 로그") {
                 LogTextBlock(text: snapshot.relayLogTail.klmsDisplayText)
             }
-        } else if history.records.isEmpty && snapshot.launchAgentLogTail.isEmpty {
+        } else if history.records.isEmpty {
             SectionBox(title: "저장된 로그") {
-                Text("저장된 실행 기록이나 자동실행 로그가 아직 없습니다.")
+                Text("저장된 실행 기록이나 서버 로그가 아직 없습니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -50,9 +50,9 @@ tools/klms_relay_server.mjs
 KLMS_RELAY_DB=/path/to/klms-sync-relay.sqlite tools/klms_relay_server.mjs
 ```
 
-## Mac에서 자동 실행
+## Mac 백그라운드 서비스
 
-Mac을 서버 worker로 쓸 때는 LaunchAgent로 릴레이 서버를 켜 둔다. 토큰이 없으면 설치 스크립트가 자동으로 만든다.
+Mac을 서버 worker로 쓸 때는 릴레이 서버를 백그라운드 서비스로 켜 둔다. 토큰이 없으면 설치 스크립트가 자동으로 만든다.
 
 ```sh
 tools/install_klms_relay_agent.sh install

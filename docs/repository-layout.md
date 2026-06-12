@@ -10,7 +10,6 @@
 | --- | --- |
 | `README.md` | 빠른 시작, entrypoint 요약, 상세 문서 링크 |
 | `LICENSE`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md` | 공개 레포 기본 문서 |
-| `install_launch_agent.sh` | 자동 실행용 설치 entrypoint |
 | `sync_klms_core.sh` 등 root `.sh` | 사용자용 wrapper. 실제 구현은 `bin/`에 위임 |
 
 root wrapper는 아래 형태를 유지한다.
@@ -30,7 +29,7 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 | --- | --- |
 | `apps/KLMSync/` | SwiftUI macOS 메뉴바 앱, iPhone/iPad companion, 공유 앱 모델/테스트 |
 | `bin/` | 루트 wrapper가 호출하는 실제 shell entrypoint |
-| `src/sh/` | 공통 shell helper, launchd worker, runtime cleanup |
+| `src/sh/` | 공통 shell helper, runtime cleanup |
 | `src/js/` | Safari/JXA 자동화, Notes/Reminders runner, Kaikey CLI |
 | `src/python/` | KLMS HTML 파서, 증분 fetch backend, 파일 manifest/prune |
 | `src/swift/` | Calendar 동기화/검증, QR decode, native Notes renderer |
@@ -50,9 +49,9 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 | `runtime/` | cache, state, logs, tmp, telemetry |
 | `course_files/` | 레포에서 예전 CLI 실행으로 생길 수 있는 로컬 파일 정리본. 앱 기준 canonical 위치는 `~/Library/Application Support/KLMSNotesSync/course_files` |
 | `course_transcripts/`, `course_videos/` | 강의 자료 수집 산출물 |
-| `~/Library/Application Support/KLMSNotesSync` | LaunchAgent 설치본, 인증 state, 자동 실행 runtime |
+| `~/Library/Application Support/KLMSNotesSync` | 앱 설치본, 인증 state, runtime |
 
-앱과 자동 실행의 파일 정리본은 `~/Library/Application Support/KLMSNotesSync/course_files` 하나를 canonical로 쓴다.
+앱의 파일 정리본은 `~/Library/Application Support/KLMSNotesSync/course_files` 하나를 canonical로 쓴다.
 레포 안의 `course_files/`는 이전 source checkout 실행 산출물이라 앱 데이터가 정상이라면 정리해도 된다.
 
 `runtime/cache/*/stage_timings.json`에는 stage별 소요 시간과 병목 후보가 남는다. 레포에서 실행한
@@ -61,12 +60,4 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 
 ## Installed Copy
 
-`install_launch_agent.sh`는 root wrapper, `bin/`, `src/`, `examples/` 일부와 launchd worker를 `~/Library/Application Support/KLMSNotesSync`로 복사한다. 자동 실행은 Documents 폴더 보호와 작업 디렉터리 변동을 피하기 위해 이 설치본을 기준으로 돈다.
-
 `tools/build_klms_mac_app.sh`는 기본적으로 `~/Applications/KLMS Sync.app`을 만들고 현재 레포의 code payload를 앱 리소스에 주입한다. `DIST_DIR`로 다른 출력 위치를 지정할 수 있지만, `Documents`/iCloud-backed 폴더는 File Provider 메타데이터 때문에 codesign이 실패할 수 있다. 앱 installer도 같은 설치본 위치를 쓰며 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`, `kaikey_state.json`은 덮어쓰지 않는다.
-
-설정을 바꾸거나 entrypoint 구현을 수정한 뒤 자동 실행에도 반영하려면 다시 실행한다.
-
-```sh
-./install_launch_agent.sh
-```

@@ -865,7 +865,7 @@ final class CompanionModel: ObservableObject {
                     lastRefreshAt = Date()
                 }
                 if showsActivity {
-                    connectionMessage = "새로 고침 완료"
+                    connectionMessage = "상태 갱신 완료"
                     connectionSucceeded = true
                 }
                 errorMessage = ""
@@ -881,7 +881,7 @@ final class CompanionModel: ObservableObject {
             if !silentErrors {
                 errorMessage = userFacingMessage(for: error)
                 if showsActivity {
-                    connectionMessage = "새로 고침 실패"
+                    connectionMessage = "상태 갱신 실패"
                     connectionSucceeded = false
                 }
             }
@@ -921,7 +921,7 @@ final class CompanionModel: ObservableObject {
         }
         if showsActivity {
             isRefreshing = true
-            connectionMessage = "진행 중인 갱신이 끝나면 바로 새로 고침합니다."
+            connectionMessage = "진행 중인 상태 갱신이 끝나면 바로 반영합니다."
             connectionSucceeded = nil
         }
     }
@@ -937,18 +937,6 @@ final class CompanionModel: ObservableObject {
                 includeSyncData: request.includeSyncData,
                 showsActivity: request.showsActivity
             )
-        }
-    }
-
-    func resetDisplayState(showConfirmation: Bool = true) {
-        errorMessage = ""
-        connectionMessage = ""
-        connectionSucceeded = nil
-        userAlert = nil
-        dryRunReports = []
-        if showConfirmation {
-            connectionMessage = "화면 표시를 정리했습니다."
-            connectionSucceeded = true
         }
     }
 
@@ -6293,17 +6281,6 @@ private struct ServerSyncItemInlineDetailPanel: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
-
-            Button {
-                Task {
-                    await model.refreshRecent(includeSyncData: true)
-                }
-            } label: {
-                Label("결과 다시 불러오기", systemImage: "arrow.clockwise")
-                    .frame(maxWidth: .infinity, minHeight: 40)
-            }
-            .buttonStyle(.bordered)
-            .disabled(model.isRefreshing)
         }
     }
 
@@ -6613,17 +6590,6 @@ private struct ServerSyncItemDetailView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
-
-            Button {
-                Task {
-                    await model.refreshRecent(includeSyncData: true)
-                }
-            } label: {
-                Label("결과 다시 불러오기", systemImage: "arrow.clockwise")
-                    .frame(maxWidth: .infinity, minHeight: 42)
-            }
-            .buttonStyle(.bordered)
-            .disabled(model.isRefreshing)
         }
     }
 
@@ -8028,12 +7994,6 @@ private struct RemoteSettingGroup: Identifiable {
                 "Notes 메모에 숨긴 공지를 쓸지, 변경 없는 메모를 다시 쓸지 정합니다.",
                 ["NOTICE_HIDE_HIDDEN_ITEMS", "NOTICE_NATIVE_STABLE_NOOP_SKIP"]
             ),
-            (
-                "자동 실행",
-                "clock.arrow.circlepath",
-                "Mac이 혼자 동기화할 때의 주기와 중단 조건을 정합니다.",
-                ["KLMS_AUTO_SYNC_ENABLED", "SYNC_INTERVAL_SECONDS", "MIN_IDLE_SECONDS", "SYNC_ABORT_ON_USER_ACTIVITY", "SYNC_ACTIVE_ABORT_IDLE_SECONDS"]
-            ),
         ]
 
         var groups: [RemoteSettingGroup] = specs.compactMap { spec in
@@ -9088,10 +9048,6 @@ private struct RemoteSettingRow: View {
 
     private var settingExplanation: String? {
         switch setting.key {
-        case "SYNC_INTERVAL_SECONDS":
-            return "자동 실행 서비스가 얼마나 자주 깨어날지 정합니다. iPhone/iPad에서 누르는 수동 실행에는 영향을 주지 않습니다."
-        case "MIN_IDLE_SECONDS":
-            return "Mac에서 키보드나 마우스를 이 시간 이상 사용하지 않았을 때만 자동 실행을 허용합니다."
         case "SYNC_MODE":
             return "자동은 캐시와 변경 여부를 보고 필요한 범위를 고릅니다. 빠른 모드는 기존 데이터를 우선 재사용하고, 전체는 가능한 데이터를 다시 읽습니다."
         case "FILE_REFRESH_MODE":
@@ -9104,10 +9060,6 @@ private struct RemoteSettingRow: View {
             return "숨긴 공지는 Notes 메모에 쓰지 않습니다. KLMS 원본 공지는 그대로 둡니다."
         case "NOTICE_NATIVE_STABLE_NOOP_SKIP":
             return "읽음/중요 표시는 유지하되, 공지 내용이 그대로면 Notes 메모를 다시 쓰지 않습니다."
-        case "SYNC_ABORT_ON_USER_ACTIVITY":
-            return "자동 동기화 중 사용자가 Mac을 다시 쓰기 시작하면 Safari와 Notes가 방해되지 않도록 실행을 멈춥니다."
-        case "SYNC_ACTIVE_ABORT_IDLE_SECONDS":
-            return "사용자 활동으로 판단할 기준 시간입니다. 값이 작을수록 자동 실행을 더 빨리 멈춥니다."
         case "KLMS_SAFARI_BACKGROUND_WINDOW_MODE":
             return "KLMS 전용 Safari 창을 처리하는 방식입니다. 기본값은 최소화입니다."
         default:

@@ -54,11 +54,6 @@ final class KLMSMacModel: ObservableObject {
     private static let serverRelayEditableSettings: [ServerRelaySettingDefinition] = [
         ServerRelaySettingDefinition(.loginAssistEnabled, title: "로그인 보조", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.loginAssistAllowNoninteractive, title: "앱이 앞에 없어도 로그인 보조", valueKind: .bool, defaultValue: "1"),
-        ServerRelaySettingDefinition(.autoSyncEnabled, title: "자동 실행", valueKind: .bool, defaultValue: "0"),
-        ServerRelaySettingDefinition(.syncIntervalSeconds, title: "자동 실행 주기(초)", valueKind: .number, defaultValue: "21600"),
-        ServerRelaySettingDefinition(.minIdleSeconds, title: "Mac을 쓰지 않은 시간(초)", valueKind: .number, defaultValue: "0"),
-        ServerRelaySettingDefinition(.syncAbortOnUserActivity, title: "사용 중이면 자동 실행 중단", valueKind: .bool, defaultValue: "0"),
-        ServerRelaySettingDefinition(.syncActiveAbortIdleSeconds, title: "중단 기준 시간(초)", valueKind: .number, defaultValue: "0"),
         ServerRelaySettingDefinition(.safariBackgroundWindowEnabled, title: "Safari 백그라운드 창", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.safariBackgroundWindowMode, title: "Safari 백그라운드 방식", valueKind: .choice, defaultValue: "minimize", options: ["minimize", "none"]),
         ServerRelaySettingDefinition(.safariReuseExistingWindowEnabled, title: "KLMS Sync Safari 창 재사용", valueKind: .bool, defaultValue: "1"),
@@ -76,7 +71,6 @@ final class KLMSMacModel: ObservableObject {
     @Published var paths = KLMSPaths()
     @Published var snapshot = EngineSnapshot()
     @Published var envDocument: EnvDocument?
-    @Published var launchAgentState: LaunchAgentState?
     @Published var appDiagnostics = KLMSAppDiagnostics()
     @Published var commandHistory = CommandRunHistory()
     @Published var latestBackup: AppDataBackupRecord?
@@ -224,15 +218,15 @@ final class KLMSMacModel: ObservableObject {
         return "checkmark.circle"
     }
 
-    var launchLabel: String {
-        LaunchAgentManager(paths: paths).label(from: envDocument)
-    }
-
     var currentAuthDigits: String? {
         guard runningCommand != nil, !authDigitsSuppressed else {
             return nil
         }
         return liveAuthDigits
+    }
+
+    var sharedLockInfo: SyncLockInfo? {
+        SyncLockReader(paths: paths).sharedLockInfo(scope: "all")
     }
 
     var liveProgressLine: String? {
@@ -352,7 +346,7 @@ final class KLMSMacModel: ObservableObject {
         if shouldRequestPermissionsAfterInstall {
             await requestAppPermissions(markAutomatic: true)
         }
-        await refresh()
+        await reloadEngineState()
         configurePassiveSnapshotRefresh()
         configureServerRelayRealtime()
     }
@@ -378,7 +372,6 @@ final class KLMSMacModel: ObservableObject {
                 force: force
             )
             try loadConfig()
-            refreshLaunchAgentState()
             refreshAppDiagnostics()
             if runDoctorAfterInstall, installResult?.installed == true {
                 _ = try? await runner.run(.doctor, paths: paths)
@@ -388,7 +381,7 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    func clearDisplayState(resetSnapshot: Bool, showConfirmation: Bool = false) {
+    private func clearTransientRunState() {
         errorMessage = nil
         lastCommandResult = nil
         if !serverRelayEnabled {
@@ -409,14 +402,6 @@ final class KLMSMacModel: ObservableObject {
         notifiedAlreadyLoggedInForCurrentRun = false
         authDigitsSeenForCurrentRun = false
         lastAuthCompletionAt = nil
-        if resetSnapshot {
-            snapshot = EngineSnapshot()
-            launchAgentState = nil
-        }
-        if showConfirmation {
-            remoteProcessingStatusMessage = nil
-            serverRelayStatusMessage = "화면 표시를 정리했습니다."
-        }
     }
 
     func setServerRelayEnabled(_ enabled: Bool) {
@@ -610,7 +595,7 @@ final class KLMSMacModel: ObservableObject {
             serverRelayStatusMessage = "동기화가 끝난 뒤 로그를 지울 수 있습니다."
             return
         }
-        clearDisplayState(resetSnapshot: false)
+        clearTransientRunState()
         clearLocalStoredLogs()
         guard serverRelayConfigured else {
             serverRelayStatusMessage = "로그를 지웠습니다."
@@ -624,9 +609,8 @@ final class KLMSMacModel: ObservableObject {
 
     private func clearLocalStoredLogs() {
         commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
-        snapshot.launchAgentLogTail = ""
         snapshot.relayLogTail = ""
-        for url in [paths.launchAgentLogURL, paths.relayStdoutLogURL, paths.relayStderrLogURL] {
+        for url in [paths.relayStdoutLogURL, paths.relayStderrLogURL] {
             do {
                 try FileManager.default.createDirectory(
                     at: url.deletingLastPathComponent(),
@@ -1457,7 +1441,6 @@ final class KLMSMacModel: ObservableObject {
         document.setValue(normalizedValue, for: definition.key)
         try EnvStore(url: paths.configURL).save(document)
         envDocument = document
-        refreshLaunchAgentState()
         return "\(definition.title) 저장 완료"
     }
 
@@ -1659,15 +1642,11 @@ final class KLMSMacModel: ObservableObject {
                 self.reloadSnapshot(showLoginTransition: true)
                 self.commandHistory = CommandRunHistoryStore(url: self.paths.appHistoryURL).load()
                 self.latestBackup = AppDataBackupManager(paths: self.paths).latestBackup()
-                self.refreshLaunchAgentState()
             }
         }
     }
 
-    func refresh(clearDisplayLogs: Bool = false, showConfirmation: Bool = false) async {
-        if clearDisplayLogs {
-            clearDisplayState(resetSnapshot: false)
-        }
+    func reloadEngineState() async {
         var refreshError: Error?
         do {
             try loadConfig()
@@ -1683,10 +1662,7 @@ final class KLMSMacModel: ObservableObject {
         commandHistory = CommandRunHistoryStore(url: paths.appHistoryURL).load()
         latestBackup = AppDataBackupManager(paths: paths).latestBackup()
         refreshAppDiagnostics()
-        refreshLaunchAgentState()
-        if showConfirmation, refreshError == nil {
-            remoteProcessingStatusMessage = nil
-            serverRelayStatusMessage = "새로 고침 완료"
+        if refreshError == nil {
             errorMessage = nil
         }
     }
@@ -1817,7 +1793,7 @@ final class KLMSMacModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-        await refresh()
+        await reloadEngineState()
     }
 
     func cancelRunningCommand() async {
@@ -1883,7 +1859,6 @@ final class KLMSMacModel: ObservableObject {
             document.setValue(value, for: key)
             try EnvStore(url: paths.configURL).save(document)
             envDocument = document
-            refreshLaunchAgentState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2025,21 +2000,6 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    func toggleLaunchAgent() async {
-        let manager = LaunchAgentManager(paths: paths)
-        let label = launchLabel
-        do {
-            if manager.state(label: label).isInstalled {
-                try manager.uninstall(label: label)
-            } else {
-                try manager.install(label: label)
-            }
-            refreshLaunchAgentState()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
     func openEngineFolder() {
         NSWorkspace.shared.open(paths.engineRoot)
     }
@@ -2157,7 +2117,7 @@ final class KLMSMacModel: ObservableObject {
             }
             latestBackup = restored
             errorMessage = "백업 복구 완료: \(restored.id)"
-            await refresh()
+            await reloadEngineState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -3074,11 +3034,6 @@ final class KLMSMacModel: ObservableObject {
             return message
         }
         return errorInfo.description
-    }
-
-    private func refreshLaunchAgentState() {
-        let manager = LaunchAgentManager(paths: paths)
-        launchAgentState = manager.state(label: manager.label(from: envDocument))
     }
 
     private func reloadSnapshot(showLoginTransition: Bool = false) {

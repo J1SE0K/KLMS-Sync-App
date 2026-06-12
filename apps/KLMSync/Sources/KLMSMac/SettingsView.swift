@@ -79,7 +79,7 @@ struct SettingsView: View {
                     "앱이 앞에 없어도 로그인 보조",
                     .loginAssistAllowNoninteractive,
                     defaultValue: true,
-                    description: "자동 실행이나 iPhone 요청처럼 KLMS Sync 창이 앞에 없을 때도 로그인 확인과 인증번호 표시를 허용합니다."
+                    description: "iPhone 요청처럼 KLMS Sync 창이 앞에 없을 때도 로그인 확인과 인증번호 표시를 허용합니다."
                 )
             }
             Section {
@@ -122,34 +122,6 @@ struct SettingsView: View {
                     "KLMS Sync Safari 창 재사용",
                     .safariReuseExistingWindowEnabled,
                     description: "사용자가 쓰는 Safari 창 대신 KLMS Sync 전용 창을 다음 실행에서도 재사용합니다."
-                )
-            }
-
-            Section("자동 실행") {
-                configToggle(
-                    "자동 실행",
-                    .autoSyncEnabled,
-                    description: "Mac이 켜져 있고 사용자 세션이 살아 있을 때, 자동 실행 서비스가 정해진 주기로 동기화를 시도합니다."
-                )
-                configText(
-                    "자동 실행 주기(초)",
-                    .syncIntervalSeconds,
-                    description: "자동 실행 서비스가 얼마나 자주 깨어날지 정합니다. 위쪽의 수동 실행 버튼에는 영향을 주지 않습니다."
-                )
-                configText(
-                    "Mac을 쓰지 않은 시간(초)",
-                    .minIdleSeconds,
-                    description: "키보드나 마우스를 이 시간 이상 사용하지 않았을 때만 자동 실행합니다."
-                )
-                configToggle(
-                    "사용 중이면 자동 실행 중단",
-                    .syncAbortOnUserActivity,
-                    description: "자동 동기화 중 사용자가 Mac을 다시 쓰기 시작하면 Safari와 Notes가 방해되지 않도록 실행을 멈춥니다."
-                )
-                configText(
-                    "중단 기준 시간(초)",
-                    .syncActiveAbortIdleSeconds,
-                    description: "자동 실행 중 사용자 활동으로 볼 기준입니다. 값이 작을수록 더 빨리 멈춥니다."
                 )
             }
         }
@@ -384,7 +356,7 @@ struct SettingsView: View {
                 Button("엔진 다시 설치") {
                     Task {
                         await model.installEngine(force: true)
-                        await model.refresh()
+                        await model.reloadEngineState()
                     }
                 }
                 SettingsHelpText("엔진 다시 설치는 앱에 포함된 최신 코드만 다시 복사합니다. config.env, 인증 상태, runtime, course_files는 덮어쓰지 않습니다.")

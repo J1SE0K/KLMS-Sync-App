@@ -6,7 +6,7 @@ SwiftUI app layer for the existing `klms-notes-sync` engine.
 
 - `KLMSMac`: macOS menu bar app that installs and runs the local KLMS sync engine.
 - `KLMSiOS`: universal iPhone/iPad companion UI for remote command/status workflows.
-- `KLMSShared`: shared models, `.env` editing, command construction, JSON parsing, LaunchAgent helpers, and CloudKit command types.
+- `KLMSShared`: shared models, `.env` editing, command construction, JSON parsing, sync lock reading, and relay command types.
 
 ## Development
 
@@ -46,7 +46,7 @@ For use away from the same network, run the HTTPS relay server in `deploy/cloudf
 
 The Windows companion lives in `apps/KLMSyncWindows`. It uses the same relay API as the iPhone/iPad app and can read the dashboard, browse sanitized item lists, toggle notice read/important state, request temporary file links, and create remote sync requests. The Windows implementation guide is tracked in `docs/windows-implementation-guide.md`.
 
-On the Mac worker, install the relay as a LaunchAgent with:
+On the Mac worker, install the relay as a background service with:
 
 ```sh
 tools/install_klms_relay_agent.sh install

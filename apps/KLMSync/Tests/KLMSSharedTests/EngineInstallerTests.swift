@@ -43,7 +43,6 @@ final class EngineInstallerTests: XCTestCase {
         try FileManager.default.createDirectory(at: source.appendingPathComponent("python-packages/bs4", isDirectory: true), withIntermediateDirectories: true)
         try "#!/bin/zsh\n".write(to: source.appendingPathComponent("run_all_full.sh"), atomically: true, encoding: .utf8)
         try "x".write(to: source.appendingPathComponent("bin/run_all_full.sh"), atomically: true, encoding: .utf8)
-        try "x".write(to: source.appendingPathComponent("src/sh/launch_sync_if_idle.sh"), atomically: true, encoding: .utf8)
         try "package".write(to: source.appendingPathComponent("python-packages/bs4/__init__.py"), atomically: true, encoding: .utf8)
         try "SYNC_MODE=\"auto\"\n".write(to: source.appendingPathComponent("examples/config.env.example"), atomically: true, encoding: .utf8)
         try "{\"assignments\":{}}\n".write(
@@ -90,7 +89,6 @@ final class EngineInstallerTests: XCTestCase {
             try String(contentsOf: destination.appendingPathComponent("manual_assignment_overrides.json"), encoding: .utf8),
             "{\"assignments\":{}}\n"
         )
-        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("src/sh/launch_sync_if_idle.sh").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("legacy").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("run_all_parallel.sh").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("src/js/sync_klms_calendar_jxa.js").path))

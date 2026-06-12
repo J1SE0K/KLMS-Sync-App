@@ -93,22 +93,6 @@ cd ~/Library/Application\ Support/KLMSNotesSync
 ./kaikey_approve_number.sh "$SHORTCUT_INPUT"
 ```
 
-## 자동 실행
-
-`install_launch_agent.sh`를 실행하면 자동 실행용 파일이 `~/Library/Application Support/KLMSNotesSync`로 복사되고 LaunchAgent가 등록된다.
-
-```sh
-./install_launch_agent.sh
-```
-
-`launch_sync_if_idle.sh`는 15분마다 깨어난다. 실제 KLMS 재수집/동기화는 아래 조건을 만족할 때만 수행한다.
-
-- 마지막 실제 시도 후 `SYNC_INTERVAL_SECONDS` 이상 지났을 것
-- 사용자가 `MIN_IDLE_SECONDS` 이상 입력이 없을 것
-- 로그인 preflight를 통과할 것
-
-로그인 세션이 풀리면 macOS 알림으로 다시 로그인 요청을 띄운다. 같은 로그인 만료 상태에서 창과 알림이 계속 쌓이지 않도록 `LOGIN_PROMPT_COOLDOWN_SECONDS` 동안 재알림을 억제한다.
-
 ## 검증과 병목 확인
 
 실제 상태 검증:

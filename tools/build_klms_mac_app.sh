@@ -139,7 +139,6 @@ root_files=(
   sync_report.sh
   process_klms_assignments.sh
   klms_v2_build_state.sh
-  install_launch_agent.sh
   manual_assignment_overrides.json
   README.md
   LICENSE

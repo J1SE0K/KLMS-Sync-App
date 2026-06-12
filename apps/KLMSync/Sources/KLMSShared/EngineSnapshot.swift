@@ -22,7 +22,6 @@ public struct EngineSnapshot: Sendable, Equatable {
     public var quarantineReport: QuarantineReport?
     public var cleanupResult: CleanupResult?
     public var dryRunReports: [KLMSSyncScope: DryRunReport]
-    public var launchAgentLogTail: String
     public var relayLogTail: String
 
     public init(
@@ -47,7 +46,6 @@ public struct EngineSnapshot: Sendable, Equatable {
         quarantineReport: QuarantineReport? = nil,
         cleanupResult: CleanupResult? = nil,
         dryRunReports: [KLMSSyncScope: DryRunReport] = [:],
-        launchAgentLogTail: String = "",
         relayLogTail: String = ""
     ) {
         self.syncReport = syncReport
@@ -71,7 +69,6 @@ public struct EngineSnapshot: Sendable, Equatable {
         self.quarantineReport = quarantineReport
         self.cleanupResult = cleanupResult
         self.dryRunReports = dryRunReports
-        self.launchAgentLogTail = launchAgentLogTail
         self.relayLogTail = relayLogTail
     }
 
@@ -91,40 +88,6 @@ public struct EngineSnapshot: Sendable, Equatable {
         nil
     }
 
-    public var loginPromptDetected: Bool {
-        guard loginStatus?.loggedIn != true else {
-            return false
-        }
-        return Self.hasRecentLaunchAgentLoginPrompt(from: launchAgentLogTail)
-    }
-
-    public static func extractRecentLaunchAgentAuthDigits(
-        from text: String,
-        now: Date = Date(),
-        recentInterval: TimeInterval = 15 * 60
-    ) -> String? {
-        let pattern = #"\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) KST\].*KAIST 인증 번호:\s*([0-9][0-9])"#
-        let matches = timestampedMatches(pattern: pattern, in: text)
-        return matches
-            .filter { isRecent($0.date, now: now, recentInterval: recentInterval) }
-            .filter { !hasLaterLaunchAgentSuccess(after: $0.date, in: text) }
-            .max(by: { $0.date < $1.date })?
-            .value
-    }
-
-    public static func hasRecentLaunchAgentLoginPrompt(
-        from text: String,
-        now: Date = Date(),
-        recentInterval: TimeInterval = 15 * 60
-    ) -> Bool {
-        let pattern = #"\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) KST\].*login-prompt notified"#
-        return timestampedMatches(pattern: pattern, in: text)
-            .contains {
-                isRecent($0.date, now: now, recentInterval: recentInterval)
-                    && !hasLaterLaunchAgentSuccess(after: $0.date, in: text)
-            }
-    }
-
     public var attentionSummary: String {
         issues.first?.title ?? "준비됨"
     }
@@ -138,13 +101,6 @@ public struct EngineSnapshot: Sendable, Equatable {
                 title: "인증 번호 \(authDigits) 선택 필요",
                 detail: "휴대폰 KAIST 인증 화면에서 \(authDigits)를 선택하면 동기화를 계속 진행할 수 있습니다.",
                 sourceName: "auth-digits"
-            ))
-        } else if loginPromptDetected {
-            items.append(EngineIssue(
-                severity: .warning,
-                title: "KLMS 로그인 필요",
-                detail: "KLMS 로그인 보조가 실패했거나 로그인 세션이 만료되었습니다.",
-                sourceName: "login-required"
             ))
         }
 
@@ -192,9 +148,6 @@ public struct EngineSnapshot: Sendable, Equatable {
                 ))
             } else {
                 for check in doctorIssues {
-                    if check.name == "klms-login-cache", loginPromptDetected {
-                        continue
-                    }
                     items.append(EngineIssue(
                         severity: check.status.issueSeverity,
                         title: doctorIssueTitle(for: check),
@@ -275,84 +228,6 @@ public struct EngineSnapshot: Sendable, Equatable {
         return nil
     }
 
-    private static func timestampedMatches(pattern: String, in text: String) -> [(date: Date, value: String)] {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return []
-        }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        return regex.matches(in: text, range: range).compactMap { match in
-            guard match.numberOfRanges >= 2,
-                  let dateRange = Range(match.range(at: 1), in: text),
-                  let date = launchAgentDateFormatter.date(from: String(text[dateRange])) else {
-                return nil
-            }
-            if match.numberOfRanges >= 3, let valueRange = Range(match.range(at: 2), in: text) {
-                return (date, String(text[valueRange]))
-            }
-            return (date, "")
-        }
-    }
-
-    private static func isRecent(_ date: Date, now: Date, recentInterval: TimeInterval) -> Bool {
-        date <= now.addingTimeInterval(60) && now.timeIntervalSince(date) <= recentInterval
-    }
-
-    private static func hasLaterLaunchAgentSuccess(after date: Date, in text: String) -> Bool {
-        let successPatterns = [
-            #"\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) KST\].*idle=.*exit=0"#,
-            #"\[([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}) KST\].*login-watch detected authenticated"#,
-        ]
-        return successPatterns.contains { pattern in
-            timestampedMatches(pattern: pattern, in: text)
-                .contains { $0.date >= date }
-        }
-    }
-
-    public static func recentLaunchAgentLogTail(
-        from text: String,
-        now: Date = Date(),
-        recentInterval: TimeInterval = 24 * 60 * 60
-    ) -> String {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        var firstRecentLineIndex: Int?
-        var latestTimestampedLineIsRecent = false
-
-        for (index, line) in lines.enumerated() {
-            guard let date = launchAgentLineDate(line) else {
-                continue
-            }
-            let recent = isRecent(date, now: now, recentInterval: recentInterval)
-            latestTimestampedLineIsRecent = recent
-            if recent, firstRecentLineIndex == nil {
-                firstRecentLineIndex = index
-            }
-        }
-
-        guard latestTimestampedLineIsRecent, let firstRecentLineIndex else {
-            return ""
-        }
-        return lines[firstRecentLineIndex...].joined(separator: "\n")
-    }
-
-    private static func launchAgentLineDate(_ line: String) -> Date? {
-        guard line.hasPrefix("[") else {
-            return nil
-        }
-        let timestampEnd = line.index(line.startIndex, offsetBy: 21, limitedBy: line.endIndex)
-        guard let timestampEnd else {
-            return nil
-        }
-        let timestamp = String(line[line.index(after: line.startIndex)..<timestampEnd])
-        return launchAgentDateFormatter.date(from: timestamp)
-    }
-
-    private static let launchAgentDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter
-    }()
 }
 
 public struct EngineVisibleCounts: Sendable, Equatable {
@@ -586,9 +461,6 @@ public struct EngineSnapshotStore: Sendable {
             quarantineReport: JSONFileLoader.loadIfExists(QuarantineReport.self, from: paths.quarantineReportURL),
             cleanupResult: JSONFileLoader.loadIfExists(CleanupResult.self, from: paths.cleanupResultURL),
             dryRunReports: dryRuns,
-            launchAgentLogTail: EngineSnapshot.recentLaunchAgentLogTail(
-                from: tailText(paths.launchAgentLogURL, maxBytes: 16_384)
-            ),
             relayLogTail: recentRelayLogTail(paths: paths)
         )
     }

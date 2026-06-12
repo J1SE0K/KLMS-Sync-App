@@ -17,14 +17,6 @@ public struct KLMSPaths: Sendable, Equatable {
         return appSupport.appendingPathComponent("KLMSNotesSync", isDirectory: true)
     }
 
-    public static func defaultLaunchAgentsDirectory(
-        fileManager: FileManager = .default
-    ) -> URL {
-        let library = fileManager.urls(for: .libraryDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library")
-        return library.appendingPathComponent("LaunchAgents", isDirectory: true)
-    }
-
     public var configURL: URL {
         engineRoot.appendingPathComponent("config.env")
     }
@@ -71,10 +63,6 @@ public struct KLMSPaths: Sendable, Equatable {
 
     public var installedPayloadVersionURL: URL {
         automationURL.appendingPathComponent("app_engine_payload_version")
-    }
-
-    public var launchAgentLogURL: URL {
-        logsURL.appendingPathComponent("launch-agent.log")
     }
 
     public var relayStdoutLogURL: URL {

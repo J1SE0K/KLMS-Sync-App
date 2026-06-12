@@ -646,8 +646,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("private func described", settings)
         for description in [
             "비밀번호는 저장하지 않습니다.",
-            "수동 실행 버튼에는 영향을 주지 않습니다.",
-            "동기화할 때마다 Notes 체크리스트 상태를 다시 읽어",
+            "시험과 헬프데스크 일정이 이미 같으면 Calendar 이벤트를 다시 쓰지 않습니다.",
+            "읽음/중요 표시는 항상 동기화합니다.",
             "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다.",
             "집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.",
             "config.env, 인증 상태, runtime, course_files는 덮어쓰지 않습니다.",
@@ -679,13 +679,12 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         ).read_text(encoding="utf-8")
 
         self.assertIn(
-            'Metric("파일", snapshot.courseFileManifest.count + model.mailDashboardItems(kind: "file").count, detail: .files)',
+            'Metric("파일", snapshot.courseFileManifest.count, detail: .files)',
             menu,
         )
         self.assertIn("@State private var selectedDetail = DashboardDetailKind.assignments", menu)
         self.assertIn("case files", detail)
         self.assertIn("FileManifestListView(filters: filters, model: model)", detail)
-        self.assertIn('MailDashboardItemListView(items: model.mailDashboardItems(kind: "file")', detail)
         self.assertIn("model.snapshot.courseFileManifest.compactMap", detail)
         self.assertIn("NoticeAttachmentDisplay", detail)
         self.assertIn('Text("첨부 파일")', detail)
@@ -799,15 +798,9 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("reuseKlmsWindow", login_text)
         self.assertIn("repeat with candidateWindow in windows", login_text)
         self.assertIn('set URL of current tab of targetWindow to targetUrl', login_text)
-        launch_text = (PROJECT_DIR / "src" / "sh" / "launch_sync_if_idle.sh").read_text(
-            encoding="utf-8"
-        )
         model_text = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
         ).read_text(encoding="utf-8")
-        self.assertIn("reuseKlmsWindow", launch_text)
-        self.assertIn("repeat with candidateWindow in windows", launch_text)
-        self.assertIn('set URL of current tab of targetWindow to targetUrl', launch_text)
         app_environment = model_text[
             model_text.index("var appRunEnvironment")
             : model_text.index("var serverRelayConfigured")
@@ -827,27 +820,6 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("safariRestoreFrontmostEnabled", download_text)
         self.assertIn('title: "KLMS Sync Safari 창 재사용"', model_text)
         self.assertIn('defaultValue: "1"', model_text)
-
-    def test_launch_agent_aborts_sync_when_user_returns(self) -> None:
-        text = (PROJECT_DIR / "src" / "sh" / "launch_sync_if_idle.sh").read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn("SYNC_ABORT_ON_USER_ACTIVITY", text)
-        self.assertIn("SYNC_ACTIVE_ABORT_IDLE_SECONDS", text)
-        self.assertIn("terminate_process_tree", text)
-        self.assertIn("aborted=user-activity", text)
-
-    def test_launch_agent_notifies_new_auth_digits_despite_cooldown(self) -> None:
-        text = (PROJECT_DIR / "src" / "sh" / "launch_sync_if_idle.sh").read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn("LOGIN_PROMPT_DIGITS_FILE", text)
-        self.assertIn('[[ "$auth_digits" == "$last_auth_digits" ]]', text)
-        self.assertIn("login-prompt suppressed cooldown=%ss digits=%s", text)
-        self.assertIn("KAIST 인증 번호: ([0-9][0-9])", text)
-        self.assertNotIn("digits=([0-9][0-9])", text)
 
     def test_cleanup_tracked_downloads_can_preserve_archive_destinations(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "cleanup_tracked_downloads.js").read_text(
@@ -880,17 +852,6 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("--quarantine-root=$QUARANTINE_ROOT", text)
         self.assertIn('DOWNLOAD_PARALLELISM="${16:-1}"', text)
         self.assertIn('DIRECT_FETCH_MAX_BYTES="${17:-26214400}"', text)
-
-    def test_launch_agent_install_copies_bin_implementations(self) -> None:
-        text = (PROJECT_DIR / "install_launch_agent.sh").read_text(encoding="utf-8")
-
-        self.assertIn('mkdir -p "$INSTALL_DIR/src" "$INSTALL_DIR/bin"', text)
-        self.assertIn('cp -R "$SCRIPT_DIR/bin/." "$INSTALL_DIR/bin/"', text)
-        self.assertIn('find "$INSTALL_DIR/bin" -type f -name', text)
-        self.assertIn('cp "$SCRIPT_DIR/doctor.sh" "$INSTALL_DIR/"', text)
-        self.assertIn('cp "$SCRIPT_DIR/sync_report.sh" "$INSTALL_DIR/"', text)
-        self.assertIn('cp "$SCRIPT_DIR/process_klms_assignments.sh" "$INSTALL_DIR/"', text)
-        self.assertIn('cp "$SCRIPT_DIR/klms_v2_build_state.sh" "$INSTALL_DIR/"', text)
 
     def test_assignment_processor_is_not_part_of_core_sync(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "sync_notice_bridge.js").read_text(encoding="utf-8")
@@ -1413,7 +1374,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("diagnosticButton(.verify)", ios_app)
         self.assertIn("diagnosticButton(.v2BuildState)", ios_app)
         self.assertIn('requestGroupTitle("원격 실행")', ios_app)
-        self.assertIn("private let commands: [RemoteCommandKind] = [.fullSync, .coreSync, .noticeSync, .filesSync]", ios_app)
+        self.assertIn("private let commands: [RemoteCommandKind] = [.fullSync, .filesSync, .coreSync, .noticeSync]", ios_app)
         self.assertIn("private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)", ios_app)
         self.assertIn("primaryCommandActionCard(primaryCommand)", ios_app)
         self.assertIn("commandActionCard(command)", ios_app)
@@ -1444,8 +1405,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             "Mac 전용 토큰은 여기에 넣지 않습니다.",
             "복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.",
             "연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다.",
-            "Mac 앱이 받아서 설정 파일(config.env)에 반영합니다.",
-            "동기화할 때마다 Notes 체크리스트 상태를 다시 읽어",
+            "Mac 앱이 요청을 확인하면 설정 파일(config.env)에 반영합니다.",
+            "읽음/중요 표시는 유지하되, 공지 내용이 그대로면 Notes 메모를 다시 쓰지 않습니다.",
             "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다.",
         ]:
             self.assertIn(description, ios_app)

@@ -46,7 +46,7 @@
 
 ## 파일 정리
 
-`refresh_course_files.sh`는 첨부파일 manifest를 만든 뒤 정리본을 `$KLMS_DATA_DIR/course_files`에 유지한다. 앱과 자동 실행의 canonical 위치는 `~/Library/Application Support/KLMSNotesSync/course_files`다. 다운로드 staging은 기본적으로 `runtime/tmp/files/downloads` 아래에서만 쓰고 `~/Downloads`에는 KLMS 폴더를 만들지 않는다.
+`refresh_course_files.sh`는 첨부파일 manifest를 만든 뒤 정리본을 `$KLMS_DATA_DIR/course_files`에 유지한다. 앱의 canonical 위치는 `~/Library/Application Support/KLMSNotesSync/course_files`다. 다운로드 staging은 기본적으로 `runtime/tmp/files/downloads` 아래에서만 쓰고 `~/Downloads`에는 KLMS 폴더를 만들지 않는다.
 
 기본 구조:
 
@@ -150,4 +150,4 @@ KLMS 과제 상세의 `제출 상태`가 완료로 보이면 과제 목록과 Re
 - `sync_start`, `sync_due`, `due`, `location`, `coverage`, `coverage_summary`를 지정할 수 있다.
 - `class_times` 아래에는 과목별 기본 수업 시간을 넣을 수 있다.
 
-LaunchAgent 설치본과 작업 폴더가 다른 경로를 써도 같은 override 파일을 보게 하려면 `OVERRIDES_JSON_PATH`를 절대 경로로 지정한다.
+앱 설치본과 작업 폴더가 다른 경로를 써도 같은 override 파일을 보게 하려면 `OVERRIDES_JSON_PATH`를 절대 경로로 지정한다.

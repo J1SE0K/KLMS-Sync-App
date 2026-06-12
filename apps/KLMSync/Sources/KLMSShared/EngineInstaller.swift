@@ -377,7 +377,6 @@ public struct EngineInstaller {
         "sync_report.sh",
         "process_klms_assignments.sh",
         "klms_v2_build_state.sh",
-        "install_launch_agent.sh",
     ]
 
     public static let retiredCodePaths: [String] = [
