@@ -11,6 +11,7 @@ struct MenuBarRootView: View {
         WholeScreenVerticalScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 HeaderView(model: model)
+                TopUtilityActionsView(model: model)
                 ImportantLogPanelView(
                     model: model,
                     selectedSection: $selectedSection,
@@ -43,10 +44,6 @@ struct MenuBarRootView: View {
                 }
                 .padding(.vertical, 4)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                Divider()
-
-                FooterActionsView(model: model)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -3755,45 +3752,17 @@ private extension EngineIssue.Severity {
     }
 }
 
-private struct FooterActionsView: View {
+private struct TopUtilityActionsView: View {
     @ObservedObject var model: KLMSMacModel
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         HStack(spacing: 8) {
             Button {
-                Task {
-                    await model.refresh(clearDisplayLogs: false, showConfirmation: true)
-                }
-            } label: {
-                Label("새로 고침", systemImage: "arrow.clockwise")
-            }
-            .help("저장된 동기화 상태와 설정을 다시 읽습니다. 현재 화면 로그와 마지막 실행 결과는 지우지 않습니다.")
-            .disabled(model.runningCommand != nil)
-            Button {
-                model.clearDisplayState(resetSnapshot: false, showConfirmation: true)
-            } label: {
-                Label("화면 정리", systemImage: "eraser")
-            }
-            .help("실시간 로그, 인증번호 표시, 마지막 오류처럼 화면에 남은 임시 표시만 정리합니다. 동기화 데이터와 설정은 유지됩니다.")
-            .disabled(model.runningCommand != nil)
-            Button {
                 openSettings()
             } label: {
                 Label("설정", systemImage: "gearshape")
             }
-            Spacer()
-            Button {
-                Task {
-                    await model.toggleLaunchAgent()
-                }
-            } label: {
-                Label(
-                    model.launchAgentState?.isInstalled == true ? "자동실행 끄기" : "자동실행 켜기",
-                    systemImage: model.launchAgentState?.isInstalled == true ? "bell.slash" : "bell"
-                )
-            }
-            .disabled(model.runningCommand != nil)
             Menu {
                 Button {
                     Task {
@@ -3826,6 +3795,7 @@ private struct FooterActionsView: View {
             } label: {
                 Label("열기", systemImage: "square.grid.2x2")
             }
+            Spacer(minLength: 0)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)

@@ -1143,8 +1143,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macModel.contains("CommandRunHistoryStore(url: paths.appHistoryURL).clear()"))
         XCTAssertTrue(macModel.contains("reason == \"sync-data:run-logs-clear\""))
         XCTAssertTrue(macView.contains("await model.clearVisibleLogsAndServerRelayLogs()"))
-        XCTAssertTrue(macView.contains("await model.refresh(clearDisplayLogs: false, showConfirmation: true)"))
-        XCTAssertTrue(macView.contains("model.clearDisplayState(resetSnapshot: false, showConfirmation: true)"))
+        XCTAssertTrue(macView.contains("TopUtilityActionsView(model: model)"))
+        XCTAssertFalse(macView.contains("Label(\"새로 고침\", systemImage: \"arrow.clockwise\")"))
+        XCTAssertFalse(macView.contains("model.clearDisplayState(resetSnapshot: false, showConfirmation: true)"))
+        XCTAssertFalse(macView.contains("await model.toggleLaunchAgent()"))
         XCTAssertTrue(macModel.contains("serverRelayStatusMessage = \"새로 고침 완료\""))
         XCTAssertTrue(macModel.contains("serverRelayStatusMessage = \"화면 표시를 정리했습니다.\""))
     }
@@ -1167,6 +1169,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("connectionMessage = \"새로 고침 완료\""))
         XCTAssertTrue(ios.contains("func resetDisplayState(showConfirmation: Bool = true)"))
         XCTAssertTrue(ios.contains("connectionMessage = \"화면 표시를 정리했습니다.\""))
+        XCTAssertFalse(ios.contains("Label(\"새로 고침\", systemImage: \"arrow.clockwise\")"))
+        XCTAssertFalse(ios.contains("Label(\"화면 정리\", systemImage: \"eraser\")"))
     }
 
     func testIOSRelayRefreshFetchesRemotePanelsConcurrently() throws {

@@ -2013,31 +2013,9 @@ private struct CompanionScreenContainer<Content: View>: View {
                 .padding(.bottom, 20)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .refreshable {
-                await model.refreshRecent(includeSyncData: true)
-            }
         }
         .navigationTitle(title)
         .klmsNavigationTitleMode()
-        .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
-                Button {
-                    Task {
-                        await model.refreshRecent(includeSyncData: true)
-                    }
-                } label: {
-                    Label("새로 고침", systemImage: "arrow.clockwise")
-                }
-                .disabled(model.isRefreshing)
-
-                Button {
-                    model.resetDisplayState()
-                } label: {
-                    Label("화면 정리", systemImage: "eraser")
-                }
-                .disabled(model.isRefreshing || model.isSubmitting)
-            }
-        }
         .klmsNavigationChrome()
     }
 }
