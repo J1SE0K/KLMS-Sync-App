@@ -1451,7 +1451,7 @@ private struct DiagnosticToolsPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var isAdvancedExpanded = false
     private let columns = [GridItem(.adaptive(minimum: 170), spacing: 8)]
-    private let dryRunCommands: [KLMSEngineCommand] = [.fullSync, .coreSync, .noticeSync, .filesSync]
+    private let dryRunCommands: [KLMSEngineCommand] = [.fullSync, .filesSync, .coreSync, .noticeSync]
 
     var body: some View {
         SectionBox(title: "점검 도구") {
@@ -2603,7 +2603,7 @@ private struct FileAccessActivityRow: View {
 
 private struct CommandPanelView: View {
     @ObservedObject var model: KLMSMacModel
-    private let commands: [KLMSEngineCommand] = [.fullSync, .coreSync, .noticeSync, .filesSync]
+    private let commands: [KLMSEngineCommand] = [.fullSync, .filesSync, .coreSync, .noticeSync]
     private let secondaryCommandColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
 
     private var primaryCommand: KLMSEngineCommand {

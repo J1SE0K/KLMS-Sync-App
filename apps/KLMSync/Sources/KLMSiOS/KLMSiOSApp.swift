@@ -7283,7 +7283,7 @@ private struct RemoteCommandPanel: View {
     @ObservedObject var model: CompanionModel
     var compact: Bool
 
-    private let commands: [RemoteCommandKind] = [.fullSync, .coreSync, .noticeSync, .filesSync]
+    private let commands: [RemoteCommandKind] = [.fullSync, .filesSync, .coreSync, .noticeSync]
     private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
 
     private var primaryCommand: RemoteCommandKind {
@@ -7788,7 +7788,7 @@ private struct RemoteDiagnosticPanel: View {
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 8),
     ]
-    private let dryRunCommands: [RemoteCommandKind] = [.fullSync, .coreSync, .noticeSync, .filesSync]
+    private let dryRunCommands: [RemoteCommandKind] = [.fullSync, .filesSync, .coreSync, .noticeSync]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
