@@ -9425,13 +9425,13 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
-                : UIColor(red: 0.408, green: 0.340, blue: 0.220, alpha: 1.0)
+                ? UIColor(white: 0.980, alpha: 1.0)
+                : UIColor(white: 0.050, alpha: 1.0)
         })
         #elseif canImport(AppKit)
-        Color(red: 0.408, green: 0.340, blue: 0.220)
+        Color(red: 0.090, green: 0.090, blue: 0.090)
         #else
-        Color(red: 0.408, green: 0.340, blue: 0.220)
+        Color.gray
         #endif
     }
 

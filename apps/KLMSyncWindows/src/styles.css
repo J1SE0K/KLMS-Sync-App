@@ -7,9 +7,10 @@
   --text: #17212f;
   --muted: #66758a;
   --accent: #c8b892;
-  --accent-strong: #685638;
   --accent-ink: #0e0d0a;
-  --accent-soft: #f3ead6;
+  --neutral-button: #30343a;
+  --active-bg: #eef3f8;
+  --active-border: #b8c4d0;
   --blue: #2266d2;
   --green: #16845f;
   --orange: #c96a14;
@@ -41,8 +42,8 @@ button {
   border: 0;
   border-radius: 8px;
   padding: 10px 14px;
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--neutral-button);
+  color: #fff;
   font-weight: 650;
   cursor: pointer;
 }
@@ -214,8 +215,8 @@ label {
   padding: 4px 9px;
   font-size: 12px;
   font-weight: 800;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+  background: var(--panel-soft);
+  color: var(--muted);
 }
 
 .status-pill.ok {
@@ -257,6 +258,8 @@ label {
 .command-grid button {
   min-height: 46px;
   text-align: left;
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .topbar {
@@ -278,7 +281,7 @@ label {
 }
 
 .eyebrow {
-  color: var(--accent-strong);
+  color: var(--muted);
   font-weight: 800;
   letter-spacing: 0;
 }
@@ -327,8 +330,8 @@ label {
 }
 
 .metric-card.active {
-  border-color: rgba(104, 86, 56, 0.45);
-  background: var(--accent-soft);
+  border-color: var(--active-border);
+  background: var(--active-bg);
 }
 
 .metric-card strong {
@@ -457,8 +460,8 @@ label {
 }
 
 .item-row.active {
-  border-color: rgba(104, 86, 56, 0.55);
-  background: var(--accent-soft);
+  border-color: var(--active-border);
+  background: var(--active-bg);
 }
 
 .item-row .meta,
@@ -569,8 +572,8 @@ label {
 }
 
 .toggle-action.on {
-  border-color: rgba(34, 102, 210, 0.45);
-  background: #edf5ff;
+  border-color: var(--active-border);
+  background: var(--active-bg);
 }
 
 .toggle-action .sub {
@@ -591,8 +594,8 @@ label {
 }
 
 .toggle-action.on .switch-pill {
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: var(--neutral-button);
+  color: #fff;
 }
 
 .history-panel {
