@@ -9484,18 +9484,18 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.260, alpha: 1.0)
-                : UIColor(white: 0.220, alpha: 1.0)
+                ? UIColor(white: 0.310, alpha: 1.0)
+                : UIColor(white: 0.270, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
-                ? NSColor(calibratedWhite: 0.260, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.220, alpha: 1.0)
+                ? NSColor(calibratedWhite: 0.310, alpha: 1.0)
+                : NSColor(calibratedWhite: 0.270, alpha: 1.0)
         })
         #else
-        Color.black.opacity(0.76)
+        Color.black.opacity(0.70)
         #endif
     }
 
