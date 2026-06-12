@@ -4034,28 +4034,28 @@ private extension Color {
 
     static var klmsMacScreenBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.995, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.940, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.010, alpha: 1.0)
         )
     }
 
     static var klmsMacCardBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 1.000, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.985, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.050, alpha: 1.0)
         )
     }
 
     static var klmsMacSubtleCardBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.976, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.915, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.120, alpha: 1.0)
         )
     }
 
     static var klmsMacHeroBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.965, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.880, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.200, alpha: 1.0)
         )
     }
@@ -4069,60 +4069,63 @@ private extension Color {
 
     static var klmsMacCommandBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.965, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.880, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.200, alpha: 1.0)
         )
     }
 
     static var klmsMacCommandBorder: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.760, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.670, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.360, alpha: 1.0)
         )
     }
 
     static var klmsMacCommandButtonBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.150, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.810, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.230, alpha: 1.0)
         )
     }
 
     static var klmsMacPrimaryCommandButtonBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.055, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.850, alpha: 1.0),
             dark: NSColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
         )
     }
 
     static var klmsMacCommandButtonForeground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.985, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.075, alpha: 1.0),
             dark: NSColor(red: 0.055, green: 0.049, blue: 0.039, alpha: 1.0)
         )
     }
 
     static var klmsMacSecondaryCommandButtonForeground: Color {
-        Color.white
+        klmsMacAdaptiveColor(
+            light: NSColor(calibratedWhite: 0.075, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 1.000, alpha: 1.0)
+        )
     }
 
     static var klmsMacPrimaryCommandButtonBorder: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.020, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.600, alpha: 1.0),
             dark: NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
         )
     }
 
     static var klmsMacCommandButtonBorder: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.118, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.650, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.420, alpha: 1.0)
         )
     }
 
     static var klmsMacBorder: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.840, alpha: 1.0),
+            light: NSColor(calibratedWhite: 0.735, alpha: 1.0),
             dark: NSColor(calibratedWhite: 0.260, alpha: 1.0)
         )
     }
