@@ -2865,11 +2865,11 @@ private struct CompanionItemListControls: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(isSelected ? Color.accentColor.opacity(0.18) : Color.klmsSubtleCardBackground, in: Capsule())
-                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                .background(isSelected ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground, in: Capsule())
+                .foregroundStyle(isSelected ? Color.klmsCommandAccent : Color.primary)
                 .overlay {
                     Capsule()
-                        .stroke(isSelected ? Color.accentColor.opacity(0.42) : Color.klmsBorder, lineWidth: 1)
+                        .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
                 }
         }
         .buttonStyle(.plain)
@@ -3388,9 +3388,9 @@ private struct RemoteMetricTile: View {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(isSelected ? .blue : .secondary)
+                    .foregroundStyle(isSelected ? Color.klmsCommandAccent : .secondary)
                     .frame(width: 30, height: 30)
-                    .background((isSelected ? Color.blue : Color.secondary).opacity(0.10), in: RoundedRectangle(cornerRadius: 7))
+                    .background(isSelected ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(value)")
                         .font(.headline.monospacedDigit())
@@ -3404,11 +3404,11 @@ private struct RemoteMetricTile: View {
             }
             .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
             .padding(.horizontal, 10)
-            .background(isSelected ? Color.blue.opacity(0.12) : Color.klmsSubtleCardBackground)
+            .background(isSelected ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.blue.opacity(0.45) : Color.klmsBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -9225,7 +9225,11 @@ private struct InfoBanner: View {
             .foregroundStyle(.secondary)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.blue.opacity(0.08))
+            .background(Color.klmsCommandBackground)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsCommandBorder, lineWidth: 1)
+            }
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
@@ -9351,7 +9355,11 @@ private extension View {
 private extension Color {
     static var klmsScreenBackground: Color {
         #if canImport(UIKit)
-        Color(uiColor: .systemGroupedBackground)
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.045, green: 0.052, blue: 0.050, alpha: 1.0)
+                : UIColor(red: 0.965, green: 0.978, blue: 0.972, alpha: 1.0)
+        })
         #elseif canImport(AppKit)
         Color(nsColor: .windowBackgroundColor)
         #else
@@ -9361,7 +9369,11 @@ private extension Color {
 
     static var klmsCardBackground: Color {
         #if canImport(UIKit)
-        Color(uiColor: .secondarySystemGroupedBackground)
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.082, green: 0.094, blue: 0.090, alpha: 1.0)
+                : UIColor(red: 0.998, green: 1.000, blue: 0.996, alpha: 1.0)
+        })
         #elseif canImport(AppKit)
         Color(nsColor: .controlBackgroundColor)
         #else
@@ -9371,7 +9383,11 @@ private extension Color {
 
     static var klmsSubtleCardBackground: Color {
         #if canImport(UIKit)
-        Color(uiColor: .tertiarySystemGroupedBackground)
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.105, green: 0.124, blue: 0.116, alpha: 1.0)
+                : UIColor(red: 0.925, green: 0.955, blue: 0.944, alpha: 1.0)
+        })
         #elseif canImport(AppKit)
         Color(nsColor: .quaternaryLabelColor).opacity(0.14)
         #else
@@ -9381,7 +9397,11 @@ private extension Color {
 
     static var klmsBorder: Color {
         #if canImport(UIKit)
-        Color(uiColor: .separator).opacity(0.28)
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.29, green: 0.35, blue: 0.33, alpha: 0.72)
+                : UIColor(red: 0.62, green: 0.70, blue: 0.67, alpha: 0.34)
+        })
         #elseif canImport(AppKit)
         Color.black.opacity(0.05)
         #else
@@ -9393,8 +9413,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.60, green: 0.53, blue: 0.65, alpha: 1.0)
-                : UIColor(red: 0.31, green: 0.24, blue: 0.35, alpha: 1.0)
+                ? UIColor(red: 0.62, green: 0.78, blue: 0.70, alpha: 1.0)
+                : UIColor(red: 0.09, green: 0.35, blue: 0.29, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(red: 0.31, green: 0.24, blue: 0.35)
@@ -9407,8 +9427,8 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.08, green: 0.09, blue: 0.11, alpha: 1.0)
-                : UIColor(red: 0.95, green: 0.96, blue: 0.97, alpha: 1.0)
+                ? UIColor(red: 0.075, green: 0.125, blue: 0.108, alpha: 1.0)
+                : UIColor(red: 0.905, green: 0.955, blue: 0.940, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color.klmsCommandAccent.opacity(0.10)
@@ -9418,7 +9438,15 @@ private extension Color {
     }
 
     static var klmsCommandBorder: Color {
+        #if canImport(UIKit)
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.38, green: 0.58, blue: 0.51, alpha: 0.62)
+                : UIColor(red: 0.10, green: 0.35, blue: 0.29, alpha: 0.30)
+        })
+        #else
         Color.klmsCommandAccent.opacity(0.30)
+        #endif
     }
 }
 

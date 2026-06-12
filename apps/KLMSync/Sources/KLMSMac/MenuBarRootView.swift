@@ -200,7 +200,7 @@ private struct QuickStatusStripView: View {
 
     private var lastRunColor: Color {
         if model.runningCommand != nil {
-            return .blue
+            return .klmsMacCommandAccent
         }
         if let result = model.lastCommandResult {
             if result.wasCancelled {
@@ -813,7 +813,7 @@ private struct LogSummaryPanelView: View {
 
     private var runTint: Color {
         if model.runningCommand != nil {
-            return .blue
+            return .klmsMacCommandAccent
         }
         guard let result = model.lastCommandResult else {
             return .secondary
@@ -946,7 +946,7 @@ private struct LogSummaryDetailView: View {
         .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
 
@@ -1333,7 +1333,7 @@ private struct HeaderView: View {
 
     private var statusColor: Color {
         if model.runningCommand != nil {
-            return .blue
+            return .klmsMacCommandAccent
         }
         if model.snapshot.needsAttention {
             return .orange
@@ -1415,7 +1415,7 @@ private struct CommandOutputPanelView: View {
 
     private var commandStatusColor: Color {
         if model.runningCommand != nil {
-            return .blue
+            return .klmsMacCommandAccent
         }
         if let result = model.lastCommandResult {
             if result.wasCancelled {
@@ -3892,7 +3892,7 @@ private struct MetricTile: View {
         .background(isSelected ? tint.opacity(0.14) : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? tint.opacity(0.55) : Color.black.opacity(0.04), lineWidth: 1)
+                .stroke(isSelected ? tint.opacity(0.55) : Color.klmsMacBorder, lineWidth: 1)
         }
     }
 
@@ -4010,27 +4010,47 @@ struct CollapsibleSectionBox<Content: View>: View {
 
 private extension Color {
     static var klmsMacScreenBackground: Color {
-        Color(nsColor: .windowBackgroundColor)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedRed: 0.045, green: 0.052, blue: 0.050, alpha: 1.0)
+                : NSColor(calibratedRed: 0.965, green: 0.978, blue: 0.972, alpha: 1.0)
+        })
     }
 
     static var klmsMacCardBackground: Color {
-        Color(nsColor: .controlBackgroundColor)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedRed: 0.082, green: 0.094, blue: 0.090, alpha: 1.0)
+                : NSColor(calibratedRed: 0.998, green: 1.000, blue: 0.996, alpha: 1.0)
+        })
     }
 
     static var klmsMacSubtleCardBackground: Color {
-        Color(nsColor: .quaternaryLabelColor).opacity(0.14)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedRed: 0.105, green: 0.124, blue: 0.116, alpha: 1.0)
+                : NSColor(calibratedRed: 0.925, green: 0.955, blue: 0.944, alpha: 1.0)
+        })
     }
 
     static var klmsMacHeroBackground: Color {
-        Color(nsColor: .controlBackgroundColor).opacity(0.92)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedRed: 0.070, green: 0.105, blue: 0.096, alpha: 1.0)
+                : NSColor(calibratedRed: 0.935, green: 0.970, blue: 0.958, alpha: 1.0)
+        })
     }
 
     static var klmsMacCommandAccent: Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
-                ? NSColor(calibratedRed: 0.42, green: 0.62, blue: 0.55, alpha: 1.0)
-                : NSColor(calibratedRed: 0.15, green: 0.36, blue: 0.31, alpha: 1.0)
+                ? NSColor(calibratedRed: 0.62, green: 0.78, blue: 0.70, alpha: 1.0)
+                : NSColor(calibratedRed: 0.09, green: 0.35, blue: 0.29, alpha: 1.0)
         })
     }
 
@@ -4038,13 +4058,27 @@ private extension Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
-                ? NSColor(calibratedRed: 0.07, green: 0.10, blue: 0.09, alpha: 1.0)
-                : NSColor(calibratedRed: 0.94, green: 0.97, blue: 0.96, alpha: 1.0)
+                ? NSColor(calibratedRed: 0.075, green: 0.125, blue: 0.108, alpha: 1.0)
+                : NSColor(calibratedRed: 0.905, green: 0.955, blue: 0.940, alpha: 1.0)
         })
     }
 
     static var klmsMacCommandBorder: Color {
-        Color.klmsMacCommandAccent.opacity(0.28)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedRed: 0.38, green: 0.58, blue: 0.51, alpha: 0.62)
+                : NSColor(calibratedRed: 0.10, green: 0.35, blue: 0.29, alpha: 0.30)
+        })
+    }
+
+    static var klmsMacBorder: Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return isDark
+                ? NSColor(calibratedRed: 0.29, green: 0.35, blue: 0.33, alpha: 0.72)
+                : NSColor(calibratedRed: 0.62, green: 0.70, blue: 0.67, alpha: 0.34)
+        })
     }
 }
 
