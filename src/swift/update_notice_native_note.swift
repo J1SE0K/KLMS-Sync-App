@@ -1321,11 +1321,26 @@ func paste(context: NotesEditorContext, text: String, attributedText: NSAttribut
            from: NSRange(location: 0, length: attributedText.length),
            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
        ) {
-        pasteboard.setData(rtf, forType: .rtf)
+        pasteboard.setData(rtfWithoutExplicitTextColors(rtf), forType: .rtf)
     }
     usleep(pasteboardSettleUsec)
     pressMenu(context, ["붙여넣기", "Paste"])
     usleep(pasteSettleUsec)
+}
+
+func rtfWithoutExplicitTextColors(_ data: Data) -> Data {
+    guard var rtf = String(data: data, encoding: .utf8) else {
+        return data
+    }
+
+    for pattern in [
+        #"\{\\colortbl;[^{}]*\}"#,
+        #"\{\\\*\\expandedcolortbl;[^{}]*\}"#,
+        #"\\(?:cf|cb|highlight|strokec)\d+\s?"#,
+    ] {
+        rtf = rtf.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
+    }
+    return rtf.data(using: .utf8) ?? data
 }
 
 func attributedNoticeText(for lines: [RenderLine]) -> NSAttributedString {

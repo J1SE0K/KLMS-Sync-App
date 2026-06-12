@@ -931,6 +931,18 @@ console.log(JSON.stringify({ off: runCase("0"), on: runCase("1") }));
         self.assertIsNotNone(js_match)
         self.assertEqual(swift_match.group(1), js_match.group(1))
 
+    def test_notice_rtf_paste_removes_explicit_text_colors(self) -> None:
+        text = (
+            PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
+        ).read_text(encoding="utf-8")
+        paste = text[text.index("func paste(") : text.index("func attributedNoticeText(for lines:")]
+
+        self.assertIn("func rtfWithoutExplicitTextColors", paste)
+        self.assertIn("rtfWithoutExplicitTextColors(rtf)", paste)
+        self.assertIn(r"\{\\colortbl;[^{}]*\}", paste)
+        self.assertIn(r"\{\\\*\\expandedcolortbl;[^{}]*\}", paste)
+        self.assertIn(r"\\(?:cf|cb|highlight|strokec)\d+\s?", paste)
+
     def test_swift_process_capture_does_not_pipe_large_outputs(self) -> None:
         text = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
