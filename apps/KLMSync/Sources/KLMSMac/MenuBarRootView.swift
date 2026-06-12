@@ -3959,7 +3959,7 @@ private struct MetricTile: View {
 struct SectionBox<Content: View>: View {
     var title: String
     var backgroundColor: Color = .klmsMacCardBackground
-    var borderColor: Color = Color.black.opacity(0.05)
+    var borderColor: Color = .klmsMacBorder
     var titleColor: Color = .primary
     @ViewBuilder var content: Content
 
@@ -4022,85 +4022,77 @@ struct CollapsibleSectionBox<Content: View>: View {
 }
 
 private extension Color {
-    static var klmsMacScreenBackground: Color {
+    static func klmsMacAdaptiveColor(light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.010, alpha: 1.0)
-                : NSColor(red: 0.969, green: 0.969, blue: 0.957, alpha: 1.0)
+            klmsMacIsDark(appearance) ? dark : light
         })
+    }
+
+    static func klmsMacIsDark(_ appearance: NSAppearance) -> Bool {
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
+    static var klmsMacScreenBackground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.988, green: 0.988, blue: 0.980, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.010, alpha: 1.0)
+        )
     }
 
     static var klmsMacCardBackground: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.050, alpha: 1.0)
-                : NSColor(calibratedWhite: 1.000, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(calibratedWhite: 1.000, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.050, alpha: 1.0)
+        )
     }
 
     static var klmsMacSubtleCardBackground: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.120, alpha: 1.0)
-                : NSColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.964, green: 0.963, blue: 0.949, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.120, alpha: 1.0)
+        )
     }
 
     static var klmsMacHeroBackground: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.200, alpha: 1.0)
-                : NSColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.952, green: 0.949, blue: 0.929, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.200, alpha: 1.0)
+        )
     }
 
     static var klmsMacCommandAccent: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.980, alpha: 1.0)
-                : NSColor(red: 0.082, green: 0.082, blue: 0.082, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.980, alpha: 1.0)
+        )
     }
 
     static var klmsMacCommandBackground: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.200, alpha: 1.0)
-                : NSColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.952, green: 0.949, blue: 0.929, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.200, alpha: 1.0)
+        )
     }
 
     static var klmsMacCommandBorder: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.360, alpha: 1.0)
-                : NSColor(red: 0.847, green: 0.835, blue: 0.800, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.788, green: 0.776, blue: 0.733, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.360, alpha: 1.0)
+        )
     }
 
     static var klmsMacCommandButtonBackground: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
-                : NSColor(red: 0.188, green: 0.204, blue: 0.227, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.180, green: 0.196, blue: 0.220, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.230, alpha: 1.0)
+        )
     }
 
     static var klmsMacPrimaryCommandButtonBackground: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
-                : NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.847, green: 0.792, blue: 0.635, alpha: 1.0),
+            dark: NSColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
+        )
     }
 
     static var klmsMacCommandButtonForeground: Color {
@@ -4112,28 +4104,24 @@ private extension Color {
     }
 
     static var klmsMacPrimaryCommandButtonBorder: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            _ = appearance
-            return NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.635, green: 0.557, blue: 0.353, alpha: 1.0),
+            dark: NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
+        )
     }
 
     static var klmsMacCommandButtonBorder: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.420, alpha: 1.0)
-                : NSColor(red: 0.082, green: 0.082, blue: 0.082, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.420, alpha: 1.0)
+        )
     }
 
     static var klmsMacBorder: Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.260, alpha: 1.0)
-                : NSColor(red: 0.847, green: 0.835, blue: 0.800, alpha: 1.0)
-        })
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.812, green: 0.800, blue: 0.760, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.260, alpha: 1.0)
+        )
     }
 }
 

@@ -9482,137 +9482,167 @@ private extension View {
 }
 
 private extension Color {
+    #if canImport(UIKit)
+    static func klmsAdaptiveColor(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? dark : light
+        })
+    }
+    #endif
+
+    #if canImport(AppKit)
+    static func klmsAppKitAdaptiveColor(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            klmsAppKitIsDark(appearance) ? dark : light
+        })
+    }
+
+    static func klmsAppKitIsDark(_ appearance: NSAppearance) -> Bool {
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+    #endif
+
     static var klmsScreenBackground: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.010, alpha: 1.0)
-                : UIColor(red: 0.969, green: 0.969, blue: 0.957, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.988, green: 0.988, blue: 0.980, alpha: 1.0),
+            dark: UIColor(white: 0.010, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color(nsColor: .windowBackgroundColor)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.988, green: 0.988, blue: 0.980, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.010, alpha: 1.0)
+        )
         #else
-        Color.white
+        return Color.white
         #endif
     }
 
     static var klmsCardBackground: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.050, alpha: 1.0)
-                : UIColor(white: 1.000, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(white: 1.000, alpha: 1.0),
+            dark: UIColor(white: 0.050, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color(nsColor: .controlBackgroundColor)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(calibratedWhite: 1.000, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.050, alpha: 1.0)
+        )
         #else
-        Color.white
+        return Color.white
         #endif
     }
 
     static var klmsSubtleCardBackground: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.120, alpha: 1.0)
-                : UIColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.964, green: 0.963, blue: 0.949, alpha: 1.0),
+            dark: UIColor(white: 0.120, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color(nsColor: .quaternaryLabelColor).opacity(0.14)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.964, green: 0.963, blue: 0.949, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.120, alpha: 1.0)
+        )
         #else
-        Color.gray.opacity(0.08)
+        return Color.gray.opacity(0.08)
         #endif
     }
 
     static var klmsBorder: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.260, alpha: 1.0)
-                : UIColor(red: 0.847, green: 0.835, blue: 0.800, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.812, green: 0.800, blue: 0.760, alpha: 1.0),
+            dark: UIColor(white: 0.260, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color.black.opacity(0.05)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.812, green: 0.800, blue: 0.760, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.260, alpha: 1.0)
+        )
         #else
-        Color.gray.opacity(0.18)
+        return Color.gray.opacity(0.18)
         #endif
     }
 
     static var klmsCommandAccent: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.980, alpha: 1.0)
-                : UIColor(red: 0.082, green: 0.082, blue: 0.082, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
+            dark: UIColor(white: 0.980, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color(red: 0.090, green: 0.090, blue: 0.090)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.980, alpha: 1.0)
+        )
         #else
-        Color.gray
+        return Color.gray
         #endif
     }
 
     static var klmsCommandBackground: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.200, alpha: 1.0)
-                : UIColor(red: 0.941, green: 0.941, blue: 0.922, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.952, green: 0.949, blue: 0.929, alpha: 1.0),
+            dark: UIColor(white: 0.200, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color.klmsCommandAccent.opacity(0.10)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.952, green: 0.949, blue: 0.929, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.200, alpha: 1.0)
+        )
         #else
-        Color.gray.opacity(0.08)
+        return Color.gray.opacity(0.08)
         #endif
     }
 
     static var klmsCommandBorder: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.360, alpha: 1.0)
-                : UIColor(red: 0.847, green: 0.835, blue: 0.800, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.788, green: 0.776, blue: 0.733, alpha: 1.0),
+            dark: UIColor(white: 0.360, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.788, green: 0.776, blue: 0.733, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.360, alpha: 1.0)
+        )
         #else
-        Color.klmsCommandAccent.opacity(0.30)
+        return Color.klmsCommandAccent.opacity(0.30)
         #endif
     }
 
     static var klmsCommandButtonBackground: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.230, alpha: 1.0)
-                : UIColor(red: 0.188, green: 0.204, blue: 0.227, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.180, green: 0.196, blue: 0.220, alpha: 1.0),
+            dark: UIColor(white: 0.230, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.190, alpha: 1.0)
-        })
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.180, green: 0.196, blue: 0.220, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.230, alpha: 1.0)
+        )
         #else
-        Color.black.opacity(0.82)
+        return Color.black.opacity(0.82)
         #endif
     }
 
     static var klmsPrimaryCommandButtonBackground: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
-                : UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.847, green: 0.792, blue: 0.635, alpha: 1.0),
+            dark: UIColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
-                : NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
-        })
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.847, green: 0.792, blue: 0.635, alpha: 1.0),
+            dark: NSColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
+        )
         #else
-        Color(red: 0.784, green: 0.722, blue: 0.573)
+        return Color(red: 0.784, green: 0.722, blue: 0.573)
         #endif
     }
 
@@ -9626,36 +9656,33 @@ private extension Color {
 
     static var klmsPrimaryCommandButtonBorder: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            _ = traits
-            return UIColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.635, green: 0.557, blue: 0.353, alpha: 1.0),
+            dark: UIColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color(nsColor: NSColor(name: nil) { appearance in
-            _ = appearance
-            return NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
-        })
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.635, green: 0.557, blue: 0.353, alpha: 1.0),
+            dark: NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
+        )
         #else
-        Color(red: 0.500, green: 0.430, blue: 0.270)
+        return Color(red: 0.500, green: 0.430, blue: 0.270)
         #endif
     }
 
     static var klmsCommandButtonBorder: Color {
         #if canImport(UIKit)
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.420, alpha: 1.0)
-                : UIColor(red: 0.082, green: 0.082, blue: 0.082, alpha: 1.0)
-        })
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
+            dark: UIColor(white: 0.420, alpha: 1.0)
+        )
         #elseif canImport(AppKit)
-        Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.420, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.120, alpha: 1.0)
-        })
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
+            dark: NSColor(calibratedWhite: 0.420, alpha: 1.0)
+        )
         #else
-        Color.black.opacity(0.92)
+        return Color.black.opacity(0.92)
         #endif
     }
 }

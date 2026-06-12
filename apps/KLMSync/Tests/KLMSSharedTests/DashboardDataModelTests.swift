@@ -701,6 +701,29 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("minHeight: geometry.size.height"))
     }
 
+    func testMacAndIOSUseSeparatedLightAndDarkThemeTokens() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let macRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let mac = try String(contentsOf: macRoot, encoding: .utf8)
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+
+        XCTAssertTrue(mac.contains("static func klmsMacAdaptiveColor(light: NSColor, dark: NSColor)"))
+        XCTAssertTrue(mac.contains("var borderColor: Color = .klmsMacBorder"))
+        XCTAssertTrue(mac.contains("light: NSColor(red: 0.988, green: 0.988, blue: 0.980"))
+        XCTAssertTrue(mac.contains("dark: NSColor(calibratedWhite: 0.010"))
+        XCTAssertTrue(mac.contains("light: NSColor(red: 0.847, green: 0.792, blue: 0.635"))
+
+        XCTAssertTrue(ios.contains("static func klmsAdaptiveColor(light: UIColor, dark: UIColor)"))
+        XCTAssertTrue(ios.contains("static func klmsAppKitAdaptiveColor(light: NSColor, dark: NSColor)"))
+        XCTAssertTrue(ios.contains("light: UIColor(red: 0.988, green: 0.988, blue: 0.980"))
+        XCTAssertTrue(ios.contains("dark: UIColor(white: 0.010"))
+        XCTAssertTrue(ios.contains("light: UIColor(red: 0.847, green: 0.792, blue: 0.635"))
+    }
+
     func testIOSStatusAndRunScreensDoNotDuplicatePrimaryControls() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
