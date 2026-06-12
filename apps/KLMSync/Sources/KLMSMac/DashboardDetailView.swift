@@ -2965,7 +2965,7 @@ private struct MacMailPasteHeaderButtonContent: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(accent)
                 .frame(width: 24, height: 24)
-                .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.14), in: RoundedRectangle(cornerRadius: 7))
+                .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.18), in: RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 2) {
                 Text("메일 내용 자동 판독")
                     .font(.caption.weight(.semibold))
@@ -3073,10 +3073,10 @@ private struct MacMailPasteInputBox: View {
             }
         }
         .padding(10)
-        .background(accent.opacity(colorScheme == .dark ? 0.08 : 0.04), in: RoundedRectangle(cornerRadius: 8))
+        .background(accent.opacity(colorScheme == .dark ? 0.08 : 0.07), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(accent.opacity(colorScheme == .dark ? 0.22 : 0.14), lineWidth: 1)
+                .stroke(accent.opacity(colorScheme == .dark ? 0.22 : 0.20), lineWidth: 1)
         }
     }
 }

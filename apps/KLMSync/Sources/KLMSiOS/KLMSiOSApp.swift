@@ -3954,7 +3954,7 @@ private struct MailPasteAnalyzerPanel: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(accent)
                         .frame(width: 30, height: 30)
-                        .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.14), in: RoundedRectangle(cornerRadius: 8))
+                        .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.18), in: RoundedRectangle(cornerRadius: 8))
                     VStack(alignment: .leading, spacing: 3) {
                         Text("메일 내용 자동 판독")
                             .font(.headline)
@@ -4131,10 +4131,10 @@ private struct MailPasteInputBox: View {
             }
         }
         .padding(12)
-        .background(accent.opacity(colorScheme == .dark ? 0.08 : 0.04), in: RoundedRectangle(cornerRadius: 8))
+        .background(accent.opacity(colorScheme == .dark ? 0.08 : 0.07), in: RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(accent.opacity(colorScheme == .dark ? 0.22 : 0.14), lineWidth: 1)
+                .stroke(accent.opacity(colorScheme == .dark ? 0.22 : 0.20), lineWidth: 1)
         )
     }
 }
@@ -9358,7 +9358,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.055, green: 0.067, blue: 0.086, alpha: 1.0)
-                : UIColor(red: 0.965, green: 0.973, blue: 0.980, alpha: 1.0)
+                : UIColor(red: 0.941, green: 0.957, blue: 0.976, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: .windowBackgroundColor)
@@ -9386,7 +9386,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.125, green: 0.149, blue: 0.200, alpha: 1.0)
-                : UIColor(red: 0.933, green: 0.949, blue: 0.965, alpha: 1.0)
+                : UIColor(red: 0.895, green: 0.918, blue: 0.945, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: .quaternaryLabelColor).opacity(0.14)
@@ -9400,7 +9400,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.188, green: 0.224, blue: 0.290, alpha: 1.0)
-                : UIColor(red: 0.792, green: 0.831, blue: 0.878, alpha: 1.0)
+                : UIColor(red: 0.690, green: 0.741, blue: 0.808, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color.black.opacity(0.05)
@@ -9428,7 +9428,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.095, green: 0.157, blue: 0.271, alpha: 1.0)
-                : UIColor(red: 0.906, green: 0.933, blue: 0.976, alpha: 1.0)
+                : UIColor(red: 0.850, green: 0.894, blue: 0.965, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color.klmsCommandAccent.opacity(0.10)
@@ -9442,7 +9442,7 @@ private extension Color {
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(red: 0.188, green: 0.224, blue: 0.290, alpha: 1.0)
-                : UIColor(red: 0.792, green: 0.831, blue: 0.878, alpha: 1.0)
+                : UIColor(red: 0.620, green: 0.700, blue: 0.820, alpha: 1.0)
         })
         #else
         Color.klmsCommandAccent.opacity(0.30)
