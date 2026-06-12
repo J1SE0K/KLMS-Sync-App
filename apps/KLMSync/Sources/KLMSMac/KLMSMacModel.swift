@@ -966,13 +966,17 @@ final class KLMSMacModel: ObservableObject {
         }
         items += mailDashboardItems
 
+        let calendarChanges = (
+            snapshot.calendarSyncResult?.changes
+                .filter { !isCalendarChangeResolved($0) }
+                .map(serverRelayCalendarChange) ?? []
+        ) + mailCalendarChanges().map(serverRelayCalendarChange)
+
         return ServerRelaySyncData(
             generatedAt: generatedAt,
             items: items.dedupedForServerRelay(),
             dryRunReports: serverRelayDryRunReports(from: snapshot),
-            calendarChanges: snapshot.calendarSyncResult?.changes
-                .filter { !isCalendarChangeResolved($0) }
-                .map(serverRelayCalendarChange) ?? [],
+            calendarChanges: calendarChanges.dedupedForCalendarDisplay(),
             settings: serverRelaySettings(updatedAt: updatedAt),
             runLogs: serverRelayRunLogs(),
             verifySummary: snapshot.verifyResult.map { ServerRelayVerifySummary(result: $0, updatedAt: updatedAt) }
@@ -1153,6 +1157,13 @@ final class KLMSMacModel: ObservableObject {
                 }
                 return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
             }
+    }
+
+    func mailCalendarChanges() -> [CalendarChange] {
+        mailDashboardItems
+            .compactMap(\.mailCalendarChange)
+            .filter { !isCalendarChangeResolved($0) }
+            .dedupedForCalendarDisplay()
     }
 
     private static func isMailDashboardItem(_ item: ServerRelaySyncItem) -> Bool {

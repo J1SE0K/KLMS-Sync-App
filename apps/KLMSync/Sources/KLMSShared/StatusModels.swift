@@ -287,6 +287,8 @@ public struct CalendarChange: Codable, Sendable, Equatable, Identifiable {
             "수정"
         case "deleted":
             "정리됨"
+        case "mail":
+            "메일 분석"
         default:
             action.isEmpty ? "변경" : action
         }
@@ -353,6 +355,21 @@ public struct CalendarChange: Codable, Sendable, Equatable, Identifiable {
         changes = container.decodeIfPresentDefault([String].self, forKey: .changes, default: [])
         raw = container.decodeIfPresentDefault(String.self, forKey: .raw, default: "")
         parseError = container.decodeIfPresentDefault(String.self, forKey: .parseError, default: "")
+    }
+}
+
+public extension Array where Element == CalendarChange {
+    func dedupedForCalendarDisplay() -> [CalendarChange] {
+        var seen = Set<String>()
+        var result: [CalendarChange] = []
+        for change in self {
+            let key = change.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, seen.insert(key).inserted else {
+                continue
+            }
+            result.append(change)
+        }
+        return result
     }
 }
 

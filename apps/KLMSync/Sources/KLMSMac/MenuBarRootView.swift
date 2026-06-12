@@ -1932,7 +1932,7 @@ private struct DashboardSummaryView: View {
             ].filter { $0.value > 0 }
             let attentionMetrics = [
                 Metric("새 파일", counts.newFiles, detail: .newFiles),
-                Metric("캘린더", (report?.calendar.created ?? 0) + (report?.calendar.updated ?? 0) + (report?.calendar.deleted ?? 0), detail: .calendar),
+                Metric("캘린더", (report?.calendar.created ?? 0) + (report?.calendar.updated ?? 0) + (report?.calendar.deleted ?? 0) + model.mailCalendarChanges().count, detail: .calendar),
                 Metric("격리", counts.quarantine, detail: .quarantine),
                 Metric("과제 후보", assignmentCandidateCount, detail: .assignmentCandidates),
                 Metric("시험 후보", examCandidateCount, detail: .examCandidates),

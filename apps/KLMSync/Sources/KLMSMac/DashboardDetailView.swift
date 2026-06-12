@@ -2540,18 +2540,28 @@ private struct CalendarDetailView: View {
                     .foregroundStyle(.secondary)
             }
 
+            let visibleCalendarChanges = calendarChanges
             if let result = snapshot.calendarSyncResult {
                 CalendarSummaryListView(result: result)
                 CalendarChangeListView(
-                    changes: result.changes,
+                    changes: visibleCalendarChanges,
                     filters: filters,
                     model: model,
-                    hasLegacyCountWithoutDetails: result.changes.isEmpty && hasReportedCalendarChanges
+                    hasLegacyCountWithoutDetails: visibleCalendarChanges.isEmpty && hasReportedCalendarChanges
                 )
             } else if hasReportedCalendarChanges {
-                EmptyDetailText(text: "이전 캘린더 결과에는 상세 내역이 없습니다. 다음 캘린더 동기화부터 생성/수정/삭제 항목이 표시됩니다.")
+                CalendarChangeListView(
+                    changes: visibleCalendarChanges,
+                    filters: filters,
+                    model: model,
+                    hasLegacyCountWithoutDetails: visibleCalendarChanges.isEmpty
+                )
             }
         }
+    }
+
+    private var calendarChanges: [CalendarChange] {
+        ((snapshot.calendarSyncResult?.changes ?? []) + model.mailCalendarChanges()).dedupedForCalendarDisplay()
     }
 
     private var hasReportedCalendarChanges: Bool {
@@ -2560,7 +2570,7 @@ private struct CalendarDetailView: View {
         let summaryCount = snapshot.calendarSyncResult?.summaries.reduce(0) {
             $0 + $1.created + $1.updated + $1.deleted
         } ?? 0
-        return reportCount + summaryCount > 0
+        return reportCount + summaryCount + model.mailCalendarChanges().count > 0
     }
 }
 

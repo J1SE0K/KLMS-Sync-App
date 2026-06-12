@@ -748,7 +748,8 @@ final class CompanionModel: ObservableObject {
     }
 
     func visibleCalendarChanges() -> [CalendarChange] {
-        calendarChanges
+        (calendarChanges + mailDashboardItems.compactMap(\.mailCalendarChange))
+            .dedupedForCalendarDisplay()
             .filter { change in
                 return !isCalendarChangeResolved(change)
             }

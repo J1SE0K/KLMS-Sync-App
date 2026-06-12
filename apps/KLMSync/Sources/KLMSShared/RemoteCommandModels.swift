@@ -1540,6 +1540,7 @@ public extension SanitizedRemoteStatus {
         exams += visibleItems.filter { $0.kind == "exam" || $0.kind == "examCandidate" }.count
         notices += visibleItems.filter { $0.kind == "notice" }.count
         fileTotal += visibleItems.filter { $0.kind == "file" }.count
+        calendarCreated += visibleItems.compactMap(\.mailCalendarChange).count
     }
 }
 
@@ -1555,6 +1556,60 @@ public extension Array where Element == ServerRelaySyncItem {
             result.append(item)
         }
         return result
+    }
+}
+
+public extension ServerRelaySyncItem {
+    var mailCalendarChange: CalendarChange? {
+        guard !isHidden,
+              isMailDashboardItemLike,
+              isCalendarCandidateKind,
+              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let timeText = timestamp.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !timeText.isEmpty else {
+            return nil
+        }
+        return CalendarChange(
+            action: "mail",
+            calendar: "메일 분석",
+            bucket: calendarBucket,
+            identifier: id,
+            title: title,
+            course: course,
+            url: "",
+            startAt: timeText,
+            dueAt: timeText,
+            location: "",
+            changes: ["메일 분석"],
+            raw: detail,
+            parseError: ""
+        )
+    }
+
+    private var isMailDashboardItemLike: Bool {
+        id.hasPrefix("mail-")
+            || status.localizedCaseInsensitiveContains("메일")
+            || detail.localizedCaseInsensitiveContains("메일")
+    }
+
+    private var isCalendarCandidateKind: Bool {
+        switch kind {
+        case "assignment", "assignmentCandidate", "exam", "examCandidate":
+            true
+        default:
+            false
+        }
+    }
+
+    private var calendarBucket: String {
+        switch kind {
+        case "exam", "examCandidate":
+            "exam"
+        default:
+            "assignment"
+        }
     }
 }
 

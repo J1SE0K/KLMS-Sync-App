@@ -644,6 +644,7 @@ final class RemoteCommandModelTests: XCTestCase {
             kind: "assignment",
             course: "알고리즘 개론",
             title: "메일 과제",
+            timestamp: "2026-06-17 13:00",
             status: "메일 분석"
         )
         let exam = ServerRelaySyncItem(
@@ -651,6 +652,7 @@ final class RemoteCommandModelTests: XCTestCase {
             kind: "exam",
             course: "영미 단편소설",
             title: "메일 시험",
+            timestamp: "2026-06-18 09:00",
             status: "메일 분석"
         )
         let notice = ServerRelaySyncItem(
@@ -683,6 +685,11 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(status.exams, 3)
         XCTAssertEqual(status.notices, 4)
         XCTAssertEqual(status.fileTotal, 5)
+        XCTAssertEqual(status.calendarCreated, 2)
+        XCTAssertEqual(exam.mailCalendarChange?.action, "mail")
+        XCTAssertEqual(exam.mailCalendarChange?.bucket, "exam")
+        XCTAssertEqual(assignment.mailCalendarChange?.bucket, "assignment")
+        XCTAssertNil(notice.mailCalendarChange)
         XCTAssertEqual([assignment, assignment, exam].dedupedForServerRelay().map(\.id), [
             "mail-assignment",
             "mail-exam"
