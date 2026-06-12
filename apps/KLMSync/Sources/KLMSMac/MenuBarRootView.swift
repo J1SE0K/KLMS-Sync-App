@@ -2661,7 +2661,7 @@ private struct CommandPanelView: View {
                 Image(systemName: command.systemImage)
                     .font(.title3.weight(.semibold))
                     .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.18), in: Circle())
+                    .background(Color.klmsMacCommandButtonForeground.opacity(0.10), in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text(command.displayName)
                         .font(.headline.weight(.semibold))
@@ -2669,7 +2669,7 @@ private struct CommandPanelView: View {
                         .font(.caption)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                        .foregroundStyle(.white.opacity(0.90))
+                        .foregroundStyle(Color.klmsMacCommandButtonForeground.opacity(0.78))
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "play.fill")
@@ -4061,8 +4061,8 @@ private extension Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             return isDark
-                ? NSColor(calibratedWhite: 0.980, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.050, alpha: 1.0)
+                ? NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
+                : NSColor(red: 0.408, green: 0.340, blue: 0.220, alpha: 1.0)
         })
     }
 
@@ -4086,32 +4086,26 @@ private extension Color {
 
     static var klmsMacCommandButtonBackground: Color {
         Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.190, alpha: 1.0)
+            _ = appearance
+            return NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
     }
 
     static var klmsMacPrimaryCommandButtonBackground: Color {
         Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.350, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.310, alpha: 1.0)
+            _ = appearance
+            return NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
     }
 
     static var klmsMacCommandButtonForeground: Color {
-        Color.white
+        Color(red: 0.055, green: 0.049, blue: 0.039)
     }
 
     static var klmsMacCommandButtonBorder: Color {
         Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.420, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.120, alpha: 1.0)
+            _ = appearance
+            return NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
         })
     }
 

@@ -6,6 +6,10 @@
   --line: #d7e0ea;
   --text: #17212f;
   --muted: #66758a;
+  --accent: #c8b892;
+  --accent-strong: #685638;
+  --accent-ink: #0e0d0a;
+  --accent-soft: #f3ead6;
   --blue: #2266d2;
   --green: #16845f;
   --orange: #c96a14;
@@ -37,8 +41,8 @@ button {
   border: 0;
   border-radius: 8px;
   padding: 10px 14px;
-  background: var(--blue);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-ink);
   font-weight: 650;
   cursor: pointer;
 }
@@ -210,8 +214,8 @@ label {
   padding: 4px 9px;
   font-size: 12px;
   font-weight: 800;
-  background: rgba(34, 102, 210, 0.12);
-  color: var(--blue);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .status-pill.ok {
@@ -274,7 +278,7 @@ label {
 }
 
 .eyebrow {
-  color: var(--blue);
+  color: var(--accent-strong);
   font-weight: 800;
   letter-spacing: 0;
 }
@@ -323,8 +327,8 @@ label {
 }
 
 .metric-card.active {
-  border-color: rgba(34, 102, 210, 0.45);
-  background: #edf5ff;
+  border-color: rgba(104, 86, 56, 0.45);
+  background: var(--accent-soft);
 }
 
 .metric-card strong {
@@ -453,8 +457,8 @@ label {
 }
 
 .item-row.active {
-  border-color: rgba(34, 102, 210, 0.55);
-  background: #edf5ff;
+  border-color: rgba(104, 86, 56, 0.55);
+  background: var(--accent-soft);
 }
 
 .item-row .meta,
@@ -587,8 +591,8 @@ label {
 }
 
 .toggle-action.on .switch-pill {
-  background: var(--blue);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .history-panel {

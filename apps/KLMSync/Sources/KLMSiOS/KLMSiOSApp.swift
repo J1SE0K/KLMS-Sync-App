@@ -7348,13 +7348,13 @@ private struct RemoteCommandPanel: View {
                 Image(systemName: kind.engineCommand.systemImage)
                     .font(.title3.weight(.semibold))
                     .frame(width: 34, height: 34)
-                    .background(Color.white.opacity(0.18), in: Circle())
+                    .background(Color.klmsCommandButtonForeground.opacity(0.10), in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text(kind.displayName)
                         .font(.headline.weight(.semibold))
                     Text(kind.engineCommand.shortDescription)
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.90))
+                        .foregroundStyle(Color.klmsCommandButtonForeground.opacity(0.78))
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -9425,13 +9425,13 @@ private extension Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.980, alpha: 1.0)
-                : UIColor(white: 0.050, alpha: 1.0)
+                ? UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
+                : UIColor(red: 0.408, green: 0.340, blue: 0.220, alpha: 1.0)
         })
         #elseif canImport(AppKit)
-        Color(red: 0.090, green: 0.090, blue: 0.090)
+        Color(red: 0.408, green: 0.340, blue: 0.220)
         #else
-        Color.gray
+        Color(red: 0.408, green: 0.340, blue: 0.220)
         #endif
     }
 
@@ -9464,61 +9464,52 @@ private extension Color {
     static var klmsCommandButtonBackground: Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.230, alpha: 1.0)
-                : UIColor(white: 0.190, alpha: 1.0)
+            _ = traits
+            return UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.230, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.190, alpha: 1.0)
+            _ = appearance
+            return NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
         #else
-        Color.black.opacity(0.82)
+        Color(red: 0.784, green: 0.722, blue: 0.573)
         #endif
     }
 
     static var klmsPrimaryCommandButtonBackground: Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.350, alpha: 1.0)
-                : UIColor(white: 0.310, alpha: 1.0)
+            _ = traits
+            return UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.350, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.310, alpha: 1.0)
+            _ = appearance
+            return NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         })
         #else
-        Color.black.opacity(0.64)
+        Color(red: 0.784, green: 0.722, blue: 0.573)
         #endif
     }
 
     static var klmsCommandButtonForeground: Color {
-        Color.white
+        Color(red: 0.055, green: 0.049, blue: 0.039)
     }
 
     static var klmsCommandButtonBorder: Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.420, alpha: 1.0)
-                : UIColor(white: 0.120, alpha: 1.0)
+            _ = traits
+            return UIColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
         })
         #elseif canImport(AppKit)
         Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            return isDark
-                ? NSColor(calibratedWhite: 0.420, alpha: 1.0)
-                : NSColor(calibratedWhite: 0.120, alpha: 1.0)
+            _ = appearance
+            return NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
         })
         #else
-        Color.black.opacity(0.92)
+        Color(red: 0.500, green: 0.430, blue: 0.270)
         #endif
     }
 }
