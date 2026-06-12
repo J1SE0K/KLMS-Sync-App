@@ -2674,7 +2674,7 @@ private struct CommandPanelView: View {
                 Spacer(minLength: 0)
                 Image(systemName: "play.fill")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color(red: 0.165, green: 0.141, blue: 0.094))
             }
             .foregroundStyle(Color.klmsMacCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)

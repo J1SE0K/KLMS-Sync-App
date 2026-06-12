@@ -7361,7 +7361,7 @@ private struct RemoteCommandPanel: View {
                 Spacer(minLength: 0)
                 Image(systemName: "play.fill")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color(red: 0.165, green: 0.141, blue: 0.094))
             }
             .foregroundStyle(Color.klmsCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: compact ? 58 : 64, alignment: .leading)
