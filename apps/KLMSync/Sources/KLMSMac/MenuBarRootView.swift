@@ -9,41 +9,18 @@ struct MenuBarRootView: View {
 
     var body: some View {
         WholeScreenVerticalScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HeaderView(model: model)
-                TopUtilityActionsView(model: model)
-                ImportantLogPanelView(
+            VStack(alignment: .leading, spacing: 14) {
+                DashboardTopBarView(model: model)
+                MacAlertBannerView(
                     model: model,
                     selectedSection: $selectedSection,
                     expandedLogSummaryKind: $expandedLogSummaryKind
                 )
-                CommandPanelView(model: model)
-                QuickStatusStripView(model: model)
-                ExternalIntegrationStatusView(model: model)
-
-                SectionPickerView(selection: $selectedSection)
-
-                VStack(alignment: .leading, spacing: 16) {
-                    switch selectedSection {
-                    case .dashboard:
-                        DashboardSummaryView(model: model)
-                        CommandOutputPanelView(model: model)
-                    case .activityLogs:
-                        LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
-                        RemoteActivityPanelView(model: model)
-                        RunLogArchivePanelView(model: model)
-                    case .diagnostics:
-                        DiagnosticToolsPanelView(model: model)
-                        DiagnosticCommandLogPanelView(model: model)
-                        VerifyPanelView(snapshot: model.snapshot)
-                        DoctorPanelView(snapshot: model.snapshot)
-                        AppDiagnosticsPanelView(model: model)
-                        LoginPanelView(model: model)
-                        LogPanelView(snapshot: model.snapshot, history: model.commandHistory)
-                    }
-                }
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                MacWorkstationLayoutView(
+                    model: model,
+                    selectedSection: $selectedSection,
+                    expandedLogSummaryKind: $expandedLogSummaryKind
+                )
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -51,6 +28,356 @@ struct MenuBarRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
+    }
+}
+
+private struct MacWorkstationLayoutView: View {
+    @ObservedObject var model: KLMSMacModel
+    @Binding var selectedSection: KLMSMacSection
+    @Binding var expandedLogSummaryKind: LogSummaryKind?
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 14) {
+                controlRail
+                    .frame(minWidth: 238, idealWidth: 280, maxWidth: 300, alignment: .topLeading)
+                workspace
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                controlRail
+                workspace
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var controlRail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CommandPanelView(model: model)
+            WorkspaceNavigationView(selection: $selectedSection)
+            DashboardRuntimePanelView(model: model)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var workspace: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            switch selectedSection {
+            case .dashboard:
+                DashboardSummaryView(model: model)
+            case .activityLogs:
+                LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
+                RemoteActivityPanelView(model: model)
+                RunLogArchivePanelView(model: model)
+            case .diagnostics:
+                DiagnosticToolsPanelView(model: model)
+                DiagnosticCommandLogPanelView(model: model)
+                VerifyPanelView(snapshot: model.snapshot)
+                DoctorPanelView(snapshot: model.snapshot)
+                AppDiagnosticsPanelView(model: model)
+                LoginPanelView(model: model)
+                LogPanelView(snapshot: model.snapshot, history: model.commandHistory)
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct WorkspaceNavigationView: View {
+    @Binding var selection: KLMSMacSection
+
+    var body: some View {
+        SectionBox(title: "작업 공간") {
+            VStack(spacing: 7) {
+                ForEach(KLMSMacSection.allCases) { section in
+                    let isSelected = selection == section
+                    Button {
+                        selection = section
+                    } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: section.systemImage)
+                                .font(.body.weight(.semibold))
+                                .frame(width: 22)
+                                .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacSecondaryText)
+                            Text(section.title)
+                                .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                                .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacSecondaryText.opacity(0.70))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 9)
+                        .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+                        .background(
+                            isSelected ? Color.klmsMacCommandAccent : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 8)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(isSelected ? Color.klmsMacCommandAccent : Color.clear, lineWidth: 1)
+                        }
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(section.title)
+                    .accessibilityValue(isSelected ? "선택됨" : "")
+                }
+            }
+        }
+    }
+}
+
+private struct DashboardTopBarView: View {
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("대시보드")
+                    .font(.system(size: 26, weight: .bold, design: .default))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text(statusText)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 12)
+
+            if model.runningCommand != nil {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Text(statusBadgeText)
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .foregroundStyle(statusColor)
+                .background(statusColor.opacity(0.12), in: Capsule())
+
+            TopUtilityActionsView(model: model)
+        }
+        .padding(.horizontal, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var statusText: String {
+        if let command = model.runningCommand {
+            if let phase = model.currentPhaseText {
+                return "\(command.displayName) 실행 중 · \(phase)"
+            }
+            return "\(command.displayName) 실행 중"
+        }
+        if model.snapshot.needsAttention {
+            return "확인이 필요합니다 · \(model.snapshot.attentionSummary)"
+        }
+        if let report = model.snapshot.syncReport {
+            return "준비됨 · 최근 요약 \(report.status.klmsLocalizedStatus)"
+        }
+        return "첫 실행 전입니다. 전체 동기화나 진단을 실행하세요."
+    }
+
+    private var statusBadgeText: String {
+        if model.runningCommand != nil {
+            return "진행 중"
+        }
+        if model.snapshot.needsAttention {
+            return "확인 필요"
+        }
+        if model.snapshot.syncReport != nil {
+            return "준비됨"
+        }
+        return "설정 필요"
+    }
+
+    private var statusColor: Color {
+        if model.runningCommand != nil {
+            return .klmsMacCommandAccent
+        }
+        if model.snapshot.needsAttention {
+            return .orange
+        }
+        return .klmsMacSecondaryText
+    }
+}
+
+private struct MacAlertBannerView: View {
+    @ObservedObject var model: KLMSMacModel
+    @Binding var selectedSection: KLMSMacSection
+    @Binding var expandedLogSummaryKind: LogSummaryKind?
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button {
+            performAction()
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 10)
+                Text(chipText)
+                    .font(chipFont)
+                    .monospacedDigit()
+                    .foregroundStyle(chipForeground)
+                    .padding(.horizontal, chipHorizontalPadding)
+                    .padding(.vertical, 8)
+                    .background(chipBackground, in: Capsule())
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(bannerBackground, in: RoundedRectangle(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(bannerBorder, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint(detail)
+    }
+
+    private var title: String {
+        if model.currentAuthDigits != nil {
+            return "KAIST 인증 번호"
+        }
+        if let message = model.authStatusMessage?.nilIfBlank {
+            return message
+        }
+        if let command = model.runningCommand {
+            return "\(command.displayName) 실행 중"
+        }
+        if model.snapshot.needsAttention {
+            return model.snapshot.attentionSummary
+        }
+        if model.snapshot.syncReport == nil {
+            return "첫 실행 준비"
+        }
+        return model.snapshot.loginStatus?.loggedIn == true ? "이미 로그인됨" : "준비됨"
+    }
+
+    private var detail: String {
+        if model.currentAuthDigits != nil {
+            return "휴대폰 인증 화면에서 같은 번호를 선택하면 동기화를 계속 진행합니다."
+        }
+        if model.authStatusMessage?.nilIfBlank != nil {
+            return "인증 상태가 확인됐습니다. 필요한 경우 다음 단계가 바로 이어집니다."
+        }
+        if model.runningCommand != nil {
+            return model.currentPhaseText.map { "현재 단계: \($0)" }
+                ?? model.liveProgressLine
+                ?? "실시간 로그에서 진행 상황을 확인할 수 있습니다."
+        }
+        if model.snapshot.needsAttention {
+            return "진단 보기에서 실패 항목을 자연어로 확인하고 바로 조치할 수 있습니다."
+        }
+        if model.snapshot.syncReport == nil {
+            return "환경 진단을 실행하면 권한, 엔진, Notes/Calendar/Reminders 상태를 확인합니다."
+        }
+        return "동기화를 바로 실행할 수 있습니다. 인증번호가 필요하면 이 위치에 크게 고정됩니다."
+    }
+
+    private var chipText: String {
+        if let digits = model.currentAuthDigits {
+            return digits
+        }
+        if model.runningCommand != nil {
+            return "LOG"
+        }
+        if model.snapshot.needsAttention {
+            return "진단"
+        }
+        if model.snapshot.syncReport == nil {
+            return "검사"
+        }
+        return "OK"
+    }
+
+    private var chipFont: Font {
+        model.currentAuthDigits == nil ? .caption.weight(.bold) : .title3.weight(.heavy)
+    }
+
+    private var chipHorizontalPadding: CGFloat {
+        model.currentAuthDigits == nil ? 12 : 16
+    }
+
+    private var bannerTint: Color {
+        if model.currentAuthDigits != nil {
+            return .orange
+        }
+        if model.authStatusMessage?.nilIfBlank != nil {
+            return .green
+        }
+        if model.runningCommand != nil {
+            return .klmsMacCommandAccent
+        }
+        if model.snapshot.needsAttention || model.snapshot.syncReport == nil {
+            return .orange
+        }
+        return .klmsMacCommandAccent
+    }
+
+    private var bannerBackground: Color {
+        Color.klmsMacAdaptiveColor(
+            light: NSColor(red: 0.914, green: 0.902, blue: 0.858, alpha: 1.0),
+            dark: NSColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
+        )
+    }
+
+    private var bannerBorder: Color {
+        bannerTint.opacity(0.28)
+    }
+
+    private var chipForeground: Color {
+        model.currentAuthDigits == nil ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText
+    }
+
+    private var chipBackground: Color {
+        if model.currentAuthDigits != nil {
+            return .orange.opacity(0.18)
+        }
+        return bannerTint
+    }
+
+    private func performAction() {
+        if let digits = model.currentAuthDigits {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(digits, forType: .string)
+            return
+        }
+        if model.runningCommand != nil {
+            expandedLogSummaryKind = .run
+            selectedSection = .activityLogs
+            return
+        }
+        if model.snapshot.needsAttention {
+            selectedSection = .diagnostics
+            openWindow(id: KLMSMacWindowID.diagnostics)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        if model.snapshot.syncReport == nil {
+            Task {
+                await model.run(.doctor)
+            }
+            return
+        }
     }
 }
 
@@ -1903,9 +2230,8 @@ private struct DashboardSummaryView: View {
     @State private var selectedDetail = DashboardDetailKind.files
 
     var body: some View {
-        SectionBox(title: "대시보드") {
+        VStack(alignment: .leading, spacing: 12) {
             let snapshot = model.snapshot
-            let report = snapshot.syncReport
             let state = snapshot.legacyState?.content
             let counts = snapshot.visibleCounts
             let assignmentCandidateCount = state?.assignmentCandidates.count ?? 0
@@ -1969,18 +2295,183 @@ private struct DashboardSummaryView: View {
                 )
             }
             if let activeDetail {
-                DashboardDetailPanelView(kind: activeDetail, model: model)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        DashboardDetailPanelView(kind: activeDetail, model: model)
+                            .frame(minWidth: 300, maxWidth: .infinity, alignment: .topLeading)
+                        DashboardLogSummaryPanelView(model: model)
+                            .frame(minWidth: 210, idealWidth: 250, maxWidth: 300, alignment: .topLeading)
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        DashboardDetailPanelView(kind: activeDetail, model: model)
+                        DashboardLogSummaryPanelView(model: model)
+                    }
+                }
             }
-
-            NoticeMemoStatusView(model: model)
-            SlowestWorkView(report: report)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func selectMetric(_ metric: Metric) {
         if let detail = metric.detail {
             selectedDetail = detail
         }
+    }
+}
+
+private struct DashboardLogSummaryPanelView: View {
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        SectionBox(title: "로그 요약") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: statusImage)
+                        .foregroundStyle(statusColor)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(statusTitle)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(statusDetail)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if !stageDurations.isEmpty {
+                    Divider()
+                    CompactStageDurationRowsView(durations: stageDurations)
+                }
+                Text("원본 로그와 요청 기록은 로그 탭에서 확인합니다.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var stageDurations: [KLMSStageDuration] {
+        let output = model.liveCommandOutput.isEmpty
+            ? (model.lastCommandResult?.combinedOutput ?? "")
+            : model.liveCommandOutput
+        return KLMSStageDurationParser.parse(from: output)
+    }
+
+    private var statusTitle: String {
+        if let command = model.runningCommand {
+            return "\(command.displayName) 실행 중"
+        }
+        if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "\(result.invocation.command.displayName) 중단됨"
+            }
+            return result.succeeded ? "\(result.invocation.command.displayName) 완료" : "\(result.invocation.command.displayName) 실패"
+        }
+        return "아직 실행 기록 없음"
+    }
+
+    private var statusDetail: String {
+        if model.runningCommand != nil {
+            return model.currentPhaseText ?? model.liveProgressLine ?? "진행 상황을 확인 중입니다."
+        }
+        if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "사용자가 실행을 중단했습니다."
+            }
+            return result.succeeded ? "종료 코드 \(result.exitCode)" : "마지막 오류는 진단 탭에서 확인하세요."
+        }
+        return "동기화를 실행하면 단계별 소요 시간이 여기에 표시됩니다."
+    }
+
+    private var statusImage: String {
+        if model.runningCommand != nil {
+            return "arrow.triangle.2.circlepath"
+        }
+        guard let result = model.lastCommandResult else {
+            return "circle.dashed"
+        }
+        if result.wasCancelled {
+            return "stop.circle"
+        }
+        return result.succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+    }
+
+    private var statusColor: Color {
+        if model.runningCommand != nil {
+            return .klmsMacCommandAccent
+        }
+        guard let result = model.lastCommandResult else {
+            return .klmsMacSecondaryText
+        }
+        if result.wasCancelled {
+            return .klmsMacSecondaryText
+        }
+        return result.succeeded ? .green : .orange
+    }
+}
+
+private struct DashboardRuntimePanelView: View {
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        SectionBox(title: "연동 상태") {
+            VStack(alignment: .leading, spacing: 8) {
+                MacRailStatusLine(text: integrationSummaryText)
+                MacRailStatusLine(text: noticeMemoSummaryText)
+                if let slowestSummaryText {
+                    MacRailStatusLine(text: slowestSummaryText)
+                }
+            }
+        }
+    }
+
+    private var integrationSummaryText: String {
+        guard let verify = model.snapshot.verifyResult else {
+            return "Notes · Calendar · Reminders 상태 검사 전"
+        }
+        return verify.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ok"
+            ? "Notes · Calendar · Reminders 모두 사용 가능"
+            : "Notes · Calendar · Reminders 확인 필요"
+    }
+
+    private var noticeMemoSummaryText: String {
+        let render = model.snapshot.noticeRenderState
+        let archive = model.snapshot.noticeArchiveRenderState
+        if render != nil || archive != nil {
+            let primary = render?.renderedNoticeCount ?? 0
+            let checked = archive?.renderedNoticeCount ?? 0
+            return "공지 메모: KLMS 공지 \(primary)개 · 확인한 공지 \(checked)개"
+        }
+        return "공지 메모: KLMS 공지 먼저 표시"
+    }
+
+    private var slowestSummaryText: String? {
+        guard let stage = model.snapshot.syncReport?.slowest.first else {
+            return nil
+        }
+        return "오래 걸린 작업: \(stage.name.klmsDisplayStageName) · \(stage.durationSecondsText)"
+    }
+}
+
+private struct MacRailStatusLine: View {
+    var text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(Color.klmsMacSecondaryText)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.klmsMacSubtleCardBackground.opacity(0.76), in: RoundedRectangle(cornerRadius: 9))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(Color.klmsMacBorder.opacity(0.72), lineWidth: 1)
+            }
     }
 }
 
@@ -2612,9 +3103,7 @@ private struct CommandPanelView: View {
     }
 
     var body: some View {
-        SectionBox(
-            title: "동기화"
-        ) {
+        SectionBox(title: "동기화") {
             VStack(alignment: .leading, spacing: 10) {
                 MacMailPasteAnalyzerPanel(model: model, snapshot: model.snapshot)
                 primaryCommandActionCard(primaryCommand)
@@ -2655,13 +3144,13 @@ private struct CommandPanelView: View {
             }
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: command.systemImage)
-                    .font(.title3.weight(.semibold))
-                    .frame(width: 32, height: 32)
-                    .background(Color.klmsMacCommandButtonForeground.opacity(0.10), in: Circle())
+                Image(systemName: "play.fill")
+                .font(.title3.weight(.bold))
+                    .frame(width: 36, height: 36)
+                    .background(Color.klmsMacCommandButtonForeground.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(command.displayName)
-                        .font(.headline.weight(.semibold))
+                    Text("전체 동기화")
+                        .font(.title3.weight(.bold))
                     Text(command.shortDescription)
                         .font(.caption)
                         .lineLimit(2)
@@ -2669,17 +3158,17 @@ private struct CommandPanelView: View {
                         .foregroundStyle(Color.klmsMacCommandButtonForeground.opacity(0.78))
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "play.fill")
-                    .font(.subheadline.weight(.semibold))
+                Image(systemName: "chevron.right")
+                    .font(.headline.weight(.bold))
                     .foregroundStyle(Color.klmsMacCommandButtonForeground.opacity(0.88))
             }
             .foregroundStyle(Color.klmsMacCommandButtonForeground)
-            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.klmsMacPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
@@ -2698,21 +3187,22 @@ private struct CommandPanelView: View {
                 await model.run(command)
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                Label(command.displayName, systemImage: command.systemImage)
-                    .font(.caption.weight(.semibold))
+            HStack(spacing: 7) {
+                Image(systemName: command.systemImage)
+                    .font(.callout.weight(.semibold))
+                    .frame(width: 18)
+                Text(shortTitle(for: command))
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .minimumScaleFactor(0.70)
-                Text("실행")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground.opacity(0.72))
+                    .minimumScaleFactor(0.72)
             }
             .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground)
-            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-            .padding(9)
-            .background(Color.klmsMacCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity, minHeight: 42, alignment: .center)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(Color.klmsMacCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.klmsMacCommandButtonBorder.opacity(0.88), lineWidth: 1)
             }
         }
@@ -2723,6 +3213,58 @@ private struct CommandPanelView: View {
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
         .disabled(model.runningCommand != nil)
+    }
+
+    private func shortTitle(for command: KLMSEngineCommand) -> String {
+        switch command {
+        case .filesSync:
+            return "파일"
+        case .coreSync:
+            return "과제/시험"
+        case .noticeSync:
+            return "공지"
+        default:
+            return command.displayName
+        }
+    }
+
+    private var commandStatusText: String {
+        if let command = model.runningCommand {
+            return "\(command.displayName) 진행 중"
+        }
+        if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "최근 실행 중단됨"
+            }
+            return result.succeeded ? "최근 실행 완료" : "최근 실행 실패"
+        }
+        return model.snapshot.syncReport == nil ? "대기 중" : "준비됨"
+    }
+
+    private var commandStatusImage: String {
+        if model.runningCommand != nil {
+            return "arrow.triangle.2.circlepath"
+        }
+        if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "stop.circle"
+            }
+            return result.succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+        }
+        return "clock"
+    }
+
+    private var commandStatusColor: Color {
+        if model.runningCommand != nil {
+            return .klmsMacCommandAccent
+        }
+        if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return .klmsMacSecondaryText
+            }
+            return result.succeeded ? .green : .orange
+        }
+        return .klmsMacSecondaryText
     }
 
     private var stageDurations: [KLMSStageDuration] {
@@ -3774,7 +4316,6 @@ private struct TopUtilityActionsView: View {
             } label: {
                 Label("열기", systemImage: "square.grid.2x2")
             }
-            Spacer(minLength: 0)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -3833,53 +4374,32 @@ private struct MetricTile: View {
     var isSelected: Bool
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Image(systemName: icon)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 30, height: 30)
-                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(metric.label)
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                Text("\(metric.value)")
-                    .font(.headline.monospacedDigit())
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("\(metric.value)")
+                        .font(.system(size: 28, weight: .bold, design: .default).monospacedDigit())
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    Text(metric.label)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                }
+                Spacer(minLength: 0)
+                if metric.detail != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isSelected ? tint : Color.klmsMacSecondaryText.opacity(0.70))
+                }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-        .padding(8)
-        .background(isSelected ? tint.opacity(0.14) : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
+        .padding(12)
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 13)
                 .stroke(isSelected ? tint.opacity(0.55) : Color.klmsMacBorder, lineWidth: 1)
-        }
-    }
-
-    private var icon: String {
-        switch metric.detail {
-        case .assignments, .assignmentRecords, .assignmentCandidates:
-            return "checklist"
-        case .exams, .examCandidates:
-            return "calendar"
-        case .helpDesk:
-            return "person.2"
-        case .notices:
-            return "note.text"
-        case .files, .missingFiles, .newFiles:
-            return "folder"
-        case .quarantine:
-            return "exclamationmark.shield"
-        case .pruned:
-            return "trash"
-        case .calendar:
-            return "calendar.badge.clock"
-        case .hidden:
-            return "archivebox"
-        case nil:
-            return "circle.grid.2x2"
         }
     }
 
@@ -3913,7 +4433,7 @@ struct SectionBox<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(titleColor)
@@ -3921,9 +4441,9 @@ struct SectionBox<Content: View>: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 8))
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(borderColor, lineWidth: 1)
         }
     }
@@ -3971,7 +4491,7 @@ struct CollapsibleSectionBox<Content: View>: View {
     }
 }
 
-private extension Color {
+extension Color {
     static func klmsMacAdaptiveColor(light: NSColor, dark: NSColor) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             klmsMacIsDark(appearance) ? dark : light

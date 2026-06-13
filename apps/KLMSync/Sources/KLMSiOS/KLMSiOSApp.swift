@@ -1652,7 +1652,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     var title: String {
         switch self {
         case .status:
-            return "상태"
+            return "대시보드"
         case .run:
             return "실행"
         case .connection:
@@ -4006,16 +4006,16 @@ private struct MailPasteAnalyzerPanel: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "envelope.open")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(accent)
-                        .frame(width: 30, height: 30)
-                        .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.18), in: RoundedRectangle(cornerRadius: 8))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("메일 내용 자동 판독")
-                            .font(.headline)
+                        .frame(width: 26, height: 26)
+                        .background(accent.opacity(colorScheme == .dark ? 0.18 : 0.12), in: RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("메일·캘린더 분석")
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.klmsPrimaryText)
-                        Text("메일 본문에서 과제·시험·일정을 찾아 캘린더 반영 후보로 정리합니다.")
-                            .font(.caption)
+                        Text(isExpanded ? "메일 본문에서 과제·시험·일정을 찾습니다." : "메일 본문 붙여넣기")
+                            .font(.caption2)
                             .foregroundStyle(Color.klmsSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -4032,14 +4032,15 @@ private struct MailPasteAnalyzerPanel: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
-                .padding(12)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 9)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(accent.opacity(colorScheme == .dark ? 0.13 : 0.075), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color.klmsCommandButtonBackground.opacity(colorScheme == .dark ? 0.82 : 0.92), in: RoundedRectangle(cornerRadius: 10))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(accent.opacity(colorScheme == .dark ? 0.34 : 0.22), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.klmsCommandButtonBorder.opacity(colorScheme == .dark ? 0.72 : 0.92), lineWidth: 1)
                 )
-                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
             .accessibilityHint(isExpanded ? "메일 판독 입력 접기" : "메일 판독 입력 펼치기")
@@ -7334,25 +7335,24 @@ private struct RemoteCommandPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("동기화")
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("동기화")
+                        .font(.headline)
+                    Text("Mac 앱에 실행 요청을 보냅니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
                 Spacer()
                 if model.hasInFlightRequest || model.status.phase == "running" {
                     Label(model.activeRequestLabel, systemImage: "arrow.triangle.2.circlepath")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsCommandAccent)
+                } else {
+                    Label(model.isRemoteAvailable ? "준비됨" : "연결 필요", systemImage: model.isRemoteAvailable ? "checkmark.circle" : "exclamationmark.triangle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(model.isRemoteAvailable ? Color.klmsSecondaryText : .orange)
                 }
             }
-            Toggle(isOn: $model.shouldUpdateNoticeNotes) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("공지 메모도 업데이트")
-                        .font(.subheadline.weight(.semibold))
-                    Text("끄면 전체/공지 동기화가 목록과 상태만 갱신하고 Mac의 Notes 메모는 건드리지 않습니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
-            }
-            .toggleStyle(.switch)
             MailPasteAnalyzerPanel(model: model)
             primaryCommandActionCard(primaryCommand)
             LazyVGrid(columns: secondaryColumns, spacing: 8) {
@@ -7360,6 +7360,16 @@ private struct RemoteCommandPanel: View {
                     commandActionCard(command)
                 }
             }
+            Toggle(isOn: $model.shouldUpdateNoticeNotes) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("공지 메모도 업데이트")
+                        .font(.subheadline.weight(.semibold))
+                    Text("끄면 목록과 상태만 갱신합니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
+            }
+            .toggleStyle(.switch)
             RemoteStageDurationSummaryView(durations: stageDurations)
             if compact {
                 Text("점검 도구는 실행 탭에서 할 수 있습니다.")
@@ -7368,9 +7378,9 @@ private struct RemoteCommandPanel: View {
             }
         }
         .padding(14)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -7382,13 +7392,13 @@ private struct RemoteCommandPanel: View {
             }
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: kind.engineCommand.systemImage)
-                    .font(.title3.weight(.semibold))
-                    .frame(width: 34, height: 34)
-                    .background(Color.klmsCommandButtonForeground.opacity(0.10), in: Circle())
+                Image(systemName: "play.fill")
+                    .font(.title3.weight(.bold))
+                    .frame(width: 38, height: 38)
+                    .background(Color.klmsCommandButtonForeground.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(kind.displayName)
-                        .font(.headline.weight(.semibold))
+                    Text("전체 동기화")
+                        .font(.headline.weight(.bold))
                     Text(kind.engineCommand.shortDescription)
                         .font(.caption)
                         .foregroundStyle(Color.klmsCommandButtonForeground.opacity(0.78))
@@ -7396,17 +7406,17 @@ private struct RemoteCommandPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "play.fill")
-                    .font(.subheadline.weight(.semibold))
+                Image(systemName: "chevron.right")
+                    .font(.headline.weight(.bold))
                     .foregroundStyle(Color.klmsCommandButtonForeground.opacity(0.88))
             }
             .foregroundStyle(Color.klmsCommandButtonForeground)
-            .frame(maxWidth: .infinity, minHeight: compact ? 58 : 64, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity, minHeight: compact ? 66 : 74, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.klmsPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
@@ -7430,22 +7440,22 @@ private struct RemoteCommandPanel: View {
                 await model.createCommand(kind)
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
                 Image(systemName: kind.engineCommand.systemImage)
                     .font(.subheadline.weight(.semibold))
-                Text(kind.displayName)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(2)
+                    .frame(width: 18)
+                Text(shortTitle(for: kind))
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
                     .minimumScaleFactor(0.72)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(Color.klmsSecondaryCommandButtonForeground)
-            .frame(maxWidth: .infinity, minHeight: compact ? 54 : 60, alignment: .leading)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 8)
-            .background(Color.klmsCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity, minHeight: compact ? 44 : 46, alignment: .center)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(Color.klmsCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.klmsCommandButtonBorder.opacity(0.88), lineWidth: 1)
             }
         }
@@ -7454,6 +7464,19 @@ private struct RemoteCommandPanel: View {
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         .accessibilityLabel("\(kind.displayName) 실행")
         .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
+    }
+
+    private func shortTitle(for kind: RemoteCommandKind) -> String {
+        switch kind {
+        case .filesSync:
+            return "파일"
+        case .coreSync:
+            return "과제/시험"
+        case .noticeSync:
+            return "공지"
+        default:
+            return kind.displayName
+        }
     }
 }
 

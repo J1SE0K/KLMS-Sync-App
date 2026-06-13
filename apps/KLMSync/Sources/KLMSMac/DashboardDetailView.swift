@@ -2908,12 +2908,6 @@ struct MacMailPasteAnalyzerPanel: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(10)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
-        }
         .onChange(of: mailText) { _, _ in
             runAnalysis()
         }
@@ -2965,14 +2959,14 @@ private struct MacMailPasteHeaderButtonContent: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(accent)
                 .frame(width: 24, height: 24)
-                .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.18), in: RoundedRectangle(cornerRadius: 7))
+                .background(accent.opacity(colorScheme == .dark ? 0.18 : 0.12), in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 2) {
-                Text("메일 내용 자동 판독")
+                Text("메일·캘린더 분석")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text("메일 본문에서 과제·시험·일정을 찾아 캘린더 반영 후보로 정리합니다.")
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text(isExpanded ? "메일 본문에서 과제·시험·일정을 찾습니다." : "메일 본문 붙여넣기")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
@@ -2986,16 +2980,17 @@ private struct MacMailPasteHeaderButtonContent: View {
             }
             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
         }
-        .padding(10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(accent.opacity(colorScheme == .dark ? 0.13 : 0.075), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacCommandButtonBackground.opacity(colorScheme == .dark ? 0.82 : 0.92), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(accent.opacity(colorScheme == .dark ? 0.34 : 0.22), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsMacCommandButtonBorder.opacity(colorScheme == .dark ? 0.72 : 0.92), lineWidth: 1)
         }
-        .contentShape(Rectangle())
+        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 

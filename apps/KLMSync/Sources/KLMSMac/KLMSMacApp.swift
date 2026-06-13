@@ -43,10 +43,10 @@ struct KLMSMacApp: App {
             MenuBarRootView(model: model)
                 .frame(
                     minWidth: 540,
-                    idealWidth: 900,
+                    idealWidth: 1080,
                     maxWidth: .infinity,
                     minHeight: 520,
-                    idealHeight: 820,
+                    idealHeight: 760,
                     maxHeight: .infinity
                 )
                 .task {
@@ -55,6 +55,7 @@ struct KLMSMacApp: App {
                 }
                 .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
         }
+        .defaultSize(width: 1080, height: 760)
 
         Window("KLMS Sync 진단", id: KLMSMacWindowID.diagnostics) {
             DiagnosticWindowView(model: model)
@@ -123,11 +124,11 @@ private enum KLMSWindowMetrics {
     }
 
     static var menuBarWidth: CGFloat {
-        min(760, max(440, visibleFrame.width - 48))
+        min(1080, max(440, visibleFrame.width - 48))
     }
 
     static var menuBarHeight: CGFloat {
-        min(760, max(360, visibleFrame.height - 80))
+        min(780, max(360, visibleFrame.height - 80))
     }
 
     static var settingsWidth: CGFloat {
