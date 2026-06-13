@@ -1780,14 +1780,14 @@ private struct DashboardControlChip: View {
         Button(action: action) {
             Text(title)
                 .font(.caption.weight(isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
                 .frame(minWidth: 42)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
-                .background(isSelected ? Color.accentColor.opacity(0.16) : Color(nsColor: .textBackgroundColor), in: Capsule())
+                .background(isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacSubtleCardBackground, in: Capsule())
                 .overlay {
                     Capsule()
-                        .stroke(isSelected ? Color.accentColor.opacity(0.45) : Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+                        .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacCommandBorder, lineWidth: 1)
                 }
         }
         .buttonStyle(.plain)
@@ -2548,9 +2548,18 @@ private struct CalendarActionButton: View {
                 .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 30)
+                .foregroundStyle(disabled ? Color.klmsMacSecondaryText.opacity(0.62) : tint)
+                .padding(.horizontal, 9)
+                .background(
+                    (disabled ? Color.klmsMacSubtleCardBackground.opacity(0.58) : tint.opacity(0.10)),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(disabled ? Color.klmsMacCommandBorder.opacity(0.6) : tint.opacity(0.24), lineWidth: 1)
+                }
         }
-        .buttonStyle(.bordered)
-        .tint(tint)
+        .buttonStyle(.plain)
         .disabled(disabled)
     }
 }
@@ -2949,17 +2958,8 @@ private struct MacMailPasteHeaderButtonContent: View {
     var analysis: MacMailPasteAnalysis
     @Environment(\.colorScheme) private var colorScheme
 
-    private var accent: Color {
-        macMailThemeAccent(for: colorScheme)
-    }
-
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "envelope.open")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(accent)
-                .frame(width: 24, height: 24)
-                .background(accent.opacity(colorScheme == .dark ? 0.18 : 0.12), in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 2) {
                 Text("메일·캘린더 분석")
                     .font(.caption.weight(.semibold))
@@ -2978,7 +2978,7 @@ private struct MacMailPasteHeaderButtonContent: View {
                     .padding(.vertical, 3)
                     .background(analysis.kind.tint.opacity(0.12), in: Capsule())
             }
-            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+            Image(systemName: isExpanded ? "chevron.down" : "arrow.right")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsMacSecondaryText)
         }

@@ -3993,10 +3993,6 @@ private struct MailPasteAnalyzerPanel: View {
     @State private var analysis = MailPasteAnalysis.empty
     @Environment(\.colorScheme) private var colorScheme
 
-    private var accent: Color {
-        companionMailThemeAccent(for: colorScheme)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
@@ -4005,11 +4001,6 @@ private struct MailPasteAnalyzerPanel: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "envelope.open")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(accent)
-                        .frame(width: 26, height: 26)
-                        .background(accent.opacity(colorScheme == .dark ? 0.18 : 0.12), in: RoundedRectangle(cornerRadius: 8))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("메일·캘린더 분석")
                             .font(.subheadline.weight(.semibold))
@@ -7392,28 +7383,16 @@ private struct RemoteCommandPanel: View {
             }
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "play.fill")
-                    .font(.title3.weight(.bold))
-                    .frame(width: 38, height: 38)
-                    .background(Color.klmsCommandButtonForeground.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("전체 동기화")
-                        .font(.headline.weight(.bold))
-                    Text(kind.engineCommand.shortDescription)
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsCommandButtonForeground.opacity(0.78))
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Text("전체 동기화")
+                    .font(.headline.weight(.heavy))
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(Color.klmsCommandButtonForeground.opacity(0.88))
+                Image(systemName: "play.fill")
+                    .font(.headline.weight(.black))
             }
             .foregroundStyle(Color.klmsCommandButtonForeground)
-            .frame(maxWidth: .infinity, minHeight: compact ? 66 : 74, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: compact ? 56 : 60, alignment: .leading)
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.vertical, 10)
             .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
@@ -7441,9 +7420,6 @@ private struct RemoteCommandPanel: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: kind.engineCommand.systemImage)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(width: 18)
                 Text(shortTitle(for: kind))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
@@ -9424,41 +9400,31 @@ private struct AuthCodeHero: View {
     var digits: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "key.fill")
-                    .font(.title2)
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(Color.orange)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("KAIST 인증 번호")
-                        .font(.headline)
-                    Text("휴대폰 인증 화면에서 같은 번호를 선택하세요.")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
-                Spacer(minLength: 0)
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("KAIST 인증 번호")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text("휴대폰 인증 화면에서 같은 번호를 선택하세요.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.klmsSecondaryText)
             }
-
+            Spacer(minLength: 0)
             Text(digits)
-                .font(.system(size: 58, weight: .black, design: .rounded))
+                .font(.system(size: 38, weight: .black, design: .rounded))
                 .monospacedDigit()
-                .frame(maxWidth: .infinity, minHeight: 88)
-                .foregroundStyle(.orange)
-                .background(Color.orange.opacity(0.14))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(Color.klmsCommandButtonForeground)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityLabel("KAIST 인증 번호 \(digits)")
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 12))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
 }

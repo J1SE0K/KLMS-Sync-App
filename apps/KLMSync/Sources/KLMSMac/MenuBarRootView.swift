@@ -99,15 +99,11 @@ private struct WorkspaceNavigationView: View {
                         selection = section
                     } label: {
                         HStack(spacing: 9) {
-                            Image(systemName: section.systemImage)
-                                .font(.body.weight(.semibold))
-                                .frame(width: 22)
-                                .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacSecondaryText)
                             Text(section.title)
                                 .font(.subheadline.weight(isSelected ? .semibold : .regular))
                                 .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
                             Spacer(minLength: 0)
-                            Image(systemName: "chevron.right")
+                            Image(systemName: "arrow.right")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacSecondaryText.opacity(0.70))
                         }
@@ -115,12 +111,12 @@ private struct WorkspaceNavigationView: View {
                         .padding(.vertical, 9)
                         .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
                         .background(
-                            isSelected ? Color.klmsMacCommandAccent : Color.clear,
+                            isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.clear,
                             in: RoundedRectangle(cornerRadius: 8)
                         )
                         .overlay {
                             RoundedRectangle(cornerRadius: 8)
-                                .stroke(isSelected ? Color.klmsMacCommandAccent : Color.clear, lineWidth: 1)
+                                .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
                         }
                         .contentShape(RoundedRectangle(cornerRadius: 8))
                     }
@@ -345,14 +341,29 @@ private struct MacAlertBannerView: View {
     }
 
     private var chipForeground: Color {
-        model.currentAuthDigits == nil ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText
+        if model.currentAuthDigits != nil {
+            return Color.klmsMacPrimaryText
+        }
+        if model.runningCommand != nil {
+            return Color.klmsMacCommandButtonForeground
+        }
+        if model.snapshot.needsAttention || model.snapshot.syncReport == nil {
+            return .orange
+        }
+        return Color.klmsMacPrimaryText
     }
 
     private var chipBackground: Color {
         if model.currentAuthDigits != nil {
             return .orange.opacity(0.18)
         }
-        return bannerTint
+        if model.runningCommand != nil {
+            return Color.klmsMacPrimaryCommandButtonBackground
+        }
+        if model.snapshot.needsAttention || model.snapshot.syncReport == nil {
+            return .orange.opacity(0.12)
+        }
+        return Color.klmsMacSubtleCardBackground
     }
 
     private func performAction() {
@@ -3123,13 +3134,21 @@ private struct CommandPanelView: View {
                         await model.cancelRunningCommand()
                     }
                 } label: {
-                    Label(
-                        model.isCancellingCommand ? "중단 요청 중..." : "\(command.displayName) 중단",
-                        systemImage: "stop.fill"
-                    )
-                    .frame(maxWidth: .infinity)
+                    HStack(spacing: 8) {
+                        Image(systemName: "stop.fill")
+                            .font(.caption.weight(.bold))
+                        Text(model.isCancellingCommand ? "중단 요청 중..." : "\(command.displayName) 중단")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(.red.opacity(0.24), lineWidth: 1)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
                 .disabled(model.isCancellingCommand)
                 .accessibilityLabel("\(command.displayName) 중단")
                 .accessibilityHint("현재 실행 중인 동기화를 중단합니다.")
@@ -3144,28 +3163,16 @@ private struct CommandPanelView: View {
             }
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "play.fill")
-                .font(.title3.weight(.bold))
-                    .frame(width: 36, height: 36)
-                    .background(Color.klmsMacCommandButtonForeground.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("전체 동기화")
-                        .font(.title3.weight(.bold))
-                    Text(command.shortDescription)
-                        .font(.caption)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .foregroundStyle(Color.klmsMacCommandButtonForeground.opacity(0.78))
-                }
+                Text("전체 동기화")
+                    .font(.title3.weight(.heavy))
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(Color.klmsMacCommandButtonForeground.opacity(0.88))
+                Image(systemName: "play.fill")
+                    .font(.headline.weight(.black))
             }
             .foregroundStyle(Color.klmsMacCommandButtonForeground)
-            .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.vertical, 10)
             .background(Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
@@ -3188,9 +3195,6 @@ private struct CommandPanelView: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: command.systemImage)
-                    .font(.callout.weight(.semibold))
-                    .frame(width: 18)
                 Text(shortTitle(for: command))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
@@ -4282,8 +4286,9 @@ private struct TopUtilityActionsView: View {
             Button {
                 openSettings()
             } label: {
-                Label("설정", systemImage: "gearshape")
+                utilityLabel("설정", systemImage: "gearshape")
             }
+            .buttonStyle(.plain)
             Menu {
                 Button {
                     Task {
@@ -4314,11 +4319,23 @@ private struct TopUtilityActionsView: View {
                     Label("손쉬운 사용 권한", systemImage: "accessibility")
                 }
             } label: {
-                Label("열기", systemImage: "square.grid.2x2")
+                utilityLabel("열기", systemImage: "square.grid.2x2")
             }
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+    }
+
+    private func utilityLabel(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.klmsMacPrimaryText)
+            .labelStyle(.titleAndIcon)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color.klmsMacSubtleCardBackground, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.klmsMacCommandBorder, lineWidth: 1)
+            }
     }
 }
 
