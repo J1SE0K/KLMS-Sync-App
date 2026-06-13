@@ -3903,7 +3903,7 @@ struct SectionBox<Content: View>: View {
     var title: String
     var backgroundColor: Color = .klmsMacCardBackground
     var borderColor: Color = .klmsMacBorder
-    var titleColor: Color = .primary
+    var titleColor: Color = .klmsMacPrimaryText
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -3939,14 +3939,15 @@ struct CollapsibleSectionBox<Content: View>: View {
                 HStack(spacing: 8) {
                     if let systemImage {
                         Image(systemName: systemImage)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                     Text(title)
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
                     Spacer(minLength: 8)
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 .contentShape(Rectangle())
             }
@@ -4007,6 +4008,20 @@ private extension Color {
         klmsMacAdaptiveColor(
             light: NSColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
             dark: NSColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacPrimaryText: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
+            dark: NSColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacSecondaryText: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.427, green: 0.404, blue: 0.365, alpha: 1.0),
+            dark: NSColor(red: 0.741, green: 0.710, blue: 0.655, alpha: 1.0)
         )
     }
 

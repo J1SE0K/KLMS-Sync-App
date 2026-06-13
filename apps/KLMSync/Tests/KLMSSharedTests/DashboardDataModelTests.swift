@@ -744,6 +744,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("light: NSColor(red: 0.165, green: 0.165, blue: 0.153"))
         XCTAssertTrue(mac.contains("dark: NSColor(red: 0.941, green: 0.875, blue: 0.722"))
         XCTAssertTrue(mac.contains("light: NSColor(red: 1.000, green: 0.980, blue: 0.941"))
+        XCTAssertTrue(mac.contains("static var klmsMacPrimaryText: Color"))
+        XCTAssertTrue(mac.contains("static var klmsMacSecondaryText: Color"))
         XCTAssertTrue(mac.contains("static var klmsMacSecondaryCommandButtonForeground: Color"))
         XCTAssertTrue(mac.contains(".foregroundStyle(Color.klmsMacCommandButtonForeground.opacity(0.88))"))
 
@@ -754,6 +756,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("light: UIColor(red: 0.165, green: 0.165, blue: 0.153"))
         XCTAssertTrue(ios.contains("dark: UIColor(red: 0.941, green: 0.875, blue: 0.722"))
         XCTAssertTrue(ios.contains("light: UIColor(red: 1.000, green: 0.980, blue: 0.941"))
+        XCTAssertTrue(ios.contains("static var klmsPrimaryText: Color"))
+        XCTAssertTrue(ios.contains("static var klmsSecondaryText: Color"))
+        XCTAssertTrue(ios.contains("private struct KLMSCardButtonStyle: ButtonStyle"))
         XCTAssertTrue(ios.contains("static var klmsSecondaryCommandButtonForeground: Color"))
         XCTAssertTrue(ios.contains(".foregroundStyle(Color.klmsCommandButtonForeground.opacity(0.88))"))
     }

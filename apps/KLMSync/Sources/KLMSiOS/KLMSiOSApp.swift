@@ -3429,16 +3429,16 @@ private struct RemoteMetricTile: View {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsCommandAccent : .secondary)
+                    .foregroundStyle(isSelected ? Color.klmsCommandAccent : Color.klmsSecondaryText)
                     .frame(width: 30, height: 30)
                     .background(isSelected ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(value)")
                         .font(.headline.monospacedDigit())
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.klmsPrimaryText)
                     Text(label)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsSecondaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                 }
@@ -3452,8 +3452,17 @@ private struct RemoteMetricTile: View {
                     .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel("\(label) \(value)개")
+    }
+}
+
+private struct KLMSCardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }
 
@@ -3651,17 +3660,22 @@ private struct DashboardCategoryInlineDetailPanel: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(category.title)
                     .font(.headline)
+                    .foregroundStyle(Color.klmsPrimaryText)
                 Text(summaryText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(category.tint.opacity(0.10))
+        .background(Color.klmsSubtleCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -3692,7 +3706,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
         } else {
             let filtered = filteredItems
             let visible = Array(filtered.prefix(visibleLimit))
-            VStack(alignment: .leading, spacing: 8) {
+            LazyVStack(alignment: .leading, spacing: 8) {
                 TextField("\(category.title) 검색", text: $query)
                     .textFieldStyle(.roundedBorder)
 
@@ -3763,18 +3777,18 @@ private struct DashboardCategoryInlineDetailPanel: View {
     private func panelEmptyText(_ text: String) -> some View {
         Text(text)
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.klmsSecondaryText)
             .fixedSize(horizontal: false, vertical: true)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quinary)
+            .background(Color.klmsSubtleCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func extraCountText(_ count: Int) -> some View {
         Text("외 \(count)개")
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.klmsSecondaryText)
             .padding(.horizontal, 2)
     }
 
@@ -3878,7 +3892,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
         } else if changedItems.isEmpty {
             emptyState
         } else {
-            VStack(alignment: .leading, spacing: 8) {
+            LazyVStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(changedItems.prefix(12))) { item in
                     VStack(alignment: .leading, spacing: 8) {
                         Button {
@@ -3891,7 +3905,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
                                     .equatable()
                                 Image(systemName: selectedItemID == item.id ? "chevron.up" : "chevron.down")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.klmsSecondaryText)
                             }
                         }
                         .buttonStyle(.plain)
@@ -3905,7 +3919,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
                 if changedItems.count > 12 {
                     Text("외 \(changedItems.count - 12)개는 대시보드 \(categoryHint)에서 확인할 수 있습니다.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsSecondaryText)
                 }
             }
         }
@@ -3925,10 +3939,10 @@ private struct RemoteChangeSummaryDetailPanel: View {
                 if fileCleanupReports.isEmpty {
                     Text("정리된 파일 수는 확인됐지만 상세 미리보기 리포트는 없습니다. 실제 삭제/정리 내역은 Mac의 파일 로그에서 확인할 수 있습니다.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(10)
-                        .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                 } else {
                     ForEach(Array(fileCleanupReports.enumerated()), id: \.offset) { _, report in
                         RemoteDryRunReportRow(report: report)
@@ -3941,11 +3955,11 @@ private struct RemoteChangeSummaryDetailPanel: View {
     private var emptyState: some View {
         Text(kind.emptyMessage)
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.klmsSecondaryText)
             .fixedSize(horizontal: false, vertical: true)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var summaryText: String {
@@ -7186,26 +7200,27 @@ private struct ServerSyncDataRow: View, Equatable {
                     if !item.status.isEmpty {
                         Text(item.status)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsSecondaryText)
                     }
                     if item.isHidden {
                         Text("숨김")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsSecondaryText)
                     }
                 }
                 Text(item.title.isEmpty ? "제목 없음" : item.title)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
                     .lineLimit(2)
                 Text(metadata)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(.background)
+        .background(Color.klmsSubtleCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
@@ -7390,7 +7405,7 @@ private struct RemoteCommandPanel: View {
                     .stroke(Color.klmsPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KLMSCardButtonStyle())
         .opacity(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest ? 0.48 : 1)
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         .accessibilityLabel("\(kind.displayName) 실행")
@@ -7429,7 +7444,7 @@ private struct RemoteCommandPanel: View {
                     .stroke(Color.klmsCommandButtonBorder.opacity(0.88), lineWidth: 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KLMSCardButtonStyle())
         .opacity(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest ? 0.48 : 1)
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         .accessibilityLabel("\(kind.displayName) 실행")
@@ -7445,7 +7460,7 @@ private struct RemoteStageDurationSummaryView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("단계별 소요 시간")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsSecondaryText)
                 VStack(spacing: 6) {
                     ForEach(durations) { duration in
                         HStack(spacing: 6) {
@@ -7459,7 +7474,7 @@ private struct RemoteStageDurationSummaryView: View {
                             Spacer(minLength: 4)
                             Text(duration.secondsText)
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsSecondaryText)
                                 .lineLimit(1)
                         }
                         .padding(.horizontal, 8)
@@ -9565,6 +9580,38 @@ private extension Color {
         )
         #else
         return Color.gray
+        #endif
+    }
+
+    static var klmsPrimaryText: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
+            dark: UIColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
+            dark: NSColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
+        )
+        #else
+        return Color.primary
+        #endif
+    }
+
+    static var klmsSecondaryText: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.427, green: 0.404, blue: 0.365, alpha: 1.0),
+            dark: UIColor(red: 0.741, green: 0.710, blue: 0.655, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.427, green: 0.404, blue: 0.365, alpha: 1.0),
+            dark: NSColor(red: 0.741, green: 0.710, blue: 0.655, alpha: 1.0)
+        )
+        #else
+        return Color.secondary
         #endif
     }
 
