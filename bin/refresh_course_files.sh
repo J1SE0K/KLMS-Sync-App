@@ -143,6 +143,29 @@ if is_truthy "$FILE_DRY_RUN"; then
 fi
 
 mkdir -p "$CACHE_DIR" "$WORK_CACHE_DIR" "$TMP_DIR" "$PRUNE_BACKUP_DIR"
+
+cleanup_legacy_scoped_file_result_artifacts() {
+  local scoped_cache_dir="$CACHE_DIR/files"
+  [[ "$WORK_CACHE_DIR" == "$scoped_cache_dir" ]] || return
+
+  # Older app builds wrote final result JSONs into runtime/cache/files.
+  # That directory is now only the page-fetch cache; final file state lives in runtime/cache.
+  rm -f \
+    "$scoped_cache_dir/course_file_manifest.json" \
+    "$scoped_cache_dir/course_file_manifest.md" \
+    "$scoped_cache_dir/course_file_manifest_state.json" \
+    "$scoped_cache_dir/course_file_download_result.json" \
+    "$scoped_cache_dir/course_file_sync_preview.json" \
+    "$scoped_cache_dir/course_file_quarantine_report.json" \
+    "$scoped_cache_dir/course_file_cleanup_result.json" \
+    "$scoped_cache_dir/course_file_prune_result.json" \
+    "$scoped_cache_dir/course_file_archive_prune_result.json"
+}
+
+if ! is_truthy "$FILE_DRY_RUN"; then
+  cleanup_legacy_scoped_file_result_artifacts
+fi
+
 if is_truthy "$FILE_DRY_RUN"; then
   if [[ -s "$PERSISTENT_MANIFEST_JSON" ]]; then
     cp "$PERSISTENT_MANIFEST_JSON" "$MANIFEST_JSON"
@@ -575,18 +598,23 @@ def epochs_match(left: int, right: int) -> bool:
     return left > 0 and right > 0 and abs(left - right) <= 1
 
 def existing_file_needs_refresh(entry: dict, destination_path: Path, previous: dict) -> bool:
+    return existing_file_refresh_decision(entry, destination_path, previous)[0]
+
+def existing_file_refresh_decision(entry: dict, destination_path: Path, previous: dict):
     current_epoch = normalized_epoch(entry.get("klms_timestamp_epoch"))
     if current_epoch <= 0:
-        return False
+        return False, "no-klms-timestamp"
     previous_epoch = normalized_epoch(previous.get("klms_timestamp_epoch"))
     if epochs_match(current_epoch, previous_epoch):
-        return False
+        return False, "local-klms-timestamp-current"
     local_epoch = local_file_epoch(destination_path)
     if epochs_match(current_epoch, local_epoch):
-        return False
+        return False, "local-file-mtime-matches-klms-timestamp"
     if previous_epoch > 0:
-        return current_epoch > previous_epoch + 1
-    return False
+        if current_epoch > previous_epoch + 1:
+            return True, "klms-timestamp-newer-than-previous-record"
+        return False, "previous-klms-timestamp-newer-or-equal"
+    return False, "existing-file-current"
 
 results = []
 for index, entry in enumerate(manifest, start=1):
@@ -600,7 +628,8 @@ for index, entry in enumerate(manifest, start=1):
     if not destination_path.is_file():
         raise SystemExit(1)
     previous = previous_by_url.get(str(entry.get("url") or "")) or previous_by_relative.get(relative_path) or {}
-    if existing_file_needs_refresh(entry, destination_path, previous) and not allow_timestamp_reuse:
+    needs_refresh, skip_reason = existing_file_refresh_decision(entry, destination_path, previous)
+    if needs_refresh and not allow_timestamp_reuse:
         raise SystemExit(1)
     if preserve_archive and not archive_path.is_file():
         archive_path.parent.mkdir(parents=True, exist_ok=True)
@@ -639,6 +668,7 @@ for index, entry in enumerate(manifest, start=1):
         "source_url": entry.get("source_url") or "",
         "url": entry.get("url") or "",
         "skipped_existing": True,
+        "skip_reason": skip_reason,
         "auxiliary_paths": [],
     }
     for key in timestamp_keys:
