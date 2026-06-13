@@ -11,21 +11,20 @@
 
 ## 색상 토큰
 
-Windows도 Mac/iPhone과 같이 동기화 실행 버튼에만 샴페인 아이보리를 쓴다.
+Windows도 Mac/iPhone/iPad와 같은 `P4 Paper Graphite` 라이트 모드, `D1 Graphite Ivory` 다크 모드 기준을 따른다. 최신 시각 결정 문서는 [2026-06-14-klms-sync-app-visual-redesign.md](./superpowers/specs/2026-06-14-klms-sync-app-visual-redesign.md)이다.
 
 | 토큰 | Light | Dark | 용도 |
 | --- | --- | --- | --- |
-| `accent` | `#C8B892` | `#E8D9B4` | `전체 동기화` 기본 실행 버튼 |
-| `accent-ink` | `#0E0D0A` | `#0E0D0A` | accent 위 글자/아이콘 |
-| `neutral-action` | `#30343A` | 짙은 회색 | 일반 버튼, 선택 상태, 진행 중 상태 |
-| `screen-bg` | `#F7F7F4` | Windows dark canvas | 전체 배경 |
-| `card-bg` | `#FFFFFF` | Windows elevated dark surface | 카드/패널 |
-| `subtle-bg` | `#F0F0EB` | Windows dark secondary surface | 사이드바, 보조 패널, 체크 row |
-| `border` | `#D8D5CC` | `rgba(255,255,255,0.12)` | 일반 구분선 |
-| `text` | `#151515` | Windows dark primary text | 주요 텍스트 |
-| `muted` | `#6B6760` | Windows dark secondary text | 보조 텍스트 |
+| `app-bg` | `#F8F7F2` | `#10100F` | 전체 배경 |
+| `card-bg` | `#FFFFFF` | `#1D1D1B` | 카드/패널 |
+| `subtle-bg` | `#ECE9DF` | `#2D2B27` | 사이드바, 보조 패널, 개별 실행 버튼 |
+| `border` | `#D7D1C4` | `rgba(255,255,255,0.105)` | 일반 구분선 |
+| `text` | `#171613` | `#F7F3EA` | 주요 텍스트 |
+| `muted` | `#6D675D` | `#BDB5A7` | 보조 텍스트 |
+| `primary-action` | `#2A2A27` | `#F0DFB8` | `전체 동기화` 기본 실행 버튼 |
+| `primary-action-ink` | `#FFFAF0` | `#15130E` | `전체 동기화` 버튼 위 글자/아이콘 |
 
-샴페인 아이보리는 `전체 동기화` 기본 실행 버튼에만 쓴다. 라이트 모드는 `#C8B892`, 다크 모드는 더 잘 보이도록 `#E8D9B4`를 쓴다. 아래의 `파일`, `과제/시험`, `공지` 개별 실행 버튼은 회색 계열을 쓴다. 샴페인 아이보리 배경 위 글씨는 검정 계열을 쓴다. 전체 동기화 버튼 오른쪽의 실행 삼각형은 `#2A2418`로 고정한다. 선택된 탭, 진행 중 상태, 일반 버튼, 카드/패널/내비게이션 배경은 회색 계열 중립 surface를 유지한다. 파란색은 파일 종류나 링크 보조 정보처럼 의미가 분명한 곳에만 제한적으로 쓴다.
+`전체 동기화` 기본 실행 버튼에만 `primary-action`을 쓴다. 라이트 모드는 짙은 그래파이트, 다크 모드는 아이보리 계열을 써서 두 모드가 같은 제품처럼 이어지게 한다. 아래의 `파일`, `과제/시험`, `공지` 개별 실행 버튼은 `subtle-bg` 기반 중립 버튼으로 둔다. 전체 동기화 버튼 오른쪽의 실행 삼각형은 `primary-action-ink`를 따른다. 선택된 탭, 진행 중 상태, 일반 버튼, 카드/패널/내비게이션 배경은 중립 surface를 유지한다. 파란색은 파일 종류나 링크 보조 정보처럼 의미가 분명한 곳에만 제한적으로 쓴다.
 
 ## 화면 구조
 
@@ -122,7 +121,7 @@ Windows는 넓은 화면을 활용해 좌측 내비게이션 + 우측 콘텐츠 
 
 ## 구현 체크리스트
 
-- Mac/iPhone과 같은 `accent` 색을 `전체 동기화` 버튼에만 적용
+- Mac/iPhone/iPad와 같은 `primary-action` 색을 `전체 동기화` 버튼에만 적용
 - `파일`, `과제/시험`, `공지` 개별 실행 버튼은 회색 계열인지 확인
 - 선택된 탭과 일반 버튼은 회색 계열인지 확인
 - 실행 패널과 내비게이션 배경이 포인트색으로 과하게 깔리지 않는지 확인
