@@ -1589,10 +1589,17 @@ public extension Array where Element == ServerRelaySyncItem {
 public extension ServerRelaySyncItem {
     var normalizedDashboardItem: ServerRelaySyncItem {
         let trimmedStatus = status.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedStatus = trimmedStatus.localizedCaseInsensitiveContains("메일 분석") ? "추가됨" : status
+        let normalizedStatus = isMailDashboardItemLike && (
+            trimmedStatus.localizedCaseInsensitiveContains("메일 분석")
+                || trimmedStatus.localizedCaseInsensitiveContains("mail")
+                || trimmedStatus == "추가됨"
+        ) ? dashboardStatusForMailDashboard : status
         let normalizedDetail = detail
+            .replacingOccurrences(of: "메일 분석 · ", with: "")
+            .replacingOccurrences(of: "메일 분석", with: "")
             .replacingOccurrences(of: "메일 분석에서 등록한 항목입니다.", with: "추가로 반영한 항목입니다.")
             .replacingOccurrences(of: "메일 분석에서 대시보드에 반영한 항목입니다.", with: "추가로 반영한 항목입니다.")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return ServerRelaySyncItem(
             id: id,
             kind: kind,
@@ -1654,12 +1661,12 @@ public extension ServerRelaySyncItem {
         let dueText = timestamp.trimmingCharacters(in: .whitespacesAndNewlines)
         let statusText = normalized.status.trimmingCharacters(in: .whitespacesAndNewlines)
         let detailText = normalized.detail.trimmingCharacters(in: .whitespacesAndNewlines)
-        let sourceText = [statusText, detailText]
+        let sourceText = [detailText.nilIfEmpty ?? statusText]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
         return StateItem(
             url: "",
-            type: "mail",
+            type: stateItemTypeForMailDashboard,
             category: category,
             course: normalized.course.trimmingCharacters(in: .whitespacesAndNewlines),
             title: cleanTitle,
@@ -1780,6 +1787,36 @@ public extension ServerRelaySyncItem {
             "exam_candidate"
         default:
             nil
+        }
+    }
+
+    private var stateItemTypeForMailDashboard: String {
+        switch stateItemCategoryForMailDashboard {
+        case "exam", "exam_candidate":
+            "exam"
+        case "assignment", "assignment_candidate":
+            "assignment"
+        default:
+            kind
+        }
+    }
+
+    private var dashboardStatusForMailDashboard: String {
+        switch kind {
+        case "exam":
+            "시험"
+        case "examCandidate":
+            "시험 후보"
+        case "assignment":
+            "진행 중"
+        case "assignmentCandidate":
+            "과제 후보"
+        case "notice":
+            "공지"
+        case "file":
+            "파일"
+        default:
+            status
         }
     }
 
