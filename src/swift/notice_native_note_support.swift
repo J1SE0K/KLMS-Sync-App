@@ -356,7 +356,7 @@ let pasteSettleUsec: useconds_t = 70_000
 let selectionSettleDelay: TimeInterval =
     max(0.012, Double(ProcessInfo.processInfo.environment["NOTICE_NATIVE_SELECTION_SETTLE_SECONDS"] ?? "") ?? 0.02)
 let checklistPressSettleUsec: useconds_t =
-    useconds_t(max(15_000, Int(ProcessInfo.processInfo.environment["NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US"] ?? "") ?? 25_000))
+    useconds_t(max(8_000, Int(ProcessInfo.processInfo.environment["NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US"] ?? "") ?? 12_000))
 let initialEditorClearDelay: TimeInterval = 0.12
 let initialEditorFocusDelay: TimeInterval = 0.04
 let finalChecklistDisableDelay: TimeInterval = 0.12

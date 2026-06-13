@@ -285,7 +285,7 @@ final class KLMSMacModel: ObservableObject {
             "NOTICE_NATIVE_BOLD_REINFORCE_LIMIT": "0",
             "NOTICE_NATIVE_VALIDATE_STYLE": "0",
             "NOTICE_NATIVE_SELECTION_SETTLE_SECONDS": "0.012",
-            "NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US": "15000",
+            "NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US": "10000",
             "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": "0",
             "NOTICE_NATIVE_PLAIN_TEXT_PASTE": runtimeBoolConfigValue(.noticePlainTextPaste, default: false),
             "NOTICE_NATIVE_STYLE_BUDGET_SECONDS": "60",

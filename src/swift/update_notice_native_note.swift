@@ -3238,14 +3238,21 @@ func setChecklistState(
             continue
         }
 
+        let error = AXUIElementPerformAction(attachment, kAXPressAction as CFString)
+        if error == .success {
+            usleep(checklistPressSettleUsec)
+            return true
+        }
+
         _ = selectRange(context.textArea, location: range.location, length: range.length)
         _ = ensureEditableCaret(context.textArea)
-        let error = AXUIElementPerformAction(attachment, kAXPressAction as CFString)
-        guard error == .success else {
+        let fallbackError = AXUIElementPerformAction(attachment, kAXPressAction as CFString)
+        guard fallbackError == .success else {
             Thread.sleep(forTimeInterval: 0.12)
             continue
         }
-        Thread.sleep(forTimeInterval: 0.16)
+        usleep(checklistPressSettleUsec)
+        return true
     }
     let refreshedText: String = attr(context.textArea, kAXValueAttribute) ?? ""
     return checklistInfo(
@@ -3341,8 +3348,6 @@ func ensureChecklistStates(
             )
         }
 
-        _ = selectRange(textArea, location: range.location, length: range.length)
-        _ = focusNotesEditor(context)
         let error = AXUIElementPerformAction(attachment, kAXPressAction as CFString)
         if error == .success {
             usleep(checklistPressSettleUsec)
@@ -4309,7 +4314,9 @@ func noticeDisplayModeName(_ mode: NoticeDisplayMode) -> String {
 }
 
 func shouldCollapseNoticeCourses(_ plan: RenderPlan) -> Bool {
-    initialNoticeCollapseEnabled && collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty
+    initialNoticeCollapseEnabled
+        && !plan.courseHeadingLineIndexes.isEmpty
+        && (collapseNoticeCoursesEnabled || plan.mode == .archive)
 }
 
 func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool {
