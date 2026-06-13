@@ -322,6 +322,32 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertEqual(updated.content.pastExams.first?.completionReason, "past_due")
     }
 
+    func testPastHelpDeskMovesToCompletedRecords() throws {
+        let past = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=2&bwid=11",
+            title: "중간고사 헬프데스크",
+            course: "알고리즘 개론",
+            category: "help_desk",
+            syncDue: "2020-03-31T12:00:00+09:00"
+        )
+        let future = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=2&bwid=12",
+            title: "기말고사 헬프데스크",
+            course: "알고리즘 개론",
+            category: "help_desk",
+            syncDue: "2099-06-30T12:00:00+09:00"
+        )
+        let state = LegacySyncState(content: .init(helpDeskItems: [past, future]))
+        let updated = state.applyingManualOverrides(.init())
+
+        XCTAssertEqual(updated.content.helpDeskItems.map(\.title), ["기말고사 헬프데스크"])
+        XCTAssertEqual(updated.content.completedAssignments.map(\.title), ["중간고사 헬프데스크"])
+        XCTAssertEqual(updated.content.completedAssignments.first?.recordStatus, "completed")
+        XCTAssertEqual(updated.content.completedAssignments.first?.completionReason, "past_due")
+        XCTAssertEqual(updated.content.completedAssignments.first?.autoCompleted, true)
+        XCTAssertEqual(updated.content.assignmentRecords.map(\.title), ["중간고사 헬프데스크"])
+    }
+
     func testClearedManualCompletedOverrideRestoresVisibleAssignment() throws {
         let item = try decodeStateItem(
             url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=43",

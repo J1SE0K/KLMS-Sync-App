@@ -3,7 +3,7 @@
 ObjC.import("Foundation");
 
 const MARKER = "[[KLMS 자동 동기화]]";
-const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-06-13-functional-notes-v18-default-text-color";
+const NATIVE_NOTICE_RENDER_STYLE_VERSION = "2026-06-13-functional-notes-v19-plain-text-color";
 let DEBUG_STDERR_ENABLED = false;
 let ACTIVE_STAGE_TELEMETRY = null;
 let COMMAND_TIMING_ENABLED = true;

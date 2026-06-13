@@ -295,6 +295,10 @@ public extension LegacySyncState.Content {
                 appendRecord(item.dashboardMarkedCompleted())
             } else if status.isDashboardIgnoredAssignmentStatus {
                 appendRecord(item.dashboardMarkedRecordStatus(status))
+            } else if item.isDashboardPastScheduleItem {
+                let completed = item.dashboardMarkedPastScheduleRecord()
+                upsert(completed, into: &nextCompletedAssignments, indexes: &completedIndexes)
+                appendRecord(completed)
             } else {
                 upsert(item, into: &nextHelpDeskItems, indexes: &helpDeskIndexes)
             }
@@ -367,6 +371,8 @@ public extension LegacySyncState.Content {
         for item in helpDeskItems {
             processHelpDesk(item)
         }
+        updated.completedAssignments = nextCompletedAssignments.sorted(by: StateItem.dashboardSort)
+        updated.assignmentRecords = nextAssignmentRecords.sorted(by: StateItem.dashboardSort)
         updated.helpDeskItems = nextHelpDeskItems.sorted(by: StateItem.dashboardSort)
         return updated
     }
@@ -438,6 +444,10 @@ private extension StateItem {
         guard normalizedCategory == "exam" || normalizedCategory == "exam_candidate" else {
             return false
         }
+        return isDashboardPastScheduleItem
+    }
+
+    var isDashboardPastScheduleItem: Bool {
         let rawDue = syncDue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !rawDue.isEmpty, let due = ISO8601DateFormatter().date(from: rawDue) else {
             return false
@@ -511,6 +521,16 @@ private extension StateItem {
             ? "past_due"
             : item.completionReason
         item.autoCompleted = false
+        return item
+    }
+
+    func dashboardMarkedPastScheduleRecord() -> StateItem {
+        var item = self
+        item.recordStatus = "completed"
+        item.completionReason = item.completionReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "past_due"
+            : item.completionReason
+        item.autoCompleted = true
         return item
     }
 
