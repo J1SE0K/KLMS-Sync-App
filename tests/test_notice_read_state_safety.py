@@ -317,7 +317,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("placeCaretForFormatting(\n            context: context,", renderer)
         self.assertNotIn('NOTICE_NATIVE_ENABLE_UI_STYLE_FALLBACK"] == "1"', renderer)
         self.assertIn(
-            "&& (collapseNoticeCoursesEnabled || plan.mode == .archive)",
+            "initialNoticeCollapseEnabled && !plan.courseHeadingLineIndexes.isEmpty",
             renderer[renderer.index("func shouldCollapseNoticeCourses") : renderer.index("func shouldCollapseNoticeItems")],
         )
         self.assertIn("func shouldStyleNoticeCourses", renderer)
@@ -486,7 +486,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool", renderer)
         self.assertIn("func shouldCollapseNoticeSections(_ plan: RenderPlan) -> Bool", renderer)
         self.assertIn(
-            "&& (collapseNoticeCoursesEnabled || plan.mode == .archive)",
+            "initialNoticeCollapseEnabled && !plan.courseHeadingLineIndexes.isEmpty",
             renderer[
                 renderer.index("func shouldCollapseNoticeCourses")
                 : renderer.index("func shouldCollapseNoticeItems")
@@ -494,7 +494,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         )
         self.assertIn("func shouldStyleNoticeCourses", renderer)
         self.assertIn("func shouldStyleNoticeItems", renderer)
-        self.assertIn("collapseNoticeCoursesEnabled || plan.mode == .archive", renderer)
+        self.assertNotIn("collapseNoticeCoursesEnabled || plan.mode == .archive", renderer)
         self.assertIn("initialNoticeCollapseEnabled && collapseNoticeItemsEnabled && !plan.renderedNotices.isEmpty", renderer)
         self.assertIn("initialNoticeCollapseEnabled\n        && plan.mode == .primary\n        && collapseNoticeSectionsEnabled", renderer)
         self.assertIn("noticeTitleStyleMenuItems", renderer)
@@ -662,7 +662,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("allowNoOpSkip: false", archive_render_call)
         self.assertIn("allowNoOpSkip: true", primary_render_call)
 
-    def test_archive_notice_courses_collapse_even_when_course_collapse_setting_is_off(self) -> None:
+    def test_notice_courses_always_collapse_even_when_course_collapse_setting_is_off(self) -> None:
         renderer = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
         ).read_text(encoding="utf-8")
@@ -672,9 +672,10 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
             renderer.index("func shouldCollapseNoticeCourses")
             : renderer.index("func shouldCollapseNoticeItems")
         ]
-        self.assertIn("plan.mode == .archive", course_collapse)
+        self.assertIn("initialNoticeCollapseEnabled && !plan.courseHeadingLineIndexes.isEmpty", course_collapse)
+        self.assertNotIn("collapseNoticeCoursesEnabled", course_collapse)
         self.assertIn('components.append("collapse_courses=\\(shouldCollapseNoticeCourses(plan) ? "1" : "0")")', renderer)
-        self.assertIn('displayMode === "archive"', js)
+        self.assertIn("const collapseCourses =\n    initialCollapseEnabled;", js)
 
     def test_notice_native_config_is_passed_to_swift_wrapper(self) -> None:
         js = read_notice_js()

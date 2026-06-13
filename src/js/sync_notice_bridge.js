@@ -1277,9 +1277,7 @@ function noticeRenderSignatureComponents(targetKey, nativeEnvironment) {
     initialCollapseEnabled &&
     nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_SECTIONS", false);
   const collapseCourses =
-    initialCollapseEnabled &&
-    (nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_COURSES", false) ||
-      displayMode === "archive");
+    initialCollapseEnabled;
   const collapseNoticeItems =
     initialCollapseEnabled &&
     nativeNoticeEnvironmentEnabled(nativeEnvironment, "NOTICE_COLLAPSE_NOTICE_ITEMS", false);
