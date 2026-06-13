@@ -50,15 +50,15 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
                 self.assertIn("klms_run_serial_child_job", text)
                 self.assertNotIn("run_serial_job()", text)
 
-    def test_full_sync_entrypoint_runs_notice_memo_sync_between_core_and_files(self) -> None:
+    def test_full_sync_entrypoint_runs_files_before_core_and_notice(self) -> None:
         text = (PROJECT_DIR / "bin" / "run_all_full.sh").read_text(encoding="utf-8")
 
         core_index = text.index("klms_run_serial_child_job core ./sync_klms_core.sh")
         notice_index = text.index("klms_run_serial_child_job notice ./sync_klms_notice.sh")
         files_index = text.index("klms_run_serial_child_job files ./refresh_course_files.sh")
 
+        self.assertLess(files_index, core_index)
         self.assertLess(core_index, notice_index)
-        self.assertLess(notice_index, files_index)
 
     def test_runtime_notice_environment_overrides_config_file(self) -> None:
         common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"

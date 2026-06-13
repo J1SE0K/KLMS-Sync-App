@@ -95,7 +95,7 @@ public enum KLMSEngineCommand: String, CaseIterable, Sendable, Codable, Identifi
     public var shortDescription: String {
         switch self {
         case .fullSync:
-            "과제/시험, 공지 메모, 강의 파일을 모두 동기화합니다."
+            "강의 파일을 먼저 갱신한 뒤 과제/시험과 공지 메모를 동기화합니다."
         case .coreSync:
             "과제, 시험, 헬프데스크를 갱신하고 캘린더와 미리 알림에 반영합니다."
         case .noticeSync:

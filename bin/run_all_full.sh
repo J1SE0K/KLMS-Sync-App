@@ -13,9 +13,9 @@ trap 'klms_release_shared_sync_lock' EXIT
 klms_require_login
 
 klms_export_shared_sync_cache_defaults
-klms_prepare_prefetched_dashboard_for_namespaces core notice files
+klms_prepare_prefetched_dashboard_for_namespaces files core notice
 
+klms_run_serial_child_job files ./refresh_course_files.sh "${KLMS_ENTRY_EXTRA_ARGS[@]}"
 klms_run_serial_child_job core ./sync_klms_core.sh "${KLMS_ENTRY_EXTRA_ARGS[@]}"
 klms_run_serial_child_job notice ./sync_klms_notice.sh "${KLMS_ENTRY_EXTRA_ARGS[@]}"
-klms_run_serial_child_job files ./refresh_course_files.sh "${KLMS_ENTRY_EXTRA_ARGS[@]}"
 klms_cleanup_tmp_root_if_enabled

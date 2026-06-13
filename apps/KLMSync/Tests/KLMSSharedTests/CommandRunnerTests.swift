@@ -73,30 +73,31 @@ final class CommandRunnerTests: XCTestCase {
 
     func testStageDurationParserExtractsCoreNoticeAndFilesDurations() {
         let log = """
-        == core start 2026-06-07 23:25:18 KST ==
-        == core finish 2026-06-07 23:25:36 KST status=0 duration_s=18 ==
-        == notice finish 2026-06-07 23:26:35 KST status=0 duration_s=59 ==
+        == files start 2026-06-07 23:20:00 KST ==
         == files finish 2026-06-07 23:32:13 KST status=0 duration_s=338 ==
+        == core start 2026-06-07 23:32:13 KST ==
+        == core finish 2026-06-07 23:32:31 KST status=0 duration_s=18 ==
+        == notice finish 2026-06-07 23:33:30 KST status=0 duration_s=59 ==
         """
 
         let durations = KLMSStageDurationParser.parse(from: log)
 
-        XCTAssertEqual(durations.map(\.stage), ["core", "notice", "files"])
-        XCTAssertEqual(durations.map(\.seconds), [18, 59, 338])
-        XCTAssertEqual(durations[0].displayName, "과제/시험")
-        XCTAssertEqual(durations[2].secondsText, "5분 38초")
+        XCTAssertEqual(durations.map(\.stage), ["files", "core", "notice"])
+        XCTAssertEqual(durations.map(\.seconds), [338, 18, 59])
+        XCTAssertEqual(durations[0].displayName, "파일")
+        XCTAssertEqual(durations[0].secondsText, "5분 38초")
     }
 
     func testStageDurationParserExtractsPersistedSummaryLine() {
         let log = """
         download-summary total=91 skipped_existing=89 downloaded_fresh=2
-        == 단계별 실행시간 core=18s notice=59s files=338s (과제/시험 18초 · 공지 59초 · 파일 5분 38초) ==
+        == 단계별 실행시간 files=338s core=18s notice=59s (파일 5분 38초 · 과제/시험 18초 · 공지 59초) ==
         """
 
         let durations = KLMSStageDurationParser.parse(from: log)
 
-        XCTAssertEqual(durations.map(\.stage), ["core", "notice", "files"])
-        XCTAssertEqual(durations.map(\.seconds), [18, 59, 338])
+        XCTAssertEqual(durations.map(\.stage), ["files", "core", "notice"])
+        XCTAssertEqual(durations.map(\.seconds), [338, 18, 59])
     }
 
     func testReadableLogParserExtractsImportantLogHighlights() {
@@ -132,12 +133,12 @@ final class CommandRunnerTests: XCTestCase {
     }
 
     func testReadableLogParserExtractsPersistedStageDurationSummary() {
-        let log = "== 단계별 실행시간 core=18s notice=59s files=338s (과제/시험 18초 · 공지 59초 · 파일 5분 38초) =="
+        let log = "== 단계별 실행시간 files=338s core=18s notice=59s (파일 5분 38초 · 과제/시험 18초 · 공지 59초) =="
 
         let highlights = KLMSReadableLogParser.highlights(from: log)
 
         XCTAssertEqual(highlights.first?.title, "단계별 실행시간")
-        XCTAssertEqual(highlights.first?.detail, "과제/시험 18초 · 공지 59초 · 파일 5분 38초")
+        XCTAssertEqual(highlights.first?.detail, "파일 5분 38초 · 과제/시험 18초 · 공지 59초")
     }
 
     func testLivePhaseKeepsCleanupAboveFilesForLatestFileCleanupLine() {

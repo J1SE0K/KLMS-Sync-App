@@ -19,7 +19,7 @@ cp examples/config.env.example config.env
 | `./sync_klms_notice.sh` | Notice 게시판 수집 후 native Notes 공지 메모 렌더 |
 | `./refresh_course_files.sh` | 파일 manifest 생성, 다운로드, `course_files` prune, 로컬 staging 정리 |
 | `./run_all.sh` | `core -> notice` 직렬 실행 |
-| `./run_all_full.sh` | `core -> notice -> files` 직렬 실행 |
+| `./run_all_full.sh` | `files -> core -> notice` 직렬 실행. 파일 manifest를 먼저 갱신해서 공지 메모가 최신 공지 첨부파일을 반영하게 한다. |
 
 자동 sync entrypoint는 성공 후 `runtime/tmp`를 정리한다. 실패한 실행의 tmp는 디버깅을 위해 보존한다. `KLMS_RUNTIME_TMP_CLEANUP_ENABLED=0`으로 끄거나 `KLMS_RUNTIME_TMP_MAX_AGE_HOURS`로 보존 시간을 바꿀 수 있다.
 

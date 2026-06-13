@@ -585,10 +585,10 @@ final class DashboardDataModelTests: XCTestCase {
 
         let filler = (0..<140).map { "[files] download line-\($0)" }.joined(separator: "\n")
         let output = """
-        == core finish 2026-06-07 23:25:36 KST status=0 duration_s=18 ==
-        == notice finish 2026-06-07 23:26:35 KST status=0 duration_s=59 ==
-        \(filler)
         == files finish 2026-06-07 23:32:13 KST status=0 duration_s=338 ==
+        == core finish 2026-06-07 23:32:31 KST status=0 duration_s=18 ==
+        == notice finish 2026-06-07 23:33:30 KST status=0 duration_s=59 ==
+        \(filler)
         """
         let store = CommandRunHistoryStore(url: directory.appendingPathComponent("history.json"), maxRecords: 2)
         let result = KLMSCommandResult(
@@ -604,10 +604,10 @@ final class DashboardDataModelTests: XCTestCase {
         let history = try store.append(result)
         let record = try XCTUnwrap(history.records.first)
 
-        XCTAssertEqual(record.stageDurations.map(\.stage), ["core", "notice", "files"])
-        XCTAssertEqual(record.stageDurations.map(\.seconds), [18, 59, 338])
-        XCTAssertTrue(record.outputTail.contains("== 단계별 실행시간 core=18s notice=59s files=338s"))
-        XCTAssertEqual(KLMSStageDurationParser.parse(from: record.outputTail).map(\.seconds), [18, 59, 338])
+        XCTAssertEqual(record.stageDurations.map(\.stage), ["files", "core", "notice"])
+        XCTAssertEqual(record.stageDurations.map(\.seconds), [338, 18, 59])
+        XCTAssertTrue(record.outputTail.contains("== 단계별 실행시간 files=338s core=18s notice=59s"))
+        XCTAssertEqual(KLMSStageDurationParser.parse(from: record.outputTail).map(\.seconds), [338, 18, 59])
     }
 
     func testCancelledCommandHistoryIsNotAttentionFailure() {

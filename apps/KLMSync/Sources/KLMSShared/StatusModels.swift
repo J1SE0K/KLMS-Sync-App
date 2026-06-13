@@ -776,7 +776,7 @@ public enum KLMSStageDurationParser {
             let stage = String(text[stageRange])
             latestByStage[stage] = KLMSStageDuration(stage: stage, seconds: seconds)
         }
-        let order = ["core", "notice", "files"]
+        let order = ["files", "core", "notice"]
         return order.compactMap { latestByStage[$0] }
     }
 }
@@ -976,7 +976,7 @@ public enum KLMSReadableLogParser {
 
         if title == "로그인 확인" {
             return (
-                "Safari의 KLMS 세션이 현재 유효하다고 확인된 상태입니다. 이 뒤부터 과제/시험, 공지, 파일 동기화가 진행됩니다.",
+                "Safari의 KLMS 세션이 현재 유효하다고 확인된 상태입니다. 이 뒤부터 파일, 과제/시험, 공지 동기화가 진행됩니다.",
                 "이후 단계가 실패하면 로그인 자체보다 실패 단계의 상세 로그를 우선 확인하세요."
             )
         }

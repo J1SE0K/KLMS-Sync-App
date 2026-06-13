@@ -16,7 +16,7 @@ Modes:
   --core    Run only the KLMS core sync
   --notice  Run only the notice sync
   --files   Run only the course file refresh
-  --full    Run the full sync (core + notice + files)
+  --full    Run the full sync (files + core + notice)
   --dry-run Pass dry-run through to the selected sync
 EOF
 }
@@ -74,7 +74,7 @@ prompt_for_mode() {
   2) KLMS 동기화만 (core)
   3) 공지 정리만 (notice)
   4) 파일 정리만 (files)
-  5) 전체 동기화 (core + notice + files)
+  5) 전체 동기화 (files + core + notice)
 EOF
     printf '> '
     read -r selection
