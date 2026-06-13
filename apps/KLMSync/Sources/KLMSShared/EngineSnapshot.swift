@@ -798,6 +798,8 @@ public struct VerifyStateSummary: Decodable, Sendable, Equatable {
 
 public struct VerifyCalendarSummary: Decodable, Sendable, Equatable {
     public var examCount: Int
+    public var manualExamCount: Int
+    public var displayExamCount: Int
     public var helpdeskCount: Int
     public var legacyAssignmentExists: Bool
     public var legacyAlertExists: Bool
@@ -806,6 +808,8 @@ public struct VerifyCalendarSummary: Decodable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case examCount = "exam_count"
+        case manualExamCount = "manual_exam_count"
+        case displayExamCount = "display_exam_count"
         case helpdeskCount = "helpdesk_count"
         case legacyAssignmentExists = "legacy_assignment_exists"
         case legacyAlertExists = "legacy_alert_exists"
@@ -815,6 +819,8 @@ public struct VerifyCalendarSummary: Decodable, Sendable, Equatable {
 
     public init(
         examCount: Int = 0,
+        manualExamCount: Int = 0,
+        displayExamCount: Int? = nil,
         helpdeskCount: Int = 0,
         legacyAssignmentExists: Bool = false,
         legacyAlertExists: Bool = false,
@@ -822,6 +828,8 @@ public struct VerifyCalendarSummary: Decodable, Sendable, Equatable {
         resultTotals: VerifyCalendarResultTotals? = nil
     ) {
         self.examCount = examCount
+        self.manualExamCount = manualExamCount
+        self.displayExamCount = displayExamCount ?? examCount + manualExamCount
         self.helpdeskCount = helpdeskCount
         self.legacyAssignmentExists = legacyAssignmentExists
         self.legacyAlertExists = legacyAlertExists
@@ -832,6 +840,12 @@ public struct VerifyCalendarSummary: Decodable, Sendable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         examCount = container.decodeIfPresentDefault(Int.self, forKey: .examCount, default: 0)
+        manualExamCount = container.decodeIfPresentDefault(Int.self, forKey: .manualExamCount, default: 0)
+        displayExamCount = container.decodeIfPresentDefault(
+            Int.self,
+            forKey: .displayExamCount,
+            default: examCount + manualExamCount
+        )
         helpdeskCount = container.decodeIfPresentDefault(Int.self, forKey: .helpdeskCount, default: 0)
         legacyAssignmentExists = container.decodeIfPresentDefault(Bool.self, forKey: .legacyAssignmentExists, default: false)
         legacyAlertExists = container.decodeIfPresentDefault(Bool.self, forKey: .legacyAlertExists, default: false)

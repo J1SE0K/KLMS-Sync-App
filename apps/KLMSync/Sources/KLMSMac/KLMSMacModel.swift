@@ -1309,6 +1309,9 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func applyServerRelayItemAction(_ action: ServerRelayItemAction) throws -> String {
+        if let message = applyServerRelayMailNativeActionIfNeeded(action) {
+            return message
+        }
         switch action.action {
         case .assignmentComplete:
             let item = try serverRelayStateItem(for: action)
@@ -1383,6 +1386,70 @@ final class KLMSMacModel: ObservableObject {
         }
         reloadSnapshot()
         return "\(action.action.displayName) 반영 완료"
+    }
+
+    private func applyServerRelayMailNativeActionIfNeeded(_ action: ServerRelayItemAction) -> String? {
+        guard let existingIndex = mailDashboardItems.firstIndex(where: { $0.id == action.itemID }) else {
+            return nil
+        }
+
+        var item = mailDashboardItems[existingIndex]
+        switch action.action {
+        case .mailDashboardRemove,
+             .assignmentComplete,
+             .assignmentHide,
+             .examIgnore,
+             .noticeHide,
+             .fileHide,
+             .fileTrash:
+            _ = removeMailDashboardItem(id: item.id, kind: item.kind)
+            reloadSnapshot()
+            return "\(action.action.displayName) 반영 완료"
+        case .assignmentRestore, .assignmentUnhide, .examRestore, .noticeUnhide, .fileUnhide:
+            item.isHidden = false
+            item.updatedAt = ServerRelaySyncItem.isoTimestamp()
+            addMailDashboardItem(item)
+            reloadSnapshot()
+            return "\(action.action.displayName) 반영 완료"
+        case .examPromote:
+            item.kind = "exam"
+            item.status = "시험"
+            item.updatedAt = ServerRelaySyncItem.isoTimestamp()
+            addMailDashboardItem(item)
+            reloadSnapshot()
+            return "\(action.action.displayName) 반영 완료"
+        case .noticeRead:
+            item.isRead = true
+            item.updatedAt = ServerRelaySyncItem.isoTimestamp()
+            addMailDashboardItem(item)
+            reloadSnapshot()
+            return "\(action.action.displayName) 반영 완료"
+        case .noticeUnread:
+            item.isRead = false
+            item.updatedAt = ServerRelaySyncItem.isoTimestamp()
+            addMailDashboardItem(item)
+            reloadSnapshot()
+            return "\(action.action.displayName) 반영 완료"
+        case .noticeImportant:
+            item.isImportant = true
+            item.updatedAt = ServerRelaySyncItem.isoTimestamp()
+            addMailDashboardItem(item)
+            reloadSnapshot()
+            return "\(action.action.displayName) 반영 완료"
+        case .noticeUnimportant:
+            item.isImportant = false
+            item.updatedAt = ServerRelaySyncItem.isoTimestamp()
+            addMailDashboardItem(item)
+            reloadSnapshot()
+            return "\(action.action.displayName) 반영 완료"
+        case .calendarVerify,
+             .calendarApply,
+             .calendarCreate,
+             .calendarEdit,
+             .calendarDelete,
+             .mailDashboardAdd:
+            return nil
+        }
     }
 
     private func serverRelayCalendarCommand(for action: ServerRelayItemActionKind) -> RemoteCommandKind? {

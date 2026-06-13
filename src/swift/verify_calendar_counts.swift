@@ -41,6 +41,13 @@ func main() throws {
         lookbackDays: lookbackDays,
         lookaheadDays: lookaheadDays
     )
+    let manualExamCount = manualMailEventCount(
+        in: calendar(named: examCalendarName, calendars: calendars),
+        titlePrefix: "[KLMS 시험]",
+        store: store,
+        lookbackDays: lookbackDays,
+        lookaheadDays: lookaheadDays
+    )
     let helpDeskCount = eventCount(
         in: calendar(named: helpDeskCalendarName, calendars: calendars),
         titlePrefix: "[KLMS 헬프데스크]",
@@ -50,6 +57,8 @@ func main() throws {
     )
 
     print("calendar_exam_count=\(examCount)")
+    print("calendar_manual_exam_count=\(manualExamCount)")
+    print("calendar_display_exam_count=\(examCount + manualExamCount)")
     print("calendar_helpdesk_count=\(helpDeskCount)")
     print("legacy_calendar_assignment_exists=\(calendarNames.contains("KLMS 과제") ? "true" : "false")")
     print("legacy_calendar_alert_exists=\(calendarNames.contains("KLMS 알림") ? "true" : "false")")
@@ -115,5 +124,33 @@ func eventCount(
 
     return store.events(matching: predicate).filter { event in
         event.title?.hasPrefix(titlePrefix) == true
+    }.count
+}
+
+func manualMailEventCount(
+    in calendar: EKCalendar?,
+    titlePrefix: String,
+    store: EKEventStore,
+    lookbackDays: Int,
+    lookaheadDays: Int
+) -> Int {
+    guard let calendar else {
+        return 0
+    }
+
+    let now = Date()
+    let dateCalendar = Calendar(identifier: .gregorian)
+    let windowStart = dateCalendar.date(byAdding: .day, value: -max(1, lookbackDays), to: now) ?? now
+    let windowEnd = dateCalendar.date(byAdding: .day, value: max(1, lookaheadDays), to: now) ?? now
+    let predicate = store.predicateForEvents(withStart: windowStart, end: windowEnd, calendars: [calendar])
+
+    return store.events(matching: predicate).filter { event in
+        if event.title?.hasPrefix(titlePrefix) == true {
+            return false
+        }
+        let notes = event.notes ?? ""
+        return notes.localizedCaseInsensitiveContains("KLMS Sync 메일")
+            || notes.localizedCaseInsensitiveContains("메일 붙여넣기")
+            || notes.localizedCaseInsensitiveContains("메일 내용 자동 판독")
     }.count
 }

@@ -242,6 +242,62 @@ class VerifySyncStateTests(unittest.TestCase):
         self.assertEqual(payload["reminders"]["alert_active_count"], 4)
         self.assertEqual(payload["reminders"]["total_active_count"], 6)
 
+    def test_manual_mail_calendar_exam_is_reported_separately(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_dir = root / "cache"
+            cache_dir.mkdir()
+            (cache_dir / "core").mkdir()
+            state_json = root / "state.json"
+            calendar_lines = root / "calendar.txt"
+            state_json.write_text(
+                json.dumps(
+                    {
+                        "content": {
+                            "assignments": [],
+                            "completed_assignments": [],
+                            "assignment_candidates": [],
+                            "assignment_records": [],
+                            "exam_items": [
+                                {"course": "데이타베이스 개론", "title": "기말고사", "due": "6/17"},
+                                {"course": "알고리즘 개론", "title": "기말고사", "due": "6/18"},
+                            ],
+                            "exam_candidates": [],
+                            "past_exams": [],
+                            "help_desk_items": [],
+                        }
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            calendar_lines.write_text(
+                "\n".join(
+                    [
+                        "calendar_exam_count=2",
+                        "calendar_manual_exam_count=1",
+                        "calendar_display_exam_count=3",
+                        "calendar_helpdesk_count=0",
+                        "legacy_calendar_assignment_exists=false",
+                        "legacy_calendar_alert_exists=false",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (cache_dir / "core" / "calendar_sync_result.json").write_text(
+                json.dumps({"summaries": [{"bucket": "exam", "total": 2}]}),
+                encoding="utf-8",
+            )
+
+            payload = verify_sync_state.build_payload(cache_dir, state_json, calendar_lines)
+
+        checks = {item["name"]: item for item in payload["checks"]}
+        self.assertEqual(checks["calendar_exam_count_matches_state"]["status"], "ok")
+        self.assertEqual(checks["calendar_result_exam_matches_state"]["status"], "ok")
+        self.assertEqual(payload["calendar"]["exam_count"], 2)
+        self.assertEqual(payload["calendar"]["manual_exam_count"], 1)
+        self.assertEqual(payload["calendar"]["display_exam_count"], 3)
+
     def test_notice_assignment_update_can_be_covered_by_logical_state_item(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

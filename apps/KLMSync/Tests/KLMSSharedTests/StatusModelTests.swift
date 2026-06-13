@@ -371,6 +371,8 @@ final class StatusModelTests: XCTestCase {
           },
           "calendar": {
             "exam_count": 2,
+            "manual_exam_count": 1,
+            "display_exam_count": 3,
             "helpdesk_count": 1,
             "legacy_assignment_exists": false,
             "legacy_alert_exists": false,
@@ -403,6 +405,9 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(verify.files?.missingFileCount, 1)
         XCTAssertEqual(verify.files?.missingFiles, ["데이타베이스 개론/board-attachments/NanoQuiz.pdf"])
         XCTAssertEqual(verify.state?.assignmentCount, 3)
+        XCTAssertEqual(verify.calendar?.examCount, 2)
+        XCTAssertEqual(verify.calendar?.manualExamCount, 1)
+        XCTAssertEqual(verify.calendar?.displayExamCount, 3)
         XCTAssertEqual(verify.calendar?.resultTotals?.exam, 2)
         XCTAssertEqual(verify.reminders?.assignmentActiveCount, 3)
         XCTAssertEqual(verify.reminders?.alertActiveCount, 6)

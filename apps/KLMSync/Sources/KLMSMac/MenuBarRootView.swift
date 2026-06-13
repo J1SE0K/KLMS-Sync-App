@@ -436,6 +436,9 @@ private struct ExternalIntegrationStatusView: View {
         if !calendar.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "오류"
         }
+        if calendar.manualExamCount > 0 {
+            return "시험 \(calendar.displayExamCount) · 헬프 \(calendar.helpdeskCount)"
+        }
         return "시험 \(calendar.examCount) · 헬프 \(calendar.helpdeskCount)"
     }
 
@@ -444,7 +447,8 @@ private struct ExternalIntegrationStatusView: View {
             return "시험과 헬프데스크 일정이 캘린더와 맞는지 확인합니다."
         }
         if let totals = calendar.resultTotals {
-            return "최근 반영 결과: 시험 \(totals.exam) · 헬프 \(totals.helpdesk)"
+            let manualText = calendar.manualExamCount > 0 ? " · 메일 등록 시험 \(calendar.manualExamCount)" : ""
+            return "최근 반영 결과: KLMS 시험 \(totals.exam)\(manualText) · 헬프 \(totals.helpdesk)"
         }
         return "이전 캘린더 잔재: \(calendar.legacyAssignmentExists || calendar.legacyAlertExists ? "있음" : "없음")"
     }

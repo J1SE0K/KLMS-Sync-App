@@ -457,6 +457,10 @@ def build_payload(
 
     calendar = parse_calendar_lines(calendar_lines)
     calendar_exam_count = int(calendar.get("calendar_exam_count", 0) or 0)
+    calendar_manual_exam_count = int(calendar.get("calendar_manual_exam_count", 0) or 0)
+    calendar_display_exam_count = int(
+        calendar.get("calendar_display_exam_count", calendar_exam_count + calendar_manual_exam_count) or 0
+    )
     calendar_helpdesk_count = int(calendar.get("calendar_helpdesk_count", 0) or 0)
     legacy_assignment = bool(calendar.get("legacy_calendar_assignment_exists", False))
     legacy_alert = bool(calendar.get("legacy_calendar_alert_exists", False))
@@ -617,6 +621,8 @@ def build_payload(
         },
         "calendar": {
             "exam_count": calendar_exam_count,
+            "manual_exam_count": calendar_manual_exam_count,
+            "display_exam_count": calendar_display_exam_count,
             "helpdesk_count": calendar_helpdesk_count,
             "legacy_assignment_exists": legacy_assignment,
             "legacy_alert_exists": legacy_alert,
@@ -694,6 +700,8 @@ def print_text(payload: dict[str, Any]) -> None:
     for item in state["helpdesk_items"]:
         print(f"state_helpdesk={item['course']} | {item['title']} | {item['due']}")
     print(f"calendar_exam_count={calendar['exam_count']}")
+    print(f"calendar_manual_exam_count={calendar['manual_exam_count']}")
+    print(f"calendar_display_exam_count={calendar['display_exam_count']}")
     print(f"calendar_helpdesk_count={calendar['helpdesk_count']}")
     print(f"legacy_calendar_assignment_exists={'true' if calendar['legacy_assignment_exists'] else 'false'}")
     print(f"legacy_calendar_alert_exists={'true' if calendar['legacy_alert_exists'] else 'false'}")
