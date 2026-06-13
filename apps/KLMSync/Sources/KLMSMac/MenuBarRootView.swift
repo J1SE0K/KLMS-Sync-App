@@ -88,7 +88,7 @@ struct DiagnosticWindowView: View {
                             .font(.headline.weight(.semibold))
                         Text("상단 경고에서 진단 보기를 눌렀을 때 필요한 실패 로그와 검사 결과를 바로 보여줍니다.")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
@@ -196,11 +196,11 @@ private struct QuickStatusStripView: View {
         }
         if let result = model.lastCommandResult {
             if result.wasCancelled {
-                return .secondary
+                return .klmsMacSecondaryText
             }
             return result.succeeded ? .green : .orange
         }
-        return model.snapshot.syncReport == nil ? .secondary : .blue
+        return model.snapshot.syncReport == nil ? .klmsMacSecondaryText : .blue
     }
 }
 
@@ -252,11 +252,11 @@ private struct ExternalIntegrationStatusView: View {
 
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quinary, in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
@@ -283,7 +283,7 @@ private struct ExternalIntegrationStatusView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, isExpanded ? 10 : 8)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func integrationStatuses(for verify: VerifyResult?) -> [IntegrationStatusSummary] {
@@ -359,7 +359,7 @@ private struct ExternalIntegrationStatusView: View {
             return .blue
         }
         guard let verify else {
-            return .secondary
+            return .klmsMacSecondaryText
         }
         switch verify.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "ok":
@@ -369,7 +369,7 @@ private struct ExternalIntegrationStatusView: View {
         case "fail", "failed", "error":
             return .red
         default:
-            return .secondary
+            return .klmsMacSecondaryText
         }
     }
 
@@ -525,7 +525,7 @@ private enum IntegrationHealth {
         case .warning:
             .orange
         case .unknown:
-            .secondary
+            .klmsMacSecondaryText
         case .running:
             .blue
         }
@@ -593,7 +593,7 @@ private struct IntegrationStatusTile: View {
                 .lineLimit(1)
             Text(status.detail)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
@@ -621,10 +621,16 @@ private struct SectionPickerView: View {
                         .minimumScaleFactor(0.82)
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .controlSize(.small)
-                .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-                .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                .foregroundStyle(isSelected ? Color.klmsMacCommandAccent : Color.klmsMacPrimaryText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.klmsMacCommandBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? Color.klmsMacCommandBorder : Color.klmsMacBorder, lineWidth: 1)
+                }
             }
         }
     }
@@ -667,7 +673,7 @@ private struct LogSummaryPanelView: View {
                 if let updatedAt = latestUpdatedAtText {
                     Text(updatedAt)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 Button {
                     Task {
@@ -722,11 +728,11 @@ private struct LogSummaryPanelView: View {
             } else {
                 Text("요약 타일을 누르면 관련 로그와 요청 기록을 바로 펼칩니다.")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
         }
         .padding(10)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var latestFileRequest: ServerRelayFileAccessRequest? {
@@ -812,10 +818,10 @@ private struct LogSummaryPanelView: View {
             return .klmsMacCommandAccent
         }
         guard let result = model.lastCommandResult else {
-            return .secondary
+            return .klmsMacSecondaryText
         }
         if result.wasCancelled {
-            return .secondary
+            return .klmsMacSecondaryText
         }
         return result.succeeded ? .green : .orange
     }
@@ -856,7 +862,7 @@ private struct LogSummaryPanelView: View {
 
     private var remoteTint: Color {
         if currentRemoteCommand?.displayStatus() == .cancelled {
-            return .secondary
+            return .klmsMacSecondaryText
         }
         if currentRemoteCommand?.displayStatus() == .failed || currentRemoteCommand?.displayStatus() == .macUnavailable {
             return .orange
@@ -864,7 +870,7 @@ private struct LogSummaryPanelView: View {
         if currentRemoteCommand?.displayStatus().isInFlight == true {
             return .blue
         }
-        return model.serverRelayEnabled ? .green : .secondary
+        return model.serverRelayEnabled ? .green : .klmsMacSecondaryText
     }
 
     private var fileRequestValue: String {
@@ -911,7 +917,7 @@ private struct LogSummaryPanelView: View {
         case .failed, .macUnavailable:
             return .orange
         case nil:
-            return .secondary
+            return .klmsMacSecondaryText
         }
     }
 
@@ -952,7 +958,7 @@ private struct LogSummaryDetailView: View {
         if text.isEmpty {
             Text("아직 표시할 실행 로그가 없습니다.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
         } else {
             HStack {
                 Text(model.runningCommand == nil ? "마지막 실행 로그" : "실시간 로그")
@@ -960,7 +966,7 @@ private struct LogSummaryDetailView: View {
                 Spacer()
                 Text("\(text.split(whereSeparator: \.isNewline).count)줄")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
             LogTextBlock(text: text)
         }
@@ -971,7 +977,7 @@ private struct LogSummaryDetailView: View {
             if let message = model.remoteProcessingStatusMessage?.nilIfBlank ?? model.serverRelayStatusMessage?.nilIfBlank {
                 Text(message)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .textSelection(.enabled)
             }
             if let command = model.lastRemoteCommand {
@@ -979,7 +985,7 @@ private struct LogSummaryDetailView: View {
             } else {
                 Text("최근 원격 실행 요청이 없습니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
         }
     }
@@ -1008,7 +1014,7 @@ private struct LogSummaryDetailView: View {
             if model.serverRelayRecentFileAccessRequests.isEmpty {
                 Text("최근 파일 요청이 없습니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
                 ForEach(model.serverRelayRecentFileAccessRequests.prefix(8)) { request in
                     FileAccessActivityRow(request: request)
@@ -1057,21 +1063,21 @@ private struct LogSummaryTile: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     Text(value)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                     Text(detail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 4)
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
             .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
             .padding(9)
@@ -1105,7 +1111,7 @@ private struct NextActionPanelView: View {
                         .font(.caption.weight(.semibold))
                     Text(action.detail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .lineLimit(2)
                 }
                 Spacer(minLength: 8)
@@ -1250,7 +1256,7 @@ private struct HeaderView: View {
                     }
                     Text(statusText)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
@@ -1300,7 +1306,7 @@ private struct HeaderView: View {
                     }
                     Text(progress)
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .lineLimit(2)
                         .textSelection(.enabled)
                 }
@@ -1334,7 +1340,7 @@ private struct HeaderView: View {
         if model.snapshot.needsAttention {
             return .orange
         }
-        return .secondary
+        return .klmsMacSecondaryText
     }
 
     private var statusBadgeText: String {
@@ -1415,11 +1421,11 @@ private struct CommandOutputPanelView: View {
         }
         if let result = model.lastCommandResult {
             if result.wasCancelled {
-                return .secondary
+                return .klmsMacSecondaryText
             }
-            return result.succeeded ? Color.secondary : Color.orange
+            return result.succeeded ? Color.klmsMacSecondaryText : Color.orange
         }
-        return .secondary
+        return .klmsMacSecondaryText
     }
 
     private func visibleOutput(from output: String) -> String {
@@ -1454,7 +1460,7 @@ private struct DiagnosticToolsPanelView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("동기화는 실행하지 않고 현재 상태를 확인하거나, 앱 대시보드에 필요한 보조 파일만 갱신합니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
@@ -1468,7 +1474,7 @@ private struct DiagnosticToolsPanelView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("실제 반영 없이 바뀔 항목 수만 계산합니다. 일반 동기화 화면에서는 숨겨 둔 고급 기능입니다.")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                             ForEach(dryRunCommands, id: \.self) { command in
@@ -1491,16 +1497,16 @@ private struct DiagnosticToolsPanelView: View {
                     if model.serverRelayEnabled {
                         Text(model.serverRelayStatusMessage ?? "서버 릴레이 대기 중")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     } else {
                         Text("설정 > 서버에서 서버 URL과 Mac 전용 토큰을 입력한 뒤 릴레이를 켜 주세요.")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.quinary)
+                .background(Color.klmsMacSubtleCardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
@@ -1519,7 +1525,7 @@ private struct DiagnosticToolsPanelView: View {
                     .minimumScaleFactor(0.85)
                 Text(command.shortDescription)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1561,7 +1567,7 @@ private struct DiagnosticToolsPanelView: View {
                     if let report = model.snapshot.dryRunReports[scope] {
                         Text("\(scope.displayName): 생성 \(report.wouldCreate) · 수정 \(report.wouldUpdate) · 삭제 \(report.wouldDelete) · 다운로드 \(report.wouldDownload) · 정리 예정 \(report.wouldPrune)")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                 }
             }
@@ -1579,16 +1585,16 @@ private struct DiagnosticCommandLogPanelView: View {
                     HStack(spacing: 8) {
                         Label(source.title, systemImage: source.systemImage)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(source.isWarning ? .orange : .primary)
+                            .foregroundStyle(source.isWarning ? .orange : Color.klmsMacPrimaryText)
                         Text("\(source.lineCount)줄")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                         Spacer()
                     }
                     if !source.detail.isEmpty {
                         Text(source.detail)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .textSelection(.enabled)
                     }
                     CommandStageDurationSummaryView(durations: KLMSStageDurationParser.parse(from: source.text))
@@ -1596,7 +1602,7 @@ private struct DiagnosticCommandLogPanelView: View {
                 } else {
                     Text("아직 표시할 실행 로그가 없습니다. 위의 권한/환경 진단이나 동기화 버튼을 실행하면 실시간 로그와 마지막 로그가 여기에 표시됩니다.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -1730,15 +1736,15 @@ private struct LogTextBlock: View {
             ReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: text), detailed: detailed)
             Text(text)
                 .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .padding(8)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                        .stroke(Color.klmsMacBorder, lineWidth: 1)
                 )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -1754,7 +1760,7 @@ private struct ReadableLogHighlightsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("핵심 로그")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 6)], alignment: .leading, spacing: 6) {
                     ForEach(highlights) { highlight in
                         HStack(alignment: .top, spacing: 7) {
@@ -1767,7 +1773,7 @@ private struct ReadableLogHighlightsView: View {
                                     .font(.caption2.weight(.semibold))
                                 Text(highlight.detail.klmsDisplayText)
                                     .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
                                     .lineLimit(3)
                                     .fixedSize(horizontal: false, vertical: true)
                                 if detailed {
@@ -1794,10 +1800,10 @@ private struct ReadableLogHighlightsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Label("의미", systemImage: "questionmark.circle")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                 Text(highlight.explanation.klmsDisplayText)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 5)
@@ -1809,7 +1815,7 @@ private struct ReadableLogHighlightsView: View {
                     .foregroundStyle(tint(for: highlight.level))
                 Text(highlight.nextAction.klmsDisplayText)
                     .font(.caption2)
-                    .foregroundStyle(.primary.opacity(0.78))
+                    .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.78))
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 3)
@@ -1840,7 +1846,7 @@ private struct ReadableLogHighlightsView: View {
         case "summary":
             return .blue
         default:
-            return .secondary
+            return .klmsMacSecondaryText
         }
     }
 }
@@ -1859,7 +1865,7 @@ private struct AuthCodeBannerView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("KAIST 인증 번호")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     Text(digits)
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .monospacedDigit()
@@ -1941,7 +1947,7 @@ private struct DashboardSummaryView: View {
             if visibleMetrics.isEmpty {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
                 MetricSectionGrid(
                     title: "주요 항목",
@@ -1986,11 +1992,11 @@ private struct SlowestWorkView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("오래 걸린 작업")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                 ForEach(report.slowest.prefix(3)) { stage in
                     Text("\(stage.name.klmsDisplayStageName) · \(stage.durationSecondsText) · \(stage.status.klmsLocalizedStatus)")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
             }
             .padding(.top, 2)
@@ -2015,7 +2021,7 @@ private struct NoticeMemoStatusView: View {
                     if let generatedAt = snapshot.noticeDigest?.generatedAt, !generatedAt.isEmpty {
                         Text("기준 \(generatedAt)")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                 }
                 NoticeMemoRowView(label: "KLMS 공지", state: snapshot.noticeRenderState, model: model)
@@ -2023,16 +2029,16 @@ private struct NoticeMemoStatusView: View {
                 if let timing = snapshot.noticeStageTiming {
                     Text("최근 공지 메모 작성: \(timing.status.klmsLocalizedStatus) · \(timing.elapsedSecondsText) · 체크리스트/문단 서식")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     ForEach(timing.noticeRenderResultsForDisplay.prefix(3)) { result in
                         Text("\(result.displayTargetTitle): \(result.status.klmsLocalizedStatus)")
                             .font(.caption2)
-                            .foregroundStyle(noticeResultIsOK(result.status) ? Color.secondary : Color.orange)
+                            .foregroundStyle(noticeResultIsOK(result.status) ? Color.klmsMacSecondaryText : Color.orange)
                     }
                 }
             }
             .padding(10)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         }
     }
 
@@ -2062,7 +2068,7 @@ private struct NoticeMemoRowView: View {
                     .font(.caption)
                 Text(detailText)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .textSelection(.enabled)
                     .lineLimit(2)
             }
@@ -2146,7 +2152,7 @@ private struct RemoteActivityPanelView: View {
                                 .frame(width: 18)
                             Text(message)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                                 .textSelection(.enabled)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -2160,7 +2166,7 @@ private struct RemoteActivityPanelView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("공유 실행 로그")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                             ForEach(sharedRunLogs.prefix(8)) { log in
                                 SharedRunLogActivityRow(log: log)
                             }
@@ -2171,7 +2177,7 @@ private struct RemoteActivityPanelView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("서버 요청")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                             ForEach(requestLog.prefix(10)) { entry in
                                 ServerRequestLogActivityRow(entry: entry)
                             }
@@ -2182,7 +2188,7 @@ private struct RemoteActivityPanelView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("파일 요청")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                             ForEach(fileRequests.prefix(8)) { request in
                                 FileAccessActivityRow(request: request)
                             }
@@ -2190,7 +2196,7 @@ private struct RemoteActivityPanelView: View {
                     }
                 }
                 .padding(10)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
             }
         }
     }
@@ -2211,19 +2217,19 @@ private struct SharedRunLogActivityRow: View {
                         .font(.caption.weight(.semibold))
                     Text("\(log.status) · \(log.duration) · \(log.finishedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 Spacer(minLength: 8)
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
             if isExpanded {
                 LogTextBlock(text: log.outputTail)
             }
         }
         .padding(8)
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(tint.opacity(0.18), lineWidth: 1)
@@ -2245,7 +2251,7 @@ private struct SharedRunLogActivityRow: View {
 
     private var tint: Color {
         if log.wasCancelled {
-            return .secondary
+            return .klmsMacSecondaryText
         }
         return log.needsAttention ? .orange : .green
     }
@@ -2268,18 +2274,18 @@ private struct ServerRequestLogActivityRow: View {
                             .lineLimit(1)
                         Text(entry.sourceDisplayName)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                         Spacer(minLength: 8)
                         Text(entry.createdAt.formatted(date: .omitted, time: .shortened))
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.tertiary)
                     }
                     Text(detail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -2369,14 +2375,14 @@ private struct RemoteCommandActivityRow: View {
                         Spacer(minLength: 8)
                         Text(command.updatedAt.formatted(date: .omitted, time: .shortened))
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.tertiary)
                     }
                     Text(remoteCommandDetail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -2475,7 +2481,7 @@ private struct RemoteCommandActivityRow: View {
         case .completed:
             .green
         case .cancelled:
-            .secondary
+            .klmsMacSecondaryText
         case .failed, .macUnavailable:
             .orange
         }
@@ -2503,14 +2509,14 @@ private struct FileAccessActivityRow: View {
                         Spacer(minLength: 8)
                         Text(request.updatedAt.formatted(date: .omitted, time: .shortened))
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.tertiary)
                     }
                     Text(detail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -2735,7 +2741,7 @@ private struct CommandStageDurationSummaryView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("단계별 소요 시간")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                 VStack(spacing: 6) {
                     ForEach(durations) { duration in
                         HStack(spacing: 6) {
@@ -2749,7 +2755,7 @@ private struct CommandStageDurationSummaryView: View {
                             Spacer(minLength: 4)
                             Text(duration.secondsText)
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                                 .lineLimit(1)
                         }
                         .padding(.horizontal, 8)
@@ -2771,7 +2777,7 @@ private struct CommandStageDurationSummaryView: View {
         case "files":
             return .blue
         default:
-            return .secondary
+            return .klmsMacSecondaryText
         }
     }
 }
@@ -2787,7 +2793,7 @@ private struct MetricSectionGrid: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .fontWeight(.semibold)
                 MetricGrid(metrics: metrics, selectedMetricID: selectedMetricID, onSelect: onSelect)
             }
@@ -2803,20 +2809,20 @@ private struct LoginPanelView: View {
             let login = model.snapshot.loginStatus
             Text(login?.loggedIn == true ? "최근 로그인 확인됨" : "로그인 상태 미확인")
                 .font(.caption)
-                .foregroundStyle(login?.loggedIn == true ? Color.secondary : Color.orange)
+                .foregroundStyle(login?.loggedIn == true ? Color.klmsMacSecondaryText : Color.orange)
             if let checkedAt = login?.checkedAt {
                 Text(checkedAt.formatted(date: .abbreviated, time: .standard))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
             Text("인증 방식: \(loginAssistModeText)")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
             if let digits = model.currentAuthDigits {
                 HStack(spacing: 8) {
                     Text("인증 번호")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     Text(digits)
                         .font(.title2.weight(.bold))
                         .monospacedDigit()
@@ -2848,13 +2854,13 @@ private struct VerifyPanelView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(summaryText(for: verify, issueCount: issueChecks.count))
                         .font(.caption)
-                        .foregroundStyle(issueChecks.isEmpty && verify.status.lowercased() == "ok" ? Color.secondary : Color.orange)
+                        .foregroundStyle(issueChecks.isEmpty && verify.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.orange)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if issueChecks.isEmpty {
                         Text("메모, 파일, 캘린더, 미리 알림 검사에서 설명이 필요한 실패 항목이 없습니다.")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     } else {
                         ForEach(issueChecks) { check in
                             VerifyCheckExplanationRowView(check: check)
@@ -2904,22 +2910,22 @@ private struct VerifyCheckExplanationRowView: View {
                 if compact {
                     Text(rawDetail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text(check.diagnosticExplanation)
                         .font(.caption2)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.klmsMacPrimaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(check.diagnosticNextAction)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     if !rawDetail.isEmpty {
                         Text("원본: \(rawDetail)")
                             .font(.caption2.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -2927,7 +2933,7 @@ private struct VerifyCheckExplanationRowView: View {
             }
         }
         .padding(compact ? 6 : 9)
-        .background(compact ? Color(nsColor: .controlBackgroundColor) : rowBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(compact ? Color.klmsMacSubtleCardBackground : rowBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(color.opacity(compact ? 0.10 : 0.22), lineWidth: 1)
@@ -2945,7 +2951,7 @@ private struct VerifyCheckExplanationRowView: View {
         if ["warn", "warning"].contains(check.status.lowercased()) {
             return Color.orange.opacity(0.10)
         }
-        return Color.secondary.opacity(0.10)
+        return Color.klmsMacSubtleCardBackground
     }
 
     private var systemImage: String {
@@ -2978,12 +2984,12 @@ private struct DoctorPanelView: View {
                 let issueChecks = doctor.checks.filter { ["fail", "failed", "error", "warn", "warning"].contains($0.status.lowercased()) }
                 Text("상태: \(doctor.status.klmsLocalizedStatus) · 정상 \(doctor.checks.filter { $0.status.lowercased() == "ok" }.count)개")
                     .font(.caption)
-                    .foregroundStyle(doctor.status.lowercased() == "ok" ? Color.secondary : Color.orange)
+                    .foregroundStyle(doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.orange)
 
                 if issueChecks.isEmpty {
                     Text("진단에서 발견된 문제가 없습니다.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 } else {
                     ForEach(issueChecks) { check in
                         DoctorCheckRowView(check: check)
@@ -3020,14 +3026,14 @@ private struct DoctorCheckRowView: View {
                 if !check.detail.isEmpty {
                     Text(check.detail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
         .padding(compact ? 6 : 8)
-        .background(compact ? Color(nsColor: .controlBackgroundColor) : Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .background(compact ? Color.klmsMacSubtleCardBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var systemImage: String {
@@ -3111,7 +3117,7 @@ private struct AppDiagnosticsPanelView: View {
                    !permissionStatusMessage.isEmpty {
                     Text(permissionStatusMessage)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -3168,11 +3174,11 @@ private struct PermissionScopeText: View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "circle.fill")
                 .font(.system(size: 4))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
                 .padding(.top, 6)
             Text(text)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -3195,13 +3201,13 @@ private struct DiagnosticRowView: View {
                     .font(.caption.weight(.semibold))
                 Text(detail)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(8)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -3264,20 +3270,20 @@ private struct RunLogArchivePanelView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("앱에서 실행한 동기화, 변경량 계산, 진단 명령의 누적 기록입니다. 각 항목을 펼치면 해당 실행의 마지막 로그를 확인할 수 있습니다.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
-                        RunLogStatChip(title: "전체", value: "\(records.count)", systemImage: "tray.full", tint: .accentColor)
+                        RunLogStatChip(title: "전체", value: "\(records.count)", systemImage: "tray.full", tint: .klmsMacCommandAccent)
                         RunLogStatChip(title: "성공", value: "\(records.filter(\.succeeded).count)", systemImage: "checkmark.circle", tint: .green)
                         RunLogStatChip(title: "실패", value: "\(records.filter(\.needsAttention).count)", systemImage: "exclamationmark.triangle", tint: .orange)
-                        RunLogStatChip(title: "중단", value: "\(records.filter(\.wasCancelled).count)", systemImage: "stop.circle", tint: .secondary)
+                        RunLogStatChip(title: "중단", value: "\(records.filter(\.wasCancelled).count)", systemImage: "stop.circle", tint: .klmsMacSecondaryText)
                     }
 
                     if let latest = records.first {
                         Text("최근 실행: \(latest.command.displayName) · \(latest.startedAt.formatted(date: .numeric, time: .shortened)) · \(latest.statusText)")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .textSelection(.enabled)
                     }
 
@@ -3297,7 +3303,7 @@ private struct RunLogArchivePanelView: View {
                 if filteredRecords.isEmpty {
                     Text(emptyText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     LazyVStack(alignment: .leading, spacing: 8) {
@@ -3319,7 +3325,7 @@ private struct RunLogArchivePanelView: View {
                         if model.snapshot.relayLogTail.isEmpty {
                             Text("저장된 서버 로그가 아직 없습니다.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                         }
                     }
                     .padding(.top, 6)
@@ -3330,7 +3336,7 @@ private struct RunLogArchivePanelView: View {
                         Spacer()
                         Text(systemLogSummary)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                 }
             }
@@ -3364,7 +3370,7 @@ private struct RunLogStatChip: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                 Text(value)
                     .font(.caption.weight(.semibold))
             }
@@ -3396,7 +3402,7 @@ private struct CurrentRunLogCardView: View {
                         if let phase = model.currentPhaseText, model.runningCommand != nil {
                             Text(phase)
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                         }
                     }
                     LogTextBlock(text: output)
@@ -3446,15 +3452,15 @@ private struct CurrentRunLogCardView: View {
 
     private var statusColor: Color {
         if model.runningCommand != nil {
-            return .accentColor
+            return .klmsMacCommandAccent
         }
         if let result = model.lastCommandResult {
             if result.wasCancelled {
-                return .secondary
+                return .klmsMacSecondaryText
             }
             return result.succeeded ? .green : .orange
         }
-        return .secondary
+        return .klmsMacSecondaryText
     }
 
     private static func boundedOutput(_ text: String) -> String {
@@ -3478,7 +3484,7 @@ private struct RunLogArchiveRowView: View {
                 HStack(spacing: 8) {
                     Label(record.command.isDiagnostic ? "진단 명령" : "동기화 명령", systemImage: record.command.isDiagnostic ? "wrench.and.screwdriver" : "arrow.triangle.2.circlepath")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     if record.dryRun {
                         Text("변경량 계산")
                             .font(.caption2.weight(.semibold))
@@ -3487,12 +3493,12 @@ private struct RunLogArchiveRowView: View {
                     Spacer()
                     Text("종료 코드 \(record.exitCode)")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 if record.outputTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("이 실행에는 저장된 로그가 없습니다.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 } else {
                     CommandStageDurationSummaryView(durations: record.visibleStageDurations)
                     LogTextBlock(text: record.outputTail)
@@ -3519,7 +3525,7 @@ private struct RunLogArchiveRowView: View {
                     }
                     Text("\(record.startedAt.formatted(date: .numeric, time: .shortened)) · \(record.elapsedSecondsText)")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     CompactStageDurationRowsView(durations: record.visibleStageDurations)
                 }
                 .layoutPriority(1)
@@ -3531,7 +3537,7 @@ private struct RunLogArchiveRowView: View {
             }
         }
         .padding(9)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(statusColor.opacity(record.needsAttention ? 0.35 : 0.12), lineWidth: 1)
@@ -3547,7 +3553,7 @@ private struct RunLogArchiveRowView: View {
 
     private var statusColor: Color {
         if record.wasCancelled {
-            return .secondary
+            return .klmsMacSecondaryText
         }
         return record.succeeded ? .green : .orange
     }
@@ -3576,7 +3582,7 @@ private struct LogPanelView: View {
             SectionBox(title: "저장된 로그") {
                 Text("저장된 실행 기록이나 서버 로그가 아직 없습니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
         }
     }
@@ -3606,7 +3612,7 @@ private struct CommandHistoryRowView: View {
             }
             Text("\(record.startedAt.formatted(date: .numeric, time: .standard)) · \(record.elapsedSecondsText)")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
             CompactStageDurationRowsView(durations: record.visibleStageDurations)
             if !record.outputTail.isEmpty {
                 DisclosureGroup {
@@ -3622,12 +3628,12 @@ private struct CommandHistoryRowView: View {
             }
         }
         .padding(8)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var statusColor: Color {
         if record.wasCancelled {
-            return .secondary
+            return .klmsMacSecondaryText
         }
         return record.succeeded ? .green : .orange
     }
@@ -3646,7 +3652,7 @@ private struct CompactStageDurationRowsView: View {
                         Text(duration.secondsText)
                             .font(.caption2)
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
                 }
@@ -3689,11 +3695,11 @@ private struct IssueRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(issue.title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.klmsMacPrimaryText)
                 if !issue.detail.isEmpty {
                     Text(issue.detail)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -3836,7 +3842,7 @@ private struct MetricTile: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(metric.label)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                 Text("\(metric.value)")
@@ -3892,9 +3898,9 @@ private struct MetricTile: View {
         case .helpDesk:
             return .teal
         case .hidden:
-            return .secondary
+            return .klmsMacSecondaryText
         case nil:
-            return .accentColor
+            return .klmsMacCommandAccent
         }
     }
 }
