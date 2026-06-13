@@ -526,7 +526,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("NOTICE_COLLAPSE_NOTICE_ITEMS=\"0\"", config)
         self.assertIn("NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS=\"0\"", config)
         self.assertIn("NOTICE_HIDE_HIDDEN_ITEMS=\"1\"", config)
-        self.assertIn("NOTICE_NATIVE_PLAIN_TEXT_PASTE=\"1\"", config)
+        self.assertIn("NOTICE_NATIVE_PLAIN_TEXT_PASTE=\"0\"", config)
         self.assertIn("NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT=\"1\"", config)
         self.assertIn("NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT=\"0\"", config)
 
@@ -696,7 +696,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn('"NOTICE_NATIVE_STABLE_NOOP_SKIP",\n      true', js)
         self.assertIn("...nativeDefaultEnv", js)
         self.assertIn("...nativeEnv", js)
-        self.assertIn('defaults.push("NOTICE_NATIVE_PLAIN_TEXT_PASTE=1")', js)
+        self.assertIn('defaults.push("NOTICE_NATIVE_PLAIN_TEXT_PASTE=0")', js)
 
     def test_runtime_env_undefined_does_not_disable_notice_formatting(self) -> None:
         node = shutil.which("node")
@@ -854,7 +854,7 @@ console.log(JSON.stringify({ off: runCase("0"), on: runCase("1") }));
         self.assertIn('NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_VALIDATE_STYLE": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": runtimeBoolConfigValue(.noticePreformattedPasteOnly, default: false)', app_model)
-        self.assertIn('NOTICE_NATIVE_PLAIN_TEXT_PASTE": runtimeBoolConfigValue(.noticePlainTextPaste, default: true)', app_model)
+        self.assertIn('NOTICE_NATIVE_PLAIN_TEXT_PASTE": runtimeBoolConfigValue(.noticePlainTextPaste, default: false)', app_model)
         self.assertIn('NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": runtimeBoolConfigValue(.noticeAlwaysCaptureState, default: true)', app_model)
         self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": runtimeBoolConfigValue(.noticeStableNoopSkip, default: true)', app_model)
         self.assertIn('NOTICE_NATIVE_FORCE_ARCHIVE_POST_CAPTURE_RENDER": "1"', app_model)

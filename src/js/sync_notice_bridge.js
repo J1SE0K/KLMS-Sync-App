@@ -567,7 +567,7 @@ function nativeNoticeEnvHasKey(nativeEnvironment, key) {
 function nativeNoticeDefaultEnvironment(nativeEnvironment) {
   const defaults = [];
   if (!nativeNoticeEnvHasKey(nativeEnvironment, "NOTICE_NATIVE_PLAIN_TEXT_PASTE")) {
-    defaults.push("NOTICE_NATIVE_PLAIN_TEXT_PASTE=1");
+    defaults.push("NOTICE_NATIVE_PLAIN_TEXT_PASTE=0");
   }
   if (
     !nativeNoticeEnvHasKey(nativeEnvironment, "NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT") &&
