@@ -63,6 +63,18 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(result.changes.first?.changes, ["제목", "종료"])
     }
 
+    func testCalendarChangeHidesMemoOnlyUpdatesFromActionLists() throws {
+        let memoOnly = CalendarChange(action: "updated", changes: ["메모"])
+        let noteOnly = CalendarChange(action: "updated", changes: [" notes "])
+        let titleUpdate = CalendarChange(action: "updated", changes: ["제목"])
+        let created = CalendarChange(action: "created", changes: ["메모"])
+
+        XCTAssertFalse(memoOnly.isUserVisibleCalendarChange)
+        XCTAssertFalse(noteOnly.isUserVisibleCalendarChange)
+        XCTAssertTrue(titleUpdate.isUserVisibleCalendarChange)
+        XCTAssertTrue(created.isUserVisibleCalendarChange)
+    }
+
     func testCalendarEventEditMessageRoundTripUsesServerKeys() throws {
         let edit = CalendarEventEdit(
             title: "기말고사 장소 변경",

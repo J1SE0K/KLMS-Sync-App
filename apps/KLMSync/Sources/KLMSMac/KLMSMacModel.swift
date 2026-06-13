@@ -668,6 +668,10 @@ final class KLMSMacModel: ObservableObject {
     private func sanitizedRemoteStatus(snapshot: EngineSnapshot, phase: String) -> SanitizedRemoteStatus {
         var status = SanitizedRemoteStatus(snapshot: snapshot, phase: phase)
         status.applyMailDashboardItems(mailDashboardItems)
+        let calendarCounts = visibleCalendarChangeCounts(from: visibleCalendarChanges(from: snapshot))
+        status.calendarCreated = calendarCounts.created
+        status.calendarUpdated = calendarCounts.updated
+        status.calendarDeleted = calendarCounts.deleted
         if phase == "running" {
             status.phaseDetail = currentPhaseText ?? runningCommand?.displayName ?? "실행 중"
         }
@@ -950,11 +954,7 @@ final class KLMSMacModel: ObservableObject {
         }
         items += mailDashboardItems
 
-        let calendarChanges = (
-            snapshot.calendarSyncResult?.changes
-                .filter { !isCalendarChangeResolved($0) }
-                .map(serverRelayCalendarChange) ?? []
-        ) + mailCalendarChanges().map(serverRelayCalendarChange)
+        let calendarChanges = visibleCalendarChanges(from: snapshot).map(serverRelayCalendarChange)
 
         return ServerRelaySyncData(
             generatedAt: generatedAt,
@@ -971,6 +971,34 @@ final class KLMSMacModel: ObservableObject {
         snapshot.dryRunReports
             .sorted { $0.key.rawValue < $1.key.rawValue }
             .map(\.value)
+    }
+
+    private func visibleCalendarChanges(from snapshot: EngineSnapshot) -> [CalendarChange] {
+        let changes = (
+            snapshot.calendarSyncResult?.changes.filter { !isCalendarChangeResolved($0) } ?? []
+        ) + mailCalendarChanges()
+        return changes
+            .dedupedForCalendarDisplay()
+            .filter(\.isUserVisibleCalendarChange)
+    }
+
+    private func visibleCalendarChangeCounts(from changes: [CalendarChange]) -> (created: Int, updated: Int, deleted: Int) {
+        var created = 0
+        var updated = 0
+        var deleted = 0
+        for change in changes {
+            switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "created", "mail":
+                created += 1
+            case "updated":
+                updated += 1
+            case "deleted":
+                deleted += 1
+            default:
+                break
+            }
+        }
+        return (created, updated, deleted)
     }
 
     private func serverRelayCalendarChange(_ change: CalendarChange) -> CalendarChange {
@@ -1339,15 +1367,18 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    func editCalendarEvent(change: CalendarChange, edit: CalendarEventEdit) async {
+    @discardableResult
+    func editCalendarEvent(change: CalendarChange, edit: CalendarEventEdit) async -> Bool {
         do {
             try await updateCalendarEvent(change: change, edit: edit)
             markCalendarChangeResolved(change)
             reloadSnapshot()
             errorMessage = nil
             serverRelayStatusMessage = "캘린더 내용 수정 완료"
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -1361,7 +1392,8 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    func createCalendarEvent(change: CalendarChange, edit: CalendarEventEdit) async {
+    @discardableResult
+    func createCalendarEvent(change: CalendarChange, edit: CalendarEventEdit) async -> Bool {
         do {
             try await createCalendarEvent(
                 title: edit.title.nilIfBlank ?? change.title,
@@ -1374,20 +1406,39 @@ final class KLMSMacModel: ObservableObject {
             reloadSnapshot()
             errorMessage = nil
             serverRelayStatusMessage = "캘린더 일정 등록 완료"
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
-    func deleteCalendarEvent(change: CalendarChange) async {
+    @discardableResult
+    func deleteCalendarEvent(change: CalendarChange) async -> Bool {
         do {
             try await performCalendarEventDeletion(change: change)
             markCalendarChangeResolved(change)
             reloadSnapshot()
             errorMessage = nil
             serverRelayStatusMessage = "캘린더 일정 삭제 완료"
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func openCalendarEvent(change: CalendarChange) async -> Bool {
+        do {
+            try await openCalendarEventInCalendar(change: change)
+            errorMessage = nil
+            serverRelayStatusMessage = "캘린더 일정 열기 완료"
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            openSystemCalendarApp()
+            return false
         }
     }
 
@@ -2648,6 +2699,28 @@ final class KLMSMacModel: ObservableObject {
         try store.remove(event, span: .thisEvent, commit: true)
     }
 
+    private func openCalendarEventInCalendar(change: CalendarChange) async throws {
+        guard await requestCalendarPermission() else {
+            throw serverRelayItemActionError("Calendar 열기 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 Calendar 권한을 허용해 주세요.")
+        }
+        let store = EKEventStore()
+        let event = try findCalendarEvent(change: change, store: store)
+        let calendarName = event.calendar.title
+        let eventID = event.calendarItemIdentifier
+        let script = """
+        tell application id "com.apple.iCal"
+          activate
+          show event id "\(appleScriptString(eventID))" of calendar "\(appleScriptString(calendarName))"
+        end tell
+        """
+        var errorInfo: NSDictionary?
+        guard NSAppleScript(source: script)?.executeAndReturnError(&errorInfo) != nil else {
+            let message = (errorInfo?[NSAppleScript.errorMessage] as? String)
+                ?? "Calendar 앱에서 해당 일정을 선택하지 못했습니다."
+            throw serverRelayItemActionError(message)
+        }
+    }
+
     private func createCalendarEvent(title: String, startAt: String, dueAt: String, location: String, notes: String) async throws {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedStart = startAt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2748,6 +2821,18 @@ final class KLMSMacModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .lowercased()
+    }
+
+    private func appleScriptString(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private func openSystemCalendarApp() {
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+            NSWorkspace.shared.open(appURL)
+        }
     }
 
     private func parseCalendarEditDate(_ text: String) -> Date? {

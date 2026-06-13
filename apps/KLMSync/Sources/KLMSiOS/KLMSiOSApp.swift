@@ -754,6 +754,9 @@ final class CompanionModel: ObservableObject {
         (calendarChanges + mailDashboardItems.compactMap(\.mailCalendarChange))
             .dedupedForCalendarDisplay()
             .filter { change in
+                guard change.isUserVisibleCalendarChange else {
+                    return false
+                }
                 return !isCalendarChangeResolved(change)
             }
     }

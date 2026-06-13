@@ -294,6 +294,21 @@ public struct CalendarChange: Codable, Sendable, Equatable, Identifiable {
         }
     }
 
+    public var isUserVisibleCalendarChange: Bool {
+        switch normalizedAction {
+        case "created", "deleted", "mail":
+            return true
+        case "updated":
+            let meaningfulChanges = changes
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                .filter { !$0.isEmpty }
+                .filter { !["메모", "memo", "note", "notes"].contains($0) }
+            return changes.isEmpty || !meaningfulChanges.isEmpty
+        default:
+            return true
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case action
         case calendar

@@ -1904,6 +1904,12 @@ private struct DashboardSummaryView: View {
             let localMissingFileCount = snapshot.verifyResult?.files?.missingFileCount ?? 0
             let prunedCount = snapshot.cleanupResult?.actions.filter { $0.action == "deleted" }.count ?? 0
             let hiddenCount = snapshot.hiddenSummary.total
+            let calendarAttentionCount = (
+                (snapshot.calendarSyncResult?.changes ?? []) + model.mailCalendarChanges()
+            )
+            .dedupedForCalendarDisplay()
+            .filter { $0.isUserVisibleCalendarChange && !model.isCalendarChangeResolved($0) }
+            .count
             let primaryMetrics = [
                 Metric("과제", counts.assignments + model.mailDashboardItems(kind: "assignment").count, detail: .assignments),
                 Metric("시험", counts.exams + model.mailDashboardItems(kind: "exam").count, detail: .exams),
@@ -1913,7 +1919,7 @@ private struct DashboardSummaryView: View {
             ].filter { $0.value > 0 }
             let attentionMetrics = [
                 Metric("새 파일", counts.newFiles, detail: .newFiles),
-                Metric("캘린더", (report?.calendar.created ?? 0) + (report?.calendar.updated ?? 0) + (report?.calendar.deleted ?? 0) + model.mailCalendarChanges().count, detail: .calendar),
+                Metric("캘린더", calendarAttentionCount, detail: .calendar),
                 Metric("격리", counts.quarantine, detail: .quarantine),
                 Metric("과제 후보", assignmentCandidateCount, detail: .assignmentCandidates),
                 Metric("시험 후보", examCandidateCount, detail: .examCandidates),

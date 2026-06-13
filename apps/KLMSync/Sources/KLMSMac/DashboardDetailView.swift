@@ -2400,11 +2400,13 @@ private struct CalendarDetailView: View {
                 hasReportedCalendarChanges: hasReportedCalendarChanges
             )
 
-            if let calendar = snapshot.syncReport?.calendar {
+            let visibleChanges = visibleCalendarChanges
+            let visibleChangeCounts = calendarChangeCounts(for: visibleChanges)
+            if snapshot.syncReport?.calendar != nil || !visibleChanges.isEmpty {
                 MetricGrid(metrics: [
-                    Metric("생성", calendar.created),
-                    Metric("수정", calendar.updated),
-                    Metric("정리", calendar.deleted),
+                    Metric("생성", visibleChangeCounts.created),
+                    Metric("수정", visibleChangeCounts.updated),
+                    Metric("정리", visibleChangeCounts.deleted),
                 ])
             } else {
                 EmptyDetailText(text: "캘린더 결과가 없습니다.")
@@ -2416,21 +2418,22 @@ private struct CalendarDetailView: View {
                     .foregroundStyle(.secondary)
             }
 
-            let visibleCalendarChanges = calendarChanges
             if let result = snapshot.calendarSyncResult {
-                CalendarSummaryListView(result: result)
+                if !visibleChanges.isEmpty {
+                    CalendarSummaryListView(result: result)
+                }
                 CalendarChangeListView(
-                    changes: visibleCalendarChanges,
+                    changes: visibleChanges,
                     filters: filters,
                     model: model,
-                    hasLegacyCountWithoutDetails: visibleCalendarChanges.isEmpty && hasReportedCalendarChanges
+                    hasLegacyCountWithoutDetails: visibleChanges.isEmpty && hasReportedCalendarChanges
                 )
             } else if hasReportedCalendarChanges {
                 CalendarChangeListView(
-                    changes: visibleCalendarChanges,
+                    changes: visibleChanges,
                     filters: filters,
                     model: model,
-                    hasLegacyCountWithoutDetails: visibleCalendarChanges.isEmpty
+                    hasLegacyCountWithoutDetails: visibleChanges.isEmpty
                 )
             }
         }
@@ -2440,13 +2443,41 @@ private struct CalendarDetailView: View {
         ((snapshot.calendarSyncResult?.changes ?? []) + model.mailCalendarChanges()).dedupedForCalendarDisplay()
     }
 
+    private var visibleCalendarChanges: [CalendarChange] {
+        calendarChanges.filter { change in
+            change.isUserVisibleCalendarChange && !model.isCalendarChangeResolved(change)
+        }
+    }
+
     private var hasReportedCalendarChanges: Bool {
+        if snapshot.calendarSyncResult?.changes.isEmpty == false || !model.mailCalendarChanges().isEmpty {
+            return !visibleCalendarChanges.isEmpty
+        }
         let counts = snapshot.syncReport?.calendar
         let reportCount = (counts?.created ?? 0) + (counts?.updated ?? 0) + (counts?.deleted ?? 0)
         let summaryCount = snapshot.calendarSyncResult?.summaries.reduce(0) {
             $0 + $1.created + $1.updated + $1.deleted
         } ?? 0
         return reportCount + summaryCount + model.mailCalendarChanges().count > 0
+    }
+
+    private func calendarChangeCounts(for changes: [CalendarChange]) -> (created: Int, updated: Int, deleted: Int) {
+        var created = 0
+        var updated = 0
+        var deleted = 0
+        for change in changes {
+            switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "created", "mail":
+                created += 1
+            case "updated":
+                updated += 1
+            case "deleted":
+                deleted += 1
+            default:
+                break
+            }
+        }
+        return (created, updated, deleted)
     }
 }
 
@@ -2598,6 +2629,9 @@ private struct CalendarChangeListView: View {
 
     private var filteredChanges: [CalendarChange] {
         changes.filter { change in
+            guard change.isUserVisibleCalendarChange else {
+                return false
+            }
             guard !model.isCalendarChangeResolved(change) else {
                 return false
             }
@@ -2690,7 +2724,13 @@ private struct CalendarChangeRowView: View {
             } else {
                 HStack(spacing: 8) {
                     Button {
-                        calendarSheetAction = .calendarCreate
+                        editStatusText = "캘린더 일정을 등록하는 중입니다."
+                        Task {
+                            let ok = await model.createCalendarEvent(change: change, edit: change.editDefaults)
+                            editStatusText = ok ? "캘린더 일정 등록 완료" : "캘린더 일정 등록 실패"
+                            try? await Task.sleep(nanoseconds: 1_500_000_000)
+                            editStatusText = nil
+                        }
                     } label: {
                         Label("등록", systemImage: "calendar.badge.plus")
                     }
@@ -2704,8 +2744,8 @@ private struct CalendarChangeRowView: View {
                     Button(role: .destructive) {
                         editStatusText = "캘린더 일정을 삭제하는 중입니다."
                         Task {
-                            await model.deleteCalendarEvent(change: change)
-                            editStatusText = "캘린더 일정 삭제 요청을 처리했습니다."
+                            let ok = await model.deleteCalendarEvent(change: change)
+                            editStatusText = ok ? "캘린더 일정 삭제 완료" : "캘린더 일정 삭제 실패"
                             try? await Task.sleep(nanoseconds: 1_500_000_000)
                             editStatusText = nil
                         }
@@ -2714,11 +2754,17 @@ private struct CalendarChangeRowView: View {
                     }
                     .help("Apple Calendar에서 이 이벤트를 삭제합니다.")
                     Button {
-                        openSystemCalendar()
+                        editStatusText = "캘린더에서 일정을 여는 중입니다."
+                        Task {
+                            let ok = await model.openCalendarEvent(change: change)
+                            editStatusText = ok ? "캘린더에서 일정 선택 완료" : "캘린더 앱을 열었습니다."
+                            try? await Task.sleep(nanoseconds: 1_500_000_000)
+                            editStatusText = nil
+                        }
                     } label: {
                         Label("캘린더에서 열기", systemImage: "calendar")
                     }
-                    .help("Calendar 앱을 열어 직접 확인, 수정, 삭제합니다.")
+                    .help("Calendar 앱에서 이 이벤트를 바로 선택합니다.")
                     Spacer()
                 }
                 .font(.caption)
@@ -2736,17 +2782,10 @@ private struct CalendarChangeRowView: View {
         ) {
             let action = calendarSheetAction ?? .calendarEdit
             CalendarEventEditSheet(change: change, action: action) { edit in
-                editStatusText = action == .calendarCreate
-                    ? "캘린더 일정을 등록하는 중입니다."
-                    : "캘린더 내용을 저장하는 중입니다."
+                editStatusText = "캘린더 내용을 저장하는 중입니다."
                 Task {
-                    if action == .calendarCreate {
-                        await model.createCalendarEvent(change: change, edit: edit)
-                        editStatusText = "캘린더 일정 등록 요청을 처리했습니다."
-                    } else {
-                        await model.editCalendarEvent(change: change, edit: edit)
-                        editStatusText = "캘린더 내용 수정 요청을 처리했습니다."
-                    }
+                    let ok = await model.editCalendarEvent(change: change, edit: edit)
+                    editStatusText = ok ? "캘린더 내용 수정 완료" : "캘린더 내용 수정 실패"
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
                     editStatusText = nil
                 }
@@ -2799,12 +2838,6 @@ private struct CalendarChangeRowView: View {
             "헬프데스크"
         default:
             bucket
-        }
-    }
-
-    private func openSystemCalendar() {
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
-            NSWorkspace.shared.open(appURL)
         }
     }
 }
