@@ -1,20 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="KLMS Sync">
-  <defs>
-    <linearGradient id="bg" x1="42" y1="36" x2="218" y2="224" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#2459C8"/>
-      <stop offset="1" stop-color="#20A77C"/>
-    </linearGradient>
-    <linearGradient id="fold" x1="80" y1="72" x2="180" y2="186" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFFFF"/>
-      <stop offset="1" stop-color="#DCEBFF"/>
-    </linearGradient>
-  </defs>
-  <rect x="22" y="22" width="212" height="212" rx="46" fill="url(#bg)"/>
-  <path d="M78 69h77l33 34v84H78V69z" fill="url(#fold)"/>
-  <path d="M155 69v34h33" fill="#BFD5FF"/>
-  <path d="M97 118h70M97 143h54M97 168h64" stroke="#2459C8" stroke-width="11" stroke-linecap="round"/>
-  <path d="M56 125c0-40 32-72 72-72 17 0 33 6 45 16" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round"/>
-  <path d="M176 58l2 29-28-8" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M200 131c0 40-32 72-72 72-18 0-34-7-47-17" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round"/>
-  <path d="M80 198l-2-29 28 8" fill="none" stroke="#FFFFFF" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="256" height="256" fill="#F8F7F2"/>
+  <rect x="18" y="15" width="220" height="226" rx="45" fill="#F8F7F2" stroke="#10100F" stroke-width="6"/>
+  <rect x="28" y="27" width="200" height="30" rx="15" fill="#2A2A27"/>
+  <circle cx="45" cy="42" r="3.6" fill="#D8D2C5"/>
+  <circle cx="56" cy="42" r="3.6" fill="#CFC8B9"/>
+  <circle cx="67" cy="42" r="3.6" fill="#BFB7A8"/>
+  <rect x="31" y="63" width="194" height="161" rx="13" fill="#FFFFFF" stroke="#D7D1C4" stroke-width="2"/>
+  <rect x="31" y="63" width="194" height="17" fill="#ECE9DF"/>
+  <rect x="42" y="92" width="43" height="10" rx="3" fill="#10100F"/>
+  <rect x="42" y="107" width="76" height="5" rx="2.5" fill="#6D675D" opacity=".55"/>
+  <rect x="42" y="120" width="172" height="20" rx="6" fill="#ECE9DF" stroke="#D7D1C4" stroke-width="1"/>
+  <circle cx="203" cy="130" r="5" fill="#F0DFB8"/>
+  <rect x="42" y="150" width="66" height="61" rx="7" fill="#FFFFFF" stroke="#D7D1C4" stroke-width="1.5"/>
+  <rect x="48" y="158" width="54" height="20" rx="5" fill="#2A2A27"/>
+  <path d="M92 164l8 4-8 4z" fill="#F0DFB8"/>
+  <path d="M62 174a9 9 0 0 1 15-8" fill="none" stroke="#F0DFB8" stroke-width="2" stroke-linecap="round"/>
+  <path d="M78 164l4 1-2-4" fill="none" stroke="#F0DFB8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="118" y="150" width="23" height="19" rx="5" fill="#FFFFFF" stroke="#D7D1C4" stroke-width="1.5"/>
+  <rect x="147" y="150" width="23" height="19" rx="5" fill="#FFFFFF" stroke="#D7D1C4" stroke-width="1.5"/>
+  <rect x="176" y="150" width="23" height="19" rx="5" fill="#FFFFFF" stroke="#D7D1C4" stroke-width="1.5"/>
+  <rect x="119" y="184" width="95" height="12" rx="4" fill="#ECE9DF" stroke="#D7D1C4" stroke-width="1"/>
+  <rect x="124" y="188" width="42" height="3" rx="1.5" fill="#10100F"/>
 </svg>
