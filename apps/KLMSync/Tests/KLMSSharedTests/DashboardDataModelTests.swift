@@ -879,6 +879,7 @@ final class DashboardDataModelTests: XCTestCase {
         let statusScreen = try sourceStructBody(named: "CompanionStatusScreen", in: ios)
         let runScreen = try sourceStructBody(named: "RemoteCommandPanel", in: ios)
         let dashboardInlineDetail = try sourceStructBody(named: "DashboardCategoryInlineDetailPanel", in: ios)
+        let remoteCalendarPanel = try sourceStructBody(named: "RemoteCalendarActionPanel", in: ios)
 
         XCTAssertTrue(statusScreen.contains("selectedChangeSummary"))
         XCTAssertTrue(statusScreen.contains("RemoteChangeSummaryDetailPanel"))
@@ -950,6 +951,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(ios.contains("\"등록/캘린더\""))
         XCTAssertFalse(ios.contains("\"수정/캘린더\""))
         XCTAssertFalse(ios.contains("case .calendarDelete:\n            \"KLMS 기준 반영\""))
+        XCTAssertFalse(remoteCalendarPanel.contains("model.createCommand"))
+        XCTAssertFalse(remoteCalendarPanel.contains("RemoteCommandKind.verify"))
+        XCTAssertFalse(remoteCalendarPanel.contains("RemoteCommandKind.coreSync"))
+        XCTAssertFalse(remoteCalendarPanel.contains("RemoteCommandKind.doctor"))
+        XCTAssertTrue(remoteCalendarPanel.contains("캘린더에서 열기"))
     }
 
     func testMacCalendarDashboardHasMailPasteCalendarRegistration() throws {
@@ -964,10 +970,16 @@ final class DashboardDataModelTests: XCTestCase {
         let mac = try String(contentsOf: macRoot, encoding: .utf8)
         let model = try String(contentsOf: modelRoot, encoding: .utf8)
         let calendarDetail = try sourceStructBody(named: "CalendarDetailView", in: detail)
+        let calendarGuide = try sourceStructBody(named: "CalendarActionGuideView", in: detail)
         let dashboardSummary = try sourceStructBody(named: "DashboardSummaryView", in: mac)
         let commandPanel = try sourceStructBody(named: "CommandPanelView", in: mac)
 
         XCTAssertFalse(calendarDetail.contains("MacMailPasteAnalyzerPanel"))
+        XCTAssertFalse(calendarGuide.contains("model.run(.verify)"))
+        XCTAssertFalse(calendarGuide.contains("model.run(.coreSync)"))
+        XCTAssertFalse(calendarGuide.contains("model.run(.doctor)"))
+        XCTAssertFalse(calendarGuide.contains("캘린더 확인"))
+        XCTAssertTrue(calendarGuide.contains("캘린더에서 열기"))
         XCTAssertFalse(dashboardSummary.contains("MacMailPasteAnalyzerPanel"))
         XCTAssertTrue(commandPanel.contains("MacMailPasteAnalyzerPanel"))
         let macMailPanelIndex = try XCTUnwrap(commandPanel.range(of: "MacMailPasteAnalyzerPanel")?.lowerBound)

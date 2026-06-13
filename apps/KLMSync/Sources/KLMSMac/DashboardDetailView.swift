@@ -2397,7 +2397,6 @@ private struct CalendarDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             CalendarActionGuideView(
-                model: model,
                 hasReportedCalendarChanges: hasReportedCalendarChanges
             )
 
@@ -2452,10 +2451,7 @@ private struct CalendarDetailView: View {
 }
 
 private struct CalendarActionGuideView: View {
-    @ObservedObject var model: KLMSMacModel
     var hasReportedCalendarChanges: Bool
-
-    private let columns = [GridItem(.adaptive(minimum: 128), spacing: 8)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -2466,7 +2462,7 @@ private struct CalendarActionGuideView: View {
                     .frame(width: 28, height: 28)
                     .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("캘린더 확인")
+                    Text("캘린더 일정")
                         .font(.caption.weight(.semibold))
                     Text(helpText)
                         .font(.caption2)
@@ -2476,38 +2472,12 @@ private struct CalendarActionGuideView: View {
                 Spacer(minLength: 0)
             }
 
-            LazyVGrid(columns: columns, spacing: 8) {
-                CalendarActionButton(
-                    title: "캘린더 열기",
-                    systemImage: "calendar",
-                    tint: .orange
-                ) {
-                    openSystemCalendar()
-                }
-                CalendarActionButton(
-                    title: "상태 다시 검사",
-                    systemImage: KLMSEngineCommand.verify.systemImage,
-                    tint: .blue,
-                    disabled: model.runningCommand != nil
-                ) {
-                    Task { await model.run(.verify) }
-                }
-                CalendarActionButton(
-                    title: "과제/시험 재동기화",
-                    systemImage: KLMSEngineCommand.coreSync.systemImage,
-                    tint: .green,
-                    disabled: model.runningCommand != nil
-                ) {
-                    Task { await model.run(.coreSync) }
-                }
-                CalendarActionButton(
-                    title: "권한 점검",
-                    systemImage: KLMSEngineCommand.doctor.systemImage,
-                    tint: .secondary,
-                    disabled: model.runningCommand != nil
-                ) {
-                    Task { await model.run(.doctor) }
-                }
+            CalendarActionButton(
+                title: "캘린더에서 열기",
+                systemImage: "calendar",
+                tint: .orange
+            ) {
+                openSystemCalendar()
             }
         }
         .padding(10)
@@ -2519,13 +2489,10 @@ private struct CalendarActionGuideView: View {
     }
 
     private var helpText: String {
-        if model.runningCommand != nil {
-            return "현재 동기화가 실행 중입니다. 끝난 뒤 캘린더를 다시 검사할 수 있습니다."
-        }
         if hasReportedCalendarChanges {
-            return "방금 생성, 수정, 정리된 일정을 확인하려면 캘린더를 열어 보세요. 숫자가 맞지 않으면 상태 검사 또는 과제/시험 재동기화를 실행하세요."
+            return "방금 생성, 수정, 정리된 일정입니다. 항목별 수정·삭제는 아래 목록에서 처리하고, 전체 검사는 진단 탭에서 실행하세요."
         }
-        return "캘린더가 비어 있거나 권한 문제가 의심되면 상태 검사와 권한 점검을 먼저 실행하세요."
+        return "최근 캘린더 변경 내역이 없습니다. 캘린더 수가 맞지 않거나 권한이 의심되면 진단 탭의 상태 검사와 권한 점검을 사용하세요."
     }
 
     private func openSystemCalendar() {

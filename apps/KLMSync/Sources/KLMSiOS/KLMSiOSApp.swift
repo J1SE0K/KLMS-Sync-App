@@ -3615,7 +3615,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
                     DashboardCountPill(title: "수정", value: status.calendarUpdated, tint: category.tint)
                     DashboardCountPill(title: "정리", value: status.calendarDeleted, tint: category.tint)
                 }
-                RemoteCalendarActionPanel(model: model)
+                RemoteCalendarActionPanel()
                 if calendarChanges.isEmpty {
                     panelEmptyText("최근 캘린더 변경 상세가 아직 서버에 올라오지 않았습니다.")
                 } else {
@@ -5631,30 +5631,37 @@ private struct DashboardCalendarChangeRow: View {
 }
 
 private struct RemoteCalendarActionPanel: View {
-    @ObservedObject var model: CompanionModel
     var compact = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            if !compact {
-                Text("캘린더가 맞지 않으면 Mac에 검사나 재동기화를 요청할 수 있습니다.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .frame(width: 28, height: 28)
+                    .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("캘린더 일정")
+                        .font(.caption.weight(.semibold))
+                    Text("일정별 등록·수정·삭제는 아래 항목에서 처리합니다. 전체 상태 검사는 진단 화면에서 실행하세요.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
 
-            if model.hasInFlightRequest {
-                RemoteItemRequestPendingView(
-                    title: "요청 전송됨",
-                    message: "Mac이 캘린더 관련 요청을 처리하는 중입니다."
-                )
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: compact ? 118 : 140), spacing: 8)], spacing: 8) {
-                    actionButton("상태 검사", systemImage: RemoteCommandKind.verify.engineCommand.systemImage, kind: .verify)
-                    actionButton("과제/시험 재동기화", systemImage: RemoteCommandKind.coreSync.engineCommand.systemImage, kind: .coreSync)
-                    actionButton("권한 점검", systemImage: RemoteCommandKind.doctor.engineCommand.systemImage, kind: .doctor)
-                }
+            Button {
+                openSystemCalendar()
+            } label: {
+                Label("캘린더에서 열기", systemImage: "calendar")
+                    .font(.caption.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 32)
             }
+            .buttonStyle(.bordered)
+            .tint(.orange)
         }
         .padding(compact ? 10 : 0)
         .background(compact ? Color.klmsSubtleCardBackground : Color.clear)
@@ -5665,21 +5672,12 @@ private struct RemoteCalendarActionPanel: View {
         )
     }
 
-    private func actionButton(_ title: String, systemImage: String, kind: RemoteCommandKind) -> some View {
-        Button {
-            Task { await model.createCommand(kind) }
-        } label: {
-            Label(title, systemImage: systemImage)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 32)
+    private func openSystemCalendar() {
+        #if canImport(UIKit)
+        if let url = URL(string: "calshow:") {
+            UIApplication.shared.open(url)
         }
-        .buttonStyle(.bordered)
-        .tint(.orange)
-        .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
-        .accessibilityHint("Mac에 \(title) 요청을 보냅니다.")
+        #endif
     }
 }
 
@@ -7049,7 +7047,7 @@ private extension ServerRelayItemActionKind {
         case .fileTrash:
             "삭제/휴지통"
         case .calendarVerify:
-            "확인/캘린더"
+            "캘린더 상태 검사"
         case .calendarApply:
             "KLMS 기준 반영"
         case .calendarCreate:
