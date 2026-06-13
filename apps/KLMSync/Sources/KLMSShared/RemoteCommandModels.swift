@@ -1630,19 +1630,20 @@ public extension ServerRelaySyncItem {
         guard !timeText.isEmpty else {
             return nil
         }
+        let normalized = normalizedDashboardItem
         return CalendarChange(
-            action: "mail",
+            action: "created",
             calendar: "캘린더",
             bucket: calendarBucket,
             identifier: id,
-            title: title,
-            course: course,
+            title: normalized.title,
+            course: normalized.course,
             url: "",
             startAt: timeText,
             dueAt: timeText,
             location: "",
-            changes: ["추가 후보"],
-            raw: detail,
+            changes: [],
+            raw: normalized.detail,
             parseError: ""
         )
     }

@@ -75,6 +75,14 @@ final class StatusModelTests: XCTestCase {
         XCTAssertTrue(created.isUserVisibleCalendarChange)
     }
 
+    func testLegacyMailCalendarChangeDisplaysAsCreated() throws {
+        let change = CalendarChange(action: "mail", title: "기말고사")
+
+        XCTAssertEqual(change.actionDisplayName, "생성")
+        XCTAssertTrue(change.isUserVisibleCalendarChange)
+        XCTAssertTrue(change.explanationText.contains("새로 만든 항목"))
+    }
+
     func testCalendarEventEditMessageRoundTripUsesServerKeys() throws {
         let edit = CalendarEventEdit(
             title: "기말고사 장소 변경",

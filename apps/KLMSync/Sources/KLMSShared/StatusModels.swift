@@ -280,15 +280,13 @@ public struct CalendarChange: Codable, Sendable, Equatable, Identifiable {
     }
 
     public var actionDisplayName: String {
-        switch action {
-        case "created":
+        switch normalizedAction {
+        case "created", "mail":
             "생성"
         case "updated":
             "수정"
         case "deleted":
             "정리됨"
-        case "mail":
-            "추가 일정"
         default:
             action.isEmpty ? "변경" : action
         }
@@ -447,7 +445,7 @@ public struct CalendarEventEdit: Codable, Sendable, Equatable {
 public extension CalendarChange {
     var explanationText: String {
         switch normalizedAction {
-        case "created":
+        case "created", "mail":
             return "KLMS에서 확인된 일정이 Apple Calendar에 없어서 새로 만든 항목입니다."
         case "updated":
             if changes.isEmpty {
@@ -463,7 +461,7 @@ public extension CalendarChange {
 
     var nextActionText: String {
         switch normalizedAction {
-        case "created":
+        case "created", "mail":
             return "캘린더 앱에서 시간이 맞는지 확인하세요. 직접 고치려면 ‘내용 수정’을 누르고, Calendar 앱에서 보려면 ‘캘린더에서 열기’를 누르세요."
         case "updated":
             return "변경된 시간이 맞는지 확인하세요. 직접 고친 일정이 덮였거나 값이 이상하면 ‘내용 수정’으로 Calendar 이벤트를 바로 고치세요."
