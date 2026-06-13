@@ -5,7 +5,15 @@ import re
 from .dates import parse_due_date_only, parse_due_datetime
 from .exam_fields import extract_coverage, extract_location, online_exam_location
 from .models import Assignment, Event, Notice, Page
-from .text import clipped, clean_course_candidate, html_to_text, one_line, split_course_title, strip_access_suffix
+from .text import (
+    clipped,
+    clean_course_candidate,
+    html_to_text,
+    one_line,
+    split_course_title,
+    strip_access_suffix,
+    strip_klms_menu_prefix,
+)
 
 
 SUBMITTED_RE = re.compile(
@@ -100,6 +108,30 @@ def exam_display_title(text: str, fallback: str) -> str:
     return one_line(fallback)
 
 
+def clean_notice_source_title(value: str) -> str:
+    raw = one_line(value)
+    title = strip_access_suffix(strip_klms_menu_prefix(value))
+    polluted = (
+        len(title) > 180
+        or "메인 콘텐츠로 건너뛰기" in title
+        or "강의실모바일메뉴" in title
+        or "기출문제은행 마이크로러닝" in title
+        or "기출문제은행 마이크로러닝" in raw
+    )
+    if polluted and HELP_DESK_RE.search(raw):
+        return "중간고사 헬프데스크" if re.search(r"(midterm|중간)", raw, re.IGNORECASE) else "헬프데스크"
+    if polluted:
+        return ""
+    return title
+
+
+def notice_course_name(notice: Notice, text: str) -> str:
+    raw_course = one_line(notice.course)
+    inferred = course_name_from_text(raw_course, text)
+    cleaned = clean_course_candidate(inferred or raw_course)
+    return cleaned or raw_course
+
+
 def classify_detail_page(page: Page, generated_at: str) -> tuple[Assignment | Event | None, str]:
     raw_text = html_to_text(page.html) or page.text
     text = one_line(raw_text)
@@ -189,6 +221,8 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
     if not text:
         return None, "empty"
 
+    course = notice_course_name(notice, text)
+    source_title = clean_notice_source_title(notice.title)
     due = parse_due_datetime(text, generated_at)
 
     if HELP_DESK_RE.search(text):
@@ -198,13 +232,13 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
         instructions = clipped(notice.body_text or notice.summary, 1200)
         return Event(
             url=notice.url,
-            course=notice.course,
+            course=course,
             title=title,
             due=due.display,
             sync_due=due.iso,
             sync_start=due.start_iso,
             source="notice",
-            source_title=notice.title,
+            source_title=source_title or title,
             instructions=instructions,
             location=extract_location(instructions),
             category="help_desk",
@@ -223,13 +257,13 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
         instructions = clipped(notice.body_text or notice.summary, 1200)
         return Event(
             url=notice.url,
-            course=notice.course,
+            course=course,
             title=title,
             due=due.display,
             sync_due=due.iso,
             sync_start=due.start_iso,
             source="notice",
-            source_title=notice.title,
+            source_title=source_title or title,
             instructions=instructions,
             location=extract_location(instructions),
             coverage=extract_coverage(instructions),
@@ -253,15 +287,17 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
         title = notice.title
         if title_match:
             title = title_match.group(1) or title_match.group(0)
+        else:
+            title = source_title or "과제"
         return Assignment(
             url=notice.url,
-            course=notice.course,
+            course=course,
             title=one_line(title),
             due=due.display,
             sync_due=due.iso,
             source="notice",
-            source_title=notice.title,
-            instructions=notice.title,
+            source_title=source_title or one_line(title),
+            instructions=clipped(notice.body_text or notice.summary or source_title),
             type="assignment_notice",
         ), "assignment-notice"
 

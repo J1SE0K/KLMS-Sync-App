@@ -674,6 +674,61 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(item.course, "알고리즘 개론")
         self.assertEqual(item.title, "중간고사 헬프데스크")
 
+    def test_help_desk_notice_strips_klms_menu_prefix_from_course_and_title(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=425339",
+            course=")> 기출문제은행 마이크로러닝 CELT 교수법 Panopto 사용법 CELT 학습법 특강 알고리즘 개론",
+            title="[KLMS 헬프데스크] )> 기출문제은행 마이크로러닝 CELT 교수법 Panopto 사용법 CELT 학습법 특강 알고리즘 개론 - 중간고사 헬프데스크",
+            body_text="중간고사 헬프데스크는 2026년 4월 10일(금요일) 오후 1:00 - 오후 2:00에 진행됩니다.",
+        )
+
+        item, reason = classify_notice(notice, "2026-04-01 10:00 KST")
+
+        self.assertEqual(reason, "help-desk")
+        self.assertIsNotNone(item)
+        self.assertEqual(item.course, "알고리즘 개론")
+        self.assertEqual(item.title, "중간고사 헬프데스크")
+        self.assertEqual(item.source_title, "중간고사 헬프데스크")
+
+    def test_source_event_metadata_strips_klms_menu_prefix_from_course(self) -> None:
+        state = build_sync_state(
+            generated_at="2026-04-01 10:00 KST",
+            detail_pages=[],
+            notices=[],
+            source_events=[
+                Event(
+                    url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=425339",
+                    course=")> 기출문제은행 마이크로러닝 CELT 교수법 Panopto 사용법 CELT 학습법 특강 알고리즘 개론",
+                    title="중간고사 헬프데스크",
+                    due="2026년 4월 10일(금요일) 오후 1:00 - 오후 2:00",
+                    sync_due="2026-04-10T14:00:00+09:00",
+                    sync_start="2026-04-10T13:00:00+09:00",
+                    source="notice",
+                    category="help_desk",
+                    type="help_desk",
+                )
+            ],
+        )
+
+        self.assertEqual(len(state.help_desk_items), 1)
+        self.assertEqual(state.help_desk_items[0].course, "알고리즘 개론")
+
+    def test_past_help_desk_is_not_kept_as_active_calendar_item(self) -> None:
+        state = build_sync_state(
+            generated_at="2026-06-13 19:00 KST",
+            detail_pages=[],
+            notices=[
+                Notice(
+                    url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=425339",
+                    course="알고리즘 개론",
+                    title="Spring Midterm Help Desk Announcement",
+                    body_text="The midterm help desk will be held on March 31 (Tuesday), from 10:30 to 12:00.",
+                )
+            ],
+        )
+
+        self.assertEqual(state.help_desk_items, [])
+
     def test_pipeline_builds_legacy_state_shape(self) -> None:
         detail_pages = [
             Page(

@@ -20,7 +20,7 @@ from .models import Assignment, Event, Notice, Page
 from .overrides import split_override_key
 from .pipeline import build_sync_state
 from .render import render_error_html, render_success_html
-from .text import html_to_text, one_line, split_course_title
+from .text import clean_course_candidate, html_to_text, one_line, split_course_title
 
 
 KST = timezone(timedelta(hours=9))
@@ -140,10 +140,10 @@ def notice_from_article_page(page: Page) -> Notice | None:
     if not re.search(r"(notice|공지|q&a)", board_title, re.IGNORECASE):
         return None
 
-    course = course_code
+    course = clean_course_candidate(course_code)
     course_match = re.search(r"([^\s][^()]{2,120})\(" + re.escape(course_code) + r"(?:\([^)]*\))?\)", text)
     if course_match:
-        course = one_line(re.sub(r"<[^>]+>", "", course_match.group(1)))
+        course = clean_course_candidate(re.sub(r"<[^>]+>", "", course_match.group(1)))
 
     article_title = ""
     title_match = re.search(
@@ -264,7 +264,7 @@ def previous_assignment_keys(previous_state: dict[str, Any]) -> set[tuple[str, s
         for item in content.get(section) or []:
             if not isinstance(item, dict):
                 continue
-            course = one_line(str(item.get("course") or ""))
+            course = clean_course_candidate(str(item.get("course") or ""))
             title = comparable_assignment_title(str(item.get("title") or ""))
             if course and title:
                 keys.add((course, title))
@@ -295,7 +295,7 @@ def load_file_manifest_items(
     for record in records:
         if not isinstance(record, dict):
             continue
-        course = one_line(str(record.get("course") or ""))
+        course = clean_course_candidate(str(record.get("course") or ""))
         url = str(record.get("url") or "")
         activity_title = clean_source_title(str(record.get("activity_title") or record.get("link_text") or ""))
         filename = one_line(str(record.get("filename") or ""))

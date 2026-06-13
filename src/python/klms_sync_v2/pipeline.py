@@ -10,7 +10,7 @@ from .classifiers import course_name_from_text
 from .dates import is_past
 from .models import Assignment, Event, Notice, Page, SyncState
 from .overrides import apply_overrides
-from .text import clipped, html_to_text, one_line, split_course_title, strip_access_suffix
+from .text import clipped, clean_course_candidate, html_to_text, one_line, split_course_title, strip_access_suffix
 
 
 def _identity_text(value: str) -> str:
@@ -255,6 +255,29 @@ def dedupe_state(state: SyncState) -> SyncState:
     return dedupe_event_state(state)
 
 
+def normalized_course_name(value: str) -> str:
+    return clean_course_candidate(value) or one_line(value)
+
+
+def normalized_source_info(source_info: dict[str, str] | None) -> dict[str, str]:
+    source_info = source_info if isinstance(source_info, dict) else {}
+    return {
+        "course": normalized_course_name(str(source_info.get("course", ""))),
+        "title": one_line(str(source_info.get("title", ""))),
+        "instructions": clipped(str(source_info.get("instructions", ""))),
+    }
+
+
+def normalize_assignment_metadata(item: Assignment) -> Assignment:
+    course = normalized_course_name(item.course)
+    return replace(item, course=course) if course != item.course else item
+
+
+def normalize_event_metadata(item: Event) -> Event:
+    course = normalized_course_name(item.course)
+    return replace(item, course=course) if course != item.course else item
+
+
 def submitted_assignment_tokens(page: Page) -> set[str]:
     _course, title = split_course_title(page.title)
     normalized = one_line(title).lower()
@@ -304,48 +327,49 @@ def build_sync_state(
         raw_text = html_to_text(page.html) or page.text
         course, title = split_course_title(page.title)
         source_info = source_metadata_by_url.get(page.url, {})
-        source_by_url[page.url] = {
+        source_by_url[page.url] = normalized_source_info({
             "course": course_name_from_text(course, one_line(raw_text))
             or source_info.get("course", ""),
             "title": strip_access_suffix(title),
             "instructions": clean_detail_instructions(raw_text),
-        }
+        })
         _item, reason = classify_detail_page(page, generated_at)
         if reason == "submitted":
             submitted_tokens.update(submitted_assignment_tokens(page))
 
     for notice in materialized_notices:
-        source_by_url[notice.url] = {
+        source_by_url[notice.url] = normalized_source_info({
             "course": notice.course,
             "title": notice.title,
             "instructions": clipped(notice.body_text or notice.summary),
-        }
+        })
 
     for item in materialized_source_assignments:
         source_by_url.setdefault(
             item.url,
-            {
+            normalized_source_info({
                 "course": item.course,
                 "title": item.title,
                 "instructions": clipped(item.instructions),
-            },
+            }),
         )
 
     for item in materialized_source_events:
         source_by_url.setdefault(
             item.url,
-            {
+            normalized_source_info({
                 "course": item.course,
                 "title": item.title,
                 "instructions": clipped(item.instructions),
-            },
+            }),
         )
 
     for url, source_info in source_metadata_by_url.items():
-        source_by_url.setdefault(url, source_info)
+        source_by_url.setdefault(url, normalized_source_info(source_info))
 
     def enrich_assignment(item: Assignment) -> Assignment:
-        source_info = source_metadata_by_url.get(item.url)
+        item = normalize_assignment_metadata(item)
+        source_info = source_by_url.get(item.url)
         if not source_info:
             return item
         if item.course and item.source_title and item.instructions:
@@ -358,7 +382,8 @@ def build_sync_state(
         )
 
     def enrich_event(item: Event) -> Event:
-        source_info = source_metadata_by_url.get(item.url)
+        item = normalize_event_metadata(item)
+        source_info = source_by_url.get(item.url)
         if not source_info:
             return item
         if item.course and item.source_title and item.instructions:
@@ -439,6 +464,8 @@ def build_sync_state(
             return
         seen_events.add(key)
         if item.category == "help_desk":
+            if not include_past and is_past(item.sync_due, generated_at):
+                return
             state.help_desk_items.append(item)
         elif item.category == "exam_candidate":
             candidate = replace(item, record_status=item.record_status or "candidate")
