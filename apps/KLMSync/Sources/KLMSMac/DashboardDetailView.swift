@@ -233,7 +233,7 @@ private struct DashboardShowMoreButton: View {
                 .font(.caption.weight(.semibold))
                 .frame(maxWidth: .infinity, minHeight: 34)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(KLMSMacActionButtonStyle())
     }
 }
 
@@ -565,7 +565,7 @@ private struct DashboardFilterBarView: View {
                     } label: {
                         Label("필터 초기화", systemImage: "arrow.counterclockwise")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(KLMSMacActionButtonStyle())
                 }
             }
             .font(.caption)
@@ -824,6 +824,7 @@ private struct StateItemRowView: View {
                     } label: {
                         Label("시험 반영", systemImage: "checkmark.seal")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .success))
                     .disabled(isHidden)
                 }
                 Button {
@@ -832,6 +833,7 @@ private struct StateItemRowView: View {
                 } label: {
                     Label("동기화 반영", systemImage: KLMSEngineCommand.coreSync.systemImage)
                 }
+                .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
                 .disabled(model.runningCommand != nil)
                 if editor == .assignmentRecord, isManualCompleted {
                     Button {
@@ -839,6 +841,7 @@ private struct StateItemRowView: View {
                     } label: {
                         Label("완료 해제", systemImage: "arrow.uturn.backward")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle())
                 }
                 if hidden {
                     Button {
@@ -846,17 +849,18 @@ private struct StateItemRowView: View {
                     } label: {
                         Label("복구", systemImage: "arrow.uturn.backward")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle())
                 } else if editor != .assignmentRecord || isManualCompleted {
                     Button {
                         hide()
                     } label: {
                         Label(editor == .exam ? "삭제/시험 아님" : "삭제/숨김", systemImage: "eye.slash")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                 }
                 Spacer()
                 }
                 .font(.caption)
-                .buttonStyle(.bordered)
             }
         }
         .padding(9)
@@ -1384,13 +1388,14 @@ private struct NoticeRowView: View {
                 } label: {
                     Label("메모 반영", systemImage: KLMSEngineCommand.noticeSync.systemImage)
                 }
+                .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
                 .disabled(model.runningCommand != nil)
                 Button {
                     model.setNoticeHidden(!hidden, for: notice)
                 } label: {
                     Label(hidden ? "복구" : "삭제/숨김", systemImage: hidden ? "arrow.uturn.backward" : "eye.slash")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(KLMSMacActionButtonStyle(tone: hidden ? .soft : .destructive))
                 Spacer()
                 }
                 .font(.caption)
@@ -1792,6 +1797,81 @@ private struct DashboardControlChip: View {
         }
         .buttonStyle(.plain)
         .help(help)
+    }
+}
+
+private enum KLMSMacActionButtonTone {
+    case soft
+    case primary
+    case destructive
+    case success
+    case accent(Color)
+}
+
+private struct KLMSMacActionButtonStyle: ButtonStyle {
+    var tone: KLMSMacActionButtonTone = .soft
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(background, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(border, lineWidth: 1)
+            }
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.86 : 1.0) : 0.46)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: isEnabled)
+    }
+
+    private var foreground: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsMacSecondaryCommandButtonForeground
+        case .primary:
+            return Color.klmsMacCommandButtonForeground
+        case .destructive:
+            return .red
+        case .success:
+            return .green
+        case .accent(let color):
+            return color
+        }
+    }
+
+    private var background: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsMacCommandButtonBackground.opacity(0.90)
+        case .primary:
+            return Color.klmsMacPrimaryCommandButtonBackground
+        case .destructive:
+            return Color.red.opacity(0.10)
+        case .success:
+            return Color.green.opacity(0.10)
+        case .accent(let color):
+            return color.opacity(0.10)
+        }
+    }
+
+    private var border: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsMacCommandButtonBorder.opacity(0.92)
+        case .primary:
+            return Color.klmsMacPrimaryCommandButtonBorder
+        case .destructive:
+            return Color.red.opacity(0.24)
+        case .success:
+            return Color.green.opacity(0.24)
+        case .accent(let color):
+            return color.opacity(0.28)
+        }
     }
 }
 
@@ -2261,6 +2341,7 @@ private struct FileRowView: View {
                     } label: {
                         Label("수정/열기", systemImage: "folder")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle())
                 }
                 Button {
                     didRequestSync = true
@@ -2268,6 +2349,7 @@ private struct FileRowView: View {
                 } label: {
                     Label("파일 반영", systemImage: KLMSEngineCommand.filesSync.systemImage)
                 }
+                .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
                 .disabled(model.runningCommand != nil)
                 if hidden {
                     Button {
@@ -2275,12 +2357,14 @@ private struct FileRowView: View {
                     } label: {
                         Label("복구", systemImage: "arrow.uturn.backward")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle())
                 } else {
                     Button {
                         hide(model)
                     } label: {
                         Label(kind == .quarantine ? "삭제/무시" : "삭제/숨김", systemImage: "eye.slash")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                 }
                 if pathExists {
                     Button(role: .destructive) {
@@ -2288,11 +2372,11 @@ private struct FileRowView: View {
                     } label: {
                         Label("휴지통", systemImage: "trash")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                 }
                 Spacer()
                 }
                 .font(.caption)
-                .buttonStyle(.bordered)
                 .padding(.top, 8)
             }
         }
@@ -2743,12 +2827,14 @@ private struct CalendarChangeRowView: View {
                     } label: {
                         Label("등록", systemImage: "calendar.badge.plus")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .success))
                     .help("Apple Calendar에 이 일정 내용을 새 이벤트로 등록합니다.")
                     Button {
                         calendarSheetAction = .calendarEdit
                     } label: {
                         Label("수정", systemImage: "pencil")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle())
                     .help("Apple Calendar에 저장된 이 일정의 제목, 시간, 장소를 직접 수정합니다.")
                     Button(role: .destructive) {
                         editStatusText = "캘린더 일정을 삭제하는 중입니다."
@@ -2761,6 +2847,7 @@ private struct CalendarChangeRowView: View {
                     } label: {
                         Label("삭제", systemImage: "calendar.badge.minus")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                     .help("Apple Calendar에서 이 이벤트를 삭제합니다.")
                     Button {
                         editStatusText = "캘린더에서 일정을 여는 중입니다."
@@ -2773,11 +2860,11 @@ private struct CalendarChangeRowView: View {
                     } label: {
                         Label("캘린더에서 열기", systemImage: "calendar")
                     }
+                    .buttonStyle(KLMSMacActionButtonStyle())
                     .help("Calendar 앱에서 이 이벤트를 바로 선택합니다.")
                     Spacer()
                 }
                 .font(.caption)
-                .buttonStyle(.bordered)
             }
         }
         .padding(9)
@@ -2881,11 +2968,13 @@ struct MacMailPasteAnalyzerPanel: View {
                         } label: {
                             Label("클립보드 붙여넣기", systemImage: "doc.on.clipboard")
                         }
+                        .buttonStyle(KLMSMacActionButtonStyle())
                         Button {
                             runAnalysis()
                         } label: {
                             Label("판독하기", systemImage: "wand.and.stars")
                         }
+                        .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
                         .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         Button(role: .destructive) {
                             mailText = ""
@@ -2894,6 +2983,7 @@ struct MacMailPasteAnalyzerPanel: View {
                         } label: {
                             Label("입력 비우기", systemImage: "trash")
                         }
+                        .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                         .disabled(mailText.isEmpty)
                         Spacer(minLength: 0)
                         if analysis.canCreateCalendarEvent {
@@ -2902,12 +2992,10 @@ struct MacMailPasteAnalyzerPanel: View {
                             } label: {
                                 Label("캘린더에 등록", systemImage: "calendar.badge.plus")
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
+                            .buttonStyle(KLMSMacActionButtonStyle(tone: .success))
                         }
                     }
                     .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
 
                     MacMailPasteAnalysisResultView(analysis: analysis, model: model)
                     if let createStatusText {
@@ -3214,11 +3302,13 @@ private struct MacMailPasteAnalysisResultView: View {
                                 } label: {
                                     Label("수정", systemImage: "pencil")
                                 }
+                                .buttonStyle(KLMSMacActionButtonStyle())
                                 Button(role: .destructive) {
                                     model.removeMailDashboardItem(editableItem)
                                 } label: {
                                     Label("제거", systemImage: "minus.circle")
                                 }
+                                .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                             }
                         } else {
                             HStack(spacing: 8) {
@@ -3228,14 +3318,14 @@ private struct MacMailPasteAnalysisResultView: View {
                                     Label("수정", systemImage: "pencil")
                                         .frame(maxWidth: .infinity)
                                 }
+                                .buttonStyle(KLMSMacActionButtonStyle())
                                 Button {
                                     model.addMailDashboardItem(dashboardItem)
                                 } label: {
                                     Label("등록", systemImage: "plus.circle")
                                         .frame(maxWidth: .infinity)
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .tint(analysis.kind.tint)
+                                .buttonStyle(KLMSMacActionButtonStyle(tone: .accent(analysis.kind.tint)))
                             }
                         }
                     }
@@ -3338,12 +3428,13 @@ private struct MailDashboardItemEditSheet: View {
                 Button("취소") {
                     dismiss()
                 }
+                .buttonStyle(KLMSMacActionButtonStyle())
                 Button("저장") {
                     onSave(editedItem)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
@@ -3533,6 +3624,7 @@ private struct MailCalendarCreateSheet: View {
                 Button("취소") {
                     dismiss()
                 }
+                .buttonStyle(KLMSMacActionButtonStyle())
                 Button("등록") {
                     onSave(MailCalendarDraft(
                         title: title,
@@ -3544,7 +3636,7 @@ private struct MailCalendarCreateSheet: View {
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(KLMSMacActionButtonStyle(tone: .success))
             }
         }
         .padding(18)
@@ -4485,12 +4577,13 @@ private struct CalendarEventEditSheet: View {
                 Button("취소") {
                     dismiss()
                 }
+                .buttonStyle(KLMSMacActionButtonStyle())
                 Button(action == .calendarCreate ? "등록" : "저장") {
                     onSave(CalendarEventEdit(title: title, startAt: startAt, dueAt: dueAt, location: location))
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(KLMSMacActionButtonStyle(tone: action == .calendarCreate ? .success : .primary))
             }
         }
         .padding(18)

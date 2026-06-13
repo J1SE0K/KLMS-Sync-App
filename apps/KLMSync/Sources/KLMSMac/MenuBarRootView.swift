@@ -606,8 +606,7 @@ private struct ExternalIntegrationStatusView: View {
                     Label("상태 검사", systemImage: "checkmark.seal")
                 }
                 .disabled(model.runningCommand != nil)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(KLMSMacRootActionButtonStyle())
             }
 
             if isExpanded {
@@ -837,6 +836,81 @@ private struct ExternalIntegrationStatusView: View {
     }
 }
 
+private enum KLMSMacRootButtonTone {
+    case soft
+    case primary
+    case destructive
+    case success
+    case accent(Color)
+}
+
+private struct KLMSMacRootActionButtonStyle: ButtonStyle {
+    var tone: KLMSMacRootButtonTone = .soft
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(background, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(border, lineWidth: 1)
+            }
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.86 : 1.0) : 0.46)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: isEnabled)
+    }
+
+    private var foreground: Color {
+        switch tone {
+        case .soft:
+            Color.klmsMacSecondaryCommandButtonForeground
+        case .primary:
+            Color.klmsMacCommandButtonForeground
+        case .destructive:
+            .red
+        case .success:
+            .green
+        case .accent(let color):
+            color
+        }
+    }
+
+    private var background: Color {
+        switch tone {
+        case .soft:
+            Color.klmsMacCommandButtonBackground.opacity(0.90)
+        case .primary:
+            Color.klmsMacPrimaryCommandButtonBackground
+        case .destructive:
+            Color.red.opacity(0.10)
+        case .success:
+            Color.green.opacity(0.10)
+        case .accent(let color):
+            color.opacity(0.10)
+        }
+    }
+
+    private var border: Color {
+        switch tone {
+        case .soft:
+            Color.klmsMacCommandButtonBorder.opacity(0.92)
+        case .primary:
+            Color.klmsMacPrimaryCommandButtonBorder
+        case .destructive:
+            Color.red.opacity(0.24)
+        case .success:
+            Color.green.opacity(0.24)
+        case .accent(let color):
+            color.opacity(0.28)
+        }
+    }
+}
+
 private enum IntegrationHealth {
     case ok
     case warning
@@ -1021,8 +1095,7 @@ private struct LogSummaryPanelView: View {
                     Label("로그 지우기", systemImage: "trash")
                         .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
+                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
                 .help("화면의 실행 로그와 완료된 서버 요청, 파일 요청 기록을 지웁니다. 진행 중인 요청은 유지됩니다.")
                 .disabled(model.runningCommand != nil)
             }
@@ -1341,8 +1414,7 @@ private struct LogSummaryDetailView: View {
                 } label: {
                     Label("지우기", systemImage: "trash")
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
                 .disabled(
                     !model.serverRelayConfigured
                         || model.serverRelayRecentFileAccessRequests.isEmpty
@@ -1458,8 +1530,7 @@ private struct NextActionPanelView: View {
                 } label: {
                     Label(action.buttonTitle, systemImage: action.buttonImage)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(KLMSMacRootActionButtonStyle(tone: action.kind == .openDiagnostics ? .accent(.orange) : .soft))
                 .accessibilityLabel(action.buttonTitle)
                 .accessibilityHint(action.detail)
                 .disabled(model.runningCommand != nil && action.kind != .showRunningLog)
@@ -1612,8 +1683,7 @@ private struct HeaderView: View {
                                 systemImage: "stop.fill"
                             )
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
+                        .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
                         .disabled(model.isCancellingCommand)
                         .help("\(command.displayName) 실행을 중단합니다.")
                         .accessibilityLabel("\(command.displayName) 중단")
@@ -1870,7 +1940,7 @@ private struct DiagnosticToolsPanelView: View {
             .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
             .padding(.vertical, 4)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(KLMSMacRootActionButtonStyle())
         .disabled(model.runningCommand != nil)
         .help(command.shortDescription)
         .accessibilityLabel(command.displayName)
@@ -1889,8 +1959,7 @@ private struct DiagnosticToolsPanelView: View {
                 .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity, minHeight: 34)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .buttonStyle(KLMSMacRootActionButtonStyle())
         .disabled(model.runningCommand != nil || !command.supportsDryRun)
         .help("실제 반영 없이 변경 예정량만 계산합니다.")
         .accessibilityLabel("\(command.displayName) 변경량 계산")
@@ -2215,7 +2284,7 @@ private struct AuthCodeBannerView: View {
                 } label: {
                     Label("복사", systemImage: "doc.on.doc")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .accent(.orange)))
                 .accessibilityLabel("KAIST 인증 번호 복사")
             }
             .padding(12)
@@ -2581,8 +2650,7 @@ private struct NoticeMemoRowView: View {
                 Label("열기", systemImage: "arrow.up.forward.app")
             }
             .disabled(state == nil)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .buttonStyle(KLMSMacRootActionButtonStyle())
             .accessibilityLabel("\(label) 열기")
         }
     }
@@ -2616,8 +2684,7 @@ private struct RemoteActivityPanelView: View {
                         } label: {
                             Label("공유 실행 로그 지우기", systemImage: "trash")
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
                         .disabled(!model.serverRelayConfigured || sharedRunLogs.isEmpty)
 
                         Button {
@@ -2627,8 +2694,7 @@ private struct RemoteActivityPanelView: View {
                         } label: {
                             Label("서버 요청 지우기", systemImage: "trash")
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
                         .disabled(!model.serverRelayConfigured || requestLog.isEmpty)
 
                         Button {
@@ -2638,8 +2704,7 @@ private struct RemoteActivityPanelView: View {
                         } label: {
                             Label("파일 요청 지우기", systemImage: "trash")
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
                         .disabled(
                             !model.serverRelayConfigured
                                 || fileRequests.isEmpty
@@ -3656,8 +3721,7 @@ private struct AppDiagnosticsPanelView: View {
                     }
                     Spacer()
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(KLMSMacRootActionButtonStyle())
 
                 if let permissionStatusMessage = model.permissionStatusMessage,
                    !permissionStatusMessage.isEmpty {

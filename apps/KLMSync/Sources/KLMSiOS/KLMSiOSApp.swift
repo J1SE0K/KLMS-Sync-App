@@ -1774,24 +1774,27 @@ private struct CompanionSidebarButton: View {
                 Image(systemName: section.systemImage)
                     .font(.body.weight(.semibold))
                     .frame(width: 22)
-                    .foregroundStyle(isSelected ? Color.klmsCommandAccent : Color.klmsSecondaryText)
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
                 Text(section.title)
                     .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                    .foregroundStyle(Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
                 Spacer(minLength: 0)
+                Image(systemName: "arrow.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText.opacity(0.70))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(
                 isSelected
-                    ? Color.klmsCommandBackground
+                    ? Color.klmsPrimaryCommandButtonBackground
                     : Color.clear,
                 in: RoundedRectangle(cornerRadius: 8)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.klmsCommandBorder : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
             )
             .contentShape(Rectangle())
         }
@@ -2072,14 +2075,10 @@ private struct CompanionScreenHeader: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: iconName)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 38, height: 38)
-                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.title3.weight(.semibold))
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(Color.klmsPrimaryText)
                 Text(model.statusLine)
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
@@ -2094,57 +2093,20 @@ private struct CompanionScreenHeader: View {
                 Text(lastRefreshAt.formatted(date: .omitted, time: .shortened))
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .stroke(Color.klmsBorder, lineWidth: 1)
+                    }
             }
         }
-        .padding(14)
+        .padding(.horizontal, 2)
+        .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        }
     }
 
-    private var iconName: String {
-        if model.status.authDigits != nil {
-            return "key.fill"
-        }
-        if model.hasInFlightRequest || model.status.phase == "running" {
-            return "arrow.triangle.2.circlepath"
-        }
-        if model.status.loginRequired {
-            return "person.crop.circle.badge.exclamationmark"
-        }
-        switch title {
-        case "실행":
-            return "play.circle.fill"
-        case "서버 연결":
-            return "network"
-        case "로그":
-            return "clock.arrow.circlepath"
-        default:
-            return "gauge.with.dots.needle.67percent"
-        }
-    }
-
-    private var tint: Color {
-        if model.status.authDigits != nil || model.status.loginRequired {
-            return .orange
-        }
-        if model.hasInFlightRequest || model.status.phase == "running" {
-            return .klmsCommandAccent
-        }
-        if model.latestDisplayStatus == .failed || model.latestDisplayStatus == .macUnavailable {
-            return .orange
-        }
-        if model.shouldShowAuthCompletion {
-            return .green
-        }
-        if title == "실행" {
-            return .klmsCommandAccent
-        }
-        return .klmsCommandAccent
-    }
 }
 
 private struct WholeScreenVerticalScrollView<Content: View>: View {
@@ -2299,7 +2261,7 @@ private struct ServerRelayConnectionPanel: View {
                 Label("연결 정보 지우기", systemImage: "trash")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
             .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
         }
         .padding(12)
@@ -2321,7 +2283,7 @@ private struct ServerRelayConnectionPanel: View {
                 .minimumScaleFactor(0.82)
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(KLMSActionButtonStyle())
     }
 
     private func connectionAsyncButton(
@@ -2339,7 +2301,7 @@ private struct ServerRelayConnectionPanel: View {
                 .minimumScaleFactor(0.82)
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(KLMSActionButtonStyle())
     }
 }
 
@@ -2749,8 +2711,7 @@ private struct CompanionItemListControls: View {
                     } label: {
                         Label("초기화", systemImage: "arrow.counterclockwise")
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(KLMSActionButtonStyle())
                 }
             }
 
@@ -3466,6 +3427,81 @@ private struct KLMSCardButtonStyle: ButtonStyle {
     }
 }
 
+private enum KLMSButtonTone {
+    case soft
+    case primary
+    case destructive
+    case success
+    case accent(Color)
+}
+
+private struct KLMSActionButtonStyle: ButtonStyle {
+    var tone: KLMSButtonTone = .soft
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(background, in: RoundedRectangle(cornerRadius: 9))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(border, lineWidth: 1)
+            }
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.86 : 1.0) : 0.46)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: isEnabled)
+    }
+
+    private var foreground: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsSecondaryCommandButtonForeground
+        case .primary:
+            return Color.klmsCommandButtonForeground
+        case .destructive:
+            return .red
+        case .success:
+            return .green
+        case .accent(let color):
+            return color
+        }
+    }
+
+    private var background: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsCommandButtonBackground.opacity(0.90)
+        case .primary:
+            return Color.klmsPrimaryCommandButtonBackground
+        case .destructive:
+            return Color.red.opacity(0.10)
+        case .success:
+            return Color.green.opacity(0.10)
+        case .accent(let color):
+            return color.opacity(0.10)
+        }
+    }
+
+    private var border: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsCommandButtonBorder.opacity(0.92)
+        case .primary:
+            return Color.klmsPrimaryCommandButtonBorder
+        case .destructive:
+            return Color.red.opacity(0.24)
+        case .success:
+            return Color.green.opacity(0.24)
+        case .accent(let color):
+            return color.opacity(0.28)
+        }
+    }
+}
+
 private struct DashboardMetricDetailPanel: View {
     var category: DashboardMetricCategory
     var status: SanitizedRemoteStatus
@@ -3802,7 +3838,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
                 .font(.caption.weight(.semibold))
                 .frame(maxWidth: .infinity, minHeight: 36)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(KLMSActionButtonStyle())
     }
 }
 
@@ -4046,14 +4082,14 @@ private struct MailPasteAnalyzerPanel: View {
                         } label: {
                             Label("클립보드 붙여넣기", systemImage: "doc.on.clipboard")
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(KLMSActionButtonStyle())
 
                         Button {
                             runAnalysis()
                         } label: {
                             Label("판독하기", systemImage: "wand.and.stars")
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(KLMSActionButtonStyle(tone: .primary))
                         .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                         Spacer(minLength: 0)
@@ -4064,7 +4100,7 @@ private struct MailPasteAnalyzerPanel: View {
                         } label: {
                             Label("입력 비우기", systemImage: "trash")
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                         .disabled(mailText.isEmpty)
                     }
                     .font(.caption.weight(.semibold))
@@ -4320,8 +4356,7 @@ private struct MailPasteAnalysisResultView: View {
                         Label("Mac 캘린더에 등록", systemImage: "calendar.badge.plus")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
+                    .buttonStyle(KLMSActionButtonStyle(tone: .success))
                     .disabled(model.isSubmitting)
                 }
 
@@ -4339,7 +4374,7 @@ private struct MailPasteAnalysisResultView: View {
                             } label: {
                                 Label("수정", systemImage: "pencil")
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(KLMSActionButtonStyle())
                             .disabled(model.isSubmitting)
                             Button(role: .destructive) {
                                 Task {
@@ -4348,7 +4383,7 @@ private struct MailPasteAnalysisResultView: View {
                             } label: {
                                 Label("제거", systemImage: "minus.circle")
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                             .disabled(model.isSubmitting)
                         }
                     } else {
@@ -4359,7 +4394,7 @@ private struct MailPasteAnalysisResultView: View {
                                 Label("수정", systemImage: "pencil")
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(KLMSActionButtonStyle())
                             .disabled(model.isSubmitting)
                             Button {
                                 Task {
@@ -4369,8 +4404,7 @@ private struct MailPasteAnalysisResultView: View {
                                 Label("등록", systemImage: "plus.circle")
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(analysis.kind.tint)
+                            .buttonStyle(KLMSActionButtonStyle(tone: .accent(analysis.kind.tint)))
                             .disabled(model.isSubmitting)
                         }
                     }
@@ -5724,8 +5758,7 @@ private struct RemoteCalendarActionPanel: View {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 32)
             }
-            .buttonStyle(.bordered)
-            .tint(.orange)
+            .buttonStyle(KLMSActionButtonStyle(tone: .accent(.orange)))
         }
         .padding(compact ? 10 : 0)
         .background(compact ? Color.klmsSubtleCardBackground : Color.clear)
@@ -5797,12 +5830,16 @@ private struct DashboardCalendarChangeDetailRow: View {
                         calendarSheetAction = .calendarCreate
                     } label: {
                         Label("등록", systemImage: "calendar.badge.plus")
+                            .frame(maxWidth: .infinity, minHeight: 34)
                     }
+                    .buttonStyle(KLMSActionButtonStyle(tone: .success))
                     Button {
                         calendarSheetAction = .calendarEdit
                     } label: {
                         Label("수정", systemImage: "pencil")
+                            .frame(maxWidth: .infinity, minHeight: 34)
                     }
+                    .buttonStyle(KLMSActionButtonStyle())
                     Button(role: .destructive) {
                         Task {
                             if let onAction {
@@ -5811,15 +5848,18 @@ private struct DashboardCalendarChangeDetailRow: View {
                         }
                     } label: {
                         Label("삭제", systemImage: "calendar.badge.minus")
+                            .frame(maxWidth: .infinity, minHeight: 34)
                     }
+                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     Button {
                         openSystemCalendar()
                     } label: {
                         Label("캘린더에서 열기", systemImage: "calendar")
+                            .frame(maxWidth: .infinity, minHeight: 34)
                     }
+                    .buttonStyle(KLMSActionButtonStyle())
                 }
                 .font(.caption)
-                .buttonStyle(.bordered)
                 .padding(.top, 2)
             }
         }
@@ -6184,7 +6224,7 @@ private struct ServerSyncDataPanel: View {
                                 .font(.caption.weight(.semibold))
                                 .frame(maxWidth: .infinity, minHeight: 36)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(KLMSActionButtonStyle())
                     }
                 }
                 .padding(.top, 8)
@@ -6319,8 +6359,8 @@ private struct ServerSyncItemInlineDetailPanel: View {
                             Label(action.companionActionTitle, systemImage: action.companionActionImage)
                                 .frame(maxWidth: .infinity, minHeight: 36)
                         }
-                        .buttonStyle(.bordered)
-                            .disabled(!model.serverRelayConfigured || model.isSubmitting)
+                        .buttonStyle(KLMSActionButtonStyle())
+                        .disabled(!model.serverRelayConfigured || model.isSubmitting)
                         }
                     }
                 }
@@ -6341,7 +6381,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 Label("\(relevantCommand.displayName) 반영", systemImage: relevantCommand.engineCommand.systemImage)
                     .frame(maxWidth: .infinity, minHeight: 40)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(KLMSActionButtonStyle(tone: .primary))
             .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         }
     }
@@ -6368,7 +6408,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                         } label: {
                             Label("웹 미리보기", systemImage: "safari")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(KLMSActionButtonStyle(tone: .primary))
                     }
                 }
             } else {
@@ -6385,7 +6425,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 Label("파일 링크 요청", systemImage: "link.badge.plus")
                     .frame(maxWidth: .infinity, minHeight: 40)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(KLMSActionButtonStyle())
             .disabled(!model.serverRelayConfigured || model.isSubmitting || request?.status.isInFlight == true)
         }
         .padding(12)
@@ -6628,7 +6668,7 @@ private struct ServerSyncItemDetailView: View {
                             Label(action.companionActionTitle, systemImage: action.companionActionImage)
                                 .frame(maxWidth: .infinity, minHeight: 38)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(KLMSActionButtonStyle(tone: action.companionButtonTone))
                             .disabled(!model.serverRelayConfigured || model.isSubmitting)
                         }
                     }
@@ -6650,7 +6690,7 @@ private struct ServerSyncItemDetailView: View {
                 Label("\(relevantCommand.displayName) 반영", systemImage: relevantCommand.engineCommand.systemImage)
                     .frame(maxWidth: .infinity, minHeight: 42)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(KLMSActionButtonStyle(tone: .primary))
             .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         }
     }
@@ -6676,7 +6716,7 @@ private struct ServerSyncItemDetailView: View {
                         } label: {
                             Label("웹 미리보기", systemImage: "safari")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(KLMSActionButtonStyle(tone: .primary))
                     }
                 }
             } else {
@@ -6692,7 +6732,7 @@ private struct ServerSyncItemDetailView: View {
                 Label("파일 링크 요청", systemImage: "link.badge.plus")
                     .frame(maxWidth: .infinity, minHeight: 42)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(KLMSActionButtonStyle())
             .disabled(!model.serverRelayConfigured || model.isSubmitting || request?.status.isInFlight == true)
         }
         .padding(12)
@@ -7169,6 +7209,38 @@ private extension ServerRelayItemActionKind {
         }
     }
 
+    var companionButtonTone: KLMSButtonTone {
+        switch self {
+        case .assignmentComplete,
+             .assignmentRestore,
+             .assignmentUnhide,
+             .examRestore,
+             .noticeRead,
+             .noticeUnread,
+             .noticeImportant,
+             .noticeUnimportant,
+             .noticeUnhide,
+             .fileUnhide,
+             .calendarVerify,
+             .calendarEdit:
+            .soft
+        case .examPromote,
+             .calendarApply,
+             .mailDashboardAdd:
+            .primary
+        case .calendarCreate:
+            .success
+        case .assignmentHide,
+             .examIgnore,
+             .noticeHide,
+             .fileHide,
+             .fileTrash,
+             .calendarDelete,
+             .mailDashboardRemove:
+            .destructive
+        }
+    }
+
     var resolvesCalendarChange: Bool {
         switch self {
         case .calendarEdit, .calendarApply, .calendarDelete:
@@ -7564,7 +7636,7 @@ private struct RemoteCancelControl: View {
                     Label(buttonTitle, systemImage: "stop.fill")
                         .frame(maxWidth: .infinity, minHeight: compact ? 38 : 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                 .disabled(!model.canCancelRunningCommand || localCancelSubmitting || model.isSubmitting)
                 .accessibilityHint("Mac 앱에 현재 실행 중인 KLMS 동기화를 중단하라고 요청합니다.")
             }
@@ -7907,7 +7979,7 @@ private struct RemoteDiagnosticPanel: View {
             }
             .frame(maxWidth: .infinity, minHeight: 58)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(KLMSActionButtonStyle())
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
     }
 
@@ -7923,7 +7995,7 @@ private struct RemoteDiagnosticPanel: View {
                 .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity, minHeight: 38)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(KLMSActionButtonStyle())
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest || !kind.engineCommand.supportsDryRun)
         .accessibilityLabel("\(kind.displayName) 변경량 계산")
         .accessibilityHint("Mac 앱에 \(kind.displayName) 변경량 계산 요청을 보냅니다.")
@@ -8191,8 +8263,7 @@ private struct RemoteLogSummaryPanel: View {
                     Label("로그 지우기", systemImage: "trash")
                         .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
+                .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                 .disabled(!model.serverRelayConfigured || model.isSubmitting)
                 .accessibilityLabel("로그 지우기")
             }
@@ -8526,8 +8597,7 @@ private struct SharedRunLogsView: View {
                         Label("지우기", systemImage: "trash")
                     }
                     .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
+                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     .disabled(clearDisabled)
                 }
             }
@@ -8671,8 +8741,7 @@ private struct RecentFileAccessRequestsView: View {
                         Label("지우기", systemImage: "trash")
                     }
                     .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
+                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     .disabled(clearDisabled)
                 }
             }
@@ -8715,8 +8784,7 @@ private struct RecentServerRequestLogView: View {
                         Label("지우기", systemImage: "trash")
                     }
                     .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
+                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     .disabled(clearDisabled)
                 }
             }
@@ -9090,7 +9158,7 @@ private struct RemoteSettingRow: View {
                 Text(setting.boolValue ? "끄기" : "켜기")
                     .frame(minWidth: 58)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(KLMSActionButtonStyle(tone: setting.boolValue ? .destructive : .success))
             .disabled(!setting.editable || model.isSubmitting)
         case .choice:
             Menu {
@@ -9115,7 +9183,7 @@ private struct RemoteSettingRow: View {
                         await model.createSettingAction(setting: setting, value: draftValue)
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(KLMSActionButtonStyle(tone: .primary))
                 .disabled(!setting.editable || model.isSubmitting || draftValue == setting.value)
             }
         }
@@ -9165,8 +9233,7 @@ private struct RecentRemoteCommandsView: View {
                         Label("지우기", systemImage: "trash")
                     }
                     .font(.caption.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .controlSize(.mini)
+                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     .disabled(clearDisabled)
                 }
             }
