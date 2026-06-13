@@ -1534,7 +1534,13 @@ public struct ServerRelaySyncItem: Codable, Sendable, Equatable, Identifiable {
 
 public extension SanitizedRemoteStatus {
     mutating func applyMailDashboardItems(_ items: [ServerRelaySyncItem]) {
-        let visibleItems = items.filter { !$0.isHidden }
+        applyMailDashboardItems(items, baseItems: [])
+    }
+
+    mutating func applyMailDashboardItems(_ items: [ServerRelaySyncItem], baseItems: [ServerRelaySyncItem]) {
+        let visibleItems = items
+            .unmatchedMailDashboardItems(comparedTo: baseItems)
+            .filter { !$0.isHidden }
         assignments += visibleItems.filter { $0.kind == "assignment" || $0.kind == "assignmentCandidate" }.count
         exams += visibleItems.filter { $0.kind == "exam" || $0.kind == "examCandidate" }.count
         notices += visibleItems.filter { $0.kind == "notice" }.count
@@ -1545,16 +1551,38 @@ public extension SanitizedRemoteStatus {
 
 public extension Array where Element == ServerRelaySyncItem {
     func dedupedForServerRelay() -> [ServerRelaySyncItem] {
-        var seen = Set<String>()
+        var seenIDs = Set<String>()
+        var semanticIndexByKey: [String: Int] = [:]
         var result: [ServerRelaySyncItem] = []
         for item in self {
-            let key = item.id.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !key.isEmpty, seen.insert(key).inserted else {
+            let idKey = item.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !idKey.isEmpty, seenIDs.insert(idKey).inserted else {
                 continue
+            }
+            if let semanticKey = item.semanticDashboardMergeKey,
+               let existingIndex = semanticIndexByKey[semanticKey] {
+                result[existingIndex] = result[existingIndex].mergedForDashboard(with: item)
+                continue
+            }
+            if let semanticKey = item.semanticDashboardMergeKey {
+                semanticIndexByKey[semanticKey] = result.count
             }
             result.append(item)
         }
         return result
+    }
+
+    func unmatchedMailDashboardItems(comparedTo baseItems: [ServerRelaySyncItem]) -> [ServerRelaySyncItem] {
+        let baseKeys = Set(baseItems.compactMap(\.semanticDashboardMergeKey))
+        return self
+            .filter(\.isMailDashboardItemLike)
+            .filter { item in
+                guard let key = item.semanticDashboardMergeKey else {
+                    return true
+                }
+                return !baseKeys.contains(key)
+            }
+            .dedupedForServerRelay()
     }
 }
 
@@ -1647,10 +1675,55 @@ public extension ServerRelaySyncItem {
         )
     }
 
-    private var isMailDashboardItemLike: Bool {
+    var isMailDashboardItemLike: Bool {
         id.hasPrefix("mail-")
             || status.localizedCaseInsensitiveContains("메일")
             || detail.localizedCaseInsensitiveContains("메일")
+    }
+
+    var semanticDashboardMergeKey: String? {
+        guard isDashboardMergeCandidateKind else {
+            return nil
+        }
+        let normalizedCourse = Self.normalizedMergeText(course)
+        let normalizedTitle = Self.normalizedMergeText(title)
+        guard !normalizedTitle.isEmpty else {
+            return nil
+        }
+        let normalizedTimestamp = Self.normalizedMergeText(timestamp)
+        let normalizedTerm = [academicYear.map(String.init) ?? "", Self.normalizedMergeText(academicSemester)]
+            .filter { !$0.isEmpty }
+            .joined(separator: "|")
+        let parts = [
+            normalizedDashboardMergeKind,
+            normalizedTerm,
+            normalizedCourse,
+            normalizedTitle,
+            normalizedTimestamp,
+        ]
+        return parts.joined(separator: "\u{1F}")
+    }
+
+    func mergedForDashboard(with other: ServerRelaySyncItem) -> ServerRelaySyncItem {
+        if isMailDashboardItemLike && !other.isMailDashboardItemLike {
+            return other.normalizedDashboardItem
+        }
+        if !isMailDashboardItemLike && other.isMailDashboardItemLike {
+            var merged = normalizedDashboardItem
+            let normalizedOther = other.normalizedDashboardItem
+            if merged.detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                merged.detail = normalizedOther.detail
+            }
+            if merged.timestamp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                merged.timestamp = normalizedOther.timestamp
+            }
+            merged.attachmentCount = max(merged.attachmentCount, normalizedOther.attachmentCount)
+            merged.isRead = merged.isRead || normalizedOther.isRead
+            merged.isImportant = merged.isImportant || normalizedOther.isImportant
+            merged.isHidden = merged.isHidden || normalizedOther.isHidden
+            return merged
+        }
+        return normalizedDashboardItem
     }
 
     private var isCalendarCandidateKind: Bool {
@@ -1660,6 +1733,39 @@ public extension ServerRelaySyncItem {
         default:
             false
         }
+    }
+
+    private var isDashboardMergeCandidateKind: Bool {
+        switch kind {
+        case "assignment", "assignmentCandidate", "completedAssignment", "exam", "examCandidate", "helpDesk":
+            true
+        default:
+            false
+        }
+    }
+
+    private var normalizedDashboardMergeKind: String {
+        switch kind {
+        case "assignment", "assignmentCandidate", "completedAssignment":
+            "assignment"
+        case "exam", "examCandidate":
+            "exam"
+        case "helpDesk":
+            "helpDesk"
+        default:
+            kind
+        }
+    }
+
+    private static func normalizedMergeText(_ text: String) -> String {
+        text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "ko_KR"))
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"[()\[\]{}<>]"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"[-_:·•|]+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var stateItemCategoryForMailDashboard: String? {

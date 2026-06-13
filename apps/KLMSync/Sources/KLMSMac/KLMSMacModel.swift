@@ -667,7 +667,12 @@ final class KLMSMacModel: ObservableObject {
 
     private func sanitizedRemoteStatus(snapshot: EngineSnapshot, phase: String) -> SanitizedRemoteStatus {
         var status = SanitizedRemoteStatus(snapshot: snapshot, phase: phase)
-        status.applyMailDashboardItems(mailDashboardItems)
+        let baseItems = serverRelayBaseSyncItems(
+            from: snapshot,
+            generatedAt: serverRelayGeneratedAt(from: snapshot),
+            updatedAt: ServerRelaySyncItem.isoTimestamp()
+        )
+        status.applyMailDashboardItems(mailDashboardItems, baseItems: baseItems)
         let calendarCounts = visibleCalendarChangeCounts(from: visibleCalendarChanges(from: snapshot))
         status.calendarCreated = calendarCounts.created
         status.calendarUpdated = calendarCounts.updated
@@ -882,13 +887,19 @@ final class KLMSMacModel: ObservableObject {
         return serverRelayStatusMessage ?? ""
     }
 
-    private func serverRelaySyncData(from snapshot: EngineSnapshot) -> ServerRelaySyncData {
-        let generatedAt = snapshot.legacyState?.generatedAt
+    private func serverRelayGeneratedAt(from snapshot: EngineSnapshot) -> String {
+        snapshot.legacyState?.generatedAt
             ?? snapshot.rawLegacyState?.generatedAt
             ?? snapshot.noticeDigest?.generatedAt
             ?? snapshot.calendarSyncResult?.generatedAt
             ?? ServerRelaySyncItem.isoTimestamp()
-        let updatedAt = ServerRelaySyncItem.isoTimestamp()
+    }
+
+    private func serverRelayBaseSyncItems(
+        from snapshot: EngineSnapshot,
+        generatedAt: String,
+        updatedAt: String
+    ) -> [ServerRelaySyncItem] {
         var items: [ServerRelaySyncItem] = []
 
         if let content = snapshot.legacyState?.content ?? snapshot.rawLegacyState?.content {
@@ -952,13 +963,24 @@ final class KLMSMacModel: ObservableObject {
                 isHidden: snapshot.appUserState?.files[serverRelayFileUserStateKey($0)]?.isHiddenLike == true
             )
         }
-        items += mailDashboardItems
+        return items
+    }
+
+    private func serverRelaySyncData(from snapshot: EngineSnapshot) -> ServerRelaySyncData {
+        let generatedAt = serverRelayGeneratedAt(from: snapshot)
+        let updatedAt = ServerRelaySyncItem.isoTimestamp()
+        let baseItems = serverRelayBaseSyncItems(
+            from: snapshot,
+            generatedAt: generatedAt,
+            updatedAt: updatedAt
+        )
+        let items = (baseItems + mailDashboardItems).dedupedForServerRelay()
 
         let calendarChanges = visibleCalendarChanges(from: snapshot).map(serverRelayCalendarChange)
 
         return ServerRelaySyncData(
             generatedAt: generatedAt,
-            items: items.dedupedForServerRelay(),
+            items: items,
             dryRunReports: serverRelayDryRunReports(from: snapshot),
             calendarChanges: calendarChanges.dedupedForCalendarDisplay(),
             settings: serverRelaySettings(updatedAt: updatedAt),
@@ -1160,6 +1182,7 @@ final class KLMSMacModel: ObservableObject {
 
     func mailDashboardItems(kind: String) -> [ServerRelaySyncItem] {
         mailDashboardItems
+            .unmatchedMailDashboardItems(comparedTo: currentServerRelayBaseSyncItems())
             .filter { $0.kind == kind }
             .map(\.normalizedDashboardItem)
             .sorted { lhs, rhs in
@@ -1179,9 +1202,19 @@ final class KLMSMacModel: ObservableObject {
 
     func mailCalendarChanges() -> [CalendarChange] {
         mailDashboardItems
+            .unmatchedMailDashboardItems(comparedTo: currentServerRelayBaseSyncItems())
             .compactMap(\.mailCalendarChange)
             .filter { !isCalendarChangeResolved($0) }
             .dedupedForCalendarDisplay()
+    }
+
+    private func currentServerRelayBaseSyncItems() -> [ServerRelaySyncItem] {
+        let generatedAt = serverRelayGeneratedAt(from: snapshot)
+        return serverRelayBaseSyncItems(
+            from: snapshot,
+            generatedAt: generatedAt,
+            updatedAt: ServerRelaySyncItem.isoTimestamp()
+        )
     }
 
     private static func isMailDashboardItem(_ item: ServerRelaySyncItem) -> Bool {

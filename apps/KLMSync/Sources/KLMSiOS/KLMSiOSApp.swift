@@ -195,7 +195,7 @@ final class CompanionModel: ObservableObject {
 
     var dashboardStatus: SanitizedRemoteStatus {
         var next = status
-        next.applyMailDashboardItems(mailDashboardItems)
+        next.applyMailDashboardItems(mailDashboardItems, baseItems: syncItems)
         return next
     }
 
@@ -751,7 +751,12 @@ final class CompanionModel: ObservableObject {
     }
 
     func visibleCalendarChanges() -> [CalendarChange] {
-        (calendarChanges + mailDashboardItems.compactMap(\.mailCalendarChange))
+        (
+            calendarChanges
+                + mailDashboardItems
+                .unmatchedMailDashboardItems(comparedTo: syncItems)
+                .compactMap(\.mailCalendarChange)
+        )
             .dedupedForCalendarDisplay()
             .filter { change in
                 guard change.isUserVisibleCalendarChange else {

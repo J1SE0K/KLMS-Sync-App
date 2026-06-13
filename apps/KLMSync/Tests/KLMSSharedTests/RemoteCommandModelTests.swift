@@ -700,6 +700,56 @@ final class RemoteCommandModelTests: XCTestCase {
         ])
     }
 
+    func testMailDashboardItemsMergeIntoExistingKlmsItemsByContent() throws {
+        let klmsAssignment = ServerRelaySyncItem(
+            id: "klms-assignment-1",
+            kind: "assignment",
+            course: "알고리즘 개론",
+            title: "Written Assignment 4",
+            timestamp: "2026-06-09 23:59",
+            status: "진행 중"
+        )
+        let sameMailAssignment = ServerRelaySyncItem(
+            id: "mail-assignment-1",
+            kind: "assignment",
+            course: "알고리즘 개론",
+            title: "Written Assignment 4",
+            timestamp: "2026-06-09 23:59",
+            status: "메일 분석",
+            detail: "메일에서 확인한 과제입니다."
+        )
+        let newMailExam = ServerRelaySyncItem(
+            id: "mail-exam-1",
+            kind: "exam",
+            course: "영미 단편소설",
+            title: "기말고사",
+            timestamp: "2026-06-17 09:00",
+            status: "메일 분석"
+        )
+
+        XCTAssertEqual(
+            ([klmsAssignment, sameMailAssignment, newMailExam].dedupedForServerRelay()).map(\.id),
+            ["klms-assignment-1", "mail-exam-1"]
+        )
+        XCTAssertEqual(
+            ([sameMailAssignment, klmsAssignment, newMailExam].dedupedForServerRelay()).map(\.id),
+            ["klms-assignment-1", "mail-exam-1"]
+        )
+        XCTAssertEqual(
+            [sameMailAssignment, newMailExam]
+                .unmatchedMailDashboardItems(comparedTo: [klmsAssignment])
+                .map(\.id),
+            ["mail-exam-1"]
+        )
+
+        var status = SanitizedRemoteStatus(assignments: 1, exams: 0)
+        status.applyMailDashboardItems([sameMailAssignment, newMailExam], baseItems: [klmsAssignment])
+
+        XCTAssertEqual(status.assignments, 1)
+        XCTAssertEqual(status.exams, 1)
+        XCTAssertEqual(status.calendarCreated, 1)
+    }
+
     func testServerRelaySyncItemDecodesOlderPayloadWithoutInteractionFlags() throws {
         let payload = """
         {

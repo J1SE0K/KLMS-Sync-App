@@ -959,7 +959,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("action: .calendarCreate"))
         XCTAssertTrue(ios.contains("activeCalendarAction(for change: CalendarChange)"))
         XCTAssertTrue(ios.contains("visibleCalendarChanges()"))
-        XCTAssertTrue(ios.contains("mailDashboardItems.compactMap(\\.mailCalendarChange)"))
+        XCTAssertTrue(ios.contains(".unmatchedMailDashboardItems(comparedTo: syncItems)"))
         XCTAssertTrue(ios.contains("resolvedCalendarChangeIDs"))
         XCTAssertTrue(ios.contains("recordResolvedCalendarChanges(itemActions)"))
         XCTAssertTrue(ios.contains("action.action.resolvesCalendarChange"))
