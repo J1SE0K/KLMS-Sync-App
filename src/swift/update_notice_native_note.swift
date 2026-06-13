@@ -4309,7 +4309,9 @@ func noticeDisplayModeName(_ mode: NoticeDisplayMode) -> String {
 }
 
 func shouldCollapseNoticeCourses(_ plan: RenderPlan) -> Bool {
-    initialNoticeCollapseEnabled && collapseNoticeCoursesEnabled && !plan.courseHeadingLineIndexes.isEmpty
+    initialNoticeCollapseEnabled
+        && !plan.courseHeadingLineIndexes.isEmpty
+        && (collapseNoticeCoursesEnabled || plan.mode == .archive)
 }
 
 func shouldCollapseNoticeItems(_ plan: RenderPlan) -> Bool {
