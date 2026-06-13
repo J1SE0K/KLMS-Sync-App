@@ -853,7 +853,7 @@ console.log(JSON.stringify({ off: runCase("0"), on: runCase("1") }));
         self.assertIn('NOTICE_NATIVE_ENABLE_BATCH_CHECKLIST_FORMAT": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_ENABLE_UI_STYLE_FORMAT": "1"', app_model)
         self.assertIn('NOTICE_NATIVE_VALIDATE_STYLE": "0"', app_model)
-        self.assertIn('NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": runtimeBoolConfigValue(.noticePreformattedPasteOnly, default: false)', app_model)
+        self.assertIn('NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": "0"', app_model)
         self.assertIn('NOTICE_NATIVE_PLAIN_TEXT_PASTE": runtimeBoolConfigValue(.noticePlainTextPaste, default: false)', app_model)
         self.assertIn('NOTICE_NATIVE_ALWAYS_CAPTURE_STATE": runtimeBoolConfigValue(.noticeAlwaysCaptureState, default: true)', app_model)
         self.assertIn('NOTICE_NATIVE_STABLE_NOOP_SKIP": runtimeBoolConfigValue(.noticeStableNoopSkip, default: true)', app_model)

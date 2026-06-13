@@ -827,8 +827,6 @@ FILE_DEEP_FETCH_SKIPPED=0
 if [[ -s "$MANIFEST_JSON" \
   && "$MANIFEST_LAYOUT_MATCHES" == "1" \
   && "${FILE_REFRESH_MODE:l}" != "full" \
-  && "$COURSE_CHANGED_COUNT" == "0" \
-  && "$ALL_WEEK_COURSE_CHANGED_COUNT" == "0" \
   && "$FILE_SEED_URL_LIST_CHANGED" == "0" ]] \
   && (( PREVIOUS_MANIFEST_COUNT > 0 )); then
   FILE_DEEP_FETCH_SKIPPED=1
@@ -836,9 +834,9 @@ if [[ -s "$MANIFEST_JSON" \
   NESTED_CHANGED_COUNT=0
   NESTED2_CHANGED_COUNT=0
   if (( TRACKED_FILE_MISSING_COUNT > 0 )); then
-    log_files_timing "deep file page fetch skipped reason=restore-missing-files-from-manifest manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT missing_files=$TRACKED_FILE_MISSING_COUNT"
+    log_files_timing "deep file page fetch skipped reason=restore-missing-files-from-manifest seed_urls_changed=$FILE_SEED_URL_LIST_CHANGED course_changed=$COURSE_CHANGED_COUNT all_week_changed=$ALL_WEEK_COURSE_CHANGED_COUNT manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT missing_files=$TRACKED_FILE_MISSING_COUNT"
   else
-    log_files_timing "deep file page fetch skipped reason=no-course-or-url-change manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT"
+    log_files_timing "deep file page fetch skipped reason=seed-urls-unchanged seed_urls_changed=$FILE_SEED_URL_LIST_CHANGED course_changed=$COURSE_CHANGED_COUNT all_week_changed=$ALL_WEEK_COURSE_CHANGED_COUNT manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT"
   fi
 else
 if is_truthy "$FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED" \
