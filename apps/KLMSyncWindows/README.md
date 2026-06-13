@@ -30,6 +30,7 @@ Windows companion app for the KLMS Sync server relay.
 - 참고: 메일 본문을 붙여넣어 과제, 시험, 공지, 파일 처리 대상을 자동 판독하는 기능은 현재 Mac/iPhone/iPad 앱에 먼저 반영되어 있다.
 - Windows 앱도 같은 UI 패턴으로 추가 구현할 때 `대시보드에 반영`은 `mailDashboardAdd`, Apple Calendar 수동 등록은 `calendarCreate` 서버 액션을 사용한다.
 - 메일 판독 결과를 대시보드에 반영하면 과제, 시험, 공지, 파일 상단 카운트와 상세 목록에도 같이 잡혀야 한다.
+- 메일 판독으로 등록한 시험은 별도 `메일 분석 항목`으로 분리하지 않고 일반 시험 목록에 합친다. 캘린더 진단에서는 `calendar.exam_count`(KLMS 관리 시험), `calendar.manual_exam_count`(메일 수동 등록 시험), `calendar.display_exam_count`(화면 표시 합계)를 구분해서 보여준다.
 
 ## 개발 실행
 

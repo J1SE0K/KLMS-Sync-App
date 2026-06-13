@@ -69,6 +69,8 @@ Windows 앱은 KLMS를 직접 읽지 않는다. Cloudflare 서버 릴레이의 s
 - 표시 항목은 제목, 과목, 감지된 일시, 신뢰도, 처리 대상, 추천 처리, 관련 KLMS 항목이다.
 - 분석 결과가 과제, 시험, 공지, 파일로 분류되면 `등록`, `수정`, `제거` 액션을 제공한다.
 - `등록`은 메일 항목을 상단 과제/시험/공지/파일 카운트와 상세 목록에 같이 반영한다.
+- 등록된 메일 항목은 별도 `메일 분석 항목` 분류로 보여주지 않는다. `kind=exam`이면 시험 목록, `kind=assignment`이면 과제 목록, `kind=notice`이면 공지 목록, `kind=file`이면 파일 목록에 기존 KLMS 항목과 같은 방식으로 섞어 보여준다.
+- 시험 메일 항목은 서버/앱 표시에서 일반 시험으로 다룬다. 예: EE488 메일 기말고사는 시험 카드와 시험 상세 목록의 3번째 항목으로 보여야 한다.
 - `수정`은 같은 메일 항목 ID를 유지한 채 분류, 제목, 과목, 일시, 설명, 첨부/링크 수를 바꾼 뒤 다시 반영한다. 같은 ID를 유지해야 중복 카운트가 생기지 않는다.
 - `제거`를 누르면 해당 메일 항목은 로컬 목록과 대시보드 카운트에서 빠지고, 서버 연결 상태에서는 Mac worker에도 제거 요청을 보낸다.
 - 서버 연결 상태에서는 등록/수정은 `mailDashboardAdd`, 제거는 `mailDashboardRemove` item action으로 sanitized 항목만 Mac worker에 전달한다.
@@ -78,6 +80,9 @@ Windows 앱은 KLMS를 직접 읽지 않는다. Cloudflare 서버 릴레이의 s
 - `calendarCreate` 메시지는 `CalendarEventEdit` JSON 형식의 제목, 시작, 종료, 장소만 포함한다.
 - Mac worker가 Apple Calendar 권한으로 실제 일정을 생성한다. Windows는 Apple Calendar에 직접 접근하지 않는다.
 - 캘린더 상세 항목 버튼은 `등록`, `수정`, `삭제`로 분리한다. `등록`은 `calendarCreate`, `수정`은 `calendarEdit`, `삭제`는 `calendarDelete` item action을 보낸다.
+- 상태 검사/진단에서 캘린더 시험 수는 두 층으로 보여준다. `calendar.exam_count`는 KLMS state가 직접 관리하는 시험 수, `calendar.manual_exam_count`는 메일 붙여넣기로 수동 등록한 시험 수, `calendar.display_exam_count`는 화면에 보여줄 합계다.
+- 사용자가 보는 시험 총합은 `status.exams` 또는 `sync-data`의 `kind=exam` 목록을 기준으로 하되, 진단 화면에서는 `KLMS 시험 2개 + 메일 등록 시험 1개 = 표시 시험 3개`처럼 출처를 설명한다.
+- `calendar_exam_count_matches_state`와 `calendar_result_exam_matches_state`가 OK이고 `manual_exam_count > 0`이면 오류가 아니다. 이 경우는 Mac Calendar에 수동 등록 시험이 추가로 있다는 뜻이다.
 - 요청을 보낸 뒤 Mac worker가 WebSocket 이벤트를 놓쳐도 몇 초 안에 fallback 확인으로 pending action을 처리한다는 전제의 UX를 둔다. 화면에는 먼저 `요청 전송됨`, 이후 `처리 중/완료/실패`를 표시한다.
 
 ## 서버 연결
@@ -114,5 +119,7 @@ Windows 앱은 KLMS를 직접 읽지 않는다. Cloudflare 서버 릴레이의 s
 - Mac 앱 패치가 들어가면 iPhone/iPad 반영 여부와 Windows 안내/라벨 업데이트를 같은 작업 범위에서 확인
 - 새 서버 액션이 생기면 Windows 앱 action label과 README에 먼저 반영
 - 메일 판독에서 과제/시험/공지/파일 분류가 생기면 대시보드 카운트와 상세 목록까지 반영
+- 메일 등록 시험과 KLMS 자동 수집 시험이 섞여 있을 때 시험 카운트/목록/진단이 서로 어긋나지 않는지 확인
+- 진단의 `manual_exam_count`, `display_exam_count` 필드를 지원하고, 기존 서버가 이 필드를 보내지 않으면 `display_exam_count = exam_count + manual_exam_count`로 보정
 - 과목명/제목 정제 테스트 추가: KLMS 메뉴 prefix, `[KLMS 헬프데스크]`, breadcrumb가 섞인 입력도 실제 과목명과 항목명만 표시
 - 지난 헬프데스크/시험 일정 테스트 추가: 기준 시각을 지난 항목은 active 캘린더 카운트와 목록에서 제외
