@@ -1823,37 +1823,87 @@ private struct CompanionStatusScreen: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         CompanionScreenContainer(title: "상태", model: model) {
-            Group {
-                RemoteStatusHeader(
-                    model: model,
-                    selectedCategory: $selectedDashboardPreview,
-                    onCategoryTap: { category in
-                        selectedChangeSummary = nil
-                        selectedDashboardPreview = category
-                    },
-                    selectedChangeSummary: selectedChangeSummary,
-                    onChangeSummaryTap: { kind in
-                        selectedDashboardPreview = nil
-                        selectedChangeSummary = kind
-                    }
-                )
-                if let kind = selectedChangeSummary {
-                    RemoteChangeSummaryDetailPanel(kind: kind, model: model)
-                        .id(kind)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+            if horizontalSizeClass == .regular {
+                HStack(alignment: .top, spacing: 18) {
+                    statusSummaryColumn
+                        .frame(minWidth: 320, idealWidth: 380, maxWidth: 440, alignment: .topLeading)
+                    statusDetailColumn
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                if let category = selectedDashboardPreview {
-                    DashboardCategoryInlineDetailPanel(
-                        category: category,
-                        model: model
-                    )
-                    .id(category)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    statusSummaryColumn
+                    compactStatusDetail
                 }
             }
+        }
+    }
+
+    private var statusSummaryColumn: some View {
+        RemoteStatusHeader(
+            model: model,
+            selectedCategory: $selectedDashboardPreview,
+            onCategoryTap: { category in
+                selectedChangeSummary = nil
+                selectedDashboardPreview = category
+            },
+            selectedChangeSummary: selectedChangeSummary,
+            onChangeSummaryTap: { kind in
+                selectedDashboardPreview = nil
+                selectedChangeSummary = kind
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var compactStatusDetail: some View {
+        if let kind = selectedChangeSummary {
+            RemoteChangeSummaryDetailPanel(kind: kind, model: model)
+                .id(kind)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+        if let category = selectedDashboardPreview {
+            DashboardCategoryInlineDetailPanel(
+                category: category,
+                model: model
+            )
+            .id(category)
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    @ViewBuilder
+    private var statusDetailColumn: some View {
+        if let kind = selectedChangeSummary {
+            RemoteChangeSummaryDetailPanel(kind: kind, model: model)
+                .id(kind)
+        } else if let category = selectedDashboardPreview ?? defaultDashboardCategory {
+            DashboardCategoryInlineDetailPanel(
+                category: category,
+                model: model
+            )
+            .id(category)
+        } else {
+            InfoBanner(message: "대시보드 항목을 선택하면 이 영역에서 자세한 내용을 확인할 수 있습니다.")
+        }
+    }
+
+    private var defaultDashboardCategory: DashboardMetricCategory? {
+        let preferred: [DashboardMetricCategory] = [
+            .files,
+            .assignments,
+            .notices,
+            .exams,
+            .helpDesk,
+            .calendar,
+            .quarantine
+        ]
+        return preferred.first { category in
+            category.value(from: model.dashboardStatus) > 0
         }
     }
 }
@@ -3004,10 +3054,10 @@ private struct RemoteStatusHeader: View {
 
     private var primaryMetricCategories: [DashboardMetricCategory] {
         [
-            .assignments,
-            .exams,
-            .notices,
             .files,
+            .assignments,
+            .notices,
+            .exams,
             .helpDesk,
         ].filter { $0.value(from: displayStatus) > 0 }
     }
@@ -3584,11 +3634,11 @@ private struct DashboardCategoryInlineDetailPanel: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.thinMaterial)
+        .background(Color.klmsCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(category.tint.opacity(0.22), lineWidth: 1)
+                .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
 
@@ -3775,11 +3825,11 @@ private struct RemoteChangeSummaryDetailPanel: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.thinMaterial)
+        .background(Color.klmsCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(kind.tint.opacity(0.24), lineWidth: 1)
+                .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
 
@@ -4583,10 +4633,10 @@ private struct MailAnalysisProcessView: View {
             }
             .buttonStyle(.plain)
             .padding(10)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(.primary.opacity(0.08), lineWidth: 1)
+                    .stroke(Color.klmsBorder, lineWidth: 1)
             )
         }
     }
@@ -9441,13 +9491,13 @@ private extension Color {
     static var klmsScreenBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.940, alpha: 1.0),
-            dark: UIColor(white: 0.010, alpha: 1.0)
+            light: UIColor(red: 0.973, green: 0.969, blue: 0.949, alpha: 1.0),
+            dark: UIColor(red: 0.063, green: 0.063, blue: 0.059, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.940, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 0.010, alpha: 1.0)
+            light: NSColor(red: 0.973, green: 0.969, blue: 0.949, alpha: 1.0),
+            dark: NSColor(red: 0.063, green: 0.063, blue: 0.059, alpha: 1.0)
         )
         #else
         return Color.white
@@ -9457,13 +9507,13 @@ private extension Color {
     static var klmsCardBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.985, alpha: 1.0),
-            dark: UIColor(white: 0.050, alpha: 1.0)
+            light: UIColor.white,
+            dark: UIColor(red: 0.114, green: 0.114, blue: 0.106, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.985, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 0.050, alpha: 1.0)
+            light: NSColor.white,
+            dark: NSColor(red: 0.114, green: 0.114, blue: 0.106, alpha: 1.0)
         )
         #else
         return Color.white
@@ -9473,13 +9523,13 @@ private extension Color {
     static var klmsSubtleCardBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.915, alpha: 1.0),
-            dark: UIColor(white: 0.120, alpha: 1.0)
+            light: UIColor(red: 0.925, green: 0.914, blue: 0.875, alpha: 1.0),
+            dark: UIColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.915, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 0.120, alpha: 1.0)
+            light: NSColor(red: 0.925, green: 0.914, blue: 0.875, alpha: 1.0),
+            dark: NSColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
         )
         #else
         return Color.gray.opacity(0.08)
@@ -9489,13 +9539,13 @@ private extension Color {
     static var klmsBorder: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.735, alpha: 1.0),
-            dark: UIColor(white: 0.260, alpha: 1.0)
+            light: UIColor(red: 0.843, green: 0.820, blue: 0.769, alpha: 1.0),
+            dark: UIColor(white: 1.0, alpha: 0.105)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.735, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 0.260, alpha: 1.0)
+            light: NSColor(red: 0.843, green: 0.820, blue: 0.769, alpha: 1.0),
+            dark: NSColor(white: 1.0, alpha: 0.105)
         )
         #else
         return Color.gray.opacity(0.18)
@@ -9505,13 +9555,13 @@ private extension Color {
     static var klmsCommandAccent: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
-            dark: UIColor(white: 0.980, alpha: 1.0)
+            light: UIColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
+            dark: UIColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.067, green: 0.067, blue: 0.067, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 0.980, alpha: 1.0)
+            light: NSColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
+            dark: NSColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
         )
         #else
         return Color.gray
@@ -9521,13 +9571,13 @@ private extension Color {
     static var klmsCommandBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.880, alpha: 1.0),
-            dark: UIColor(white: 0.200, alpha: 1.0)
+            light: UIColor(red: 0.925, green: 0.914, blue: 0.875, alpha: 1.0),
+            dark: UIColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.880, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 0.200, alpha: 1.0)
+            light: NSColor(red: 0.925, green: 0.914, blue: 0.875, alpha: 1.0),
+            dark: NSColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
         )
         #else
         return Color.gray.opacity(0.08)
@@ -9537,13 +9587,13 @@ private extension Color {
     static var klmsCommandBorder: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.670, alpha: 1.0),
-            dark: UIColor(white: 0.360, alpha: 1.0)
+            light: UIColor(red: 0.843, green: 0.820, blue: 0.769, alpha: 1.0),
+            dark: UIColor(white: 1.0, alpha: 0.160)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.670, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 0.360, alpha: 1.0)
+            light: NSColor(red: 0.843, green: 0.820, blue: 0.769, alpha: 1.0),
+            dark: NSColor(white: 1.0, alpha: 0.160)
         )
         #else
         return Color.klmsCommandAccent.opacity(0.30)
@@ -9553,13 +9603,13 @@ private extension Color {
     static var klmsCommandButtonBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.760, alpha: 1.0),
-            dark: UIColor(white: 0.230, alpha: 1.0)
+            light: UIColor(red: 0.925, green: 0.914, blue: 0.875, alpha: 1.0),
+            dark: UIColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.760, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 0.230, alpha: 1.0)
+            light: NSColor(red: 0.925, green: 0.914, blue: 0.875, alpha: 1.0),
+            dark: NSColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
         )
         #else
         return Color.black.opacity(0.82)
@@ -9569,13 +9619,13 @@ private extension Color {
     static var klmsPrimaryCommandButtonBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.950, alpha: 1.0),
-            dark: UIColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
+            light: UIColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 1.0),
+            dark: UIColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.950, alpha: 1.0),
-            dark: NSColor(red: 0.910, green: 0.851, blue: 0.706, alpha: 1.0)
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 1.0),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 1.0)
         )
         #else
         return Color(red: 0.784, green: 0.722, blue: 0.573)
@@ -9585,13 +9635,13 @@ private extension Color {
     static var klmsCommandButtonForeground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.075, alpha: 1.0),
-            dark: UIColor(red: 0.055, green: 0.049, blue: 0.039, alpha: 1.0)
+            light: UIColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0),
+            dark: UIColor(red: 0.082, green: 0.075, blue: 0.055, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.075, alpha: 1.0),
-            dark: NSColor(red: 0.055, green: 0.049, blue: 0.039, alpha: 1.0)
+            light: NSColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0),
+            dark: NSColor(red: 0.082, green: 0.075, blue: 0.055, alpha: 1.0)
         )
         #else
         return Color.white
@@ -9601,13 +9651,13 @@ private extension Color {
     static var klmsSecondaryCommandButtonForeground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.075, alpha: 1.0),
-            dark: UIColor(white: 1.000, alpha: 1.0)
+            light: UIColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
+            dark: UIColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.075, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 1.000, alpha: 1.0)
+            light: NSColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
+            dark: NSColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
         )
         #else
         return Color.white
@@ -9617,13 +9667,13 @@ private extension Color {
     static var klmsPrimaryCommandButtonBorder: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.600, alpha: 1.0),
-            dark: UIColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
+            light: UIColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 1.0),
+            dark: UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.600, alpha: 1.0),
-            dark: NSColor(red: 0.500, green: 0.430, blue: 0.270, alpha: 1.0)
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 1.0),
+            dark: NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0)
         )
         #else
         return Color(red: 0.500, green: 0.430, blue: 0.270)
@@ -9633,13 +9683,13 @@ private extension Color {
     static var klmsCommandButtonBorder: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(white: 0.650, alpha: 1.0),
-            dark: UIColor(white: 0.420, alpha: 1.0)
+            light: UIColor(red: 0.843, green: 0.820, blue: 0.769, alpha: 1.0),
+            dark: UIColor(white: 1.0, alpha: 0.160)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(calibratedWhite: 0.650, alpha: 1.0),
-            dark: NSColor(calibratedWhite: 0.420, alpha: 1.0)
+            light: NSColor(red: 0.843, green: 0.820, blue: 0.769, alpha: 1.0),
+            dark: NSColor(white: 1.0, alpha: 0.160)
         )
         #else
         return Color.black.opacity(0.92)
