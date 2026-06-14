@@ -1311,7 +1311,7 @@ private struct NoticeRowView: View {
                         if fresh {
                             Label("최근", systemImage: "sparkle")
                                 .font(.caption2)
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(Color.klmsMacCommandAccent)
                         }
                         if hidden {
                             Label("숨김", systemImage: "eye.slash")
@@ -1848,7 +1848,7 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsMacCommandButtonForeground
         case .destructive:
-            return .red
+            return Color.klmsMacDangerBorder
         case .success:
             return Color.klmsMacSecondaryCommandButtonForeground
         case .accent(let color):
@@ -2290,7 +2290,7 @@ private struct FileRowView: View {
                         if item.isRecent {
                             Label("최근", systemImage: "sparkle")
                                 .font(.caption2)
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(Color.klmsMacCommandAccent)
                         }
                         if hidden {
                             Label("숨김", systemImage: "eye.slash")
@@ -2589,9 +2589,9 @@ private struct CalendarActionGuideView: View {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "calendar.badge.exclamationmark")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.klmsMacWarningBorder)
                     .frame(width: 28, height: 28)
-                    .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                    .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 3) {
                     Text("캘린더 일정")
                         .font(.caption.weight(.semibold))
@@ -2606,16 +2606,16 @@ private struct CalendarActionGuideView: View {
             CalendarActionButton(
                 title: "캘린더에서 열기",
                 systemImage: "calendar",
-                tint: .orange
+                tint: Color.klmsMacWarningBorder
             ) {
                 openSystemCalendar()
             }
         }
         .padding(10)
-        .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.18), lineWidth: 1)
+                .stroke(Color.klmsMacWarningBorder.opacity(0.28), lineWidth: 1)
         }
     }
 
@@ -2825,7 +2825,7 @@ private struct CalendarChangeRowView: View {
                     if !change.parseError.isEmpty {
                         Text("파싱 오류: \(change.parseError)")
                             .font(.caption2)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.klmsMacWarningBorder)
                             .lineLimit(2)
                     }
                     CalendarChangeExplanationView(change: change)
@@ -4645,10 +4645,10 @@ private struct CalendarChangeExplanationView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+        .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 7))
         .overlay {
             RoundedRectangle(cornerRadius: 7)
-                .stroke(Color.orange.opacity(0.14), lineWidth: 1)
+                .stroke(Color.klmsMacWarningBorder.opacity(0.24), lineWidth: 1)
         }
     }
 }

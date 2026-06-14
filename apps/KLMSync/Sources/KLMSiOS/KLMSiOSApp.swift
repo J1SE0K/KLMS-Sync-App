@@ -1643,22 +1643,35 @@ struct UserAlert: Identifiable {
 
 private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     case status
-    case run
-    case connection
+    case files
+    case notices
+    case tasks
+    case calendar
     case history
+    case settings
 
     var id: String { rawValue }
+
+    static var compactTabs: [CompanionAppSection] {
+        [.status, .files, .history, .settings]
+    }
 
     var title: String {
         switch self {
         case .status:
             return "대시보드"
-        case .run:
-            return "실행"
-        case .connection:
-            return "연결"
+        case .files:
+            return "파일"
+        case .notices:
+            return "공지"
+        case .tasks:
+            return "과제/시험"
+        case .calendar:
+            return "캘린더"
         case .history:
             return "로그"
+        case .settings:
+            return "설정"
         }
     }
 
@@ -1666,12 +1679,18 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .status:
             return "gauge"
-        case .run:
-            return "play.circle"
-        case .connection:
-            return "macbook.and.iphone"
+        case .files:
+            return "folder"
+        case .notices:
+            return "note.text"
+        case .tasks:
+            return "checklist"
+        case .calendar:
+            return "calendar"
         case .history:
             return "clock.arrow.circlepath"
+        case .settings:
+            return "gearshape"
         }
     }
 }
@@ -1709,21 +1728,11 @@ private struct CompanionTabRootView: View {
 
     var body: some View {
         TabView {
-            CompanionSectionContent(section: .status, model: model)
-                .tabItem {
-                    Label(CompanionAppSection.status.title, systemImage: CompanionAppSection.status.systemImage)
-                }
-            CompanionSectionContent(section: .run, model: model)
-                .tabItem {
-                    Label(CompanionAppSection.run.title, systemImage: CompanionAppSection.run.systemImage)
-                }
-            CompanionSectionContent(section: .connection, model: model)
-                .tabItem {
-                    Label(CompanionAppSection.connection.title, systemImage: CompanionAppSection.connection.systemImage)
-                }
-            CompanionSectionContent(section: .history, model: model)
-                .tabItem {
-                    Label(CompanionAppSection.history.title, systemImage: CompanionAppSection.history.systemImage)
+            ForEach(CompanionAppSection.compactTabs) { section in
+                CompanionSectionContent(section: section, model: model)
+                    .tabItem {
+                        Label(section.title, systemImage: section.systemImage)
+                    }
             }
         }
         .klmsTabChrome()
@@ -1812,12 +1821,18 @@ private struct CompanionSectionContent: View {
         switch section {
         case .status:
             CompanionStatusScreen(model: model)
-        case .run:
-            CompanionRunScreen(model: model)
-        case .connection:
-            CompanionConnectionScreen(model: model)
+        case .files:
+            CompanionDashboardCategoryScreen(title: "파일", category: .files, model: model)
+        case .notices:
+            CompanionDashboardCategoryScreen(title: "공지", category: .notices, model: model)
+        case .tasks:
+            CompanionTasksScreen(model: model)
+        case .calendar:
+            CompanionDashboardCategoryScreen(title: "캘린더", category: .calendar, model: model)
         case .history:
             CompanionHistoryScreen(model: model)
+        case .settings:
+            CompanionSettingsScreen(model: model)
         }
     }
 }
@@ -1829,7 +1844,7 @@ private struct CompanionStatusScreen: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        CompanionScreenContainer(title: "상태", model: model) {
+        CompanionScreenContainer(title: "대시보드", model: model) {
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 18) {
                     statusSummaryColumn
@@ -1847,19 +1862,37 @@ private struct CompanionStatusScreen: View {
     }
 
     private var statusSummaryColumn: some View {
-        RemoteStatusHeader(
-            model: model,
-            selectedCategory: $selectedDashboardPreview,
-            onCategoryTap: { category in
-                selectedChangeSummary = nil
-                selectedDashboardPreview = category
-            },
-            selectedChangeSummary: selectedChangeSummary,
-            onChangeSummaryTap: { kind in
-                selectedDashboardPreview = nil
-                selectedChangeSummary = kind
-            }
-        )
+        VStack(alignment: .leading, spacing: 12) {
+            RemoteStatusHeader(
+                model: model,
+                selectedCategory: $selectedDashboardPreview,
+                onCategoryTap: { category in
+                    selectedChangeSummary = nil
+                    selectedDashboardPreview = category
+                },
+                selectedChangeSummary: selectedChangeSummary,
+                onChangeSummaryTap: { kind in
+                    selectedDashboardPreview = nil
+                    selectedChangeSummary = kind
+                },
+                showsMetrics: false,
+                showsChangeSummary: false
+            )
+            RemoteDashboardSyncCard(model: model, compact: horizontalSizeClass != .regular)
+            RemoteDashboardMetricOverview(
+                model: model,
+                selectedCategory: $selectedDashboardPreview,
+                onCategoryTap: { category in
+                    selectedChangeSummary = nil
+                    selectedDashboardPreview = category
+                },
+                selectedChangeSummary: selectedChangeSummary,
+                onChangeSummaryTap: { kind in
+                    selectedDashboardPreview = nil
+                    selectedChangeSummary = kind
+                }
+            )
+        }
     }
 
     @ViewBuilder
@@ -1911,30 +1944,44 @@ private struct CompanionStatusScreen: View {
     }
 }
 
-private struct CompanionRunScreen: View {
+private struct CompanionDashboardCategoryScreen: View {
+    var title: String
+    var category: DashboardMetricCategory
     @ObservedObject var model: CompanionModel
 
     var body: some View {
-        CompanionScreenContainer(title: "실행", model: model) {
-            RemoteCommandPanel(model: model, compact: false)
-            RemoteCancelControl(model: model, compact: false)
-            RemoteSettingsPanel(model: model)
-            RemoteDiagnosticPanel(model: model)
-            InfoBanner(message: "iPhone/iPad는 KLMS를 직접 읽지 않고 Mac 앱에 실행 요청만 보냅니다. Cloudflare 서버 릴레이를 사용하면 같은 Wi‑Fi에 있지 않아도 요청할 수 있지만, 실제 동기화는 Mac 앱이 켜져 있을 때만 실행됩니다.")
+        CompanionScreenContainer(title: title, model: model) {
+            DashboardCategoryInlineDetailPanel(category: category, model: model)
         }
     }
 }
 
-private struct CompanionConnectionScreen: View {
+private struct CompanionTasksScreen: View {
     @ObservedObject var model: CompanionModel
 
     var body: some View {
-        CompanionScreenContainer(title: "서버 연결", model: model) {
+        CompanionScreenContainer(title: "과제/시험", model: model) {
+            DashboardCategoryInlineDetailPanel(category: .assignments, model: model)
+            DashboardCategoryInlineDetailPanel(category: .exams, model: model)
+            if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
+                DashboardCategoryInlineDetailPanel(category: .helpDesk, model: model)
+            }
+        }
+    }
+}
+
+private struct CompanionSettingsScreen: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        CompanionScreenContainer(title: "설정", model: model) {
             ServerRelayConnectionPanel(model: model)
             CompanionAppearancePanel()
             if !model.serverRelayConfigured {
                 InfoBanner(message: model.remoteAvailabilityMessage)
             }
+            RemoteSettingsPanel(model: model)
+            RemoteDiagnosticPanel(model: model)
             RemotePrivacyNote()
         }
     }
@@ -2066,6 +2113,7 @@ private struct CompanionScreenContainer<Content: View>: View {
         .navigationTitle(title)
         .klmsNavigationTitleMode()
         .klmsNavigationChrome()
+        .klmsContentNavigationChrome()
     }
 }
 
@@ -2338,11 +2386,11 @@ private struct ConnectionNoticeBanner: View {
     private var tint: Color {
         switch succeeded {
         case .some(true):
-            return .green
+            return .klmsSuccessBorder
         case .some(false):
-            return .orange
+            return .klmsWarningBorder
         case nil:
-            return .blue
+            return .klmsCommandAccent
         }
     }
 }
@@ -2921,6 +2969,8 @@ private struct RemoteStatusHeader: View {
     var onCategoryTap: (DashboardMetricCategory) -> Void = { _ in }
     var selectedChangeSummary: RemoteChangeSummaryKind?
     var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void = { _ in }
+    var showsMetrics = true
+    var showsChangeSummary = true
 
     private let columns = [
         GridItem(.adaptive(minimum: 96), spacing: 8),
@@ -2956,10 +3006,12 @@ private struct RemoteStatusHeader: View {
                 }
             }
 
-            metricSection("주요 항목", categories: primaryMetricCategories)
-            metricSection("확인 필요", categories: attentionMetricCategories)
+            if showsMetrics {
+                metricSection("주요 항목", categories: primaryMetricCategories)
+                metricSection("확인 필요", categories: attentionMetricCategories)
+            }
 
-            if hasVisibleChangeSummary {
+            if showsChangeSummary && hasVisibleChangeSummary {
                 Divider()
                 RemoteDashboardChangeSummary(
                     status: displayStatus,
@@ -3014,13 +3066,16 @@ private struct RemoteStatusHeader: View {
     }
 
     private var primaryMetricCategories: [DashboardMetricCategory] {
-        [
+        let required: [DashboardMetricCategory] = [
             .files,
             .assignments,
             .notices,
             .exams,
-            .helpDesk,
+        ]
+        let optional: [DashboardMetricCategory] = [
+            .helpDesk
         ].filter { $0.value(from: displayStatus) > 0 }
+        return required + optional
     }
 
     private var attentionMetricCategories: [DashboardMetricCategory] {
@@ -3103,23 +3158,23 @@ private struct RemoteStatusHeader: View {
 
     private var statusColor: Color {
         if model.status.authDigits != nil {
-            return .orange
+            return .klmsWarningBorder
         }
         if model.status.loginRequired {
-            return .orange
+            return .klmsWarningBorder
         }
         if model.shouldShowAuthCompletion {
-            return .green
+            return .klmsSuccessBorder
         }
         switch model.latestDisplayStatus {
         case .pending, .running:
-            return .blue
+            return .klmsCommandAccent
         case .completed:
-            return .green
+            return .klmsSuccessBorder
         case .cancelled:
             return Color.klmsSecondaryText
         case .failed, .macUnavailable:
-            return .orange
+            return .klmsWarningBorder
         case nil:
             return Color.klmsSecondaryText
         }
@@ -3127,25 +3182,250 @@ private struct RemoteStatusHeader: View {
 
     private var statusBackground: Color {
         if model.status.authDigits != nil {
-            return Color.orange.opacity(0.10)
+            return Color.klmsWarningBackground
         }
         if model.status.loginRequired {
-            return Color.orange.opacity(0.08)
+            return Color.klmsWarningBackground
         }
         if model.shouldShowAuthCompletion {
-            return Color.green.opacity(0.08)
+            return Color.klmsSuccessBackground
         }
         switch model.latestDisplayStatus {
         case .pending, .running:
-            return Color.blue.opacity(0.08)
+            return Color.klmsCommandBackground
         case .completed:
-            return Color.green.opacity(0.06)
+            return Color.klmsSuccessBackground
         case .cancelled:
             return Color.klmsSubtleCardBackground
         case .failed, .macUnavailable:
-            return Color.orange.opacity(0.08)
+            return Color.klmsWarningBackground
         case nil:
             return Color.klmsSubtleCardBackground
+        }
+    }
+}
+
+private struct RemoteDashboardSyncCard: View {
+    @ObservedObject var model: CompanionModel
+    var compact: Bool
+
+    private let secondaryCommands: [RemoteCommandKind] = [.filesSync, .coreSync, .noticeSync]
+    private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("동기화")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(Color.klmsPrimaryText)
+                    Text("Mac 앱에 실행 요청을 보냅니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
+                Spacer(minLength: 8)
+                syncStateChip
+            }
+
+            dashboardPrimaryButton
+
+            LazyVGrid(columns: secondaryColumns, spacing: 8) {
+                ForEach(secondaryCommands, id: \.self) { command in
+                    dashboardSecondaryButton(command)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
+    }
+
+    private var syncStateChip: some View {
+        Label(syncStateTitle, systemImage: syncStateImage)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(syncStateColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(syncStateColor.opacity(0.13), in: Capsule())
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+    }
+
+    private var dashboardPrimaryButton: some View {
+        Button {
+            Task {
+                await model.createCommand(.fullSync)
+            }
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Text("전체 동기화")
+                    .font(.title3.weight(.heavy))
+                Spacer(minLength: 0)
+                Image(systemName: "play.fill")
+                    .font(.headline.weight(.black))
+            }
+            .foregroundStyle(Color.klmsCommandButtonForeground)
+            .frame(maxWidth: .infinity, minHeight: compact ? 56 : 60, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.klmsPrimaryCommandButtonBorder, lineWidth: 1)
+            }
+        }
+        .buttonStyle(KLMSCardButtonStyle())
+        .opacity(commandDisabled ? 0.48 : 1)
+        .disabled(commandDisabled)
+        .accessibilityLabel("전체 동기화 실행")
+        .accessibilityHint("Mac 앱에 전체 동기화 실행 요청을 보냅니다.")
+    }
+
+    private func dashboardSecondaryButton(_ kind: RemoteCommandKind) -> some View {
+        Button {
+            Task {
+                await model.createCommand(kind)
+            }
+        } label: {
+            Text(shortTitle(for: kind))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryCommandButtonForeground)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, minHeight: compact ? 42 : 46, alignment: .center)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 9)
+                .background(Color.klmsCommandButtonBackground, in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.klmsCommandButtonBorder, lineWidth: 1)
+                }
+        }
+        .buttonStyle(KLMSCardButtonStyle())
+        .opacity(commandDisabled ? 0.48 : 1)
+        .disabled(commandDisabled)
+        .accessibilityLabel("\(kind.displayName) 실행")
+        .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
+    }
+
+    private var commandDisabled: Bool {
+        !model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest
+    }
+
+    private var syncStateTitle: String {
+        if model.hasInFlightRequest || model.status.phase == "running" {
+            return model.activeRequestLabel
+        }
+        return model.isRemoteAvailable ? "준비됨" : "연결 필요"
+    }
+
+    private var syncStateImage: String {
+        if model.hasInFlightRequest || model.status.phase == "running" {
+            return "arrow.triangle.2.circlepath"
+        }
+        return model.isRemoteAvailable ? "checkmark.circle" : "exclamationmark.triangle"
+    }
+
+    private var syncStateColor: Color {
+        if model.hasInFlightRequest || model.status.phase == "running" {
+            return Color.klmsCommandAccent
+        }
+        return model.isRemoteAvailable ? Color.klmsSecondaryText : Color.klmsWarningBorder
+    }
+
+    private func shortTitle(for kind: RemoteCommandKind) -> String {
+        switch kind {
+        case .filesSync:
+            return "파일"
+        case .coreSync:
+            return "과제/시험"
+        case .noticeSync:
+            return "공지"
+        default:
+            return kind.displayName
+        }
+    }
+}
+
+private struct RemoteDashboardMetricOverview: View {
+    @ObservedObject var model: CompanionModel
+    @Binding var selectedCategory: DashboardMetricCategory?
+    var onCategoryTap: (DashboardMetricCategory) -> Void
+    var selectedChangeSummary: RemoteChangeSummaryKind?
+    var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 132), spacing: 8),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            metricSection("주요 항목", categories: primaryMetricCategories)
+            metricSection("확인 필요", categories: attentionMetricCategories)
+
+            if hasVisibleChangeSummary {
+                RemoteDashboardChangeSummary(
+                    status: displayStatus,
+                    hasFileCleanupDetails: hasFileCleanupDetails,
+                    selectedKind: selectedChangeSummary,
+                    onSelect: onChangeSummaryTap
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func metricSection(_ title: String, categories: [DashboardMetricCategory]) -> some View {
+        if !categories.isEmpty {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    ForEach(categories) { category in
+                        RemoteMetricTile(
+                            category.title,
+                            category.value(from: displayStatus),
+                            systemImage: category.systemImage,
+                            isSelected: selectedCategory == category
+                        ) {
+                            selectedCategory = category
+                            onCategoryTap(category)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var displayStatus: SanitizedRemoteStatus {
+        model.dashboardStatus
+    }
+
+    private var primaryMetricCategories: [DashboardMetricCategory] {
+        let required: [DashboardMetricCategory] = [.files, .assignments, .notices, .exams]
+        let optional: [DashboardMetricCategory] = [.helpDesk].filter { $0.value(from: displayStatus) > 0 }
+        return required + optional
+    }
+
+    private var attentionMetricCategories: [DashboardMetricCategory] {
+        [.quarantine, .calendar].filter { $0.value(from: displayStatus) > 0 }
+    }
+
+    private var hasFileCleanupDetails: Bool {
+        model.dryRunReports.contains { report in
+            report.scope == "files"
+                && (report.wouldPrune > 0 || report.wouldPruneCourseFiles > 0 || report.wouldPruneArchive > 0 || report.wouldDelete > 0)
+        }
+    }
+
+    private var hasVisibleChangeSummary: Bool {
+        RemoteChangeSummaryKind.allCases.contains { kind in
+            guard kind.value(from: displayStatus) > 0 else { return false }
+            return kind != .fileCleanup || hasFileCleanupDetails
         }
     }
 }
@@ -3463,7 +3743,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsCommandButtonForeground
         case .destructive:
-            return .red
+            return Color.klmsDangerBorder
         case .success:
             return Color.klmsSecondaryCommandButtonForeground
         case .accent(let color):
@@ -5734,9 +6014,9 @@ private struct RemoteCalendarActionPanel: View {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.headline.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.klmsWarningBorder)
                     .frame(width: 28, height: 28)
-                    .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 7))
+                    .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 3) {
                     Text("캘린더 일정")
                         .font(.caption.weight(.semibold))
@@ -5997,7 +6277,7 @@ private struct CalendarChangeExplanationPanel: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.orange.opacity(0.08))
+        .background(Color.klmsWarningBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
@@ -7564,11 +7844,11 @@ private struct RemoteStageDurationSummaryView: View {
     private func tint(for stage: String) -> Color {
         switch stage {
         case "core":
-            return .orange
+            return Color.klmsWarningBorder
         case "notice":
-            return .brown
+            return Color.klmsCommandAccent
         case "files":
-            return .blue
+            return Color.klmsSecondaryText
         default:
             return Color.klmsSecondaryText
         }
@@ -7608,7 +7888,7 @@ private struct RemoteCancelControl: View {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "stop.circle.fill")
                         .font(.title2)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color.klmsDangerBorder)
                         .frame(width: 30, height: 30)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(title)
@@ -7639,11 +7919,11 @@ private struct RemoteCancelControl: View {
                 .accessibilityHint("Mac 앱에 현재 실행 중인 KLMS 동기화를 중단하라고 요청합니다.")
             }
             .padding(14)
-            .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsDangerBackground, in: RoundedRectangle(cornerRadius: 8))
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.red.opacity(0.22), lineWidth: 1)
+                    .stroke(Color.klmsDangerBorder.opacity(0.42), lineWidth: 1)
             )
         }
     }
@@ -7736,7 +8016,7 @@ private struct RemoteVerifySummaryPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: issueChecks.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(issueChecks.isEmpty ? .green : .orange)
+                    .foregroundStyle(issueChecks.isEmpty ? Color.klmsSuccessBorder : Color.klmsWarningBorder)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("상태 검사 해설")
                         .font(.subheadline.weight(.semibold))
@@ -7868,20 +8148,20 @@ private struct RemoteVerifyCheckRow: View {
 
     private var tint: Color {
         if ["fail", "failed", "error"].contains(status) {
-            return .red
+            return Color.klmsDangerBorder
         }
         if ["warn", "warning"].contains(status) {
-            return .orange
+            return Color.klmsWarningBorder
         }
-        return .green
+        return Color.klmsSuccessBorder
     }
 
     private var rowBackground: Color {
         if ["fail", "failed", "error"].contains(status) {
-            return Color.red.opacity(0.08)
+            return Color.klmsDangerBackground
         }
         if ["warn", "warning"].contains(status) {
-            return Color.orange.opacity(0.10)
+            return Color.klmsWarningBackground
         }
         return Color.klmsCardBackground
     }
@@ -8354,18 +8634,18 @@ private struct RemoteLogSummaryPanel: View {
 
     private var statusTint: Color {
         if model.status.authDigits != nil || model.status.loginRequired {
-            return .orange
+            return Color.klmsWarningBorder
         }
         if model.hasInFlightRequest || model.status.phase == "running" {
             return .klmsCommandAccent
         }
         if model.latestDisplayStatus == .failed || model.latestDisplayStatus == .macUnavailable {
-            return .orange
+            return Color.klmsWarningBorder
         }
         if model.latestDisplayStatus == .cancelled {
             return Color.klmsSecondaryText
         }
-        return .green
+        return Color.klmsSuccessBorder
     }
 
     private var recentCommandValue: String {
@@ -8402,11 +8682,11 @@ private struct RemoteLogSummaryPanel: View {
         case .pending, .running:
             return .klmsCommandAccent
         case .completed:
-            return .green
+            return Color.klmsSuccessBorder
         case .cancelled:
             return Color.klmsSecondaryText
         case .failed, .macUnavailable:
-            return .orange
+            return Color.klmsWarningBorder
         case nil:
             return Color.klmsSecondaryText
         }
@@ -8450,9 +8730,9 @@ private struct RemoteLogSummaryPanel: View {
         case .pending, .running:
             return .klmsCommandAccent
         case .completed:
-            return .green
+            return Color.klmsSuccessBorder
         case .failed, .macUnavailable:
-            return .orange
+            return Color.klmsWarningBorder
         case nil:
             return Color.klmsSecondaryText
         }
@@ -8911,11 +9191,11 @@ private struct ServerRequestLogRow: View {
     private var tint: Color {
         switch entry.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "failed", "rejected", "error":
-            return .orange
+            return Color.klmsWarningBorder
         case "running":
-            return .blue
+            return Color.klmsCommandAccent
         default:
-            return .green
+            return Color.klmsSuccessBorder
         }
     }
 }
@@ -9010,11 +9290,11 @@ private struct RemoteFileAccessRequestRow: View {
     private var tint: Color {
         switch request.status {
         case .pending, .running:
-            return .blue
+            return Color.klmsCommandAccent
         case .completed:
-            return .green
+            return Color.klmsSuccessBorder
         case .failed, .macUnavailable:
-            return .orange
+            return Color.klmsWarningBorder
         }
     }
 }
@@ -9098,11 +9378,11 @@ private struct CompanionReadableLogHighlightsView: View {
     private func tint(for level: String) -> Color {
         switch level {
         case "error", "warning", "auth":
-            return .orange
+            return Color.klmsWarningBorder
         case "success":
-            return .green
+            return Color.klmsSuccessBorder
         case "summary":
-            return .blue
+            return Color.klmsCommandAccent
         default:
             return Color.klmsSecondaryText
         }
@@ -9285,16 +9565,16 @@ private struct RemoteCommandRow: View {
                     if let authDigits = command.summary.authDigits {
                         Text("인증 \(authDigits)")
                             .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.klmsWarningBorder)
                     } else if command.displayStatus().isInFlight,
                               let authStatusMessage = command.summary.authStatusMessage {
                         Text(authStatusMessage)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(Color.klmsSuccessBorder)
                     } else if command.loginRequired {
                         Text("로그인 필요")
                             .font(.caption2)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Color.klmsWarningBorder)
                     } else if let exitCode = command.lastExitCode {
                         Text("종료 \(exitCode)")
                             .font(.caption2.monospacedDigit())
@@ -9533,6 +9813,15 @@ private extension View {
         self
             .toolbarBackground(Color.klmsScreenBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func klmsContentNavigationChrome() -> some View {
+        #if os(iOS)
+        self.toolbar(.hidden, for: .navigationBar)
         #else
         self
         #endif

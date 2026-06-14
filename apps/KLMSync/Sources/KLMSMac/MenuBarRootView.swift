@@ -199,7 +199,7 @@ private struct DashboardTopBarView: View {
             return .klmsMacCommandAccent
         }
         if model.snapshot.needsAttention {
-            return .orange
+            return .klmsMacWarningBorder
         }
         return .klmsMacSecondaryText
     }
@@ -315,16 +315,16 @@ private struct MacAlertBannerView: View {
 
     private var bannerTint: Color {
         if model.currentAuthDigits != nil {
-            return .orange
+            return .klmsMacWarningBorder
         }
         if model.authStatusMessage?.nilIfBlank != nil {
-            return .green
+            return .klmsMacSuccessBorder
         }
         if model.runningCommand != nil {
             return .klmsMacCommandAccent
         }
         if model.snapshot.needsAttention || model.snapshot.syncReport == nil {
-            return .orange
+            return .klmsMacWarningBorder
         }
         return .klmsMacCommandAccent
     }
@@ -348,20 +348,20 @@ private struct MacAlertBannerView: View {
             return Color.klmsMacCommandButtonForeground
         }
         if model.snapshot.needsAttention || model.snapshot.syncReport == nil {
-            return .orange
+            return Color.klmsMacWarningBorder
         }
         return Color.klmsMacPrimaryText
     }
 
     private var chipBackground: Color {
         if model.currentAuthDigits != nil {
-            return .orange.opacity(0.18)
+            return Color.klmsMacWarningBackground
         }
         if model.runningCommand != nil {
             return Color.klmsMacPrimaryCommandButtonBackground
         }
         if model.snapshot.needsAttention || model.snapshot.syncReport == nil {
-            return .orange.opacity(0.12)
+            return Color.klmsMacWarningBackground
         }
         return Color.klmsMacSubtleCardBackground
     }
@@ -488,7 +488,7 @@ private struct QuickStatusStripView: View {
             StatusChipView(
                 title: "공지 체크리스트",
                 systemImage: "checklist.checked",
-                color: .blue
+                color: .klmsMacCommandAccent
             )
             StatusChipView(
                 title: lastRunText,
@@ -536,9 +536,9 @@ private struct QuickStatusStripView: View {
             if result.wasCancelled {
                 return .klmsMacSecondaryText
             }
-            return result.succeeded ? .green : .orange
+            return result.succeeded ? .klmsMacSuccessBorder : .klmsMacWarningBorder
         }
-        return model.snapshot.syncReport == nil ? .klmsMacSecondaryText : .blue
+        return model.snapshot.syncReport == nil ? .klmsMacSecondaryText : .klmsMacCommandAccent
     }
 }
 
@@ -693,18 +693,18 @@ private struct ExternalIntegrationStatusView: View {
 
     private func summaryColor(for verify: VerifyResult?) -> Color {
         if model.runningCommand == .verify {
-            return .blue
+            return .klmsMacCommandAccent
         }
         guard let verify else {
             return .klmsMacSecondaryText
         }
         switch verify.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "ok":
-            return .green
+            return .klmsMacSuccessBorder
         case "warn", "warning":
-            return .orange
+            return .klmsMacWarningBorder
         case "fail", "failed", "error":
-            return .red
+            return .klmsMacDangerBorder
         default:
             return .klmsMacSecondaryText
         }
@@ -933,13 +933,13 @@ private enum IntegrationHealth {
     var color: Color {
         switch self {
         case .ok:
-            .green
+            .klmsMacSuccessBorder
         case .warning:
-            .orange
+            .klmsMacWarningBorder
         case .unknown:
             .klmsMacSecondaryText
         case .running:
-            .blue
+            .klmsMacCommandAccent
         }
     }
 }
@@ -1276,12 +1276,12 @@ private struct LogSummaryPanelView: View {
             return .klmsMacSecondaryText
         }
         if currentRemoteCommand?.displayStatus() == .failed || currentRemoteCommand?.displayStatus() == .macUnavailable {
-            return .orange
+            return .klmsMacWarningBorder
         }
         if currentRemoteCommand?.displayStatus().isInFlight == true {
-            return .blue
+            return .klmsMacCommandAccent
         }
-        return model.serverRelayEnabled ? .green : .klmsMacSecondaryText
+        return model.serverRelayEnabled ? .klmsMacSuccessBorder : .klmsMacSecondaryText
     }
 
     private var fileRequestValue: String {
@@ -1322,11 +1322,11 @@ private struct LogSummaryPanelView: View {
     private var fileRequestTint: Color {
         switch latestFileRequest?.status {
         case .pending, .running:
-            return .blue
+            return .klmsMacCommandAccent
         case .completed:
-            return .green
+            return .klmsMacSuccessBorder
         case .failed, .macUnavailable:
-            return .orange
+            return .klmsMacWarningBorder
         case nil:
             return .klmsMacSecondaryText
         }
@@ -1530,7 +1530,7 @@ private struct NextActionPanelView: View {
                 } label: {
                     Label(action.buttonTitle, systemImage: action.buttonImage)
                 }
-                .buttonStyle(KLMSMacRootActionButtonStyle(tone: action.kind == .openDiagnostics ? .accent(.orange) : .soft))
+                .buttonStyle(KLMSMacRootActionButtonStyle(tone: action.kind == .openDiagnostics ? .accent(.klmsMacWarningBorder) : .soft))
                 .accessibilityLabel(action.buttonTitle)
                 .accessibilityHint(action.detail)
                 .disabled(model.runningCommand != nil && action.kind != .showRunningLog)
@@ -1550,7 +1550,7 @@ private struct NextActionPanelView: View {
                 buttonTitle: "로그 보기",
                 buttonImage: "text.alignleft",
                 systemImage: "arrow.triangle.2.circlepath",
-                color: .blue
+                color: .klmsMacCommandAccent
             )
         }
         if model.currentAuthDigits != nil {
@@ -1564,7 +1564,7 @@ private struct NextActionPanelView: View {
                 buttonTitle: "진단 보기",
                 buttonImage: "wrench.and.screwdriver",
                 systemImage: "exclamationmark.triangle.fill",
-                color: .orange
+                color: .klmsMacWarningBorder
             )
         }
         if model.snapshot.syncReport == nil {
@@ -1575,7 +1575,7 @@ private struct NextActionPanelView: View {
                 buttonTitle: "환경 진단",
                 buttonImage: "stethoscope",
                 systemImage: "sparkles",
-                color: .blue
+                color: .klmsMacCommandAccent
             )
         }
         if model.appDiagnostics.codeSigning.isAdHoc {
@@ -1586,7 +1586,7 @@ private struct NextActionPanelView: View {
                 buttonTitle: "설정 보기",
                 buttonImage: "gearshape",
                 systemImage: "signature",
-                color: .orange
+                color: .klmsMacWarningBorder
             )
         }
         return nil
@@ -1694,7 +1694,7 @@ private struct HeaderView: View {
             if let error = model.errorMessage, !error.isEmpty {
                 Text(error)
                     .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.klmsMacDangerBorder)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -1710,7 +1710,7 @@ private struct HeaderView: View {
                     if let phase = model.currentPhaseText {
                         Text("현재 단계: \(phase)")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(Color.klmsMacCommandAccent)
                     }
                     Text(progress)
                         .font(.system(.caption, design: .monospaced))
@@ -1746,7 +1746,7 @@ private struct HeaderView: View {
             return .klmsMacCommandAccent
         }
         if model.snapshot.needsAttention {
-            return .orange
+            return .klmsMacWarningBorder
         }
         return .klmsMacSecondaryText
     }
@@ -1831,7 +1831,7 @@ private struct CommandOutputPanelView: View {
             if result.wasCancelled {
                 return .klmsMacSecondaryText
             }
-            return result.succeeded ? Color.klmsMacSecondaryText : Color.orange
+            return result.succeeded ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder
         }
         return .klmsMacSecondaryText
     }
@@ -2247,11 +2247,11 @@ private struct ReadableLogHighlightsView: View {
     private func tint(for level: String) -> Color {
         switch level {
         case "error", "warning", "auth":
-            return .orange
+            return .klmsMacWarningBorder
         case "success":
-            return .green
+            return .klmsMacSuccessBorder
         case "summary":
-            return .blue
+            return .klmsMacCommandAccent
         default:
             return .klmsMacSecondaryText
         }
@@ -2267,7 +2267,7 @@ private struct AuthCodeBannerView: View {
             HStack(alignment: .center, spacing: 12) {
                 Image(systemName: "iphone.radiowaves.left.and.right")
                     .font(.title3)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.klmsMacWarningBorder)
                     .frame(width: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("KAIST 인증 번호")
@@ -2612,7 +2612,7 @@ private struct NoticeMemoStatusView: View {
                     ForEach(timing.noticeRenderResultsForDisplay.prefix(3)) { result in
                         Text("\(result.displayTargetTitle): \(result.status.klmsLocalizedStatus)")
                             .font(.caption2)
-                            .foregroundStyle(noticeResultIsOK(result.status) ? Color.klmsMacSecondaryText : Color.orange)
+                            .foregroundStyle(noticeResultIsOK(result.status) ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
                     }
                 }
             }
@@ -2723,7 +2723,7 @@ private struct RemoteActivityPanelView: View {
                     if let message = model.remoteProcessingStatusMessage?.nilIfBlank ?? model.serverRelayStatusMessage?.nilIfBlank {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: "network")
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(Color.klmsMacCommandAccent)
                                 .frame(width: 18)
                             Text(message)
                                 .font(.caption)
@@ -2921,11 +2921,11 @@ private struct ServerRequestLogActivityRow: View {
     private var statusColor: Color {
         switch entry.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "failed", "rejected", "error":
-            return .orange
+            return .klmsMacWarningBorder
         case "running":
-            return .blue
+            return .klmsMacCommandAccent
         default:
-            return .green
+            return .klmsMacSuccessBorder
         }
     }
 }
@@ -3390,11 +3390,11 @@ private struct CommandStageDurationSummaryView: View {
     private func tint(for stage: String) -> Color {
         switch stage {
         case "core":
-            return .orange
+            return .klmsMacWarningBorder
         case "notice":
-            return .brown
+            return .klmsMacCommandAccent
         case "files":
-            return .blue
+            return .klmsMacSecondaryText
         default:
             return .klmsMacSecondaryText
         }
@@ -3428,7 +3428,7 @@ private struct LoginPanelView: View {
             let login = model.snapshot.loginStatus
             Text(login?.loggedIn == true ? "최근 로그인 확인됨" : "로그인 상태 미확인")
                 .font(.caption)
-                .foregroundStyle(login?.loggedIn == true ? Color.klmsMacSecondaryText : Color.orange)
+                .foregroundStyle(login?.loggedIn == true ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
             if let checkedAt = login?.checkedAt {
                 Text(checkedAt.formatted(date: .abbreviated, time: .standard))
                     .font(.caption)
@@ -3445,7 +3445,7 @@ private struct LoginPanelView: View {
                     Text(digits)
                         .font(.title2.weight(.bold))
                         .monospacedDigit()
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Color.klmsMacWarningBorder)
                 }
             }
         }
@@ -3473,7 +3473,7 @@ private struct VerifyPanelView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(summaryText(for: verify, issueCount: issueChecks.count))
                         .font(.caption)
-                        .foregroundStyle(issueChecks.isEmpty && verify.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.orange)
+                        .foregroundStyle(issueChecks.isEmpty && verify.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if issueChecks.isEmpty {
@@ -3585,12 +3585,12 @@ private struct VerifyCheckExplanationRowView: View {
 
     private var color: Color {
         if ["fail", "failed", "error"].contains(check.status.lowercased()) {
-            return .red
+            return .klmsMacDangerBorder
         }
         if ["warn", "warning"].contains(check.status.lowercased()) {
-            return .orange
+            return .klmsMacWarningBorder
         }
-        return .green
+        return .klmsMacSuccessBorder
     }
 }
 
@@ -3603,7 +3603,7 @@ private struct DoctorPanelView: View {
                 let issueChecks = doctor.checks.filter { ["fail", "failed", "error", "warn", "warning"].contains($0.status.lowercased()) }
                 Text("상태: \(doctor.status.klmsLocalizedStatus) · 정상 \(doctor.checks.filter { $0.status.lowercased() == "ok" }.count)개")
                     .font(.caption)
-                    .foregroundStyle(doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.orange)
+                    .foregroundStyle(doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
 
                 if issueChecks.isEmpty {
                     Text("진단에서 발견된 문제가 없습니다.")
@@ -3667,12 +3667,12 @@ private struct DoctorCheckRowView: View {
 
     private var color: Color {
         if ["fail", "failed", "error"].contains(check.status.lowercased()) {
-            return .red
+            return .klmsMacDangerBorder
         }
         if ["warn", "warning"].contains(check.status.lowercased()) {
-            return .orange
+            return .klmsMacWarningBorder
         }
-        return .green
+        return .klmsMacSuccessBorder
     }
 }
 
@@ -4104,9 +4104,9 @@ private struct RunLogArchiveRowView: View {
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                     if record.dryRun {
-                        Text("변경량 계산")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.blue)
+                            Text("변경량 계산")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacCommandAccent)
                     }
                     Spacer()
                     Text("종료 코드 \(record.exitCode)")
@@ -4137,7 +4137,7 @@ private struct RunLogArchiveRowView: View {
                         if record.dryRun {
                             Text("변경량 계산")
                                 .font(.caption2)
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(Color.klmsMacCommandAccent)
                                 .lineLimit(1)
                         }
                     }
@@ -4173,7 +4173,7 @@ private struct RunLogArchiveRowView: View {
         if record.wasCancelled {
             return .klmsMacSecondaryText
         }
-        return record.succeeded ? .green : .orange
+        return record.succeeded ? .klmsMacSuccessBorder : .klmsMacWarningBorder
     }
 }
 
@@ -4219,7 +4219,7 @@ private struct CommandHistoryRowView: View {
                 if record.dryRun {
                     Text("변경량 계산")
                         .font(.caption2)
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(Color.klmsMacCommandAccent)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
@@ -4495,17 +4495,17 @@ private struct MetricTile: View {
     private var tint: Color {
         switch metric.detail {
         case .assignments, .assignmentRecords, .assignmentCandidates:
-            return .orange
+            return .klmsMacWarningBorder
         case .exams, .examCandidates, .calendar:
-            return .green
+            return .klmsMacSuccessBorder
         case .notices:
-            return .brown
+            return .klmsMacCommandAccent
         case .files, .missingFiles, .newFiles:
-            return .blue
+            return .klmsMacSecondaryText
         case .quarantine, .pruned:
-            return .red
+            return .klmsMacDangerBorder
         case .helpDesk:
-            return .teal
+            return .klmsMacCommandAccent
         case .hidden:
             return .klmsMacSecondaryText
         case nil:
