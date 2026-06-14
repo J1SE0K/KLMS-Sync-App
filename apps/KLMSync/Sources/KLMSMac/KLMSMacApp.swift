@@ -35,54 +35,35 @@ enum KLMSAppearanceMode: String, CaseIterable, Identifiable {
 @main
 struct KLMSMacApp: App {
     @NSApplicationDelegateAdaptor(KLMSAppDelegate.self) private var appDelegate
-    @StateObject private var model = KLMSMacModel()
-    @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
+    @StateObject private var model: KLMSMacModel
+
+    init() {
+        Self.clearSavedApplicationState()
+        let model = KLMSMacModel()
+        _model = StateObject(wrappedValue: model)
+        KLMSDashboardWindowCoordinator.shared.model = model
+        KLMSDiagnosticWindowCoordinator.shared.model = model
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()
+        }
+    }
+
+    private static func clearSavedApplicationState() {
+        guard let identifier = Bundle.main.bundleIdentifier else { return }
+        let savedStateURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Saved Application State")
+            .appendingPathComponent("\(identifier).savedState")
+        try? FileManager.default.removeItem(at: savedStateURL)
+    }
 
     var body: some Scene {
-        WindowGroup("KLMS Sync") {
-            MenuBarRootView(model: model)
-                .frame(
-                    minWidth: 540,
-                    idealWidth: 1080,
-                    maxWidth: .infinity,
-                    minHeight: 520,
-                    idealHeight: 760,
-                    maxHeight: .infinity
-                )
-                .task {
-                    appDelegate.model = model
-                    await model.bootstrap()
-                }
-                .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
-        }
-        .defaultSize(width: 1080, height: 760)
-
-        Window("KLMS Sync 진단", id: KLMSMacWindowID.diagnostics) {
-            DiagnosticWindowView(model: model)
-                .frame(
-                    minWidth: 620,
-                    idealWidth: 920,
-                    maxWidth: .infinity,
-                    minHeight: 480,
-                    idealHeight: 760,
-                    maxHeight: .infinity
-                )
-                .task {
-                    appDelegate.model = model
-                    await model.bootstrap()
-                }
-                .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
-        }
-        .defaultSize(width: 920, height: 760)
-
         MenuBarExtra {
-            MenuBarRootView(model: model)
+            KLMSMacRootContainerView(model: model)
                 .frame(width: KLMSWindowMetrics.menuBarWidth, height: KLMSWindowMetrics.menuBarHeight)
-                .task {
+                .onAppear {
                     appDelegate.model = model
-                    await model.bootstrap()
+                    KLMSDashboardWindowCoordinator.shared.scheduleBootstrapIfNeeded()
                 }
-                .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
         } label: {
             Label("KLMS Sync", systemImage: model.menuBarSystemImage)
         }
@@ -91,19 +72,87 @@ struct KLMSMacApp: App {
         Settings {
             SettingsView(model: model)
                 .frame(width: KLMSWindowMetrics.settingsWidth, height: KLMSWindowMetrics.settingsHeight)
-                .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
+                .klmsPreferredAppearance()
         }
     }
 }
 
 enum KLMSMacWindowID {
-    static let diagnostics = "klms-diagnostics"
+    static let dashboard = "klms-dashboard"
+}
+
+private struct KLMSMacRootContainerView: View {
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        MenuBarRootView(model: model)
+            .klmsPreferredAppearance()
+    }
+}
+
+private struct KLMSMacWindowRootContainerView: View {
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        MacDesignWindowRootView(model: model)
+            .klmsPreferredAppearance()
+    }
+}
+
+private struct KLMSDiagnosticRootContainerView: View {
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        DiagnosticWindowView(model: model)
+            .klmsPreferredAppearance()
+    }
+}
+
+private struct KLMSPreferredAppearanceModifier: ViewModifier {
+    @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
+
+    func body(content: Content) -> some View {
+        content.preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
+    }
+}
+
+private extension View {
+    func klmsPreferredAppearance() -> some View {
+        modifier(KLMSPreferredAppearanceModifier())
+    }
 }
 
 @MainActor
 private final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     weak var model: KLMSMacModel?
     private var terminationCleanupStarted = false
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()
+        }
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+        return true
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+            return false
+        }
+        return true
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminationCleanupStarted, let model, model.runningCommand != nil else {
@@ -115,6 +164,123 @@ private final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+}
+
+@MainActor
+private final class KLMSDashboardWindowCoordinator {
+    static let shared = KLMSDashboardWindowCoordinator()
+
+    var model: KLMSMacModel?
+    private var window: NSWindow?
+    private var bootstrapTask: Task<Void, Never>?
+
+    func showIfNoVisibleDashboardWindow() {
+        guard !hasVisibleDashboardWindow else {
+            return
+        }
+        showDashboardWindow()
+    }
+
+    func showDashboardWindow() {
+        guard let model else {
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let initialSize = NSSize(width: 1080, height: 760)
+
+        let rootView = KLMSMacWindowRootContainerView(model: model)
+            .frame(width: initialSize.width, height: initialSize.height, alignment: .topLeading)
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: initialSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "KLMS Sync"
+        window.minSize = NSSize(width: 540, height: 520)
+        window.center()
+        window.isReleasedWhenClosed = false
+        let hostingController = NSHostingController(rootView: rootView)
+        hostingController.sizingOptions = []
+        window.contentViewController = hostingController
+        window.setContentSize(initialSize)
+        self.window = window
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        scheduleBootstrapIfNeeded(delay: 0.4)
+    }
+
+    func scheduleBootstrapIfNeeded(delay: TimeInterval = 0.2) {
+        guard bootstrapTask == nil else {
+            return
+        }
+        bootstrapTask = Task { @MainActor [weak self] in
+            let nanoseconds = UInt64(delay * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            guard !Task.isCancelled, let self, let model = self.model else {
+                return
+            }
+            await model.bootstrap()
+        }
+    }
+
+    private var hasVisibleDashboardWindow: Bool {
+        NSApp.windows.contains { window in
+            window.isVisible && window.title == "KLMS Sync"
+        }
+    }
+}
+
+@MainActor
+final class KLMSDiagnosticWindowCoordinator {
+    static let shared = KLMSDiagnosticWindowCoordinator()
+
+    var model: KLMSMacModel?
+    private var window: NSWindow?
+
+    func showDiagnosticsWindow() {
+        guard let model else {
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let initialSize = NSSize(width: 920, height: 760)
+        let rootView = KLMSDiagnosticRootContainerView(model: model)
+            .frame(width: initialSize.width, height: initialSize.height, alignment: .topLeading)
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: initialSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "KLMS Sync 진단"
+        window.minSize = NSSize(width: 620, height: 480)
+        window.center()
+        window.isReleasedWhenClosed = false
+        let hostingController = NSHostingController(rootView: rootView)
+        hostingController.sizingOptions = []
+        window.contentViewController = hostingController
+        window.setContentSize(initialSize)
+        self.window = window
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        KLMSDashboardWindowCoordinator.shared.scheduleBootstrapIfNeeded()
     }
 }
 

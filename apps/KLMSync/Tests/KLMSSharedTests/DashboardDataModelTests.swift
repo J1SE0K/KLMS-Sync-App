@@ -727,6 +727,28 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("minHeight: geometry.size.height"))
     }
 
+    func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacApp.swift")
+        let viewRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
+        let app = try String(contentsOf: appRoot, encoding: .utf8)
+        let view = try String(contentsOf: viewRoot, encoding: .utf8)
+
+        XCTAssertTrue(app.contains("KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()"))
+        XCTAssertTrue(app.contains("MacDesignWindowRootView(model: model)"))
+        XCTAssertFalse(app.contains("Window(\"KLMS Sync\""))
+        XCTAssertFalse(app.contains("Window(\"KLMS Sync 진단\""))
+        XCTAssertTrue(app.contains("KLMSDiagnosticWindowCoordinator.shared.model = model"))
+
+        XCTAssertTrue(view.contains("MacDesignPanel(title: selectedMetric == .logs ? \"최근 실행 로그\" : \"선택한 대시보드 항목\")"))
+        XCTAssertTrue(view.contains("MacDesignPanel(title: \"로그 요약\")"))
+        XCTAssertTrue(view.contains("compactLogSummaryRow(\"단계별 시간\""))
+        XCTAssertTrue(view.contains("ForEach(rows.prefix(selectedMetric == .logs ? 5 : 4))"))
+    }
+
     func testMacAndIOSUseSeparatedLightAndDarkThemeTokens() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
