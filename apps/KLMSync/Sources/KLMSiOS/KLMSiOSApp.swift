@@ -1738,17 +1738,56 @@ struct CompanionRootView: View {
 
 private struct CompanionTabRootView: View {
     @ObservedObject var model: CompanionModel
+    @State private var selectedSection: CompanionAppSection = .status
 
     var body: some View {
-        TabView {
+        VStack(spacing: 0) {
+            CompanionSectionContent(section: selectedSection, model: model)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+            CompanionCompactTabBar(selectedSection: $selectedSection)
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+                .background(Color.klmsScreenBackground)
+        }
+        .background(Color.klmsScreenBackground.ignoresSafeArea())
+    }
+}
+
+private struct CompanionCompactTabBar: View {
+    @Binding var selectedSection: CompanionAppSection
+
+    var body: some View {
+        HStack(spacing: 8) {
             ForEach(CompanionAppSection.compactTabs) { section in
-                CompanionSectionContent(section: section, model: model)
-                    .tabItem {
-                        Label(section.compactTitle, systemImage: section.systemImage)
-                    }
+                Button {
+                    selectedSection = section
+                } label: {
+                    Text(section.compactTitle)
+                        .font(.caption.weight(selectedSection == section ? .bold : .semibold))
+                        .foregroundStyle(selectedSection == section ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .background(
+                            selectedSection == section
+                                ? Color.klmsPrimaryCommandButtonBackground
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 9)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(section.title)
+                .accessibilityValue(selectedSection == section ? "선택됨" : "")
             }
         }
-        .klmsTabChrome()
+        .padding(6)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
     }
 }
 
@@ -3433,7 +3472,7 @@ private struct RemoteDashboardSyncCard: View {
     }
 
     private var syncStateChip: some View {
-        Label(syncStateTitle, systemImage: syncStateImage)
+        Text(syncStateTitle)
             .font(.caption2.weight(.bold))
             .foregroundStyle(syncStateColor)
             .padding(.horizontal, 8)
@@ -3511,13 +3550,6 @@ private struct RemoteDashboardSyncCard: View {
         return model.isRemoteAvailable ? "준비됨" : "연결 필요"
     }
 
-    private var syncStateImage: String {
-        if model.hasInFlightRequest || model.status.phase == "running" {
-            return "arrow.triangle.2.circlepath"
-        }
-        return model.isRemoteAvailable ? "checkmark.circle" : "exclamationmark.triangle"
-    }
-
     private var syncStateColor: Color {
         if model.hasInFlightRequest || model.status.phase == "running" {
             return Color.klmsCommandAccent
@@ -3571,10 +3603,10 @@ private struct RemoteDashboardMetricOverview: View {
     private func metricSection(_ title: String, categories: [DashboardMetricCategory]) -> some View {
         if !categories.isEmpty {
             VStack(alignment: .leading, spacing: 7) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
                 if horizontalSizeClass == .regular {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText)
                     VStack(spacing: 8) {
                         ForEach(categories) { category in
                             WorkstationMetricCard(

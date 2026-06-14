@@ -100,29 +100,29 @@ struct MacDesignWindowRootView: View {
             MacDesignNoticeStrip(
                 title: "KAIST 인증 번호 \(digits)",
                 detail: "휴대폰 인증 화면에서 같은 번호를 선택하면 동기화가 계속됩니다.",
-                systemImage: "key.fill",
+                chipText: digits,
                 tint: .klmsMacCommandAccent
             )
         } else if model.runningCommand != nil {
             MacDesignNoticeStrip(
                 title: model.runningCommand?.displayName ?? "동기화 실행 중",
                 detail: model.currentPhaseText ?? "현재 단계를 확인하고 있습니다.",
-                systemImage: "arrow.triangle.2.circlepath",
+                chipText: "LOG",
                 tint: .klmsMacCommandAccent
             )
         } else if model.snapshot.needsAttention {
             MacDesignNoticeStrip(
                 title: "확인이 필요합니다",
                 detail: model.snapshot.attentionSummary,
-                systemImage: "exclamationmark.triangle.fill",
+                chipText: "진단",
                 tint: .klmsMacWarningBorder
             )
         } else {
             MacDesignNoticeStrip(
-                title: "준비됨",
-                detail: model.snapshot.syncReport == nil ? "전체 동기화를 시작할 수 있습니다." : "최근 동기화 요약을 불러왔습니다.",
-                systemImage: "checkmark.circle.fill",
-                tint: .klmsMacSuccessBorder
+                title: model.snapshot.loginStatus?.loggedIn == true ? "이미 로그인됨" : "준비됨",
+                detail: model.snapshot.syncReport == nil ? "전체 동기화를 시작할 수 있습니다." : "동기화를 바로 실행할 수 있습니다.",
+                chipText: model.snapshot.loginStatus?.loggedIn == true ? "OK" : "대기",
+                tint: .klmsMacSecondaryText
             )
         }
     }
@@ -155,11 +155,11 @@ struct MacDesignWindowRootView: View {
 
             MacDesignPanel(title: "작업 공간") {
                 VStack(spacing: 7) {
-                    navigationButton("대시보드", "gauge.with.dots.needle.67percent", selected: true) {}
-                    navigationButton("로그", "list.bullet.rectangle.portrait", selected: false) {
+                    navigationButton("대시보드", selected: true) {}
+                    navigationButton("로그", selected: false) {
                         selectedMetric = .logs
                     }
-                    navigationButton("진단", "wrench.and.screwdriver", selected: false) {
+                    navigationButton("진단", selected: false) {
                         KLMSDiagnosticWindowCoordinator.shared.showDiagnosticsWindow()
                     }
                 }
@@ -200,12 +200,6 @@ struct MacDesignWindowRootView: View {
                     selectedMetric = metric.kind
                 } label: {
                     VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Image(systemName: metric.systemImage)
-                                .font(.callout.weight(.semibold))
-                                .foregroundStyle(Color.klmsMacSecondaryText)
-                            Spacer()
-                        }
                         Text("\(metric.value)")
                             .font(.system(size: 28, weight: .bold))
                             .foregroundStyle(Color.klmsMacPrimaryText)
@@ -214,7 +208,7 @@ struct MacDesignWindowRootView: View {
                             .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                     .padding(12)
-                    .frame(maxWidth: .infinity, minHeight: 100, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
                     .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
@@ -238,9 +232,6 @@ struct MacDesignWindowRootView: View {
             VStack(spacing: 8) {
                 ForEach(rows.prefix(selectedMetric == .logs ? 5 : 4)) { row in
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: row.systemImage)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .frame(width: 18)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(row.title)
                                 .font(.subheadline.weight(.semibold))
@@ -306,10 +297,10 @@ struct MacDesignWindowRootView: View {
     private var currentMetrics: [MacDesignMetric] {
         let counts = model.snapshot.visibleCounts
         return [
-            MacDesignMetric(.files, "파일", model.snapshot.courseFileManifest.count, "folder"),
-            MacDesignMetric(.assignments, "과제", counts.assignments + model.mailDashboardItems(kind: "assignment").count, "checklist"),
-            MacDesignMetric(.notices, "공지", counts.notices, "note.text"),
-            MacDesignMetric(.exams, "시험", counts.exams + model.mailDashboardItems(kind: "exam").count, "calendar"),
+            MacDesignMetric(.files, "파일", model.snapshot.courseFileManifest.count),
+            MacDesignMetric(.assignments, "과제", counts.assignments + model.mailDashboardItems(kind: "assignment").count),
+            MacDesignMetric(.notices, "공지", counts.notices),
+            MacDesignMetric(.exams, "시험", counts.exams + model.mailDashboardItems(kind: "exam").count),
         ]
     }
 
@@ -322,31 +313,30 @@ struct MacDesignWindowRootView: View {
                     MacDesignRow(
                         title: file.filename.isEmpty ? file.relativePath : file.filename,
                         detail: file.course.isEmpty ? file.relativePath : file.course,
-                        badge: file.klmsTimestampText,
-                        systemImage: "doc"
+                        badge: file.klmsTimestampText
                     )
                 }
         case .assignments:
             let stateRows = model.snapshot.legacyState?.content.assignments.map {
-                MacDesignRow(title: $0.title, detail: [$0.course, $0.due].filter { !$0.isEmpty }.joined(separator: " · "), badge: "미리알림", systemImage: "checklist")
+                MacDesignRow(title: $0.title, detail: [$0.course, $0.due].filter { !$0.isEmpty }.joined(separator: " · "), badge: "미리알림")
             } ?? []
             return stateRows + model.mailDashboardItems(kind: "assignment").map {
-                MacDesignRow(title: $0.title, detail: [$0.course, $0.detail].filter { !$0.isEmpty }.joined(separator: " · "), badge: "메일", systemImage: "envelope")
+                MacDesignRow(title: $0.title, detail: [$0.course, $0.detail].filter { !$0.isEmpty }.joined(separator: " · "), badge: "메일")
             }
         case .notices:
             return (model.snapshot.noticeDigest?.notices ?? []).map {
-                MacDesignRow(title: $0.title, detail: [$0.course, $0.postedAt].filter { !$0.isEmpty }.joined(separator: " · "), badge: $0.changeState, systemImage: "note.text")
+                MacDesignRow(title: $0.title, detail: [$0.course, $0.postedAt].filter { !$0.isEmpty }.joined(separator: " · "), badge: $0.changeState)
             }
         case .exams:
             let stateRows = model.snapshot.legacyState?.content.examItems.map {
-                MacDesignRow(title: $0.title, detail: [$0.course, $0.due].filter { !$0.isEmpty }.joined(separator: " · "), badge: "캘린더", systemImage: "calendar")
+                MacDesignRow(title: $0.title, detail: [$0.course, $0.due].filter { !$0.isEmpty }.joined(separator: " · "), badge: "캘린더")
             } ?? []
             return stateRows + model.mailDashboardItems(kind: "exam").map {
-                MacDesignRow(title: $0.title, detail: [$0.course, $0.detail].filter { !$0.isEmpty }.joined(separator: " · "), badge: "메일", systemImage: "envelope")
+                MacDesignRow(title: $0.title, detail: [$0.course, $0.detail].filter { !$0.isEmpty }.joined(separator: " · "), badge: "메일")
             }
         case .logs:
             return model.commandHistory.records.prefix(10).map {
-                MacDesignRow(title: $0.command.displayName, detail: $0.startedAt.formatted(date: .numeric, time: .shortened), badge: $0.succeeded ? "성공" : ($0.wasCancelled ? "중단" : "실패"), systemImage: $0.succeeded ? "checkmark.circle" : "exclamationmark.triangle")
+                MacDesignRow(title: $0.command.displayName, detail: $0.startedAt.formatted(date: .numeric, time: .shortened), badge: $0.succeeded ? "성공" : ($0.wasCancelled ? "중단" : "실패"))
             }
         }
     }
@@ -358,19 +348,19 @@ struct MacDesignWindowRootView: View {
         if model.snapshot.needsAttention {
             return "확인이 필요합니다 · \(model.snapshot.attentionSummary)"
         }
-        return model.snapshot.syncReport == nil ? "첫 실행 전입니다." : "최근 상태를 불러왔습니다."
+        return model.snapshot.syncReport == nil ? "첫 실행 전입니다." : "준비됨 · 파일, 과제, 공지, 시험 상태를 한 화면에서 확인"
     }
 
     private var statusBadge: String {
         if model.runningCommand != nil { return "진행 중" }
         if model.snapshot.needsAttention { return "확인 필요" }
-        return "준비됨"
+        return model.serverRelayEnabled ? "Mac 연결됨" : "준비됨"
     }
 
     private var statusColor: Color {
         if model.runningCommand != nil { return .klmsMacCommandAccent }
         if model.snapshot.needsAttention { return .klmsMacWarningBorder }
-        return .klmsMacSuccessBorder
+        return .klmsMacSecondaryText
     }
 
     private var lastRunShortText: String {
@@ -393,11 +383,9 @@ struct MacDesignWindowRootView: View {
         .disabled(model.runningCommand != nil)
     }
 
-    private func navigationButton(_ title: String, _ systemImage: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func navigationButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 9) {
-                Image(systemName: systemImage)
-                    .frame(width: 18)
                 Text(title)
                     .font(.subheadline.weight(selected ? .semibold : .regular))
                 Spacer()
@@ -460,15 +448,13 @@ private struct MacDesignMetric: Identifiable {
     var kind: MacDesignMetricKind
     var title: String
     var value: Int
-    var systemImage: String
 
     var id: String { kind.rawValue }
 
-    init(_ kind: MacDesignMetricKind, _ title: String, _ value: Int, _ systemImage: String) {
+    init(_ kind: MacDesignMetricKind, _ title: String, _ value: Int) {
         self.kind = kind
         self.title = title
         self.value = value
-        self.systemImage = systemImage
     }
 }
 
@@ -477,7 +463,6 @@ private struct MacDesignRow: Identifiable {
     var title: String
     var detail: String
     var badge: String
-    var systemImage: String
 }
 
 private struct MacDesignPanel<Content: View>: View {
@@ -504,14 +489,11 @@ private struct MacDesignPanel<Content: View>: View {
 private struct MacDesignNoticeStrip: View {
     var title: String
     var detail: String
-    var systemImage: String
+    var chipText: String
     var tint: Color
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(tint)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
@@ -522,13 +504,23 @@ private struct MacDesignNoticeStrip: View {
                     .lineLimit(2)
             }
             Spacer()
+            Text(chipText)
+                .font(chipText.count <= 2 ? .title3.weight(.heavy) : .caption.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(Color.klmsMacPrimaryText)
+                .padding(.horizontal, chipText.count <= 2 ? 14 : 11)
+                .padding(.vertical, 8)
+                .background(Color.klmsMacSubtleCardBackground, in: Capsule())
         }
         .padding(12)
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacAdaptiveColor(
+            light: NSColor(red: 0.914, green: 0.902, blue: 0.858, alpha: 1.0),
+            dark: NSColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
+        ), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(tint.opacity(0.30), lineWidth: 1)
+                .stroke(tint.opacity(0.24), lineWidth: 1)
         }
     }
 }
