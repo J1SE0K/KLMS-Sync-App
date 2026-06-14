@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let klmsInteractionDetailDelayNanoseconds: UInt64 = 45_000_000
+private let klmsInteractionDetailDelayNanoseconds: UInt64 = 8_000_000
 
 #if canImport(AppKit)
 import AppKit
@@ -5314,7 +5314,7 @@ private struct CompanionInlineItemRowsView: View {
         }
         if items.count > visible.count {
             Button {
-                visibleLimit += category == .files ? 24 : 18
+                increaseVisibleLimit()
             } label: {
                 Label("더 보기 \(items.count - visible.count)개 남음", systemImage: "chevron.down")
                     .font(.caption.weight(.semibold))
@@ -5356,6 +5356,15 @@ private struct CompanionInlineItemRowsView: View {
             detailItemID = nextID
         }
     }
+
+    private func increaseVisibleLimit() {
+        let increment = category == .files ? 24 : 18
+        Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            visibleLimit += increment
+        }
+    }
 }
 
 private struct CompanionSelectableItemListRows: View {
@@ -5394,7 +5403,7 @@ private struct CompanionSelectableItemListRows: View {
         }
         if items.count > visible.count {
             Button {
-                visibleLimit += increment
+                increaseVisibleLimit()
             } label: {
                 Label("더 보기 \(items.count - visible.count)개 남음", systemImage: "chevron.down")
                     .font(.caption.weight(.semibold))
@@ -5412,6 +5421,14 @@ private struct CompanionSelectableItemListRows: View {
             try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
             guard !Task.isCancelled else { return }
             onSelect(item)
+        }
+    }
+
+    private func increaseVisibleLimit() {
+        Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            visibleLimit += increment
         }
     }
 }

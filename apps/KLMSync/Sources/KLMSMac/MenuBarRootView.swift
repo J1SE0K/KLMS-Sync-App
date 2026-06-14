@@ -2,7 +2,7 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
-private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 35_000_000
+private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 8_000_000
 
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
