@@ -1872,21 +1872,9 @@ private struct CompanionStatusScreen: View {
 
     private var statusSummaryColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
-            RemoteStatusHeader(
-                model: model,
-                selectedCategory: $selectedDashboardPreview,
-                onCategoryTap: { category in
-                    selectedChangeSummary = nil
-                    selectedDashboardPreview = category
-                },
-                selectedChangeSummary: selectedChangeSummary,
-                onChangeSummaryTap: { kind in
-                    selectedDashboardPreview = nil
-                    selectedChangeSummary = kind
-                },
-                showsMetrics: false,
-                showsChangeSummary: false
-            )
+            if shouldShowCompactStatusStrip {
+                RemoteDashboardStatusStrip(model: model)
+            }
             RemoteDashboardSyncCard(model: model, compact: horizontalSizeClass != .regular)
             RemoteDashboardMetricOverview(
                 model: model,
@@ -1902,6 +1890,14 @@ private struct CompanionStatusScreen: View {
                 }
             )
         }
+    }
+
+    private var shouldShowCompactStatusStrip: Bool {
+        guard horizontalSizeClass != .regular else { return false }
+        return model.status.authDigits == nil
+            && model.loginAttentionMessage == nil
+            && model.authSuccessMessage == nil
+            && model.errorMessage.isEmpty
     }
 
     @ViewBuilder
@@ -1950,6 +1946,105 @@ private struct CompanionStatusScreen: View {
         return preferred.first { category in
             category.value(from: model.dashboardStatus) > 0
         }
+    }
+}
+
+private struct RemoteDashboardStatusStrip: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Text(chipText)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(chipForeground)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 7)
+                .background(chipBackground, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(background, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(border, lineWidth: 1)
+        }
+    }
+
+    private var title: String {
+        if model.hasInFlightRequest || model.status.phase == "running" {
+            return model.activeRequestLabel
+        }
+        if model.isRemoteAvailable {
+            return "Mac 연결됨"
+        }
+        guard let latest = model.latestCommand,
+              let status = model.latestDisplayStatus else {
+            return "대기 중"
+        }
+        return "\(latest.kind.displayName) · \(status.displayName)"
+    }
+
+    private var subtitle: String {
+        if model.hasInFlightRequest || model.status.phase == "running" {
+            return model.runningPhaseDetail ?? "Mac 앱이 요청을 처리하고 있습니다."
+        }
+        if model.isRemoteAvailable {
+            return "동기화를 바로 시작할 수 있어요."
+        }
+        return model.statusLine
+    }
+
+    private var chipText: String {
+        if model.hasInFlightRequest || model.status.phase == "running" {
+            return "진행 중"
+        }
+        return model.isRemoteAvailable ? "준비됨" : "연결 필요"
+    }
+
+    private var tint: Color {
+        if model.hasInFlightRequest || model.status.phase == "running" {
+            return Color.klmsCommandAccent
+        }
+        return model.isRemoteAvailable ? Color.klmsCommandAccent : Color.klmsWarningBorder
+    }
+
+    private var background: Color {
+        if model.isRemoteAvailable || model.hasInFlightRequest || model.status.phase == "running" {
+            return Color.klmsCommandBackground
+        }
+        return Color.klmsSubtleCardBackground
+    }
+
+    private var border: Color {
+        tint.opacity(0.32)
+    }
+
+    private var chipForeground: Color {
+        if model.isRemoteAvailable || model.hasInFlightRequest || model.status.phase == "running" {
+            return Color.klmsCommandButtonForeground
+        }
+        return Color.klmsWarningBorder
+    }
+
+    private var chipBackground: Color {
+        if model.isRemoteAvailable || model.hasInFlightRequest || model.status.phase == "running" {
+            return Color.klmsPrimaryCommandButtonBackground
+        }
+        return Color.klmsWarningBackground
     }
 }
 
@@ -2109,8 +2204,8 @@ private struct CompanionScreenContainer<Content: View>: View {
             Color.klmsScreenBackground.ignoresSafeArea()
             WholeScreenVerticalScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    RemoteAttentionStack(model: model)
                     CompanionScreenHeader(title: title, model: model)
+                    RemoteAttentionStack(model: model)
                     content()
                 }
                 .padding(.horizontal, 16)
