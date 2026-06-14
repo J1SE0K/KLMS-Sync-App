@@ -70,12 +70,12 @@ struct DashboardDetailPanelView: View {
             HStack {
                 Text(kind.title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                 Spacer()
                 if hiddenCount > 0, kind != .hidden {
                     Text("보관 \(hiddenCount)")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
             }
 
@@ -773,22 +773,22 @@ private struct StateItemRowView: View {
                         if hidden {
                             Label("숨김", systemImage: "eye.slash")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                         }
                         if editor == .assignmentRecord, !item.recordDisplayStatus.isEmpty {
                             Text(item.recordDisplayStatus)
                                 .font(.caption2)
-                                .foregroundStyle(item.recordStatus == "completed" ? .green : .secondary)
+                                .foregroundStyle(item.recordStatus == "completed" ? Color.klmsMacSuccessBorder : Color.klmsMacSecondaryText)
                         }
                     }
                     Text([item.academicTerm?.displayName ?? "", item.course, item.due].filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .lineLimit(2)
             if !item.location.isEmpty || !item.coverageSummary.isEmpty {
                 Text([item.location, item.coverageSummary].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .lineLimit(2)
             }
         }
@@ -930,11 +930,11 @@ private struct RecordStatusView: View {
         HStack(spacing: 8) {
             Label(item.recordDisplayStatus.isEmpty ? "기록" : item.recordDisplayStatus, systemImage: "clock.arrow.circlepath")
                 .font(.caption)
-                .foregroundStyle(item.recordStatus == "completed" ? .green : .secondary)
+                .foregroundStyle(item.recordStatus == "completed" ? Color.klmsMacSuccessBorder : Color.klmsMacSecondaryText)
             if !item.submission.isEmpty {
                 Text(item.submission)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
             Spacer()
         }
@@ -1009,7 +1009,7 @@ private struct DashboardActionCaption: View {
     var body: some View {
         Text(text)
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.klmsMacSecondaryText)
             .padding(.top, 2)
     }
 }
@@ -1023,7 +1023,7 @@ private struct MacInlinePendingActionView: View {
                 .controlSize(.small)
             Text(message)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
             Spacer(minLength: 0)
         }
         .padding(8)
@@ -1077,7 +1077,7 @@ private struct ExamOverrideEditor: View {
                     Spacer()
                     Text(overrideStatusText)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
             }
             .textFieldStyle(.roundedBorder)
@@ -1316,12 +1316,12 @@ private struct NoticeRowView: View {
                         if hidden {
                             Label("숨김", systemImage: "eye.slash")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                         }
                     }
                     Text([term?.displayName ?? "", notice.course, notice.postedAt, notice.changeState].filter { !$0.isEmpty }.joined(separator: " · ").klmsDisplayText)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 Spacer(minLength: 8)
                 if !notice.url.isEmpty {
@@ -1338,7 +1338,7 @@ private struct NoticeRowView: View {
             if !notice.summary.isEmpty {
                 Text(notice.summary.klmsDisplayText)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .lineLimit(3)
                     .textSelection(.enabled)
             }
@@ -1348,12 +1348,12 @@ private struct NoticeRowView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("첨부 파일")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     ForEach(attachments) { attachment in
                         HStack(alignment: .top, spacing: 6) {
                             Image(systemName: attachment.path.isEmpty ? "paperclip" : "doc")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(attachment.name.klmsDisplayText)
                                     .font(.caption2)
@@ -1361,7 +1361,7 @@ private struct NoticeRowView: View {
                                 if !attachment.path.isEmpty {
                                     Text(attachment.path.klmsDisplayText)
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Color.klmsMacSecondaryText)
                                         .lineLimit(1)
                                         .textSelection(.enabled)
                                 }
@@ -1535,10 +1535,19 @@ private struct NewFilesListView: View {
 
     private var filteredItems: [DashboardFileItem] {
         let downloadItems = model.snapshot.downloadResult?.results.filter(\.copiedToNewFilesInbox) ?? []
-        return downloadItems.compactMap { item in
-            let manifest = model.snapshot.courseFileManifest.first { entry in
-                (!item.url.isEmpty && entry.url == item.url) || entry.relativePath == item.relativePath
+        var manifestsByURL: [String: CourseFileManifestEntry] = [:]
+        var manifestsByRelativePath: [String: CourseFileManifestEntry] = [:]
+        for entry in model.snapshot.courseFileManifest {
+            if !entry.url.isEmpty {
+                manifestsByURL[entry.url] = entry
             }
+            if !entry.relativePath.isEmpty {
+                manifestsByRelativePath[entry.relativePath] = entry
+            }
+        }
+        return downloadItems.compactMap { item in
+            let manifest = (!item.url.isEmpty ? manifestsByURL[item.url] : nil)
+                ?? manifestsByRelativePath[item.relativePath]
             let file = DashboardFileItem(
                 key: fileKey(url: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath),
                 title: item.relativePath,
@@ -1593,7 +1602,8 @@ private struct FileManifestListView: View {
     }
 
     private var filteredItems: [DashboardFileItem] {
-        model.snapshot.courseFileManifest.compactMap { entry in
+        let recentKeys = recentFileKeys
+        return model.snapshot.courseFileManifest.compactMap { entry in
             let key = fileKey(url: entry.url, path: entry.absolutePath, fallback: entry.relativePath)
             let item = DashboardFileItem(
                 key: key,
@@ -1604,7 +1614,7 @@ private struct FileManifestListView: View {
                 sortPath: entry.relativePath,
                 bucket: entry.bucket,
                 url: entry.url,
-                isRecent: isRecent(entry),
+                isRecent: recentKeys.contains(entry.url) || recentKeys.contains(entry.relativePath),
                 recencyText: entry.localDownloadedAt,
                 klmsTimestampEpoch: entry.klmsTimestampEpoch,
                 interaction: model.snapshot.appUserState?.files[key]
@@ -1613,20 +1623,26 @@ private struct FileManifestListView: View {
         }
     }
 
-    private func isRecent(_ entry: CourseFileManifestEntry) -> Bool {
-        (model.snapshot.downloadResult?.results ?? []).contains { result in
-            let sameFile = (!result.url.isEmpty && result.url == entry.url)
-                || (!result.relativePath.isEmpty && result.relativePath == entry.relativePath)
-            guard sameFile else {
-                return false
-            }
-            return result.copiedToNewFilesInbox
+    private var recentFileKeys: Set<String> {
+        var keys = Set<String>()
+        for result in model.snapshot.downloadResult?.results ?? [] {
+            let isRecent = result.copiedToNewFilesInbox
                 || (!result.skippedExisting
                     && !result.restoredFromArchive
                     && !result.reusedLoggedFile
                     && !result.failed
                     && !result.quarantined)
+            guard isRecent else {
+                continue
+            }
+            if !result.url.isEmpty {
+                keys.insert(result.url)
+            }
+            if !result.relativePath.isEmpty {
+                keys.insert(result.relativePath)
+            }
         }
+        return keys
     }
 }
 
@@ -1646,7 +1662,7 @@ private struct MissingFilesListView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("파일 목록에는 있지만 현재 로컬 저장 위치에 없는 항목입니다. 파일 동기화를 실행하면 archive/log에서 복구하거나, 없으면 KLMS에서 다시 받습니다.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 FileSortPickerView(selection: $sortOption)
                 LazyVStack(alignment: .leading, spacing: 8) {
@@ -2295,20 +2311,20 @@ private struct FileRowView: View {
                         if hidden {
                             Label("숨김", systemImage: "eye.slash")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                         }
                     }
                     let metadata = [item.academicTerm?.displayName ?? "", item.course].filter { !$0.isEmpty }.joined(separator: " · ")
                     if !metadata.isEmpty {
                         Text(metadata)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .lineLimit(2)
                     }
                     if !item.path.isEmpty {
                         Text(item.path)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .lineLimit(2)
                             .textSelection(.enabled)
                     }
@@ -2476,15 +2492,15 @@ private extension DashboardFileItem {
     var fileKindColor: Color {
         switch bucket.trimmingCharacters(in: .whitespacesAndNewlines) {
         case "board-attachments":
-            .purple
+            Color.klmsMacCommandAccent
         case "assignment-attachments":
-            .green
+            Color.klmsMacSuccessBorder
         case "resources", "folders":
-            .blue
+            Color.klmsMacSecondaryText
         case "quarantine":
-            .orange
+            Color.klmsMacWarningBorder
         default:
-            .secondary
+            Color.klmsMacSecondaryText
         }
     }
 }
@@ -2515,7 +2531,7 @@ private struct CalendarDetailView: View {
             if let coreRun = snapshot.syncReport?.runs["core"] {
                 Text("과제/시험 · \(coreRun.status.klmsLocalizedStatus) · \(coreRun.elapsedSecondsText)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
 
             if let result = snapshot.calendarSyncResult {
@@ -2597,7 +2613,7 @@ private struct CalendarActionGuideView: View {
                         .font(.caption.weight(.semibold))
                     Text(helpText)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -2672,14 +2688,14 @@ private struct CalendarSummaryListView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("캘린더별 요약")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                 ForEach(result.summaries) { summary in
                     HStack(spacing: 8) {
                         Text(summary.calendar.isEmpty ? "캘린더" : summary.calendar)
                             .font(.caption.weight(.semibold))
                         Text(bucketLabel(summary.bucket))
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                         Spacer()
                         Text("생성 \(summary.created)")
                         Text("수정 \(summary.updated)")
@@ -2721,7 +2737,7 @@ private struct CalendarChangeListView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("상세 변경")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
 
             if visibleChanges.isEmpty {
                 EmptyDetailText(text: emptyText)
@@ -2734,7 +2750,7 @@ private struct CalendarChangeListView: View {
                 if visibleChanges.count > 50 {
                     Text("최근 50개만 표시 중 · 전체 \(visibleChanges.count)개")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
             }
         }
@@ -2808,18 +2824,18 @@ private struct CalendarChangeRowView: View {
                         .lineLimit(2)
                     Text(metadataText)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .lineLimit(2)
                     if !timeText.isEmpty {
                         Text(timeText)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .lineLimit(2)
                     }
                     if !change.changes.isEmpty {
                         Text("변경 필드: \(change.changes.joined(separator: ", "))")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .lineLimit(2)
                     }
                     if !change.parseError.isEmpty {
@@ -2940,13 +2956,13 @@ private struct CalendarChangeRowView: View {
     private var actionColor: Color {
         switch change.action {
         case "created":
-            .green
+            Color.klmsMacSuccessBorder
         case "updated":
-            .blue
+            Color.klmsMacCommandAccent
         case "deleted":
-            .red
+            Color.klmsMacDangerBorder
         default:
-            .secondary
+            Color.klmsMacSecondaryText
         }
     }
 
@@ -3136,7 +3152,7 @@ private struct MacMailPasteInputBox: View {
                         .font(.caption.weight(.semibold))
                     Text("메일 본문, LMS 외부 공지, 캘린더 안내문을 그대로 붙여넣으면 이 Mac 안에서만 판독합니다. 원문은 저장하지 않습니다.")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -3162,7 +3178,7 @@ private struct MacMailPasteInputBox: View {
                 if mailText.isEmpty {
                     Text("예: 시험 일정, 과제 마감, 첨부파일 안내가 들어 있는 메일 본문")
                         .font(.caption)
-                        .foregroundStyle(Color.primary.opacity(0.48))
+                        .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.68))
                         .padding(.horizontal, 13)
                         .padding(.vertical, 14)
                         .allowsHitTesting(false)
@@ -3172,11 +3188,11 @@ private struct MacMailPasteInputBox: View {
             HStack(spacing: 8) {
                 Label(trimmedText.isEmpty ? "입력 대기" : "\(lineCount)줄 · \(trimmedText.count)자", systemImage: trimmedText.isEmpty ? "square.and.pencil" : "doc.text.magnifyingglass")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(trimmedText.isEmpty ? Color.secondary : accent)
+                    .foregroundStyle(trimmedText.isEmpty ? Color.klmsMacSecondaryText : accent)
                 Spacer(minLength: 0)
                 Label("원문은 서버로 보내지 않음", systemImage: "lock.shield")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
             }
         }
         .padding(10)
@@ -3204,15 +3220,15 @@ private struct MacMailPasteAnalysisResultView: View {
                     .font(.caption.weight(.semibold))
                 Text("메일 원문을 붙여넣고 `판독하기`를 누르면 분류, 과목, 일정, 대시보드 반영 후보를 여기에서 확인합니다.")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.primary.opacity(0.14), lineWidth: 1)
+                    .stroke(Color.klmsMacBorder, lineWidth: 1)
             }
         } else {
             VStack(alignment: .leading, spacing: 9) {
@@ -3239,7 +3255,7 @@ private struct MacMailPasteAnalysisResultView: View {
                             .font(.caption.weight(.semibold))
                         Text(analysis.summary)
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
@@ -3258,7 +3274,7 @@ private struct MacMailPasteAnalysisResultView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("처리 대상")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 7)], alignment: .leading, spacing: 7) {
                             ForEach(analysis.detectedTargets, id: \.self) { target in
                                 MacMailAnalysisPill(title: "판독", value: target, tint: analysis.kind.tint)
@@ -3270,7 +3286,7 @@ private struct MacMailPasteAnalysisResultView: View {
                 if !analysis.urls.isEmpty {
                     Text("본문 링크 \(analysis.urls.count)개 감지")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
 
                 if analysis.matchedItems.isEmpty {
@@ -3279,7 +3295,7 @@ private struct MacMailPasteAnalysisResultView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("관련 KLMS 항목")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                         ForEach(analysis.matchedItems.prefix(5)) { item in
                             HStack(alignment: .top, spacing: 8) {
                                 Text(item.kindLabel)
@@ -3294,7 +3310,7 @@ private struct MacMailPasteAnalysisResultView: View {
                                         .lineLimit(2)
                                     Text([item.course, item.due].filter { !$0.isEmpty }.joined(separator: " · "))
                                         .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(Color.klmsMacSecondaryText)
                                         .lineLimit(2)
                                 }
                                 Spacer(minLength: 0)
@@ -3403,12 +3419,12 @@ private struct MailDashboardItemEditSheet: View {
                 .font(.headline)
             Text("대시보드에 반영할 항목의 분류와 내용을 조정합니다. 원문은 저장하지 않습니다.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
                     Text("분류")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     Picker("분류", selection: $kind) {
                         ForEach(Self.kindOptions, id: \.self) { value in
                             Text(value.klmsMailDashboardKindName).tag(value)
@@ -3418,32 +3434,32 @@ private struct MailDashboardItemEditSheet: View {
                 }
                 GridRow {
                     Text("제목")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("제목", text: $title)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("과목")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("과목명", text: $course)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("일시")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("마감/일정", text: $timestamp)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("설명")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("설명", text: $detail, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(2...4)
                 }
                 GridRow {
                     Text("첨부/링크")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("0", text: $attachmentCount)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 90)
@@ -3499,7 +3515,7 @@ private struct MacMailAnalysisPill: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
             Text(value)
                 .font(.caption.weight(.semibold))
                 .lineLimit(2)
@@ -3540,7 +3556,7 @@ private struct MacMailAnalysisProcessView: View {
                                     .font(.caption.weight(.semibold))
                                 Text(step.detail)
                                     .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer(minLength: 0)
@@ -3561,7 +3577,7 @@ private struct MacMailAnalysisProcessView: View {
                     Spacer(minLength: 0)
                     Text("\(steps.count)단계")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 .contentShape(Rectangle())
             }
@@ -3583,11 +3599,11 @@ private struct MacMailActionPlanView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("추천 처리")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
             ForEach(lines, id: \.self) { line in
                 Label(line, systemImage: "checkmark.circle")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -3625,30 +3641,30 @@ private struct MailCalendarCreateSheet: View {
                 .font(.headline)
             Text("Apple Calendar에 새 일정을 추가합니다. 시간은 `2026-06-17 13:00` 형식으로 확인해 주세요.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
                     Text("제목")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("일정 제목", text: $title)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("시작")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("2026-06-17 13:00", text: $startAt)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("종료")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("비워 두면 1시간", text: $dueAt)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("장소")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("장소", text: $location)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -4578,30 +4594,30 @@ private struct CalendarEventEditSheet: View {
                 ? "Apple Calendar에 새 이벤트를 등록합니다. 제목과 시작 시간은 반드시 확인해 주세요."
                 : "Apple Calendar에 저장된 이벤트를 직접 수정합니다. 비워 둔 시간/장소는 변경하지 않습니다.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 10) {
                 GridRow {
                     Text("제목")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("일정 제목", text: $title)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("시작")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("2026-06-17 13:00", text: $startAt)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("종료")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("2026-06-17 16:00", text: $dueAt)
                         .textFieldStyle(.roundedBorder)
                 }
                 GridRow {
                     Text("장소")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                     TextField("장소", text: $location)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -4632,15 +4648,15 @@ private struct CalendarChangeExplanationView: View {
         VStack(alignment: .leading, spacing: 4) {
             Label(change.explanationText, systemImage: "info.circle")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Text(change.nextActionText)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Text(change.actionButtonHelpText)
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(8)
@@ -4688,7 +4704,7 @@ private struct EmptyDetailText: View {
     var body: some View {
         Text(text)
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.klmsMacSecondaryText)
     }
 }
 

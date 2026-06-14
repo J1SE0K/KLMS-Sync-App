@@ -1402,7 +1402,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .primary:
             Color.klmsMacCommandButtonForeground
         case .destructive:
-            .red
+            Color.klmsMacDangerBorder
         case .success:
             Color.klmsMacSecondaryCommandButtonForeground
         case .accent(let color):
@@ -1764,7 +1764,7 @@ private struct LogSummaryPanelView: View {
         if result.wasCancelled {
             return .klmsMacSecondaryText
         }
-        return result.succeeded ? .green : .orange
+        return result.succeeded ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder
     }
 
     private var remoteValue: String {
@@ -2521,7 +2521,7 @@ private struct DiagnosticCommandLogPanelView: View {
                     HStack(spacing: 8) {
                         Label(source.title, systemImage: source.systemImage)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(source.isWarning ? .orange : Color.klmsMacPrimaryText)
+                            .foregroundStyle(source.isWarning ? Color.klmsMacWarningBorder : Color.klmsMacPrimaryText)
                         Text("\(source.lineCount)줄")
                             .font(.caption2)
                             .foregroundStyle(Color.klmsMacSecondaryText)
@@ -3025,7 +3025,7 @@ private struct DashboardLogSummaryPanelView: View {
         if result.wasCancelled {
             return .klmsMacSecondaryText
         }
-        return result.succeeded ? .green : .orange
+        return result.succeeded ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder
     }
 }
 
@@ -3155,7 +3155,7 @@ private struct NoticeMemoStatusView: View {
     }
 
     private var renderModeColor: Color {
-        .blue
+        Color.klmsMacCommandAccent
     }
 
     private func noticeResultIsOK(_ status: String) -> Bool {
@@ -3357,7 +3357,7 @@ private struct SharedRunLogActivityRow: View {
         if log.wasCancelled {
             return .klmsMacSecondaryText
         }
-        return log.needsAttention ? .orange : .green
+        return log.needsAttention ? Color.klmsMacWarningBorder : Color.klmsMacSuccessBorder
     }
 }
 
@@ -3385,7 +3385,7 @@ private struct ServerRequestLogActivityRow: View {
                             .foregroundStyle(Color.klmsMacSecondaryText)
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
                     }
                     Text(detail)
                         .font(.caption2)
@@ -3482,7 +3482,7 @@ private struct RemoteCommandActivityRow: View {
                             .foregroundStyle(Color.klmsMacSecondaryText)
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
                     }
                     Text(remoteCommandDetail)
                         .font(.caption2)
@@ -3581,13 +3581,13 @@ private struct RemoteCommandActivityRow: View {
     private var statusColor: Color {
         switch command.status {
         case .pending, .running:
-            .blue
+            Color.klmsMacCommandAccent
         case .completed:
-            .green
+            Color.klmsMacSuccessBorder
         case .cancelled:
-            .klmsMacSecondaryText
+            Color.klmsMacSecondaryText
         case .failed, .macUnavailable:
-            .orange
+            Color.klmsMacWarningBorder
         }
     }
 }
@@ -3616,7 +3616,7 @@ private struct FileAccessActivityRow: View {
                             .foregroundStyle(Color.klmsMacSecondaryText)
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
                     }
                     Text(detail)
                         .font(.caption2)
@@ -3693,11 +3693,11 @@ private struct FileAccessActivityRow: View {
     private var statusColor: Color {
         switch request.status {
         case .pending, .running:
-            .blue
+            Color.klmsMacCommandAccent
         case .completed:
-            .green
+            Color.klmsMacSuccessBorder
         case .failed, .macUnavailable:
-            .orange
+            Color.klmsMacWarningBorder
         }
     }
 }
@@ -3868,7 +3868,7 @@ private struct CommandPanelView: View {
             if result.wasCancelled {
                 return .klmsMacSecondaryText
             }
-            return result.succeeded ? .green : .orange
+            return result.succeeded ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder
         }
         return .klmsMacSecondaryText
     }
@@ -4343,7 +4343,7 @@ private struct DiagnosticRowView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: isWarning ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(isWarning ? .orange : .green)
+                .foregroundStyle(isWarning ? Color.klmsMacWarningBorder : Color.klmsMacSuccessBorder)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(title): \(value)")
@@ -4424,8 +4424,8 @@ private struct RunLogArchivePanelView: View {
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
                         RunLogStatChip(title: "전체", value: "\(records.count)", systemImage: "tray.full", tint: .klmsMacCommandAccent)
-                        RunLogStatChip(title: "성공", value: "\(records.filter(\.succeeded).count)", systemImage: "checkmark.circle", tint: .green)
-                        RunLogStatChip(title: "실패", value: "\(records.filter(\.needsAttention).count)", systemImage: "exclamationmark.triangle", tint: .orange)
+                        RunLogStatChip(title: "성공", value: "\(records.filter(\.succeeded).count)", systemImage: "checkmark.circle", tint: Color.klmsMacSuccessBorder)
+                        RunLogStatChip(title: "실패", value: "\(records.filter(\.needsAttention).count)", systemImage: "exclamationmark.triangle", tint: Color.klmsMacWarningBorder)
                         RunLogStatChip(title: "중단", value: "\(records.filter(\.wasCancelled).count)", systemImage: "stop.circle", tint: .klmsMacSecondaryText)
                     }
 
@@ -4607,7 +4607,7 @@ private struct CurrentRunLogCardView: View {
             if result.wasCancelled {
                 return .klmsMacSecondaryText
             }
-            return result.succeeded ? .green : .orange
+            return result.succeeded ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder
         }
         return .klmsMacSecondaryText
     }
@@ -4784,7 +4784,7 @@ private struct CommandHistoryRowView: View {
         if record.wasCancelled {
             return .klmsMacSecondaryText
         }
-        return record.succeeded ? .green : .orange
+        return record.succeeded ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder
     }
 }
 
@@ -4864,9 +4864,9 @@ private extension EngineIssue.Severity {
     var color: Color {
         switch self {
         case .warning:
-            .orange
+            Color.klmsMacWarningBorder
         case .error:
-            .red
+            Color.klmsMacDangerBorder
         }
     }
 

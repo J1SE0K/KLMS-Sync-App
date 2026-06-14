@@ -2970,6 +2970,66 @@ private enum CompanionItemListFilter {
     }
 }
 
+private struct CompanionItemListData {
+    var baseItems: [ServerRelaySyncItem]
+    var courseOptions: [String]
+    var yearOptions: [String]
+    var semesterOptions: [String]
+    var availableStatusFilters: [CompanionItemStatusFilter]
+    var effectiveStatusFilter: CompanionItemStatusFilter
+    var filteredItems: [ServerRelaySyncItem]
+
+    init(
+        items: [ServerRelaySyncItem],
+        category: DashboardMetricCategory?,
+        query: String,
+        sortOption: CompanionItemSortOption,
+        visibilityFilter: CompanionItemVisibilityFilter,
+        statusFilter: CompanionItemStatusFilter,
+        selectedCourse: String,
+        selectedYear: String,
+        selectedSemester: String,
+        newOnly: Bool,
+        recentOnly: Bool
+    ) {
+        let base = category.map { metric in
+            items.filter { metric.includes($0) }
+        } ?? items
+        let courses = CompanionItemListFilter.courseOptions(for: base)
+        let years = CompanionItemListFilter.yearOptions(for: base)
+        let semesters = CompanionItemListFilter.semesterOptions(for: base)
+        let statusFilters = CompanionItemStatusFilter.options(for: category, items: base)
+        let effectiveStatus = statusFilters.contains(statusFilter)
+            ? statusFilter
+            : CompanionItemStatusFilter.defaultFilter(for: category)
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCourse = courses.contains(selectedCourse) ? selectedCourse : CompanionItemListFilter.allCourses
+        let normalizedYear = years.contains(selectedYear) ? selectedYear : CompanionItemListFilter.allYears
+        let normalizedSemester = semesters.contains(selectedSemester) ? selectedSemester : CompanionItemListFilter.allSemesters
+        let filtered = base
+            .filter { visibilityFilter.includes($0) }
+            .filter { effectiveStatus.includes($0) }
+            .filter { normalizedCourse == CompanionItemListFilter.allCourses || $0.course == normalizedCourse }
+            .filter { normalizedYear == CompanionItemListFilter.allYears || ($0.academicYear.map(String.init) ?? "") == normalizedYear }
+            .filter { normalizedSemester == CompanionItemListFilter.allSemesters || $0.academicSemester == normalizedSemester }
+            .filter { !newOnly || $0.isCompanionChangedLike }
+            .filter { !recentOnly || $0.isCompanionChangedLike }
+            .filter { item in
+                guard !normalizedQuery.isEmpty else { return true }
+                return item.searchText.localizedCaseInsensitiveContains(normalizedQuery)
+            }
+            .companionSorted(by: sortOption)
+
+        self.baseItems = base
+        self.courseOptions = courses
+        self.yearOptions = years
+        self.semesterOptions = semesters
+        self.availableStatusFilters = statusFilters
+        self.effectiveStatusFilter = effectiveStatus
+        self.filteredItems = filtered
+    }
+}
+
 private struct CompanionItemListControls: View {
     @Binding var sortOption: CompanionItemSortOption
     @Binding var visibilityFilter: CompanionItemVisibilityFilter
@@ -4679,7 +4739,20 @@ private struct DashboardCategoryInlineDetailPanel: View {
         } else if category == .quarantine {
             panelEmptyText(category.emptyMessage)
         } else {
-            let filtered = filteredItems
+            let listData = CompanionItemListData(
+                items: model.dashboardSyncItems,
+                category: category,
+                query: query,
+                sortOption: sortOption,
+                visibilityFilter: visibilityFilter,
+                statusFilter: statusFilter,
+                selectedCourse: selectedCourse,
+                selectedYear: selectedYear,
+                selectedSemester: selectedSemester,
+                newOnly: newOnly,
+                recentOnly: recentOnly
+            )
+            let filtered = listData.filteredItems
             let visible = Array(filtered.prefix(visibleLimit))
             LazyVStack(alignment: .leading, spacing: 8) {
                 TextField("\(category.title) 검색", text: $query)
@@ -4694,14 +4767,14 @@ private struct DashboardCategoryInlineDetailPanel: View {
                     selectedSemester: $selectedSemester,
                     newOnly: $newOnly,
                     recentOnly: $recentOnly,
-                    availableStatusFilters: availableStatusFilters,
-                    courseOptions: courseOptions,
-                    yearOptions: yearOptions,
-                    semesterOptions: semesterOptions,
+                    availableStatusFilters: listData.availableStatusFilters,
+                    courseOptions: listData.courseOptions,
+                    yearOptions: listData.yearOptions,
+                    semesterOptions: listData.semesterOptions,
                     supportsNewOnly: category.supportsNewOnly,
                     supportsRecentOnly: category.supportsRecentOnly,
                     defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
-                    totalCount: baseItems.count,
+                    totalCount: listData.baseItems.count,
                     filteredCount: filtered.count
                 )
 
@@ -6534,7 +6607,20 @@ private struct DashboardCategoryDetailScreen: View {
     }
 
     var body: some View {
-        let filtered = filteredItems
+        let listData = CompanionItemListData(
+            items: items,
+            category: category,
+            query: query,
+            sortOption: sortOption,
+            visibilityFilter: visibilityFilter,
+            statusFilter: statusFilter,
+            selectedCourse: selectedCourse,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester,
+            newOnly: newOnly,
+            recentOnly: recentOnly
+        )
+        let filtered = listData.filteredItems
         List {
             Section {
                 DashboardCategorySummaryRow(category: category, status: status, itemCount: filtered.count)
@@ -6574,14 +6660,14 @@ private struct DashboardCategoryDetailScreen: View {
                         selectedSemester: $selectedSemester,
                         newOnly: $newOnly,
                         recentOnly: $recentOnly,
-                        availableStatusFilters: availableStatusFilters,
-                        courseOptions: courseOptions,
-                        yearOptions: yearOptions,
-                        semesterOptions: semesterOptions,
+                        availableStatusFilters: listData.availableStatusFilters,
+                        courseOptions: listData.courseOptions,
+                        yearOptions: listData.yearOptions,
+                        semesterOptions: listData.semesterOptions,
                         supportsNewOnly: category.supportsNewOnly,
                         supportsRecentOnly: category.supportsRecentOnly,
                         defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
-                        totalCount: baseItems.count,
+                        totalCount: listData.baseItems.count,
                         filteredCount: filtered.count
                     )
                 }
@@ -7116,7 +7202,20 @@ private struct ServerSyncDataPanel: View {
 
     var body: some View {
         if !items.isEmpty {
-            let filtered = filteredItems
+            let listData = CompanionItemListData(
+                items: items,
+                category: nil,
+                query: query,
+                sortOption: sortOption,
+                visibilityFilter: visibilityFilter,
+                statusFilter: statusFilter,
+                selectedCourse: selectedCourse,
+                selectedYear: selectedYear,
+                selectedSemester: selectedSemester,
+                newOnly: newOnly,
+                recentOnly: recentOnly
+            )
+            let filtered = listData.filteredItems
             let visible = Array(filtered.prefix(visibleLimit))
             DisclosureGroup(isExpanded: $isExpanded) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -7131,14 +7230,14 @@ private struct ServerSyncDataPanel: View {
                         selectedSemester: $selectedSemester,
                         newOnly: $newOnly,
                         recentOnly: $recentOnly,
-                        availableStatusFilters: availableStatusFilters,
-                        courseOptions: courseOptions,
-                        yearOptions: yearOptions,
-                        semesterOptions: semesterOptions,
+                        availableStatusFilters: listData.availableStatusFilters,
+                        courseOptions: listData.courseOptions,
+                        yearOptions: listData.yearOptions,
+                        semesterOptions: listData.semesterOptions,
                         supportsNewOnly: true,
                         supportsRecentOnly: true,
                         defaultStatusFilter: .all,
-                        totalCount: items.count,
+                        totalCount: listData.baseItems.count,
                         filteredCount: filtered.count
                     )
                     ForEach(visible) { item in

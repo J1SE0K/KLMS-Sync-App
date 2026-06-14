@@ -262,7 +262,7 @@ struct SettingsView: View {
                 }
                 LabeledContent("서버 상태") {
                     Text(model.serverRelayStatusMessage ?? "대기 중")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
             }
 
@@ -349,7 +349,7 @@ struct SettingsView: View {
                         Text(model.appDiagnostics.codeSigning.statusTitle)
                         Text(model.appDiagnostics.codeSigning.statusDetail)
                             .font(.caption)
-                            .foregroundStyle(model.appDiagnostics.codeSigning.isAdHoc ? .orange : .secondary)
+                            .foregroundStyle(model.appDiagnostics.codeSigning.isAdHoc ? Color.klmsMacWarningBorder : Color.klmsMacSecondaryText)
                             .multilineTextAlignment(.trailing)
                     }
                 }
@@ -503,7 +503,7 @@ private struct SettingsHelpText: View {
     var body: some View {
         Text(text)
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.klmsMacSecondaryText)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
