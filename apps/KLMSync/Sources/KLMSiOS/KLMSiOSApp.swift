@@ -2268,15 +2268,14 @@ private struct CompanionScreenHeader: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.title2.weight(.bold))
                     .foregroundStyle(Color.klmsPrimaryText)
-                Text(model.statusLine)
-                    .font(.caption)
+                Text("KLMS Sync")
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
             }
             Spacer(minLength: 8)
             Text(headerStatusText)

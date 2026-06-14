@@ -936,6 +936,7 @@ final class DashboardDataModelTests: XCTestCase {
         let iosHistoryScreen = try sourceStructBody(named: "CompanionHistoryScreen", in: ios)
         let iosSplitRoot = try sourceStructBody(named: "CompanionSplitRootView", in: ios)
         let iosSidebar = try sourceStructBody(named: "WorkstationSidebar", in: ios)
+        let iosHeader = try sourceStructBody(named: "CompanionScreenHeader", in: ios)
         let iosStatusScreen = try sourceStructBody(named: "CompanionStatusScreen", in: ios)
         let iosMetricOverview = try sourceStructBody(named: "RemoteDashboardMetricOverview", in: ios)
 
@@ -989,6 +990,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosSidebar.contains("CompanionAppSection.workstationSections"))
         XCTAssertTrue(iosSidebar.contains("showsIcon: false"))
         XCTAssertTrue(iosSidebar.contains("showsArrow: false"))
+        XCTAssertTrue(iosHeader.contains("Text(\"KLMS Sync\")"))
+        XCTAssertFalse(iosHeader.contains("Text(model.statusLine)"))
         XCTAssertTrue(iosStatusScreen.contains("workstationStatusDetailColumn"))
         XCTAssertTrue(iosStatusScreen.contains("WorkstationDashboardDetailPanel"))
         XCTAssertTrue(iosStatusScreen.contains("CompactDashboardSelectionPanel"))
