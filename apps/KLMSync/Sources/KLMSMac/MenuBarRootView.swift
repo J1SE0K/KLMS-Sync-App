@@ -37,18 +37,11 @@ private struct MacWorkstationLayoutView: View {
     @Binding var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 14) {
-                controlRail
-                    .frame(minWidth: 238, idealWidth: 280, maxWidth: 300, alignment: .topLeading)
-                workspace
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-
-            VStack(alignment: .leading, spacing: 14) {
-                controlRail
-                workspace
-            }
+        HStack(alignment: .top, spacing: 14) {
+            controlRail
+                .frame(width: 280, alignment: .topLeading)
+            workspace
+                .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -2339,9 +2332,9 @@ private struct DashboardSummaryView: View {
                 Metric("과제", counts.assignments + model.mailDashboardItems(kind: "assignment").count, detail: .assignments),
                 Metric("공지", counts.notices, detail: .notices),
                 Metric("시험", counts.exams + model.mailDashboardItems(kind: "exam").count, detail: .exams),
-                Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
             ].filter { $0.value > 0 }
             let attentionMetrics = [
+                Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
                 Metric("새 파일", counts.newFiles, detail: .newFiles),
                 Metric("캘린더", calendarAttentionCount, detail: .calendar),
                 Metric("격리", counts.quarantine, detail: .quarantine),
@@ -2364,7 +2357,7 @@ private struct DashboardSummaryView: View {
                     .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
                 MetricSectionGrid(
-                    title: "주요 항목",
+                    title: nil,
                     metrics: primaryMetrics,
                     selectedMetricID: activeDetail?.rawValue,
                     onSelect: selectMetric
@@ -3402,7 +3395,7 @@ private struct CommandStageDurationSummaryView: View {
 }
 
 private struct MetricSectionGrid: View {
-    var title: String
+    var title: String?
     var metrics: [Metric]
     var selectedMetricID: String?
     var onSelect: (Metric) -> Void
@@ -3410,10 +3403,12 @@ private struct MetricSectionGrid: View {
     var body: some View {
         if !metrics.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .fontWeight(.semibold)
+                if let title {
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .fontWeight(.semibold)
+                }
                 MetricGrid(metrics: metrics, selectedMetricID: selectedMetricID, onSelect: onSelect)
             }
         }
