@@ -3872,25 +3872,19 @@ private struct RemoteMetricTile: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsCommandAccent : Color.klmsSecondaryText)
-                    .frame(width: 30, height: 30)
-                    .background(isSelected ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 7))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(value)")
-                        .font(.headline.monospacedDigit())
-                        .foregroundStyle(Color.klmsPrimaryText)
-                    Text(label)
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
+            VStack(alignment: .leading, spacing: 5) {
+                Text("\(value)")
+                    .font(.title2.monospacedDigit().weight(.bold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
-            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .background(isSelected ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(

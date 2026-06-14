@@ -939,6 +939,7 @@ final class DashboardDataModelTests: XCTestCase {
         let iosHeader = try sourceStructBody(named: "CompanionScreenHeader", in: ios)
         let iosStatusScreen = try sourceStructBody(named: "CompanionStatusScreen", in: ios)
         let iosMetricOverview = try sourceStructBody(named: "RemoteDashboardMetricOverview", in: ios)
+        let iosMetricTile = try sourceStructBody(named: "RemoteMetricTile", in: ios)
 
         XCTAssertTrue(mac.contains("case activityLogs"))
         XCTAssertTrue(mac.contains("case diagnostics"))
@@ -1001,6 +1002,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosStatusScreen.contains("?? .files"))
         XCTAssertTrue(iosMetricOverview.contains("@Environment(\\.horizontalSizeClass)"))
         XCTAssertTrue(iosMetricOverview.contains("WorkstationMetricCard"))
+        XCTAssertFalse(iosMetricTile.contains("Image(systemName: systemImage)"))
+        XCTAssertTrue(iosMetricTile.contains(".font(.title2.monospacedDigit().weight(.bold))"))
         XCTAssertTrue(ios.contains("private struct WorkstationDashboardDetailPanel"))
         XCTAssertTrue(ios.contains("private struct WorkstationSelectedItemCard"))
         XCTAssertTrue(ios.contains("private struct WorkstationChangeSummaryCard"))
