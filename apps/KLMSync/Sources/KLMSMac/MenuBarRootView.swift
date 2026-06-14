@@ -3766,7 +3766,7 @@ private struct CommandPanelView: View {
         } label: {
             HStack(alignment: .center, spacing: 12) {
                 Text("전체 동기화")
-                    .font(.title3.weight(.heavy))
+                    .font(.system(size: 18, weight: .black, design: .rounded))
                 Spacer(minLength: 0)
                 Image(systemName: "play.fill")
                     .font(.headline.weight(.black))
@@ -3774,7 +3774,7 @@ private struct CommandPanelView: View {
             .foregroundStyle(Color.klmsMacCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.vertical, 15)
             .background(Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
@@ -3798,13 +3798,13 @@ private struct CommandPanelView: View {
         } label: {
             HStack(spacing: 7) {
                 Text(shortTitle(for: command))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
             }
             .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .center)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 8)
             .padding(.vertical, 9)
             .background(Color.klmsMacCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
             .overlay {

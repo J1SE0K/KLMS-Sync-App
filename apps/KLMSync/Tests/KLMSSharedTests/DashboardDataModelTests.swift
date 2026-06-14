@@ -739,6 +739,7 @@ final class DashboardDataModelTests: XCTestCase {
         let view = try String(contentsOf: viewRoot, encoding: .utf8)
         let detail = try String(contentsOf: detailRoot, encoding: .utf8)
         let navigationView = try sourceStructBody(named: "WorkspaceNavigationView", in: view)
+        let commandPanel = try sourceStructBody(named: "CommandPanelView", in: view)
         let actionButtonStyle = try sourceBody(
             after: "private struct KLMSMacActionButtonStyle: ButtonStyle",
             in: detail,
@@ -762,6 +763,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("return model.serverRelayEnabled ? \"Mac 연결됨\" : \"준비됨\""))
         XCTAssertTrue(view.contains("MacDesignMetric(.files, \"파일\", model.snapshot.courseFileManifest.count)"))
         XCTAssertTrue(navigationView.contains("RoundedRectangle(cornerRadius: 10)"))
+        XCTAssertTrue(commandPanel.contains(".font(.system(size: 18, weight: .black, design: .rounded))"))
+        XCTAssertTrue(commandPanel.contains(".padding(.horizontal, 14)"))
+        XCTAssertTrue(commandPanel.contains(".padding(.vertical, 15)"))
+        XCTAssertTrue(commandPanel.contains(".font(.system(size: 11, weight: .heavy, design: .rounded))"))
+        XCTAssertTrue(commandPanel.contains(".padding(.horizontal, 8)"))
+        XCTAssertFalse(commandPanel.contains(".font(.title3.weight(.heavy))"))
         XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 8)"))
     }
