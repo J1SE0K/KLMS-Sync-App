@@ -1783,9 +1783,9 @@ private struct CompanionCompactTabBar: View {
             }
         }
         .padding(6)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -3919,9 +3919,9 @@ private struct RemoteMetricTile: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(isSelected ? Color.klmsCommandBackground : Color.klmsCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 13))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
-                RoundedRectangle(cornerRadius: 13)
+                RoundedRectangle(cornerRadius: 14)
                     .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
             )
         }
@@ -4270,9 +4270,9 @@ private struct CompactDashboardSelectionPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -4292,7 +4292,7 @@ private struct CompactDashboardEmptyRow: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -4332,7 +4332,7 @@ private struct CompactDashboardSelectedRow: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 14))
             }
             .buttonStyle(.plain)
 
@@ -4384,9 +4384,9 @@ private struct KLMSActionButtonStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(background, in: RoundedRectangle(cornerRadius: 9))
+            .background(background, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 9)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(border, lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.985 : 1.0)

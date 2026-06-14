@@ -830,6 +830,14 @@ final class DashboardDataModelTests: XCTestCase {
         let dashboardSyncCard = try sourceStructBody(named: "RemoteDashboardSyncCard", in: ios)
         let metricOverview = try sourceStructBody(named: "RemoteDashboardMetricOverview", in: ios)
         let metricTile = try sourceStructBody(named: "RemoteMetricTile", in: ios)
+        let compactSelectionPanel = try sourceStructBody(named: "CompactDashboardSelectionPanel", in: ios)
+        let compactEmptyRow = try sourceStructBody(named: "CompactDashboardEmptyRow", in: ios)
+        let compactSelectedRow = try sourceStructBody(named: "CompactDashboardSelectedRow", in: ios)
+        let actionButtonStyle = try sourceBody(
+            after: "private struct KLMSActionButtonStyle: ButtonStyle",
+            in: ios,
+            description: "KLMS action button style"
+        )
         let relayConnectionPanel = try sourceStructBody(named: "ServerRelayConnectionPanel", in: ios)
         let appearancePanel = try sourceStructBody(named: "CompanionAppearancePanel", in: ios)
         let remoteCommandPanel = try sourceStructBody(named: "RemoteCommandPanel", in: ios)
@@ -848,6 +856,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(compactTabBar.contains("ForEach(CompanionAppSection.compactTabs)"))
         XCTAssertTrue(compactTabBar.contains("Text(section.compactTitle)"))
         XCTAssertFalse(compactTabBar.contains("Label(section.compactTitle"))
+        XCTAssertTrue(compactTabBar.contains("RoundedRectangle(cornerRadius: 14)"))
+        XCTAssertTrue(compactTabBar.contains("RoundedRectangle(cornerRadius: 9)"))
         XCTAssertTrue(sectionContent.contains("CompanionDashboardCategoryScreen(title: \"파일\", category: .files"))
         XCTAssertTrue(sectionContent.contains("CompanionDashboardCategoryScreen(title: \"공지\", category: .notices"))
         XCTAssertTrue(sectionContent.contains("CompanionTasksScreen"))
@@ -875,7 +885,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(metricOverview.contains("if horizontalSizeClass == .regular"))
         XCTAssertFalse(metricOverview.contains("Text(title)"))
         XCTAssertTrue(metricTile.contains("Color.klmsCardBackground"))
-        XCTAssertTrue(metricTile.contains("RoundedRectangle(cornerRadius: 13)"))
+        XCTAssertTrue(metricTile.contains("RoundedRectangle(cornerRadius: 14)"))
+        XCTAssertTrue(compactSelectionPanel.contains("RoundedRectangle(cornerRadius: 14)"))
+        XCTAssertTrue(compactEmptyRow.contains("RoundedRectangle(cornerRadius: 14)"))
+        XCTAssertTrue(compactSelectedRow.contains("RoundedRectangle(cornerRadius: 14)"))
+        XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
+        XCTAssertEqual(actionButtonStyle.components(separatedBy: ".padding(.horizontal, 10)").count - 1, 1)
         XCTAssertTrue(relayConnectionPanel.contains("RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(relayConnectionPanel.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(appearancePanel.contains("RoundedRectangle(cornerRadius: 14)"))
