@@ -761,6 +761,8 @@ final class DashboardDataModelTests: XCTestCase {
             in: detail,
             description: "Mac action button style"
         )
+        let verifyCheckRow = try sourceStructBody(named: "VerifyCheckExplanationRowView", in: view)
+        let issueRowView = try sourceStructBody(named: "IssueRowView", in: view)
 
         XCTAssertTrue(app.contains("KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()"))
         XCTAssertTrue(app.contains("MacDesignWindowRootView(model: model)"))
@@ -809,6 +811,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
         XCTAssertTrue(commandPanel.contains("Color.klmsMacCommandButtonBackground.opacity(0.90)"))
         XCTAssertFalse(commandPanel.contains(".background(Color.klmsMacDangerBackground, in: RoundedRectangle(cornerRadius: 10))"))
+        XCTAssertTrue(verifyCheckRow.contains(".background(Color.klmsMacSubtleCardBackground"))
+        XCTAssertTrue(verifyCheckRow.contains(".frame(width: 3)"))
+        XCTAssertTrue(verifyCheckRow.contains("isIssue ? 0.34 : 0.18"))
+        XCTAssertFalse(verifyCheckRow.contains("return Color.klmsMacDangerBackground"))
+        XCTAssertTrue(issueRowView.contains(".background(Color.klmsMacSubtleCardBackground"))
+        XCTAssertTrue(issueRowView.contains(".frame(width: 3)"))
+        XCTAssertFalse(issueRowView.contains("issue.severity.color.opacity(0.12)"))
         XCTAssertFalse(commandPanel.contains(".font(.title3.weight(.heavy))"))
         XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 8)"))
@@ -950,6 +959,7 @@ final class DashboardDataModelTests: XCTestCase {
         let sharedRunLogRow = try sourceStructBody(named: "SharedRunLogRow", in: ios)
         let remoteCommandRow = try sourceStructBody(named: "RemoteCommandRow", in: ios)
         let remoteCancelControl = try sourceStructBody(named: "RemoteCancelControl", in: ios)
+        let remoteVerifyCheckRow = try sourceStructBody(named: "RemoteVerifyCheckRow", in: ios)
 
         XCTAssertTrue(ios.contains("return \"대시보드\""))
         XCTAssertTrue(ios.contains("return \"파일\""))
@@ -1028,6 +1038,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteCancelControl.contains("Image(systemName: \"stop.circle\")"))
         XCTAssertTrue(remoteCancelControl.contains(".background(Color.klmsSubtleCardBackground"))
         XCTAssertFalse(remoteCancelControl.contains(".background(Color.klmsDangerBackground"))
+        XCTAssertTrue(remoteVerifyCheckRow.contains(".background(Color.klmsSubtleCardBackground"))
+        XCTAssertTrue(remoteVerifyCheckRow.contains(".frame(width: 3)"))
+        XCTAssertTrue(remoteVerifyCheckRow.contains("isIssue ? 0.34 : 0.18"))
+        XCTAssertFalse(remoteVerifyCheckRow.contains("return Color.klmsDangerBackground"))
         XCTAssertFalse(actionButtonStyle.contains(".padding(.horizontal, 10)"))
         XCTAssertFalse(actionButtonStyle.contains(".padding(.vertical, 8)"))
         XCTAssertTrue(relayConnectionPanel.contains("RoundedRectangle(cornerRadius: 14)"))

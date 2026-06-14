@@ -4206,6 +4206,11 @@ private struct VerifyCheckExplanationRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
+            if !compact {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(color.opacity(isIssue ? 0.72 : 0.24))
+                    .frame(width: 3)
+            }
             Image(systemName: systemImage)
                 .foregroundStyle(color)
                 .frame(width: 18)
@@ -4238,10 +4243,10 @@ private struct VerifyCheckExplanationRowView: View {
             }
         }
         .padding(compact ? 6 : 9)
-        .background(compact ? Color.klmsMacSubtleCardBackground : rowBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(color.opacity(compact ? 0.10 : 0.22), lineWidth: 1)
+                .stroke(color.opacity(compact ? 0.10 : (isIssue ? 0.34 : 0.18)), lineWidth: 1)
         }
     }
 
@@ -4249,14 +4254,10 @@ private struct VerifyCheckExplanationRowView: View {
         check.detail.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var rowBackground: Color {
-        if ["fail", "failed", "error"].contains(check.status.lowercased()) {
-            return Color.klmsMacDangerBackground
-        }
-        if ["warn", "warning"].contains(check.status.lowercased()) {
-            return Color.klmsMacWarningBackground
-        }
-        return Color.klmsMacSubtleCardBackground
+    private var isIssue: Bool {
+        ["fail", "failed", "error", "warn", "warning"].contains(
+            check.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        )
     }
 
     private var systemImage: String {
@@ -4993,6 +4994,9 @@ private struct IssueRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(issue.severity.color.opacity(0.68))
+                .frame(width: 3)
             Image(systemName: issue.severity.systemImage)
                 .foregroundStyle(issue.severity.color)
                 .frame(width: 18)
@@ -5011,7 +5015,11 @@ private struct IssueRowView: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(issue.severity.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(issue.severity.color.opacity(0.30), lineWidth: 1)
+        }
     }
 }
 

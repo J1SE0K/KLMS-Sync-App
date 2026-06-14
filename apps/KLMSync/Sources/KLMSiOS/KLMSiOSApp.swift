@@ -9284,6 +9284,11 @@ private struct RemoteVerifyCheckRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 2 : 5) {
             HStack(alignment: .top, spacing: 7) {
+                if !compact {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(tint.opacity(isIssue ? 0.72 : 0.24))
+                        .frame(width: 3)
+                }
                 Image(systemName: systemImage)
                     .foregroundStyle(tint)
                     .frame(width: 16)
@@ -9317,10 +9322,10 @@ private struct RemoteVerifyCheckRow: View {
             }
         }
         .padding(compact ? 7 : 9)
-        .background(rowBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(tint.opacity(compact ? 0.10 : 0.22), lineWidth: 1)
+                .stroke(tint.opacity(compact ? 0.10 : (isIssue ? 0.34 : 0.18)), lineWidth: 1)
         }
     }
 
@@ -9352,14 +9357,8 @@ private struct RemoteVerifyCheckRow: View {
         return Color.klmsSuccessBorder
     }
 
-    private var rowBackground: Color {
-        if ["fail", "failed", "error"].contains(status) {
-            return Color.klmsDangerBackground
-        }
-        if ["warn", "warning"].contains(status) {
-            return Color.klmsWarningBackground
-        }
-        return Color.klmsCardBackground
+    private var isIssue: Bool {
+        ["fail", "failed", "error", "warn", "warning"].contains(status)
     }
 }
 
