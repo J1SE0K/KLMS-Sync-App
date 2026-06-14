@@ -1656,6 +1656,10 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
         [.status, .files, .history, .settings]
     }
 
+    static var workstationSections: [CompanionAppSection] {
+        [.status, .files, .notices, .tasks, .calendar, .history, .settings]
+    }
+
     var title: String {
         switch self {
         case .status:
@@ -1756,10 +1760,12 @@ private struct CompanionSplitRootView: View {
         NavigationSplitView {
             List {
                 Section("KLMS Sync") {
-                    ForEach(CompanionAppSection.allCases) { section in
+                    ForEach(CompanionAppSection.workstationSections) { section in
                         CompanionSidebarButton(
                             section: section,
-                            isSelected: selectedSection == section
+                            isSelected: selectedSection == section,
+                            showsIcon: false,
+                            showsArrow: false
                         ) {
                             selectedSection = section
                         }
@@ -1771,7 +1777,7 @@ private struct CompanionSplitRootView: View {
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .background(Color.klmsScreenBackground)
-            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+            .navigationSplitViewColumnWidth(min: 176, ideal: 198, max: 230)
             .navigationTitle("KLMS Sync")
             .klmsNavigationChrome()
         } detail: {
@@ -1784,22 +1790,28 @@ private struct CompanionSplitRootView: View {
 private struct CompanionSidebarButton: View {
     var section: CompanionAppSection
     var isSelected: Bool
+    var showsIcon = true
+    var showsArrow = true
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: section.systemImage)
-                    .font(.body.weight(.semibold))
-                    .frame(width: 22)
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
+                if showsIcon {
+                    Image(systemName: section.systemImage)
+                        .font(.body.weight(.semibold))
+                        .frame(width: 22)
+                        .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
+                }
                 Text(section.title)
                     .font(.subheadline.weight(isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
                 Spacer(minLength: 0)
-                Image(systemName: "arrow.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText.opacity(0.70))
+                if showsArrow {
+                    Image(systemName: "arrow.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText.opacity(0.70))
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
@@ -1858,7 +1870,7 @@ private struct CompanionStatusScreen: View {
                 HStack(alignment: .top, spacing: 18) {
                     statusSummaryColumn
                         .frame(minWidth: 320, idealWidth: 380, maxWidth: 440, alignment: .topLeading)
-                    statusDetailColumn
+                    workstationStatusDetailColumn
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             } else {
@@ -1906,13 +1918,12 @@ private struct CompanionStatusScreen: View {
             RemoteChangeSummaryDetailPanel(kind: kind, model: model)
                 .id(kind)
                 .transition(.opacity.combined(with: .move(edge: .top)))
-        }
-        if let category = selectedDashboardPreview {
-            DashboardCategoryInlineDetailPanel(
-                category: category,
+        } else {
+            CompactDashboardSelectionPanel(
+                category: selectedDashboardPreview ?? defaultDashboardCategory ?? .files,
                 model: model
             )
-            .id(category)
+            .id(selectedDashboardPreview ?? defaultDashboardCategory ?? .files)
             .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
@@ -1933,6 +1944,20 @@ private struct CompanionStatusScreen: View {
         }
     }
 
+    @ViewBuilder
+    private var workstationStatusDetailColumn: some View {
+        if let kind = selectedChangeSummary {
+            RemoteChangeSummaryDetailPanel(kind: kind, model: model)
+                .id(kind)
+        } else {
+            WorkstationDashboardDetailPanel(
+                category: selectedDashboardPreview ?? defaultDashboardCategory ?? .files,
+                model: model
+            )
+            .id(selectedDashboardPreview ?? defaultDashboardCategory ?? .files)
+        }
+    }
+
     private var defaultDashboardCategory: DashboardMetricCategory? {
         let preferred: [DashboardMetricCategory] = [
             .files,
@@ -1945,7 +1970,7 @@ private struct CompanionStatusScreen: View {
         ]
         return preferred.first { category in
             category.value(from: model.dashboardStatus) > 0
-        }
+        } ?? .files
     }
 }
 
@@ -2641,6 +2666,25 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
             "캘린더 변경 상세는 Mac 앱의 캘린더 변경 화면에서 확인해야 합니다."
         case .helpDesk:
             "서버 DB에 올라온 헬프데스크 일정이 없습니다."
+        }
+    }
+
+    var workstationDescription: String {
+        switch self {
+        case .assignments:
+            "미리알림 완료 상태까지 같이 확인합니다."
+        case .exams:
+            "KLMS와 메일 판독 시험을 한 목록에서 봅니다."
+        case .notices:
+            "읽음과 중요 표시를 유지한 공지 목록입니다."
+        case .files:
+            "강의자료와 공지 첨부 파일을 구분해 봅니다."
+        case .quarantine:
+            "주의가 필요한 파일만 따로 모아 둡니다."
+        case .calendar:
+            "등록, 수정, 삭제가 필요한 일정을 확인합니다."
+        case .helpDesk:
+            "시험 관련 헬프데스크 일정을 모아 봅니다."
         }
     }
 }
@@ -3388,7 +3432,7 @@ private struct RemoteDashboardSyncCard: View {
             }
         }
         .buttonStyle(KLMSCardButtonStyle())
-        .opacity(commandDisabled ? 0.48 : 1)
+        .opacity(commandDisabled ? 0.68 : 1)
         .disabled(commandDisabled)
         .accessibilityLabel("전체 동기화 실행")
         .accessibilityHint("Mac 앱에 전체 동기화 실행 요청을 보냅니다.")
@@ -3415,7 +3459,7 @@ private struct RemoteDashboardSyncCard: View {
                 }
         }
         .buttonStyle(KLMSCardButtonStyle())
-        .opacity(commandDisabled ? 0.48 : 1)
+        .opacity(commandDisabled ? 0.62 : 1)
         .disabled(commandDisabled)
         .accessibilityLabel("\(kind.displayName) 실행")
         .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
@@ -3466,6 +3510,7 @@ private struct RemoteDashboardMetricOverview: View {
     var onCategoryTap: (DashboardMetricCategory) -> Void
     var selectedChangeSummary: RemoteChangeSummaryKind?
     var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private let columns = [
         GridItem(.adaptive(minimum: 132), spacing: 8),
@@ -3494,16 +3539,31 @@ private struct RemoteDashboardMetricOverview: View {
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                    ForEach(categories) { category in
-                        RemoteMetricTile(
-                            category.title,
-                            category.value(from: displayStatus),
-                            systemImage: category.systemImage,
-                            isSelected: selectedCategory == category
-                        ) {
-                            selectedCategory = category
-                            onCategoryTap(category)
+                if horizontalSizeClass == .regular {
+                    VStack(spacing: 8) {
+                        ForEach(categories) { category in
+                            WorkstationMetricCard(
+                                category: category,
+                                value: category.value(from: displayStatus),
+                                isSelected: selectedCategory == category
+                            ) {
+                                selectedCategory = category
+                                onCategoryTap(category)
+                            }
+                        }
+                    }
+                } else {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                        ForEach(categories) { category in
+                            RemoteMetricTile(
+                                category.title,
+                                category.value(from: displayStatus),
+                                systemImage: category.systemImage,
+                                isSelected: selectedCategory == category
+                            ) {
+                                selectedCategory = category
+                                onCategoryTap(category)
+                            }
                         }
                     }
                 }
@@ -3814,6 +3874,436 @@ private struct KLMSCardButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
             .opacity(configuration.isPressed ? 0.88 : 1.0)
             .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+    }
+}
+
+private struct WorkstationMetricCard: View {
+    var category: DashboardMetricCategory
+    var value: Int
+    var isSelected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(category.title)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(Color.klmsPrimaryText)
+                    Text("\(value)개")
+                        .font(.headline.monospacedDigit().weight(.bold))
+                        .foregroundStyle(Color.klmsPrimaryText)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText.opacity(0.76))
+                }
+                Text(category.workstationDescription)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+            .background(isSelected ? Color.klmsCommandBackground : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(KLMSCardButtonStyle())
+        .accessibilityLabel("\(category.title) \(value)개")
+    }
+}
+
+private struct WorkstationDashboardDetailPanel: View {
+    var category: DashboardMetricCategory
+    @ObservedObject var model: CompanionModel
+
+    private var items: [ServerRelaySyncItem] {
+        model.dashboardSyncItems
+            .filter { category.includes($0) }
+            .filter { !$0.isHidden }
+            .companionSorted(by: .recent)
+    }
+
+    private var selectedItem: ServerRelaySyncItem? {
+        items.first
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            if let selectedItem {
+                WorkstationSelectedItemCard(item: selectedItem, category: category, model: model)
+            } else {
+                emptyCard
+            }
+            WorkstationChangeSummaryCard(model: model)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(category.title) 상세")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text("\(items.count)개 항목 · 최신순")
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+            }
+            Spacer(minLength: 8)
+            Text(headerPillTitle)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsPrimaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.klmsSubtleCardBackground, in: Capsule())
+                .overlay(
+                    Capsule().stroke(Color.klmsBorder, lineWidth: 1)
+                )
+        }
+    }
+
+    private var headerPillTitle: String {
+        category == .files ? "미리보기" : "선택 항목"
+    }
+
+    private var emptyCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(category.emptyMessage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Color.klmsPrimaryText)
+            Text("Mac 앱이 서버에 최신 목록을 올리면 이 영역에서 바로 확인하고 처리할 수 있습니다.")
+                .font(.subheadline)
+                .foregroundStyle(Color.klmsSecondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 164, alignment: .topLeading)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
+    }
+}
+
+private struct WorkstationSelectedItemCard: View {
+    var item: ServerRelaySyncItem
+    var category: DashboardMetricCategory
+    @ObservedObject var model: CompanionModel
+
+    private var fileRequest: ServerRelayFileAccessRequest? {
+        model.latestFileAccessRequest(for: item)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(item.title.isEmpty ? "제목 없음" : item.title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !item.course.isEmpty {
+                    Text(item.course)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
+                Text(detailSummary)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            detailGrid
+            actionRow
+            if let activeAction = model.activeItemAction(for: item) {
+                RemoteItemRequestPendingView(
+                    title: "요청 전송됨",
+                    message: "\(activeAction.action.companionActionTitle) · \(activeAction.status.displayName)"
+                )
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 210, alignment: .topLeading)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
+    }
+
+    private var detailSummary: String {
+        if !item.detail.isEmpty {
+            return item.detail
+        }
+        if !item.timestamp.isEmpty {
+            return item.timestamp
+        }
+        return category.workstationDescription
+    }
+
+    private var detailGrid: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            WorkstationDetailLine(title: "상태", value: item.status)
+            WorkstationDetailLine(title: "시간", value: item.timestamp)
+            WorkstationDetailLine(title: "학기", value: item.academicTerm)
+            if item.attachmentCount > 0 {
+                WorkstationDetailLine(title: "첨부", value: "\(item.attachmentCount)개")
+            }
+        }
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 8) {
+            if item.kind == "file" {
+                if let fileRequest, fileRequest.isDownloadAvailable {
+                    Button {
+                        model.openFileAccessRequest(fileRequest)
+                    } label: {
+                        Label("미리보기", systemImage: "safari")
+                    }
+                    .buttonStyle(KLMSActionButtonStyle(tone: .primary))
+                }
+                Button {
+                    Task {
+                        await model.createFileAccessRequest(item: item)
+                    }
+                } label: {
+                    Label("링크 요청", systemImage: "link.badge.plus")
+                }
+                .buttonStyle(KLMSActionButtonStyle())
+                .disabled(!model.serverRelayConfigured || model.isSubmitting || fileRequest?.status.isInFlight == true)
+            }
+
+            if let hideAction {
+                Button {
+                    Task {
+                        await model.createItemAction(hideAction, item: item)
+                    }
+                } label: {
+                    Label(item.isHidden ? "복구" : "숨김", systemImage: item.isHidden ? "arrow.uturn.backward" : "eye.slash")
+                }
+                .buttonStyle(KLMSActionButtonStyle())
+                .disabled(!model.serverRelayConfigured || model.isSubmitting)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var hideAction: ServerRelayItemActionKind? {
+        switch item.kind {
+        case "assignment", "completedAssignment", "assignmentCandidate":
+            return item.isHidden ? .assignmentUnhide : .assignmentHide
+        case "exam", "examCandidate":
+            return item.isHidden ? .examRestore : .examIgnore
+        case "notice":
+            return item.isHidden ? .noticeUnhide : .noticeHide
+        case "file":
+            return item.isHidden ? .fileUnhide : .fileHide
+        default:
+            return nil
+        }
+    }
+}
+
+private struct WorkstationDetailLine: View {
+    var title: String
+    var value: String
+
+    var body: some View {
+        if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .frame(width: 44, alignment: .leading)
+                Text(value)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsPrimaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct WorkstationChangeSummaryCard: View {
+    @ObservedObject var model: CompanionModel
+
+    private var status: SanitizedRemoteStatus {
+        model.dashboardStatus
+    }
+
+    private var lines: [String] {
+        [
+            status.noticeNew > 0 ? "새 공지 \(status.noticeNew)개" : nil,
+            status.noticeUpdated > 0 ? "수정 공지 \(status.noticeUpdated)개" : nil,
+            status.newFiles > 0 ? "새 파일 \(status.newFiles)개" : nil,
+            status.calendarChangeTotal > 0 ? "캘린더 변경 \(status.calendarChangeTotal)개" : nil,
+        ].compactMap { $0 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("변경 요약")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Color.klmsPrimaryText)
+            Text(lines.isEmpty ? "최근 동기화에서 새 변경 사항이 없습니다." : lines.joined(separator: " · "))
+                .font(.subheadline)
+                .foregroundStyle(Color.klmsSecondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
+    }
+}
+
+private struct CompactDashboardSelectionPanel: View {
+    var category: DashboardMetricCategory
+    @ObservedObject var model: CompanionModel
+
+    private var items: [ServerRelaySyncItem] {
+        model.dashboardSyncItems
+            .filter { category.includes($0) }
+            .filter { !$0.isHidden }
+            .companionSorted(by: .recent)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center) {
+                Text("선택한 항목")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Spacer(minLength: 8)
+                Text(category.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
+            }
+
+            if items.isEmpty {
+                CompactDashboardEmptyRow(category: category)
+            } else {
+                ForEach(Array(items.prefix(2))) { item in
+                    CompactDashboardSelectedRow(item: item, model: model)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
+    }
+}
+
+private struct CompactDashboardEmptyRow: View {
+    var category: DashboardMetricCategory
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(category.emptyMessage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.klmsPrimaryText)
+            Text("Mac이 서버에 최신 목록을 올리면 여기에서 바로 펼쳐집니다.")
+                .font(.caption)
+                .foregroundStyle(Color.klmsSecondaryText)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct CompactDashboardSelectedRow: View {
+    var item: ServerRelaySyncItem
+    @ObservedObject var model: CompanionModel
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    expanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.title.isEmpty ? "제목 없음" : item.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.klmsPrimaryText)
+                            .lineLimit(2)
+                        Text(rowSubtitle)
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Text(rowBadge)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Color.klmsPrimaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color.klmsCardBackground, in: Capsule())
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+
+            if expanded {
+                ServerSyncItemInlineDetailPanel(item: item, model: model)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private var rowSubtitle: String {
+        [item.course, item.timestamp, item.detail]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .prefix(2)
+            .joined(separator: " · ")
+    }
+
+    private var rowBadge: String {
+        switch item.kind {
+        case "file":
+            return "파일"
+        case "notice":
+            return item.isImportant ? "중요" : "공지"
+        case "assignment", "completedAssignment", "assignmentCandidate":
+            return "과제"
+        case "exam", "examCandidate":
+            return "시험"
+        default:
+            return item.kindDisplayName
+        }
     }
 }
 
