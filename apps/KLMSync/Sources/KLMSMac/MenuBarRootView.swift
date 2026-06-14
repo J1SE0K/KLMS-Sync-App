@@ -3189,7 +3189,6 @@ private struct CommandPanelView: View {
     var body: some View {
         SectionBox(title: "동기화") {
             VStack(alignment: .leading, spacing: 10) {
-                MacMailPasteAnalyzerPanel(model: model, snapshot: model.snapshot)
                 primaryCommandActionCard(primaryCommand)
 
                 LazyVGrid(columns: secondaryCommandColumns, spacing: 8) {
@@ -3198,6 +3197,7 @@ private struct CommandPanelView: View {
                     }
                 }
 
+                MacMailPasteAnalyzerPanel(model: model, snapshot: model.snapshot)
                 CommandStageDurationSummaryView(durations: stageDurations)
             }
 

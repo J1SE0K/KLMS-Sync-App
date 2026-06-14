@@ -4223,9 +4223,7 @@ private struct MailPasteInputBox: View {
 }
 
 private func companionMailThemeAccent(for colorScheme: ColorScheme) -> Color {
-    colorScheme == .dark
-        ? Color(red: 0.980, green: 0.980, blue: 0.980)
-        : Color(red: 0.050, green: 0.050, blue: 0.050)
+    Color.klmsCommandAccent
 }
 
 private struct MailPasteAnalysisResultView: View {
@@ -4286,9 +4284,9 @@ private struct MailPasteAnalysisResultView: View {
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: 8)], alignment: .leading, spacing: 8) {
                     MailAnalysisPill(title: "분류", value: analysis.kind.title, tint: analysis.kind.tint)
-                    MailAnalysisPill(title: "과목", value: analysis.course.nilIfEmpty ?? "미확인", tint: .teal)
-                    MailAnalysisPill(title: "일정", value: analysis.dueText.nilIfEmpty ?? "미확인", tint: .orange)
-                    MailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? .green : .orange)
+                    MailAnalysisPill(title: "과목", value: analysis.course.nilIfEmpty ?? "미확인", tint: Color.klmsCommandAccent)
+                    MailAnalysisPill(title: "일정", value: analysis.dueText.nilIfEmpty ?? "미확인", tint: Color.klmsWarningBorder)
+                    MailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? Color.klmsSuccessBorder : Color.klmsWarningBorder)
                 }
 
                 MailAnalysisProcessView(steps: analysis.analysisSteps)
@@ -4367,7 +4365,7 @@ private struct MailPasteAnalysisResultView: View {
                         HStack(spacing: 8) {
                             Label("대시보드 등록됨", systemImage: "checkmark.circle.fill")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.green)
+                                .foregroundStyle(Color.klmsSuccessBorder)
                             Spacer(minLength: 0)
                             Button {
                                 dashboardEditItem = editableItem
@@ -4605,19 +4603,19 @@ private enum MailAnalysisStepTone: String, Equatable {
     var color: Color {
         switch self {
         case .secondary:
-            .secondary
+            Color.klmsSecondaryText
         case .orange:
-            .orange
+            Color.klmsWarningBorder
         case .green:
-            .green
+            Color.klmsSuccessBorder
         case .teal:
-            .teal
+            Color.klmsCommandAccent
         case .blue:
-            .blue
+            Color.klmsSecondaryText
         case .brown:
-            .brown
+            Color.klmsCommandAccent
         case .purple:
-            .purple
+            Color.klmsCommandAccent
         }
     }
 }
@@ -4743,15 +4741,15 @@ private enum MailPasteDetectedKind: String {
     var tint: Color {
         switch self {
         case .none:
-            .secondary
+            Color.klmsSecondaryText
         case .assignment:
-            .orange
+            Color.klmsWarningBorder
         case .exam:
-            .green
+            Color.klmsSuccessBorder
         case .notice:
-            .brown
+            Color.klmsCommandAccent
         case .file:
-            .blue
+            Color.klmsSecondaryText
         }
     }
 
@@ -7413,16 +7411,16 @@ private struct RemoteCommandPanel: View {
                 } else {
                     Label(model.isRemoteAvailable ? "준비됨" : "연결 필요", systemImage: model.isRemoteAvailable ? "checkmark.circle" : "exclamationmark.triangle")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(model.isRemoteAvailable ? Color.klmsSecondaryText : .orange)
+                        .foregroundStyle(model.isRemoteAvailable ? Color.klmsSecondaryText : Color.klmsWarningBorder)
                 }
             }
-            MailPasteAnalyzerPanel(model: model)
             primaryCommandActionCard(primaryCommand)
             LazyVGrid(columns: secondaryColumns, spacing: 8) {
                 ForEach(secondaryCommands, id: \.self) { command in
                     commandActionCard(command)
                 }
             }
+            MailPasteAnalyzerPanel(model: model)
             Toggle(isOn: $model.shouldUpdateNoticeNotes) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("공지 메모도 업데이트")

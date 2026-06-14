@@ -3189,9 +3189,7 @@ private struct MacMailPasteInputBox: View {
 }
 
 private func macMailThemeAccent(for colorScheme: ColorScheme) -> Color {
-    colorScheme == .dark
-        ? Color(red: 0.980, green: 0.980, blue: 0.980)
-        : Color(red: 0.050, green: 0.050, blue: 0.050)
+    Color.klmsMacCommandAccent
 }
 
 private struct MacMailPasteAnalysisResultView: View {
@@ -3249,9 +3247,9 @@ private struct MacMailPasteAnalysisResultView: View {
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 7)], alignment: .leading, spacing: 7) {
                     MacMailAnalysisPill(title: "분류", value: analysis.kind.title, tint: analysis.kind.tint)
-                    MacMailAnalysisPill(title: "과목", value: analysis.course.nilIfBlank ?? "미확인", tint: .teal)
-                    MacMailAnalysisPill(title: "일시", value: analysis.dueText.nilIfBlank ?? "미확인", tint: .orange)
-                    MacMailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? .green : .orange)
+                    MacMailAnalysisPill(title: "과목", value: analysis.course.nilIfBlank ?? "미확인", tint: Color.klmsMacCommandAccent)
+                    MacMailAnalysisPill(title: "일시", value: analysis.dueText.nilIfBlank ?? "미확인", tint: Color.klmsMacWarningBorder)
+                    MacMailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder)
                 }
 
                 MacMailAnalysisProcessView(steps: analysis.analysisSteps)
@@ -3323,7 +3321,7 @@ private struct MacMailPasteAnalysisResultView: View {
                             HStack(spacing: 7) {
                                 Label("대시보드 등록됨", systemImage: "checkmark.circle.fill")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(Color.klmsMacSuccessBorder)
                                 Spacer(minLength: 0)
                                 Button {
                                     dashboardEditItem = editableItem
@@ -3728,15 +3726,15 @@ private enum MacMailPasteDetectedKind: String {
     var tint: Color {
         switch self {
         case .none:
-            .secondary
+            Color.klmsMacSecondaryText
         case .assignment:
-            .orange
+            Color.klmsMacWarningBorder
         case .exam:
-            .green
+            Color.klmsMacSuccessBorder
         case .notice:
-            .brown
+            Color.klmsMacCommandAccent
         case .file:
-            .blue
+            Color.klmsMacSecondaryText
         }
     }
 
@@ -3957,11 +3955,11 @@ private enum MacMailPasteAnalyzer {
     private static func searchableItems(from snapshot: EngineSnapshot) -> [MacMailPasteMatchedItem] {
         let content = snapshot.legacyState?.content
         var items: [MacMailPasteMatchedItem] = []
-        items += (content?.assignments ?? []).map { matchedItem($0, kindLabel: "과제", tint: .orange) }
-        items += (content?.assignmentCandidates ?? []).map { matchedItem($0, kindLabel: "과제 후보", tint: .orange) }
-        items += (content?.examItems ?? []).map { matchedItem($0, kindLabel: "시험", tint: .green) }
-        items += (content?.examCandidates ?? []).map { matchedItem($0, kindLabel: "시험 후보", tint: .green) }
-        items += (content?.helpDeskItems ?? []).map { matchedItem($0, kindLabel: "헬프데스크", tint: .teal) }
+        items += (content?.assignments ?? []).map { matchedItem($0, kindLabel: "과제", tint: Color.klmsMacWarningBorder) }
+        items += (content?.assignmentCandidates ?? []).map { matchedItem($0, kindLabel: "과제 후보", tint: Color.klmsMacWarningBorder) }
+        items += (content?.examItems ?? []).map { matchedItem($0, kindLabel: "시험", tint: Color.klmsMacSuccessBorder) }
+        items += (content?.examCandidates ?? []).map { matchedItem($0, kindLabel: "시험 후보", tint: Color.klmsMacSuccessBorder) }
+        items += (content?.helpDeskItems ?? []).map { matchedItem($0, kindLabel: "헬프데스크", tint: Color.klmsMacCommandAccent) }
         items += snapshot.courseFileManifest.map { file in
             MacMailPasteMatchedItem(
                 id: "파일-\(file.url.nilIfBlank ?? file.relativePath)",
@@ -3970,7 +3968,7 @@ private enum MacMailPasteAnalyzer {
                 course: file.course,
                 due: file.klmsTimestampText.nilIfBlank ?? file.klmsTimestamp,
                 searchText: [file.filename, file.course, file.relativePath, file.klmsTimestampText, file.url].joined(separator: " "),
-                tint: .blue
+                tint: Color.klmsMacSecondaryText
             )
         }
         items += (snapshot.noticeDigest?.notices ?? []).map { notice in
@@ -3981,7 +3979,7 @@ private enum MacMailPasteAnalyzer {
                 course: notice.course,
                 due: notice.postedAt,
                 searchText: [notice.title, notice.course, notice.postedAt, notice.url].joined(separator: " "),
-                tint: .brown
+                tint: Color.klmsMacCommandAccent
             )
         }
         return items
@@ -4103,7 +4101,7 @@ private enum MacMailPasteAnalyzer {
         } else {
             courseDetail = "본문 또는 현재 KLMS 항목에서 과목명을 찾았습니다: \(course)"
         }
-        steps.append(MacMailAnalysisStep(id: "course", title: "과목 해석", detail: courseDetail, systemImage: "books.vertical", tint: .teal))
+        steps.append(MacMailAnalysisStep(id: "course", title: "과목 해석", detail: courseDetail, systemImage: "books.vertical", tint: Color.klmsMacCommandAccent))
 
         let titleDetail: String
         if title.isEmpty {
@@ -4113,7 +4111,7 @@ private enum MacMailPasteAnalyzer {
         } else {
             titleDetail = "Subject 또는 본문 첫 유효 줄에서 제목을 잡았습니다: \(title)"
         }
-        steps.append(MacMailAnalysisStep(id: "title", title: "제목 추론", detail: titleDetail, systemImage: "text.quote", tint: .blue))
+        steps.append(MacMailAnalysisStep(id: "title", title: "제목 추론", detail: titleDetail, systemImage: "text.quote", tint: Color.klmsMacSecondaryText))
 
         let dateDetail: String
         if dueText.isEmpty {
@@ -4123,15 +4121,15 @@ private enum MacMailPasteAnalyzer {
         } else {
             dateDetail = "날짜 문구 \(dueText)는 찾았지만 캘린더 시간으로 변환하지 못했습니다."
         }
-        steps.append(MacMailAnalysisStep(id: "date", title: "일정 해석", detail: dateDetail, systemImage: "calendar.badge.clock", tint: .orange))
+        steps.append(MacMailAnalysisStep(id: "date", title: "일정 해석", detail: dateDetail, systemImage: "calendar.badge.clock", tint: Color.klmsMacWarningBorder))
 
         let matchDetail = matchedItems.isEmpty
             ? "현재 동기화된 KLMS 항목과 직접 연결되는 항목은 아직 없습니다."
             : "현재 동기화된 KLMS 항목 \(matchedItems.count)개와 제목, 과목, 일정 정보가 겹칩니다."
-        steps.append(MacMailAnalysisStep(id: "match", title: "기존 항목 비교", detail: matchDetail, systemImage: "link", tint: matchedItems.isEmpty ? .secondary : .green))
+        steps.append(MacMailAnalysisStep(id: "match", title: "기존 항목 비교", detail: matchDetail, systemImage: "link", tint: matchedItems.isEmpty ? Color.klmsMacSecondaryText : Color.klmsMacSuccessBorder))
 
         if !urls.isEmpty {
-            steps.append(MacMailAnalysisStep(id: "links", title: "링크 감지", detail: "본문에서 URL \(urls.count)개를 찾았습니다. KLMS 링크가 있으면 다음 동기화와 대조할 수 있습니다.", systemImage: "link.circle", tint: .purple))
+            steps.append(MacMailAnalysisStep(id: "links", title: "링크 감지", detail: "본문에서 URL \(urls.count)개를 찾았습니다. KLMS 링크가 있으면 다음 동기화와 대조할 수 있습니다.", systemImage: "link.circle", tint: Color.klmsMacCommandAccent))
         }
         return steps
     }
