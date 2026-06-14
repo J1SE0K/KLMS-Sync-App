@@ -364,14 +364,14 @@ final class CompanionModel: ObservableObject {
             return authStatusMessage
         }
         guard let latestCommand, let latestDisplayStatus else {
-            return "Mac 앱이 아직 상태를 올린 적 없습니다."
+            return "아직 Mac에서 받은 상태가 없습니다."
         }
         if isCancelRequestedForLatestCommand {
             return "Mac에서 \(latestCommand.kind.displayName) 실행을 중단하는 중"
         }
         switch latestDisplayStatus {
         case .pending:
-            return "\(latestCommand.kind.displayName) 요청을 Mac이 확인하기를 기다리는 중"
+            return "Mac이 \(latestCommand.kind.displayName) 요청을 확인하는 중"
         case .running:
             if let detail = runningPhaseDetail {
                 return "Mac에서 \(latestCommand.kind.displayName) · \(detail) 진행 중"
@@ -384,7 +384,7 @@ final class CompanionModel: ObservableObject {
         case .cancelled:
             return "최근 요청 취소됨: \(latestCommand.kind.displayName)"
         case .macUnavailable:
-            return "Mac이 아직 요청을 확인하지 못했습니다. Mac 앱이 켜져 있으면 곧 처리됩니다."
+            return "Mac이 아직 요청을 받지 못했습니다. 앱이 켜져 있으면 곧 시작됩니다."
         }
     }
 
@@ -1764,18 +1764,29 @@ private struct CompanionCompactTabBar: View {
                 Button {
                     selectedSection = section
                 } label: {
-                    Text(section.compactTitle)
-                        .font(.caption.weight(selectedSection == section ? .bold : .semibold))
-                        .foregroundStyle(selectedSection == section ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                        .frame(maxWidth: .infinity, minHeight: 32)
-                        .background(
-                            selectedSection == section
-                                ? Color.klmsPrimaryCommandButtonBackground
-                                : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 9)
-                        )
+                    let isSelected = selectedSection == section
+                    HStack(spacing: 5) {
+                        Image(systemName: section.systemImage)
+                            .font(.caption.weight(.bold))
+                        Text(section.compactTitle)
+                            .font(.caption.weight(isSelected ? .bold : .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.74)
+                    }
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .background(
+                        isSelected
+                            ? Color.klmsPrimaryCommandButtonBackground
+                            : Color.klmsSubtleCardBackground.opacity(0.35),
+                        in: RoundedRectangle(cornerRadius: 10)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                    .animation(.easeOut(duration: 0.10), value: isSelected)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(section.title)
@@ -1798,7 +1809,7 @@ private struct CompanionSplitRootView: View {
     var body: some View {
         HStack(spacing: 0) {
             WorkstationSidebar(selectedSection: $selectedSection)
-                .frame(width: 150)
+                .frame(width: 176)
             Rectangle()
                 .fill(Color.klmsBorder)
                 .frame(width: 1)
@@ -1824,7 +1835,7 @@ private struct WorkstationSidebar: View {
                     CompanionSidebarButton(
                         section: section,
                         isSelected: selectedSection == section,
-                        showsIcon: false,
+                        showsIcon: true,
                         showsArrow: false
                     ) {
                         selectedSection = section
@@ -1858,7 +1869,7 @@ private struct CompanionSidebarButton: View {
                         .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
                 }
                 Text(section.title)
-                    .font(.caption.weight(isSelected ? .semibold : .regular))
+                    .font(.system(size: 12, weight: isSelected ? .bold : .semibold, design: .rounded))
                     .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
                 Spacer(minLength: 0)
                 if showsArrow {
@@ -1872,14 +1883,15 @@ private struct CompanionSidebarButton: View {
             .background(
                 isSelected
                     ? Color.klmsPrimaryCommandButtonBackground
-                    : Color.clear,
+                    : Color.klmsSubtleCardBackground.opacity(0.35),
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
             )
-            .contentShape(Rectangle())
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .animation(.easeOut(duration: 0.10), value: isSelected)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(section.title)
@@ -1959,14 +1971,12 @@ private struct CompanionStatusScreen: View {
         if let kind = selectedChangeSummary {
             RemoteChangeSummaryDetailPanel(kind: kind, model: model)
                 .id(kind)
-                .transition(.opacity.combined(with: .move(edge: .top)))
         } else {
             CompactDashboardSelectionPanel(
                 category: selectedDashboardPreview ?? defaultDashboardCategory ?? .files,
                 model: model
             )
             .id(selectedDashboardPreview ?? defaultDashboardCategory ?? .files)
-            .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
 
@@ -2727,19 +2737,19 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
     var emptyMessage: String {
         switch self {
         case .assignments:
-            "서버 DB에 올라온 진행 중 과제가 없습니다."
+            "아직 동기화된 진행 중 과제가 없습니다."
         case .exams:
-            "서버 DB에 올라온 예정 시험이 없습니다."
+            "아직 동기화된 예정 시험이 없습니다."
         case .notices:
-            "서버 DB에 올라온 공지 목록이 없습니다."
+            "아직 동기화된 공지 목록이 없습니다."
         case .files:
-            "서버 DB에 올라온 파일 목록이 없습니다."
+            "아직 동기화된 파일 목록이 없습니다."
         case .quarantine:
             "격리 파일 상세는 아직 Mac 앱 파일 화면에서 확인해야 합니다."
         case .calendar:
             "캘린더 변경 상세는 Mac 앱의 캘린더 변경 화면에서 확인해야 합니다."
         case .helpDesk:
-            "서버 DB에 올라온 헬프데스크 일정이 없습니다."
+            "아직 동기화된 헬프데스크 일정이 없습니다."
         }
     }
 
@@ -3060,7 +3070,7 @@ private struct CompanionItemListControls: View {
                     Button {
                         resetFilters()
                     } label: {
-                        Label("초기화", systemImage: "arrow.counterclockwise")
+                        Label("필터 지우기", systemImage: "arrow.counterclockwise")
                     }
                     .buttonStyle(KLMSActionButtonStyle())
                 }
@@ -3201,12 +3211,13 @@ private struct CompanionItemListControls: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(isSelected ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground, in: Capsule())
-                .foregroundStyle(isSelected ? Color.klmsCommandAccent : Color.klmsPrimaryText)
+                .background(isSelected ? Color.klmsPrimaryCommandButtonBackground : Color.klmsSubtleCardBackground, in: Capsule())
+                .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
                 .overlay {
                     Capsule()
-                        .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
+                        .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
                 }
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -3814,13 +3825,13 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
     var emptyMessage: String {
         switch self {
         case .noticeNew, .noticeUpdated:
-            "서버에 올라온 공지 상세 목록에서 해당 변경 항목을 찾지 못했습니다. Mac에서 요약 갱신을 다시 누르면 상세가 채워질 수 있습니다."
+            "공지 상세가 아직 도착하지 않았습니다. Mac에서 요약을 다시 받으면 채워질 수 있습니다."
         case .newFiles:
-            "서버에 올라온 파일 목록에서 새 파일 상세를 찾지 못했습니다. 파일 동기화가 끝난 뒤 요약 갱신을 다시 눌러 주세요."
+            "새 파일 상세가 아직 도착하지 않았습니다. 파일 동기화가 끝난 뒤 요약을 다시 받아 주세요."
         case .fileCleanup:
             "파일 정리 숫자는 확인됐지만 상세 정리 로그가 아직 올라오지 않았습니다."
         case .calendarCreated, .calendarUpdated, .calendarDeleted:
-            "캘린더 변경 상세가 아직 서버에 올라오지 않았습니다. Mac에서 요약 갱신을 다시 눌러 주세요."
+            "캘린더 변경 상세가 아직 도착하지 않았습니다. Mac에서 요약을 다시 받아 주세요."
         }
     }
 
@@ -3933,15 +3944,21 @@ private struct FlowChipLayout: View {
                         Image(systemName: selectedKind == entry.kind ? "chevron.up" : "chevron.down")
                             .font(.caption2.weight(.semibold))
                     }
-                    .foregroundStyle(entry.kind.tint)
+                    .foregroundStyle(selectedKind == entry.kind ? Color.klmsCommandButtonForeground : entry.kind.tint)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(entry.kind.tint.opacity(selectedKind == entry.kind ? 0.18 : 0.10), in: RoundedRectangle(cornerRadius: 8))
+                    .background(
+                        selectedKind == entry.kind
+                            ? Color.klmsPrimaryCommandButtonBackground
+                            : entry.kind.tint.opacity(0.10),
+                        in: RoundedRectangle(cornerRadius: 8)
+                    )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(selectedKind == entry.kind ? entry.kind.tint.opacity(0.35) : Color.clear, lineWidth: 1)
+                            .stroke(selectedKind == entry.kind ? Color.klmsPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
                     )
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("변경된 항목 목록을 펼칩니다.")
@@ -3976,21 +3993,22 @@ private struct RemoteMetricTile: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("\(value)")
                     .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
                 Text(label)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.klmsSecondaryText)
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground.opacity(0.84) : Color.klmsSecondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
             .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
             .padding(11)
-            .background(isSelected ? Color.klmsCommandBackground : Color.klmsCardBackground)
+            .background(isSelected ? Color.klmsPrimaryCommandButtonBackground : Color.klmsCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel("\(label) \(value)개")
@@ -4017,20 +4035,21 @@ private struct WorkstationMetricCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("\(category.title) \(value)개")
                     .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
                 Text(category.workstationDescription)
                     .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundStyle(Color.klmsSecondaryText)
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground.opacity(0.84) : Color.klmsSecondaryText)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(11)
             .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
-            .background(isSelected ? Color.klmsCommandBackground : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+            .background(isSelected ? Color.klmsPrimaryCommandButtonBackground : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
             .overlay(
                 RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 13))
         }
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel("\(category.title) \(value)개")
@@ -5819,7 +5838,7 @@ private struct MailPasteAnalysis: Equatable {
 
     var summary: String {
         if !matchedItems.isEmpty {
-            return "서버 DB의 기존 항목 \(matchedItems.count)개와 연결될 가능성이 큽니다."
+            return "기존 동기화 항목 \(matchedItems.count)개와 연결될 가능성이 큽니다."
         }
         if kind == .none {
             return "과제, 시험, 공지 중 어떤 항목인지 확실하지 않습니다."
@@ -6059,11 +6078,11 @@ private enum MailPasteAnalyzer {
 
         let courseDetail: String
         if course.isEmpty {
-            courseDetail = "본문과 서버 DB 항목에서 과목명이나 과목 코드를 찾지 못했습니다."
+            courseDetail = "본문과 동기화된 목록에서 과목명이나 과목 코드를 찾지 못했습니다."
         } else if let code = firstCapture("\\(([A-Z]{2,}\\d{2,4}[A-Z]?)\\)$", in: course) {
             courseDetail = "메일의 \(code) 코드를 현재 KLMS 과목명/별칭표로 풀었습니다: \(course)"
         } else {
-            courseDetail = "본문 또는 서버 DB 항목에서 과목명을 찾았습니다: \(course)"
+            courseDetail = "본문 또는 동기화된 목록에서 과목명을 찾았습니다: \(course)"
         }
         steps.append(MailAnalysisStep(id: "course", title: "과목 해석", detail: courseDetail, systemImage: "books.vertical", tone: .teal))
 
@@ -6088,8 +6107,8 @@ private enum MailPasteAnalyzer {
         steps.append(MailAnalysisStep(id: "date", title: "일정 해석", detail: dateDetail, systemImage: "calendar.badge.clock", tone: .orange))
 
         let matchDetail = matchedItems.isEmpty
-            ? "서버 DB의 기존 항목과 직접 연결되는 항목은 아직 없습니다."
-            : "서버 DB 항목 \(matchedItems.count)개와 제목, 과목, 일정 정보가 겹칩니다."
+            ? "기존 동기화 항목과 바로 이어지는 항목은 아직 없습니다."
+            : "기존 동기화 항목 \(matchedItems.count)개와 제목, 과목, 일정 정보가 겹칩니다."
         steps.append(MailAnalysisStep(id: "match", title: "기존 항목 비교", detail: matchDetail, systemImage: "link", tone: matchedItems.isEmpty ? .secondary : .green))
 
         if !urls.isEmpty {
@@ -6545,6 +6564,7 @@ private struct DashboardCategoryDetailScreen: View {
     @State private var selectedSemester = CompanionItemListFilter.allSemesters
     @State private var newOnly = false
     @State private var recentOnly = false
+    @State private var visibleLimit: Int
 
     init(
         category: DashboardMetricCategory,
@@ -6560,6 +6580,7 @@ private struct DashboardCategoryDetailScreen: View {
         self.onSelect = onSelect
         _sortOption = State(initialValue: CompanionItemSortOption.defaultSort(for: category))
         _statusFilter = State(initialValue: CompanionItemStatusFilter.defaultFilter(for: category))
+        _visibleLimit = State(initialValue: Self.initialVisibleLimit(for: category))
     }
 
     private var baseItems: [ServerRelaySyncItem] {
@@ -6621,6 +6642,7 @@ private struct DashboardCategoryDetailScreen: View {
             recentOnly: recentOnly
         )
         let filtered = listData.filteredItems
+        let visible = Array(filtered.prefix(visibleLimit))
         List {
             Section {
                 DashboardCategorySummaryRow(category: category, status: status, itemCount: filtered.count)
@@ -6678,7 +6700,7 @@ private struct DashboardCategoryDetailScreen: View {
                     }
                 } else {
                     Section("\(filtered.count)개") {
-                        ForEach(filtered) { item in
+                        ForEach(visible) { item in
                             Button {
                                 onSelect(item)
                             } label: {
@@ -6687,12 +6709,30 @@ private struct DashboardCategoryDetailScreen: View {
                             }
                             .buttonStyle(.plain)
                         }
+                        if filtered.count > visible.count {
+                            Button {
+                                visibleLimit += Self.incrementVisibleLimit(for: category)
+                            } label: {
+                                Label("더 보기 \(filtered.count - visible.count)개 남음", systemImage: "chevron.down")
+                                    .font(.caption.weight(.semibold))
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                            }
+                            .buttonStyle(KLMSActionButtonStyle())
+                        }
                     }
                 }
             }
         }
         .navigationTitle(category.title)
         .searchable(text: $query, prompt: "\(category.title) 검색")
+    }
+
+    private static func initialVisibleLimit(for category: DashboardMetricCategory) -> Int {
+        category == .files ? 36 : 64
+    }
+
+    private static func incrementVisibleLimit(for category: DashboardMetricCategory) -> Int {
+        category == .files ? 36 : 32
     }
 }
 
@@ -6724,7 +6764,7 @@ private struct DashboardCategorySummaryRow: View {
     private var summaryText: String {
         switch category {
         case .files:
-            "서버 DB 파일 \(status.fileTotal)개 · 새 파일 \(status.newFiles)개"
+            "동기화된 파일 \(status.fileTotal)개 · 새 파일 \(status.newFiles)개"
         case .notices:
             "새 \(status.noticeNew)개 · 수정 \(status.noticeUpdated)개"
         case .calendar:
