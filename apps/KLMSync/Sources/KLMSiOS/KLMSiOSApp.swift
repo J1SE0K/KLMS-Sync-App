@@ -1782,7 +1782,7 @@ private struct CompanionCompactTabBar: View {
                 .accessibilityValue(selectedSection == section ? "선택됨" : "")
             }
         }
-        .padding(6)
+        .padding(7)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
@@ -1814,14 +1814,12 @@ private struct WorkstationSidebar: View {
     @Binding var selectedSection: CompanionAppSection?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("KLMS Sync")
                 .font(.headline.weight(.bold))
                 .foregroundStyle(Color.klmsPrimaryText)
-                .padding(.horizontal, 18)
-                .padding(.top, 22)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 7) {
                 ForEach(CompanionAppSection.workstationSections) { section in
                     CompanionSidebarButton(
                         section: section,
@@ -1833,10 +1831,11 @@ private struct WorkstationSidebar: View {
                     }
                 }
             }
-            .padding(.horizontal, 10)
 
             Spacer(minLength: 0)
         }
+        .padding(.horizontal, 10)
+        .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.klmsCardBackground.opacity(0.72))
     }
@@ -1859,7 +1858,7 @@ private struct CompanionSidebarButton: View {
                         .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
                 }
                 Text(section.title)
-                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                    .font(.caption.weight(isSelected ? .semibold : .regular))
                     .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
                 Spacer(minLength: 0)
                 if showsArrow {
@@ -1868,9 +1867,8 @@ private struct CompanionSidebarButton: View {
                         .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText.opacity(0.70))
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(9)
+            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
             .background(
                 isSelected
                     ? Color.klmsPrimaryCommandButtonBackground
@@ -3440,7 +3438,7 @@ private struct RemoteDashboardSyncCard: View {
     var compact: Bool
 
     private let secondaryCommands: [RemoteCommandKind] = [.filesSync, .coreSync, .noticeSync]
-    private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
+    private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 7), count: 3)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -3460,14 +3458,14 @@ private struct RemoteDashboardSyncCard: View {
             dashboardPrimaryButton
 
             if compact {
-                LazyVGrid(columns: secondaryColumns, spacing: 8) {
+                LazyVGrid(columns: secondaryColumns, spacing: 7) {
                     ForEach(secondaryCommands, id: \.self) { command in
                         dashboardSecondaryButton(command)
                     }
                 }
             }
         }
-        .padding(12)
+        .padding(11)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
@@ -3501,8 +3499,8 @@ private struct RemoteDashboardSyncCard: View {
             }
             .foregroundStyle(Color.klmsCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: compact ? 56 : 60, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 14)
             .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
@@ -3523,12 +3521,12 @@ private struct RemoteDashboardSyncCard: View {
             }
         } label: {
             Text(shortTitle(for: kind))
-                .font(.subheadline.weight(.semibold))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryCommandButtonForeground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
                 .frame(maxWidth: .infinity, minHeight: compact ? 42 : 46, alignment: .center)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 5)
                 .padding(.vertical, 9)
                 .background(Color.klmsCommandButtonBackground, in: RoundedRectangle(cornerRadius: 10))
                 .overlay {
@@ -3907,17 +3905,16 @@ private struct RemoteMetricTile: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("\(value)")
-                    .font(.title2.monospacedDigit().weight(.bold))
+                    .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.klmsPrimaryText)
                 Text(label)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
             .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(11)
             .background(isSelected ? Color.klmsCommandBackground : Color.klmsCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
@@ -3963,8 +3960,7 @@ private struct WorkstationMetricCard: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 12)
+            .padding(11)
             .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
             .background(isSelected ? Color.klmsCommandBackground : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
             .overlay(
