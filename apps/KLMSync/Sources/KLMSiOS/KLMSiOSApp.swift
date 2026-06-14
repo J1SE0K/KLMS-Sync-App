@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let klmsInteractionDetailDelayNanoseconds: UInt64 = 45_000_000
+
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -1840,6 +1842,7 @@ private struct CompanionTabRootView: View {
         deferredSectionTask?.cancel()
         deferredSectionTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
             guard !Task.isCancelled else { return }
             displayedSection = section
         }
@@ -1929,6 +1932,7 @@ private struct CompanionSplitRootView: View {
         deferredSectionTask?.cancel()
         deferredSectionTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
             guard !Task.isCancelled else { return }
             displayedSection = section
         }
@@ -2139,6 +2143,7 @@ private struct CompanionStatusScreen: View {
         deferredDashboardDetailTask?.cancel()
         deferredDashboardDetailTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
             guard !Task.isCancelled else { return }
             displayedChangeSummary = nil
             displayedDashboardPreview = category
@@ -2152,6 +2157,7 @@ private struct CompanionStatusScreen: View {
         deferredDashboardDetailTask?.cancel()
         deferredDashboardDetailTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
             guard !Task.isCancelled else { return }
             displayedDashboardPreview = nil
             displayedChangeSummary = kind
@@ -4186,6 +4192,55 @@ private struct KLMSCardButtonStyle: ButtonStyle {
     }
 }
 
+private struct DeferredInteractionExpansion<Content: View>: View {
+    var isExpanded: Bool
+    var delayNanoseconds = klmsInteractionDetailDelayNanoseconds
+    private let content: () -> Content
+    @State private var isVisible = false
+    @State private var deferredTask: Task<Void, Never>?
+
+    init(
+        isExpanded: Bool,
+        delayNanoseconds: UInt64 = klmsInteractionDetailDelayNanoseconds,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.isExpanded = isExpanded
+        self.delayNanoseconds = delayNanoseconds
+        self.content = content
+    }
+
+    var body: some View {
+        Group {
+            if isVisible {
+                content()
+            }
+        }
+        .onAppear {
+            updateVisibility(isExpanded)
+        }
+        .onChange(of: isExpanded) { _, newValue in
+            updateVisibility(newValue)
+        }
+        .onDisappear {
+            deferredTask?.cancel()
+        }
+    }
+
+    private func updateVisibility(_ expanded: Bool) {
+        deferredTask?.cancel()
+        guard expanded else {
+            isVisible = false
+            return
+        }
+        deferredTask = Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard !Task.isCancelled else { return }
+            isVisible = true
+        }
+    }
+}
+
 private struct WorkstationMetricCard: View {
     var category: DashboardMetricCategory
     var value: Int
@@ -4533,7 +4588,7 @@ private struct CompactDashboardEmptyRow: View {
 
 private struct CompactDashboardSelectedRow: View {
     var item: ServerRelaySyncItem
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @State private var expanded = false
 
     var body: some View {
@@ -4982,7 +5037,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
 private struct CompanionInlineItemRowsView: View {
     var category: DashboardMetricCategory
     var items: [ServerRelaySyncItem]
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @State private var selectedItemID: String?
     @State private var detailItemID: String?
     @State private var visibleLimit: Int
@@ -4991,7 +5046,7 @@ private struct CompanionInlineItemRowsView: View {
     init(category: DashboardMetricCategory, items: [ServerRelaySyncItem], model: CompanionModel) {
         self.category = category
         self.items = items
-        _model = ObservedObject(wrappedValue: model)
+        self.model = model
         _visibleLimit = State(initialValue: category == .files ? 24 : 18)
     }
 
@@ -5035,6 +5090,7 @@ private struct CompanionInlineItemRowsView: View {
         deferredDetailTask?.cancel()
         deferredDetailTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
             guard !Task.isCancelled else { return }
             detailItemID = nextID
         }
@@ -5048,6 +5104,7 @@ private struct CompanionSelectableItemListRows: View {
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var visibleLimit: Int
+    @State private var deferredSelectionTask: Task<Void, Never>?
 
     init(
         items: [ServerRelaySyncItem],
@@ -5066,8 +5123,7 @@ private struct CompanionSelectableItemListRows: View {
         let visible = Array(items.prefix(visibleLimit))
         ForEach(visible) { item in
             Button {
-                selectedItemID = item.id
-                onSelect(item)
+                select(item)
             } label: {
                 ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
                     .equatable()
@@ -5084,6 +5140,17 @@ private struct CompanionSelectableItemListRows: View {
                     .frame(maxWidth: .infinity, minHeight: 36)
             }
             .buttonStyle(KLMSActionButtonStyle())
+        }
+    }
+
+    private func select(_ item: ServerRelaySyncItem) {
+        selectedItemID = item.id
+        deferredSelectionTask?.cancel()
+        deferredSelectionTask = Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+            onSelect(item)
         }
     }
 }
@@ -9809,7 +9876,7 @@ private struct SharedRunLogRow: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
             }
-            if isExpanded {
+            DeferredInteractionExpansion(isExpanded: isExpanded) {
                 RemoteStageDurationSummaryView(durations: stageDurations)
                 CompanionInlineLogBlock(text: log.outputTail)
             }
@@ -10011,7 +10078,7 @@ private struct ServerRequestLogRow: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
             }
-            if isExpanded {
+            DeferredInteractionExpansion(isExpanded: isExpanded) {
                 CompanionInlineLogBlock(text: expandedLog)
             }
         }
@@ -10118,7 +10185,7 @@ private struct RemoteFileAccessRequestRow: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
             }
-            if isExpanded {
+            DeferredInteractionExpansion(isExpanded: isExpanded) {
                 CompanionInlineLogBlock(text: expandedLog)
             }
         }
@@ -10468,7 +10535,7 @@ private struct RemoteCommandRow: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
             }
-            if isExpanded {
+            DeferredInteractionExpansion(isExpanded: isExpanded) {
                 CompanionInlineLogBlock(text: expandedLog)
             }
         }

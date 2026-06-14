@@ -2,6 +2,8 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
+private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 35_000_000
+
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
@@ -603,6 +605,55 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
     }
 }
 
+private struct DeferredMacInteractionExpansion<Content: View>: View {
+    var isExpanded: Bool
+    var delayNanoseconds = klmsMacInteractionDetailDelayNanoseconds
+    private let content: () -> Content
+    @State private var isVisible = false
+    @State private var deferredTask: Task<Void, Never>?
+
+    init(
+        isExpanded: Bool,
+        delayNanoseconds: UInt64 = klmsMacInteractionDetailDelayNanoseconds,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.isExpanded = isExpanded
+        self.delayNanoseconds = delayNanoseconds
+        self.content = content
+    }
+
+    var body: some View {
+        Group {
+            if isVisible {
+                content()
+            }
+        }
+        .onAppear {
+            updateVisibility(isExpanded)
+        }
+        .onChange(of: isExpanded) { _, newValue in
+            updateVisibility(newValue)
+        }
+        .onDisappear {
+            deferredTask?.cancel()
+        }
+    }
+
+    private func updateVisibility(_ expanded: Bool) {
+        deferredTask?.cancel()
+        guard expanded else {
+            isVisible = false
+            return
+        }
+        deferredTask = Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard !Task.isCancelled else { return }
+            isVisible = true
+        }
+    }
+}
+
 private struct MacWorkstationLayoutView: View {
     @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
@@ -669,6 +720,7 @@ private struct MacWorkstationLayoutView: View {
         deferredSectionTask?.cancel()
         deferredSectionTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: klmsMacInteractionDetailDelayNanoseconds)
             guard !Task.isCancelled else { return }
             displayedSection = section
         }
@@ -3003,6 +3055,7 @@ private struct DashboardSummaryView: View {
             deferredDetailTask?.cancel()
             deferredDetailTask = Task { @MainActor in
                 await Task.yield()
+                try? await Task.sleep(nanoseconds: klmsMacInteractionDetailDelayNanoseconds)
                 guard !Task.isCancelled else { return }
                 displayedDetail = detail
             }
@@ -3402,7 +3455,7 @@ private struct SharedRunLogActivityRow: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
             }
-            if isExpanded {
+            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
                 LogTextBlock(text: log.outputTail)
             }
         }
@@ -3467,7 +3520,7 @@ private struct ServerRequestLogActivityRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if isExpanded {
+            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
                 LogTextBlock(text: expandedLog)
             }
         }
@@ -3564,7 +3617,7 @@ private struct RemoteCommandActivityRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if isExpanded {
+            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
                 LogTextBlock(text: expandedLog)
             }
         }
@@ -3699,7 +3752,7 @@ private struct FileAccessActivityRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if isExpanded {
+            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
                 LogTextBlock(text: expandedLog)
             }
         }
