@@ -751,6 +751,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: view,
             description: "Mac primary button style"
         )
+        let rootActionButtonStyle = try sourceBody(
+            after: "private struct KLMSMacRootActionButtonStyle: ButtonStyle",
+            in: view,
+            description: "Mac root action button style"
+        )
         let actionButtonStyle = try sourceBody(
             after: "private struct KLMSMacActionButtonStyle: ButtonStyle",
             in: detail,
@@ -796,6 +801,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(pressFeedbackStyle.contains("duration: 0.035"))
         XCTAssertTrue(primaryButtonStyle.contains(".scaleEffect(configuration.isPressed ? 0.997 : 1.0)"))
         XCTAssertTrue(primaryButtonStyle.contains("duration: 0.035"))
+        XCTAssertTrue(primaryButtonStyle.contains("primaryBackground(isPressed: configuration.isPressed)"))
+        XCTAssertTrue(primaryButtonStyle.contains("return isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)"))
+        XCTAssertTrue(primaryButtonStyle.contains("Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
+        XCTAssertTrue(rootActionButtonStyle.contains("background(isPressed: configuration.isPressed)"))
+        XCTAssertTrue(rootActionButtonStyle.contains("isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)"))
+        XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
+        XCTAssertTrue(commandPanel.contains("Color.klmsMacCommandButtonBackground.opacity(0.90)"))
+        XCTAssertFalse(commandPanel.contains(".background(Color.klmsMacDangerBackground, in: RoundedRectangle(cornerRadius: 10))"))
         XCTAssertFalse(commandPanel.contains(".font(.title3.weight(.heavy))"))
         XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 8)"))
@@ -936,6 +949,7 @@ final class DashboardDataModelTests: XCTestCase {
         let serverSyncDataRow = try sourceStructBody(named: "ServerSyncDataRow", in: ios)
         let sharedRunLogRow = try sourceStructBody(named: "SharedRunLogRow", in: ios)
         let remoteCommandRow = try sourceStructBody(named: "RemoteCommandRow", in: ios)
+        let remoteCancelControl = try sourceStructBody(named: "RemoteCancelControl", in: ios)
 
         XCTAssertTrue(ios.contains("return \"대시보드\""))
         XCTAssertTrue(ios.contains("return \"파일\""))
@@ -1008,6 +1022,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(actionButtonStyle.contains(".font(.system(size: 12, weight: .semibold, design: .rounded))"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.horizontal, 8)"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 10)"))
+        XCTAssertTrue(actionButtonStyle.contains("background(isPressed: configuration.isPressed)"))
+        XCTAssertTrue(actionButtonStyle.contains("return isPressed ? Color.klmsDangerBackground : Color.klmsCommandButtonBackground.opacity(0.90)"))
+        XCTAssertTrue(actionButtonStyle.contains("Color.klmsDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
+        XCTAssertTrue(remoteCancelControl.contains("Image(systemName: \"stop.circle\")"))
+        XCTAssertTrue(remoteCancelControl.contains(".background(Color.klmsSubtleCardBackground"))
+        XCTAssertFalse(remoteCancelControl.contains(".background(Color.klmsDangerBackground"))
         XCTAssertFalse(actionButtonStyle.contains(".padding(.horizontal, 10)"))
         XCTAssertFalse(actionButtonStyle.contains(".padding(.vertical, 8)"))
         XCTAssertTrue(relayConnectionPanel.contains("RoundedRectangle(cornerRadius: 14)"))

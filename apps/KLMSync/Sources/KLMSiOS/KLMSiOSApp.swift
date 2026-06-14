@@ -4717,10 +4717,10 @@ private struct KLMSActionButtonStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
-            .background(background, in: RoundedRectangle(cornerRadius: 10))
+            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(border, lineWidth: 1)
+                    .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
@@ -4743,14 +4743,14 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var background: Color {
+    private func background(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
             return Color.klmsCommandButtonBackground.opacity(0.90)
         case .primary:
             return Color.klmsPrimaryCommandButtonBackground
         case .destructive:
-            return Color.klmsDangerBackground
+            return isPressed ? Color.klmsDangerBackground : Color.klmsCommandButtonBackground.opacity(0.90)
         case .success:
             return Color.klmsSuccessBackground
         case .accent(let color):
@@ -4758,14 +4758,14 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var border: Color {
+    private func border(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
             return Color.klmsCommandButtonBorder.opacity(0.92)
         case .primary:
             return Color.klmsPrimaryCommandButtonBorder
         case .destructive:
-            return Color.klmsDangerBorder
+            return Color.klmsDangerBorder.opacity(isPressed ? 0.78 : 0.48)
         case .success:
             return Color.klmsSuccessBorder
         case .accent(let color):
@@ -9082,7 +9082,7 @@ private struct RemoteCancelControl: View {
         if model.shouldShowCancelControl {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "stop.circle.fill")
+                    Image(systemName: "stop.circle")
                         .font(.title2)
                         .foregroundStyle(Color.klmsDangerBorder)
                         .frame(width: 30, height: 30)
@@ -9115,7 +9115,7 @@ private struct RemoteCancelControl: View {
                 .accessibilityHint("Mac 앱에 현재 실행 중인 KLMS 동기화를 중단하라고 요청합니다.")
             }
             .padding(14)
-            .background(Color.klmsDangerBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)

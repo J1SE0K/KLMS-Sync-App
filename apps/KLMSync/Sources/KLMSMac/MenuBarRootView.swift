@@ -550,18 +550,35 @@ private struct MacDesignNoticeStrip: View {
 
 private struct MacDesignPrimaryButtonStyle: ButtonStyle {
     var isDestructive: Bool = false
+    @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .padding(.horizontal, 14)
-            .foregroundStyle(isDestructive ? Color.klmsMacPrimaryText : Color.klmsMacCommandButtonForeground)
-            .background(isDestructive ? Color.klmsMacDangerBackground : Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(isDestructive ? Color.klmsMacDangerBorder : Color.klmsMacCommandButtonForeground)
+            .background(primaryBackground(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isDestructive ? Color.klmsMacDangerBorder : Color.klmsMacPrimaryCommandButtonBorder, lineWidth: 1)
+                    .stroke(primaryBorder(isPressed: configuration.isPressed), lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
             .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
+    }
+
+    private func primaryBackground(isPressed: Bool) -> Color {
+        if isDestructive {
+            return isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+        }
+        return Color.klmsMacPrimaryCommandButtonBackground
+    }
+
+    private func primaryBorder(isPressed: Bool) -> Color {
+        if isDestructive {
+            return Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
+        }
+        return Color.klmsMacPrimaryCommandButtonBorder
     }
 }
 
@@ -1502,10 +1519,10 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(background, in: RoundedRectangle(cornerRadius: 8))
+            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(border, lineWidth: 1)
+                    .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
@@ -1528,14 +1545,14 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var background: Color {
+    private func background(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
             Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .primary:
             Color.klmsMacPrimaryCommandButtonBackground
         case .destructive:
-            Color.klmsMacDangerBackground
+            isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .success:
             Color.klmsMacSuccessBackground
         case .accent(let color):
@@ -1543,14 +1560,14 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var border: Color {
+    private func border(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
             Color.klmsMacCommandButtonBorder.opacity(0.92)
         case .primary:
             Color.klmsMacPrimaryCommandButtonBorder
         case .destructive:
-            Color.klmsMacDangerBorder
+            Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
         case .success:
             Color.klmsMacSuccessBorder
         case .accent(let color):
@@ -3884,10 +3901,10 @@ private struct CommandPanelView: View {
                     }
                     .foregroundStyle(Color.klmsMacDangerBorder)
                     .frame(maxWidth: .infinity, minHeight: 40)
-                    .background(Color.klmsMacDangerBackground, in: RoundedRectangle(cornerRadius: 10))
+                    .background(Color.klmsMacCommandButtonBackground.opacity(0.90), in: RoundedRectangle(cornerRadius: 10))
                     .overlay {
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.klmsMacDangerBorder, lineWidth: 1)
+                            .stroke(Color.klmsMacDangerBorder.opacity(0.48), lineWidth: 1)
                     }
                 }
                 .buttonStyle(MacPressFeedbackButtonStyle())
