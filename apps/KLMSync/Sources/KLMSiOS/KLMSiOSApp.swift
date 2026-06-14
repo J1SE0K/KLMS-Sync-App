@@ -371,20 +371,20 @@ final class CompanionModel: ObservableObject {
         }
         switch latestDisplayStatus {
         case .pending:
-            return "Mac이 \(latestCommand.kind.displayName) 요청을 확인하는 중"
+            return "Mac 앱이 \(latestCommand.kind.displayName) 요청을 확인하고 있습니다."
         case .running:
             if let detail = runningPhaseDetail {
                 return "Mac에서 \(latestCommand.kind.displayName) · \(detail) 진행 중"
             }
             return "Mac에서 \(latestCommand.kind.displayName) 처리 중"
         case .completed:
-            return "최근 요청 완료: \(latestCommand.kind.displayName)"
+            return "\(latestCommand.kind.displayName) 요청이 끝났습니다."
         case .failed:
-            return "최근 요청 실패: \(latestCommand.kind.displayName)"
+            return "\(latestCommand.kind.displayName) 요청이 실패했습니다."
         case .cancelled:
-            return "최근 요청 취소됨: \(latestCommand.kind.displayName)"
+            return "\(latestCommand.kind.displayName) 요청을 취소했습니다."
         case .macUnavailable:
-            return "Mac이 아직 요청을 받지 못했습니다. 앱이 켜져 있으면 곧 시작됩니다."
+            return "Mac 앱이 아직 요청을 확인하지 않았습니다. 켜져 있으면 곧 시작됩니다."
         }
     }
 
@@ -414,7 +414,7 @@ final class CompanionModel: ObservableObject {
 
     var loginAttentionMessage: String? {
         if status.loginRequired {
-            return "KLMS 로그인이 풀렸을 수 있습니다. Mac에서 Safari KLMS 로그인을 완료한 뒤 다시 확인해 주세요."
+            return "KLMS 로그인이 풀린 것 같습니다. Mac에서 Safari 로그인을 마친 뒤 다시 확인해 주세요."
         }
         return nil
     }
@@ -491,7 +491,7 @@ final class CompanionModel: ObservableObject {
                 userAlert = UserAlert(title: "중단 요청 전송", message: "Mac 앱에 현재 실행 중단을 요청했습니다.")
                 startCancelFollowUp(commandID: commandID)
             } else {
-                connectionMessage = cancelResponse.message.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Mac이 처리하기 전에 원격 요청을 취소했습니다."
+                connectionMessage = cancelResponse.message.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Mac 앱이 확인하기 전에 요청을 취소했습니다."
                 pendingCancelCommandID = nil
                 pendingCancelRequestedAt = nil
                 cancelFollowUpTask?.cancel()
@@ -515,7 +515,7 @@ final class CompanionModel: ObservableObject {
 
     func createSettingAction(setting: ServerRelaySetting, value: String) async {
         guard let serverRelayStore else {
-            errorMessage = "설정 변경은 서버 릴레이 연결에서만 사용할 수 있습니다."
+            errorMessage = "서버 연결이 필요합니다. 연결 정보를 먼저 확인해 주세요."
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
@@ -534,7 +534,7 @@ final class CompanionModel: ObservableObject {
             connectionMessage = "\(setting.title) 설정 변경 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
-            userAlert = UserAlert(title: "설정 요청 완료", message: "Mac 앱이 요청을 확인하면 설정 파일(config.env)에 반영합니다.")
+            userAlert = UserAlert(title: "설정 요청 완료", message: "Mac 앱이 요청을 확인하면 설정에 반영합니다.")
             await refreshRecent(includeSyncData: false, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
@@ -546,7 +546,7 @@ final class CompanionModel: ObservableObject {
 
     func createItemAction(_ actionKind: ServerRelayItemActionKind, item: ServerRelaySyncItem) async {
         guard let serverRelayStore else {
-            errorMessage = "항목 상태 변경은 서버 릴레이 연결에서만 사용할 수 있습니다."
+            errorMessage = "서버 연결이 필요합니다. 연결 정보를 먼저 확인해 주세요."
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
@@ -584,7 +584,7 @@ final class CompanionModel: ObservableObject {
         edit: CalendarEventEdit? = nil
     ) async {
         guard let serverRelayStore else {
-            errorMessage = "캘린더 요청은 서버 릴레이 연결에서만 사용할 수 있습니다."
+            errorMessage = "서버 연결이 필요합니다. 연결 정보를 먼저 확인해 주세요."
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
@@ -619,7 +619,7 @@ final class CompanionModel: ObservableObject {
 
     func createManualCalendarAction(title: String, edit: CalendarEventEdit) async {
         guard let serverRelayStore else {
-            errorMessage = "캘린더 등록 요청은 서버 릴레이 연결에서만 사용할 수 있습니다."
+            errorMessage = "서버 연결이 필요합니다. 연결 정보를 먼저 확인해 주세요."
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
@@ -674,7 +674,7 @@ final class CompanionModel: ObservableObject {
             return
         }
         guard let serverRelayStore else {
-            errorMessage = "파일 열기는 서버 릴레이 연결에서만 사용할 수 있습니다."
+            errorMessage = "서버 연결이 필요합니다. 연결 정보를 먼저 확인해 주세요."
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
@@ -690,10 +690,10 @@ final class CompanionModel: ObservableObject {
             )
             let created = try await serverRelayStore.createFileAccessRequest(request)
             recentFileAccessRequests.insert(created, at: 0)
-            connectionMessage = "Mac에 파일 열기 링크를 요청했습니다."
+            connectionMessage = "Mac에 파일 링크를 요청했습니다."
             connectionSucceeded = true
             errorMessage = ""
-            userAlert = UserAlert(title: "파일 요청 완료", message: "Mac이 임시 파일 링크를 준비하면 열기 버튼이 표시됩니다.")
+            userAlert = UserAlert(title: "파일 요청 완료", message: "Mac 앱이 파일 링크를 준비하면 열기 버튼이 표시됩니다.")
             await refreshRecent(includeSyncData: false, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
@@ -873,7 +873,7 @@ final class CompanionModel: ObservableObject {
                     lastRefreshAt = Date()
                 }
                 if showsActivity {
-                    connectionMessage = "상태 갱신 완료"
+                    connectionMessage = "새로고침 완료"
                     connectionSucceeded = true
                 }
                 errorMessage = ""
@@ -889,7 +889,7 @@ final class CompanionModel: ObservableObject {
             if !silentErrors {
                 errorMessage = userFacingMessage(for: error)
                 if showsActivity {
-                    connectionMessage = "상태 갱신 실패"
+                    connectionMessage = "새로고침 실패"
                     connectionSucceeded = false
                 }
             }
@@ -929,7 +929,7 @@ final class CompanionModel: ObservableObject {
         }
         if showsActivity {
             isRefreshing = true
-            connectionMessage = "진행 중인 상태 갱신이 끝나면 바로 반영합니다."
+            connectionMessage = "새로고침 중입니다. 끝나는 대로 바로 반영합니다."
             connectionSucceeded = nil
         }
     }
@@ -4365,7 +4365,7 @@ private struct CompactDashboardEmptyRow: View {
             Text(category.emptyMessage)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.klmsPrimaryText)
-            Text("Mac이 서버에 최신 목록을 올리면 여기에서 바로 펼쳐집니다.")
+            Text("Mac 앱이 최신 목록을 올리면 여기에서 바로 확인할 수 있습니다.")
                 .font(.caption)
                 .foregroundStyle(Color.klmsSecondaryText)
         }
@@ -4525,6 +4525,7 @@ private struct DashboardMetricDetailPanel: View {
     var status: SanitizedRemoteStatus
     var items: [ServerRelaySyncItem]
     var onSelect: (ServerRelaySyncItem) -> Void = { _ in }
+    @State private var selectedItemID: String?
 
     private var filteredItems: [ServerRelaySyncItem] {
         let defaultFilter = CompanionItemStatusFilter.defaultFilter(for: category)
@@ -4563,9 +4564,10 @@ private struct DashboardMetricDetailPanel: View {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(visible) { item in
                         Button {
+                            selectedItemID = item.id
                             onSelect(item)
                         } label: {
-                            ServerSyncDataRow(item: item)
+                            ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
                                 .equatable()
                         }
                         .buttonStyle(.plain)
@@ -4640,54 +4642,6 @@ private struct DashboardCategoryInlineDetailPanel: View {
 
     private var calendarChanges: [CalendarChange] {
         model.visibleCalendarChanges()
-    }
-
-    private var baseItems: [ServerRelaySyncItem] {
-        model.dashboardSyncItems.filter { category.includes($0) }
-    }
-
-    private var courseOptions: [String] {
-        CompanionItemListFilter.courseOptions(for: baseItems)
-    }
-
-    private var yearOptions: [String] {
-        CompanionItemListFilter.yearOptions(for: baseItems)
-    }
-
-    private var semesterOptions: [String] {
-        CompanionItemListFilter.semesterOptions(for: baseItems)
-    }
-
-    private var availableStatusFilters: [CompanionItemStatusFilter] {
-        CompanionItemStatusFilter.options(for: category, items: baseItems)
-    }
-
-    private var effectiveStatusFilter: CompanionItemStatusFilter {
-        availableStatusFilters.contains(statusFilter) ? statusFilter : CompanionItemStatusFilter.defaultFilter(for: category)
-    }
-
-    private var filteredItems: [ServerRelaySyncItem] {
-        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let selectedCourse = courseOptions.contains(selectedCourse) ? selectedCourse : CompanionItemListFilter.allCourses
-        let selectedYear = yearOptions.contains(selectedYear) ? selectedYear : CompanionItemListFilter.allYears
-        let selectedSemester = semesterOptions.contains(selectedSemester) ? selectedSemester : CompanionItemListFilter.allSemesters
-        return baseItems
-            .filter { visibilityFilter.includes($0) }
-            .filter { effectiveStatusFilter.includes($0) }
-            .filter { selectedCourse == CompanionItemListFilter.allCourses || $0.course == selectedCourse }
-            .filter { selectedYear == CompanionItemListFilter.allYears || ($0.academicYear.map(String.init) ?? "") == selectedYear }
-            .filter { selectedSemester == CompanionItemListFilter.allSemesters || $0.academicSemester == selectedSemester }
-            .filter { !newOnly || $0.isCompanionChangedLike }
-            .filter { !recentOnly || $0.isCompanionChangedLike }
-            .filter { item in
-                guard !query.isEmpty else { return true }
-                return item.searchText.localizedCaseInsensitiveContains(query)
-            }
-            .companionSorted(by: sortOption)
-    }
-
-    private var visibleItems: [ServerRelaySyncItem] {
-        Array(filteredItems.prefix(visibleLimit))
     }
 
     var body: some View {
@@ -4805,13 +4759,12 @@ private struct DashboardCategoryInlineDetailPanel: View {
                             Button {
                                 selectedItemID = selectedItemID == item.id ? nil : item.id
                             } label: {
-                                HStack(alignment: .center, spacing: 8) {
-                                    ServerSyncDataRow(item: item)
-                                        .equatable()
-                                    Image(systemName: selectedItemID == item.id ? "chevron.up" : "chevron.down")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(Color.klmsSecondaryText)
-                                }
+                                ServerSyncDataRow(
+                                    item: item,
+                                    isSelected: selectedItemID == item.id,
+                                    accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
+                                )
+                                .equatable()
                             }
                             .buttonStyle(.plain)
                             .accessibilityHint("항목 상세를 같은 화면에서 펼칩니다.")
@@ -4963,17 +4916,14 @@ private struct RemoteChangeSummaryDetailPanel: View {
                 ForEach(Array(changedItems.prefix(12))) { item in
                     VStack(alignment: .leading, spacing: 8) {
                         Button {
-                            withAnimation(.easeInOut(duration: 0.16)) {
-                                selectedItemID = selectedItemID == item.id ? nil : item.id
-                            }
+                            selectedItemID = selectedItemID == item.id ? nil : item.id
                         } label: {
-                            HStack(spacing: 8) {
-                                ServerSyncDataRow(item: item)
-                                    .equatable()
-                                Image(systemName: selectedItemID == item.id ? "chevron.up" : "chevron.down")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color.klmsSecondaryText)
-                            }
+                            ServerSyncDataRow(
+                                item: item,
+                                isSelected: selectedItemID == item.id,
+                                accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
+                            )
+                            .equatable()
                         }
                         .buttonStyle(.plain)
 
@@ -5351,17 +5301,14 @@ private struct MailPasteAnalysisResultView: View {
                         ForEach(Array(analysis.matchedItems.prefix(5))) { item in
                             VStack(alignment: .leading, spacing: 8) {
                                 Button {
-                                    withAnimation(.easeInOut(duration: 0.16)) {
-                                        selectedItemID = selectedItemID == item.id ? nil : item.id
-                                    }
+                                    selectedItemID = selectedItemID == item.id ? nil : item.id
                                 } label: {
-                                    HStack(spacing: 8) {
-                                        ServerSyncDataRow(item: item)
-                                            .equatable()
-                                        Image(systemName: selectedItemID == item.id ? "chevron.up" : "chevron.down")
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(Color.klmsSecondaryText)
-                                    }
+                                    ServerSyncDataRow(
+                                        item: item,
+                                        isSelected: selectedItemID == item.id,
+                                        accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
+                                    )
+                                    .equatable()
                                 }
                                 .buttonStyle(.plain)
 
@@ -6564,6 +6511,7 @@ private struct DashboardCategoryDetailScreen: View {
     @State private var selectedSemester = CompanionItemListFilter.allSemesters
     @State private var newOnly = false
     @State private var recentOnly = false
+    @State private var selectedItemID: String?
     @State private var visibleLimit: Int
 
     init(
@@ -6581,50 +6529,6 @@ private struct DashboardCategoryDetailScreen: View {
         _sortOption = State(initialValue: CompanionItemSortOption.defaultSort(for: category))
         _statusFilter = State(initialValue: CompanionItemStatusFilter.defaultFilter(for: category))
         _visibleLimit = State(initialValue: Self.initialVisibleLimit(for: category))
-    }
-
-    private var baseItems: [ServerRelaySyncItem] {
-        items.filter { category.includes($0) }
-    }
-
-    private var courseOptions: [String] {
-        CompanionItemListFilter.courseOptions(for: baseItems)
-    }
-
-    private var yearOptions: [String] {
-        CompanionItemListFilter.yearOptions(for: baseItems)
-    }
-
-    private var semesterOptions: [String] {
-        CompanionItemListFilter.semesterOptions(for: baseItems)
-    }
-
-    private var availableStatusFilters: [CompanionItemStatusFilter] {
-        CompanionItemStatusFilter.options(for: category, items: baseItems)
-    }
-
-    private var effectiveStatusFilter: CompanionItemStatusFilter {
-        availableStatusFilters.contains(statusFilter) ? statusFilter : CompanionItemStatusFilter.defaultFilter(for: category)
-    }
-
-    private var filteredItems: [ServerRelaySyncItem] {
-        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let selectedCourse = courseOptions.contains(selectedCourse) ? selectedCourse : CompanionItemListFilter.allCourses
-        let selectedYear = yearOptions.contains(selectedYear) ? selectedYear : CompanionItemListFilter.allYears
-        let selectedSemester = semesterOptions.contains(selectedSemester) ? selectedSemester : CompanionItemListFilter.allSemesters
-        return baseItems
-            .filter { visibilityFilter.includes($0) }
-            .filter { effectiveStatusFilter.includes($0) }
-            .filter { selectedCourse == CompanionItemListFilter.allCourses || $0.course == selectedCourse }
-            .filter { selectedYear == CompanionItemListFilter.allYears || ($0.academicYear.map(String.init) ?? "") == selectedYear }
-            .filter { selectedSemester == CompanionItemListFilter.allSemesters || $0.academicSemester == selectedSemester }
-            .filter { !newOnly || $0.isCompanionChangedLike }
-            .filter { !recentOnly || $0.isCompanionChangedLike }
-            .filter { item in
-                guard !query.isEmpty else { return true }
-                return item.searchText.localizedCaseInsensitiveContains(query)
-            }
-            .companionSorted(by: sortOption)
     }
 
     var body: some View {
@@ -6702,9 +6606,10 @@ private struct DashboardCategoryDetailScreen: View {
                     Section("\(filtered.count)개") {
                         ForEach(visible) { item in
                             Button {
+                                selectedItemID = item.id
                                 onSelect(item)
                             } label: {
-                                ServerSyncDataRow(item: item)
+                                ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
                                     .equatable()
                             }
                             .buttonStyle(.plain)
@@ -6885,7 +6790,7 @@ private struct DashboardCalendarChangeDetailRow: View {
             if let activeAction {
                 RemoteItemRequestPendingView(
                     title: activeAction.action.displayName,
-                    message: "Mac이 \(activeAction.status.displayName)입니다."
+                    message: "Mac 앱에서 \(activeAction.status.displayName) 중입니다."
                 )
             } else if onAction != nil {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
@@ -7004,8 +6909,8 @@ private struct CalendarEventEditForm: View {
                     TextField("장소", text: $location)
                 } footer: {
                     Text(action == .calendarCreate
-                        ? "Mac이 Apple Calendar에 새 이벤트를 등록합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있습니다."
-                        : "Mac이 Apple Calendar 이벤트를 찾아 직접 수정합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있고, 비어 있는 시간/장소는 변경하지 않습니다.")
+                        ? "Mac 앱에서 Apple Calendar에 새 일정을 등록합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있습니다."
+                        : "Mac 앱에서 Apple Calendar 일정을 찾아 직접 수정합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있고, 비워 둔 항목은 그대로 둡니다.")
                 }
             }
             .navigationTitle(action == .calendarCreate ? "캘린더 일정 등록" : "캘린더 내용 수정")
@@ -7194,51 +7099,8 @@ private struct ServerSyncDataPanel: View {
     @State private var selectedSemester = CompanionItemListFilter.allSemesters
     @State private var newOnly = false
     @State private var recentOnly = false
+    @State private var selectedItemID: String?
     @State private var visibleLimit = 20
-
-    private var courseOptions: [String] {
-        CompanionItemListFilter.courseOptions(for: items)
-    }
-
-    private var yearOptions: [String] {
-        CompanionItemListFilter.yearOptions(for: items)
-    }
-
-    private var semesterOptions: [String] {
-        CompanionItemListFilter.semesterOptions(for: items)
-    }
-
-    private var availableStatusFilters: [CompanionItemStatusFilter] {
-        CompanionItemStatusFilter.options(for: nil, items: items)
-    }
-
-    private var effectiveStatusFilter: CompanionItemStatusFilter {
-        availableStatusFilters.contains(statusFilter) ? statusFilter : .all
-    }
-
-    private var filteredItems: [ServerRelaySyncItem] {
-        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let selectedCourse = courseOptions.contains(selectedCourse) ? selectedCourse : CompanionItemListFilter.allCourses
-        let selectedYear = yearOptions.contains(selectedYear) ? selectedYear : CompanionItemListFilter.allYears
-        let selectedSemester = semesterOptions.contains(selectedSemester) ? selectedSemester : CompanionItemListFilter.allSemesters
-        return items
-            .filter { visibilityFilter.includes($0) }
-            .filter { effectiveStatusFilter.includes($0) }
-            .filter { selectedCourse == CompanionItemListFilter.allCourses || $0.course == selectedCourse }
-            .filter { selectedYear == CompanionItemListFilter.allYears || ($0.academicYear.map(String.init) ?? "") == selectedYear }
-            .filter { selectedSemester == CompanionItemListFilter.allSemesters || $0.academicSemester == selectedSemester }
-            .filter { !newOnly || $0.isCompanionChangedLike }
-            .filter { !recentOnly || $0.isCompanionChangedLike }
-            .filter { item in
-                guard !query.isEmpty else { return true }
-                return item.searchText.localizedCaseInsensitiveContains(query)
-            }
-            .companionSorted(by: sortOption)
-    }
-
-    private var visibleItems: [ServerRelaySyncItem] {
-        Array(filteredItems.prefix(visibleLimit))
-    }
 
     var body: some View {
         if !items.isEmpty {
@@ -7282,9 +7144,10 @@ private struct ServerSyncDataPanel: View {
                     )
                     ForEach(visible) { item in
                         Button {
+                            selectedItemID = item.id
                             onSelect(item)
                         } label: {
-                            ServerSyncDataRow(item: item)
+                            ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
                                 .equatable()
                         }
                         .buttonStyle(.plain)
@@ -7340,7 +7203,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
             } else if model.hasInFlightRequest {
                 RemoteItemRequestPendingView(
                     title: "처리 중",
-                    message: "Mac이 요청을 처리하는 중입니다. 끝나면 결과를 다시 불러옵니다."
+                    message: "Mac 앱에서 요청을 처리하고 있습니다. 끝나면 결과를 다시 불러옵니다."
                 )
             } else {
                 actionPanel
@@ -7525,7 +7388,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
 
     private var detailHelpMessage: String {
         if item.kind == "file" {
-            return "파일 열기 요청을 보내면 Mac이 course_files 원본을 임시 링크로 준비합니다. 링크가 만료되면 서버 기록과 임시 파일은 자동으로 정리됩니다."
+            return "파일 링크를 요청하면 Mac 앱에서 course_files 원본을 임시 링크로 준비합니다. 링크가 만료되면 기록과 임시 파일은 자동으로 정리됩니다."
         }
         return "항목 처리 요청은 서버에 대기 상태로 올라가고, Mac 앱이 확인한 뒤 기존 상태 파일에 반영합니다."
     }
@@ -7633,7 +7496,7 @@ private struct ServerSyncItemDetailView: View {
                     } else if model.hasInFlightRequest {
                         RemoteItemRequestPendingView(
                             title: "처리 중",
-                            message: "Mac이 요청을 처리하는 중입니다. 끝나면 결과를 다시 불러옵니다."
+                            message: "Mac 앱에서 요청을 처리하고 있습니다. 끝나면 결과를 다시 불러옵니다."
                         )
                     } else {
                         actionPanel
@@ -7819,7 +7682,7 @@ private struct ServerSyncItemDetailView: View {
 
     private var detailHelpMessage: String {
         if item.kind == "file" {
-            return "iPhone/iPad는 KLMS에 직접 로그인하지 않습니다. 파일 열기 요청을 보내면 Mac이 course_files 원본을 임시 링크로 준비합니다. 링크가 만료되면 서버 기록과 임시 파일은 자동으로 정리됩니다."
+            return "iPhone/iPad는 KLMS에 직접 로그인하지 않습니다. 파일 링크를 요청하면 Mac 앱에서 course_files 원본을 임시 링크로 준비합니다. 링크가 만료되면 기록과 임시 파일은 자동으로 정리됩니다."
         }
         return "항목 처리 요청은 서버에 대기 상태로 올라가고, Mac 앱이 확인한 뒤 기존 상태 파일에 반영합니다."
     }
@@ -8305,47 +8168,63 @@ private extension ServerRelayItemActionKind {
 
 private struct ServerSyncDataRow: View, Equatable {
     var item: ServerRelaySyncItem
+    var isSelected = false
+    var accessorySystemImage: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: systemImage)
-                .foregroundStyle(tint)
+                .foregroundStyle(primaryForeground)
                 .frame(width: 20)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(kindName)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(tint)
+                        .foregroundStyle(primaryForeground)
                     if !item.status.isEmpty {
                         Text(item.status)
                             .font(.caption2)
-                            .foregroundStyle(Color.klmsSecondaryText)
+                            .foregroundStyle(secondaryForeground)
                     }
                     if item.isHidden {
                         Text("숨김")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsSecondaryText)
+                            .foregroundStyle(secondaryForeground)
                     }
                 }
                 Text(item.title.isEmpty ? "제목 없음" : item.title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
                     .lineLimit(2)
                 Text(metadata)
                     .font(.caption)
-                    .foregroundStyle(Color.klmsSecondaryText)
+                    .foregroundStyle(secondaryForeground)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
+            if let accessorySystemImage {
+                Image(systemName: accessorySystemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(secondaryForeground)
+                    .padding(.top, 2)
+            }
         }
         .padding(10)
-        .background(Color.klmsSubtleCardBackground)
+        .background(isSelected ? Color.klmsPrimaryCommandButtonBackground : Color.klmsSubtleCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsBorder, lineWidth: 1)
+                .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
         )
+    }
+
+    private var primaryForeground: Color {
+        isSelected ? Color.klmsCommandButtonForeground : tint
+    }
+
+    private var secondaryForeground: Color {
+        isSelected ? Color.klmsCommandButtonForeground.opacity(0.78) : Color.klmsSecondaryText
     }
 
     private var metadata: String {
@@ -9459,7 +9338,7 @@ private struct RemoteLogSummaryPanel: View {
     private var fileRequestDetail: String {
         guard let latestFileRequest else {
             return model.recentFileAccessRequests.isEmpty
-                ? "파일 항목에서 링크 요청을 누르면 Mac이 임시 링크를 준비합니다."
+                ? "파일 항목에서 링크 요청을 누르면 Mac 앱이 임시 링크를 준비합니다."
                 : "지난 완료/실패 기록은 이 행을 펼쳐서 확인할 수 있습니다."
         }
         let title = latestFileRequest.itemTitle.nilIfEmpty ?? "파일"
@@ -9636,7 +9515,7 @@ private struct SharedRunLogsView: View {
                     .disabled(clearDisabled)
                 }
             }
-            Text("Mac이 실행한 동기화 결과를 모든 기기가 함께 보는 기록입니다. 지우면 다른 기기에서도 사라집니다.")
+            Text("Mac 앱에서 실행한 동기화 결과를 모든 기기가 함께 보는 기록입니다. 지우면 다른 기기에서도 사라집니다.")
                 .font(.caption2)
                 .foregroundStyle(Color.klmsSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -9788,9 +9667,16 @@ private struct RecentFileAccessRequestsView: View {
                     .background(Color.klmsSubtleCardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
-                VStack(spacing: 8) {
-                    ForEach(requests) { request in
+                LazyVStack(spacing: 8) {
+                    ForEach(requests.prefix(30)) { request in
                         RemoteFileAccessRequestRow(request: request)
+                    }
+                    if requests.count > 30 {
+                        Text("최근 30개만 표시합니다.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 2)
                     }
                 }
             }
@@ -10426,7 +10312,7 @@ private struct RemotePrivacyNote: View {
         VStack(alignment: .leading, spacing: 6) {
             Label("원격 요청은 클라이언트 토큰으로 보호됩니다", systemImage: "lock")
                 .font(.subheadline.weight(.semibold))
-            Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태만 보관합니다. 파일은 사용자가 열기를 요청할 때만 Mac이 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
+            Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태만 보관합니다. 파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
                 .font(.caption)
                 .foregroundStyle(Color.klmsSecondaryText)
         }

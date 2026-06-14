@@ -988,6 +988,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(inlineItemDetail.contains("companionItemKindTint(item.kind)"))
         XCTAssertTrue(sheetItemDetail.contains("companionItemKindTint(item.kind)"))
         XCTAssertTrue(serverSyncDataRow.contains("companionItemKindTint(item.kind)"))
+        XCTAssertTrue(serverSyncDataRow.contains("var isSelected = false"))
+        XCTAssertTrue(serverSyncDataRow.contains("var accessorySystemImage: String?"))
+        XCTAssertTrue(serverSyncDataRow.contains("isSelected ? Color.klmsPrimaryCommandButtonBackground"))
+        XCTAssertTrue(serverSyncDataRow.contains("isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder"))
         XCTAssertTrue(sharedRunLogRow.contains("Color.klmsWarningBorder"))
         XCTAssertTrue(sharedRunLogRow.contains("Color.klmsSuccessBorder"))
         XCTAssertTrue(remoteCommandRow.contains("Color.klmsCommandAccent"))
@@ -1195,16 +1199,28 @@ final class DashboardDataModelTests: XCTestCase {
         let categoryDetail = try sourceStructBody(named: "DashboardCategoryDetailScreen", in: ios)
         let syncDataPanel = try sourceStructBody(named: "ServerSyncDataPanel", in: ios)
         let inlineDetail = try sourceStructBody(named: "DashboardCategoryInlineDetailPanel", in: ios)
+        let recentFileRequests = try sourceStructBody(named: "RecentFileAccessRequestsView", in: ios)
 
         XCTAssertTrue(ios.contains("private struct CompanionItemListData"))
         XCTAssertTrue(categoryDetail.contains("@State private var visibleLimit"))
+        XCTAssertTrue(categoryDetail.contains("@State private var selectedItemID"))
         XCTAssertTrue(categoryDetail.contains("let visible = Array(filtered.prefix(visibleLimit))"))
         XCTAssertTrue(categoryDetail.contains("ForEach(visible)"))
+        XCTAssertTrue(categoryDetail.contains("ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)"))
         XCTAssertFalse(categoryDetail.contains("ForEach(filtered)"))
+        XCTAssertFalse(categoryDetail.contains("private var baseItems"))
+        XCTAssertFalse(categoryDetail.contains("private var filteredItems"))
         XCTAssertTrue(categoryDetail.contains("initialVisibleLimit(for: category)"))
         XCTAssertTrue(categoryDetail.contains("incrementVisibleLimit(for: category)"))
         XCTAssertTrue(syncDataPanel.contains("let listData = CompanionItemListData"))
+        XCTAssertTrue(syncDataPanel.contains("@State private var selectedItemID"))
+        XCTAssertTrue(syncDataPanel.contains("ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)"))
+        XCTAssertFalse(syncDataPanel.contains("private var filteredItems"))
         XCTAssertTrue(inlineDetail.contains("let listData = CompanionItemListData"))
+        XCTAssertTrue(inlineDetail.contains("accessorySystemImage: selectedItemID == item.id ? \"chevron.up\" : \"chevron.down\""))
+        XCTAssertFalse(inlineDetail.contains("private var filteredItems"))
+        XCTAssertTrue(recentFileRequests.contains("LazyVStack(spacing: 8)"))
+        XCTAssertTrue(recentFileRequests.contains("ForEach(requests.prefix(30))"))
     }
 
     func testIOSCalendarDetailHasMailPasteAnalyzerAndSharedCalendarActionLabels() throws {
@@ -1519,9 +1535,9 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS queued refresh feedback"
         )
-        XCTAssertTrue(queueRefresh.contains("connectionMessage = \"진행 중인 상태 갱신이 끝나면 바로 반영합니다.\""))
+        XCTAssertTrue(queueRefresh.contains("connectionMessage = \"새로고침 중입니다. 끝나는 대로 바로 반영합니다.\""))
         XCTAssertTrue(queueRefresh.contains("isRefreshing = true"))
-        XCTAssertTrue(ios.contains("connectionMessage = \"상태 갱신 완료\""))
+        XCTAssertTrue(ios.contains("connectionMessage = \"새로고침 완료\""))
     }
 
     func testIOSRelayRefreshFetchesRemotePanelsConcurrently() throws {
