@@ -1823,7 +1823,7 @@ private struct DashboardControlChip: View {
                         .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacCommandBorder, lineWidth: 1)
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KLMSMacPressFeedbackButtonStyle())
         .help(help)
     }
 }
@@ -1875,15 +1875,15 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
     private func background(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
-            return Color.klmsMacCommandButtonBackground.opacity(0.90)
+            return isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .primary:
-            return Color.klmsMacPrimaryCommandButtonBackground
+            return isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
         case .destructive:
             return isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .success:
-            return Color.klmsMacSuccessBackground
+            return isPressed ? Color.klmsMacSuccessBorder.opacity(0.20) : Color.klmsMacSuccessBackground
         case .accent(let color):
-            return color.opacity(0.10)
+            return color.opacity(isPressed ? 0.18 : 0.10)
         }
     }
 
@@ -1892,7 +1892,7 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         case .soft:
             return Color.klmsMacCommandButtonBorder.opacity(0.92)
         case .primary:
-            return Color.klmsMacPrimaryCommandButtonBorder
+            return Color.klmsMacPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)
         case .destructive:
             return Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
         case .success:
@@ -1900,6 +1900,23 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         case .accent(let color):
             return color.opacity(0.28)
         }
+    }
+}
+
+private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
+                    .allowsHitTesting(false)
+            }
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? 1.0 : 0.48)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 }
 
@@ -2675,7 +2692,7 @@ private struct CalendarActionButton: View {
                         .stroke(disabled ? Color.klmsMacCommandBorder.opacity(0.6) : tint.opacity(0.24), lineWidth: 1)
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KLMSMacPressFeedbackButtonStyle())
         .disabled(disabled)
     }
 }
@@ -2996,7 +3013,7 @@ struct MacMailPasteAnalyzerPanel: View {
             } label: {
                 MacMailPasteHeaderButtonContent(isExpanded: isExpanded, analysis: analysis)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(KLMSMacPressFeedbackButtonStyle())
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 10) {
@@ -3581,7 +3598,7 @@ private struct MacMailAnalysisProcessView: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(KLMSMacPressFeedbackButtonStyle())
             .padding(9)
             .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {

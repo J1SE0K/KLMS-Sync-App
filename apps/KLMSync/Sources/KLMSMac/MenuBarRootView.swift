@@ -225,7 +225,7 @@ struct MacDesignWindowRootView: View {
                     }
                     .contentShape(RoundedRectangle(cornerRadius: 13))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MacPressFeedbackButtonStyle())
             }
         }
     }
@@ -426,7 +426,7 @@ struct MacDesignWindowRootView: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MacPressFeedbackButtonStyle())
     }
 
     private func statusRow(_ title: String, _ value: String, _ color: Color) -> some View {
@@ -576,7 +576,7 @@ private struct MacDesignPrimaryButtonStyle: ButtonStyle {
         if isDestructive {
             return isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         }
-        return Color.klmsMacPrimaryCommandButtonBackground
+        return isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
     }
 
     private func primaryBorder(isPressed: Bool) -> Color {
@@ -588,31 +588,57 @@ private struct MacDesignPrimaryButtonStyle: ButtonStyle {
 }
 
 private struct MacDesignSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground)
-            .background(Color.klmsMacCommandButtonBackground, in: RoundedRectangle(cornerRadius: 10))
+            .background(secondaryBackground(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.klmsMacCommandButtonBorder, lineWidth: 1)
+                    .stroke(secondaryBorder(isPressed: configuration.isPressed), lineWidth: 1)
             }
-            .opacity(configuration.isPressed ? 0.82 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? 1.0 : 0.48)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
+    }
+
+    private func secondaryBackground(isPressed: Bool) -> Color {
+        isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground
+    }
+
+    private func secondaryBorder(isPressed: Bool) -> Color {
+        isPressed ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46) : Color.klmsMacCommandButtonBorder
     }
 }
 
 private struct MacDesignHeaderButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.caption.weight(.bold))
             .foregroundStyle(Color.klmsMacPrimaryText)
             .padding(.horizontal, 11)
             .padding(.vertical, 8)
-            .background(Color.klmsMacCommandButtonBackground, in: Capsule())
+            .background(headerBackground(isPressed: configuration.isPressed), in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(Color.klmsMacCommandButtonBorder, lineWidth: 1)
+                    .stroke(headerBorder(isPressed: configuration.isPressed), lineWidth: 1)
             }
-            .opacity(configuration.isPressed ? 0.78 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? 1.0 : 0.48)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
+    }
+
+    private func headerBackground(isPressed: Bool) -> Color {
+        isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground
+    }
+
+    private func headerBorder(isPressed: Bool) -> Color {
+        isPressed ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46) : Color.klmsMacCommandButtonBorder
     }
 }
 
@@ -621,8 +647,13 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
+                    .allowsHitTesting(false)
+            }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.48)
+            .opacity(isEnabled ? 1.0 : 0.48)
             .animation(.linear(duration: 0.035), value: configuration.isPressed)
             .animation(.linear(duration: 0.08), value: isEnabled)
     }
@@ -792,7 +823,7 @@ private struct WorkspaceNavigationView: View {
                         }
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(MacPressFeedbackButtonStyle())
                     .accessibilityLabel(section.title)
                     .accessibilityValue(isSelected ? "선택됨" : "")
                 }
@@ -916,7 +947,7 @@ private struct MacAlertBannerView: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MacPressFeedbackButtonStyle())
         .accessibilityLabel(title)
         .accessibilityHint(detail)
     }
@@ -1267,7 +1298,7 @@ private struct ExternalIntegrationStatusView: View {
                     .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MacPressFeedbackButtonStyle())
                 .help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")
 
                 Button {
@@ -1553,15 +1584,15 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
     private func background(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
-            Color.klmsMacCommandButtonBackground.opacity(0.90)
+            isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .primary:
-            Color.klmsMacPrimaryCommandButtonBackground
+            isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
         case .destructive:
             isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .success:
-            Color.klmsMacSuccessBackground
+            isPressed ? Color.klmsMacSuccessBorder.opacity(0.20) : Color.klmsMacSuccessBackground
         case .accent(let color):
-            color.opacity(0.10)
+            color.opacity(isPressed ? 0.18 : 0.10)
         }
     }
 
@@ -1570,7 +1601,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .soft:
             Color.klmsMacCommandButtonBorder.opacity(0.92)
         case .primary:
-            Color.klmsMacPrimaryCommandButtonBorder
+            Color.klmsMacPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)
         case .destructive:
             Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
         case .success:
@@ -1704,7 +1735,7 @@ private struct SectionPickerView: View {
                         .minimumScaleFactor(0.82)
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MacPressFeedbackButtonStyle())
                 .controlSize(.small)
                 .foregroundStyle(isSelected ? Color.klmsMacCommandAccent : Color.klmsMacPrimaryText)
                 .padding(.horizontal, 8)
@@ -2169,7 +2200,7 @@ private struct LogSummaryTile: View {
                     .stroke(isExpanded ? tint.opacity(0.42) : tint.opacity(0.16), lineWidth: 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MacPressFeedbackButtonStyle())
         .help(isExpanded ? "관련 로그 접기" : "관련 로그 펼치기")
     }
 }
@@ -5059,7 +5090,7 @@ private struct TopUtilityActionsView: View {
             } label: {
                 utilityLabel("설정", systemImage: "gearshape")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(MacPressFeedbackButtonStyle())
             Menu {
                 Button {
                     Task {
@@ -5147,7 +5178,7 @@ struct MetricGrid: View {
                     } label: {
                         MetricTile(metric: metric, isSelected: metric.detail?.rawValue == selectedMetricID)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(MacPressFeedbackButtonStyle())
                     .disabled(metric.detail == nil)
                 } else {
                     MetricTile(metric: metric, isSelected: false)
@@ -5266,7 +5297,7 @@ struct CollapsibleSectionBox<Content: View>: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(MacPressFeedbackButtonStyle())
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
             .contentShape(Rectangle())
@@ -5361,10 +5392,31 @@ extension Color {
         )
     }
 
+    static var klmsMacCommandButtonPressedBackground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.862, green: 0.840, blue: 0.782, alpha: 1.0),
+            dark: NSColor(red: 0.251, green: 0.239, blue: 0.208, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacCommandButtonPressedOverlay: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.105),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.140)
+        )
+    }
+
     static var klmsMacPrimaryCommandButtonBackground: Color {
         klmsMacAdaptiveColor(
             light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 1.0),
             dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacPrimaryCommandButtonPressedBackground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.232, green: 0.232, blue: 0.214, alpha: 1.0),
+            dark: NSColor(red: 0.843, green: 0.776, blue: 0.624, alpha: 1.0)
         )
     }
 
