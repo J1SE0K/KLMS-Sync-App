@@ -2,7 +2,7 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
-private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 8_000_000
+private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 0
 
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
@@ -560,7 +560,8 @@ private struct MacDesignPrimaryButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(isDestructive ? Color.klmsMacDangerBorder : Color.klmsMacPrimaryCommandButtonBorder, lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
     }
 }
 
@@ -598,10 +599,10 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.86 : 1.0) : 0.48)
-            .animation(.easeOut(duration: 0.06), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.10), value: isEnabled)
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.48)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 }
 
@@ -643,6 +644,10 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
         deferredTask?.cancel()
         guard expanded else {
             isVisible = false
+            return
+        }
+        guard delayNanoseconds > 0 else {
+            isVisible = true
             return
         }
         deferredTask = Task { @MainActor in
@@ -718,6 +723,10 @@ private struct MacWorkstationLayoutView: View {
             return
         }
         deferredSectionTask?.cancel()
+        guard klmsMacInteractionDetailDelayNanoseconds > 0 else {
+            displayedSection = section
+            return
+        }
         deferredSectionTask = Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(nanoseconds: klmsMacInteractionDetailDelayNanoseconds)
@@ -1208,7 +1217,7 @@ private struct ExternalIntegrationStatusView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.10)) {
+                    withAnimation(.linear(duration: 0.04)) {
                         isExpanded.toggle()
                     }
                 } label: {
@@ -1254,7 +1263,7 @@ private struct ExternalIntegrationStatusView: View {
                         IntegrationStatusTile(status: status)
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(.horizontal, 10)
@@ -1498,10 +1507,10 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(border, lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.86 : 1.0) : 0.46)
-            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.12), value: isEnabled)
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 
     private var foreground: Color {
@@ -1775,7 +1784,7 @@ private struct LogSummaryPanelView: View {
 
             if let expandedKind {
                 LogSummaryDetailView(kind: expandedKind, model: model)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             } else {
                 Text("요약 타일을 누르면 관련 로그와 요청 기록을 바로 펼칩니다.")
                     .font(.caption2)
@@ -1973,7 +1982,7 @@ private struct LogSummaryPanelView: View {
     }
 
     private func toggle(_ kind: LogSummaryKind) {
-        withAnimation(.easeInOut(duration: 0.10)) {
+        withAnimation(.linear(duration: 0.04)) {
             expandedKind = expandedKind == kind ? nil : kind
         }
     }
@@ -3053,6 +3062,10 @@ private struct DashboardSummaryView: View {
             }
             selectedDetail = detail
             deferredDetailTask?.cancel()
+            guard klmsMacInteractionDetailDelayNanoseconds > 0 else {
+                displayedDetail = detail
+                return
+            }
             deferredDetailTask = Task { @MainActor in
                 await Task.yield()
                 try? await Task.sleep(nanoseconds: klmsMacInteractionDetailDelayNanoseconds)
@@ -3467,7 +3480,7 @@ private struct SharedRunLogActivityRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.10)) {
+            withAnimation(.linear(duration: 0.04)) {
                 isExpanded.toggle()
             }
         }
@@ -3526,7 +3539,7 @@ private struct ServerRequestLogActivityRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.10)) {
+            withAnimation(.linear(duration: 0.04)) {
                 isExpanded.toggle()
             }
         }
@@ -3623,7 +3636,7 @@ private struct RemoteCommandActivityRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.10)) {
+            withAnimation(.linear(duration: 0.04)) {
                 isExpanded.toggle()
             }
         }
@@ -3764,7 +3777,7 @@ private struct FileAccessActivityRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.10)) {
+            withAnimation(.linear(duration: 0.04)) {
                 isExpanded.toggle()
             }
         }
@@ -5204,7 +5217,7 @@ struct CollapsibleSectionBox<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.snappy(duration: 0.10)) {
+                withAnimation(.linear(duration: 0.04)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -5230,7 +5243,7 @@ struct CollapsibleSectionBox<Content: View>: View {
 
             if isExpanded {
                 content
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

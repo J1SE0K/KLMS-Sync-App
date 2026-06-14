@@ -746,6 +746,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: view,
             description: "Mac press feedback button style"
         )
+        let primaryButtonStyle = try sourceBody(
+            after: "private struct MacDesignPrimaryButtonStyle: ButtonStyle",
+            in: view,
+            description: "Mac primary button style"
+        )
         let actionButtonStyle = try sourceBody(
             after: "private struct KLMSMacActionButtonStyle: ButtonStyle",
             in: detail,
@@ -762,7 +767,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("MacDesignPanel(title: \"로그 요약\")"))
         XCTAssertTrue(view.contains("compactLogSummaryRow(\"단계별 시간\""))
         XCTAssertTrue(view.contains("ForEach(rows.prefix(displayedMetric == .logs ? 5 : 4))"))
-        XCTAssertTrue(view.contains("private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 8_000_000"))
+        XCTAssertTrue(view.contains("private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 0"))
         XCTAssertFalse(view.contains("metric.systemImage"))
         XCTAssertFalse(view.contains("row.systemImage"))
         XCTAssertFalse(view.contains("navigationButton(\"대시보드\", \"gauge"))
@@ -772,7 +777,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(workstationLayout.contains("@State private var displayedSection"))
         XCTAssertTrue(workstationLayout.contains("switch displayedSection"))
         XCTAssertTrue(workstationLayout.contains("deferDisplayedSection(newSection)"))
+        XCTAssertTrue(workstationLayout.contains("guard klmsMacInteractionDetailDelayNanoseconds > 0 else"))
         XCTAssertTrue(workstationLayout.contains("await Task.yield()"))
+        XCTAssertFalse(view.contains("withAnimation(.snappy(duration: 0.10))"))
+        XCTAssertFalse(view.contains("withAnimation(.easeInOut(duration: 0.10))"))
+        XCTAssertFalse(view.contains(".transition(.opacity.combined(with: .move(edge: .top)))"))
+        XCTAssertFalse(detail.contains("withAnimation(.snappy(duration: 0.10))"))
+        XCTAssertFalse(detail.contains(".transition(.opacity.combined(with: .move(edge: .top)))"))
         XCTAssertTrue(navigationView.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(navigationView.contains("guard selection != section else { return }"))
         XCTAssertTrue(commandPanel.contains(".font(.system(size: 18, weight: .black, design: .rounded))"))
@@ -781,8 +792,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(commandPanel.contains(".font(.system(size: 11, weight: .heavy, design: .rounded))"))
         XCTAssertTrue(commandPanel.contains(".padding(.horizontal, 8)"))
         XCTAssertTrue(commandPanel.contains(".buttonStyle(MacPressFeedbackButtonStyle())"))
-        XCTAssertTrue(pressFeedbackStyle.contains(".scaleEffect(configuration.isPressed ? 0.985 : 1.0)"))
-        XCTAssertTrue(pressFeedbackStyle.contains("duration: 0.06"))
+        XCTAssertTrue(pressFeedbackStyle.contains(".scaleEffect(configuration.isPressed ? 0.997 : 1.0)"))
+        XCTAssertTrue(pressFeedbackStyle.contains("duration: 0.035"))
+        XCTAssertTrue(primaryButtonStyle.contains(".scaleEffect(configuration.isPressed ? 0.997 : 1.0)"))
+        XCTAssertTrue(primaryButtonStyle.contains("duration: 0.035"))
         XCTAssertFalse(commandPanel.contains(".font(.title3.weight(.heavy))"))
         XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 8)"))
@@ -869,7 +882,7 @@ final class DashboardDataModelTests: XCTestCase {
             String(contentsOf: iosRoot, encoding: .utf8),
         ].joined(separator: "\n")
 
-        XCTAssertTrue(sources.contains("duration: 0.10"))
+        XCTAssertTrue(sources.contains("duration: 0.04"))
         XCTAssertNil(
             sources.range(
                 of: #"withAnimation\([^\n]*duration: 0\.(1[6-9]|[2-9][0-9]?)"#,
@@ -960,7 +973,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel"))
         XCTAssertFalse(statusScreen.contains("RemoteLogSummaryPanel"))
         XCTAssertFalse(statusScreen.contains("RemoteCommandPanel"))
-        XCTAssertFalse(statusScreen.contains("RemoteCancelControl"))
+        XCTAssertTrue(dashboardSyncCard.contains("RemoteCancelControl(model: model, compact: compact)"))
         XCTAssertFalse(statusScreen.contains("RecentRemoteCommandsView"))
 
         XCTAssertTrue(settingsScreen.contains("ServerRelayConnectionPanel"))
@@ -1275,7 +1288,7 @@ final class DashboardDataModelTests: XCTestCase {
         let workstationDetailPanel = try sourceStructBody(named: "WorkstationDashboardDetailPanel", in: ios)
 
         XCTAssertTrue(ios.contains("private struct CompanionItemListData"))
-        XCTAssertTrue(ios.contains("private let klmsInteractionDetailDelayNanoseconds: UInt64 = 8_000_000"))
+        XCTAssertTrue(ios.contains("private let klmsInteractionDetailDelayNanoseconds: UInt64 = 0"))
         XCTAssertTrue(ios.contains("@Published private(set) var dashboardSyncItems: [ServerRelaySyncItem] = []"))
         XCTAssertTrue(ios.contains("@Published private(set) var dashboardSyncItemsRevision = 0"))
         XCTAssertTrue(ios.contains("@Published private(set) var visibleCalendarChangesCache: [CalendarChange] = []"))
@@ -1304,6 +1317,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(selectableRows.contains("let visible = Array(items.prefix(visibleLimit))"))
         XCTAssertTrue(selectableRows.contains("ForEach(visible)"))
         XCTAssertTrue(selectableRows.contains("ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)"))
+        XCTAssertTrue(selectableRows.contains("guard klmsInteractionDetailDelayNanoseconds > 0 else"))
         XCTAssertTrue(selectableRows.contains("try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)"))
         XCTAssertFalse(categoryDetail.contains("ForEach(filtered)"))
         XCTAssertFalse(categoryDetail.contains("private var baseItems"))
@@ -1326,6 +1340,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(inlineRows.contains("onSelectItem(item)"))
         XCTAssertTrue(inlineRows.contains("accessorySystemImage(isSelected: isSelected)"))
         XCTAssertTrue(inlineRows.contains("@State private var detailItemID"))
+        XCTAssertTrue(inlineRows.contains("Self.initialVisibleLimit(for: category)"))
+        XCTAssertTrue(inlineRows.contains("case .files, .notices:\n            160"))
+        XCTAssertTrue(inlineRows.contains("case .files, .notices:\n            80"))
+        XCTAssertTrue(inlineRows.contains("guard klmsInteractionDetailDelayNanoseconds > 0 else"))
         XCTAssertTrue(inlineRows.contains("await Task.yield()"))
         XCTAssertTrue(inlineRows.contains("try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)"))
         XCTAssertTrue(inlineRows.contains("private func increaseVisibleLimit()"))

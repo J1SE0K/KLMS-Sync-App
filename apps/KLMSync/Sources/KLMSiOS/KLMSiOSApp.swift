@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let klmsInteractionDetailDelayNanoseconds: UInt64 = 8_000_000
+private let klmsInteractionDetailDelayNanoseconds: UInt64 = 0
 
 #if canImport(AppKit)
 import AppKit
@@ -1840,6 +1840,10 @@ private struct CompanionTabRootView: View {
             return
         }
         deferredSectionTask?.cancel()
+        guard klmsInteractionDetailDelayNanoseconds > 0 else {
+            displayedSection = section
+            return
+        }
         deferredSectionTask = Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
@@ -1930,6 +1934,10 @@ private struct CompanionSplitRootView: View {
             return
         }
         deferredSectionTask?.cancel()
+        guard klmsInteractionDetailDelayNanoseconds > 0 else {
+            displayedSection = section
+            return
+        }
         deferredSectionTask = Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
@@ -2141,6 +2149,11 @@ private struct CompanionStatusScreen: View {
             return
         }
         deferredDashboardDetailTask?.cancel()
+        guard klmsInteractionDetailDelayNanoseconds > 0 else {
+            displayedChangeSummary = nil
+            displayedDashboardPreview = category
+            return
+        }
         deferredDashboardDetailTask = Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
@@ -2155,6 +2168,11 @@ private struct CompanionStatusScreen: View {
             return
         }
         deferredDashboardDetailTask?.cancel()
+        guard klmsInteractionDetailDelayNanoseconds > 0 else {
+            displayedDashboardPreview = nil
+            displayedChangeSummary = kind
+            return
+        }
         deferredDashboardDetailTask = Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
@@ -2605,7 +2623,7 @@ private struct ServerRelayConnectionPanel: View {
             }
 
             Button {
-                withAnimation(.easeInOut(duration: 0.10)) {
+                withAnimation(.linear(duration: 0.04)) {
                     showConnectionFields.toggle()
                 }
             } label: {
@@ -3725,6 +3743,8 @@ private struct RemoteDashboardSyncCard: View {
 
             dashboardPrimaryButton
 
+            RemoteCancelControl(model: model, compact: compact)
+
             if compact {
                 LazyVGrid(columns: secondaryColumns, spacing: 7) {
                     ForEach(secondaryCommands, id: \.self) { command in
@@ -4205,9 +4225,9 @@ private struct RemoteMetricTile: View {
 private struct KLMSCardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
-            .opacity(configuration.isPressed ? 0.88 : 1.0)
-            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
     }
 }
 
@@ -4249,6 +4269,10 @@ private struct DeferredInteractionExpansion<Content: View>: View {
         deferredTask?.cancel()
         guard expanded else {
             isVisible = false
+            return
+        }
+        guard delayNanoseconds > 0 else {
+            isVisible = true
             return
         }
         deferredTask = Task { @MainActor in
@@ -4613,7 +4637,7 @@ private struct CompactDashboardSelectedRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.10)) {
+                withAnimation(.linear(duration: 0.04)) {
                     expanded.toggle()
                 }
             } label: {
@@ -4647,7 +4671,7 @@ private struct CompactDashboardSelectedRow: View {
 
             if expanded {
                 ServerSyncItemInlineDetailPanel(item: item, model: model)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
     }
@@ -4698,10 +4722,10 @@ private struct KLMSActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(border, lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.86 : 1.0) : 0.46)
-            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.12), value: isEnabled)
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 
     private var foreground: Color {
@@ -5128,6 +5152,10 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     private func selectItem(_ item: ServerRelaySyncItem) {
         selectedItemID = item.id
         deferredDetailTask?.cancel()
+        guard klmsInteractionDetailDelayNanoseconds > 0 else {
+            detailItemID = item.id
+            return
+        }
         deferredDetailTask = Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
@@ -5206,6 +5234,10 @@ private struct WorkstationTasksWorkspace: View {
     private func selectItem(_ item: ServerRelaySyncItem) {
         selectedItemID = item.id
         deferredDetailTask?.cancel()
+        guard klmsInteractionDetailDelayNanoseconds > 0 else {
+            detailItemID = item.id
+            return
+        }
         deferredDetailTask = Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
@@ -5286,7 +5318,7 @@ private struct CompanionInlineItemRowsView: View {
         self.presentation = presentation
         self.externalSelectedItemID = externalSelectedItemID
         self.onSelectItem = onSelectItem
-        _visibleLimit = State(initialValue: category == .files ? 24 : 18)
+        _visibleLimit = State(initialValue: Self.initialVisibleLimit(for: category))
     }
 
     var body: some View {
@@ -5349,6 +5381,10 @@ private struct CompanionInlineItemRowsView: View {
         let nextID = selectedItemID == item.id ? nil : item.id
         selectedItemID = nextID
         deferredDetailTask?.cancel()
+        guard klmsInteractionDetailDelayNanoseconds > 0 else {
+            detailItemID = nextID
+            return
+        }
         deferredDetailTask = Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
@@ -5358,11 +5394,29 @@ private struct CompanionInlineItemRowsView: View {
     }
 
     private func increaseVisibleLimit() {
-        let increment = category == .files ? 24 : 18
+        let increment = Self.incrementVisibleLimit(for: category)
         Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled else { return }
             visibleLimit += increment
+        }
+    }
+
+    private static func initialVisibleLimit(for category: DashboardMetricCategory) -> Int {
+        switch category {
+        case .files, .notices:
+            160
+        default:
+            120
+        }
+    }
+
+    private static func incrementVisibleLimit(for category: DashboardMetricCategory) -> Int {
+        switch category {
+        case .files, .notices:
+            80
+        default:
+            60
         }
     }
 }
@@ -5416,6 +5470,10 @@ private struct CompanionSelectableItemListRows: View {
     private func select(_ item: ServerRelaySyncItem) {
         selectedItemID = item.id
         deferredSelectionTask?.cancel()
+        guard klmsInteractionDetailDelayNanoseconds > 0 else {
+            onSelect(item)
+            return
+        }
         deferredSelectionTask = Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
@@ -5536,7 +5594,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
 
                         if selectedItemID == item.id {
                             ServerSyncItemInlineDetailPanel(item: item, model: model)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
+                                .transition(.opacity)
                         }
                     }
                 }
@@ -5621,7 +5679,7 @@ private struct MailPasteAnalyzerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.10)) {
+                withAnimation(.linear(duration: 0.04)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -5696,7 +5754,7 @@ private struct MailPasteAnalyzerPanel: View {
 
                     MailPasteAnalysisResultView(analysis: analysis, model: model)
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(14)
@@ -5937,7 +5995,7 @@ private struct MailPasteAnalysisResultView: View {
 
                                 if selectedItemID == item.id {
                                     ServerSyncItemInlineDetailPanel(item: item, model: model)
-                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                        .transition(.opacity)
                                 }
                             }
                         }
@@ -7238,11 +7296,21 @@ private struct DashboardCategoryDetailScreen: View {
     }
 
     private static func initialVisibleLimit(for category: DashboardMetricCategory) -> Int {
-        category == .files ? 36 : 64
+        switch category {
+        case .files, .notices:
+            160
+        default:
+            120
+        }
     }
 
     private static func incrementVisibleLimit(for category: DashboardMetricCategory) -> Int {
-        category == .files ? 36 : 32
+        switch category {
+        case .files, .notices:
+            80
+        default:
+            60
+        }
     }
 }
 
@@ -9960,7 +10028,7 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private func toggle(_ kind: RemoteLogSummaryKind) {
-        withAnimation(.easeInOut(duration: 0.10)) {
+        withAnimation(.linear(duration: 0.04)) {
             expandedKind = expandedKind == kind ? nil : kind
         }
     }
@@ -10168,7 +10236,7 @@ private struct SharedRunLogRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.10)) {
+            withAnimation(.linear(duration: 0.04)) {
                 isExpanded.toggle()
             }
         }
@@ -10368,7 +10436,7 @@ private struct ServerRequestLogRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.10)) {
+            withAnimation(.linear(duration: 0.04)) {
                 isExpanded.toggle()
             }
         }
@@ -10476,7 +10544,7 @@ private struct RemoteFileAccessRequestRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.10)) {
+            withAnimation(.linear(duration: 0.04)) {
                 isExpanded.toggle()
             }
         }
@@ -10826,7 +10894,7 @@ private struct RemoteCommandRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.10)) {
+            withAnimation(.linear(duration: 0.04)) {
                 isExpanded.toggle()
             }
         }

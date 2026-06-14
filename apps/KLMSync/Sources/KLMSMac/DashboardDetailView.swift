@@ -1851,10 +1851,10 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(border, lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.86 : 1.0) : 0.46)
-            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.12), value: isEnabled)
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 
     private var foreground: Color {
@@ -2990,7 +2990,7 @@ struct MacMailPasteAnalyzerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.snappy(duration: 0.10)) {
+                withAnimation(.linear(duration: 0.04)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -3042,7 +3042,7 @@ struct MacMailPasteAnalyzerPanel: View {
                         MacInlinePendingActionView(message: createStatusText)
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .onChange(of: mailText) { _, _ in
