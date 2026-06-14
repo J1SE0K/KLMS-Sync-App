@@ -1675,6 +1675,15 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
+    var compactTitle: String {
+        switch self {
+        case .status:
+            return "상태"
+        default:
+            return title
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .status:
@@ -1731,7 +1740,7 @@ private struct CompanionTabRootView: View {
             ForEach(CompanionAppSection.compactTabs) { section in
                 CompanionSectionContent(section: section, model: model)
                     .tabItem {
-                        Label(section.title, systemImage: section.systemImage)
+                        Label(section.compactTitle, systemImage: section.systemImage)
                     }
             }
         }
@@ -2134,27 +2143,33 @@ private struct CompanionScreenHeader: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            if model.isRefreshing {
-                ProgressView()
-                    .controlSize(.small)
-            } else if let lastRefreshAt = model.lastRefreshAt {
-                Text(lastRefreshAt.formatted(date: .omitted, time: .shortened))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.klmsSubtleCardBackground, in: Capsule())
-                    .overlay {
-                        Capsule()
-                            .stroke(Color.klmsBorder, lineWidth: 1)
-                    }
-            }
+            Text(headerStatusText)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.klmsSubtleCardBackground, in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(Color.klmsBorder, lineWidth: 1)
+                }
         }
         .padding(.horizontal, 2)
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var headerStatusText: String {
+        if model.isRefreshing {
+            return "갱신 중"
+        }
+        if let lastRefreshAt = model.lastRefreshAt {
+            return lastRefreshAt.formatted(date: .omitted, time: .shortened)
+        }
+        return "방금 갱신"
+    }
 }
 
 private struct WholeScreenVerticalScrollView<Content: View>: View {
