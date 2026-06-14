@@ -644,13 +644,13 @@ private struct WorkspaceNavigationView: View {
                         .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
                         .background(
                             isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 8)
+                            in: RoundedRectangle(cornerRadius: 10)
                         )
                         .overlay {
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: 10)
                                 .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
                         }
-                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                        .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(section.title)

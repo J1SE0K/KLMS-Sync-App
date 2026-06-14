@@ -734,8 +734,16 @@ final class DashboardDataModelTests: XCTestCase {
             .deletingLastPathComponent()
         let appRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacApp.swift")
         let viewRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
+        let detailRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/DashboardDetailView.swift")
         let app = try String(contentsOf: appRoot, encoding: .utf8)
         let view = try String(contentsOf: viewRoot, encoding: .utf8)
+        let detail = try String(contentsOf: detailRoot, encoding: .utf8)
+        let navigationView = try sourceStructBody(named: "WorkspaceNavigationView", in: view)
+        let actionButtonStyle = try sourceBody(
+            after: "private struct KLMSMacActionButtonStyle: ButtonStyle",
+            in: detail,
+            description: "Mac action button style"
+        )
 
         XCTAssertTrue(app.contains("KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()"))
         XCTAssertTrue(app.contains("MacDesignWindowRootView(model: model)"))
@@ -753,6 +761,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("chipText: model.snapshot.loginStatus?.loggedIn == true ? \"OK\" : \"대기\""))
         XCTAssertTrue(view.contains("return model.serverRelayEnabled ? \"Mac 연결됨\" : \"준비됨\""))
         XCTAssertTrue(view.contains("MacDesignMetric(.files, \"파일\", model.snapshot.courseFileManifest.count)"))
+        XCTAssertTrue(navigationView.contains("RoundedRectangle(cornerRadius: 10)"))
+        XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
+        XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 8)"))
     }
 
     func testMacAndIOSUseSeparatedLightAndDarkThemeTokens() throws {

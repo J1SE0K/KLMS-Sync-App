@@ -1829,10 +1829,10 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
             .font(.caption.weight(.semibold))
             .foregroundStyle(foreground)
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(background, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.vertical, 8)
+            .background(background, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(border, lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
