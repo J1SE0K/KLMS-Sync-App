@@ -859,6 +859,24 @@ final class DashboardDataModelTests: XCTestCase {
         let relayConnectionPanel = try sourceStructBody(named: "ServerRelayConnectionPanel", in: ios)
         let appearancePanel = try sourceStructBody(named: "CompanionAppearancePanel", in: ios)
         let remoteCommandPanel = try sourceStructBody(named: "RemoteCommandPanel", in: ios)
+        let dashboardMetricCategory = try sourceBody(
+            after: "private enum DashboardMetricCategory: String, CaseIterable, Identifiable",
+            in: ios,
+            description: "iOS dashboard metric category"
+        )
+        let remoteChangeSummaryKind = try sourceBody(
+            after: "private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable",
+            in: ios,
+            description: "iOS remote change summary kind"
+        )
+        let calendarChangeDetailRow = try sourceStructBody(named: "DashboardCalendarChangeDetailRow", in: ios)
+        let remoteChangeSummary = try sourceStructBody(named: "RemoteDashboardChangeSummary", in: ios)
+        let flowChipLayout = try sourceStructBody(named: "FlowChipLayout", in: ios)
+        let inlineItemDetail = try sourceStructBody(named: "ServerSyncItemInlineDetailPanel", in: ios)
+        let sheetItemDetail = try sourceStructBody(named: "ServerSyncItemDetailView", in: ios)
+        let serverSyncDataRow = try sourceStructBody(named: "ServerSyncDataRow", in: ios)
+        let sharedRunLogRow = try sourceStructBody(named: "SharedRunLogRow", in: ios)
+        let remoteCommandRow = try sourceStructBody(named: "RemoteCommandRow", in: ios)
 
         XCTAssertTrue(ios.contains("return \"대시보드\""))
         XCTAssertTrue(ios.contains("return \"파일\""))
@@ -941,6 +959,46 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteCommandPanel.contains("return \"파일\""))
         XCTAssertTrue(remoteCommandPanel.contains("return \"과제/시험\""))
         XCTAssertTrue(remoteCommandPanel.contains("return \"공지\""))
+        XCTAssertTrue(ios.contains("private func companionItemKindTint(_ kind: String) -> Color"))
+        XCTAssertTrue(dashboardMetricCategory.contains("Color.klmsWarningBorder"))
+        XCTAssertTrue(dashboardMetricCategory.contains("Color.klmsSuccessBorder"))
+        XCTAssertTrue(dashboardMetricCategory.contains("Color.klmsCommandAccent"))
+        XCTAssertTrue(dashboardMetricCategory.contains("Color.klmsSecondaryText"))
+        XCTAssertTrue(remoteChangeSummaryKind.contains("Color.klmsCommandAccent"))
+        XCTAssertTrue(remoteChangeSummaryKind.contains("Color.klmsSecondaryText"))
+        XCTAssertTrue(remoteChangeSummaryKind.contains("Color.klmsDangerBorder"))
+        XCTAssertTrue(relayConnectionPanel.contains("Color.klmsSuccessBorder"))
+        XCTAssertTrue(calendarChangeDetailRow.contains("Color.klmsSuccessBorder"))
+        XCTAssertTrue(calendarChangeDetailRow.contains("Color.klmsCommandAccent"))
+        XCTAssertTrue(calendarChangeDetailRow.contains("Color.klmsDangerBorder"))
+        XCTAssertTrue(remoteChangeSummary.contains("FlowChipLayout(entries: entries"))
+        XCTAssertTrue(flowChipLayout.contains(".foregroundStyle(entry.kind.tint)"))
+        XCTAssertTrue(flowChipLayout.contains(".background(entry.kind.tint.opacity"))
+        XCTAssertTrue(inlineItemDetail.contains("companionItemKindTint(item.kind)"))
+        XCTAssertTrue(sheetItemDetail.contains("companionItemKindTint(item.kind)"))
+        XCTAssertTrue(serverSyncDataRow.contains("companionItemKindTint(item.kind)"))
+        XCTAssertTrue(sharedRunLogRow.contains("Color.klmsWarningBorder"))
+        XCTAssertTrue(sharedRunLogRow.contains("Color.klmsSuccessBorder"))
+        XCTAssertTrue(remoteCommandRow.contains("Color.klmsCommandAccent"))
+        XCTAssertTrue(remoteCommandRow.contains("Color.klmsWarningBorder"))
+        XCTAssertFalse(dashboardMetricCategory.contains(".orange"))
+        XCTAssertFalse(dashboardMetricCategory.contains(".green"))
+        XCTAssertFalse(dashboardMetricCategory.contains(".brown"))
+        XCTAssertFalse(dashboardMetricCategory.contains(".blue"))
+        XCTAssertFalse(dashboardMetricCategory.contains(".teal"))
+        XCTAssertFalse(remoteChangeSummaryKind.contains(".brown"))
+        XCTAssertFalse(remoteChangeSummaryKind.contains(".blue"))
+        XCTAssertFalse(remoteChangeSummaryKind.contains(".green"))
+        XCTAssertFalse(calendarChangeDetailRow.contains(".green"))
+        XCTAssertFalse(calendarChangeDetailRow.contains(".blue"))
+        XCTAssertFalse(calendarChangeDetailRow.contains(".red"))
+        XCTAssertFalse(inlineItemDetail.contains(".orange"))
+        XCTAssertFalse(sheetItemDetail.contains(".orange"))
+        XCTAssertFalse(serverSyncDataRow.contains(".orange"))
+        XCTAssertFalse(sharedRunLogRow.contains(".orange"))
+        XCTAssertFalse(remoteCommandRow.contains(".blue"))
+        XCTAssertFalse(remoteCommandRow.contains(".green"))
+        XCTAssertFalse(remoteCommandRow.contains(".secondary"))
     }
 
     func testFileCleanupCardsRequireActualCleanupDetails() throws {

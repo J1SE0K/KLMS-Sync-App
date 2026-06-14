@@ -2412,7 +2412,7 @@ private struct ServerRelayConnectionPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: model.serverRelayConfigured ? "checkmark.circle.fill" : "server.rack")
-                    .foregroundStyle(model.serverRelayConfigured ? .green : Color.klmsSecondaryText)
+                    .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("서버 릴레이")
                         .font(.headline)
@@ -2441,7 +2441,7 @@ private struct ServerRelayConnectionPanel: View {
                     Spacer(minLength: 8)
                     Text(model.serverRelayConfigured ? "저장됨" : "미설정")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(model.serverRelayConfigured ? .green : Color.klmsSecondaryText)
+                        .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
                     Image(systemName: showConnectionFields ? "chevron.up" : "chevron.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsSecondaryText)
@@ -2656,17 +2656,17 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
     var tint: Color {
         switch self {
         case .assignments:
-            .orange
+            Color.klmsWarningBorder
         case .exams, .calendar:
-            .green
+            Color.klmsSuccessBorder
         case .notices:
-            .brown
+            Color.klmsCommandAccent
         case .files:
-            .blue
+            Color.klmsSecondaryText
         case .quarantine:
-            .red
+            Color.klmsDangerBorder
         case .helpDesk:
-            .teal
+            Color.klmsCommandAccent
         }
     }
 
@@ -2760,6 +2760,21 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
         case .helpDesk:
             "시험 관련 헬프데스크 일정을 모아 봅니다."
         }
+    }
+}
+
+private func companionItemKindTint(_ kind: String) -> Color {
+    switch kind {
+    case "assignment", "completedAssignment", "assignmentCandidate":
+        return Color.klmsWarningBorder
+    case "exam", "examCandidate":
+        return Color.klmsSuccessBorder
+    case "notice", "helpDesk":
+        return Color.klmsCommandAccent
+    case "file":
+        return Color.klmsSecondaryText
+    default:
+        return Color.klmsSecondaryText
     }
 }
 
@@ -3724,15 +3739,15 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
     var tint: Color {
         switch self {
         case .noticeNew, .noticeUpdated:
-            .brown
+            Color.klmsCommandAccent
         case .newFiles, .fileCleanup:
-            .blue
+            Color.klmsSecondaryText
         case .calendarCreated:
-            .green
+            Color.klmsSuccessBorder
         case .calendarUpdated:
-            .teal
+            Color.klmsCommandAccent
         case .calendarDeleted:
-            .red
+            Color.klmsDangerBorder
         }
     }
 
@@ -6680,7 +6695,7 @@ private struct RemoteCalendarActionPanel: View {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 32)
             }
-            .buttonStyle(KLMSActionButtonStyle(tone: .accent(.orange)))
+            .buttonStyle(KLMSActionButtonStyle(tone: .accent(Color.klmsWarningBorder)))
         }
         .padding(compact ? 10 : 0)
         .background(compact ? Color.klmsSubtleCardBackground : Color.clear)
@@ -6806,13 +6821,13 @@ private struct DashboardCalendarChangeDetailRow: View {
     private var tint: Color {
         switch change.action {
         case "created":
-            .green
+            Color.klmsSuccessBorder
         case "updated":
-            .blue
+            Color.klmsCommandAccent
         case "deleted":
-            .red
+            Color.klmsDangerBorder
         default:
-            .secondary
+            Color.klmsSecondaryText
         }
     }
 
@@ -6969,7 +6984,7 @@ private struct RemoteChangeSummaryPanel: View {
                 RemoteSummaryCard(
                     title: "공지",
                     systemImage: "megaphone",
-                    tint: .brown,
+                    tint: Color.klmsCommandAccent,
                     lines: [
                         "표시 \(status.notices)",
                         "새 \(status.noticeNew)",
@@ -6980,7 +6995,7 @@ private struct RemoteChangeSummaryPanel: View {
                 RemoteSummaryCard(
                     title: "파일",
                     systemImage: "folder",
-                    tint: .blue,
+                    tint: Color.klmsSecondaryText,
                     lines: [
                         status.fileTotal > 0 ? "전체 \(status.fileTotal)" : nil,
                         "새 \(status.newFiles)",
@@ -6991,7 +7006,7 @@ private struct RemoteChangeSummaryPanel: View {
                 RemoteSummaryCard(
                     title: "캘린더",
                     systemImage: "calendar",
-                    tint: .green,
+                    tint: Color.klmsSuccessBorder,
                     lines: [
                         "생성 \(status.calendarCreated)",
                         "수정 \(status.calendarUpdated)",
@@ -7453,20 +7468,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
     }
 
     private var tint: Color {
-        switch item.kind {
-        case "assignment", "completedAssignment", "assignmentCandidate":
-            .orange
-        case "exam", "examCandidate":
-            .green
-        case "notice":
-            .brown
-        case "file":
-            .blue
-        case "helpDesk":
-            .teal
-        default:
-            .secondary
-        }
+        companionItemKindTint(item.kind)
     }
 }
 
@@ -7760,20 +7762,7 @@ private struct ServerSyncItemDetailView: View {
     }
 
     private var tint: Color {
-        switch item.kind {
-        case "assignment", "completedAssignment", "assignmentCandidate":
-            .orange
-        case "exam", "examCandidate":
-            .green
-        case "notice":
-            .brown
-        case "file":
-            .blue
-        case "helpDesk":
-            .teal
-        default:
-            .secondary
-        }
+        companionItemKindTint(item.kind)
     }
 }
 
@@ -8287,18 +8276,7 @@ private struct ServerSyncDataRow: View, Equatable {
     }
 
     private var tint: Color {
-        switch item.kind {
-        case "assignment", "completedAssignment", "assignmentCandidate":
-            .orange
-        case "exam", "examCandidate":
-            .green
-        case "notice":
-            .brown
-        case "file":
-            .blue
-        default:
-            .secondary
-        }
+        companionItemKindTint(item.kind)
     }
 }
 
@@ -9607,7 +9585,7 @@ private struct SharedRunLogRow: View {
         if log.wasCancelled {
             return Color.klmsSecondaryText
         }
-        return log.needsAttention ? .orange : .green
+        return log.needsAttention ? Color.klmsWarningBorder : Color.klmsSuccessBorder
     }
 
     private var stageDurations: [KLMSStageDuration] {
@@ -10247,13 +10225,13 @@ private struct RemoteCommandRow: View {
     private var statusColor: Color {
         switch command.displayStatus() {
         case .pending, .running:
-            .blue
+            Color.klmsCommandAccent
         case .completed:
-            .green
+            Color.klmsSuccessBorder
         case .cancelled:
-            .secondary
+            Color.klmsSecondaryText
         case .failed, .macUnavailable:
-            .orange
+            Color.klmsWarningBorder
         }
     }
 
