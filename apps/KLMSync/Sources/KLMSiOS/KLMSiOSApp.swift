@@ -2254,35 +2254,64 @@ private struct CompanionScreenContainer<Content: View>: View {
 private struct CompanionScreenHeader: View {
     var title: String
     @ObservedObject var model: CompanionModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(Color.klmsPrimaryText)
+        Group {
+            if horizontalSizeClass == .regular {
+                regularHeader
+            } else {
+                compactHeader
+            }
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var compactHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Spacer(minLength: 0)
                 Text("KLMS Sync")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(1)
             }
-            Spacer(minLength: 8)
-            Text(headerStatusText)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color.klmsSecondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Color.klmsSubtleCardBackground, in: Capsule())
-                .overlay {
-                    Capsule()
-                        .stroke(Color.klmsBorder, lineWidth: 1)
-                }
+
+            HStack(alignment: .center, spacing: 12) {
+                Text(title)
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Spacer(minLength: 8)
+                statusPill
+            }
         }
-        .padding(.horizontal, 2)
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var regularHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(Color.klmsPrimaryText)
+            Spacer(minLength: 8)
+            statusPill
+        }
+    }
+
+    private var statusPill: some View {
+        Text(headerStatusText)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Color.klmsSecondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color.klmsSubtleCardBackground, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.klmsBorder, lineWidth: 1)
+            }
     }
 
     private var headerStatusText: String {
