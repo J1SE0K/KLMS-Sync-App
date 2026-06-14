@@ -1900,9 +1900,6 @@ private struct CompanionStatusScreen: View {
 
     private var statusSummaryColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if shouldShowCompactStatusStrip {
-                RemoteDashboardStatusStrip(model: model)
-            }
             RemoteDashboardSyncCard(model: model, compact: horizontalSizeClass != .regular)
             RemoteDashboardMetricOverview(
                 model: model,
@@ -1918,14 +1915,6 @@ private struct CompanionStatusScreen: View {
                 }
             )
         }
-    }
-
-    private var shouldShowCompactStatusStrip: Bool {
-        guard horizontalSizeClass != .regular else { return false }
-        return model.status.authDigits == nil
-            && model.loginAttentionMessage == nil
-            && model.authSuccessMessage == nil
-            && model.errorMessage.isEmpty
     }
 
     @ViewBuilder
