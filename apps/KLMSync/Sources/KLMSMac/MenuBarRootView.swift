@@ -874,7 +874,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .destructive:
             .red
         case .success:
-            .green
+            Color.klmsMacSecondaryCommandButtonForeground
         case .accent(let color):
             color
         }
@@ -887,9 +887,9 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .primary:
             Color.klmsMacPrimaryCommandButtonBackground
         case .destructive:
-            Color.red.opacity(0.10)
+            Color.klmsMacDangerBackground
         case .success:
-            Color.green.opacity(0.10)
+            Color.klmsMacSuccessBackground
         case .accent(let color):
             color.opacity(0.10)
         }
@@ -902,9 +902,9 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .primary:
             Color.klmsMacPrimaryCommandButtonBorder
         case .destructive:
-            Color.red.opacity(0.24)
+            Color.klmsMacDangerBorder
         case .success:
-            Color.green.opacity(0.24)
+            Color.klmsMacSuccessBorder
         case .accent(let color):
             color.opacity(0.28)
         }
@@ -1701,7 +1701,7 @@ private struct HeaderView: View {
             if let lock = model.sharedLockInfo {
                 Label("실행 잠금: 프로세스 \(lock.pid) · 명령 \(lock.command) · \(lock.acquiredAt)", systemImage: "lock.fill")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.klmsMacWarningBorder)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -2284,23 +2284,31 @@ private struct AuthCodeBannerView: View {
                 } label: {
                     Label("복사", systemImage: "doc.on.doc")
                 }
-                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .accent(.orange)))
+                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .accent(Color.klmsMacWarningBorder)))
                 .accessibilityLabel("KAIST 인증 번호 복사")
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsMacWarningBorder, lineWidth: 1)
+            }
         } else if let statusMessage {
             HStack(alignment: .center, spacing: 10) {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color.klmsMacSuccessBorder)
                 Text(statusMessage)
                     .font(.callout.weight(.semibold))
                 Spacer()
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacSuccessBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsMacSuccessBorder, lineWidth: 1)
+            }
         }
     }
 }
@@ -3205,12 +3213,12 @@ private struct CommandPanelView: View {
                         Text(model.isCancellingCommand ? "중단 요청 중..." : "\(command.displayName) 중단")
                             .font(.subheadline.weight(.semibold))
                     }
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.klmsMacDangerBorder)
                     .frame(maxWidth: .infinity, minHeight: 40)
-                    .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+                    .background(Color.klmsMacDangerBackground, in: RoundedRectangle(cornerRadius: 10))
                     .overlay {
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(.red.opacity(0.24), lineWidth: 1)
+                            .stroke(Color.klmsMacDangerBorder, lineWidth: 1)
                     }
                 }
                 .buttonStyle(.plain)
@@ -3557,10 +3565,10 @@ private struct VerifyCheckExplanationRowView: View {
 
     private var rowBackground: Color {
         if ["fail", "failed", "error"].contains(check.status.lowercased()) {
-            return Color.red.opacity(0.08)
+            return Color.klmsMacDangerBackground
         }
         if ["warn", "warning"].contains(check.status.lowercased()) {
-            return Color.orange.opacity(0.10)
+            return Color.klmsMacWarningBackground
         }
         return Color.klmsMacSubtleCardBackground
     }
@@ -4685,6 +4693,55 @@ extension Color {
         klmsMacAdaptiveColor(
             light: NSColor(red: 0.843, green: 0.820, blue: 0.769, alpha: 1.0),
             dark: NSColor(white: 1.0, alpha: 0.160)
+        )
+    }
+
+    static var klmsMacSubtleAccentBackground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.894, green: 0.879, blue: 0.828, alpha: 1.0),
+            dark: NSColor(red: 0.220, green: 0.207, blue: 0.180, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacWarningBackground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.953, green: 0.932, blue: 0.875, alpha: 1.0),
+            dark: NSColor(red: 0.235, green: 0.198, blue: 0.122, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacWarningBorder: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0),
+            dark: NSColor(red: 0.470, green: 0.376, blue: 0.192, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacDangerBackground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.965, green: 0.928, blue: 0.916, alpha: 1.0),
+            dark: NSColor(red: 0.250, green: 0.132, blue: 0.116, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacDangerBorder: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.745, green: 0.395, blue: 0.340, alpha: 1.0),
+            dark: NSColor(red: 0.520, green: 0.220, blue: 0.190, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacSuccessBackground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.920, green: 0.945, blue: 0.902, alpha: 1.0),
+            dark: NSColor(red: 0.130, green: 0.205, blue: 0.138, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacSuccessBorder: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.492, green: 0.616, blue: 0.400, alpha: 1.0),
+            dark: NSColor(red: 0.292, green: 0.445, blue: 0.270, alpha: 1.0)
         )
     }
 

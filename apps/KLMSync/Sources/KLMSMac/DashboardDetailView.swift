@@ -163,7 +163,11 @@ struct DashboardDetailPanelView: View {
             }
         }
         .padding(10)
-        .background(Color(nsColor: .quaternaryLabelColor).opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
     }
 
     private var filters: DashboardDetailFilters {
@@ -632,14 +636,14 @@ private struct DashboardControlBox<Content: View>: View {
         VStack(alignment: .leading, spacing: 7) {
             Label(title, systemImage: systemImage)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
             content
         }
         .padding(10)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 1)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
 }
@@ -655,16 +659,16 @@ private struct DashboardRangeField<Content: View>: View {
         VStack(alignment: .leading, spacing: 5) {
             Label(title, systemImage: systemImage)
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.klmsMacSecondaryText)
             content
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .frame(minWidth: minWidth, alignment: .leading)
-        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor).opacity(disabled ? 0.20 : 0.52), lineWidth: 1)
+                .stroke(Color.klmsMacBorder.opacity(disabled ? 0.45 : 1), lineWidth: 1)
         }
         .opacity(disabled ? 0.58 : 1)
     }
@@ -865,7 +869,11 @@ private struct StateItemRowView: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(hidden ? Color.orange.opacity(0.10) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(hidden ? Color.klmsMacWarningBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(hidden ? Color.klmsMacWarningBorder : Color.klmsMacBorder, lineWidth: 1)
+        }
     }
 
     private var isHidden: Bool {
@@ -1019,7 +1027,11 @@ private struct MacInlinePendingActionView: View {
             Spacer(minLength: 0)
         }
         .padding(8)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
     }
 }
 
@@ -1444,12 +1456,12 @@ private struct NoticeRowView: View {
 
     private func rowBackground(hidden: Bool, fresh: Bool) -> Color {
         if hidden {
-            return Color.orange.opacity(0.10)
+            return Color.klmsMacWarningBackground
         }
         if fresh {
-            return Color.blue.opacity(0.08)
+            return Color.klmsMacSubtleAccentBackground
         }
-        return Color(nsColor: .controlBackgroundColor)
+        return Color.klmsMacCardBackground
     }
 
     private var attachmentDisplays: [NoticeAttachmentDisplay] {
@@ -1838,7 +1850,7 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         case .destructive:
             return .red
         case .success:
-            return .green
+            return Color.klmsMacSecondaryCommandButtonForeground
         case .accent(let color):
             return color
         }
@@ -1851,9 +1863,9 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsMacPrimaryCommandButtonBackground
         case .destructive:
-            return Color.red.opacity(0.10)
+            return Color.klmsMacDangerBackground
         case .success:
-            return Color.green.opacity(0.10)
+            return Color.klmsMacSuccessBackground
         case .accent(let color):
             return color.opacity(0.10)
         }
@@ -1866,9 +1878,9 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsMacPrimaryCommandButtonBorder
         case .destructive:
-            return Color.red.opacity(0.24)
+            return Color.klmsMacDangerBorder
         case .success:
-            return Color.green.opacity(0.24)
+            return Color.klmsMacSuccessBorder
         case .accent(let color):
             return color.opacity(0.28)
         }
@@ -2325,7 +2337,11 @@ private struct FileRowView: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(hidden ? Color.orange.opacity(0.10) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(hidden ? Color.klmsMacWarningBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(hidden ? Color.klmsMacWarningBorder : Color.klmsMacBorder, lineWidth: 1)
+        }
     }
 
     @ViewBuilder
@@ -2672,7 +2688,11 @@ private struct CalendarSummaryListView: View {
                     }
                     .font(.caption2)
                     .padding(8)
-                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.klmsMacBorder, lineWidth: 1)
+                    }
                 }
             }
         }
@@ -2869,7 +2889,11 @@ private struct CalendarChangeRowView: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
         .sheet(
             isPresented: Binding(
                 get: { calendarSheetAction != nil },
@@ -3278,7 +3302,11 @@ private struct MacMailPasteAnalysisResultView: View {
                                 Spacer(minLength: 0)
                             }
                             .padding(8)
-                            .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.klmsMacBorder, lineWidth: 1)
+                            }
                         }
                     }
                 }
@@ -3520,7 +3548,11 @@ private struct MacMailAnalysisProcessView: View {
                             Spacer(minLength: 0)
                         }
                         .padding(7)
-                        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
+                        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 7))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(Color.klmsMacBorder, lineWidth: 1)
+                        }
                     }
                 }
                 .padding(.top, 8)
@@ -3537,10 +3569,10 @@ private struct MacMailAnalysisProcessView: View {
             }
             .buttonStyle(.plain)
             .padding(9)
-            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    .stroke(Color.klmsMacBorder, lineWidth: 1)
             }
         }
     }
@@ -3563,7 +3595,11 @@ private struct MacMailActionPlanView: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
     }
 }
 

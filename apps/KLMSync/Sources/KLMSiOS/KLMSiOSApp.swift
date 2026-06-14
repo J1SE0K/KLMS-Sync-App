@@ -3465,7 +3465,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .destructive:
             return .red
         case .success:
-            return .green
+            return Color.klmsSecondaryCommandButtonForeground
         case .accent(let color):
             return color
         }
@@ -3478,9 +3478,9 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsPrimaryCommandButtonBackground
         case .destructive:
-            return Color.red.opacity(0.10)
+            return Color.klmsDangerBackground
         case .success:
-            return Color.green.opacity(0.10)
+            return Color.klmsSuccessBackground
         case .accent(let color):
             return color.opacity(0.10)
         }
@@ -3493,9 +3493,9 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsPrimaryCommandButtonBorder
         case .destructive:
-            return Color.red.opacity(0.24)
+            return Color.klmsDangerBorder
         case .success:
-            return Color.green.opacity(0.24)
+            return Color.klmsSuccessBorder
         case .accent(let color):
             return color.opacity(0.28)
         }
@@ -9441,11 +9441,14 @@ private struct ErrorBanner: View {
     var body: some View {
         Label(message, systemImage: "exclamationmark.triangle")
             .font(.subheadline)
-            .foregroundStyle(.red)
+            .foregroundStyle(Color.klmsDangerBorder)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.red.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsDangerBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsDangerBorder, lineWidth: 1)
+            }
     }
 }
 
@@ -9455,11 +9458,14 @@ private struct AuthSuccessBanner: View {
     var body: some View {
         Label(message, systemImage: "checkmark.circle.fill")
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.green)
+            .foregroundStyle(Color.klmsSuccessBorder)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.green.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsSuccessBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsSuccessBorder, lineWidth: 1)
+            }
     }
 }
 
@@ -9502,11 +9508,14 @@ private struct LoginAttentionBanner: View {
     var body: some View {
         Label(message, systemImage: "key")
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.orange)
+            .foregroundStyle(Color.klmsWarningBorder)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.orange.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsWarningBorder, lineWidth: 1)
+            }
     }
 }
 
@@ -9705,6 +9714,102 @@ private extension Color {
         )
         #else
         return Color.klmsCommandAccent.opacity(0.30)
+        #endif
+    }
+
+    static var klmsWarningBackground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.953, green: 0.932, blue: 0.875, alpha: 1.0),
+            dark: UIColor(red: 0.235, green: 0.198, blue: 0.122, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.953, green: 0.932, blue: 0.875, alpha: 1.0),
+            dark: NSColor(red: 0.235, green: 0.198, blue: 0.122, alpha: 1.0)
+        )
+        #else
+        return Color.orange.opacity(0.10)
+        #endif
+    }
+
+    static var klmsWarningBorder: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0),
+            dark: UIColor(red: 0.470, green: 0.376, blue: 0.192, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.784, green: 0.722, blue: 0.573, alpha: 1.0),
+            dark: NSColor(red: 0.470, green: 0.376, blue: 0.192, alpha: 1.0)
+        )
+        #else
+        return Color.orange.opacity(0.45)
+        #endif
+    }
+
+    static var klmsDangerBackground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.965, green: 0.928, blue: 0.916, alpha: 1.0),
+            dark: UIColor(red: 0.250, green: 0.132, blue: 0.116, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.965, green: 0.928, blue: 0.916, alpha: 1.0),
+            dark: NSColor(red: 0.250, green: 0.132, blue: 0.116, alpha: 1.0)
+        )
+        #else
+        return Color.red.opacity(0.10)
+        #endif
+    }
+
+    static var klmsDangerBorder: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.745, green: 0.395, blue: 0.340, alpha: 1.0),
+            dark: UIColor(red: 0.520, green: 0.220, blue: 0.190, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.745, green: 0.395, blue: 0.340, alpha: 1.0),
+            dark: NSColor(red: 0.520, green: 0.220, blue: 0.190, alpha: 1.0)
+        )
+        #else
+        return Color.red.opacity(0.42)
+        #endif
+    }
+
+    static var klmsSuccessBackground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.920, green: 0.945, blue: 0.902, alpha: 1.0),
+            dark: UIColor(red: 0.130, green: 0.205, blue: 0.138, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.920, green: 0.945, blue: 0.902, alpha: 1.0),
+            dark: NSColor(red: 0.130, green: 0.205, blue: 0.138, alpha: 1.0)
+        )
+        #else
+        return Color.green.opacity(0.10)
+        #endif
+    }
+
+    static var klmsSuccessBorder: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.492, green: 0.616, blue: 0.400, alpha: 1.0),
+            dark: UIColor(red: 0.292, green: 0.445, blue: 0.270, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.492, green: 0.616, blue: 0.400, alpha: 1.0),
+            dark: NSColor(red: 0.292, green: 0.445, blue: 0.270, alpha: 1.0)
+        )
+        #else
+        return Color.green.opacity(0.42)
         #endif
     }
 
