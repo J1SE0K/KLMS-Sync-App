@@ -3443,14 +3443,9 @@ private struct RemoteDashboardSyncCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("동기화")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(Color.klmsPrimaryText)
-                    Text("Mac 앱에 실행 요청을 보냅니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
+                Text("동기화")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.klmsSecondaryText)
                 Spacer(minLength: 8)
                 syncStateChip
             }
@@ -3492,7 +3487,7 @@ private struct RemoteDashboardSyncCard: View {
         } label: {
             HStack(alignment: .center, spacing: 12) {
                 Text("전체 동기화")
-                    .font(.title3.weight(.heavy))
+                    .font(.system(size: 19, weight: .heavy, design: .rounded))
                 Spacer(minLength: 0)
                 Image(systemName: "play.fill")
                     .font(.headline.weight(.black))
@@ -3521,7 +3516,7 @@ private struct RemoteDashboardSyncCard: View {
             }
         } label: {
             Text(shortTitle(for: kind))
-                .font(.caption2.weight(.semibold))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.klmsSecondaryCommandButtonForeground)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -3908,7 +3903,7 @@ private struct RemoteMetricTile: View {
                     .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.klmsPrimaryText)
                 Text(label)
-                    .font(.caption2.weight(.semibold))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
@@ -3945,17 +3940,11 @@ private struct WorkstationMetricCard: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(category.title)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(Color.klmsPrimaryText)
-                    Text("\(value)개")
-                        .font(.headline.monospacedDigit().weight(.bold))
-                        .foregroundStyle(Color.klmsPrimaryText)
-                    Spacer(minLength: 0)
-                }
+                Text("\(category.title) \(value)개")
+                    .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color.klmsPrimaryText)
                 Text(category.workstationDescription)
-                    .font(.caption)
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -4376,10 +4365,10 @@ private struct KLMSActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.caption.weight(.semibold))
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
             .foregroundStyle(foreground)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 10)
             .background(background, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
@@ -8330,22 +8319,18 @@ private struct RemoteCommandPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("동기화")
-                        .font(.headline)
-                    Text("Mac 앱에 실행 요청을 보냅니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
-                Spacer()
+            HStack(alignment: .center, spacing: 10) {
+                Text("동기화")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                Spacer(minLength: 8)
                 if model.hasInFlightRequest || model.status.phase == "running" {
                     Label(model.activeRequestLabel, systemImage: "arrow.triangle.2.circlepath")
-                        .font(.caption.weight(.semibold))
+                        .font(.caption2.weight(.bold))
                         .foregroundStyle(Color.klmsCommandAccent)
                 } else {
                     Label(model.isRemoteAvailable ? "준비됨" : "연결 필요", systemImage: model.isRemoteAvailable ? "checkmark.circle" : "exclamationmark.triangle")
-                        .font(.caption.weight(.semibold))
+                        .font(.caption2.weight(.bold))
                         .foregroundStyle(model.isRemoteAvailable ? Color.klmsSecondaryText : Color.klmsWarningBorder)
                 }
             }
@@ -8389,15 +8374,15 @@ private struct RemoteCommandPanel: View {
         } label: {
             HStack(alignment: .center, spacing: 12) {
                 Text("전체 동기화")
-                    .font(.headline.weight(.heavy))
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
                 Spacer(minLength: 0)
                 Image(systemName: "play.fill")
                     .font(.headline.weight(.black))
             }
             .foregroundStyle(Color.klmsCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: compact ? 56 : 60, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 14)
             .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
@@ -8426,13 +8411,13 @@ private struct RemoteCommandPanel: View {
         } label: {
             HStack(spacing: 7) {
                 Text(shortTitle(for: kind))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
             }
             .foregroundStyle(Color.klmsSecondaryCommandButtonForeground)
-            .frame(maxWidth: .infinity, minHeight: compact ? 44 : 46, alignment: .center)
-            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: compact ? 42 : 46, alignment: .center)
+            .padding(.horizontal, 5)
             .padding(.vertical, 9)
             .background(Color.klmsCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
