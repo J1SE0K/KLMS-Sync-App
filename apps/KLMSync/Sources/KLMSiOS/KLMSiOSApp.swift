@@ -2647,7 +2647,7 @@ private struct ServerRelayConnectionPanel: View {
                 )
                 .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(KLMSCardButtonStyle())
             .accessibilityHint(showConnectionFields ? "서버 정보 접기" : "서버 정보 펼치기")
 
             if showConnectionFields {
@@ -4667,7 +4667,7 @@ private struct CompactDashboardSelectedRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 14))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(KLMSCardButtonStyle())
 
             if expanded {
                 ServerSyncItemInlineDetailPanel(item: item, model: model)
@@ -4819,7 +4819,7 @@ private struct DashboardMetricDetailPanel: View {
                             ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
                                 .equatable()
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(KLMSCardButtonStyle())
                         .accessibilityHint("항목 상세를 엽니다.")
                     }
                 }
@@ -5323,7 +5323,7 @@ private struct CompanionInlineItemRowsView: View {
                         )
                         .equatable()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(KLMSCardButtonStyle())
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "오른쪽 상세 패널에 항목을 표시합니다.")
 
                     if presentation == .inlineDetail && detailItemID == item.id {
@@ -5396,7 +5396,7 @@ private struct CompanionSelectableItemListRows: View {
                     ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
                         .equatable()
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(KLMSCardButtonStyle())
                 .accessibilityHint("항목 상세를 엽니다.")
             }
         }
@@ -5518,7 +5518,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
                             )
                             .equatable()
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(KLMSCardButtonStyle())
 
                         if selectedItemID == item.id {
                             ServerSyncItemInlineDetailPanel(item: item, model: model)
@@ -5644,7 +5644,7 @@ private struct MailPasteAnalyzerPanel: View {
                 )
                 .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(KLMSCardButtonStyle())
             .accessibilityHint(isExpanded ? "메일 판독 입력 접기" : "메일 판독 입력 펼치기")
 
             if isExpanded {
@@ -5919,7 +5919,7 @@ private struct MailPasteAnalysisResultView: View {
                                     )
                                     .equatable()
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(KLMSCardButtonStyle())
 
                                 if selectedItemID == item.id {
                                     ServerSyncItemInlineDetailPanel(item: item, model: model)
@@ -6256,7 +6256,7 @@ private struct MailAnalysisProcessView: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(KLMSCardButtonStyle())
             .padding(10)
             .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
@@ -8419,7 +8419,7 @@ private struct RemoteItemToggleButton: View {
             .frame(maxWidth: .infinity, minHeight: 50)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KLMSCardButtonStyle())
         .padding(10)
         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
@@ -10044,7 +10044,7 @@ private struct RemoteLogSummaryRow: View {
                     .stroke(isExpanded ? tint.opacity(0.32) : Color.klmsBorder, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KLMSCardButtonStyle())
         .accessibilityHint(isExpanded ? "관련 기록 접기" : "관련 기록 펼치기")
     }
 }
