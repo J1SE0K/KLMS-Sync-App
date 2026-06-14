@@ -77,14 +77,23 @@ final class CompanionModel: ObservableObject {
     @Published var recentFileAccessRequests: [ServerRelayFileAccessRequest] = []
     @Published var recentItemActions: [ServerRelayItemAction] = []
     @Published var recentSettingActions: [ServerRelaySettingAction] = []
-    @Published var syncItems: [ServerRelaySyncItem] = []
+    @Published var syncItems: [ServerRelaySyncItem] = [] {
+        didSet { rebuildDashboardDerivedState() }
+    }
     @Published var dryRunReports: [DryRunReport] = []
     @Published var calendarChanges: [CalendarChange] = []
     @Published var remoteSettings: [ServerRelaySetting] = []
     @Published var sharedRunLogs: [ServerRelayRunLog] = []
     @Published var verifySummary: ServerRelayVerifySummary?
-    @Published var mailDashboardItems: [ServerRelaySyncItem] = []
-    @Published var status = SanitizedRemoteStatus()
+    @Published var mailDashboardItems: [ServerRelaySyncItem] = [] {
+        didSet { rebuildDashboardDerivedState() }
+    }
+    @Published private(set) var dashboardSyncItems: [ServerRelaySyncItem] = []
+    @Published private(set) var dashboardSyncItemsRevision = 0
+    @Published private(set) var dashboardStatus = SanitizedRemoteStatus()
+    @Published var status = SanitizedRemoteStatus() {
+        didSet { rebuildDashboardStatus() }
+    }
     @Published var errorMessage = ""
     @Published var connectionMessage = ""
     @Published var connectionSucceeded: Bool?
@@ -187,16 +196,24 @@ final class CompanionModel: ObservableObject {
         trackedReportNotificationCommandIDs = Self.loadTrackedReportNotificationCommandIDs()
         Self.persistServerToken(storedServerToken)
         Self.clearDeprecatedLocalConnectionInfo()
+        rebuildDashboardDerivedState()
     }
 
-    var dashboardSyncItems: [ServerRelaySyncItem] {
-        (syncItems + mailDashboardItems).dedupedForServerRelay()
+    private func rebuildDashboardDerivedState() {
+        let nextItems = (syncItems + mailDashboardItems).dedupedForServerRelay()
+        if dashboardSyncItems != nextItems {
+            dashboardSyncItems = nextItems
+            dashboardSyncItemsRevision &+= 1
+        }
+        rebuildDashboardStatus()
     }
 
-    var dashboardStatus: SanitizedRemoteStatus {
+    private func rebuildDashboardStatus() {
         var next = status
         next.applyMailDashboardItems(mailDashboardItems, baseItems: syncItems)
-        return next
+        if dashboardStatus != next {
+            dashboardStatus = next
+        }
     }
 
     func addMailDashboardItem(_ item: ServerRelaySyncItem) {
@@ -1795,7 +1812,7 @@ private struct CompanionCompactTabBar: View {
                     .background(
                         isSelected
                             ? Color.klmsPrimaryCommandButtonBackground
-                            : Color.klmsSubtleCardBackground.opacity(0.35),
+                            : Color.clear,
                         in: RoundedRectangle(cornerRadius: 10)
                     )
                     .overlay {
@@ -1919,7 +1936,7 @@ private struct CompanionSidebarButton: View {
             .background(
                 isSelected
                     ? Color.klmsPrimaryCommandButtonBackground
-                    : Color.klmsSubtleCardBackground.opacity(0.35),
+                    : Color.clear,
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay(
@@ -3041,6 +3058,20 @@ private enum CompanionItemListFilter {
         let rest = semesters.subtracting(ordered).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         return [allSemesters] + ordered + rest
     }
+}
+
+private struct CompanionItemListInputKey: Hashable {
+    var itemsRevision: Int
+    var category: String
+    var query: String
+    var sortOption: String
+    var visibilityFilter: String
+    var statusFilter: String
+    var selectedCourse: String
+    var selectedYear: String
+    var selectedSemester: String
+    var newOnly: Bool
+    var recentOnly: Bool
 }
 
 private struct CompanionItemListData {
@@ -4689,6 +4720,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     @State private var selectedSemester = CompanionItemListFilter.allSemesters
     @State private var newOnly = false
     @State private var recentOnly = false
+    @State private var cachedListData: CompanionItemListData?
 
     init(category: DashboardMetricCategory, model: CompanionModel) {
         self.category = category
@@ -4718,6 +4750,9 @@ private struct DashboardCategoryInlineDetailPanel: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
+        .task(id: listInputKey) {
+            await rebuildCachedListData()
+        }
     }
 
     private var summaryHeader: some View {
@@ -4773,51 +4808,82 @@ private struct DashboardCategoryInlineDetailPanel: View {
         } else if category == .quarantine {
             panelEmptyText(category.emptyMessage)
         } else {
-            let listData = CompanionItemListData(
-                items: model.dashboardSyncItems,
-                category: category,
-                query: query,
-                sortOption: sortOption,
-                visibilityFilter: visibilityFilter,
-                statusFilter: statusFilter,
-                selectedCourse: selectedCourse,
-                selectedYear: selectedYear,
-                selectedSemester: selectedSemester,
-                newOnly: newOnly,
-                recentOnly: recentOnly
-            )
-            let filtered = listData.filteredItems
             LazyVStack(alignment: .leading, spacing: 8) {
                 TextField("\(category.title) 검색", text: $query)
                     .textFieldStyle(.roundedBorder)
 
-                CompanionItemListControls(
-                    sortOption: $sortOption,
-                    visibilityFilter: $visibilityFilter,
-                    statusFilter: $statusFilter,
-                    selectedCourse: $selectedCourse,
-                    selectedYear: $selectedYear,
-                    selectedSemester: $selectedSemester,
-                    newOnly: $newOnly,
-                    recentOnly: $recentOnly,
-                    availableStatusFilters: listData.availableStatusFilters,
-                    courseOptions: listData.courseOptions,
-                    yearOptions: listData.yearOptions,
-                    semesterOptions: listData.semesterOptions,
-                    supportsNewOnly: category.supportsNewOnly,
-                    supportsRecentOnly: category.supportsRecentOnly,
-                    defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
-                    totalCount: listData.baseItems.count,
-                    filteredCount: filtered.count
-                )
+                if let listData = cachedListData {
+                    let filtered = listData.filteredItems
+                    CompanionItemListControls(
+                        sortOption: $sortOption,
+                        visibilityFilter: $visibilityFilter,
+                        statusFilter: $statusFilter,
+                        selectedCourse: $selectedCourse,
+                        selectedYear: $selectedYear,
+                        selectedSemester: $selectedSemester,
+                        newOnly: $newOnly,
+                        recentOnly: $recentOnly,
+                        availableStatusFilters: listData.availableStatusFilters,
+                        courseOptions: listData.courseOptions,
+                        yearOptions: listData.yearOptions,
+                        semesterOptions: listData.semesterOptions,
+                        supportsNewOnly: category.supportsNewOnly,
+                        supportsRecentOnly: category.supportsRecentOnly,
+                        defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
+                        totalCount: listData.baseItems.count,
+                        filteredCount: filtered.count
+                    )
 
-                if filtered.isEmpty {
-                    panelEmptyText(category.emptyMessage)
+                    if filtered.isEmpty {
+                        panelEmptyText(category.emptyMessage)
+                    } else {
+                        CompanionInlineItemRowsView(category: category, items: filtered, model: model)
+                    }
                 } else {
-                    CompanionInlineItemRowsView(category: category, items: filtered, model: model)
+                    panelEmptyText("목록을 준비하고 있습니다.")
                 }
             }
         }
+    }
+
+    private var listInputKey: CompanionItemListInputKey {
+        CompanionItemListInputKey(
+            itemsRevision: model.dashboardSyncItemsRevision,
+            category: category.rawValue,
+            query: query,
+            sortOption: sortOption.rawValue,
+            visibilityFilter: visibilityFilter.rawValue,
+            statusFilter: statusFilter.rawValue,
+            selectedCourse: selectedCourse,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester,
+            newOnly: newOnly,
+            recentOnly: recentOnly
+        )
+    }
+
+    private func rebuildCachedListData() async {
+        guard category != .calendar, category != .quarantine else {
+            cachedListData = nil
+            return
+        }
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        let listData = CompanionItemListData(
+            items: model.dashboardSyncItems,
+            category: category,
+            query: query,
+            sortOption: sortOption,
+            visibilityFilter: visibilityFilter,
+            statusFilter: statusFilter,
+            selectedCourse: selectedCourse,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester,
+            newOnly: newOnly,
+            recentOnly: recentOnly
+        )
+        guard !Task.isCancelled else { return }
+        cachedListData = listData
     }
 
     private var summaryText: String {
@@ -5142,6 +5208,7 @@ private struct MailPasteAnalyzerPanel: View {
     @State private var isExpanded = false
     @State private var mailText = ""
     @State private var analysis = MailPasteAnalysis.empty
+    @State private var deferredAnalysisTask: Task<Void, Never>?
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -5233,10 +5300,13 @@ private struct MailPasteAnalyzerPanel: View {
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .onChange(of: mailText) { _, _ in
-            runAnalysis()
+            scheduleAnalysis()
         }
-        .onChange(of: model.syncItems) { _, _ in
-            runAnalysis()
+        .onChange(of: model.dashboardSyncItemsRevision) { _, _ in
+            scheduleAnalysis()
+        }
+        .onDisappear {
+            deferredAnalysisTask?.cancel()
         }
     }
 
@@ -5251,7 +5321,19 @@ private struct MailPasteAnalyzerPanel: View {
     }
 
     private func runAnalysis() {
+        deferredAnalysisTask?.cancel()
         analysis = MailPasteAnalyzer.analyze(mailText, syncItems: model.dashboardSyncItems)
+    }
+
+    private func scheduleAnalysis() {
+        deferredAnalysisTask?.cancel()
+        let text = mailText
+        let items = model.dashboardSyncItems
+        deferredAnalysisTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            guard !Task.isCancelled else { return }
+            analysis = MailPasteAnalyzer.analyze(text, syncItems: items)
+        }
     }
 }
 
