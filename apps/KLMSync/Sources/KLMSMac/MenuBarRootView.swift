@@ -2863,6 +2863,8 @@ private struct AuthCodeBannerView: View {
 private struct DashboardSummaryView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedDetail = DashboardDetailKind.files
+    @State private var displayedDetail = DashboardDetailKind.files
+    @State private var deferredDetailTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2904,6 +2906,8 @@ private struct DashboardSummaryView: View {
             let visibleMetrics = primaryMetrics + attentionMetrics + archiveMetrics
             let activeDetail = visibleMetrics.first { $0.detail == selectedDetail }?.detail
                 ?? visibleMetrics.first?.detail
+            let renderedDetail = visibleMetrics.first { $0.detail == displayedDetail }?.detail
+                ?? activeDetail
             IssueSummaryView(issues: snapshot.issues)
             if visibleMetrics.isEmpty {
                 Text("표시할 대시보드 항목이 없습니다.")
@@ -2929,27 +2933,36 @@ private struct DashboardSummaryView: View {
                     onSelect: selectMetric
                 )
             }
-            if let activeDetail {
+            if let renderedDetail {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 12) {
-                        DashboardDetailPanelView(kind: activeDetail, model: model)
+                        DashboardDetailPanelView(kind: renderedDetail, model: model)
                             .frame(minWidth: 300, maxWidth: .infinity, alignment: .topLeading)
                         DashboardLogSummaryPanelView(model: model)
                             .frame(minWidth: 210, idealWidth: 250, maxWidth: 300, alignment: .topLeading)
                     }
                     VStack(alignment: .leading, spacing: 12) {
-                        DashboardDetailPanelView(kind: activeDetail, model: model)
+                        DashboardDetailPanelView(kind: renderedDetail, model: model)
                         DashboardLogSummaryPanelView(model: model)
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onDisappear {
+            deferredDetailTask?.cancel()
+        }
     }
 
     private func selectMetric(_ metric: Metric) {
         if let detail = metric.detail {
             selectedDetail = detail
+            deferredDetailTask?.cancel()
+            deferredDetailTask = Task { @MainActor in
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                displayedDetail = detail
+            }
         }
     }
 }
