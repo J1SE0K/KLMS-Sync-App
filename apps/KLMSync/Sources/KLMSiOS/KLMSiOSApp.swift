@@ -1798,7 +1798,7 @@ private struct CompanionSplitRootView: View {
     var body: some View {
         HStack(spacing: 0) {
             WorkstationSidebar(selectedSection: $selectedSection)
-                .frame(width: 176)
+                .frame(width: 150)
             Rectangle()
                 .fill(Color.klmsBorder)
                 .frame(width: 1)
@@ -1838,7 +1838,7 @@ private struct WorkstationSidebar: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.klmsScreenBackground)
+        .background(Color.klmsCardBackground.opacity(0.72))
     }
 }
 
@@ -1860,7 +1860,7 @@ private struct CompanionSidebarButton: View {
                 }
                 Text(section.title)
                     .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
                 Spacer(minLength: 0)
                 if showsArrow {
                     Image(systemName: "arrow.right")
@@ -1875,10 +1875,10 @@ private struct CompanionSidebarButton: View {
                 isSelected
                     ? Color.klmsPrimaryCommandButtonBackground
                     : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8)
+                in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
             )
             .contentShape(Rectangle())
@@ -3604,9 +3604,6 @@ private struct RemoteDashboardMetricOverview: View {
         if !categories.isEmpty {
             VStack(alignment: .leading, spacing: 7) {
                 if horizontalSizeClass == .regular {
-                    Text(title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsSecondaryText)
                     VStack(spacing: 8) {
                         ForEach(categories) { category in
                             WorkstationMetricCard(
@@ -3955,9 +3952,6 @@ private struct WorkstationMetricCard: View {
                         .font(.headline.monospacedDigit().weight(.bold))
                         .foregroundStyle(Color.klmsPrimaryText)
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsSecondaryText.opacity(0.76))
                 }
                 Text(category.workstationDescription)
                     .font(.caption)
@@ -3968,9 +3962,9 @@ private struct WorkstationMetricCard: View {
             .padding(.horizontal, 13)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
-            .background(isSelected ? Color.klmsCommandBackground : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(isSelected ? Color.klmsCommandBackground : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 13)
                     .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
             )
         }
@@ -4006,9 +4000,9 @@ private struct WorkstationDashboardDetailPanel: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -4052,9 +4046,9 @@ private struct WorkstationDashboardDetailPanel: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 164, alignment: .topLeading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -4097,9 +4091,9 @@ private struct WorkstationSelectedItemCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 210, alignment: .topLeading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -4228,9 +4222,9 @@ private struct WorkstationChangeSummaryCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }

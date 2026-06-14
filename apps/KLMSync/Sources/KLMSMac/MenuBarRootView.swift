@@ -209,9 +209,9 @@ struct MacDesignWindowRootView: View {
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-                    .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: 13)
                             .stroke(selectedMetric == metric.kind ? Color.klmsMacPrimaryText : Color.klmsMacBorder, lineWidth: selectedMetric == metric.kind ? 1.5 : 1)
                     }
                 }
@@ -253,7 +253,7 @@ struct MacDesignWindowRootView: View {
                         }
                     }
                     .padding(10)
-                    .background(Color.klmsMacSubtleCardBackground.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.klmsMacSubtleCardBackground.opacity(0.78), in: RoundedRectangle(cornerRadius: 11))
                 }
             }
         }
@@ -291,7 +291,7 @@ struct MacDesignWindowRootView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 9))
     }
 
     private var currentMetrics: [MacDesignMetric] {
@@ -396,7 +396,7 @@ struct MacDesignWindowRootView: View {
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
             .foregroundStyle(selected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
-            .background(selected ? Color.klmsMacPrimaryCommandButtonBackground : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+            .background(selected ? Color.klmsMacPrimaryCommandButtonBackground : Color.clear, in: RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
     }
@@ -478,9 +478,9 @@ private struct MacDesignPanel<Content: View>: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
@@ -517,9 +517,9 @@ private struct MacDesignNoticeStrip: View {
         .background(Color.klmsMacAdaptiveColor(
             light: NSColor(red: 0.914, green: 0.902, blue: 0.858, alpha: 1.0),
             dark: NSColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
-        ), in: RoundedRectangle(cornerRadius: 8))
+        ), in: RoundedRectangle(cornerRadius: 14))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(tint.opacity(0.24), lineWidth: 1)
         }
     }
@@ -532,9 +532,9 @@ private struct MacDesignPrimaryButtonStyle: ButtonStyle {
         configuration.label
             .padding(.horizontal, 14)
             .foregroundStyle(isDestructive ? Color.klmsMacPrimaryText : Color.klmsMacCommandButtonForeground)
-            .background(isDestructive ? Color.klmsMacDangerBackground : Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(isDestructive ? Color.klmsMacDangerBackground : Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 12)
                     .stroke(isDestructive ? Color.klmsMacDangerBorder : Color.klmsMacPrimaryCommandButtonBorder, lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
@@ -545,9 +545,9 @@ private struct MacDesignSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground)
-            .background(Color.klmsMacCommandButtonBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacCommandButtonBackground, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.klmsMacCommandButtonBorder, lineWidth: 1)
             }
             .opacity(configuration.isPressed ? 0.82 : 1.0)
