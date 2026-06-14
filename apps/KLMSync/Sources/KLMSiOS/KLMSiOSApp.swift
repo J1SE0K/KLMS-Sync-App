@@ -4790,13 +4790,8 @@ private struct DashboardMetricDetailPanel: View {
             .companionSorted(by: .recent)
     }
 
-    private var visibleItems: [ServerRelaySyncItem] {
-        Array(filteredItems.prefix(8))
-    }
-
     var body: some View {
         let filtered = filteredItems
-        let visible = Array(filtered.prefix(8))
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Label(category.title, systemImage: category.systemImage)
@@ -4815,8 +4810,8 @@ private struct DashboardMetricDetailPanel: View {
             } else if filtered.isEmpty {
                 emptyState
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(visible) { item in
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(filtered) { item in
                         Button {
                             selectedItemID = item.id
                             onSelect(item)
@@ -4826,12 +4821,6 @@ private struct DashboardMetricDetailPanel: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityHint("항목 상세를 엽니다.")
-                    }
-                    if filtered.count > visible.count {
-                        Text("외 \(filtered.count - visible.count)개")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .padding(.horizontal, 2)
                     }
                 }
             }
@@ -5301,7 +5290,6 @@ private struct CompanionInlineItemRowsView: View {
     var onSelectItem: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var detailItemID: String?
-    @State private var visibleLimit: Int
     @State private var deferredDetailTask: Task<Void, Never>?
 
     init(
@@ -5318,41 +5306,31 @@ private struct CompanionInlineItemRowsView: View {
         self.presentation = presentation
         self.externalSelectedItemID = externalSelectedItemID
         self.onSelectItem = onSelectItem
-        _visibleLimit = State(initialValue: Self.initialVisibleLimit(for: category))
     }
 
     var body: some View {
-        let visible = Array(items.prefix(visibleLimit))
-        ForEach(visible) { item in
-            let isSelected = activeSelectedItemID == item.id
-            VStack(alignment: .leading, spacing: 8) {
-                Button {
-                    select(item)
-                } label: {
-                    ServerSyncDataRow(
-                        item: item,
-                        isSelected: isSelected,
-                        accessorySystemImage: accessorySystemImage(isSelected: isSelected)
-                    )
-                    .equatable()
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "오른쪽 상세 패널에 항목을 표시합니다.")
+        LazyVStack(alignment: .leading, spacing: 8) {
+            ForEach(items) { item in
+                let isSelected = activeSelectedItemID == item.id
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        select(item)
+                    } label: {
+                        ServerSyncDataRow(
+                            item: item,
+                            isSelected: isSelected,
+                            accessorySystemImage: accessorySystemImage(isSelected: isSelected)
+                        )
+                        .equatable()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "오른쪽 상세 패널에 항목을 표시합니다.")
 
-                if presentation == .inlineDetail && detailItemID == item.id {
-                    ServerSyncItemInlineDetailPanel(item: item, model: model)
+                    if presentation == .inlineDetail && detailItemID == item.id {
+                        ServerSyncItemInlineDetailPanel(item: item, model: model)
+                    }
                 }
             }
-        }
-        if items.count > visible.count {
-            Button {
-                increaseVisibleLimit()
-            } label: {
-                Label("더 보기 \(items.count - visible.count)개 남음", systemImage: "chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 36)
-            }
-            .buttonStyle(KLMSActionButtonStyle())
         }
     }
 
@@ -5393,77 +5371,34 @@ private struct CompanionInlineItemRowsView: View {
         }
     }
 
-    private func increaseVisibleLimit() {
-        let increment = Self.incrementVisibleLimit(for: category)
-        Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            visibleLimit += increment
-        }
-    }
-
-    private static func initialVisibleLimit(for category: DashboardMetricCategory) -> Int {
-        switch category {
-        case .files, .notices:
-            160
-        default:
-            120
-        }
-    }
-
-    private static func incrementVisibleLimit(for category: DashboardMetricCategory) -> Int {
-        switch category {
-        case .files, .notices:
-            80
-        default:
-            60
-        }
-    }
 }
 
 private struct CompanionSelectableItemListRows: View {
     var items: [ServerRelaySyncItem]
-    var initialVisibleLimit: Int
-    var increment: Int
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
-    @State private var visibleLimit: Int
     @State private var deferredSelectionTask: Task<Void, Never>?
 
     init(
         items: [ServerRelaySyncItem],
-        initialVisibleLimit: Int,
-        increment: Int,
         onSelect: @escaping (ServerRelaySyncItem) -> Void
     ) {
         self.items = items
-        self.initialVisibleLimit = initialVisibleLimit
-        self.increment = increment
         self.onSelect = onSelect
-        _visibleLimit = State(initialValue: initialVisibleLimit)
     }
 
     var body: some View {
-        let visible = Array(items.prefix(visibleLimit))
-        ForEach(visible) { item in
-            Button {
-                select(item)
-            } label: {
-                ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
-                    .equatable()
+        LazyVStack(alignment: .leading, spacing: 8) {
+            ForEach(items) { item in
+                Button {
+                    select(item)
+                } label: {
+                    ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
+                        .equatable()
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("항목 상세를 엽니다.")
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("항목 상세를 엽니다.")
-        }
-        if items.count > visible.count {
-            Button {
-                increaseVisibleLimit()
-            } label: {
-                Label("더 보기 \(items.count - visible.count)개 남음", systemImage: "chevron.down")
-                    .font(.caption.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 36)
-            }
-            .buttonStyle(KLMSActionButtonStyle())
         }
     }
 
@@ -5482,13 +5417,6 @@ private struct CompanionSelectableItemListRows: View {
         }
     }
 
-    private func increaseVisibleLimit() {
-        Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            visibleLimit += increment
-        }
-    }
 }
 
 private struct RemoteChangeSummaryDetailPanel: View {
@@ -7283,8 +7211,6 @@ private struct DashboardCategoryDetailScreen: View {
                     Section("\(filtered.count)개") {
                         CompanionSelectableItemListRows(
                             items: filtered,
-                            initialVisibleLimit: Self.initialVisibleLimit(for: category),
-                            increment: Self.incrementVisibleLimit(for: category),
                             onSelect: onSelect
                         )
                     }
@@ -7295,23 +7221,6 @@ private struct DashboardCategoryDetailScreen: View {
         .searchable(text: $query, prompt: "\(category.title) 검색")
     }
 
-    private static func initialVisibleLimit(for category: DashboardMetricCategory) -> Int {
-        switch category {
-        case .files, .notices:
-            160
-        default:
-            120
-        }
-    }
-
-    private static func incrementVisibleLimit(for category: DashboardMetricCategory) -> Int {
-        switch category {
-        case .files, .notices:
-            80
-        default:
-            60
-        }
-    }
 }
 
 private struct DashboardCategorySummaryRow: View {
@@ -7814,8 +7723,6 @@ private struct ServerSyncDataPanel: View {
                     )
                     CompanionSelectableItemListRows(
                         items: filtered,
-                        initialVisibleLimit: 20,
-                        increment: 30,
                         onSelect: onSelect
                     )
                 }
