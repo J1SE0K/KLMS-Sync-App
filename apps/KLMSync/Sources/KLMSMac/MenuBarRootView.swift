@@ -34,6 +34,8 @@ struct MenuBarRootView: View {
 struct MacDesignWindowRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedMetric = MacDesignMetricKind.files
+    @State private var displayedMetric = MacDesignMetricKind.files
+    @State private var deferredMetricTask: Task<Void, Never>?
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
 
@@ -155,9 +157,13 @@ struct MacDesignWindowRootView: View {
 
             MacDesignPanel(title: "작업 공간") {
                 VStack(spacing: 7) {
-                    navigationButton("대시보드", selected: true) {}
-                    navigationButton("로그", selected: false) {
-                        selectedMetric = .logs
+                    navigationButton("대시보드", selected: selectedMetric != .logs) {
+                        if selectedMetric == .logs {
+                            selectMetric(.files)
+                        }
+                    }
+                    navigationButton("로그", selected: selectedMetric == .logs) {
+                        selectMetric(.logs)
                     }
                     navigationButton("진단", selected: false) {
                         KLMSDiagnosticWindowCoordinator.shared.showDiagnosticsWindow()
@@ -179,7 +185,7 @@ struct MacDesignWindowRootView: View {
         VStack(alignment: .leading, spacing: 12) {
             metricGrid
             HStack(alignment: .top, spacing: 12) {
-                MacDesignPanel(title: selectedMetric == .logs ? "최근 실행 로그" : "선택한 대시보드 항목") {
+                MacDesignPanel(title: displayedMetric == .logs ? "최근 실행 로그" : "선택한 대시보드 항목") {
                     selectedMetricContent
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -197,23 +203,25 @@ struct MacDesignWindowRootView: View {
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
             ForEach(metrics) { metric in
                 Button {
-                    selectedMetric = metric.kind
+                    selectMetric(metric.kind)
                 } label: {
+                    let isSelected = selectedMetric == metric.kind
                     VStack(alignment: .leading, spacing: 6) {
                         Text("\(metric.value)")
                             .font(.system(size: 28, weight: .bold))
-                            .foregroundStyle(Color.klmsMacPrimaryText)
+                            .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
                         Text(metric.title)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground.opacity(0.82) : Color.klmsMacSecondaryText)
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-                    .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
+                    .background(isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
                     .overlay {
                         RoundedRectangle(cornerRadius: 13)
-                            .stroke(selectedMetric == metric.kind ? Color.klmsMacPrimaryText : Color.klmsMacBorder, lineWidth: selectedMetric == metric.kind ? 1.5 : 1)
+                            .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacBorder, lineWidth: 1)
                     }
+                    .contentShape(RoundedRectangle(cornerRadius: 13))
                 }
                 .buttonStyle(.plain)
             }
@@ -230,7 +238,7 @@ struct MacDesignWindowRootView: View {
                 .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
         } else {
             VStack(spacing: 8) {
-                ForEach(rows.prefix(selectedMetric == .logs ? 5 : 4)) { row in
+                ForEach(rows.prefix(displayedMetric == .logs ? 5 : 4)) { row in
                     HStack(alignment: .top, spacing: 10) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(row.title)
@@ -305,7 +313,7 @@ struct MacDesignWindowRootView: View {
     }
 
     private var selectedRows: [MacDesignRow] {
-        switch selectedMetric {
+        switch displayedMetric {
         case .files:
             return model.snapshot.courseFileManifest
                 .sorted { ($0.klmsTimestampEpoch ?? 0) > ($1.klmsTimestampEpoch ?? 0) }
@@ -338,6 +346,16 @@ struct MacDesignWindowRootView: View {
             return model.commandHistory.records.prefix(10).map {
                 MacDesignRow(title: $0.command.displayName, detail: $0.startedAt.formatted(date: .numeric, time: .shortened), badge: $0.succeeded ? "성공" : ($0.wasCancelled ? "중단" : "실패"))
             }
+        }
+    }
+
+    private func selectMetric(_ metric: MacDesignMetricKind) {
+        selectedMetric = metric
+        deferredMetricTask?.cancel()
+        deferredMetricTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            displayedMetric = metric
         }
     }
 
@@ -4999,10 +5017,10 @@ private struct MetricTile: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("\(metric.value)")
                         .font(.system(size: 28, weight: .bold, design: .default).monospacedDigit())
-                        .foregroundStyle(Color.klmsMacPrimaryText)
+                        .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
                     Text(metric.label)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground.opacity(0.82) : Color.klmsMacSecondaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
                 }
@@ -5010,17 +5028,18 @@ private struct MetricTile: View {
                 if metric.detail != nil {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(isSelected ? tint : Color.klmsMacSecondaryText.opacity(0.70))
+                        .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground.opacity(0.78) : Color.klmsMacSecondaryText.opacity(0.70))
                 }
             }
         }
         .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
         .padding(12)
-        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .background(isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
         .overlay {
             RoundedRectangle(cornerRadius: 13)
-                .stroke(isSelected ? tint.opacity(0.55) : Color.klmsMacBorder, lineWidth: 1)
+                .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacBorder, lineWidth: 1)
         }
+        .contentShape(RoundedRectangle(cornerRadius: 13))
     }
 
     private var tint: Color {
