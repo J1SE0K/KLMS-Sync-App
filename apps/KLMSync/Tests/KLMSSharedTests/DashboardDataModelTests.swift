@@ -885,6 +885,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("dark: UIColor(red: 0.063, green: 0.063, blue: 0.059"))
         XCTAssertTrue(ios.contains("light: UIColor(red: 0.165, green: 0.165, blue: 0.153"))
         XCTAssertTrue(ios.contains("dark: UIColor(red: 0.941, green: 0.875, blue: 0.722"))
+        XCTAssertTrue(ios.contains("static var klmsCommandButtonPressedBackground: Color"))
+        XCTAssertTrue(ios.contains("static var klmsCommandButtonPressedOverlay: Color"))
+        XCTAssertTrue(ios.contains("static var klmsPrimaryCommandButtonPressedBackground: Color"))
+        XCTAssertTrue(ios.contains("light: UIColor(red: 0.862, green: 0.840, blue: 0.782"))
+        XCTAssertTrue(ios.contains("dark: UIColor(red: 0.251, green: 0.239, blue: 0.208"))
         XCTAssertTrue(ios.contains("light: UIColor(red: 1.000, green: 0.980, blue: 0.941"))
         XCTAssertTrue(ios.contains("static var klmsPrimaryText: Color"))
         XCTAssertTrue(ios.contains("static var klmsSecondaryText: Color"))
@@ -946,6 +951,11 @@ final class DashboardDataModelTests: XCTestCase {
         let compactSelectionPanel = try sourceStructBody(named: "CompactDashboardSelectionPanel", in: ios)
         let compactEmptyRow = try sourceStructBody(named: "CompactDashboardEmptyRow", in: ios)
         let compactSelectedRow = try sourceStructBody(named: "CompactDashboardSelectedRow", in: ios)
+        let cardButtonStyle = try sourceBody(
+            after: "private struct KLMSCardButtonStyle: ButtonStyle",
+            in: ios,
+            description: "KLMS card button style"
+        )
         let actionButtonStyle = try sourceBody(
             after: "private struct KLMSActionButtonStyle: ButtonStyle",
             in: ios,
@@ -1044,12 +1054,20 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(compactSelectionPanel.contains("RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(compactEmptyRow.contains("RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(compactSelectedRow.contains("RoundedRectangle(cornerRadius: 14)"))
+        XCTAssertTrue(cardButtonStyle.contains("Color.klmsCommandButtonPressedOverlay"))
+        XCTAssertTrue(cardButtonStyle.contains("@Environment(\\.isEnabled)"))
+        XCTAssertFalse(cardButtonStyle.contains(".opacity(configuration.isPressed ? 0.96 : 1.0)"))
         XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(actionButtonStyle.contains(".font(.system(size: 12, weight: .semibold, design: .rounded))"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.horizontal, 8)"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 10)"))
         XCTAssertTrue(actionButtonStyle.contains("background(isPressed: configuration.isPressed)"))
+        XCTAssertTrue(actionButtonStyle.contains("return isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90)"))
+        XCTAssertTrue(actionButtonStyle.contains("return isPressed ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground"))
         XCTAssertTrue(actionButtonStyle.contains("return isPressed ? Color.klmsDangerBackground : Color.klmsCommandButtonBackground.opacity(0.90)"))
+        XCTAssertTrue(actionButtonStyle.contains("return isPressed ? Color.klmsSuccessBorder.opacity(0.20) : Color.klmsSuccessBackground"))
+        XCTAssertTrue(actionButtonStyle.contains("return color.opacity(isPressed ? 0.18 : 0.10)"))
+        XCTAssertTrue(actionButtonStyle.contains("Color.klmsPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)"))
         XCTAssertTrue(actionButtonStyle.contains("Color.klmsDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
         XCTAssertTrue(remoteCancelControl.contains("Image(systemName: \"stop.circle\")"))
         XCTAssertTrue(remoteCancelControl.contains(".background(Color.klmsSubtleCardBackground"))

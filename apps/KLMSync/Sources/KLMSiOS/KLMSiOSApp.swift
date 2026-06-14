@@ -4223,11 +4223,19 @@ private struct RemoteMetricTile: View {
 }
 
 private struct KLMSCardButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.klmsCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
+                    .allowsHitTesting(false)
+            }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
-            .opacity(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(isEnabled ? 1.0 : 0.48)
             .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 }
 
@@ -4746,15 +4754,15 @@ private struct KLMSActionButtonStyle: ButtonStyle {
     private func background(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
-            return Color.klmsCommandButtonBackground.opacity(0.90)
+            return isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90)
         case .primary:
-            return Color.klmsPrimaryCommandButtonBackground
+            return isPressed ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground
         case .destructive:
             return isPressed ? Color.klmsDangerBackground : Color.klmsCommandButtonBackground.opacity(0.90)
         case .success:
-            return Color.klmsSuccessBackground
+            return isPressed ? Color.klmsSuccessBorder.opacity(0.20) : Color.klmsSuccessBackground
         case .accent(let color):
-            return color.opacity(0.10)
+            return color.opacity(isPressed ? 0.18 : 0.10)
         }
     }
 
@@ -4763,7 +4771,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .soft:
             return Color.klmsCommandButtonBorder.opacity(0.92)
         case .primary:
-            return Color.klmsPrimaryCommandButtonBorder
+            return Color.klmsPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)
         case .destructive:
             return Color.klmsDangerBorder.opacity(isPressed ? 0.78 : 0.48)
         case .success:
@@ -11318,6 +11326,38 @@ private extension Color {
         #endif
     }
 
+    static var klmsCommandButtonPressedBackground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.862, green: 0.840, blue: 0.782, alpha: 1.0),
+            dark: UIColor(red: 0.251, green: 0.239, blue: 0.208, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.862, green: 0.840, blue: 0.782, alpha: 1.0),
+            dark: NSColor(red: 0.251, green: 0.239, blue: 0.208, alpha: 1.0)
+        )
+        #else
+        return Color.black.opacity(0.24)
+        #endif
+    }
+
+    static var klmsCommandButtonPressedOverlay: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.105),
+            dark: UIColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.140)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.105),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.140)
+        )
+        #else
+        return Color.white.opacity(0.12)
+        #endif
+    }
+
     static var klmsPrimaryCommandButtonBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
@@ -11331,6 +11371,22 @@ private extension Color {
         )
         #else
         return Color(red: 0.784, green: 0.722, blue: 0.573)
+        #endif
+    }
+
+    static var klmsPrimaryCommandButtonPressedBackground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.232, green: 0.232, blue: 0.214, alpha: 1.0),
+            dark: UIColor(red: 0.843, green: 0.776, blue: 0.624, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.232, green: 0.232, blue: 0.214, alpha: 1.0),
+            dark: NSColor(red: 0.843, green: 0.776, blue: 0.624, alpha: 1.0)
+        )
+        #else
+        return Color(red: 0.690, green: 0.620, blue: 0.455)
         #endif
     }
 
