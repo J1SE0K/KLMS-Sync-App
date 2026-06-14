@@ -1780,6 +1780,9 @@ private struct CompanionTabRootView: View {
     }
 
     private func deferDisplayedSection(_ section: CompanionAppSection) {
+        guard displayedSection != section else {
+            return
+        }
         deferredSectionTask?.cancel()
         deferredSectionTask = Task { @MainActor in
             await Task.yield()
@@ -1796,6 +1799,7 @@ private struct CompanionCompactTabBar: View {
         HStack(spacing: 8) {
             ForEach(CompanionAppSection.compactTabs) { section in
                 Button {
+                    guard selectedSection != section else { return }
                     selectedSection = section
                 } label: {
                     let isSelected = selectedSection == section
@@ -1865,6 +1869,9 @@ private struct CompanionSplitRootView: View {
     }
 
     private func deferDisplayedSection(_ section: CompanionAppSection) {
+        guard displayedSection != section else {
+            return
+        }
         deferredSectionTask?.cancel()
         deferredSectionTask = Task { @MainActor in
             await Task.yield()
@@ -1891,6 +1898,7 @@ private struct WorkstationSidebar: View {
                         showsIcon: true,
                         showsArrow: false
                     ) {
+                        guard selectedSection != section else { return }
                         selectedSection = section
                     }
                 }
@@ -2071,6 +2079,9 @@ private struct CompanionStatusScreen: View {
     }
 
     private func deferDashboardCategory(_ category: DashboardMetricCategory) {
+        guard displayedDashboardPreview != category || displayedChangeSummary != nil else {
+            return
+        }
         deferredDashboardDetailTask?.cancel()
         deferredDashboardDetailTask = Task { @MainActor in
             await Task.yield()
@@ -2081,6 +2092,9 @@ private struct CompanionStatusScreen: View {
     }
 
     private func deferChangeSummary(_ kind: RemoteChangeSummaryKind) {
+        guard displayedChangeSummary != kind || displayedDashboardPreview != nil else {
+            return
+        }
         deferredDashboardDetailTask?.cancel()
         deferredDashboardDetailTask = Task { @MainActor in
             await Task.yield()

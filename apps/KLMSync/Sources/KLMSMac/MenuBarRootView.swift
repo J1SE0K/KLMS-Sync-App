@@ -350,6 +350,9 @@ struct MacDesignWindowRootView: View {
     }
 
     private func selectMetric(_ metric: MacDesignMetricKind) {
+        guard selectedMetric != metric || displayedMetric != metric else {
+            return
+        }
         selectedMetric = metric
         deferredMetricTask?.cancel()
         deferredMetricTask = Task { @MainActor in
@@ -592,6 +595,8 @@ private struct MacWorkstationLayoutView: View {
     @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
+    @State private var displayedSection: KLMSMacSection = .dashboard
+    @State private var deferredSectionTask: Task<Void, Never>?
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -601,6 +606,15 @@ private struct MacWorkstationLayoutView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear {
+            displayedSection = selectedSection
+        }
+        .onChange(of: selectedSection) { _, newSection in
+            deferDisplayedSection(newSection)
+        }
+        .onDisappear {
+            deferredSectionTask?.cancel()
+        }
     }
 
     private var controlRail: some View {
@@ -615,7 +629,7 @@ private struct MacWorkstationLayoutView: View {
     @ViewBuilder
     private var workspace: some View {
         VStack(alignment: .leading, spacing: 16) {
-            switch selectedSection {
+            switch displayedSection {
             case .dashboard:
                 DashboardSummaryView(model: model)
             case .activityLogs:
@@ -635,6 +649,18 @@ private struct MacWorkstationLayoutView: View {
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
+
+    private func deferDisplayedSection(_ section: KLMSMacSection) {
+        guard displayedSection != section else {
+            return
+        }
+        deferredSectionTask?.cancel()
+        deferredSectionTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            displayedSection = section
+        }
+    }
 }
 
 private struct WorkspaceNavigationView: View {
@@ -646,6 +672,7 @@ private struct WorkspaceNavigationView: View {
                 ForEach(KLMSMacSection.allCases) { section in
                     let isSelected = selection == section
                     Button {
+                        guard selection != section else { return }
                         selection = section
                     } label: {
                         HStack(spacing: 9) {
@@ -1574,6 +1601,7 @@ private struct SectionPickerView: View {
             ForEach(KLMSMacSection.allCases) { section in
                 let isSelected = selection == section
                 Button {
+                    guard selection != section else { return }
                     selection = section
                 } label: {
                     Label(section.title, systemImage: section.systemImage)
@@ -2956,6 +2984,9 @@ private struct DashboardSummaryView: View {
 
     private func selectMetric(_ metric: Metric) {
         if let detail = metric.detail {
+            guard selectedDetail != detail || displayedDetail != detail else {
+                return
+            }
             selectedDetail = detail
             deferredDetailTask?.cancel()
             deferredDetailTask = Task { @MainActor in
