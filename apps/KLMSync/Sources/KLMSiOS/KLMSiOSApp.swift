@@ -2283,23 +2283,33 @@ private struct CompanionDashboardCategoryScreen: View {
     var title: String
     var category: DashboardMetricCategory
     @ObservedObject var model: CompanionModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         CompanionScreenContainer(title: title, model: model) {
-            DashboardCategoryInlineDetailPanel(category: category, model: model)
+            if horizontalSizeClass == .regular && category.supportsWorkstationSelectionWorkspace {
+                WorkstationDashboardCategoryWorkspace(category: category, model: model)
+            } else {
+                DashboardCategoryInlineDetailPanel(category: category, model: model)
+            }
         }
     }
 }
 
 private struct CompanionTasksScreen: View {
     @ObservedObject var model: CompanionModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         CompanionScreenContainer(title: "과제/시험", model: model) {
-            DashboardCategoryInlineDetailPanel(category: .assignments, model: model)
-            DashboardCategoryInlineDetailPanel(category: .exams, model: model)
-            if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
-                DashboardCategoryInlineDetailPanel(category: .helpDesk, model: model)
+            if horizontalSizeClass == .regular {
+                WorkstationTasksWorkspace(model: model)
+            } else {
+                DashboardCategoryInlineDetailPanel(category: .assignments, model: model)
+                DashboardCategoryInlineDetailPanel(category: .exams, model: model)
+                if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
+                    DashboardCategoryInlineDetailPanel(category: .helpDesk, model: model)
+                }
             }
         }
     }
@@ -2923,6 +2933,15 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
             "등록, 수정, 삭제가 필요한 일정을 확인합니다."
         case .helpDesk:
             "시험 관련 헬프데스크 일정을 모아 봅니다."
+        }
+    }
+
+    var supportsWorkstationSelectionWorkspace: Bool {
+        switch self {
+        case .assignments, .exams, .notices, .files, .helpDesk:
+            return true
+        case .quarantine, .calendar:
+            return false
         }
     }
 }
@@ -4828,6 +4847,9 @@ private struct DashboardMetricDetailPanel: View {
 private struct DashboardCategoryInlineDetailPanel: View {
     var category: DashboardMetricCategory
     @ObservedObject var model: CompanionModel
+    var itemPresentation: CompanionInlineItemRowsPresentation
+    var externallySelectedItemID: String?
+    var onSelectItem: (ServerRelaySyncItem) -> Void
     @State private var query = ""
     @State private var sortOption = CompanionItemSortOption.recent
     @State private var visibilityFilter = CompanionItemVisibilityFilter.visible
@@ -4839,8 +4861,17 @@ private struct DashboardCategoryInlineDetailPanel: View {
     @State private var recentOnly = false
     @State private var cachedListData: CompanionItemListData?
 
-    init(category: DashboardMetricCategory, model: CompanionModel) {
+    init(
+        category: DashboardMetricCategory,
+        model: CompanionModel,
+        itemPresentation: CompanionInlineItemRowsPresentation = .inlineDetail,
+        externallySelectedItemID: String? = nil,
+        onSelectItem: @escaping (ServerRelaySyncItem) -> Void = { _ in }
+    ) {
         self.category = category
+        self.itemPresentation = itemPresentation
+        self.externallySelectedItemID = externallySelectedItemID
+        self.onSelectItem = onSelectItem
         _model = ObservedObject(wrappedValue: model)
         _sortOption = State(initialValue: CompanionItemSortOption.defaultSort(for: category))
         _statusFilter = State(initialValue: CompanionItemStatusFilter.defaultFilter(for: category))
@@ -4954,7 +4985,14 @@ private struct DashboardCategoryInlineDetailPanel: View {
                     if filtered.isEmpty {
                         panelEmptyText(category.emptyMessage)
                     } else {
-                        CompanionInlineItemRowsView(category: category, items: filtered, model: model)
+                        CompanionInlineItemRowsView(
+                            category: category,
+                            items: filtered,
+                            model: model,
+                            presentation: itemPresentation,
+                            externalSelectedItemID: externallySelectedItemID,
+                            onSelectItem: onSelectItem
+                        )
                     }
                 } else {
                     panelEmptyText("목록을 준비하고 있습니다.")
@@ -5034,40 +5072,242 @@ private struct DashboardCategoryInlineDetailPanel: View {
 
 }
 
+private struct WorkstationDashboardCategoryWorkspace: View {
+    var category: DashboardMetricCategory
+    @ObservedObject var model: CompanionModel
+    @State private var selectedItemID: String?
+    @State private var detailItemID: String?
+    @State private var deferredDetailTask: Task<Void, Never>?
+
+    private var items: [ServerRelaySyncItem] {
+        model.cachedVisibleDashboardItems(for: category.rawValue)
+    }
+
+    private var activeSelectedItemID: String? {
+        selectedItemID ?? items.first?.id
+    }
+
+    private var selectedItem: ServerRelaySyncItem? {
+        if let detailItemID,
+           let item = items.first(where: { $0.id == detailItemID }) {
+            return item
+        }
+        if let selectedItemID,
+           let item = items.first(where: { $0.id == selectedItemID }) {
+            return item
+        }
+        return items.first
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            DashboardCategoryInlineDetailPanel(
+                category: category,
+                model: model,
+                itemPresentation: .externalDetail,
+                externallySelectedItemID: activeSelectedItemID,
+                onSelectItem: selectItem
+            )
+            .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
+
+            WorkstationExternalDetailPanel(
+                title: "\(category.title) 상세",
+                subtitle: "\(items.count)개 항목 · 선택한 항목을 바로 처리합니다.",
+                item: selectedItem,
+                emptyMessage: category.emptyMessage,
+                model: model
+            )
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onDisappear {
+            deferredDetailTask?.cancel()
+        }
+    }
+
+    private func selectItem(_ item: ServerRelaySyncItem) {
+        selectedItemID = item.id
+        deferredDetailTask?.cancel()
+        deferredDetailTask = Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+            detailItemID = item.id
+        }
+    }
+}
+
+private struct WorkstationTasksWorkspace: View {
+    @ObservedObject var model: CompanionModel
+    @State private var selectedItemID: String?
+    @State private var detailItemID: String?
+    @State private var deferredDetailTask: Task<Void, Never>?
+
+    private var combinedItems: [ServerRelaySyncItem] {
+        [
+            model.cachedVisibleDashboardItems(for: DashboardMetricCategory.assignments.rawValue),
+            model.cachedVisibleDashboardItems(for: DashboardMetricCategory.exams.rawValue),
+            model.cachedVisibleDashboardItems(for: DashboardMetricCategory.helpDesk.rawValue),
+        ].flatMap { $0 }
+    }
+
+    private var activeSelectedItemID: String? {
+        selectedItemID ?? combinedItems.first?.id
+    }
+
+    private var selectedItem: ServerRelaySyncItem? {
+        if let detailItemID,
+           let item = combinedItems.first(where: { $0.id == detailItemID }) {
+            return item
+        }
+        if let selectedItemID,
+           let item = combinedItems.first(where: { $0.id == selectedItemID }) {
+            return item
+        }
+        return combinedItems.first
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 16) {
+                taskPanel(.assignments)
+                taskPanel(.exams)
+                if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
+                    taskPanel(.helpDesk)
+                }
+            }
+            .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
+
+            WorkstationExternalDetailPanel(
+                title: "선택한 일정",
+                subtitle: "과제, 시험, 헬프데스크를 한곳에서 확인하고 처리합니다.",
+                item: selectedItem,
+                emptyMessage: "현재 표시할 과제나 시험이 없습니다.",
+                model: model
+            )
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onDisappear {
+            deferredDetailTask?.cancel()
+        }
+    }
+
+    private func taskPanel(_ category: DashboardMetricCategory) -> some View {
+        DashboardCategoryInlineDetailPanel(
+            category: category,
+            model: model,
+            itemPresentation: .externalDetail,
+            externallySelectedItemID: activeSelectedItemID,
+            onSelectItem: selectItem
+        )
+    }
+
+    private func selectItem(_ item: ServerRelaySyncItem) {
+        selectedItemID = item.id
+        deferredDetailTask?.cancel()
+        deferredDetailTask = Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+            detailItemID = item.id
+        }
+    }
+}
+
+private struct WorkstationExternalDetailPanel: View {
+    var title: String
+    var subtitle: String
+    var item: ServerRelaySyncItem?
+    var emptyMessage: String
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let item {
+                ServerSyncItemInlineDetailPanel(item: item, model: model)
+            } else {
+                Text(emptyMessage)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
+    }
+}
+
+private enum CompanionInlineItemRowsPresentation {
+    case inlineDetail
+    case externalDetail
+}
+
 private struct CompanionInlineItemRowsView: View {
     var category: DashboardMetricCategory
     var items: [ServerRelaySyncItem]
     let model: CompanionModel
+    var presentation: CompanionInlineItemRowsPresentation
+    var externalSelectedItemID: String?
+    var onSelectItem: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var detailItemID: String?
     @State private var visibleLimit: Int
     @State private var deferredDetailTask: Task<Void, Never>?
 
-    init(category: DashboardMetricCategory, items: [ServerRelaySyncItem], model: CompanionModel) {
+    init(
+        category: DashboardMetricCategory,
+        items: [ServerRelaySyncItem],
+        model: CompanionModel,
+        presentation: CompanionInlineItemRowsPresentation = .inlineDetail,
+        externalSelectedItemID: String? = nil,
+        onSelectItem: @escaping (ServerRelaySyncItem) -> Void = { _ in }
+    ) {
         self.category = category
         self.items = items
         self.model = model
+        self.presentation = presentation
+        self.externalSelectedItemID = externalSelectedItemID
+        self.onSelectItem = onSelectItem
         _visibleLimit = State(initialValue: category == .files ? 24 : 18)
     }
 
     var body: some View {
         let visible = Array(items.prefix(visibleLimit))
         ForEach(visible) { item in
+            let isSelected = activeSelectedItemID == item.id
             VStack(alignment: .leading, spacing: 8) {
                 Button {
                     select(item)
                 } label: {
                     ServerSyncDataRow(
                         item: item,
-                        isSelected: selectedItemID == item.id,
-                        accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
+                        isSelected: isSelected,
+                        accessorySystemImage: accessorySystemImage(isSelected: isSelected)
                     )
                     .equatable()
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("항목 상세를 같은 화면에서 펼칩니다.")
+                .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "오른쪽 상세 패널에 항목을 표시합니다.")
 
-                if detailItemID == item.id {
+                if presentation == .inlineDetail && detailItemID == item.id {
                     ServerSyncItemInlineDetailPanel(item: item, model: model)
                 }
             }
@@ -5084,7 +5324,28 @@ private struct CompanionInlineItemRowsView: View {
         }
     }
 
+    private var activeSelectedItemID: String? {
+        presentation == .externalDetail ? externalSelectedItemID : selectedItemID
+    }
+
+    private func accessorySystemImage(isSelected: Bool) -> String {
+        switch presentation {
+        case .inlineDetail:
+            return isSelected ? "chevron.up" : "chevron.down"
+        case .externalDetail:
+            return "chevron.right"
+        }
+    }
+
     private func select(_ item: ServerRelaySyncItem) {
+        if presentation == .externalDetail {
+            selectedItemID = item.id
+            detailItemID = nil
+            deferredDetailTask?.cancel()
+            onSelectItem(item)
+            return
+        }
+
         let nextID = selectedItemID == item.id ? nil : item.id
         selectedItemID = nextID
         deferredDetailTask?.cancel()
