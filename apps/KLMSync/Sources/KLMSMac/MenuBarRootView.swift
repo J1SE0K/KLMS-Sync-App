@@ -591,6 +591,18 @@ private struct MacDesignHeaderButtonStyle: ButtonStyle {
     }
 }
 
+private struct MacPressFeedbackButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.86 : 1.0) : 0.48)
+            .animation(.easeOut(duration: 0.06), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.10), value: isEnabled)
+    }
+}
+
 private struct MacWorkstationLayoutView: View {
     @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
@@ -3812,7 +3824,7 @@ private struct CommandPanelView: View {
                             .stroke(Color.klmsMacDangerBorder, lineWidth: 1)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MacPressFeedbackButtonStyle())
                 .disabled(model.isCancellingCommand)
                 .accessibilityLabel("\(command.displayName) 중단")
                 .accessibilityHint("현재 실행 중인 동기화를 중단합니다.")
@@ -3843,9 +3855,8 @@ private struct CommandPanelView: View {
                     .stroke(Color.klmsMacPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MacPressFeedbackButtonStyle())
         .controlSize(.regular)
-        .opacity(model.runningCommand == nil ? 1 : 0.48)
         .help(command.shortDescription)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
@@ -3874,9 +3885,8 @@ private struct CommandPanelView: View {
                     .stroke(Color.klmsMacCommandButtonBorder.opacity(0.88), lineWidth: 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MacPressFeedbackButtonStyle())
         .controlSize(.small)
-        .opacity(model.runningCommand == nil ? 1 : 0.48)
         .help(command.shortDescription)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)

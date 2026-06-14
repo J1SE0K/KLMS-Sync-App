@@ -741,6 +741,11 @@ final class DashboardDataModelTests: XCTestCase {
         let workstationLayout = try sourceStructBody(named: "MacWorkstationLayoutView", in: view)
         let navigationView = try sourceStructBody(named: "WorkspaceNavigationView", in: view)
         let commandPanel = try sourceStructBody(named: "CommandPanelView", in: view)
+        let pressFeedbackStyle = try sourceBody(
+            after: "private struct MacPressFeedbackButtonStyle: ButtonStyle",
+            in: view,
+            description: "Mac press feedback button style"
+        )
         let actionButtonStyle = try sourceBody(
             after: "private struct KLMSMacActionButtonStyle: ButtonStyle",
             in: detail,
@@ -774,6 +779,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(commandPanel.contains(".padding(.vertical, 15)"))
         XCTAssertTrue(commandPanel.contains(".font(.system(size: 11, weight: .heavy, design: .rounded))"))
         XCTAssertTrue(commandPanel.contains(".padding(.horizontal, 8)"))
+        XCTAssertTrue(commandPanel.contains(".buttonStyle(MacPressFeedbackButtonStyle())"))
+        XCTAssertTrue(pressFeedbackStyle.contains(".scaleEffect(configuration.isPressed ? 0.985 : 1.0)"))
+        XCTAssertTrue(pressFeedbackStyle.contains("duration: 0.06"))
         XCTAssertFalse(commandPanel.contains(".font(.title3.weight(.heavy))"))
         XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 8)"))
