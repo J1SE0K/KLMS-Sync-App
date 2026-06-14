@@ -1877,16 +1877,16 @@ private struct CompanionCompactTabBar: View {
                     .background(
                         isSelected
                             ? Color.klmsPrimaryCommandButtonBackground
-                            : Color.clear,
+                            : Color.klmsSubtleCardBackground,
                         in: RoundedRectangle(cornerRadius: 10)
                     )
                     .overlay {
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
+                            .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
                     }
                     .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(KLMSCardButtonStyle())
                 .accessibilityLabel(section.title)
                 .accessibilityValue(selectedSection == section ? "선택됨" : "")
             }
@@ -2010,16 +2010,16 @@ private struct CompanionSidebarButton: View {
             .background(
                 isSelected
                     ? Color.klmsPrimaryCommandButtonBackground
-                    : Color.clear,
+                    : Color.klmsSubtleCardBackground,
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel(section.title)
         .accessibilityValue(isSelected ? "선택됨" : "")
     }
@@ -3424,7 +3424,7 @@ private struct CompanionItemListControls: View {
                 }
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KLMSCardButtonStyle())
     }
 
     private func companionPickerField<Content: View>(
@@ -4163,11 +4163,11 @@ private struct FlowChipLayout: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(selectedKind == entry.kind ? Color.klmsPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
+                            .stroke(selectedKind == entry.kind ? Color.klmsPrimaryCommandButtonBorder : entry.kind.tint.opacity(0.26), lineWidth: 1)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(KLMSCardButtonStyle())
                 .accessibilityHint("변경된 항목 목록을 펼칩니다.")
             }
         }
