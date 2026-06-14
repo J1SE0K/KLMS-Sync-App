@@ -1262,11 +1262,33 @@ final class DashboardDataModelTests: XCTestCase {
         let selectableRows = try sourceStructBody(named: "CompanionSelectableItemListRows", in: ios)
         let inlineRows = try sourceStructBody(named: "CompanionInlineItemRowsView", in: ios)
         let recentFileRequests = try sourceStructBody(named: "RecentFileAccessRequestsView", in: ios)
+        let companionModel = try sourceBody(
+            after: "final class CompanionModel: ObservableObject",
+            in: ios,
+            description: "CompanionModel"
+        )
+        let compactSelectionPanel = try sourceStructBody(named: "CompactDashboardSelectionPanel", in: ios)
+        let workstationDetailPanel = try sourceStructBody(named: "WorkstationDashboardDetailPanel", in: ios)
 
         XCTAssertTrue(ios.contains("private struct CompanionItemListData"))
         XCTAssertTrue(ios.contains("@Published private(set) var dashboardSyncItems: [ServerRelaySyncItem] = []"))
         XCTAssertTrue(ios.contains("@Published private(set) var dashboardSyncItemsRevision = 0"))
+        XCTAssertTrue(ios.contains("@Published private(set) var visibleCalendarChangesCache: [CalendarChange] = []"))
         XCTAssertTrue(ios.contains("private func rebuildDashboardDerivedState()"))
+        XCTAssertTrue(companionModel.contains("latestFileAccessRequestByItemID"))
+        XCTAssertTrue(companionModel.contains("activeItemActionByItemID"))
+        XCTAssertTrue(companionModel.contains("activeCalendarActionByID"))
+        XCTAssertTrue(companionModel.contains("visibleDashboardItemsByCategoryID"))
+        XCTAssertTrue(companionModel.contains("private func rebuildFileAccessLookup()"))
+        XCTAssertTrue(companionModel.contains("private func rebuildItemActionLookups()"))
+        XCTAssertTrue(companionModel.contains("private func rebuildVisibleCalendarChanges()"))
+        XCTAssertTrue(companionModel.contains("func cachedVisibleDashboardItems(for categoryID: String)"))
+        XCTAssertTrue(companionModel.contains("func visibleCalendarChanges() -> [CalendarChange] {\n        visibleCalendarChangesCache"))
+        XCTAssertFalse(companionModel.contains(".filter { $0.itemID == item.id }"))
+        XCTAssertTrue(compactSelectionPanel.contains("model.cachedVisibleDashboardItems(for: category.rawValue)"))
+        XCTAssertFalse(compactSelectionPanel.contains(".filter { category.includes($0) }"))
+        XCTAssertTrue(workstationDetailPanel.contains("model.cachedVisibleDashboardItems(for: category.rawValue)"))
+        XCTAssertFalse(workstationDetailPanel.contains(".filter { category.includes($0) }"))
         XCTAssertTrue(categoryDetail.contains("CompanionSelectableItemListRows("))
         XCTAssertFalse(categoryDetail.contains("@State private var visibleLimit"))
         XCTAssertFalse(categoryDetail.contains("@State private var selectedItemID"))

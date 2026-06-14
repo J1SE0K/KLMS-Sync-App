@@ -74,22 +74,29 @@ struct KLMSiOSApp: App {
 final class CompanionModel: ObservableObject {
     @Published var recentCommands: [RemoteRunCommand] = []
     @Published var recentRequestLog: [ServerRelayRequestLogEntry] = []
-    @Published var recentFileAccessRequests: [ServerRelayFileAccessRequest] = []
-    @Published var recentItemActions: [ServerRelayItemAction] = []
+    @Published var recentFileAccessRequests: [ServerRelayFileAccessRequest] = [] {
+        didSet { rebuildFileAccessLookup() }
+    }
+    @Published var recentItemActions: [ServerRelayItemAction] = [] {
+        didSet { rebuildItemActionLookups(); rebuildVisibleCalendarChanges() }
+    }
     @Published var recentSettingActions: [ServerRelaySettingAction] = []
     @Published var syncItems: [ServerRelaySyncItem] = [] {
-        didSet { rebuildDashboardDerivedState() }
+        didSet { rebuildDashboardDerivedState(); rebuildVisibleCalendarChanges() }
     }
     @Published var dryRunReports: [DryRunReport] = []
-    @Published var calendarChanges: [CalendarChange] = []
+    @Published var calendarChanges: [CalendarChange] = [] {
+        didSet { rebuildVisibleCalendarChanges() }
+    }
     @Published var remoteSettings: [ServerRelaySetting] = []
     @Published var sharedRunLogs: [ServerRelayRunLog] = []
     @Published var verifySummary: ServerRelayVerifySummary?
     @Published var mailDashboardItems: [ServerRelaySyncItem] = [] {
-        didSet { rebuildDashboardDerivedState() }
+        didSet { rebuildDashboardDerivedState(); rebuildVisibleCalendarChanges() }
     }
     @Published private(set) var dashboardSyncItems: [ServerRelaySyncItem] = []
     @Published private(set) var dashboardSyncItemsRevision = 0
+    @Published private(set) var visibleCalendarChangesCache: [CalendarChange] = []
     @Published private(set) var dashboardStatus = SanitizedRemoteStatus()
     @Published var status = SanitizedRemoteStatus() {
         didSet { rebuildDashboardStatus() }
@@ -139,6 +146,10 @@ final class CompanionModel: ObservableObject {
     private var verifySummarySignature: Int?
     private var lastTerminalCommandID: UUID?
     private let syncDataStaleInterval: TimeInterval = 45
+    private var latestFileAccessRequestByItemID: [String: ServerRelayFileAccessRequest] = [:]
+    private var activeItemActionByItemID: [String: ServerRelayItemAction] = [:]
+    private var activeCalendarActionByID: [String: ServerRelayItemAction] = [:]
+    private var visibleDashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
 
     private static let deprecatedLocalHostKey = "KLMSLocalRemoteHost"
     private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
@@ -197,6 +208,7 @@ final class CompanionModel: ObservableObject {
         Self.persistServerToken(storedServerToken)
         Self.clearDeprecatedLocalConnectionInfo()
         rebuildDashboardDerivedState()
+        rebuildVisibleCalendarChanges()
     }
 
     private func rebuildDashboardDerivedState() {
@@ -204,8 +216,20 @@ final class CompanionModel: ObservableObject {
         if dashboardSyncItems != nextItems {
             dashboardSyncItems = nextItems
             dashboardSyncItemsRevision &+= 1
+            rebuildDashboardItemLookup()
         }
         rebuildDashboardStatus()
+    }
+
+    private func rebuildDashboardItemLookup() {
+        var next: [String: [ServerRelaySyncItem]] = [:]
+        for category in DashboardMetricCategory.allCases {
+            next[category.rawValue] = dashboardSyncItems
+                .filter { category.includes($0) }
+                .filter { !$0.isHidden }
+                .companionSorted(by: .recent)
+        }
+        visibleDashboardItemsByCategoryID = next
     }
 
     private func rebuildDashboardStatus() {
@@ -743,44 +767,23 @@ final class CompanionModel: ObservableObject {
     }
 
     func latestFileAccessRequest(for item: ServerRelaySyncItem) -> ServerRelayFileAccessRequest? {
-        recentFileAccessRequests
-            .filter { $0.itemID == item.id }
-            .sorted { $0.updatedAt > $1.updatedAt }
-            .first
+        latestFileAccessRequestByItemID[item.id]
     }
 
     func activeItemAction(for item: ServerRelaySyncItem) -> ServerRelayItemAction? {
-        recentItemActions
-            .filter { $0.itemID == item.id && !$0.status.isFailedLike }
-            .sorted { $0.updatedAt > $1.updatedAt }
-            .first
+        activeItemActionByItemID[item.id]
     }
 
     func activeCalendarAction(for change: CalendarChange) -> ServerRelayItemAction? {
-        recentItemActions
-            .filter { action in
-                action.itemID == change.id
-                    && action.itemKind == "calendar"
-                    && action.status.isInFlight
-            }
-            .sorted { $0.updatedAt > $1.updatedAt }
-            .first
+        activeCalendarActionByID[change.id]
     }
 
     func visibleCalendarChanges() -> [CalendarChange] {
-        (
-            calendarChanges
-                + mailDashboardItems
-                .unmatchedMailDashboardItems(comparedTo: syncItems)
-                .compactMap(\.mailCalendarChange)
-        )
-            .dedupedForCalendarDisplay()
-            .filter { change in
-                guard change.isUserVisibleCalendarChange else {
-                    return false
-                }
-                return !isCalendarChangeResolved(change)
-            }
+        visibleCalendarChangesCache
+    }
+
+    func cachedVisibleDashboardItems(for categoryID: String) -> [ServerRelaySyncItem] {
+        visibleDashboardItemsByCategoryID[categoryID] ?? []
     }
 
     private func isCalendarChangeResolved(_ change: CalendarChange) -> Bool {
@@ -806,6 +809,57 @@ final class CompanionModel: ObservableObject {
         }
         guard !resolvedIDs.isEmpty else { return }
         resolvedCalendarChangeIDs.formUnion(resolvedIDs)
+        rebuildVisibleCalendarChanges()
+    }
+
+    private func rebuildFileAccessLookup() {
+        var next: [String: ServerRelayFileAccessRequest] = [:]
+        for request in recentFileAccessRequests {
+            guard !request.itemID.isEmpty else { continue }
+            if let existing = next[request.itemID], existing.updatedAt >= request.updatedAt {
+                continue
+            }
+            next[request.itemID] = request
+        }
+        latestFileAccessRequestByItemID = next
+    }
+
+    private func rebuildItemActionLookups() {
+        var itemActions: [String: ServerRelayItemAction] = [:]
+        var calendarActions: [String: ServerRelayItemAction] = [:]
+        for action in recentItemActions {
+            if !action.itemID.isEmpty, !action.status.isFailedLike {
+                if itemActions[action.itemID]?.updatedAt ?? .distantPast < action.updatedAt {
+                    itemActions[action.itemID] = action
+                }
+            }
+            if action.itemKind == "calendar", action.status.isInFlight {
+                if calendarActions[action.itemID]?.updatedAt ?? .distantPast < action.updatedAt {
+                    calendarActions[action.itemID] = action
+                }
+            }
+        }
+        activeItemActionByItemID = itemActions
+        activeCalendarActionByID = calendarActions
+    }
+
+    private func rebuildVisibleCalendarChanges() {
+        let next = (
+            calendarChanges
+                + mailDashboardItems
+                .unmatchedMailDashboardItems(comparedTo: syncItems)
+                .compactMap(\.mailCalendarChange)
+        )
+            .dedupedForCalendarDisplay()
+            .filter { change in
+                guard change.isUserVisibleCalendarChange else {
+                    return false
+                }
+                return !isCalendarChangeResolved(change)
+            }
+        if visibleCalendarChangesCache != next {
+            visibleCalendarChangesCache = next
+        }
     }
 
     func refreshRecent(
@@ -4169,10 +4223,7 @@ private struct WorkstationDashboardDetailPanel: View {
     @ObservedObject var model: CompanionModel
 
     private var items: [ServerRelaySyncItem] {
-        model.dashboardSyncItems
-            .filter { category.includes($0) }
-            .filter { !$0.isHidden }
-            .companionSorted(by: .recent)
+        model.cachedVisibleDashboardItems(for: category.rawValue)
     }
 
     private var selectedItem: ServerRelaySyncItem? {
@@ -4426,10 +4477,7 @@ private struct CompactDashboardSelectionPanel: View {
     @ObservedObject var model: CompanionModel
 
     private var items: [ServerRelaySyncItem] {
-        model.dashboardSyncItems
-            .filter { category.includes($0) }
-            .filter { !$0.isHidden }
-            .companionSorted(by: .recent)
+        model.cachedVisibleDashboardItems(for: category.rawValue)
     }
 
     var body: some View {
