@@ -821,6 +821,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(commandPanel.contains(".font(.title3.weight(.heavy))"))
         XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 8)"))
+        XCTAssertTrue(actionButtonStyle.contains("background(isPressed: configuration.isPressed)"))
+        XCTAssertTrue(actionButtonStyle.contains("return isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)"))
+        XCTAssertTrue(actionButtonStyle.contains("Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
+        XCTAssertFalse(actionButtonStyle.contains("return Color.klmsMacDangerBackground"))
     }
 
     func testMacAndIOSUseSeparatedLightAndDarkThemeTokens() throws {

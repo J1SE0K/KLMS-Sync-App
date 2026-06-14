@@ -1846,10 +1846,10 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(background, in: RoundedRectangle(cornerRadius: 10))
+            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(border, lineWidth: 1)
+                    .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
@@ -1872,14 +1872,14 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var background: Color {
+    private func background(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
             return Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .primary:
             return Color.klmsMacPrimaryCommandButtonBackground
         case .destructive:
-            return Color.klmsMacDangerBackground
+            return isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .success:
             return Color.klmsMacSuccessBackground
         case .accent(let color):
@@ -1887,14 +1887,14 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var border: Color {
+    private func border(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
             return Color.klmsMacCommandButtonBorder.opacity(0.92)
         case .primary:
             return Color.klmsMacPrimaryCommandButtonBorder
         case .destructive:
-            return Color.klmsMacDangerBorder
+            return Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
         case .success:
             return Color.klmsMacSuccessBorder
         case .accent(let color):
