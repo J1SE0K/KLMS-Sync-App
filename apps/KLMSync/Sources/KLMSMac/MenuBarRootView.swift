@@ -1144,7 +1144,7 @@ private struct ExternalIntegrationStatusView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
+                    withAnimation(.easeInOut(duration: 0.10)) {
                         isExpanded.toggle()
                     }
                 } label: {
@@ -1909,7 +1909,7 @@ private struct LogSummaryPanelView: View {
     }
 
     private func toggle(_ kind: LogSummaryKind) {
-        withAnimation(.easeInOut(duration: 0.16)) {
+        withAnimation(.easeInOut(duration: 0.10)) {
             expandedKind = expandedKind == kind ? nil : kind
         }
     }
@@ -3402,7 +3402,7 @@ private struct SharedRunLogActivityRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.18)) {
+            withAnimation(.snappy(duration: 0.10)) {
                 isExpanded.toggle()
             }
         }
@@ -3461,7 +3461,7 @@ private struct ServerRequestLogActivityRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.18)) {
+            withAnimation(.snappy(duration: 0.10)) {
                 isExpanded.toggle()
             }
         }
@@ -3558,7 +3558,7 @@ private struct RemoteCommandActivityRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.18)) {
+            withAnimation(.snappy(duration: 0.10)) {
                 isExpanded.toggle()
             }
         }
@@ -3699,7 +3699,7 @@ private struct FileAccessActivityRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.18)) {
+            withAnimation(.snappy(duration: 0.10)) {
                 isExpanded.toggle()
             }
         }
@@ -5141,7 +5141,7 @@ struct CollapsibleSectionBox<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.snappy(duration: 0.18)) {
+                withAnimation(.snappy(duration: 0.10)) {
                     isExpanded.toggle()
                 }
             } label: {

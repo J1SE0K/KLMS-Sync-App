@@ -2535,7 +2535,7 @@ private struct ServerRelayConnectionPanel: View {
             }
 
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(.easeInOut(duration: 0.10)) {
                     showConnectionFields.toggle()
                 }
             } label: {
@@ -4491,7 +4491,7 @@ private struct CompactDashboardSelectedRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.16)) {
+                withAnimation(.easeInOut(duration: 0.10)) {
                     expanded.toggle()
                 }
             } label: {
@@ -5228,7 +5228,7 @@ private struct MailPasteAnalyzerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(.easeInOut(duration: 0.10)) {
                     isExpanded.toggle()
                 }
             } label: {
@@ -9567,7 +9567,7 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private func toggle(_ kind: RemoteLogSummaryKind) {
-        withAnimation(.easeInOut(duration: 0.16)) {
+        withAnimation(.easeInOut(duration: 0.10)) {
             expandedKind = expandedKind == kind ? nil : kind
         }
     }
@@ -9775,7 +9775,7 @@ private struct SharedRunLogRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.18)) {
+            withAnimation(.snappy(duration: 0.10)) {
                 isExpanded.toggle()
             }
         }
@@ -9975,7 +9975,7 @@ private struct ServerRequestLogRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.18)) {
+            withAnimation(.snappy(duration: 0.10)) {
                 isExpanded.toggle()
             }
         }
@@ -10083,7 +10083,7 @@ private struct RemoteFileAccessRequestRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.18)) {
+            withAnimation(.snappy(duration: 0.10)) {
                 isExpanded.toggle()
             }
         }
@@ -10433,7 +10433,7 @@ private struct RemoteCommandRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.snappy(duration: 0.18)) {
+            withAnimation(.snappy(duration: 0.10)) {
                 isExpanded.toggle()
             }
         }

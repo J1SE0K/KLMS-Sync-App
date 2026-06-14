@@ -846,6 +846,30 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertNil(ios.range(of: #"stroke\(\.quaternary"#, options: .regularExpression))
     }
 
+    func testMacAndIOSDirectInteractionAnimationsStayFast() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let macRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
+        let macDetailRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/DashboardDetailView.swift")
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let sources = try [
+            String(contentsOf: macRoot, encoding: .utf8),
+            String(contentsOf: macDetailRoot, encoding: .utf8),
+            String(contentsOf: iosRoot, encoding: .utf8),
+        ].joined(separator: "\n")
+
+        XCTAssertTrue(sources.contains("duration: 0.10"))
+        XCTAssertNil(
+            sources.range(
+                of: #"withAnimation\([^\n]*duration: 0\.(1[6-9]|[2-9][0-9]?)"#,
+                options: .regularExpression
+            ),
+            "직접 누르는 UI의 전환 애니메이션은 0.10초 이하로 유지해야 합니다."
+        )
+    }
+
     func testIOSDashboardAndSettingsFollowDesignNavigation() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

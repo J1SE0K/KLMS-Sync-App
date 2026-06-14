@@ -2990,7 +2990,7 @@ struct MacMailPasteAnalyzerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.snappy(duration: 0.18)) {
+                withAnimation(.snappy(duration: 0.10)) {
                     isExpanded.toggle()
                 }
             } label: {
