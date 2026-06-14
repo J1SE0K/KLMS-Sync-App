@@ -419,7 +419,12 @@ struct MacDesignWindowRootView: View {
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
             .foregroundStyle(selected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
-            .background(selected ? Color.klmsMacPrimaryCommandButtonBackground : Color.clear, in: RoundedRectangle(cornerRadius: 10))
+            .background(selected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(selected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacCommandBorder, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
     }
@@ -778,12 +783,12 @@ private struct WorkspaceNavigationView: View {
                         .padding(.vertical, 9)
                         .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
                         .background(
-                            isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.clear,
+                            isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacSubtleCardBackground,
                             in: RoundedRectangle(cornerRadius: 10)
                         )
                         .overlay {
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.clear, lineWidth: 1)
+                                .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacCommandBorder, lineWidth: 1)
                         }
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
