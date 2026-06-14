@@ -1757,33 +1757,49 @@ private struct CompanionSplitRootView: View {
     @Binding var selectedSection: CompanionAppSection?
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                Section("KLMS Sync") {
-                    ForEach(CompanionAppSection.workstationSections) { section in
-                        CompanionSidebarButton(
-                            section: section,
-                            isSelected: selectedSection == section,
-                            showsIcon: false,
-                            showsArrow: false
-                        ) {
-                            selectedSection = section
-                        }
-                        .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
-                        .listRowBackground(Color.clear)
+        HStack(spacing: 0) {
+            WorkstationSidebar(selectedSection: $selectedSection)
+                .frame(width: 176)
+            Rectangle()
+                .fill(Color.klmsBorder)
+                .frame(width: 1)
+            CompanionSectionContent(section: selectedSection ?? .status, model: model)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.klmsScreenBackground.ignoresSafeArea())
+    }
+}
+
+private struct WorkstationSidebar: View {
+    @Binding var selectedSection: CompanionAppSection?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("KLMS Sync")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(Color.klmsPrimaryText)
+                .padding(.horizontal, 18)
+                .padding(.top, 22)
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(CompanionAppSection.workstationSections) { section in
+                    CompanionSidebarButton(
+                        section: section,
+                        isSelected: selectedSection == section,
+                        showsIcon: false,
+                        showsArrow: false
+                    ) {
+                        selectedSection = section
                     }
                 }
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .background(Color.klmsScreenBackground)
-            .navigationSplitViewColumnWidth(min: 176, ideal: 198, max: 230)
-            .navigationTitle("KLMS Sync")
-            .klmsNavigationChrome()
-        } detail: {
-            CompanionSectionContent(section: selectedSection ?? .status, model: model)
+            .padding(.horizontal, 10)
+
+            Spacer(minLength: 0)
         }
-        .navigationSplitViewStyle(.balanced)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.klmsScreenBackground)
     }
 }
 
@@ -3383,9 +3399,11 @@ private struct RemoteDashboardSyncCard: View {
 
             dashboardPrimaryButton
 
-            LazyVGrid(columns: secondaryColumns, spacing: 8) {
-                ForEach(secondaryCommands, id: \.self) { command in
-                    dashboardSecondaryButton(command)
+            if compact {
+                LazyVGrid(columns: secondaryColumns, spacing: 8) {
+                    ForEach(secondaryCommands, id: \.self) { command in
+                        dashboardSecondaryButton(command)
+                    }
                 }
             }
         }
