@@ -2190,9 +2190,9 @@ private struct CompanionAppearancePanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -2450,8 +2450,12 @@ private struct ServerRelayConnectionPanel: View {
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.klmsBorder, lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
             .accessibilityHint(showConnectionFields ? "서버 정보 접기" : "서버 정보 펼치기")
@@ -2520,9 +2524,9 @@ private struct ServerRelayConnectionPanel: View {
             .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
         }
         .padding(12)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -3914,10 +3918,10 @@ private struct RemoteMetricTile: View {
             .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(isSelected ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(isSelected ? Color.klmsCommandBackground : Color.klmsCardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 13))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 13)
                     .stroke(isSelected ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
             )
         }
