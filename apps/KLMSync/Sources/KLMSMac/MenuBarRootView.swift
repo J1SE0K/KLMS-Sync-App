@@ -211,17 +211,17 @@ struct MacDesignWindowRootView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("\(metric.value)")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
+                            .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
                         Text(metric.title)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground.opacity(0.82) : Color.klmsMacSecondaryText)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                     .padding(12)
                     .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-                    .background(isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
+                    .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
                     .overlay {
                         RoundedRectangle(cornerRadius: 13)
-                            .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacBorder, lineWidth: 1)
+                            .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacBorder, lineWidth: 1)
                     }
                     .contentShape(RoundedRectangle(cornerRadius: 13))
                 }
@@ -419,11 +419,11 @@ struct MacDesignWindowRootView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
-            .foregroundStyle(selected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
-            .background(selected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+            .foregroundStyle(selected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
+            .background(selected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(selected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacCommandBorder, lineWidth: 1)
+                    .stroke(selected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder, lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
@@ -822,22 +822,22 @@ private struct WorkspaceNavigationView: View {
                         HStack(spacing: 9) {
                             Text(section.title)
                                 .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                                .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
+                                .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
                             Spacer(minLength: 0)
                             Image(systemName: "arrow.right")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacSecondaryText.opacity(0.70))
+                                .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.70))
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 9)
                         .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
                         .background(
-                            isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacSubtleCardBackground,
+                            isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground,
                             in: RoundedRectangle(cornerRadius: 10)
                         )
                         .overlay {
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacCommandBorder, lineWidth: 1)
+                                .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder, lineWidth: 1)
                         }
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
@@ -1755,13 +1755,13 @@ private struct SectionPickerView: View {
                 }
                 .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
                 .controlSize(.small)
-                .foregroundStyle(isSelected ? Color.klmsMacCommandAccent : Color.klmsMacPrimaryText)
+                .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
-                .background(isSelected ? Color.klmsMacCommandBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? Color.klmsMacCommandBorder : Color.klmsMacBorder, lineWidth: 1)
+                        .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacBorder, lineWidth: 1)
                 }
             }
         }
@@ -5233,10 +5233,10 @@ private struct MetricTile: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("\(metric.value)")
                         .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
+                        .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
                     Text(metric.label)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground.opacity(0.82) : Color.klmsMacSecondaryText)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
                 }
@@ -5244,16 +5244,16 @@ private struct MetricTile: View {
                 if metric.detail != nil {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground.opacity(0.78) : Color.klmsMacSecondaryText.opacity(0.70))
+                        .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground.opacity(0.78) : Color.klmsMacSecondaryText.opacity(0.70))
                 }
             }
         }
         .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
         .padding(12)
-        .background(isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
         .overlay {
             RoundedRectangle(cornerRadius: 13)
-                .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacBorder, lineWidth: 1)
+                .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacBorder, lineWidth: 1)
         }
         .contentShape(RoundedRectangle(cornerRadius: 13))
     }
@@ -5439,6 +5439,24 @@ extension Color {
             light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.260),
             dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.300)
         )
+    }
+
+    static var klmsMacSelectedBackground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.894, green: 0.879, blue: 0.828, alpha: 1.0),
+            dark: NSColor(red: 0.223, green: 0.211, blue: 0.184, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacSelectedBorder: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.56),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.48)
+        )
+    }
+
+    static var klmsMacSelectedForeground: Color {
+        klmsMacPrimaryText
     }
 
     static var klmsMacPrimaryCommandButtonBackground: Color {

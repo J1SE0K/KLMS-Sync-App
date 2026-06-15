@@ -1872,17 +1872,17 @@ private struct CompanionCompactTabBar: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.74)
                     }
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                     .frame(maxWidth: .infinity, minHeight: 34)
                     .background(
                         isSelected
-                            ? Color.klmsPrimaryCommandButtonBackground
+                            ? Color.klmsSelectedBackground
                             : Color.klmsSubtleCardBackground,
                         in: RoundedRectangle(cornerRadius: 10)
                     )
                     .overlay {
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
+                            .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
                     }
                     .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
@@ -1993,29 +1993,29 @@ private struct CompanionSidebarButton: View {
                     Image(systemName: section.systemImage)
                         .font(.body.weight(.semibold))
                         .frame(width: 22)
-                        .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
                 }
                 Text(section.title)
                     .font(.system(size: 12, weight: isSelected ? .bold : .semibold, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
                 Spacer(minLength: 0)
                 if showsArrow {
                     Image(systemName: "arrow.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsSecondaryText.opacity(0.70))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.70))
                 }
             }
             .padding(9)
             .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
             .background(
                 isSelected
-                    ? Color.klmsPrimaryCommandButtonBackground
+                    ? Color.klmsSelectedBackground
                     : Color.klmsSubtleCardBackground,
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
@@ -3416,11 +3416,11 @@ private struct CompanionItemListControls: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(isSelected ? Color.klmsPrimaryCommandButtonBackground : Color.klmsSubtleCardBackground, in: Capsule())
-                .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
+                .background(isSelected ? Color.klmsSelectedBackground : Color.klmsSubtleCardBackground, in: Capsule())
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 .overlay {
                     Capsule()
-                        .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
+                        .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
                 }
                 .contentShape(Capsule())
         }
@@ -4172,19 +4172,19 @@ private struct FlowChipLayout: View {
                         Image(systemName: selectedKind == entry.kind ? "chevron.up" : "chevron.down")
                             .font(.caption2.weight(.semibold))
                     }
-                    .foregroundStyle(selectedKind == entry.kind ? Color.klmsCommandButtonForeground : entry.kind.tint)
+                    .foregroundStyle(selectedKind == entry.kind ? Color.klmsSelectedForeground : entry.kind.tint)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         selectedKind == entry.kind
-                            ? Color.klmsPrimaryCommandButtonBackground
+                            ? Color.klmsSelectedBackground
                             : entry.kind.tint.opacity(0.10),
                         in: RoundedRectangle(cornerRadius: 8)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(selectedKind == entry.kind ? Color.klmsPrimaryCommandButtonBorder : entry.kind.tint.opacity(0.26), lineWidth: 1)
+                            .stroke(selectedKind == entry.kind ? Color.klmsSelectedBorder : entry.kind.tint.opacity(0.26), lineWidth: 1)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -4221,20 +4221,20 @@ private struct RemoteMetricTile: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("\(value)")
                     .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 Text(label)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground.opacity(0.84) : Color.klmsSecondaryText)
+                    .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
             .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
             .padding(11)
-            .background(isSelected ? Color.klmsPrimaryCommandButtonBackground : Color.klmsCardBackground)
+            .background(isSelected ? Color.klmsSelectedBackground : Color.klmsCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
@@ -4333,19 +4333,19 @@ private struct WorkstationMetricCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("\(category.title) \(value)개")
                     .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 Text(category.workstationDescription)
                     .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground.opacity(0.84) : Color.klmsSecondaryText)
+                    .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(11)
             .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
-            .background(isSelected ? Color.klmsPrimaryCommandButtonBackground : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+            .background(isSelected ? Color.klmsSelectedBackground : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
             .overlay(
                 RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 13))
         }
@@ -8864,7 +8864,7 @@ private struct ServerSyncDataRow: View, Equatable {
                 }
                 Text(item.title.isEmpty ? "제목 없음" : item.title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsCommandButtonForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                     .lineLimit(2)
                 Text(metadata)
                     .font(.caption)
@@ -8880,21 +8880,21 @@ private struct ServerSyncDataRow: View, Equatable {
             }
         }
         .padding(10)
-        .background(isSelected ? Color.klmsPrimaryCommandButtonBackground : Color.klmsSubtleCardBackground)
+        .background(isSelected ? Color.klmsSelectedBackground : Color.klmsSubtleCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder, lineWidth: 1)
+                .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
         )
     }
 
     private var primaryForeground: Color {
-        isSelected ? Color.klmsCommandButtonForeground : tint
+        isSelected ? Color.klmsSelectedForeground : tint
     }
 
     private var secondaryForeground: Color {
-        isSelected ? Color.klmsCommandButtonForeground.opacity(0.78) : Color.klmsSecondaryText
+        Color.klmsSecondaryText
     }
 
     private var metadata: String {
@@ -11484,6 +11484,42 @@ private extension Color {
         #else
         return Color.white.opacity(0.12)
         #endif
+    }
+
+    static var klmsSelectedBackground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.894, green: 0.879, blue: 0.828, alpha: 1.0),
+            dark: UIColor(red: 0.223, green: 0.211, blue: 0.184, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.894, green: 0.879, blue: 0.828, alpha: 1.0),
+            dark: NSColor(red: 0.223, green: 0.211, blue: 0.184, alpha: 1.0)
+        )
+        #else
+        return Color.gray.opacity(0.18)
+        #endif
+    }
+
+    static var klmsSelectedBorder: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.56),
+            dark: UIColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.48)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.56),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.48)
+        )
+        #else
+        return Color.gray.opacity(0.72)
+        #endif
+    }
+
+    static var klmsSelectedForeground: Color {
+        klmsPrimaryText
     }
 
     static var klmsPrimaryCommandButtonBackground: Color {

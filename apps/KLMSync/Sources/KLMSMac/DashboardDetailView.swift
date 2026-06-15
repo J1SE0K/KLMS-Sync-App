@@ -1813,14 +1813,14 @@ private struct DashboardControlChip: View {
         Button(action: action) {
             Text(title)
                 .font(.caption.weight(isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
+                .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
                 .frame(minWidth: 42)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
-                .background(isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacSubtleCardBackground, in: Capsule())
+                .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground, in: Capsule())
                 .overlay {
                     Capsule()
-                        .stroke(isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacCommandBorder, lineWidth: 1)
+                        .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder, lineWidth: 1)
                 }
         }
         .buttonStyle(KLMSMacPressFeedbackButtonStyle())
