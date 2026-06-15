@@ -864,6 +864,11 @@ final class DashboardDataModelTests: XCTestCase {
         let macSettings = try String(contentsOf: macSettingsRoot, encoding: .utf8)
         let macDesignSources = [mac, macDetail, macSettings].joined(separator: "\n")
         let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let macSettingsButtonStyle = try sourceBody(
+            after: "private struct KLMSMacSettingsButtonStyle: ButtonStyle",
+            in: macSettings,
+            description: "Mac settings button style"
+        )
 
         XCTAssertTrue(mac.contains("static func klmsMacAdaptiveColor(light: NSColor, dark: NSColor)"))
         XCTAssertTrue(mac.contains("var borderColor: Color = .klmsMacBorder"))
@@ -875,6 +880,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("static var klmsMacPrimaryText: Color"))
         XCTAssertTrue(mac.contains("static var klmsMacSecondaryText: Color"))
         XCTAssertTrue(mac.contains("static var klmsMacSecondaryCommandButtonForeground: Color"))
+        XCTAssertTrue(macSettings.contains(".buttonStyle(KLMSMacSettingsButtonStyle())"))
+        XCTAssertTrue(macSettings.contains(".buttonStyle(KLMSMacSettingsButtonStyle(tone: .destructive))"))
+        XCTAssertTrue(macSettingsButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
+        XCTAssertTrue(macSettingsButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46)"))
+        XCTAssertTrue(macSettingsButtonStyle.contains("Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
         XCTAssertTrue(mac.contains("Image(systemName: \"play.fill\")"))
         XCTAssertTrue(mac.contains(".font(.headline.weight(.black))"))
         XCTAssertFalse(macDesignSources.contains(".foregroundStyle(.secondary)"))

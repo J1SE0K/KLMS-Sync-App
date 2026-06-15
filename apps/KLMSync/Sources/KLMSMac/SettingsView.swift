@@ -380,6 +380,7 @@ struct SettingsView: View {
                         Label("최근 백업 복구", systemImage: "clock.arrow.circlepath")
                     }
                     .disabled(model.latestBackup == nil)
+                    .buttonStyle(KLMSMacSettingsButtonStyle(tone: .destructive))
                 }
                 SettingsHelpText("백업은 숨김, 완료, 중요 표시처럼 앱에서 편집한 로컬 상태를 복구할 때 사용합니다.")
             }
@@ -395,6 +396,7 @@ struct SettingsView: View {
             content()
         }
         .formStyle(.grouped)
+        .buttonStyle(KLMSMacSettingsButtonStyle())
         .padding()
     }
 
@@ -505,5 +507,54 @@ private struct SettingsHelpText: View {
             .font(.caption)
             .foregroundStyle(Color.klmsMacSecondaryText)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private enum KLMSMacSettingsButtonTone {
+    case soft
+    case destructive
+}
+
+private struct KLMSMacSettingsButtonStyle: ButtonStyle {
+    var tone: KLMSMacSettingsButtonTone = .soft
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
+            }
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
+    }
+
+    private var foreground: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsMacSecondaryCommandButtonForeground
+        case .destructive:
+            return Color.klmsMacDangerBorder
+        }
+    }
+
+    private func background(isPressed: Bool) -> Color {
+        isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+    }
+
+    private func border(isPressed: Bool) -> Color {
+        switch tone {
+        case .soft:
+            return isPressed ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46) : Color.klmsMacCommandButtonBorder.opacity(0.92)
+        case .destructive:
+            return Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
+        }
     }
 }
