@@ -273,8 +273,8 @@ private struct DashboardDetailFilters {
 }
 
 private enum DashboardLargeList {
-    static let initialVisibleLimit = 16
-    static let increment = 16
+    static let initialVisibleLimit = 8
+    static let increment = 12
 }
 
 private struct DashboardFileData {
@@ -522,6 +522,22 @@ private struct DashboardShowMoreButton: View {
             Label("더 보기 \(remainingCount)개 남음", systemImage: "chevron.down")
                 .font(.caption.weight(.semibold))
                 .frame(maxWidth: .infinity, minHeight: 34)
+        }
+        .buttonStyle(KLMSMacActionButtonStyle())
+    }
+}
+
+private struct DashboardRowDisclosureButton: View {
+    @Binding var isExpanded: Bool
+    var collapsedTitle = "작업"
+    var expandedTitle = "접기"
+
+    var body: some View {
+        Button {
+            isExpanded.toggle()
+        } label: {
+            Label(isExpanded ? expandedTitle : collapsedTitle, systemImage: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.caption.weight(.semibold))
         }
         .buttonStyle(KLMSMacActionButtonStyle())
     }
@@ -980,7 +996,7 @@ private struct StateItemListView: View {
     var emptyText: String
     var editor: StateItemEditorKind
     var filters: DashboardDetailFilters
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
@@ -1053,8 +1069,9 @@ private struct StateItemListView: View {
 private struct StateItemRowView: View {
     var item: StateItem
     var editor: StateItemEditorKind
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var didRequestSync = false
+    @State private var isExpanded = false
 
     var body: some View {
         let hidden = isHidden
@@ -1080,14 +1097,14 @@ private struct StateItemRowView: View {
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                         .lineLimit(2)
-            if !item.location.isEmpty || !item.coverageSummary.isEmpty {
-                Text([item.location, item.coverageSummary].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .lineLimit(2)
-            }
-        }
-        Spacer(minLength: 8)
+                    if !item.location.isEmpty || !item.coverageSummary.isEmpty {
+                        Text([item.location, item.coverageSummary].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 8)
                 if !item.url.isEmpty {
                     Button {
                         openExternalURL(item.url)
@@ -1097,69 +1114,72 @@ private struct StateItemRowView: View {
                     .help("KLMS 열기")
                     .buttonStyle(KLMSMacIconButtonStyle())
                 }
+                DashboardRowDisclosureButton(isExpanded: $isExpanded)
             }
 
-            DashboardActionCaption("수정")
-            switch editor {
-            case .assignment:
-                AssignmentOverridePicker(item: item, model: model)
-            case .assignmentRecord:
-                RecordStatusView(item: item)
-            case .exam:
-                ExamOverrideEditor(
-                    item: item,
-                    override: model.snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride(),
-                    model: model
-                )
-            }
+            if isExpanded {
+                DashboardActionCaption("수정")
+                switch editor {
+                case .assignment:
+                    AssignmentOverridePicker(item: item, model: model)
+                case .assignmentRecord:
+                    RecordStatusView(item: item)
+                case .exam:
+                    ExamOverrideEditor(
+                        item: item,
+                        override: model.snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride(),
+                        model: model
+                    )
+                }
 
-            if didRequestSync {
-                MacInlinePendingActionView(message: "과제/시험 동기화 반영을 시작했습니다.")
-            } else {
-                HStack(spacing: 8) {
-                if editor == .exam {
-                    Button {
-                        approveExam()
-                    } label: {
-                        Label("시험 반영", systemImage: "checkmark.seal")
+                if didRequestSync {
+                    MacInlinePendingActionView(message: "과제/시험 동기화 반영을 시작했습니다.")
+                } else {
+                    HStack(spacing: 8) {
+                    if editor == .exam {
+                        Button {
+                            approveExam()
+                        } label: {
+                            Label("시험 반영", systemImage: "checkmark.seal")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle(tone: .success))
+                        .disabled(isHidden)
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle(tone: .success))
-                    .disabled(isHidden)
-                }
-                Button {
-                    didRequestSync = true
-                    Task { await model.run(.coreSync) }
-                } label: {
-                    Label("동기화 반영", systemImage: KLMSEngineCommand.coreSync.systemImage)
-                }
-                .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
-                .disabled(model.runningCommand != nil)
-                if editor == .assignmentRecord, isManualCompleted {
                     Button {
-                        clearCompletion()
+                        didRequestSync = true
+                        Task { await model.run(.coreSync) }
                     } label: {
-                        Label("완료 해제", systemImage: "arrow.uturn.backward")
+                        Label("동기화 반영", systemImage: KLMSEngineCommand.coreSync.systemImage)
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle())
-                }
-                if hidden {
-                    Button {
-                        restoreHidden()
-                    } label: {
-                        Label("복구", systemImage: "arrow.uturn.backward")
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
+                    .disabled(model.runningCommand != nil)
+                    if editor == .assignmentRecord, isManualCompleted {
+                        Button {
+                            clearCompletion()
+                        } label: {
+                            Label("완료 해제", systemImage: "arrow.uturn.backward")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle())
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle())
-                } else if editor != .assignmentRecord || isManualCompleted {
-                    Button {
-                        hide()
-                    } label: {
-                        Label(editor == .exam ? "삭제/시험 아님" : "삭제/숨김", systemImage: "eye.slash")
+                    if hidden {
+                        Button {
+                            restoreHidden()
+                        } label: {
+                            Label("복구", systemImage: "arrow.uturn.backward")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle())
+                    } else if editor != .assignmentRecord || isManualCompleted {
+                        Button {
+                            hide()
+                        } label: {
+                            Label(editor == .exam ? "삭제/시험 아님" : "삭제/숨김", systemImage: "eye.slash")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
+                    Spacer()
+                    }
+                    .font(.caption)
                 }
-                Spacer()
-                }
-                .font(.caption)
             }
         }
         .padding(9)
@@ -1269,7 +1289,7 @@ private extension StateItem {
 
 private struct AssignmentOverridePicker: View {
     var item: StateItem
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
 
     var body: some View {
         Picker("처리", selection: binding) {
@@ -1333,7 +1353,7 @@ private struct MacInlinePendingActionView: View {
 private struct ExamOverrideEditor: View {
     var item: StateItem
     var override: ExamOverride
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var draft: ExamOverride
 
     init(item: StateItem, override: ExamOverride, model: KLMSMacModel) {
@@ -1393,7 +1413,7 @@ private struct ExamOverrideEditor: View {
 
 private struct NoticeListView: View {
     var filters: DashboardDetailFilters
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var category: NoticeListCategory
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -1589,8 +1609,9 @@ private struct NoticeCategoryPickerView: View {
 
 private struct NoticeRowView: View {
     var notice: NoticeDigestEntry
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var didRequestSync = false
+    @State private var isExpanded = false
 
     var body: some View {
         let hidden = model.snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true
@@ -1628,84 +1649,87 @@ private struct NoticeRowView: View {
                     .help("공지 열기")
                     .buttonStyle(KLMSMacIconButtonStyle())
                 }
+                DashboardRowDisclosureButton(isExpanded: $isExpanded)
             }
 
-            if !notice.summary.isEmpty {
-                Text(notice.summary.klmsDisplayText)
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .lineLimit(3)
-                    .textSelection(.enabled)
-            }
-
-            let attachments = attachmentDisplays
-            if !attachments.isEmpty {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("첨부 파일")
-                        .font(.caption2.weight(.semibold))
+            if isExpanded {
+                if !notice.summary.isEmpty {
+                    Text(notice.summary.klmsDisplayText)
+                        .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
-                    ForEach(attachments) { attachment in
-                        HStack(alignment: .top, spacing: 6) {
-                            Image(systemName: attachment.path.isEmpty ? "paperclip" : "doc")
-                                .font(.caption2)
-                                .foregroundStyle(Color.klmsMacSecondaryText)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(attachment.name.klmsDisplayText)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                }
+
+                let attachments = attachmentDisplays
+                if !attachments.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("첨부 파일")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                        ForEach(attachments) { attachment in
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: attachment.path.isEmpty ? "paperclip" : "doc")
                                     .font(.caption2)
-                                    .lineLimit(2)
-                                if !attachment.path.isEmpty {
-                                    Text(attachment.path.klmsDisplayText)
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(attachment.name.klmsDisplayText)
                                         .font(.caption2)
-                                        .foregroundStyle(Color.klmsMacSecondaryText)
-                                        .lineLimit(1)
-                                        .textSelection(.enabled)
+                                        .lineLimit(2)
+                                    if !attachment.path.isEmpty {
+                                        Text(attachment.path.klmsDisplayText)
+                                            .font(.caption2)
+                                            .foregroundStyle(Color.klmsMacSecondaryText)
+                                            .lineLimit(1)
+                                            .textSelection(.enabled)
+                                    }
                                 }
-                            }
-                            Spacer(minLength: 6)
-                            if !attachment.path.isEmpty {
-                                Button {
-                                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: attachment.path)])
-                                } label: {
-                                    Image(systemName: "folder")
+                                Spacer(minLength: 6)
+                                if !attachment.path.isEmpty {
+                                    Button {
+                                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: attachment.path)])
+                                    } label: {
+                                        Image(systemName: "folder")
+                                    }
+                                    .buttonStyle(KLMSMacIconButtonStyle())
+                                    .help("Finder에서 보기")
                                 }
-                                .buttonStyle(KLMSMacIconButtonStyle())
-                                .help("Finder에서 보기")
                             }
                         }
                     }
                 }
-            }
 
-            DashboardActionCaption("수정")
-            HStack {
-                Toggle("읽음", isOn: readBinding)
-                Toggle("중요", isOn: importantBinding)
-                Toggle("숨김", isOn: hiddenBinding)
-                Spacer()
-            }
-            .toggleStyle(.checkbox)
+                DashboardActionCaption("수정")
+                HStack {
+                    Toggle("읽음", isOn: readBinding)
+                    Toggle("중요", isOn: importantBinding)
+                    Toggle("숨김", isOn: hiddenBinding)
+                    Spacer()
+                }
+                .toggleStyle(.checkbox)
 
-            if didRequestSync {
-                MacInlinePendingActionView(message: "공지 메모 반영을 시작했습니다.")
-            } else {
-                HStack(spacing: 8) {
-                Button {
-                    didRequestSync = true
-                    Task { await model.run(.noticeSync) }
-                } label: {
-                    Label("메모 반영", systemImage: KLMSEngineCommand.noticeSync.systemImage)
+                if didRequestSync {
+                    MacInlinePendingActionView(message: "공지 메모 반영을 시작했습니다.")
+                } else {
+                    HStack(spacing: 8) {
+                        Button {
+                            didRequestSync = true
+                            Task { await model.run(.noticeSync) }
+                        } label: {
+                            Label("메모 반영", systemImage: KLMSEngineCommand.noticeSync.systemImage)
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
+                        .disabled(model.runningCommand != nil)
+                        Button {
+                            model.setNoticeHidden(!hidden, for: notice)
+                        } label: {
+                            Label(hidden ? "복구" : "삭제/숨김", systemImage: hidden ? "arrow.uturn.backward" : "eye.slash")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle(tone: hidden ? .soft : .destructive))
+                        Spacer()
+                    }
+                    .font(.caption)
                 }
-                .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
-                .disabled(model.runningCommand != nil)
-                Button {
-                    model.setNoticeHidden(!hidden, for: notice)
-                } label: {
-                    Label(hidden ? "복구" : "삭제/숨김", systemImage: hidden ? "arrow.uturn.backward" : "eye.slash")
-                }
-                .buttonStyle(KLMSMacActionButtonStyle(tone: hidden ? .soft : .destructive))
-                Spacer()
-                }
-                .font(.caption)
             }
         }
         .padding(9)
@@ -1801,7 +1825,7 @@ private struct NoticeAttachmentDisplay: Identifiable {
 private struct NewFilesListView: View {
     var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -1833,7 +1857,7 @@ private struct NewFilesListView: View {
 private struct FileManifestListView: View {
     var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -1865,7 +1889,7 @@ private struct FileManifestListView: View {
 private struct MissingFilesListView: View {
     var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -2328,7 +2352,7 @@ private struct HiddenItemsListView: View {
     var filters: DashboardDetailFilters
     var hiddenFileItems: [DashboardFileItem]
     var hiddenQuarantineItems: [DashboardFileItem]
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
@@ -2419,7 +2443,7 @@ private extension StateItem {
 private struct QuarantineListView: View {
     var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -2522,6 +2546,7 @@ private struct FileRowView: View {
     var kind: DashboardFileRowKind
     var model: KLMSMacModel?
     @State private var didRequestSync = false
+    @State private var isExpanded = false
 
     var body: some View {
         let hidden = item.isHidden
@@ -2554,7 +2579,7 @@ private struct FileRowView: View {
                             .foregroundStyle(Color.klmsMacSecondaryText)
                             .lineLimit(2)
                     }
-                    if !item.path.isEmpty {
+                    if isExpanded, !item.path.isEmpty {
                         Text(item.path)
                             .font(.caption2)
                             .foregroundStyle(Color.klmsMacSecondaryText)
@@ -2581,8 +2606,11 @@ private struct FileRowView: View {
                     .buttonStyle(KLMSMacIconButtonStyle())
                     .help("KLMS 열기")
                 }
+                DashboardRowDisclosureButton(isExpanded: $isExpanded)
             }
-            actionBar(hidden: hidden, pathExists: pathExists)
+            if isExpanded {
+                actionBar(hidden: hidden, pathExists: pathExists)
+            }
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2600,46 +2628,46 @@ private struct FileRowView: View {
                 MacInlinePendingActionView(message: "파일 동기화 반영을 시작했습니다.")
             } else {
                 HStack(spacing: 8) {
-                if pathExists {
+                    if pathExists {
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+                        } label: {
+                            Label("수정/열기", systemImage: "folder")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle())
+                    }
                     Button {
-                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+                        didRequestSync = true
+                        Task { await model.run(.filesSync) }
                     } label: {
-                        Label("수정/열기", systemImage: "folder")
+                        Label("파일 반영", systemImage: KLMSEngineCommand.filesSync.systemImage)
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle())
-                }
-                Button {
-                    didRequestSync = true
-                    Task { await model.run(.filesSync) }
-                } label: {
-                    Label("파일 반영", systemImage: KLMSEngineCommand.filesSync.systemImage)
-                }
-                .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
-                .disabled(model.runningCommand != nil)
-                if hidden {
-                    Button {
-                        restore(model)
-                    } label: {
-                        Label("복구", systemImage: "arrow.uturn.backward")
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
+                    .disabled(model.runningCommand != nil)
+                    if hidden {
+                        Button {
+                            restore(model)
+                        } label: {
+                            Label("복구", systemImage: "arrow.uturn.backward")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle())
+                    } else {
+                        Button {
+                            hide(model)
+                        } label: {
+                            Label(kind == .quarantine ? "삭제/무시" : "삭제/숨김", systemImage: "eye.slash")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle())
-                } else {
-                    Button {
-                        hide(model)
-                    } label: {
-                        Label(kind == .quarantine ? "삭제/무시" : "삭제/숨김", systemImage: "eye.slash")
+                    if pathExists {
+                        Button(role: .destructive) {
+                            moveToTrash(model)
+                        } label: {
+                            Label("휴지통", systemImage: "trash")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
-                }
-                if pathExists {
-                    Button(role: .destructive) {
-                        moveToTrash(model)
-                    } label: {
-                        Label("휴지통", systemImage: "trash")
-                    }
-                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
-                }
-                Spacer()
+                    Spacer()
                 }
                 .font(.caption)
                 .padding(.top, 8)
@@ -2731,7 +2759,7 @@ private struct DashboardFileKindStyle {
 private struct CalendarDetailView: View {
     var snapshot: EngineSnapshot
     var filters: DashboardDetailFilters
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2956,7 +2984,7 @@ private struct CalendarSummaryListView: View {
 private struct CalendarChangeListView: View {
     var changes: [CalendarChange]
     var filters: DashboardDetailFilters
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     var hasLegacyCountWithoutDetails: Bool
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -3042,7 +3070,7 @@ private struct CalendarChangeListView: View {
 
 private struct CalendarChangeRowView: View {
     var change: CalendarChange
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var editStatusText: String?
     @State private var calendarSheetAction: ServerRelayItemActionKind?
 
@@ -3216,7 +3244,7 @@ private struct CalendarChangeRowView: View {
 }
 
 struct MacMailPasteAnalyzerPanel: View {
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     var snapshot: EngineSnapshot
     @State private var isExpanded = false
     @State private var mailText = ""
@@ -3445,7 +3473,7 @@ private func macMailThemeAccent(for colorScheme: ColorScheme) -> Color {
 
 private struct MacMailPasteAnalysisResultView: View {
     var analysis: MacMailPasteAnalysis
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
     @State private var dashboardEditItem: ServerRelaySyncItem?
 
     var body: some View {

@@ -1103,6 +1103,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("struct Signature: Equatable"))
         XCTAssertFalse(detail.contains("dashboardMissingPathSet(from: model.snapshot)"))
         XCTAssertFalse(detail.contains("private func dashboardFilePathExists"))
+        XCTAssertTrue(detail.contains("static let initialVisibleLimit = 8"))
+        XCTAssertTrue(detail.contains("static let increment = 12"))
+        XCTAssertTrue(detail.contains("private struct DashboardRowDisclosureButton"))
+        XCTAssertEqual(detail.components(separatedBy: "@ObservedObject var model: KLMSMacModel").count - 1, 1)
+        XCTAssertTrue(fileRow.contains("@State private var isExpanded = false"))
+        XCTAssertTrue(fileRow.contains("if isExpanded, !item.path.isEmpty"))
+        XCTAssertTrue(fileRow.contains("if isExpanded {\n                actionBar(hidden: hidden, pathExists: pathExists)"))
     }
 
     func testIOSDashboardAndSettingsFollowDesignNavigation() throws {
