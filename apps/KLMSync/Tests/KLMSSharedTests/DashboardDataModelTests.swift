@@ -1377,6 +1377,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macMetricTile.contains("isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText"))
         XCTAssertTrue(macMetricTile.contains("isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacBorder"))
         XCTAssertTrue(macMetricTile.contains(".font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())"))
+        XCTAssertTrue(dashboardTopBarView.contains("Text(selectedSection.title)"))
+        XCTAssertFalse(dashboardTopBarView.contains("Text(\"대시보드\")"))
         XCTAssertTrue(dashboardTopBarView.contains(".font(.system(size: 26, weight: .bold, design: .rounded))"))
         let workstationBody = try sourceStructBody(named: "MacWorkstationLayoutView", in: mac)
         XCTAssertFalse(workstationBody.contains("ViewThatFits(in: .horizontal)"))

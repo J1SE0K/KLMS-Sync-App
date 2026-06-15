@@ -250,7 +250,7 @@ private struct DashboardTopBarView: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("대시보드")
+                Text(selectedSection.title)
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.klmsMacPrimaryText)
                 Text(statusText)
