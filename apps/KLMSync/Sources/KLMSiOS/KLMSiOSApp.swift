@@ -1819,14 +1819,14 @@ private struct CompanionTabRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            CompanionCompactTabBar(selectedSection: $selectedSection)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 6)
+                .background(Color.klmsScreenBackground)
+
             CompanionSectionContent(section: selectedSection, model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-            CompanionCompactTabBar(selectedSection: $selectedSection)
-                .padding(.horizontal, 18)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
-                .background(Color.klmsScreenBackground)
         }
         .background(Color.klmsScreenBackground.ignoresSafeArea())
     }
@@ -2062,6 +2062,7 @@ private struct CompanionStatusScreen: View {
             } else {
                 VStack(alignment: .leading, spacing: 14) {
                     statusSummaryColumn
+                    compactStatusDetailColumn
                 }
             }
         }
@@ -2097,6 +2098,17 @@ private struct CompanionStatusScreen: View {
                 model: model
             )
             .id(selectedDashboardPreview ?? defaultDashboardCategory ?? .files)
+        }
+    }
+
+    @ViewBuilder
+    private var compactStatusDetailColumn: some View {
+        if let kind = selectedChangeSummary {
+            RemoteChangeSummaryDetailPanel(kind: kind, model: model)
+                .id(kind)
+        } else if let category = selectedDashboardPreview {
+            DashboardCategoryInlineDetailPanel(category: category, model: model)
+                .id(category)
         }
     }
 
