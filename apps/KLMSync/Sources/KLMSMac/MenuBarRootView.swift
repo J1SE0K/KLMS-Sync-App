@@ -214,11 +214,15 @@ private struct WorkspaceNavigationView: View {
                         HStack(spacing: 10) {
                             RoundedRectangle(cornerRadius: 3)
                                 .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
-                                .frame(width: 4, height: 28)
-                            Image(systemName: section.systemImage)
-                                .font(.subheadline.weight(.semibold))
-                                .frame(width: 22)
-                                .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
+                                .frame(width: 5, height: 30)
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(isSelected ? Color.klmsMacCardBackground.opacity(0.72) : Color.clear)
+                                Image(systemName: section.systemImage)
+                                    .font(.subheadline.weight(isSelected ? .bold : .semibold))
+                                    .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
+                            }
+                            .frame(width: 30, height: 30)
                             Text(section.title)
                                 .font(.subheadline.weight(isSelected ? .semibold : .regular))
                                 .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)

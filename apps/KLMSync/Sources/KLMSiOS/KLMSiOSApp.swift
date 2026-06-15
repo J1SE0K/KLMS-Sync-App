@@ -3906,9 +3906,10 @@ private struct RemoteDashboardMetricOverview: View {
     var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    private let columns = [
+    private let compactColumns = [
         GridItem(.adaptive(minimum: 132), spacing: 8),
     ]
+    private let workstationColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 2)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -3931,7 +3932,7 @@ private struct RemoteDashboardMetricOverview: View {
         if !categories.isEmpty {
             VStack(alignment: .leading, spacing: 7) {
                 if horizontalSizeClass == .regular {
-                    VStack(spacing: 8) {
+                    LazyVGrid(columns: workstationColumns, alignment: .leading, spacing: 8) {
                         ForEach(categories) { category in
                             WorkstationMetricCard(
                                 category: category,
@@ -3944,7 +3945,7 @@ private struct RemoteDashboardMetricOverview: View {
                         }
                     }
                 } else {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 8) {
                         ForEach(categories) { category in
                             RemoteMetricTile(
                                 category.title,
