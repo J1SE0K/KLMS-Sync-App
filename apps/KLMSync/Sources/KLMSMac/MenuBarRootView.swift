@@ -574,7 +574,7 @@ private struct MacDesignPrimaryButtonStyle: ButtonStyle {
 
     private func primaryBackground(isPressed: Bool) -> Color {
         if isDestructive {
-            return isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+            return isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         }
         return isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
     }
@@ -1588,7 +1588,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .primary:
             isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
         case .destructive:
-            isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+            isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .success:
             isPressed ? Color.klmsMacSuccessBorder.opacity(0.20) : Color.klmsMacSuccessBackground
         case .accent(let color):

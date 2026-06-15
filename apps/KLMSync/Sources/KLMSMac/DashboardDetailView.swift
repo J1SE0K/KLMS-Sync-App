@@ -1879,7 +1879,7 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         case .primary:
             return isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
         case .destructive:
-            return isPressed ? Color.klmsMacDangerBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+            return isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .success:
             return isPressed ? Color.klmsMacSuccessBorder.opacity(0.20) : Color.klmsMacSuccessBackground
         case .accent(let color):

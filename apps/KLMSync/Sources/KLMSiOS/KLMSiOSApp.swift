@@ -4758,7 +4758,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .primary:
             return isPressed ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground
         case .destructive:
-            return isPressed ? Color.klmsDangerBackground : Color.klmsCommandButtonBackground.opacity(0.90)
+            return isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90)
         case .success:
             return isPressed ? Color.klmsSuccessBorder.opacity(0.20) : Color.klmsSuccessBackground
         case .accent(let color):
@@ -10932,10 +10932,10 @@ private struct ErrorBanner: View {
             .foregroundStyle(Color.klmsDangerBorder)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsDangerBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.klmsDangerBorder, lineWidth: 1)
+                    .stroke(Color.klmsDangerBorder.opacity(0.48), lineWidth: 1)
             }
     }
 }
