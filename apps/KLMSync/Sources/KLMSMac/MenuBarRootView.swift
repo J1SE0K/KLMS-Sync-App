@@ -4810,15 +4810,15 @@ extension Color {
 
     static var klmsMacSelectedBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(red: 0.894, green: 0.879, blue: 0.828, alpha: 1.0),
-            dark: NSColor(red: 0.223, green: 0.211, blue: 0.184, alpha: 1.0)
+            light: NSColor(red: 0.858, green: 0.839, blue: 0.773, alpha: 1.0),
+            dark: NSColor(red: 0.282, green: 0.263, blue: 0.218, alpha: 1.0)
         )
     }
 
     static var klmsMacSelectedBorder: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.56),
-            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.48)
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.72),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.68)
         )
     }
 
