@@ -1726,7 +1726,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     var id: String { rawValue }
 
     static var compactTabs: [CompanionAppSection] {
-        [.status, .files, .history, .settings]
+        workstationSections
     }
 
     static var workstationSections: [CompanionAppSection] {
@@ -1857,41 +1857,44 @@ private struct CompanionCompactTabBar: View {
     @Binding var selectedSection: CompanionAppSection
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(CompanionAppSection.compactTabs) { section in
-                Button {
-                    guard selectedSection != section else { return }
-                    selectedSection = section
-                } label: {
-                    let isSelected = selectedSection == section
-                    HStack(spacing: 5) {
-                        Image(systemName: section.systemImage)
-                            .font(.caption.weight(.bold))
-                        Text(section.compactTitle)
-                            .font(.caption.weight(isSelected ? .bold : .semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.74)
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 8) {
+                ForEach(CompanionAppSection.compactTabs) { section in
+                    Button {
+                        guard selectedSection != section else { return }
+                        selectedSection = section
+                    } label: {
+                        let isSelected = selectedSection == section
+                        HStack(spacing: 5) {
+                            Image(systemName: section.systemImage)
+                                .font(.caption.weight(.bold))
+                            Text(section.compactTitle)
+                                .font(.caption.weight(isSelected ? .bold : .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.74)
+                        }
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                        .frame(minWidth: 76, minHeight: 44)
+                        .padding(.horizontal, 8)
+                        .background(
+                            isSelected
+                                ? Color.klmsSelectedBackground
+                                : Color.klmsSubtleCardBackground,
+                            in: RoundedRectangle(cornerRadius: 10)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
+                        }
+                        .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(
-                        isSelected
-                            ? Color.klmsSelectedBackground
-                            : Color.klmsSubtleCardBackground,
-                        in: RoundedRectangle(cornerRadius: 10)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
-                    }
-                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                    .buttonStyle(KLMSCardButtonStyle())
+                    .accessibilityLabel(section.title)
+                    .accessibilityValue(selectedSection == section ? "선택됨" : "")
                 }
-                .buttonStyle(KLMSCardButtonStyle())
-                .accessibilityLabel(section.title)
-                .accessibilityValue(selectedSection == section ? "선택됨" : "")
             }
+            .padding(7)
         }
-        .padding(7)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
