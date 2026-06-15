@@ -652,6 +652,14 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
                     .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(
+                        Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0),
+                        lineWidth: 1
+                    )
+                    .allowsHitTesting(false)
+            }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
             .animation(.linear(duration: 0.035), value: configuration.isPressed)
@@ -5394,15 +5402,15 @@ extension Color {
 
     static var klmsMacCommandButtonPressedBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(red: 0.862, green: 0.840, blue: 0.782, alpha: 1.0),
-            dark: NSColor(red: 0.251, green: 0.239, blue: 0.208, alpha: 1.0)
+            light: NSColor(red: 0.812, green: 0.788, blue: 0.718, alpha: 1.0),
+            dark: NSColor(red: 0.318, green: 0.298, blue: 0.251, alpha: 1.0)
         )
     }
 
     static var klmsMacCommandButtonPressedOverlay: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.180),
-            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.220)
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.260),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.300)
         )
     }
 
@@ -5415,8 +5423,8 @@ extension Color {
 
     static var klmsMacPrimaryCommandButtonPressedBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(red: 0.232, green: 0.232, blue: 0.214, alpha: 1.0),
-            dark: NSColor(red: 0.843, green: 0.776, blue: 0.624, alpha: 1.0)
+            light: NSColor(red: 0.285, green: 0.282, blue: 0.258, alpha: 1.0),
+            dark: NSColor(red: 0.800, green: 0.729, blue: 0.553, alpha: 1.0)
         )
     }
 

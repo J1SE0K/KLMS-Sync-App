@@ -4782,6 +4782,71 @@ private struct KLMSActionButtonStyle: ButtonStyle {
     }
 }
 
+private struct KLMSToolbarButtonStyle: ButtonStyle {
+    var tone: KLMSButtonTone = .soft
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 9))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
+            }
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
+    }
+
+    private var foreground: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsSecondaryCommandButtonForeground
+        case .primary, .success:
+            return Color.klmsCommandButtonForeground
+        case .destructive:
+            return Color.klmsDangerBorder
+        case .accent(let color):
+            return color
+        }
+    }
+
+    private func background(isPressed: Bool) -> Color {
+        switch tone {
+        case .soft:
+            return isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90)
+        case .primary:
+            return isPressed ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground
+        case .destructive:
+            return isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90)
+        case .success:
+            return isPressed ? Color.klmsSuccessBorder.opacity(0.44) : Color.klmsSuccessBackground
+        case .accent(let color):
+            return color.opacity(isPressed ? 0.18 : 0.10)
+        }
+    }
+
+    private func border(isPressed: Bool) -> Color {
+        switch tone {
+        case .soft:
+            return Color.klmsCommandButtonBorder.opacity(isPressed ? 1.0 : 0.92)
+        case .primary:
+            return Color.klmsPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)
+        case .destructive:
+            return Color.klmsDangerBorder.opacity(isPressed ? 0.78 : 0.48)
+        case .success:
+            return Color.klmsSuccessBorder
+        case .accent(let color):
+            return color.opacity(0.28)
+        }
+    }
+}
+
 private struct DashboardMetricDetailPanel: View {
     var category: DashboardMetricCategory
     var status: SanitizedRemoteStatus
@@ -6065,12 +6130,14 @@ private struct MailCalendarCreateForm: View {
                     Button("취소") {
                         dismiss()
                     }
+                    .buttonStyle(KLMSToolbarButtonStyle())
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("등록") {
                         onSave(CalendarEventEdit(title: title, startAt: startAt, dueAt: dueAt, location: location))
                         dismiss()
                     }
+                    .buttonStyle(KLMSToolbarButtonStyle(tone: .success))
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         || startAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
@@ -6130,12 +6197,14 @@ private struct MailDashboardItemEditForm: View {
                     Button("취소") {
                         dismiss()
                     }
+                    .buttonStyle(KLMSToolbarButtonStyle())
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("저장") {
                         onSave(editedItem)
                         dismiss()
                     }
+                    .buttonStyle(KLMSToolbarButtonStyle(tone: .primary))
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -7509,12 +7578,14 @@ private struct CalendarEventEditForm: View {
                     Button("취소") {
                         dismiss()
                     }
+                    .buttonStyle(KLMSToolbarButtonStyle())
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(action == .calendarCreate ? "등록" : "저장") {
                         onSave(CalendarEventEdit(title: title, startAt: startAt, dueAt: dueAt, location: location))
                         dismiss()
                     }
+                    .buttonStyle(KLMSToolbarButtonStyle(tone: action == .calendarCreate ? .success : .primary))
                 }
             }
         }
@@ -8079,6 +8150,7 @@ private struct ServerSyncItemDetailView: View {
                     Button("닫기") {
                         dismiss()
                     }
+                    .buttonStyle(KLMSToolbarButtonStyle())
                 }
             }
         }
@@ -10660,6 +10732,7 @@ private struct RemoteSettingRow: View {
             } label: {
                 Label(setting.value.nilIfEmpty ?? "선택", systemImage: "chevron.up.chevron.down")
             }
+            .buttonStyle(KLMSActionButtonStyle())
             .disabled(!setting.editable || model.isSubmitting)
         case .number, .text:
             HStack(spacing: 6) {

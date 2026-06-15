@@ -761,6 +761,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: detail,
             description: "Mac action button style"
         )
+        let detailPressFeedbackStyle = try sourceBody(
+            after: "private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle",
+            in: detail,
+            description: "Mac detail press feedback button style"
+        )
         let iconButtonStyle = try sourceBody(
             after: "private struct KLMSMacIconButtonStyle: ButtonStyle",
             in: detail,
@@ -811,9 +816,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(detail.contains(".buttonStyle(.borderless)"))
         XCTAssertTrue(pressFeedbackStyle.contains(".scaleEffect(configuration.isPressed ? 0.997 : 1.0)"))
         XCTAssertTrue(pressFeedbackStyle.contains("Color.klmsMacCommandButtonPressedOverlay"))
+        XCTAssertTrue(pressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
+        XCTAssertTrue(detailPressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
         XCTAssertTrue(pressFeedbackStyle.contains("duration: 0.035"))
-        XCTAssertTrue(view.contains("alpha: 0.180"))
-        XCTAssertTrue(view.contains("alpha: 0.220"))
+        XCTAssertTrue(view.contains("alpha: 0.260"))
+        XCTAssertTrue(view.contains("alpha: 0.300"))
         XCTAssertTrue(primaryButtonStyle.contains(".scaleEffect(configuration.isPressed ? 0.997 : 1.0)"))
         XCTAssertTrue(primaryButtonStyle.contains("duration: 0.035"))
         XCTAssertTrue(primaryButtonStyle.contains("primaryBackground(isPressed: configuration.isPressed)"))
@@ -984,9 +991,18 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "KLMS action button style"
         )
+        let toolbarButtonStyle = try sourceBody(
+            after: "private struct KLMSToolbarButtonStyle: ButtonStyle",
+            in: ios,
+            description: "KLMS toolbar button style"
+        )
         let relayConnectionPanel = try sourceStructBody(named: "ServerRelayConnectionPanel", in: ios)
         let appearancePanel = try sourceStructBody(named: "CompanionAppearancePanel", in: ios)
         let remoteCommandPanel = try sourceStructBody(named: "RemoteCommandPanel", in: ios)
+        let mailCalendarCreateForm = try sourceStructBody(named: "MailCalendarCreateForm", in: ios)
+        let mailDashboardItemEditForm = try sourceStructBody(named: "MailDashboardItemEditForm", in: ios)
+        let calendarEventEditForm = try sourceStructBody(named: "CalendarEventEditForm", in: ios)
+        let remoteSettingRow = try sourceStructBody(named: "RemoteSettingRow", in: ios)
         let dashboardMetricCategory = try sourceBody(
             after: "private enum DashboardMetricCategory: String, CaseIterable, Identifiable",
             in: ios,
@@ -1093,6 +1109,19 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(actionButtonStyle.contains("return color.opacity(isPressed ? 0.18 : 0.10)"))
         XCTAssertTrue(actionButtonStyle.contains("Color.klmsPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)"))
         XCTAssertTrue(actionButtonStyle.contains("Color.klmsDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
+        XCTAssertTrue(toolbarButtonStyle.contains("RoundedRectangle(cornerRadius: 9)"))
+        XCTAssertTrue(toolbarButtonStyle.contains(".padding(.horizontal, 9)"))
+        XCTAssertTrue(toolbarButtonStyle.contains("Color.klmsCommandButtonPressedBackground"))
+        XCTAssertTrue(toolbarButtonStyle.contains("Color.klmsPrimaryCommandButtonPressedBackground"))
+        XCTAssertTrue(mailCalendarCreateForm.contains(".buttonStyle(KLMSToolbarButtonStyle())"))
+        XCTAssertTrue(mailCalendarCreateForm.contains(".buttonStyle(KLMSToolbarButtonStyle(tone: .success))"))
+        XCTAssertTrue(mailDashboardItemEditForm.contains(".buttonStyle(KLMSToolbarButtonStyle())"))
+        XCTAssertTrue(mailDashboardItemEditForm.contains(".buttonStyle(KLMSToolbarButtonStyle(tone: .primary))"))
+        XCTAssertTrue(calendarEventEditForm.contains(".buttonStyle(KLMSToolbarButtonStyle())"))
+        XCTAssertTrue(calendarEventEditForm.contains(".buttonStyle(KLMSToolbarButtonStyle(tone: action == .calendarCreate ? .success : .primary))"))
+        XCTAssertTrue(sheetItemDetail.contains(".buttonStyle(KLMSToolbarButtonStyle())"))
+        XCTAssertTrue(remoteSettingRow.contains("Label(setting.value.nilIfEmpty ?? \"선택\", systemImage: \"chevron.up.chevron.down\")"))
+        XCTAssertTrue(remoteSettingRow.contains(".buttonStyle(KLMSActionButtonStyle())"))
         XCTAssertTrue(remoteCancelControl.contains("Image(systemName: \"stop.circle\")"))
         XCTAssertTrue(remoteCancelControl.contains(".background(Color.klmsSubtleCardBackground"))
         XCTAssertFalse(remoteCancelControl.contains(".background(Color.klmsDangerBackground"))
