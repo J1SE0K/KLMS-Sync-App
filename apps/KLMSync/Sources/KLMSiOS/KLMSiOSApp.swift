@@ -1756,6 +1756,10 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .status:
             return "상태"
+        case .tasks:
+            return "과제"
+        case .calendar:
+            return "일정"
         default:
             return title
         }
@@ -1858,7 +1862,7 @@ private struct CompanionCompactTabBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 8) {
+            LazyHStack(spacing: 6) {
                 ForEach(CompanionAppSection.compactTabs) { section in
                     Button {
                         guard selectedSection != section else { return }
@@ -1869,13 +1873,12 @@ private struct CompanionCompactTabBar: View {
                             Image(systemName: section.systemImage)
                                 .font(.caption.weight(.bold))
                             Text(section.compactTitle)
-                                .font(.caption.weight(isSelected ? .bold : .semibold))
+                                .font(.system(size: 12, weight: isSelected ? .bold : .semibold, design: .rounded))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.74)
                         }
                         .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                        .frame(minWidth: 76, minHeight: 44)
-                        .padding(.horizontal, 8)
+                        .frame(minWidth: compactTabMinWidth(for: section), minHeight: 42)
                         .background(
                             isSelected
                                 ? Color.klmsSelectedBackground
@@ -1894,12 +1897,23 @@ private struct CompanionCompactTabBar: View {
                     .accessibilityValue(selectedSection == section ? "선택됨" : "")
                 }
             }
-            .padding(7)
+            .padding(6)
         }
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
+        }
+    }
+
+    private func compactTabMinWidth(for section: CompanionAppSection) -> CGFloat {
+        switch section {
+        case .status:
+            70
+        case .tasks:
+            62
+        default:
+            54
         }
     }
 }
@@ -2009,6 +2023,12 @@ private struct CompanionSidebarButton: View {
                         .font((isCompact ? Font.subheadline : Font.body).weight(.semibold))
                         .frame(width: isCompact ? 20 : 22)
                         .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.84))
+                        .padding(.vertical, isCompact ? 4 : 5)
+                        .padding(.horizontal, isCompact ? 4 : 5)
+                        .background(
+                            isSelected ? Color.klmsSelectedBorder.opacity(0.18) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 8)
+                        )
                 }
                 Text(section.title)
                     .font(.system(size: isCompact ? 12 : 13, weight: isSelected ? .bold : .semibold, design: .rounded))

@@ -170,7 +170,7 @@ struct SettingsView: View {
                     .frame(width: 5, height: 30)
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(isSelected ? Color.klmsMacCardBackground.opacity(0.72) : Color.clear)
+                        .fill(isSelected ? Color.klmsMacSelectedBorder.opacity(0.16) : Color.clear)
                     Image(systemName: tab.systemImage)
                         .font(.subheadline.weight(isSelected ? .bold : .semibold))
                         .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
