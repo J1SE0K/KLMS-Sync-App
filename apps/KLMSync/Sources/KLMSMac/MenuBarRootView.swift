@@ -210,7 +210,7 @@ struct MacDesignWindowRootView: View {
                     let isSelected = selectedMetric == metric.kind
                     VStack(alignment: .leading, spacing: 6) {
                         Text("\(metric.value)")
-                            .font(.system(size: 28, weight: .bold))
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
                         Text(metric.title)
                             .font(.caption.weight(.semibold))
@@ -225,7 +225,7 @@ struct MacDesignWindowRootView: View {
                     }
                     .contentShape(RoundedRectangle(cornerRadius: 13))
                 }
-                .buttonStyle(MacPressFeedbackButtonStyle())
+                .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 13))
             }
         }
     }
@@ -643,17 +643,18 @@ private struct MacDesignHeaderButtonStyle: ButtonStyle {
 }
 
 private struct MacPressFeedbackButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = 10
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: cornerRadius)
                     .stroke(
                         Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0),
                         lineWidth: 1
@@ -955,7 +956,7 @@ private struct MacAlertBannerView: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(MacPressFeedbackButtonStyle())
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
         .accessibilityLabel(title)
         .accessibilityHint(detail)
     }
@@ -1306,7 +1307,7 @@ private struct ExternalIntegrationStatusView: View {
                     .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .buttonStyle(MacPressFeedbackButtonStyle())
+                .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
                 .help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")
 
                 Button {
@@ -1743,7 +1744,7 @@ private struct SectionPickerView: View {
                         .minimumScaleFactor(0.82)
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(MacPressFeedbackButtonStyle())
+                .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
                 .controlSize(.small)
                 .foregroundStyle(isSelected ? Color.klmsMacCommandAccent : Color.klmsMacPrimaryText)
                 .padding(.horizontal, 8)
@@ -2208,7 +2209,7 @@ private struct LogSummaryTile: View {
                     .stroke(isExpanded ? tint.opacity(0.42) : tint.opacity(0.16), lineWidth: 1)
             }
         }
-        .buttonStyle(MacPressFeedbackButtonStyle())
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
         .help(isExpanded ? "관련 로그 접기" : "관련 로그 펼치기")
     }
 }
@@ -3982,7 +3983,7 @@ private struct CommandPanelView: View {
                     .stroke(Color.klmsMacPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
-        .buttonStyle(MacPressFeedbackButtonStyle())
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12))
         .controlSize(.regular)
         .help(command.shortDescription)
         .accessibilityLabel("\(command.displayName) 실행")
@@ -5098,7 +5099,7 @@ private struct TopUtilityActionsView: View {
             } label: {
                 utilityLabel("설정", systemImage: "gearshape")
             }
-            .buttonStyle(MacPressFeedbackButtonStyle())
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 999))
             Menu {
                 Button {
                     Task {
@@ -5186,7 +5187,7 @@ struct MetricGrid: View {
                     } label: {
                         MetricTile(metric: metric, isSelected: metric.detail?.rawValue == selectedMetricID)
                     }
-                    .buttonStyle(MacPressFeedbackButtonStyle())
+                    .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 13))
                     .disabled(metric.detail == nil)
                 } else {
                     MetricTile(metric: metric, isSelected: false)

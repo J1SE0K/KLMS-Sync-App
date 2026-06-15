@@ -1904,17 +1904,18 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
 }
 
 private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = 10
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: cornerRadius)
                     .stroke(
                         Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0),
                         lineWidth: 1
@@ -2730,7 +2731,7 @@ private struct CalendarActionButton: View {
                         .stroke(disabled ? Color.klmsMacCommandBorder.opacity(0.6) : tint.opacity(0.24), lineWidth: 1)
                 }
         }
-        .buttonStyle(KLMSMacPressFeedbackButtonStyle())
+        .buttonStyle(KLMSMacPressFeedbackButtonStyle(cornerRadius: 8))
         .disabled(disabled)
     }
 }

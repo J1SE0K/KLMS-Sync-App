@@ -3424,7 +3424,7 @@ private struct CompanionItemListControls: View {
                 }
                 .contentShape(Capsule())
         }
-        .buttonStyle(KLMSCardButtonStyle())
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 999))
     }
 
     private func companionPickerField<Content: View>(
@@ -3795,7 +3795,7 @@ private struct RemoteDashboardSyncCard: View {
                     .stroke(Color.klmsPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
-        .buttonStyle(KLMSCardButtonStyle())
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
         .opacity(commandDisabled ? 0.68 : 1)
         .disabled(commandDisabled)
         .accessibilityLabel("전체 동기화 실행")
@@ -4217,23 +4217,24 @@ private struct RemoteMetricTile: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(KLMSCardButtonStyle())
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 14))
         .accessibilityLabel("\(label) \(value)개")
     }
 }
 
 private struct KLMSCardButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = 10
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(Color.klmsCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: cornerRadius)
                     .stroke(
                         Color.klmsPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0),
                         lineWidth: 1
@@ -4327,7 +4328,7 @@ private struct WorkstationMetricCard: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 13))
         }
-        .buttonStyle(KLMSCardButtonStyle())
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
         .accessibilityLabel("\(category.title) \(value)개")
     }
 }
@@ -9033,7 +9034,7 @@ private struct RemoteCommandPanel: View {
                     .stroke(Color.klmsPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
-        .buttonStyle(KLMSCardButtonStyle())
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
         .opacity(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest ? 0.48 : 1)
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         .accessibilityLabel("\(kind.displayName) 실행")
@@ -10132,7 +10133,7 @@ private struct RemoteLogSummaryRow: View {
                     .stroke(isExpanded ? tint.opacity(0.32) : Color.klmsBorder, lineWidth: 1)
             )
         }
-        .buttonStyle(KLMSCardButtonStyle())
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
         .accessibilityHint(isExpanded ? "관련 기록 접기" : "관련 기록 펼치기")
     }
 }
