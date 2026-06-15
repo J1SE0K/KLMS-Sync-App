@@ -846,8 +846,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(pressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
         XCTAssertTrue(detailPressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
         XCTAssertTrue(pressFeedbackStyle.contains("duration: 0.035"))
-        XCTAssertTrue(view.contains("alpha: 0.260"))
-        XCTAssertTrue(view.contains("alpha: 0.300"))
+        XCTAssertTrue(view.contains("alpha: 0.380"))
+        XCTAssertTrue(view.contains("alpha: 0.420"))
         XCTAssertTrue(primaryButtonStyle.contains(".scaleEffect(configuration.isPressed ? 0.997 : 1.0)"))
         XCTAssertTrue(primaryButtonStyle.contains("duration: 0.035"))
         XCTAssertTrue(primaryButtonStyle.contains("primaryBackground(isPressed: configuration.isPressed)"))
@@ -1333,6 +1333,7 @@ final class DashboardDataModelTests: XCTestCase {
         let iosMetricOverview = try sourceStructBody(named: "RemoteDashboardMetricOverview", in: ios)
         let iosMetricTile = try sourceStructBody(named: "RemoteMetricTile", in: ios)
         let iosWorkstationMetricCard = try sourceStructBody(named: "WorkstationMetricCard", in: ios)
+        let iosWorkstationDetailPanel = try sourceStructBody(named: "WorkstationDashboardDetailPanel", in: ios)
         let iosCardButtonStyle = try sourceBody(
             after: "private struct KLMSCardButtonStyle: ButtonStyle",
             in: ios,
@@ -1450,6 +1451,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct WorkstationSelectedItemCard"))
         XCTAssertTrue(ios.contains("private struct WorkstationChangeSummaryCard"))
         XCTAssertTrue(ios.contains("private struct CompactDashboardSelectionPanel"))
+        XCTAssertFalse(iosWorkstationDetailPanel.contains(".background(Color.klmsCardBackground"))
+        XCTAssertFalse(iosWorkstationDetailPanel.contains(".frame(maxWidth: .infinity, alignment: .topLeading)\n        .overlay"))
         XCTAssertTrue(ios.contains("var workstationDescription"))
         XCTAssertTrue(ios.contains("CompactRemoteStageDurationRowsView(durations: stageDurations)"))
         XCTAssertTrue(ios.contains("RemoteStageDurationSummaryView(durations: stageDurations)"))

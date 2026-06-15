@@ -5443,8 +5443,8 @@ extension Color {
 
     static var klmsMacCommandButtonPressedOverlay: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.260),
-            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.300)
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.380),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.420)
         )
     }
 

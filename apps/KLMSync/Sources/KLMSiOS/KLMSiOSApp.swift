@@ -4374,13 +4374,7 @@ private struct WorkstationDashboardDetailPanel: View {
             }
             WorkstationChangeSummaryCard(model: model)
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        )
     }
 
     private var header: some View {
