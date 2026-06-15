@@ -2114,7 +2114,6 @@ private struct CompanionStatusScreen: View {
             } else {
                 VStack(alignment: .leading, spacing: 14) {
                     statusSummaryColumn
-                    compactStatusDetail
                 }
             }
         }
@@ -2141,36 +2140,6 @@ private struct CompanionStatusScreen: View {
                     deferChangeSummary(kind)
                 }
             )
-        }
-    }
-
-    @ViewBuilder
-    private var compactStatusDetail: some View {
-        if let kind = displayedChangeSummary {
-            RemoteChangeSummaryDetailPanel(kind: kind, model: model)
-                .id(kind)
-        } else {
-            CompactDashboardSelectionPanel(
-                category: displayedDashboardPreview ?? defaultDashboardCategory ?? .files,
-                model: model
-            )
-            .id(displayedDashboardPreview ?? defaultDashboardCategory ?? .files)
-        }
-    }
-
-    @ViewBuilder
-    private var statusDetailColumn: some View {
-        if let kind = displayedChangeSummary {
-            RemoteChangeSummaryDetailPanel(kind: kind, model: model)
-                .id(kind)
-        } else if let category = displayedDashboardPreview ?? defaultDashboardCategory {
-            DashboardCategoryInlineDetailPanel(
-                category: category,
-                model: model
-            )
-            .id(category)
-        } else {
-            InfoBanner(message: "대시보드 항목을 선택하면 이 영역에서 자세한 내용을 확인할 수 있습니다.")
         }
     }
 
@@ -3785,6 +3754,8 @@ private struct RemoteDashboardSyncCard: View {
                 syncStateChip
             }
 
+            MailPasteAnalyzerPanel(model: model)
+
             dashboardPrimaryButton
 
             RemoteCancelControl(model: model, compact: compact)
@@ -3949,6 +3920,11 @@ private struct RemoteDashboardMetricOverview: View {
                     selectedKind: selectedChangeSummary,
                     onSelect: onChangeSummaryTap
                 )
+                if horizontalSizeClass != .regular, let selectedChangeSummary {
+                    RemoteChangeSummaryDetailPanel(kind: selectedChangeSummary, model: model)
+                        .id(selectedChangeSummary)
+                        .transition(.opacity)
+                }
             }
         }
     }
@@ -3984,6 +3960,13 @@ private struct RemoteDashboardMetricOverview: View {
                             }
                         }
                     }
+                }
+                if horizontalSizeClass != .regular,
+                   let selectedCategory,
+                   categories.contains(selectedCategory) {
+                    CompactDashboardSelectionPanel(category: selectedCategory, model: model)
+                        .id(selectedCategory)
+                        .transition(.opacity)
                 }
             }
         }
@@ -9043,7 +9026,6 @@ private struct RemoteCommandPanel: View {
                     commandActionCard(command)
                 }
             }
-            MailPasteAnalyzerPanel(model: model)
             Toggle(isOn: $model.shouldUpdateNoticeNotes) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("공지 메모도 업데이트")
