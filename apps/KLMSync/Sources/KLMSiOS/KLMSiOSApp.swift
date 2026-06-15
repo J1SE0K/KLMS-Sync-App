@@ -1882,12 +1882,12 @@ private struct CompanionCompactTabBar: View {
                         .background(
                             isSelected
                                 ? Color.klmsSelectedBackground
-                                : Color.clear,
+                                : Color.klmsSubtleCardBackground.opacity(0.62),
                             in: RoundedRectangle(cornerRadius: 10)
                         )
                         .overlay {
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(isSelected ? Color.klmsSelectedBorder : Color.clear, lineWidth: 1)
+                                .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.42), lineWidth: 1)
                         }
                         .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
                         .contentShape(RoundedRectangle(cornerRadius: 10))
@@ -2016,20 +2016,19 @@ private struct CompanionSidebarButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: isCompact ? 7 : 10) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(isSelected ? Color.klmsSelectedBorder : Color.clear)
-                    .frame(width: 4, height: isCompact ? 26 : 28)
                 if showsIcon {
-                    Image(systemName: section.systemImage)
-                        .font((isCompact ? Font.subheadline : Font.body).weight(.semibold))
-                        .frame(width: isCompact ? 20 : 22)
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.84))
-                        .padding(.vertical, isCompact ? 4 : 5)
-                        .padding(.horizontal, isCompact ? 4 : 5)
-                        .background(
-                            isSelected ? Color.klmsSelectedBorder.opacity(0.18) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 8)
-                        )
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(
+                                isSelected
+                                    ? Color.klmsSelectedForeground.opacity(0.12)
+                                    : Color.klmsSubtleCardBackground.opacity(0.72)
+                            )
+                        Image(systemName: section.systemImage)
+                            .font((isCompact ? Font.subheadline : Font.body).weight(isSelected ? .bold : .semibold))
+                            .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.84))
+                    }
+                    .frame(width: isCompact ? 28 : 30, height: isCompact ? 28 : 30)
                 }
                 Text(section.title)
                     .font(.system(size: isCompact ? 12 : 13, weight: isSelected ? .bold : .semibold, design: .rounded))
@@ -2048,12 +2047,18 @@ private struct CompanionSidebarButton: View {
             .background(
                 isSelected
                     ? Color.klmsSelectedBackground
-                    : Color.clear,
+                    : Color.klmsSubtleCardBackground.opacity(0.42),
                 in: RoundedRectangle(cornerRadius: 10)
             )
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isSelected ? Color.klmsSelectedBorder : Color.clear)
+                    .frame(width: 3)
+                    .padding(.vertical, 9)
+            }
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.48), lineWidth: 1)
             )
             .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 10))

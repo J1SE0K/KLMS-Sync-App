@@ -53,25 +53,6 @@ struct KLMSMacApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("KLMS Sync") {
-            KLMSMacWorkspaceRootContainerView(model: model)
-                .frame(
-                    minWidth: KLMSWindowMetrics.minWidth,
-                    idealWidth: KLMSWindowMetrics.initialWidth,
-                    minHeight: KLMSWindowMetrics.minHeight,
-                    idealHeight: KLMSWindowMetrics.initialHeight,
-                    alignment: .topLeading
-                )
-                .onAppear {
-                    appDelegate.model = model
-                    KLMSDashboardWindowCoordinator.shared.scheduleBootstrapIfNeeded()
-                }
-        }
-        .defaultSize(width: KLMSWindowMetrics.initialWidth, height: KLMSWindowMetrics.initialHeight)
-        .commands {
-            CommandGroup(replacing: .newItem) {}
-        }
-
         MenuBarExtra {
             KLMSMacRootContainerView(model: model)
                 .frame(width: KLMSWindowMetrics.menuBarWidth, height: KLMSWindowMetrics.menuBarHeight)
@@ -128,7 +109,11 @@ private final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     private var terminationCleanupStarted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        model = KLMSDashboardWindowCoordinator.shared.model
         NSApp.setActivationPolicy(.regular)
+        Task { @MainActor in
+            KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+        }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -195,7 +180,15 @@ private final class KLMSDashboardWindowCoordinator {
         let initialSize = NSSize(width: KLMSWindowMetrics.initialWidth, height: KLMSWindowMetrics.initialHeight)
 
         let rootView = KLMSMacWorkspaceRootContainerView(model: model)
-            .frame(width: initialSize.width, height: initialSize.height, alignment: .topLeading)
+            .frame(
+                minWidth: KLMSWindowMetrics.minWidth,
+                idealWidth: KLMSWindowMetrics.initialWidth,
+                maxWidth: .infinity,
+                minHeight: KLMSWindowMetrics.minHeight,
+                idealHeight: KLMSWindowMetrics.initialHeight,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
 
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: initialSize),

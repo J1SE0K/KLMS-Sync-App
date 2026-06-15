@@ -237,7 +237,7 @@ private struct WorkspaceNavigationView: View {
                         .padding(.vertical, 9)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .background(
-                            isSelected ? Color.klmsMacSelectedBackground : Color.clear,
+                            isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground.opacity(0.34),
                             in: RoundedRectangle(cornerRadius: 10)
                         )
                         .overlay(alignment: .leading) {
@@ -248,7 +248,7 @@ private struct WorkspaceNavigationView: View {
                         }
                         .overlay {
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.32), lineWidth: 1)
+                                .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.42), lineWidth: 1)
                         }
                         .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
                         .contentShape(RoundedRectangle(cornerRadius: 10))
