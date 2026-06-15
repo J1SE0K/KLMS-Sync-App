@@ -989,13 +989,16 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 8))
+            .background {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(background(isPressed: configuration.isPressed))
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
             .animation(.linear(duration: 0.035), value: configuration.isPressed)
             .animation(.linear(duration: 0.08), value: isEnabled)
     }
@@ -1007,7 +1010,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .primary:
             Color.klmsMacCommandButtonForeground
         case .destructive:
-            Color.klmsMacDangerBorder
+            isEnabled ? Color.white : Color.klmsMacSecondaryText.opacity(0.68)
         case .success:
             Color.klmsMacSecondaryCommandButtonForeground
         case .accent(let color):
@@ -1015,18 +1018,30 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         }
     }
 
-    private func background(isPressed: Bool) -> Color {
+    private func background(isPressed: Bool) -> AnyShapeStyle {
         switch tone {
         case .soft:
-            isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+            return AnyShapeStyle(isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90))
         case .primary:
-            isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
+            return AnyShapeStyle(isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground)
         case .destructive:
-            isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+            if !isEnabled {
+                return AnyShapeStyle(Color.klmsMacCommandButtonBackground.opacity(0.42))
+            }
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [
+                        Color.klmsMacDangerBorder.opacity(isPressed ? 0.82 : 0.98),
+                        Color.klmsMacDangerBorder.opacity(isPressed ? 0.62 : 0.74),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
         case .success:
-            isPressed ? Color.klmsMacSuccessBorder.opacity(0.20) : Color.klmsMacSuccessBackground
+            return AnyShapeStyle(isPressed ? Color.klmsMacSuccessBorder.opacity(0.20) : Color.klmsMacSuccessBackground)
         case .accent(let color):
-            color.opacity(isPressed ? 0.18 : 0.10)
+            return AnyShapeStyle(color.opacity(isPressed ? 0.18 : 0.10))
         }
     }
 
@@ -1037,7 +1052,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .primary:
             Color.klmsMacPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)
         case .destructive:
-            Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
+            isEnabled ? Color.klmsMacDangerBorder.opacity(isPressed ? 0.92 : 0.84) : Color.klmsMacCommandButtonBorder.opacity(0.42)
         case .success:
             Color.klmsMacSuccessBorder
         case .accent(let color):
@@ -1197,12 +1212,12 @@ private struct LogSummaryPanelView: View {
                         await model.clearVisibleLogsAndServerRelayLogs()
                     }
                 } label: {
-                    Label("로그 지우기", systemImage: "trash")
-                        .labelStyle(.iconOnly)
+                    Image(systemName: "trash")
                 }
                 .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
                 .help("화면의 실행 로그와 완료된 서버 요청, 파일 요청 기록을 지웁니다. 진행 중인 요청은 유지됩니다.")
-                .disabled(model.runningCommand != nil)
+                .accessibilityLabel("로그 지우기")
+                .disabled(model.runningCommand != nil || !model.hasClearableVisibleLogs)
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 176), spacing: 8)], alignment: .leading, spacing: 8) {
@@ -1517,9 +1532,11 @@ private struct LogSummaryDetailView: View {
                         await model.clearServerRelayLogs(scope: .fileAccess)
                     }
                 } label: {
-                    Label("지우기", systemImage: "trash")
+                    Image(systemName: "trash")
                 }
                 .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                .help("파일 요청 기록 지우기")
+                .accessibilityLabel("파일 요청 기록 지우기")
                 .disabled(
                     !model.serverRelayConfigured
                         || model.serverRelayRecentFileAccessRequests.isEmpty
@@ -2872,9 +2889,11 @@ private struct RemoteActivityPanelView: View {
                                 await model.clearServerRelaySharedRunLogs()
                             }
                         } label: {
-                            Label("공유 실행 로그 지우기", systemImage: "trash")
+                            Image(systemName: "trash")
                         }
                         .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                        .help("공유 실행 로그 지우기")
+                        .accessibilityLabel("공유 실행 로그 지우기")
                         .disabled(!model.serverRelayConfigured || sharedRunLogs.isEmpty)
 
                         Button {
@@ -2882,9 +2901,11 @@ private struct RemoteActivityPanelView: View {
                                 await model.clearServerRelayLogs(scope: .requestLog)
                             }
                         } label: {
-                            Label("서버 요청 지우기", systemImage: "trash")
+                            Image(systemName: "trash")
                         }
                         .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                        .help("서버 요청 기록 지우기")
+                        .accessibilityLabel("서버 요청 기록 지우기")
                         .disabled(!model.serverRelayConfigured || requestLog.isEmpty)
 
                         Button {
@@ -2892,9 +2913,11 @@ private struct RemoteActivityPanelView: View {
                                 await model.clearServerRelayLogs(scope: .fileAccess)
                             }
                         } label: {
-                            Label("파일 요청 지우기", systemImage: "trash")
+                            Image(systemName: "trash")
                         }
                         .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                        .help("파일 요청 기록 지우기")
+                        .accessibilityLabel("파일 요청 기록 지우기")
                         .disabled(
                             !model.serverRelayConfigured
                                 || fileRequests.isEmpty

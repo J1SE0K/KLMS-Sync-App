@@ -367,6 +367,15 @@ final class CompanionModel: ObservableObject {
         serverRelayStore != nil
     }
 
+    var hasClearableRemoteLogs: Bool {
+        recentCommands.contains { !$0.status.isInFlight }
+            || !recentRequestLog.isEmpty
+            || recentFileAccessRequests.contains { !$0.status.isInFlight }
+            || recentItemActions.contains { $0.status != .pending && $0.status != .running }
+            || recentSettingActions.contains { $0.status != .pending && $0.status != .running }
+            || !sharedRunLogs.isEmpty
+    }
+
     var remoteAvailabilityMessage: String {
         if serverRelayStore == nil {
             return "HTTPS 서버 릴레이 URL과 iPhone/iPad/Windows용 클라이언트 토큰을 입력해 주세요."
@@ -4415,17 +4424,17 @@ private struct WorkstationDashboardDetailPanel: View {
         model.cachedVisibleDashboardItems(for: category.rawValue)
     }
 
-    private var selectedItem: ServerRelaySyncItem? {
-        items.first
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if let selectedItem {
-                WorkstationSelectedItemCard(item: selectedItem, category: category, model: model)
-            } else {
+            if items.isEmpty {
                 emptyCard
+            } else {
+                LazyVStack(alignment: .leading, spacing: 9) {
+                    ForEach(items) { item in
+                        CompactDashboardSelectedRow(item: item, model: model)
+                    }
+                }
             }
             WorkstationChangeSummaryCard(model: model)
         }
@@ -4443,7 +4452,7 @@ private struct WorkstationDashboardDetailPanel: View {
                     .foregroundStyle(Color.klmsSecondaryText)
             }
             Spacer(minLength: 8)
-            Text(headerPillTitle)
+            Text("목록")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsPrimaryText)
                 .padding(.horizontal, 10)
@@ -4451,12 +4460,8 @@ private struct WorkstationDashboardDetailPanel: View {
                 .background(Color.klmsSubtleCardBackground, in: Capsule())
                 .overlay(
                     Capsule().stroke(Color.klmsBorder, lineWidth: 1)
-                )
+            )
         }
-    }
-
-    private var headerPillTitle: String {
-        category == .files ? "미리보기" : "선택 항목"
     }
 
     private var emptyCard: some View {
@@ -4476,146 +4481,6 @@ private struct WorkstationDashboardDetailPanel: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
-    }
-}
-
-private struct WorkstationSelectedItemCard: View {
-    var item: ServerRelaySyncItem
-    var category: DashboardMetricCategory
-    @ObservedObject var model: CompanionModel
-
-    private var fileRequest: ServerRelayFileAccessRequest? {
-        model.latestFileAccessRequest(for: item)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(item.title.isEmpty ? "제목 없음" : item.title)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !item.course.isEmpty {
-                    Text(item.course)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
-                Text(detailSummary)
-                    .font(.subheadline)
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            detailGrid
-            actionRow
-            if let activeAction = model.activeItemAction(for: item) {
-                RemoteItemRequestPendingView(
-                    title: "요청 전송됨",
-                    message: "\(activeAction.action.companionActionTitle) · \(activeAction.status.displayName)"
-                )
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 210, alignment: .topLeading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        )
-    }
-
-    private var detailSummary: String {
-        if !item.detail.isEmpty {
-            return item.detail
-        }
-        if !item.timestamp.isEmpty {
-            return item.timestamp
-        }
-        return category.workstationDescription
-    }
-
-    private var detailGrid: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            WorkstationDetailLine(title: "상태", value: item.status)
-            WorkstationDetailLine(title: "시간", value: item.timestamp)
-            WorkstationDetailLine(title: "학기", value: item.academicTerm)
-            if item.attachmentCount > 0 {
-                WorkstationDetailLine(title: "첨부", value: "\(item.attachmentCount)개")
-            }
-        }
-    }
-
-    private var actionRow: some View {
-        HStack(spacing: 8) {
-            if item.kind == "file" {
-                if let fileRequest, fileRequest.isDownloadAvailable {
-                    Button {
-                        model.openFileAccessRequest(fileRequest)
-                    } label: {
-                        Label("미리보기", systemImage: "safari")
-                    }
-                    .buttonStyle(KLMSActionButtonStyle(tone: .primary))
-                }
-                Button {
-                    Task {
-                        await model.createFileAccessRequest(item: item)
-                    }
-                } label: {
-                    Label("링크 요청", systemImage: "link.badge.plus")
-                }
-                .buttonStyle(KLMSActionButtonStyle())
-                .disabled(!model.serverRelayConfigured || model.isSubmitting || fileRequest?.status.isInFlight == true)
-            }
-
-            if let hideAction {
-                Button {
-                    Task {
-                        await model.createItemAction(hideAction, item: item)
-                    }
-                } label: {
-                    Label(item.isHidden ? "복구" : "숨김", systemImage: item.isHidden ? "arrow.uturn.backward" : "eye.slash")
-                }
-                .buttonStyle(KLMSActionButtonStyle())
-                .disabled(!model.serverRelayConfigured || model.isSubmitting)
-            }
-
-            Spacer(minLength: 0)
-        }
-    }
-
-    private var hideAction: ServerRelayItemActionKind? {
-        switch item.kind {
-        case "assignment", "completedAssignment", "assignmentCandidate":
-            return item.isHidden ? .assignmentUnhide : .assignmentHide
-        case "exam", "examCandidate":
-            return item.isHidden ? .examRestore : .examIgnore
-        case "notice":
-            return item.isHidden ? .noticeUnhide : .noticeHide
-        case "file":
-            return item.isHidden ? .fileUnhide : .fileHide
-        default:
-            return nil
-        }
-    }
-}
-
-private struct WorkstationDetailLine: View {
-    var title: String
-    var value: String
-
-    var body: some View {
-        if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .frame(width: 44, alignment: .leading)
-                Text(value)
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsPrimaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
     }
 }
 
@@ -4804,13 +4669,16 @@ private struct KLMSActionButtonStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
-            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 10))
+            .background {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(background(isPressed: configuration.isPressed))
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
             .animation(.linear(duration: 0.035), value: configuration.isPressed)
             .animation(.linear(duration: 0.08), value: isEnabled)
     }
@@ -4822,7 +4690,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsCommandButtonForeground
         case .destructive:
-            return Color.klmsDangerBorder
+            return isEnabled ? Color.white : Color.klmsSecondaryText.opacity(0.68)
         case .success:
             return Color.klmsSecondaryCommandButtonForeground
         case .accent(let color):
@@ -4830,18 +4698,30 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         }
     }
 
-    private func background(isPressed: Bool) -> Color {
+    private func background(isPressed: Bool) -> AnyShapeStyle {
         switch tone {
         case .soft:
-            return isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90)
+            return AnyShapeStyle(isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90))
         case .primary:
-            return isPressed ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground
+            return AnyShapeStyle(isPressed ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground)
         case .destructive:
-            return isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90)
+            if !isEnabled {
+                return AnyShapeStyle(Color.klmsCommandButtonBackground.opacity(0.42))
+            }
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [
+                        Color.klmsDangerBorder.opacity(isPressed ? 0.82 : 0.98),
+                        Color.klmsDangerBorder.opacity(isPressed ? 0.62 : 0.74),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
         case .success:
-            return isPressed ? Color.klmsSuccessBorder.opacity(0.20) : Color.klmsSuccessBackground
+            return AnyShapeStyle(isPressed ? Color.klmsSuccessBorder.opacity(0.20) : Color.klmsSuccessBackground)
         case .accent(let color):
-            return color.opacity(isPressed ? 0.18 : 0.10)
+            return AnyShapeStyle(color.opacity(isPressed ? 0.18 : 0.10))
         }
     }
 
@@ -4852,7 +4732,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)
         case .destructive:
-            return Color.klmsDangerBorder.opacity(isPressed ? 0.78 : 0.48)
+            return isEnabled ? Color.klmsDangerBorder.opacity(isPressed ? 0.92 : 0.84) : Color.klmsCommandButtonBorder.opacity(0.42)
         case .success:
             return Color.klmsSuccessBorder
         case .accent(let color):
@@ -4871,13 +4751,16 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
-            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 9))
+            .background {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(background(isPressed: configuration.isPressed))
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 9)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
             .animation(.linear(duration: 0.035), value: configuration.isPressed)
             .animation(.linear(duration: 0.08), value: isEnabled)
     }
@@ -4889,24 +4772,36 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
         case .primary, .success:
             return Color.klmsCommandButtonForeground
         case .destructive:
-            return Color.klmsDangerBorder
+            return isEnabled ? Color.white : Color.klmsSecondaryText.opacity(0.68)
         case .accent(let color):
             return color
         }
     }
 
-    private func background(isPressed: Bool) -> Color {
+    private func background(isPressed: Bool) -> AnyShapeStyle {
         switch tone {
         case .soft:
-            return isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90)
+            return AnyShapeStyle(isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90))
         case .primary:
-            return isPressed ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground
+            return AnyShapeStyle(isPressed ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground)
         case .destructive:
-            return isPressed ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.90)
+            if !isEnabled {
+                return AnyShapeStyle(Color.klmsCommandButtonBackground.opacity(0.42))
+            }
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [
+                        Color.klmsDangerBorder.opacity(isPressed ? 0.82 : 0.98),
+                        Color.klmsDangerBorder.opacity(isPressed ? 0.62 : 0.74),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
         case .success:
-            return isPressed ? Color.klmsSuccessBorder.opacity(0.44) : Color.klmsSuccessBackground
+            return AnyShapeStyle(isPressed ? Color.klmsSuccessBorder.opacity(0.44) : Color.klmsSuccessBackground)
         case .accent(let color):
-            return color.opacity(isPressed ? 0.18 : 0.10)
+            return AnyShapeStyle(color.opacity(isPressed ? 0.18 : 0.10))
         }
     }
 
@@ -4917,7 +4812,7 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)
         case .destructive:
-            return Color.klmsDangerBorder.opacity(isPressed ? 0.78 : 0.48)
+            return isEnabled ? Color.klmsDangerBorder.opacity(isPressed ? 0.92 : 0.84) : Color.klmsCommandButtonBorder.opacity(0.42)
         case .success:
             return Color.klmsSuccessBorder
         case .accent(let color):
@@ -9942,11 +9837,10 @@ private struct RemoteLogSummaryPanel: View {
                         await model.clearRemoteLogs()
                     }
                 } label: {
-                    Label("로그 지우기", systemImage: "trash")
-                        .labelStyle(.iconOnly)
+                    Image(systemName: "trash")
                 }
                 .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                .disabled(!model.serverRelayConfigured || model.isSubmitting)
+                .disabled(!model.serverRelayConfigured || model.isSubmitting || !model.hasClearableRemoteLogs)
                 .accessibilityLabel("로그 지우기")
             }
 
@@ -10276,10 +10170,11 @@ private struct SharedRunLogsView: View {
                 }
                 if let clearAction {
                     Button(action: clearAction) {
-                        Label("지우기", systemImage: "trash")
+                        Image(systemName: "trash")
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                    .accessibilityLabel("공유 실행 로그 지우기")
                     .disabled(clearDisabled)
                 }
             }
@@ -10420,10 +10315,11 @@ private struct RecentFileAccessRequestsView: View {
                 }
                 if let clearAction {
                     Button(action: clearAction) {
-                        Label("지우기", systemImage: "trash")
+                        Image(systemName: "trash")
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                    .accessibilityLabel("파일 요청 기록 지우기")
                     .disabled(clearDisabled)
                 }
             }
@@ -10470,10 +10366,11 @@ private struct RecentServerRequestLogView: View {
                 }
                 if let clearAction {
                     Button(action: clearAction) {
-                        Label("지우기", systemImage: "trash")
+                        Image(systemName: "trash")
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                    .accessibilityLabel("서버 요청 기록 지우기")
                     .disabled(clearDisabled)
                 }
             }
@@ -10920,10 +10817,11 @@ private struct RecentRemoteCommandsView: View {
                 }
                 if let clearAction {
                     Button(action: clearAction) {
-                        Label("지우기", systemImage: "trash")
+                        Image(systemName: "trash")
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                    .accessibilityLabel("최근 요청 기록 지우기")
                     .disabled(clearDisabled)
                 }
             }

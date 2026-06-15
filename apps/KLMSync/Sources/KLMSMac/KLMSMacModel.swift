@@ -318,6 +318,20 @@ final class KLMSMacModel: ObservableObject {
         (try? makeServerRelayStore()) != nil
     }
 
+    var hasClearableVisibleLogs: Bool {
+        let hasLocalRunLog = !liveCommandOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || lastCommandResult != nil
+            || !commandHistory.records.isEmpty
+            || !snapshot.relayLogTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasCompletedRemoteCommand = lastRemoteCommand.map { !$0.displayStatus().isInFlight } ?? false
+        let hasCompletedFileRequest = serverRelayRecentFileAccessRequests.contains { !$0.status.isInFlight }
+        return hasLocalRunLog
+            || hasCompletedRemoteCommand
+            || !serverRelayRecentRequestLog.isEmpty
+            || hasCompletedFileRequest
+            || !serverRelaySharedRunLogs.isEmpty
+    }
+
     var serverRelayConnectionInfoText: String {
         let publicURL = publicServerRelayURLForSharing() ?? ""
         return """
