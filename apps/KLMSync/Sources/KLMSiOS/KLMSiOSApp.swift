@@ -4050,14 +4050,42 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
         switch self {
         case .noticeNew, .noticeUpdated:
             Color.klmsCommandAccent
-        case .newFiles, .fileCleanup:
+        case .newFiles:
             Color.klmsSecondaryText
+        case .fileCleanup:
+            Color.klmsDangerBorder
         case .calendarCreated:
             Color.klmsSuccessBorder
         case .calendarUpdated:
             Color.klmsCommandAccent
         case .calendarDeleted:
             Color.klmsDangerBorder
+        }
+    }
+
+    var chipBackground: Color {
+        switch self {
+        case .noticeNew, .noticeUpdated, .calendarUpdated:
+            Color.klmsCommandButtonBackground
+        case .newFiles:
+            Color.klmsCardBackground
+        case .fileCleanup, .calendarDeleted:
+            Color.klmsDangerBackground
+        case .calendarCreated:
+            Color.klmsSuccessBackground
+        }
+    }
+
+    var chipBorder: Color {
+        switch self {
+        case .fileCleanup, .calendarDeleted:
+            Color.klmsDangerBorder
+        case .calendarCreated:
+            Color.klmsSuccessBorder
+        case .noticeNew, .noticeUpdated, .calendarUpdated:
+            Color.klmsCommandButtonBorder
+        case .newFiles:
+            Color.klmsBorder
         }
     }
 
@@ -4173,7 +4201,7 @@ private struct FlowChipLayout: View {
     var onSelect: (RemoteChangeSummaryKind) -> Void
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: 6)], alignment: .leading, spacing: 6) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 7)], alignment: .leading, spacing: 7) {
             ForEach(entries) { entry in
                 Button {
                     onSelect(entry.kind)
@@ -4202,12 +4230,12 @@ private struct FlowChipLayout: View {
                     .background(
                         isSelected
                             ? Color.klmsSelectedBackground.opacity(0.96)
-                            : Color.klmsCommandButtonBackground.opacity(0.92),
+                            : entry.kind.chipBackground,
                         in: RoundedRectangle(cornerRadius: 8)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.95), lineWidth: isSelected ? 1.2 : 1)
+                            .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : entry.kind.chipBorder, lineWidth: isSelected ? 1.2 : 1)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -4638,11 +4666,11 @@ private struct CompactDashboardSelectionPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center) {
-                Text("선택한 항목")
+                Text("\(category.title) 목록")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
                 Spacer(minLength: 8)
-                Text(category.title)
+                Text("\(items.count)개")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .padding(.horizontal, 9)
@@ -4653,8 +4681,10 @@ private struct CompactDashboardSelectionPanel: View {
             if items.isEmpty {
                 CompactDashboardEmptyRow(category: category)
             } else {
-                ForEach(Array(items.prefix(2))) { item in
-                    CompactDashboardSelectedRow(item: item, model: model)
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(items) { item in
+                        CompactDashboardSelectedRow(item: item, model: model)
+                    }
                 }
             }
         }

@@ -2580,10 +2580,10 @@ private struct DashboardSummaryView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
-            .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.klmsMacBorder.opacity(0.70), lineWidth: 1)
+                    .stroke(Color.klmsMacBorder, lineWidth: 1)
             }
         }
     }
@@ -4678,20 +4678,20 @@ private struct MetricTile: View {
                 }
                 Spacer(minLength: 0)
                 if metric.detail != nil {
-                    Image(systemName: "chevron.right")
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground.opacity(0.78) : Color.klmsMacSecondaryText.opacity(0.70))
+                        .foregroundStyle(isSelected ? tint : Color.klmsMacSecondaryText.opacity(0.70))
                 }
             }
         }
         .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
         .padding(12)
-        .background(isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
         .overlay {
             RoundedRectangle(cornerRadius: 13)
-                .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacBorder, lineWidth: isSelected ? 1.2 : 1)
+                .stroke(isSelected ? tint.opacity(0.92) : Color.klmsMacBorder, lineWidth: isSelected ? 1.4 : 1)
         }
-        .shadow(color: isSelected ? Color.klmsMacSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
+        .shadow(color: isSelected ? tint.opacity(0.12) : Color.clear, radius: 9, x: 0, y: 5)
         .contentShape(RoundedRectangle(cornerRadius: 13))
     }
 
