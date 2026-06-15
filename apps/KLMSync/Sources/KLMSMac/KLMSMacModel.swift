@@ -118,6 +118,8 @@ final class KLMSMacModel: ObservableObject {
     private var authStatusClearTask: Task<Void, Never>?
     private var runningCommandStatusPollTask: Task<Void, Never>?
     private var pasteboardClearTask: Task<Void, Never>?
+    private var liveCommandOutputBuffer = ""
+    private var liveCommandOutputPublishTask: Task<Void, Never>?
     private var activeRemoteCommandID: UUID?
     private var pendingRunCancellationRequested = false
     private var serverRelayLastStatusPublishAt: Date?
@@ -149,6 +151,7 @@ final class KLMSMacModel: ObservableObject {
     private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 60_000_000_000
     private static let passiveAuxiliaryRefreshMinimumInterval: TimeInterval = 300
+    private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 120_000_000
     private static let liveCommandOutputMaxCharacters = 24_000
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
@@ -417,7 +420,7 @@ final class KLMSMacModel: ObservableObject {
         if !serverRelayEnabled {
             lastRemoteCommand = nil
         }
-        liveCommandOutput = ""
+        resetLiveCommandOutput()
         liveAuthDigits = nil
         authStatusMessage = nil
         lastAuthStatusMessageForRemote = nil
@@ -2059,7 +2062,7 @@ final class KLMSMacModel: ObservableObject {
         pendingRunCancellationRequested = false
         errorMessage = nil
         lastCommandResult = nil
-        liveCommandOutput = ""
+        resetLiveCommandOutput()
         liveAuthDigits = nil
         authStatusMessage = nil
         lastAuthStatusMessageForRemote = nil
@@ -2097,13 +2100,13 @@ final class KLMSMacModel: ObservableObject {
             await installEngine(force: false, runDoctorAfterInstall: false)
             try mergeConfiguredOverridesIntoCanonicalStore()
             if pendingRunCancellationRequested {
-                appendLiveCommandOutput("\n== 실행 시작 전 중단됨 ==\n")
+                appendLiveCommandOutput("\n== 실행 시작 전 중단됨 ==\n", forcePublish: true)
                 let result = KLMSCommandResult(
                     invocation: command.invocation(dryRun: dryRun),
                     startedAt: runStartedAt,
                     finishedAt: Date(),
                     exitCode: 143,
-                    standardOutput: liveCommandOutput,
+                    standardOutput: liveCommandOutputBuffer,
                     standardError: "사용자가 실행 시작 전 중단했습니다.",
                     authDigits: nil,
                     wasCancelled: true
@@ -2124,6 +2127,7 @@ final class KLMSMacModel: ObservableObject {
                     await self?.handleLiveCommandOutput(chunk)
                 }
             }
+            flushLiveCommandOutput()
             lastCommandResult = result
             commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(result)) ?? commandHistory
             if result.authChallengeCompleted {
@@ -2139,9 +2143,9 @@ final class KLMSMacModel: ObservableObject {
                 _ = try? await runner.run(.report, paths: paths, environment: effectiveEnvironment)
             }
             if !dryRun, result.succeeded, command.refreshesVerificationAfterRun, skipsNoticeNativeRender {
-                appendLiveCommandOutput("\n== 연동 상태 검사 skipped: 공지 메모 업데이트 꺼짐 ==\n")
+                appendLiveCommandOutput("\n== 연동 상태 검사 skipped: 공지 메모 업데이트 꺼짐 ==\n", forcePublish: true)
             } else if !dryRun, result.succeeded, command.refreshesVerificationAfterRun {
-                appendLiveCommandOutput("\n== 연동 상태 검사 start ==\n")
+                appendLiveCommandOutput("\n== 연동 상태 검사 start ==\n", forcePublish: true)
                 let verifyResult = try await runner.run(
                     .verify,
                     paths: paths,
@@ -2151,15 +2155,18 @@ final class KLMSMacModel: ObservableObject {
                         await self?.handleLiveCommandOutput(chunk)
                     }
                 }
+                flushLiveCommandOutput()
                 commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(verifyResult)) ?? commandHistory
-                appendLiveCommandOutput("== 연동 상태 검사 finish status=\(verifyResult.exitCode) ==\n")
+                appendLiveCommandOutput("== 연동 상태 검사 finish status=\(verifyResult.exitCode) ==\n", forcePublish: true)
                 if !verifyResult.succeeded {
                     errorMessage = "동기화는 끝났지만 메모/캘린더/미리 알림 상태 검사에 실패했습니다."
                 }
             }
         } catch {
+            flushLiveCommandOutput()
             errorMessage = error.localizedDescription
         }
+        flushLiveCommandOutput()
         await reloadEngineState()
     }
 
@@ -2170,9 +2177,9 @@ final class KLMSMacModel: ObservableObject {
         pendingRunCancellationRequested = true
         let requested = await runner.cancelCurrentCommand()
         if requested {
-            appendLiveCommandOutput("\n== 사용자가 동기화 중단을 요청했습니다 ==\n")
+            appendLiveCommandOutput("\n== 사용자가 동기화 중단을 요청했습니다 ==\n", forcePublish: true)
         } else {
-            appendLiveCommandOutput("\n== 동기화 중단 요청을 기록했습니다 ==\n")
+            appendLiveCommandOutput("\n== 동기화 중단 요청을 기록했습니다 ==\n", forcePublish: true)
         }
     }
 
@@ -3517,7 +3524,8 @@ final class KLMSMacModel: ObservableObject {
 
     private func handleLiveCommandOutput(_ chunk: String) async {
         appendLiveCommandOutput(chunk.klmsDisplayText)
-        if let digits = KLMSCommandRunner.extractAuthDigits(from: liveCommandOutput) {
+        let currentOutput = liveCommandOutputBuffer
+        if let digits = KLMSCommandRunner.extractAuthDigits(from: currentOutput) {
             liveAuthDigits = digits
             authStatusMessage = nil
             authStatusClearTask?.cancel()
@@ -3528,20 +3536,53 @@ final class KLMSMacModel: ObservableObject {
             await publishServerRelayStatusIfNeeded(force: true)
         }
         if authDigitsSeenForCurrentRun,
-           KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(liveCommandOutput) {
+           KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(currentOutput) {
             await clearAuthDigitsState(showAuthenticatedMessage: true)
             await publishServerRelayStatusIfNeeded(force: true)
             return
         }
         if !authDigitsSeenForCurrentRun,
-           KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(liveCommandOutput) {
+           KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(currentOutput) {
             showAlreadyLoggedInStatusIfNeeded()
             await publishServerRelayStatusIfNeeded(force: true)
         }
     }
 
-    private func appendLiveCommandOutput(_ text: String) {
-        liveCommandOutput = Self.trimLiveCommandOutput(liveCommandOutput + text)
+    private func resetLiveCommandOutput() {
+        liveCommandOutputPublishTask?.cancel()
+        liveCommandOutputPublishTask = nil
+        liveCommandOutputBuffer = ""
+        liveCommandOutput = ""
+    }
+
+    private func appendLiveCommandOutput(_ text: String, forcePublish: Bool = false) {
+        liveCommandOutputBuffer = Self.trimLiveCommandOutput(liveCommandOutputBuffer + text)
+        if forcePublish {
+            flushLiveCommandOutput()
+            return
+        }
+        scheduleLiveCommandOutputPublish()
+    }
+
+    private func flushLiveCommandOutput() {
+        liveCommandOutputPublishTask?.cancel()
+        liveCommandOutputPublishTask = nil
+        if liveCommandOutput != liveCommandOutputBuffer {
+            liveCommandOutput = liveCommandOutputBuffer
+        }
+    }
+
+    private func scheduleLiveCommandOutputPublish() {
+        guard liveCommandOutputPublishTask == nil else {
+            return
+        }
+        liveCommandOutputPublishTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.liveCommandOutputPublishIntervalNanoseconds)
+            guard !Task.isCancelled else {
+                return
+            }
+            self?.flushLiveCommandOutput()
+        }
     }
 
     private static func trimLiveCommandOutput(_ text: String) -> String {

@@ -3537,6 +3537,11 @@ private struct CompanionItemListInputKey: Hashable {
     var recentOnly: Bool
 }
 
+private enum CompanionLargeList {
+    static let initialVisibleLimit = 80
+    static let increment = 80
+}
+
 private func companionItemsFingerprint(_ items: [ServerRelaySyncItem]) -> Int {
     var hasher = Hasher()
     hasher.combine(items.count)
@@ -5736,6 +5741,7 @@ private struct CompanionInlineItemRowsView: View {
     @State private var selectedItemID: String?
     @State private var detailItemID: String?
     @State private var deferredDetailTask: Task<Void, Never>?
+    @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
         category: DashboardMetricCategory,
@@ -5754,8 +5760,9 @@ private struct CompanionInlineItemRowsView: View {
     }
 
     var body: some View {
+        let visibleItems = Array(items.prefix(visibleLimit))
         LazyVStack(alignment: .leading, spacing: 8) {
-            ForEach(items) { item in
+            ForEach(visibleItems) { item in
                 let isSelected = activeSelectedItemID == item.id
                 VStack(alignment: .leading, spacing: 8) {
                     Button {
@@ -5776,11 +5783,25 @@ private struct CompanionInlineItemRowsView: View {
                     }
                 }
             }
+            if items.count > visibleItems.count {
+                CompanionShowMoreRowsButton(
+                    remainingCount: items.count - visibleItems.count
+                ) {
+                    visibleLimit += CompanionLargeList.increment
+                }
+            }
+        }
+        .onChange(of: visibleItemsResetKey) { _, _ in
+            visibleLimit = CompanionLargeList.initialVisibleLimit
         }
     }
 
     private var activeSelectedItemID: String? {
         presentation == .externalDetail ? externalSelectedItemID : selectedItemID
+    }
+
+    private var visibleItemsResetKey: String {
+        "\(items.count):\(items.first?.id ?? ""):\(items.last?.id ?? "")"
     }
 
     private func accessorySystemImage(isSelected: Bool) -> String {
@@ -5823,6 +5844,7 @@ private struct CompanionSelectableItemListRows: View {
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var deferredSelectionTask: Task<Void, Never>?
+    @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
         items: [ServerRelaySyncItem],
@@ -5833,8 +5855,9 @@ private struct CompanionSelectableItemListRows: View {
     }
 
     var body: some View {
+        let visibleItems = Array(items.prefix(visibleLimit))
         LazyVStack(alignment: .leading, spacing: 8) {
-            ForEach(items) { item in
+            ForEach(visibleItems) { item in
                 Button {
                     select(item)
                 } label: {
@@ -5844,7 +5867,21 @@ private struct CompanionSelectableItemListRows: View {
                 .buttonStyle(KLMSCardButtonStyle())
                 .accessibilityHint("항목 상세를 엽니다.")
             }
+            if items.count > visibleItems.count {
+                CompanionShowMoreRowsButton(
+                    remainingCount: items.count - visibleItems.count
+                ) {
+                    visibleLimit += CompanionLargeList.increment
+                }
+            }
         }
+        .onChange(of: visibleItemsResetKey) { _, _ in
+            visibleLimit = CompanionLargeList.initialVisibleLimit
+        }
+    }
+
+    private var visibleItemsResetKey: String {
+        "\(items.count):\(items.first?.id ?? ""):\(items.last?.id ?? "")"
     }
 
     private func select(_ item: ServerRelaySyncItem) {
@@ -5862,6 +5899,38 @@ private struct CompanionSelectableItemListRows: View {
         }
     }
 
+}
+
+private struct CompanionShowMoreRowsButton: View {
+    var remainingCount: Int
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.down.circle")
+                    .font(.subheadline.weight(.semibold))
+                Text("더 보기")
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 0)
+                Text("\(remainingCount)개 남음")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+            }
+            .foregroundStyle(Color.klmsPrimaryText)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsBorder, lineWidth: 1)
+            }
+        }
+        .buttonStyle(KLMSCardButtonStyle())
+        .accessibilityLabel("항목 더 보기")
+        .accessibilityValue("\(remainingCount)개 남음")
+    }
 }
 
 private struct RemoteChangeSummaryDetailPanel: View {

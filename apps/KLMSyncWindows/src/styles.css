@@ -467,6 +467,14 @@ label {
   background: var(--active-bg);
 }
 
+.item-row.show-more-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
 .item-row .meta,
 .detail-meta {
   color: var(--muted);

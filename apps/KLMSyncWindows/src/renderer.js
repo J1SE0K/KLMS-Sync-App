@@ -57,6 +57,7 @@ const state = {
   recentFileAccess: [],
   selectedKind: "all",
   selectedItemId: "",
+  itemRenderLimit: 120,
   sort: "recent",
   query: "",
   relayEventSince: "",
@@ -74,8 +75,11 @@ const refreshScopes = {
 };
 
 const $ = (id) => document.getElementById(id);
+const INITIAL_ITEM_RENDER_LIMIT = 120;
+const ITEM_RENDER_INCREMENT = 120;
 let refreshTimer = null;
 let realtimeLoopID = 0;
+let searchRenderTimer = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
@@ -101,10 +105,15 @@ function bindEvents() {
   $("copyStateButton").addEventListener("click", copyState);
   $("searchInput").addEventListener("input", (event) => {
     state.query = event.target.value;
-    renderItems();
+    state.itemRenderLimit = INITIAL_ITEM_RENDER_LIMIT;
+    window.clearTimeout(searchRenderTimer);
+    searchRenderTimer = window.setTimeout(() => {
+      renderItems();
+    }, 90);
   });
   $("sortSelect").addEventListener("change", (event) => {
     state.sort = event.target.value;
+    state.itemRenderLimit = INITIAL_ITEM_RENDER_LIMIT;
     renderItems();
   });
 }
@@ -677,6 +686,7 @@ function renderDashboard() {
       button.innerHTML = `<span>${card.label}</span><strong>${card.get(state.status, state.items)}</strong><span>${cardDetail(card.key)}</span>`;
       button.addEventListener("click", () => {
         state.selectedKind = card.key;
+        state.itemRenderLimit = INITIAL_ITEM_RENDER_LIMIT;
         state.selectedItemId = filteredItems()[0]?.id || "";
         renderDashboard();
         renderItems();
@@ -736,13 +746,14 @@ function verifyCheckHTML(check, compact = false) {
 
 function renderItems() {
   const items = filteredItems();
+  const visibleItems = items.slice(0, state.itemRenderLimit);
   $("listTitle").textContent = kindTitle(state.selectedKind);
   $("listCount").textContent = `${items.length}개`;
   if (!items.length) {
     $("itemList").innerHTML = `<div class="empty-list">표시할 항목이 없습니다.</div>`;
     return;
   }
-  $("itemList").replaceChildren(...items.map((item) => {
+  const rows = visibleItems.map((item) => {
     const button = document.createElement("button");
     button.className = `item-row ${state.selectedItemId === item.id ? "active" : ""}`;
     button.innerHTML = `
@@ -756,7 +767,21 @@ function renderItems() {
       renderDetail();
     });
     return button;
-  }));
+  });
+  if (items.length > visibleItems.length) {
+    const moreButton = document.createElement("button");
+    moreButton.className = "item-row show-more-row";
+    moreButton.innerHTML = `
+      <div class="title">더 보기</div>
+      <div class="meta">${items.length - visibleItems.length}개 남음</div>
+    `;
+    moreButton.addEventListener("click", () => {
+      state.itemRenderLimit += ITEM_RENDER_INCREMENT;
+      renderItems();
+    });
+    rows.push(moreButton);
+  }
+  $("itemList").replaceChildren(...rows);
 }
 
 function renderDetail() {
