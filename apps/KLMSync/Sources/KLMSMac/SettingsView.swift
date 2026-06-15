@@ -69,11 +69,17 @@ struct SettingsView: View {
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            settingsSidebar
-                .frame(width: 214, alignment: .topLeading)
-            settingsContentPanel
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                settingsSidebar
+                    .frame(width: 214, alignment: .topLeading)
+                settingsContentPanel
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                settingsSidebar
+                settingsContentPanel
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 520, alignment: .topLeading)
     }
@@ -165,12 +171,13 @@ struct SettingsView: View {
             selectedTab = tab
         } label: {
             HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
-                    .frame(width: 5, height: 30)
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(isSelected ? Color.klmsMacSelectedBorder.opacity(0.16) : Color.clear)
+                        .fill(
+                            isSelected
+                                ? Color.klmsMacSelectedForeground.opacity(0.12)
+                                : Color.klmsMacSubtleCardBackground.opacity(0.72)
+                        )
                     Image(systemName: tab.systemImage)
                         .font(.subheadline.weight(isSelected ? .bold : .semibold))
                         .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
@@ -198,9 +205,15 @@ struct SettingsView: View {
                 isSelected ? Color.klmsMacSelectedBackground : Color.clear,
                 in: RoundedRectangle(cornerRadius: 10)
             )
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
+                    .frame(width: 3)
+                    .padding(.vertical, 9)
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.32), lineWidth: 1)
             }
             .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 10))

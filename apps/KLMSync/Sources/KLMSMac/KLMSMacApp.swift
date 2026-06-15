@@ -42,9 +42,6 @@ struct KLMSMacApp: App {
         let model = KLMSMacModel()
         _model = StateObject(wrappedValue: model)
         KLMSDashboardWindowCoordinator.shared.model = model
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-            KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()
-        }
     }
 
     private static func clearSavedApplicationState() {
@@ -56,6 +53,25 @@ struct KLMSMacApp: App {
     }
 
     var body: some Scene {
+        WindowGroup("KLMS Sync") {
+            KLMSMacWorkspaceRootContainerView(model: model)
+                .frame(
+                    minWidth: KLMSWindowMetrics.minWidth,
+                    idealWidth: KLMSWindowMetrics.initialWidth,
+                    minHeight: KLMSWindowMetrics.minHeight,
+                    idealHeight: KLMSWindowMetrics.initialHeight,
+                    alignment: .topLeading
+                )
+                .onAppear {
+                    appDelegate.model = model
+                    KLMSDashboardWindowCoordinator.shared.scheduleBootstrapIfNeeded()
+                }
+        }
+        .defaultSize(width: KLMSWindowMetrics.initialWidth, height: KLMSWindowMetrics.initialHeight)
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+        }
+
         MenuBarExtra {
             KLMSMacRootContainerView(model: model)
                 .frame(width: KLMSWindowMetrics.menuBarWidth, height: KLMSWindowMetrics.menuBarHeight)
@@ -112,9 +128,7 @@ private final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     private var terminationCleanupStarted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()
-        }
+        NSApp.setActivationPolicy(.regular)
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
@@ -131,7 +145,7 @@ private final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
+        if !KLMSDashboardWindowCoordinator.shared.hasVisibleDashboardWindow {
             KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
             return false
         }
@@ -167,6 +181,7 @@ private final class KLMSDashboardWindowCoordinator {
     }
 
     func showDashboardWindow() {
+        NSApp.setActivationPolicy(.regular)
         guard let model else {
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -177,7 +192,7 @@ private final class KLMSDashboardWindowCoordinator {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let initialSize = NSSize(width: 1080, height: 760)
+        let initialSize = NSSize(width: KLMSWindowMetrics.initialWidth, height: KLMSWindowMetrics.initialHeight)
 
         let rootView = KLMSMacWorkspaceRootContainerView(model: model)
             .frame(width: initialSize.width, height: initialSize.height, alignment: .topLeading)
@@ -189,7 +204,7 @@ private final class KLMSDashboardWindowCoordinator {
             defer: false
         )
         window.title = "KLMS Sync"
-        window.minSize = NSSize(width: 540, height: 520)
+        window.minSize = NSSize(width: KLMSWindowMetrics.minWidth, height: KLMSWindowMetrics.minHeight)
         window.center()
         window.isReleasedWhenClosed = false
         let hostingController = NSHostingController(rootView: rootView)
@@ -217,7 +232,7 @@ private final class KLMSDashboardWindowCoordinator {
         }
     }
 
-    private var hasVisibleDashboardWindow: Bool {
+    var hasVisibleDashboardWindow: Bool {
         NSApp.windows.contains { window in
             window.isVisible && window.title == "KLMS Sync"
         }
@@ -225,6 +240,11 @@ private final class KLMSDashboardWindowCoordinator {
 }
 
 private enum KLMSWindowMetrics {
+    static let initialWidth: CGFloat = 1080
+    static let initialHeight: CGFloat = 760
+    static let minWidth: CGFloat = 540
+    static let minHeight: CGFloat = 520
+
     private static var visibleFrame: CGRect {
         NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1024, height: 768)
     }

@@ -212,12 +212,13 @@ private struct WorkspaceNavigationView: View {
                         selection = section
                     } label: {
                         HStack(spacing: 10) {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
-                                .frame(width: 5, height: 30)
                             ZStack {
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(isSelected ? Color.klmsMacSelectedBorder.opacity(0.16) : Color.clear)
+                                    .fill(
+                                        isSelected
+                                            ? Color.klmsMacSelectedForeground.opacity(0.12)
+                                            : Color.klmsMacSubtleCardBackground.opacity(0.72)
+                                    )
                                 Image(systemName: section.systemImage)
                                     .font(.subheadline.weight(isSelected ? .bold : .semibold))
                                     .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
@@ -239,9 +240,15 @@ private struct WorkspaceNavigationView: View {
                             isSelected ? Color.klmsMacSelectedBackground : Color.clear,
                             in: RoundedRectangle(cornerRadius: 10)
                         )
+                        .overlay(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
+                                .frame(width: 3)
+                                .padding(.vertical, 9)
+                        }
                         .overlay {
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.clear, lineWidth: 1)
+                                .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.32), lineWidth: 1)
                         }
                         .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
                         .contentShape(RoundedRectangle(cornerRadius: 10))
@@ -2464,36 +2471,30 @@ private struct DashboardSummaryView: View {
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
-                MetricSectionGrid(
-                    title: nil,
-                    metrics: primaryMetrics,
-                    selectedMetricID: activeDetail?.rawValue,
-                    onSelect: selectMetric
-                )
-                MetricSectionGrid(
-                    title: "확인 필요",
-                    metrics: attentionMetrics,
-                    selectedMetricID: activeDetail?.rawValue,
-                    onSelect: selectMetric
-                )
-                MetricSectionGrid(
-                    title: "기록과 보관",
-                    metrics: archiveMetrics,
-                    selectedMetricID: activeDetail?.rawValue,
-                    onSelect: selectMetric
-                )
-            }
-            if let renderedDetail {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 12) {
-                        DashboardDetailPanelView(kind: renderedDetail, model: model)
-                            .frame(minWidth: 300, maxWidth: .infinity, alignment: .topLeading)
-                        DashboardLogSummaryPanelView(model: model)
-                            .frame(minWidth: 210, idealWidth: 250, maxWidth: 300, alignment: .topLeading)
+                        metricColumn(
+                            primaryMetrics: primaryMetrics,
+                            attentionMetrics: attentionMetrics,
+                            archiveMetrics: archiveMetrics,
+                            activeDetail: activeDetail
+                        )
+                        .frame(minWidth: 360, idealWidth: 430, maxWidth: 520, alignment: .topLeading)
+                        if let renderedDetail {
+                            dashboardDetailColumn(kind: renderedDetail)
+                                .frame(minWidth: 360, maxWidth: .infinity, alignment: .topLeading)
+                        }
                     }
                     VStack(alignment: .leading, spacing: 12) {
-                        DashboardDetailPanelView(kind: renderedDetail, model: model)
-                        DashboardLogSummaryPanelView(model: model)
+                        metricColumn(
+                            primaryMetrics: primaryMetrics,
+                            attentionMetrics: attentionMetrics,
+                            archiveMetrics: archiveMetrics,
+                            activeDetail: activeDetail
+                        )
+                        if let renderedDetail {
+                            dashboardDetailColumn(kind: renderedDetail)
+                        }
                     }
                 }
             }
@@ -2522,6 +2523,43 @@ private struct DashboardSummaryView: View {
                 displayedDetail = detail
             }
         }
+    }
+
+    private func metricColumn(
+        primaryMetrics: [Metric],
+        attentionMetrics: [Metric],
+        archiveMetrics: [Metric],
+        activeDetail: DashboardDetailKind?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            MetricSectionGrid(
+                title: nil,
+                metrics: primaryMetrics,
+                selectedMetricID: activeDetail?.rawValue,
+                onSelect: selectMetric
+            )
+            MetricSectionGrid(
+                title: "확인 필요",
+                metrics: attentionMetrics,
+                selectedMetricID: activeDetail?.rawValue,
+                onSelect: selectMetric
+            )
+            MetricSectionGrid(
+                title: "기록과 보관",
+                metrics: archiveMetrics,
+                selectedMetricID: activeDetail?.rawValue,
+                onSelect: selectMetric
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func dashboardDetailColumn(kind: DashboardDetailKind) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DashboardDetailPanelView(kind: kind, model: model)
+            DashboardLogSummaryPanelView(model: model)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
 
