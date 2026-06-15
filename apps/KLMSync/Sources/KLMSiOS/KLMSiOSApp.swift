@@ -1909,7 +1909,7 @@ private struct CompanionSplitRootView: View {
     var body: some View {
         HStack(spacing: 0) {
             WorkstationSidebar(selectedSection: $selectedSection)
-                .frame(width: 154)
+                .frame(width: 214)
             Rectangle()
                 .fill(Color.klmsBorder)
                 .frame(width: 1)
@@ -1952,18 +1952,23 @@ private struct WorkstationSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("KLMS Sync")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(Color.klmsPrimaryText)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("KLMS Sync")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text("작업 공간")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+            }
 
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(CompanionAppSection.workstationSections) { section in
                     CompanionSidebarButton(
                         section: section,
                         isSelected: selectedSection == section,
                         showsIcon: true,
                         showsArrow: true,
-                        isCompact: true
+                        isCompact: false
                     ) {
                         guard selectedSection != section else { return }
                         selectedSection = section
@@ -1973,8 +1978,9 @@ private struct WorkstationSidebar: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 16)
+        .padding(.horizontal, 14)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.klmsCardBackground.opacity(0.72))
     }
@@ -2001,7 +2007,7 @@ private struct CompanionSidebarButton: View {
                         .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.84))
                 }
                 Text(section.title)
-                    .font(.system(size: 12, weight: isSelected ? .bold : .semibold, design: .rounded))
+                    .font(.system(size: isCompact ? 12 : 13, weight: isSelected ? .bold : .semibold, design: .rounded))
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 Spacer(minLength: 0)
                 if showsArrow {
