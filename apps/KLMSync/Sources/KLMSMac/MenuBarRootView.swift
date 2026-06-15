@@ -165,20 +165,36 @@ struct MacDesignWindowRootView: View {
 
             MacDesignPanel(title: "작업 공간") {
                 VStack(spacing: 7) {
-                    navigationButton("대시보드", selected: selectedWorkspace == .dashboard && selectedMetric != .logs) {
+                    navigationButton(
+                        "대시보드",
+                        systemImage: "gauge.with.dots.needle.67percent",
+                        selected: selectedWorkspace == .dashboard && selectedMetric != .logs
+                    ) {
                         selectedWorkspace = .dashboard
                         if selectedMetric == .logs {
                             selectMetric(.files)
                         }
                     }
-                    navigationButton("로그", selected: selectedWorkspace == .dashboard && selectedMetric == .logs) {
+                    navigationButton(
+                        "로그",
+                        systemImage: "list.bullet.rectangle.portrait",
+                        selected: selectedWorkspace == .dashboard && selectedMetric == .logs
+                    ) {
                         selectedWorkspace = .dashboard
                         selectMetric(.logs)
                     }
-                    navigationButton("진단", selected: selectedWorkspace == .diagnostics) {
+                    navigationButton(
+                        "진단",
+                        systemImage: "wrench.and.screwdriver",
+                        selected: selectedWorkspace == .diagnostics
+                    ) {
                         selectedWorkspace = .diagnostics
                     }
-                    navigationButton("설정", selected: selectedWorkspace == .settings) {
+                    navigationButton(
+                        "설정",
+                        systemImage: "gearshape",
+                        selected: selectedWorkspace == .settings
+                    ) {
                         selectedWorkspace = .settings
                     }
                 }
@@ -431,9 +447,12 @@ struct MacDesignWindowRootView: View {
         .disabled(model.runningCommand != nil && !isRunning)
     }
 
-    private func navigationButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func navigationButton(_ title: String, systemImage: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 9) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 20)
                 Text(title)
                     .font(.subheadline.weight(selected ? .semibold : .regular))
                 Spacer()
