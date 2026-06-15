@@ -2714,21 +2714,25 @@ private struct CalendarActionButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(disabled ? Color.klmsMacSecondaryText.opacity(0.62) : tint)
+                Text(title)
+                    .foregroundStyle(disabled ? Color.klmsMacSecondaryText.opacity(0.62) : Color.klmsMacPrimaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
                 .font(.caption.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 30)
-                .foregroundStyle(disabled ? Color.klmsMacSecondaryText.opacity(0.62) : tint)
                 .padding(.horizontal, 9)
                 .background(
-                    (disabled ? Color.klmsMacSubtleCardBackground.opacity(0.58) : tint.opacity(0.10)),
+                    (disabled ? Color.klmsMacSubtleCardBackground.opacity(0.58) : Color.klmsMacCommandButtonBackground.opacity(0.92)),
                     in: RoundedRectangle(cornerRadius: 8)
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(disabled ? Color.klmsMacCommandBorder.opacity(0.6) : tint.opacity(0.24), lineWidth: 1)
+                        .stroke(disabled ? Color.klmsMacCommandBorder.opacity(0.6) : Color.klmsMacCommandButtonBorder.opacity(0.95), lineWidth: 1)
                 }
         }
         .buttonStyle(KLMSMacPressFeedbackButtonStyle(cornerRadius: 8))

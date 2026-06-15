@@ -4124,12 +4124,18 @@ private struct RemoteDashboardChangeSummary: View {
         }
     }
 
+    private var visibleEntries: [RemoteChangeSummaryEntry] {
+        entries.filter { $0.kind != selectedKind }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("변경 요약", systemImage: "sparkles")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.klmsSecondaryText)
-            FlowChipLayout(entries: entries, selectedKind: selectedKind, onSelect: onSelect)
+        if !visibleEntries.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("변경 요약", systemImage: "sparkles")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                FlowChipLayout(entries: visibleEntries, selectedKind: selectedKind, onSelect: onSelect)
+            }
         }
     }
 }
@@ -4145,30 +4151,36 @@ private struct FlowChipLayout: View {
                 Button {
                     onSelect(entry.kind)
                 } label: {
+                    let isSelected = selectedKind == entry.kind
                     HStack(spacing: 5) {
+                        Image(systemName: entry.kind.systemImage)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(entry.kind.tint)
                         Text("\(entry.value)")
                             .font(.caption.monospacedDigit().weight(.bold))
+                            .foregroundStyle(Color.klmsPrimaryText)
                         Text(entry.kind.title)
                             .font(.caption2.weight(.semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
+                            .foregroundStyle(Color.klmsPrimaryText)
                         Spacer(minLength: 0)
-                        Image(systemName: selectedKind == entry.kind ? "chevron.up" : "chevron.down")
+                        Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                             .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.klmsSecondaryText)
                     }
-                    .foregroundStyle(selectedKind == entry.kind ? Color.klmsSelectedForeground : entry.kind.tint)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        selectedKind == entry.kind
+                        isSelected
                             ? Color.klmsSelectedBackground.opacity(0.96)
-                            : entry.kind.tint.opacity(0.10),
+                            : Color.klmsCommandButtonBackground.opacity(0.92),
                         in: RoundedRectangle(cornerRadius: 8)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(selectedKind == entry.kind ? Color.klmsSelectedBorder.opacity(0.92) : entry.kind.tint.opacity(0.26), lineWidth: selectedKind == entry.kind ? 1.2 : 1)
+                            .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.95), lineWidth: isSelected ? 1.2 : 1)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -5562,8 +5574,12 @@ private struct RemoteChangeSummaryDetailPanel: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(kind.tint.opacity(0.10))
+        .background(Color.klmsSubtleCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder.opacity(0.95), lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -5589,7 +5605,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
             emptyState
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(changedItems.prefix(12))) { item in
+                ForEach(changedItems) { item in
                     VStack(alignment: .leading, spacing: 8) {
                         Button {
                             selectedItemID = selectedItemID == item.id ? nil : item.id
@@ -5608,11 +5624,6 @@ private struct RemoteChangeSummaryDetailPanel: View {
                                 .transition(.opacity)
                         }
                     }
-                }
-                if changedItems.count > 12 {
-                    Text("외 \(changedItems.count - 12)개는 대시보드 \(categoryHint)에서 확인할 수 있습니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
                 }
             }
         }
@@ -5664,17 +5675,6 @@ private struct RemoteChangeSummaryDetailPanel: View {
             return "\(count)개 · 정리된 파일과 보관 정리 결과를 확인합니다."
         case .calendarCreated, .calendarUpdated, .calendarDeleted:
             return "\(count)개 · 일정 내용을 확인하고 필요하면 바로 수정할 수 있습니다."
-        }
-    }
-
-    private var categoryHint: String {
-        switch kind {
-        case .noticeNew, .noticeUpdated:
-            "공지"
-        case .newFiles, .fileCleanup:
-            "파일"
-        case .calendarCreated, .calendarUpdated, .calendarDeleted:
-            "캘린더"
         }
     }
 }
@@ -7659,8 +7659,18 @@ private struct DashboardCountPill: View {
         }
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
         .padding(.horizontal, 10)
-        .background(tint.opacity(0.12))
+        .background(Color.klmsCommandButtonBackground.opacity(0.92))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder.opacity(0.95), lineWidth: 1)
+        )
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(tint)
+                .frame(width: 3)
+                .padding(.vertical, 8)
+        }
     }
 }
 
