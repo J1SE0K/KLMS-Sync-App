@@ -10,6 +10,57 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case app
 
     var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .login:
+            "로그인"
+        case .sync:
+            "동기화"
+        case .notice:
+            "공지"
+        case .files:
+            "파일"
+        case .relay:
+            "서버"
+        case .app:
+            "앱"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .login:
+            "인증번호와 로그인 보조"
+        case .sync:
+            "실행 방식과 Safari 자동화"
+        case .notice:
+            "Notes 메모 작성 방식"
+        case .files:
+            "파일 확인과 저장 위치"
+        case .relay:
+            "iPhone/Windows 연결"
+        case .app:
+            "화면, 설치, 백업"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .login:
+            "person.badge.key"
+        case .sync:
+            "arrow.triangle.2.circlepath"
+        case .notice:
+            "checklist"
+        case .files:
+            "folder"
+        case .relay:
+            "network"
+        case .app:
+            "app.badge"
+        }
+    }
 }
 
 struct SettingsView: View {
@@ -18,41 +69,136 @@ struct SettingsView: View {
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
 
     var body: some View {
-        VStack(spacing: 0) {
-            TabView(selection: $selectedTab) {
-                loginSettings
-                    .tabItem {
-                        Label("로그인", systemImage: "person.badge.key")
-                    }
-                    .tag(SettingsTab.login)
-                syncSettings
-                    .tabItem {
-                        Label("동기화", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .tag(SettingsTab.sync)
-                noticeSettings
-                    .tabItem {
-                        Label("공지", systemImage: "checklist")
-                    }
-                    .tag(SettingsTab.notice)
-                fileSettings
-                    .tabItem {
-                        Label("파일", systemImage: "folder")
-                    }
-                    .tag(SettingsTab.files)
-                relaySettings
-                    .tabItem {
-                        Label("서버", systemImage: "network")
-                    }
-                    .tag(SettingsTab.relay)
-                appSettings
-                    .tabItem {
-                        Label("앱", systemImage: "app.badge")
-                    }
-                    .tag(SettingsTab.app)
-            }
+        HStack(alignment: .top, spacing: 12) {
+            settingsSidebar
+                .frame(width: 214, alignment: .topLeading)
+            settingsContentPanel
+                .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, minHeight: 520, alignment: .topLeading)
+    }
+
+    private var settingsSidebar: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("설정")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                Text("앱 안에서 바로 바꿉니다.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 7) {
+                ForEach(SettingsTab.allCases) { tab in
+                    settingsSidebarButton(tab)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
+    }
+
+    private var settingsContentPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: selectedTab.systemImage)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacCommandAccent)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(selectedTab.title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    Text(selectedTab.detail)
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                }
+                Spacer()
+                Text("앱 내부 설정")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsMacSubtleCardBackground, in: Capsule())
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+
+            selectedSettingsContent
+        }
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private var selectedSettingsContent: some View {
+        switch selectedTab {
+        case .login:
+            loginSettings
+        case .sync:
+            syncSettings
+        case .notice:
+            noticeSettings
+        case .files:
+            fileSettings
+        case .relay:
+            relaySettings
+        case .app:
+            appSettings
+        }
+    }
+
+    private func settingsSidebarButton(_ tab: SettingsTab) -> some View {
+        let isSelected = selectedTab == tab
+        return Button {
+            guard selectedTab != tab else { return }
+            selectedTab = tab
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: tab.systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(width: 20)
+                    .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tab.title)
+                        .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
+                    Text(tab.detail)
+                        .font(.caption2)
+                        .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground.opacity(0.78) : Color.klmsMacSecondaryText)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground.opacity(0.85) : Color.klmsMacSecondaryText.opacity(0.62))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(
+                isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground,
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder, lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(KLMSMacSettingsSidebarButtonStyle())
+        .accessibilityLabel(tab.title)
+        .accessibilityValue(isSelected ? "선택됨" : "")
     }
 
     private var loginSettings: some View {
@@ -397,7 +543,9 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .buttonStyle(KLMSMacSettingsButtonStyle())
-        .padding()
+        .scrollContentBackground(.hidden)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
@@ -507,6 +655,19 @@ private struct SettingsHelpText: View {
             .font(.caption)
             .foregroundStyle(Color.klmsMacSecondaryText)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct KLMSMacSettingsSidebarButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.996 : 1.0)
+            .brightness(configuration.isPressed ? -0.018 : 0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.45)
+            .animation(.linear(duration: 0.04), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 }
 
