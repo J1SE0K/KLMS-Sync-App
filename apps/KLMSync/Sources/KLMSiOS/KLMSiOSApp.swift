@@ -1751,23 +1751,35 @@ struct UserAlert: Identifiable {
 
 private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     case status
+    case files
+    case notices
+    case tasks
+    case calendar
     case history
     case settings
 
     var id: String { rawValue }
 
     static var compactTabs: [CompanionAppSection] {
-        workstationSections
+        [.status, .history, .settings]
     }
 
     static var workstationSections: [CompanionAppSection] {
-        [.status, .history, .settings]
+        [.status, .files, .notices, .tasks, .calendar, .history, .settings]
     }
 
     var title: String {
         switch self {
         case .status:
             return "상태"
+        case .files:
+            return "파일"
+        case .notices:
+            return "공지"
+        case .tasks:
+            return "과제/시험"
+        case .calendar:
+            return "캘린더"
         case .history:
             return "로그"
         case .settings:
@@ -1776,13 +1788,36 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     }
 
     var compactTitle: String {
-        title
+        switch self {
+        case .status:
+            return "상태"
+        case .history:
+            return "로그"
+        case .settings:
+            return "설정"
+        case .files:
+            return "파일"
+        case .notices:
+            return "공지"
+        case .tasks:
+            return "과제"
+        case .calendar:
+            return "일정"
+        }
     }
 
     var systemImage: String {
         switch self {
         case .status:
             return "gauge"
+        case .files:
+            return "folder"
+        case .notices:
+            return "note.text"
+        case .tasks:
+            return "checklist"
+        case .calendar:
+            return "calendar"
         case .history:
             return "clock.arrow.circlepath"
         case .settings:
@@ -2034,6 +2069,14 @@ private struct CompanionSectionContent: View {
         switch section {
         case .status:
             CompanionStatusScreen(model: model)
+        case .files:
+            CompanionDashboardCategoryScreen(title: "파일", category: .files, model: model)
+        case .notices:
+            CompanionDashboardCategoryScreen(title: "공지", category: .notices, model: model)
+        case .tasks:
+            CompanionTasksScreen(model: model)
+        case .calendar:
+            CompanionDashboardCategoryScreen(title: "캘린더", category: .calendar, model: model)
         case .history:
             CompanionHistoryScreen(model: model)
         case .settings:
