@@ -1751,10 +1751,6 @@ struct UserAlert: Identifiable {
 
 private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     case status
-    case files
-    case notices
-    case tasks
-    case calendar
     case history
     case settings
 
@@ -1765,21 +1761,13 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     }
 
     static var workstationSections: [CompanionAppSection] {
-        [.status, .files, .notices, .tasks, .calendar, .history, .settings]
+        [.status, .history, .settings]
     }
 
     var title: String {
         switch self {
         case .status:
-            return "대시보드"
-        case .files:
-            return "파일"
-        case .notices:
-            return "공지"
-        case .tasks:
-            return "과제/시험"
-        case .calendar:
-            return "캘린더"
+            return "상태"
         case .history:
             return "로그"
         case .settings:
@@ -1788,30 +1776,13 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     }
 
     var compactTitle: String {
-        switch self {
-        case .status:
-            return "상태"
-        case .tasks:
-            return "과제"
-        case .calendar:
-            return "일정"
-        default:
-            return title
-        }
+        title
     }
 
     var systemImage: String {
         switch self {
         case .status:
             return "gauge"
-        case .files:
-            return "folder"
-        case .notices:
-            return "note.text"
-        case .tasks:
-            return "checklist"
-        case .calendar:
-            return "calendar"
         case .history:
             return "clock.arrow.circlepath"
         case .settings:
@@ -1890,8 +1861,7 @@ private struct CompanionCompactTabBar: View {
 
     private var compactRows: [[CompanionAppSection]] {
         [
-            [.status, .files, .notices, .tasks],
-            [.calendar, .history, .settings],
+            [.status, .history, .settings],
         ]
     }
 
@@ -2064,14 +2034,6 @@ private struct CompanionSectionContent: View {
         switch section {
         case .status:
             CompanionStatusScreen(model: model)
-        case .files:
-            CompanionDashboardCategoryScreen(title: "파일", category: .files, model: model)
-        case .notices:
-            CompanionDashboardCategoryScreen(title: "공지", category: .notices, model: model)
-        case .tasks:
-            CompanionTasksScreen(model: model)
-        case .calendar:
-            CompanionDashboardCategoryScreen(title: "캘린더", category: .calendar, model: model)
         case .history:
             CompanionHistoryScreen(model: model)
         case .settings:
@@ -2087,7 +2049,7 @@ private struct CompanionStatusScreen: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        CompanionScreenContainer(title: "대시보드", model: model) {
+        CompanionScreenContainer(title: "상태", model: model) {
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 18) {
                     statusSummaryColumn

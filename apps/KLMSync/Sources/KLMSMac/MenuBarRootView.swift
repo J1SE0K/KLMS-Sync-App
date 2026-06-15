@@ -8,6 +8,7 @@ struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
     @State private var expandedLogSummaryKind: LogSummaryKind?
+    @State private var isWorkspaceReady = false
 
     var body: some View {
         WholeScreenVerticalScrollView {
@@ -19,14 +20,34 @@ struct MenuBarRootView: View {
                     expandedLogSummaryKind: $expandedLogSummaryKind
                 )
                 CommandPanelView(model: model)
-                MacWorkstationLayoutView(
-                    model: model,
-                    selectedSection: $selectedSection,
-                    expandedLogSummaryKind: $expandedLogSummaryKind
-                )
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                if isWorkspaceReady {
+                    MacWorkstationLayoutView(
+                        model: model,
+                        selectedSection: $selectedSection,
+                        expandedLogSummaryKind: $expandedLogSummaryKind
+                    )
+                } else {
+                    SectionBox(title: "작업 공간") {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("대시보드를 준비하고 있습니다.")
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+                    }
+                }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .onAppear {
+            guard !isWorkspaceReady else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                isWorkspaceReady = true
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
@@ -2391,8 +2412,8 @@ private struct AuthCodeBannerView: View {
 
 private struct DashboardSummaryView: View {
     @ObservedObject var model: KLMSMacModel
-    @State private var selectedDetail = DashboardDetailKind.files
-    @State private var displayedDetail = DashboardDetailKind.files
+    @State private var selectedDetail: DashboardDetailKind?
+    @State private var displayedDetail: DashboardDetailKind?
     @State private var deferredDetailTask: Task<Void, Never>?
 
     var body: some View {
@@ -2433,10 +2454,12 @@ private struct DashboardSummaryView: View {
                 Metric("보관함", hiddenCount, detail: .hidden),
             ].filter { $0.value > 0 }
             let visibleMetrics = primaryMetrics + attentionMetrics + archiveMetrics
-            let activeDetail = visibleMetrics.first { $0.detail == selectedDetail }?.detail
-                ?? visibleMetrics.first?.detail
-            let renderedDetail = visibleMetrics.first { $0.detail == displayedDetail }?.detail
-                ?? activeDetail
+            let activeDetail = selectedDetail.flatMap { selected in
+                visibleMetrics.first { $0.detail == selected }?.detail
+            }
+            let renderedDetail = displayedDetail.flatMap { displayed in
+                visibleMetrics.first { $0.detail == displayed }?.detail
+            }
             IssueSummaryView(issues: snapshot.issues)
             if visibleMetrics.isEmpty {
                 Text("표시할 대시보드 항목이 없습니다.")
@@ -2455,6 +2478,9 @@ private struct DashboardSummaryView: View {
                         if let renderedDetail {
                             dashboardDetailColumn(kind: renderedDetail)
                                 .frame(minWidth: 360, maxWidth: .infinity, alignment: .topLeading)
+                        } else {
+                            dashboardDetailPlaceholder
+                                .frame(minWidth: 360, maxWidth: .infinity, alignment: .topLeading)
                         }
                     }
                     VStack(alignment: .leading, spacing: 12) {
@@ -2466,6 +2492,8 @@ private struct DashboardSummaryView: View {
                         )
                         if let renderedDetail {
                             dashboardDetailColumn(kind: renderedDetail)
+                        } else {
+                            dashboardDetailPlaceholder
                         }
                     }
                 }
@@ -2532,6 +2560,32 @@ private struct DashboardSummaryView: View {
             DashboardLogSummaryPanelView(model: model)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var dashboardDetailPlaceholder: some View {
+        SectionBox(title: "상세 보기") {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "rectangle.grid.2x2")
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("왼쪽 카드나 항목을 선택하면 자세한 내용이 여기에 표시됩니다.")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    Text("파일처럼 항목이 많은 목록은 선택한 뒤에만 불러와서 앱 반응을 빠르게 유지합니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
+            .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.klmsMacBorder.opacity(0.70), lineWidth: 1)
+            }
+        }
     }
 }
 

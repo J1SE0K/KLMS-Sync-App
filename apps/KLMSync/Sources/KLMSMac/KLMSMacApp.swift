@@ -2,6 +2,20 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
+@main
+enum KLMSMacMain {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = KLMSAppDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.regular)
+        app.finishLaunching()
+        withExtendedLifetime(delegate) {
+            app.run()
+        }
+    }
+}
+
 enum KLMSAppearanceMode: String, CaseIterable, Identifiable {
     case system
     case light
@@ -32,52 +46,8 @@ enum KLMSAppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
-@main
-struct KLMSMacApp: App {
-    @NSApplicationDelegateAdaptor(KLMSAppDelegate.self) private var appDelegate
-    @StateObject private var model: KLMSMacModel
-
-    init() {
-        Self.clearSavedApplicationState()
-        let model = KLMSMacModel()
-        _model = StateObject(wrappedValue: model)
-        KLMSDashboardWindowCoordinator.shared.model = model
-    }
-
-    private static func clearSavedApplicationState() {
-        guard let identifier = Bundle.main.bundleIdentifier else { return }
-        let savedStateURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Saved Application State")
-            .appendingPathComponent("\(identifier).savedState")
-        try? FileManager.default.removeItem(at: savedStateURL)
-    }
-
-    var body: some Scene {
-        MenuBarExtra {
-            KLMSMacRootContainerView(model: model)
-                .frame(width: KLMSWindowMetrics.menuBarWidth, height: KLMSWindowMetrics.menuBarHeight)
-                .onAppear {
-                    appDelegate.model = model
-                    KLMSDashboardWindowCoordinator.shared.scheduleBootstrapIfNeeded()
-                }
-        } label: {
-            Label("KLMS Sync", systemImage: model.menuBarSystemImage)
-        }
-        .menuBarExtraStyle(.window)
-    }
-}
-
 enum KLMSMacWindowID {
     static let dashboard = "klms-dashboard"
-}
-
-private struct KLMSMacRootContainerView: View {
-    @ObservedObject var model: KLMSMacModel
-
-    var body: some View {
-        MenuBarRootView(model: model)
-            .klmsPreferredAppearance()
-    }
 }
 
 private struct KLMSMacWorkspaceRootContainerView: View {
@@ -86,6 +56,39 @@ private struct KLMSMacWorkspaceRootContainerView: View {
     var body: some View {
         MenuBarRootView(model: model)
             .klmsPreferredAppearance()
+    }
+}
+
+private struct KLMSMacDeferredWorkspaceRootContainerView: View {
+    @ObservedObject var model: KLMSMacModel
+    @State private var isReady = false
+
+    var body: some View {
+        Group {
+            if isReady {
+                KLMSMacWorkspaceRootContainerView(model: model)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("KLMS Sync")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                    Text("화면을 준비하고 있습니다.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Color.klmsMacScreenBackground)
+                .klmsPreferredAppearance()
+            }
+        }
+        .onAppear {
+            guard !isReady else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                isReady = true
+            }
+        }
     }
 }
 
@@ -136,29 +139,63 @@ private extension View {
 }
 
 @MainActor
-private final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
-    weak var model: KLMSMacModel?
+final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
+    private var model: KLMSMacModel?
+    private var statusItem: NSStatusItem?
     private var terminationCleanupStarted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        model = KLMSDashboardWindowCoordinator.shared.model
+        Self.clearSavedApplicationState()
+        let model = KLMSMacModel()
+        self.model = model
+        KLMSDashboardWindowCoordinator.shared.setModel(model)
         NSApp.setActivationPolicy(.regular)
-        Task { @MainActor in
-            KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+        configureStatusItem(for: model)
+        KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+    }
+
+    private static func clearSavedApplicationState() {
+        guard let identifier = Bundle.main.bundleIdentifier else { return }
+        let savedStateURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Saved Application State")
+            .appendingPathComponent("\(identifier).savedState")
+        try? FileManager.default.removeItem(at: savedStateURL)
+    }
+
+    private func configureStatusItem(for model: KLMSMacModel) {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.image = NSImage(systemSymbolName: model.menuBarSystemImage, accessibilityDescription: "KLMS Sync")
+        item.button?.imagePosition = .imageOnly
+
+        let menu = NSMenu()
+        menu.addItem(NSMenuItem(title: "KLMS Sync 열기", action: #selector(openDashboardFromMenu), keyEquivalent: "o"))
+        menu.addItem(NSMenuItem(title: "상태 갱신", action: #selector(refreshStatusFromMenu), keyEquivalent: "r"))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "종료", action: #selector(quitFromMenu), keyEquivalent: "q"))
+        for item in menu.items {
+            item.target = self
         }
+        item.menu = menu
+        statusItem = item
+    }
+
+    @objc private func openDashboardFromMenu(_ sender: Any?) {
+        KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+    }
+
+    @objc private func refreshStatusFromMenu(_ sender: Any?) {
+        guard let model else { return }
+        Task { @MainActor in
+            await model.bootstrap()
+        }
+    }
+
+    @objc private func quitFromMenu(_ sender: Any?) {
+        NSApp.terminate(nil)
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         false
-    }
-
-    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        false
-    }
-
-    func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
-        return true
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -186,9 +223,19 @@ private final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
 private final class KLMSDashboardWindowCoordinator {
     static let shared = KLMSDashboardWindowCoordinator()
 
-    var model: KLMSMacModel?
+    private(set) var model: KLMSMacModel?
     private var window: NSWindow?
     private var bootstrapTask: Task<Void, Never>?
+    private var pendingDashboardWindowOpen = false
+
+    func setModel(_ model: KLMSMacModel) {
+        self.model = model
+        guard pendingDashboardWindowOpen else {
+            return
+        }
+        pendingDashboardWindowOpen = false
+        showDashboardWindow()
+    }
 
     func showIfNoVisibleDashboardWindow() {
         guard !hasVisibleDashboardWindow else {
@@ -200,18 +247,21 @@ private final class KLMSDashboardWindowCoordinator {
     func showDashboardWindow() {
         NSApp.setActivationPolicy(.regular)
         guard let model else {
+            pendingDashboardWindowOpen = true
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
-        if let window {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
         let initialSize = NSSize(width: KLMSWindowMetrics.initialWidth, height: KLMSWindowMetrics.initialHeight)
+        if let window {
+            restoreDashboardFrameIfNeeded(window, size: initialSize)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
 
-        let rootView = KLMSMacWorkspaceRootContainerView(model: model)
+        let rootView = KLMSMacDeferredWorkspaceRootContainerView(model: model)
             .frame(
                 minWidth: KLMSWindowMetrics.minWidth,
                 idealWidth: KLMSWindowMetrics.initialWidth,
@@ -229,18 +279,36 @@ private final class KLMSDashboardWindowCoordinator {
             defer: false
         )
         window.title = "KLMS Sync"
+        window.identifier = NSUserInterfaceItemIdentifier(KLMSMacWindowID.dashboard)
         window.minSize = NSSize(width: KLMSWindowMetrics.minWidth, height: KLMSWindowMetrics.minHeight)
         window.center()
+        window.isRestorable = false
         window.isReleasedWhenClosed = false
         let hostingController = NSHostingController(rootView: rootView)
         hostingController.sizingOptions = []
         window.contentViewController = hostingController
         window.setContentSize(initialSize)
+        restoreDashboardFrameIfNeeded(window, size: initialSize)
         self.window = window
 
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
-        scheduleBootstrapIfNeeded(delay: 0.4)
+        scheduleBootstrapIfNeeded(delay: 2.5)
+    }
+
+    private func restoreDashboardFrameIfNeeded(_ window: NSWindow, size: NSSize) {
+        guard window.frame.width < KLMSWindowMetrics.minWidth || window.frame.height < KLMSWindowMetrics.minHeight else {
+            return
+        }
+        let screenFrame = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1024, height: 768)
+        let width = min(size.width, max(KLMSWindowMetrics.minWidth, screenFrame.width - 48))
+        let height = min(size.height, max(KLMSWindowMetrics.minHeight, screenFrame.height - 64))
+        let origin = NSPoint(
+            x: screenFrame.midX - width / 2,
+            y: screenFrame.midY - height / 2
+        )
+        window.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
     }
 
     func scheduleBootstrapIfNeeded(delay: TimeInterval = 0.2) {
@@ -259,7 +327,10 @@ private final class KLMSDashboardWindowCoordinator {
 
     var hasVisibleDashboardWindow: Bool {
         NSApp.windows.contains { window in
-            window.isVisible && window.title == "KLMS Sync"
+            window.isVisible
+                && window.identifier?.rawValue == KLMSMacWindowID.dashboard
+                && window.frame.width >= KLMSWindowMetrics.minWidth
+                && window.frame.height >= KLMSWindowMetrics.minHeight
         }
     }
 }
