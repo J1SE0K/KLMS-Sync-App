@@ -3773,40 +3773,41 @@ private struct RemoteDashboardSyncCard: View {
     }
 
     private var dashboardPrimaryButton: some View {
-        Button {
-            Task {
-                await model.createCommand(.fullSync)
-            }
+        let isRunning = isCommandActive(.fullSync)
+        return Button {
+            runOrCancel(.fullSync)
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                Text("전체 동기화")
+                Text(isRunning ? "전체 동기화 중단" : "전체 동기화")
                     .font(.system(size: 19, weight: .heavy, design: .rounded))
                 Spacer(minLength: 0)
-                Image(systemName: "play.fill")
+                Image(systemName: isRunning ? "stop.fill" : "play.fill")
                     .font(.headline.weight(.black))
             }
             .foregroundStyle(Color.klmsCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: compact ? 56 : 60, alignment: .leading)
             .padding(.horizontal, 13)
             .padding(.vertical, 14)
-            .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
+            .background(
+                isRunning ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground,
+                in: RoundedRectangle(cornerRadius: 12)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.klmsPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-        .opacity(commandDisabled ? 0.68 : 1)
-        .disabled(commandDisabled)
-        .accessibilityLabel("전체 동기화 실행")
-        .accessibilityHint("Mac 앱에 전체 동기화 실행 요청을 보냅니다.")
+        .opacity(commandDisabled(for: .fullSync) ? 0.68 : 1)
+        .disabled(commandDisabled(for: .fullSync))
+        .accessibilityLabel(isRunning ? "전체 동기화 중단" : "전체 동기화 실행")
+        .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 전체 동기화를 중단합니다." : "Mac 앱에 전체 동기화 실행 요청을 보냅니다.")
     }
 
     private func dashboardSecondaryButton(_ kind: RemoteCommandKind) -> some View {
-        Button {
-            Task {
-                await model.createCommand(kind)
-            }
+        let isRunning = isCommandActive(kind)
+        return Button {
+            runOrCancel(kind)
         } label: {
             Text(shortTitle(for: kind))
                 .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -3816,21 +3817,41 @@ private struct RemoteDashboardSyncCard: View {
                 .frame(maxWidth: .infinity, minHeight: compact ? 42 : 46, alignment: .center)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 9)
-                .background(Color.klmsCommandButtonBackground, in: RoundedRectangle(cornerRadius: 10))
+                .background(
+                    isRunning ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground,
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.klmsCommandButtonBorder, lineWidth: 1)
+                        .stroke(
+                            isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.58) : Color.klmsCommandButtonBorder,
+                            lineWidth: 1
+                        )
                 }
         }
         .buttonStyle(KLMSCardButtonStyle())
-        .opacity(commandDisabled ? 0.62 : 1)
-        .disabled(commandDisabled)
-        .accessibilityLabel("\(kind.displayName) 실행")
-        .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
+        .opacity(commandDisabled(for: kind) ? 0.62 : 1)
+        .disabled(commandDisabled(for: kind))
+        .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
+        .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 \(kind.displayName)을 중단합니다." : "Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
     }
 
-    private var commandDisabled: Bool {
-        !model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest
+    private func commandDisabled(for kind: RemoteCommandKind) -> Bool {
+        !model.isRemoteAvailable || model.isSubmitting || (model.hasInFlightRequest && !isCommandActive(kind))
+    }
+
+    private func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
+        model.latestDisplayStatus?.isInFlight == true && model.latestCommand?.kind == kind
+    }
+
+    private func runOrCancel(_ kind: RemoteCommandKind) {
+        Task {
+            if isCommandActive(kind) {
+                await model.cancelRunningCommand()
+            } else {
+                await model.createCommand(kind)
+            }
+        }
     }
 
     private var syncStateTitle: String {
@@ -9012,33 +9033,35 @@ private struct RemoteCommandPanel: View {
     }
 
     private func primaryCommandActionCard(_ kind: RemoteCommandKind) -> some View {
-        Button {
-            Task {
-                await model.createCommand(kind)
-            }
+        let isRunning = isCommandActive(kind)
+        return Button {
+            runOrCancel(kind)
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                Text("전체 동기화")
+                Text(isRunning ? "전체 동기화 중단" : "전체 동기화")
                     .font(.system(size: 18, weight: .heavy, design: .rounded))
                 Spacer(minLength: 0)
-                Image(systemName: "play.fill")
+                Image(systemName: isRunning ? "stop.fill" : "play.fill")
                     .font(.headline.weight(.black))
             }
             .foregroundStyle(Color.klmsCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: compact ? 56 : 60, alignment: .leading)
             .padding(.horizontal, 13)
             .padding(.vertical, 14)
-            .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
+            .background(
+                isRunning ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground,
+                in: RoundedRectangle(cornerRadius: 12)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.klmsPrimaryCommandButtonBorder, lineWidth: 1)
             }
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-        .opacity(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest ? 0.48 : 1)
-        .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
-        .accessibilityLabel("\(kind.displayName) 실행")
-        .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
+        .opacity(commandDisabled(for: kind) ? 0.48 : 1)
+        .disabled(commandDisabled(for: kind))
+        .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
+        .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 \(kind.displayName)을 중단합니다." : "Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
     }
 
     private var stageDurations: [KLMSStageDuration] {
@@ -9049,10 +9072,9 @@ private struct RemoteCommandPanel: View {
     }
 
     private func commandActionCard(_ kind: RemoteCommandKind) -> some View {
-        Button {
-            Task {
-                await model.createCommand(kind)
-            }
+        let isRunning = isCommandActive(kind)
+        return Button {
+            runOrCancel(kind)
         } label: {
             HStack(spacing: 7) {
                 Text(shortTitle(for: kind))
@@ -9064,17 +9086,41 @@ private struct RemoteCommandPanel: View {
             .frame(maxWidth: .infinity, minHeight: compact ? 42 : 46, alignment: .center)
             .padding(.horizontal, 5)
             .padding(.vertical, 9)
-            .background(Color.klmsCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
+            .background(
+                isRunning ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.88),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.klmsCommandButtonBorder.opacity(0.88), lineWidth: 1)
+                    .stroke(
+                        isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.58) : Color.klmsCommandButtonBorder.opacity(0.88),
+                        lineWidth: 1
+                    )
             }
         }
         .buttonStyle(KLMSCardButtonStyle())
-        .opacity(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest ? 0.48 : 1)
-        .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
-        .accessibilityLabel("\(kind.displayName) 실행")
-        .accessibilityHint("Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
+        .opacity(commandDisabled(for: kind) ? 0.48 : 1)
+        .disabled(commandDisabled(for: kind))
+        .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
+        .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 \(kind.displayName)을 중단합니다." : "Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
+    }
+
+    private func commandDisabled(for kind: RemoteCommandKind) -> Bool {
+        !model.isRemoteAvailable || model.isSubmitting || (model.hasInFlightRequest && !isCommandActive(kind))
+    }
+
+    private func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
+        model.latestDisplayStatus?.isInFlight == true && model.latestCommand?.kind == kind
+    }
+
+    private func runOrCancel(_ kind: RemoteCommandKind) {
+        Task {
+            if isCommandActive(kind) {
+                await model.cancelRunningCommand()
+            } else {
+                await model.createCommand(kind)
+            }
+        }
     }
 
     private func shortTitle(for kind: RemoteCommandKind) -> String {
