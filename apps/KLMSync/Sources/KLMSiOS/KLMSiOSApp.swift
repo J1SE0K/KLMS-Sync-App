@@ -3745,11 +3745,9 @@ private struct RemoteDashboardSyncCard: View {
 
             RemoteCancelControl(model: model, compact: compact)
 
-            if compact {
-                LazyVGrid(columns: secondaryColumns, spacing: 7) {
-                    ForEach(secondaryCommands, id: \.self) { command in
-                        dashboardSecondaryButton(command)
-                    }
+            LazyVGrid(columns: secondaryColumns, spacing: 7) {
+                ForEach(secondaryCommands, id: \.self) { command in
+                    dashboardSecondaryButton(command)
                 }
             }
         }

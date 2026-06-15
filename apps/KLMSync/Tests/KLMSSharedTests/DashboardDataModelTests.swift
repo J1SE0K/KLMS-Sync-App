@@ -1120,6 +1120,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSyncCard.contains(".padding(11)"))
         XCTAssertTrue(dashboardSyncCard.contains("GridItem(.flexible(minimum: 0), spacing: 7)"))
         XCTAssertTrue(dashboardSyncCard.contains("LazyVGrid(columns: secondaryColumns, spacing: 7)"))
+        XCTAssertTrue(dashboardSyncCard.contains("ForEach(secondaryCommands, id: \\.self)"))
+        XCTAssertFalse(dashboardSyncCard.contains("if compact {\n                LazyVGrid(columns: secondaryColumns"))
         XCTAssertTrue(dashboardSyncCard.contains(".padding(.horizontal, 5)"))
         XCTAssertTrue(metricOverview.contains("if horizontalSizeClass == .regular"))
         XCTAssertFalse(metricOverview.contains("Text(title)"))
