@@ -52,7 +52,7 @@ struct SettingsView: View {
                     .tag(SettingsTab.app)
             }
         }
-        .frame(minWidth: 620, minHeight: 520)
+        .frame(maxWidth: .infinity, minHeight: 520, alignment: .topLeading)
     }
 
     private var loginSettings: some View {

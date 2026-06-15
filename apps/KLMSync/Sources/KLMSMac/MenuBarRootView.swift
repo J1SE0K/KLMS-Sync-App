@@ -12,7 +12,7 @@ struct MenuBarRootView: View {
     var body: some View {
         WholeScreenVerticalScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                DashboardTopBarView(model: model)
+                DashboardTopBarView(model: model, selectedSection: $selectedSection)
                 MacAlertBannerView(
                     model: model,
                     selectedSection: $selectedSection,
@@ -37,9 +37,8 @@ struct MacDesignWindowRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedMetric = MacDesignMetricKind.files
     @State private var displayedMetric = MacDesignMetricKind.files
+    @State private var selectedWorkspace = MacDesignWorkspace.dashboard
     @State private var deferredMetricTask: Task<Void, Never>?
-    @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         WholeScreenVerticalScrollView {
@@ -91,11 +90,11 @@ struct MacDesignWindowRootView: View {
                 }
                 .help("상태 다시 불러오기")
                 Button {
-                    openSettings()
+                    selectedWorkspace = .settings
                 } label: {
                     Text("설정")
                 }
-                .help("설정 열기")
+                .help("앱 안에서 설정 보기")
             }
             .buttonStyle(MacDesignHeaderButtonStyle())
         }
@@ -166,16 +165,21 @@ struct MacDesignWindowRootView: View {
 
             MacDesignPanel(title: "작업 공간") {
                 VStack(spacing: 7) {
-                    navigationButton("대시보드", selected: selectedMetric != .logs) {
+                    navigationButton("대시보드", selected: selectedWorkspace == .dashboard && selectedMetric != .logs) {
+                        selectedWorkspace = .dashboard
                         if selectedMetric == .logs {
                             selectMetric(.files)
                         }
                     }
-                    navigationButton("로그", selected: selectedMetric == .logs) {
+                    navigationButton("로그", selected: selectedWorkspace == .dashboard && selectedMetric == .logs) {
+                        selectedWorkspace = .dashboard
                         selectMetric(.logs)
                     }
-                    navigationButton("진단", selected: false) {
-                        KLMSDiagnosticWindowCoordinator.shared.showDiagnosticsWindow()
+                    navigationButton("진단", selected: selectedWorkspace == .diagnostics) {
+                        selectedWorkspace = .diagnostics
+                    }
+                    navigationButton("설정", selected: selectedWorkspace == .settings) {
+                        selectedWorkspace = .settings
                     }
                 }
             }
@@ -192,17 +196,29 @@ struct MacDesignWindowRootView: View {
 
     private var workspace: some View {
         VStack(alignment: .leading, spacing: 12) {
-            metricGrid
-            HStack(alignment: .top, spacing: 12) {
-                MacDesignPanel(title: displayedMetric == .logs ? "최근 실행 로그" : "선택한 대시보드 항목") {
-                    selectedMetricContent
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+            switch selectedWorkspace {
+            case .dashboard:
+                metricGrid
+                HStack(alignment: .top, spacing: 12) {
+                    MacDesignPanel(title: displayedMetric == .logs ? "최근 실행 로그" : "선택한 대시보드 항목") {
+                        selectedMetricContent
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                MacDesignPanel(title: "로그 요약") {
-                    logSummaryContent
+                    MacDesignPanel(title: "로그 요약") {
+                        logSummaryContent
+                    }
+                    .frame(width: 284, alignment: .topLeading)
                 }
-                .frame(width: 284, alignment: .topLeading)
+            case .diagnostics:
+                DiagnosticToolsPanelView(model: model)
+                DiagnosticCommandLogPanelView(model: model)
+                VerifyPanelView(snapshot: model.snapshot)
+                DoctorPanelView(snapshot: model.snapshot)
+                AppDiagnosticsPanelView(model: model)
+                LoginPanelView(model: model)
+            case .settings:
+                SettingsView(model: model)
             }
         }
     }
@@ -362,6 +378,7 @@ struct MacDesignWindowRootView: View {
         guard selectedMetric != metric || displayedMetric != metric else {
             return
         }
+        selectedWorkspace = .dashboard
         selectedMetric = metric
         deferredMetricTask?.cancel()
         deferredMetricTask = Task { @MainActor in
@@ -478,6 +495,12 @@ private enum MacDesignMetricKind: String, Identifiable {
         case .logs: "로그"
         }
     }
+}
+
+private enum MacDesignWorkspace {
+    case dashboard
+    case diagnostics
+    case settings
 }
 
 private struct MacDesignMetric: Identifiable {
@@ -790,6 +813,8 @@ private struct MacWorkstationLayoutView: View {
                 AppDiagnosticsPanelView(model: model)
                 LoginPanelView(model: model)
                 LogPanelView(snapshot: model.snapshot, history: model.commandHistory)
+            case .settings:
+                SettingsView(model: model)
             }
         }
         .padding(.vertical, 4)
@@ -859,6 +884,7 @@ private struct WorkspaceNavigationView: View {
 
 private struct DashboardTopBarView: View {
     @ObservedObject var model: KLMSMacModel
+    @Binding var selectedSection: KLMSMacSection
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -887,7 +913,7 @@ private struct DashboardTopBarView: View {
                 .foregroundStyle(statusColor)
                 .background(statusColor.opacity(0.12), in: Capsule())
 
-            TopUtilityActionsView(model: model)
+            TopUtilityActionsView(model: model, selectedSection: $selectedSection)
         }
         .padding(.horizontal, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -937,7 +963,6 @@ private struct MacAlertBannerView: View {
     @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Button {
@@ -1107,7 +1132,6 @@ private struct MacAlertBannerView: View {
         }
         if model.snapshot.needsAttention {
             selectedSection = .diagnostics
-            KLMSDiagnosticWindowCoordinator.shared.showDiagnosticsWindow()
             return
         }
         if model.snapshot.syncReport == nil {
@@ -1135,51 +1159,11 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
     }
 }
 
-struct DiagnosticWindowView: View {
-    @ObservedObject var model: KLMSMacModel
-
-    var body: some View {
-        WholeScreenVerticalScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: "wrench.and.screwdriver")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacCommandAccent)
-                        .frame(width: 30, height: 30)
-                        .background(Color.klmsMacCommandAccent.opacity(0.10), in: Circle())
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("진단 로그")
-                            .font(.headline.weight(.semibold))
-                        Text("상단 경고에서 진단 보기를 눌렀을 때 필요한 실패 로그와 검사 결과를 바로 보여줍니다.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 0)
-                    if model.runningCommand != nil {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-
-                DiagnosticCommandLogPanelView(model: model)
-                VerifyPanelView(snapshot: model.snapshot)
-                DoctorPanelView(snapshot: model.snapshot)
-                AppDiagnosticsPanelView(model: model)
-                LoginPanelView(model: model)
-                LogPanelView(snapshot: model.snapshot, history: model.commandHistory)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .background(Color.klmsMacScreenBackground)
-    }
-}
-
 private enum KLMSMacSection: String, CaseIterable, Identifiable {
     case dashboard
     case activityLogs
     case diagnostics
+    case settings
 
     var id: String { rawValue }
 
@@ -1191,6 +1175,8 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
             "로그"
         case .diagnostics:
             "진단"
+        case .settings:
+            "설정"
         }
     }
 
@@ -1202,6 +1188,8 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
             "list.bullet.rectangle.portrait"
         case .diagnostics:
             "wrench.and.screwdriver"
+        case .settings:
+            "gearshape"
         }
     }
 }
@@ -2234,8 +2222,6 @@ private struct NextActionPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
-    @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         if let action = nextAction {
@@ -2307,7 +2293,7 @@ private struct NextActionPanelView: View {
         }
         if model.appDiagnostics.codeSigning.isAdHoc {
             return NextAction(
-                kind: .openSettings,
+                kind: .showSettings,
                 title: "앱 권한이 빌드마다 흔들릴 수 있습니다",
                 detail: "현재 앱은 임시 서명 상태입니다. 설정에서 서명/권한 상태를 확인하세요.",
                 buttonTitle: "설정 보기",
@@ -2326,7 +2312,6 @@ private struct NextActionPanelView: View {
             selectedSection = .activityLogs
         case .openDiagnostics:
             selectedSection = .diagnostics
-            openDiagnosticsWindow()
         case .copyAuthDigits:
             if let digits = model.currentAuthDigits {
                 NSPasteboard.general.clearContents()
@@ -2336,13 +2321,9 @@ private struct NextActionPanelView: View {
             Task {
                 await model.run(.doctor)
             }
-        case .openSettings:
-            openSettings()
+        case .showSettings:
+            selectedSection = .settings
         }
-    }
-
-    private func openDiagnosticsWindow() {
-        KLMSDiagnosticWindowCoordinator.shared.showDiagnosticsWindow()
     }
 }
 
@@ -2352,7 +2333,7 @@ private struct NextAction {
         case copyAuthDigits
         case openDiagnostics
         case runDoctor
-        case openSettings
+        case showSettings
     }
 
     var kind: Kind
@@ -5123,12 +5104,12 @@ private extension EngineIssue.Severity {
 
 private struct TopUtilityActionsView: View {
     @ObservedObject var model: KLMSMacModel
-    @Environment(\.openSettings) private var openSettings
+    @Binding var selectedSection: KLMSMacSection
 
     var body: some View {
         HStack(spacing: 8) {
             Button {
-                openSettings()
+                selectedSection = .settings
             } label: {
                 utilityLabel("설정", systemImage: "gearshape")
             }

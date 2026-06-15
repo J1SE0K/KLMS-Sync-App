@@ -42,7 +42,6 @@ struct KLMSMacApp: App {
         let model = KLMSMacModel()
         _model = StateObject(wrappedValue: model)
         KLMSDashboardWindowCoordinator.shared.model = model
-        KLMSDiagnosticWindowCoordinator.shared.model = model
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
             KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()
         }
@@ -68,12 +67,6 @@ struct KLMSMacApp: App {
             Label("KLMS Sync", systemImage: model.menuBarSystemImage)
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            SettingsView(model: model)
-                .frame(width: KLMSWindowMetrics.settingsWidth, height: KLMSWindowMetrics.settingsHeight)
-                .klmsPreferredAppearance()
-        }
     }
 }
 
@@ -95,15 +88,6 @@ private struct KLMSMacWindowRootContainerView: View {
 
     var body: some View {
         MacDesignWindowRootView(model: model)
-            .klmsPreferredAppearance()
-    }
-}
-
-private struct KLMSDiagnosticRootContainerView: View {
-    @ObservedObject var model: KLMSMacModel
-
-    var body: some View {
-        DiagnosticWindowView(model: model)
             .klmsPreferredAppearance()
     }
 }
@@ -240,50 +224,6 @@ private final class KLMSDashboardWindowCoordinator {
     }
 }
 
-@MainActor
-final class KLMSDiagnosticWindowCoordinator {
-    static let shared = KLMSDiagnosticWindowCoordinator()
-
-    var model: KLMSMacModel?
-    private var window: NSWindow?
-
-    func showDiagnosticsWindow() {
-        guard let model else {
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        if let window {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let initialSize = NSSize(width: 920, height: 760)
-        let rootView = KLMSDiagnosticRootContainerView(model: model)
-            .frame(width: initialSize.width, height: initialSize.height, alignment: .topLeading)
-        let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: initialSize),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "KLMS Sync 진단"
-        window.minSize = NSSize(width: 620, height: 480)
-        window.center()
-        window.isReleasedWhenClosed = false
-        let hostingController = NSHostingController(rootView: rootView)
-        hostingController.sizingOptions = []
-        window.contentViewController = hostingController
-        window.setContentSize(initialSize)
-        self.window = window
-
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        KLMSDashboardWindowCoordinator.shared.scheduleBootstrapIfNeeded()
-    }
-}
-
 private enum KLMSWindowMetrics {
     private static var visibleFrame: CGRect {
         NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1024, height: 768)
@@ -295,13 +235,5 @@ private enum KLMSWindowMetrics {
 
     static var menuBarHeight: CGFloat {
         min(780, max(360, visibleFrame.height - 80))
-    }
-
-    static var settingsWidth: CGFloat {
-        min(760, max(620, visibleFrame.width - 64))
-    }
-
-    static var settingsHeight: CGFloat {
-        min(700, max(520, visibleFrame.height - 96))
     }
 }
