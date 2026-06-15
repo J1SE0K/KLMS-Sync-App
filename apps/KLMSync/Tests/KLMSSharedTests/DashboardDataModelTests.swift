@@ -1996,6 +1996,55 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("return !Self.isAlreadyLoggedInMessage(message)"))
     }
 
+    func testMacMailDashboardDerivedDataIsCachedOffRenderPath() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
+        let model = try String(contentsOf: macModelRoot, encoding: .utf8)
+        let mailItems = try sourceBody(
+            after: "func mailDashboardItems(kind: String)",
+            in: model,
+            description: "Mac mail dashboard items accessor"
+        )
+        let mailCalendar = try sourceBody(
+            after: "func mailCalendarChanges()",
+            in: model,
+            description: "Mac mail calendar changes accessor"
+        )
+        let rebuildCache = try sourceBody(
+            after: "private func rebuildMailDashboardCaches()",
+            in: model,
+            description: "Mac mail dashboard cache rebuild"
+        )
+        let addMailItem = try sourceBody(
+            after: "func addMailDashboardItem",
+            in: model,
+            description: "Mac mail dashboard add"
+        )
+        let removeMailItem = try sourceBody(
+            after: "private func removeMailDashboardItem",
+            in: model,
+            description: "Mac mail dashboard remove"
+        )
+        let applySnapshot = try sourceBody(
+            after: "private func applySnapshot",
+            in: model,
+            description: "Mac snapshot apply"
+        )
+
+        XCTAssertTrue(mailItems.contains("cachedMailDashboardItemsByKind[kind] ?? []"))
+        XCTAssertFalse(mailItems.contains("currentServerRelayBaseSyncItems()"))
+        XCTAssertTrue(mailCalendar.contains("cachedMailCalendarChanges"))
+        XCTAssertFalse(mailCalendar.contains("currentServerRelayBaseSyncItems()"))
+        XCTAssertTrue(rebuildCache.contains("unmatchedMailDashboardItems(comparedTo: currentServerRelayBaseSyncItems())"))
+        XCTAssertTrue(addMailItem.contains("rebuildMailDashboardCaches()"))
+        XCTAssertTrue(removeMailItem.contains("rebuildMailDashboardCaches()"))
+        XCTAssertTrue(applySnapshot.contains("replaceSnapshot(nextSnapshot)"))
+        XCTAssertTrue(model.contains("self.replaceSnapshot(nextSnapshot)"))
+    }
+
     func testIOSCompanionUsesAdaptiveIPadNavigation() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

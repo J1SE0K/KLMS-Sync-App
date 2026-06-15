@@ -121,6 +121,8 @@ final class KLMSMacModel: ObservableObject {
     private var pendingRunCancellationRequested = false
     private var serverRelayLastStatusPublishAt: Date?
     private var serverRelayLastInboxUpdatedAt: String?
+    private var cachedMailDashboardItemsByKind: [String: [ServerRelaySyncItem]] = [:]
+    private var cachedMailCalendarChanges: [CalendarChange] = []
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
     private static let deprecatedRemoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
     private static let deprecatedLocalRemoteEnabledKey = "KLMSLocalRemoteEnabled"
@@ -163,6 +165,7 @@ final class KLMSMacModel: ObservableObject {
         serverRelayClientToken = clientToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         serverRelayWorkerToken = workerToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         mailDashboardItems = Self.loadMailDashboardItems()
+        rebuildMailDashboardCaches()
         let clientTokenSaved = Self.persistRelayToken(
             serverRelayClientToken,
             account: "server-relay-client-mac",
@@ -1047,6 +1050,7 @@ final class KLMSMacModel: ObservableObject {
 
     private func markCalendarChangeResolved(_ change: CalendarChange) {
         resolvedCalendarChangeIDs.formUnion(calendarChangeResolvedIDs(for: change))
+        rebuildMailDashboardCaches()
     }
 
     private func calendarChangeResolvedIDs(for change: CalendarChange) -> [String] {
@@ -1127,6 +1131,7 @@ final class KLMSMacModel: ObservableObject {
             .dedupedForServerRelay()
             .prefix(80)
             .map { $0 }
+        rebuildMailDashboardCaches()
         persistMailDashboardItems()
         serverRelayStatusMessage = "\(normalizedItem.kind.klmsMailDashboardKindName) 대시보드에 반영됨"
         Task { @MainActor [weak self] in
@@ -1168,6 +1173,9 @@ final class KLMSMacModel: ObservableObject {
         let previousCount = mailDashboardItems.count
         mailDashboardItems.removeAll { $0.id == id }
         let removed = mailDashboardItems.count != previousCount
+        if removed {
+            rebuildMailDashboardCaches()
+        }
         persistMailDashboardItems()
         let label = kind.nilIfBlank?.klmsMailDashboardKindName ?? "항목"
         serverRelayStatusMessage = removed
@@ -1181,19 +1189,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func mailDashboardItems(kind: String) -> [ServerRelaySyncItem] {
-        mailDashboardItems
-            .unmatchedMailDashboardItems(comparedTo: currentServerRelayBaseSyncItems())
-            .filter { $0.kind == kind }
-            .map(\.normalizedDashboardItem)
-            .sorted { lhs, rhs in
-                if lhs.timestamp != rhs.timestamp {
-                    return lhs.timestamp > rhs.timestamp
-                }
-                if lhs.updatedAt != rhs.updatedAt {
-                    return lhs.updatedAt > rhs.updatedAt
-                }
-                return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-            }
+        cachedMailDashboardItemsByKind[kind] ?? []
     }
 
     func mailDashboardStateItems(kind: String) -> [StateItem] {
@@ -1201,11 +1197,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func mailCalendarChanges() -> [CalendarChange] {
-        mailDashboardItems
-            .unmatchedMailDashboardItems(comparedTo: currentServerRelayBaseSyncItems())
-            .compactMap(\.mailCalendarChange)
-            .filter { !isCalendarChangeResolved($0) }
-            .dedupedForCalendarDisplay()
+        cachedMailCalendarChanges
     }
 
     private func currentServerRelayBaseSyncItems() -> [ServerRelaySyncItem] {
@@ -1215,6 +1207,31 @@ final class KLMSMacModel: ObservableObject {
             generatedAt: generatedAt,
             updatedAt: ServerRelaySyncItem.isoTimestamp()
         )
+    }
+
+    private func rebuildMailDashboardCaches() {
+        let unmatchedItems = mailDashboardItems
+            .unmatchedMailDashboardItems(comparedTo: currentServerRelayBaseSyncItems())
+            .map(\.normalizedDashboardItem)
+            .dedupedForServerRelay()
+        cachedMailDashboardItemsByKind = Dictionary(grouping: unmatchedItems, by: \.kind)
+            .mapValues(Self.sortedMailDashboardItems)
+        cachedMailCalendarChanges = unmatchedItems
+            .compactMap(\.mailCalendarChange)
+            .filter { !isCalendarChangeResolved($0) }
+            .dedupedForCalendarDisplay()
+    }
+
+    private static func sortedMailDashboardItems(_ items: [ServerRelaySyncItem]) -> [ServerRelaySyncItem] {
+        items.sorted { lhs, rhs in
+            if lhs.timestamp != rhs.timestamp {
+                return lhs.timestamp > rhs.timestamp
+            }
+            if lhs.updatedAt != rhs.updatedAt {
+                return lhs.updatedAt > rhs.updatedAt
+            }
+            return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+        }
     }
 
     private static func isMailDashboardItem(_ item: ServerRelaySyncItem) -> Bool {
@@ -2407,7 +2424,7 @@ final class KLMSMacModel: ObservableObject {
                 try await store.updateSettingAction(completedAction)
 
                 let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
-                snapshot = refreshedSnapshot
+                replaceSnapshot(refreshedSnapshot)
                 try await store.publishStatus(
                     sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: "idle"),
                     latestCommand: lastRemoteCommand,
@@ -2469,7 +2486,7 @@ final class KLMSMacModel: ObservableObject {
                 try await store.updateItemAction(completedAction)
 
                 let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
-                snapshot = refreshedSnapshot
+                replaceSnapshot(refreshedSnapshot)
                 try await store.publishStatus(
                     sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: "idle"),
                     latestCommand: lastRemoteCommand,
@@ -3230,12 +3247,17 @@ final class KLMSMacModel: ObservableObject {
 
     private func applySnapshot(_ nextSnapshot: EngineSnapshot, showLoginTransition: Bool) {
         _ = showLoginTransition
-        snapshot = nextSnapshot
+        replaceSnapshot(nextSnapshot)
         if nextSnapshot.loginStatus?.loggedIn == true || liveAuthDigits == nil {
             liveAuthDigits = nil
             authDigitsSuppressed = true
             clearAuthNotifications()
         }
+    }
+
+    private func replaceSnapshot(_ nextSnapshot: EngineSnapshot) {
+        snapshot = nextSnapshot
+        rebuildMailDashboardCaches()
     }
 
     private func notifyAuthDigits(_ digits: String) async {
@@ -3359,7 +3381,7 @@ final class KLMSMacModel: ObservableObject {
                     return
                 }
                 let nextSnapshot = EngineSnapshotStore(paths: self.paths).load()
-                self.snapshot = nextSnapshot
+                self.replaceSnapshot(nextSnapshot)
                 if self.authDigitsSeenForCurrentRun,
                    self.loginStatusWasConfirmed(nextSnapshot.loginStatus, since: startedAt) {
                     await self.clearAuthDigitsState(showAuthenticatedMessage: true)
