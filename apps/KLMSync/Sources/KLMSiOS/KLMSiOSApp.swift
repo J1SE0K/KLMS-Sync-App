@@ -2449,11 +2449,20 @@ private struct CompanionStatusScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: "상태", model: model) {
-            VStack(alignment: .leading, spacing: 14) {
-                statusSummaryColumn
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                statusDetailColumn
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            if horizontalSizeClass == .regular {
+                HStack(alignment: .top, spacing: 16) {
+                    statusSummaryColumn
+                        .frame(minWidth: 320, idealWidth: 380, maxWidth: 430, alignment: .topLeading)
+                    statusDetailColumn
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    statusSummaryColumn
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    statusDetailColumn
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
             }
         }
     }

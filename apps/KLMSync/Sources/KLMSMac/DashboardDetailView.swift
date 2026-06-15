@@ -64,15 +64,20 @@ struct DashboardDetailPanelView: View {
     @State private var showHidden = false
     @State private var newOnly = false
     @State private var recentOnly = false
-    @State private var fileData: DashboardFileData
-    @State private var fileDataSignature: DashboardFileData.Signature
+    @State private var fileData: DashboardFileData?
+    @State private var fileDataSignature: DashboardFileData.Signature?
 
     init(kind: DashboardDetailKind, model: KLMSMacModel) {
         self.kind = kind
         self.model = model
-        let initialFileData = DashboardFileData(snapshot: model.snapshot)
-        _fileData = State(initialValue: initialFileData)
-        _fileDataSignature = State(initialValue: initialFileData.signature)
+        if kind.requiresFileData {
+            let initialFileData = DashboardFileData(snapshot: model.snapshot)
+            _fileData = State(initialValue: initialFileData)
+            _fileDataSignature = State(initialValue: initialFileData.signature)
+        } else {
+            _fileData = State(initialValue: nil)
+            _fileDataSignature = State(initialValue: nil)
+        }
     }
 
     var body: some View {
@@ -157,13 +162,13 @@ struct DashboardDetailPanelView: View {
             case .notices:
                 NoticeListView(filters: filters, model: model)
             case .files:
-                FileManifestListView(files: fileData.manifestFiles, filters: filters, model: model)
+                FileManifestListView(files: activeFileData.manifestFiles, filters: filters, model: model)
             case .missingFiles:
-                MissingFilesListView(files: fileData.missingFiles, filters: filters, model: model)
+                MissingFilesListView(files: activeFileData.missingFiles, filters: filters, model: model)
             case .newFiles:
-                NewFilesListView(files: fileData.newFiles, filters: filters, model: model)
+                NewFilesListView(files: activeFileData.newFiles, filters: filters, model: model)
             case .quarantine:
-                QuarantineListView(files: fileData.quarantineFiles, filters: filters, model: model)
+                QuarantineListView(files: activeFileData.quarantineFiles, filters: filters, model: model)
             case .pruned:
                 PrunedListView(filters: filters, snapshot: model.snapshot)
             case .calendar:
@@ -171,8 +176,8 @@ struct DashboardDetailPanelView: View {
             case .hidden:
                 HiddenItemsListView(
                     filters: filters,
-                    hiddenFileItems: fileData.hiddenFiles,
-                    hiddenQuarantineItems: fileData.hiddenQuarantineFiles,
+                    hiddenFileItems: activeFileData.hiddenFiles,
+                    hiddenQuarantineItems: activeFileData.hiddenQuarantineFiles,
                     model: model
                 )
             }
@@ -220,11 +225,23 @@ struct DashboardDetailPanelView: View {
         model.snapshot.hiddenSummary.total
     }
 
-    private var currentFileDataSignature: DashboardFileData.Signature {
-        DashboardFileData.Signature(snapshot: model.snapshot)
+    private var activeFileData: DashboardFileData {
+        fileData ?? DashboardFileData(snapshot: model.snapshot)
     }
 
-    private func rebuildFileDataIfNeeded(_ signature: DashboardFileData.Signature) {
+    private var currentFileDataSignature: DashboardFileData.Signature? {
+        guard kind.requiresFileData else {
+            return nil
+        }
+        return DashboardFileData.Signature(snapshot: model.snapshot)
+    }
+
+    private func rebuildFileDataIfNeeded(_ signature: DashboardFileData.Signature?) {
+        guard let signature else {
+            fileData = nil
+            fileDataSignature = nil
+            return
+        }
         guard fileDataSignature != signature else {
             return
         }
@@ -702,6 +719,15 @@ private enum DashboardTermFilter {
 }
 
 private extension DashboardDetailKind {
+    var requiresFileData: Bool {
+        switch self {
+        case .files, .missingFiles, .newFiles, .quarantine, .hidden:
+            true
+        default:
+            false
+        }
+    }
+
     var supportsNewOnly: Bool {
         switch self {
         case .notices, .files, .missingFiles, .newFiles:
