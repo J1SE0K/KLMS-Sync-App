@@ -175,6 +175,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     @State private var recentOnly = false
     @State private var fileData: DashboardFileData?
     @State private var fileDataSignature: DashboardFileData.Signature?
+    @State private var fileDataTask: Task<Void, Never>?
 
     init(kind: DashboardDetailKind, model: KLMSMacModel, snapshot: EngineSnapshot? = nil) {
         let resolvedSnapshot = snapshot ?? model.snapshot
@@ -182,14 +183,8 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         self.model = model
         self.snapshot = resolvedSnapshot
         renderSignature = DashboardRenderSignature(snapshot: resolvedSnapshot, summary: model.dashboardSummaryCache)
-        if kind.requiresFileData {
-            let initialFileData = DashboardFileData(snapshot: resolvedSnapshot)
-            _fileData = State(initialValue: initialFileData)
-            _fileDataSignature = State(initialValue: initialFileData.signature)
-        } else {
-            _fileData = State(initialValue: nil)
-            _fileDataSignature = State(initialValue: nil)
-        }
+        _fileData = State(initialValue: nil)
+        _fileDataSignature = State(initialValue: nil)
     }
 
     static func == (lhs: DashboardDetailPanelView, rhs: DashboardDetailPanelView) -> Bool {
@@ -284,25 +279,45 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             case .notices:
                 NoticeListView(filters: filters, snapshot: snapshot, model: model)
             case .files:
-                FileManifestListView(files: activeFileData.manifestFiles, filters: filters, model: model)
+                if let fileData {
+                    FileManifestListView(files: fileData.manifestFiles, filters: filters, model: model)
+                } else {
+                    fileDataLoadingView
+                }
             case .missingFiles:
-                MissingFilesListView(files: activeFileData.missingFiles, filters: filters, model: model)
+                if let fileData {
+                    MissingFilesListView(files: fileData.missingFiles, filters: filters, model: model)
+                } else {
+                    fileDataLoadingView
+                }
             case .newFiles:
-                NewFilesListView(files: activeFileData.newFiles, filters: filters, model: model)
+                if let fileData {
+                    NewFilesListView(files: fileData.newFiles, filters: filters, model: model)
+                } else {
+                    fileDataLoadingView
+                }
             case .quarantine:
-                QuarantineListView(files: activeFileData.quarantineFiles, filters: filters, model: model)
+                if let fileData {
+                    QuarantineListView(files: fileData.quarantineFiles, filters: filters, model: model)
+                } else {
+                    fileDataLoadingView
+                }
             case .pruned:
                 PrunedListView(filters: filters, snapshot: snapshot)
             case .calendar:
                 CalendarDetailView(snapshot: snapshot, filters: filters, model: model)
             case .hidden:
-                HiddenItemsListView(
-                    filters: filters,
-                    hiddenFileItems: activeFileData.hiddenFiles,
-                    hiddenQuarantineItems: activeFileData.hiddenQuarantineFiles,
-                    snapshot: snapshot,
-                    model: model
-                )
+                if let fileData {
+                    HiddenItemsListView(
+                        filters: filters,
+                        hiddenFileItems: fileData.hiddenFiles,
+                        hiddenQuarantineItems: fileData.hiddenQuarantineFiles,
+                        snapshot: snapshot,
+                        model: model
+                    )
+                } else {
+                    fileDataLoadingView
+                }
             }
         }
         .padding(10)
@@ -316,6 +331,9 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         }
         .onAppear {
             rebuildFileDataIfNeeded(currentFileDataSignature)
+        }
+        .onDisappear {
+            fileDataTask?.cancel()
         }
     }
 
@@ -348,10 +366,6 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         snapshot.hiddenSummary.total
     }
 
-    private var activeFileData: DashboardFileData {
-        fileData ?? DashboardFileData(snapshot: snapshot)
-    }
-
     private var currentFileDataSignature: DashboardFileData.Signature? {
         guard kind.requiresFileData else {
             return nil
@@ -361,15 +375,49 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
 
     private func rebuildFileDataIfNeeded(_ signature: DashboardFileData.Signature?) {
         guard let signature else {
+            fileDataTask?.cancel()
             fileData = nil
             fileDataSignature = nil
             return
         }
-        guard fileDataSignature != signature else {
+        guard fileDataSignature != signature || fileData == nil else {
             return
         }
-        fileData = DashboardFileData(snapshot: snapshot, signature: signature)
+        let snapshot = snapshot
+        fileDataTask?.cancel()
+        fileData = nil
         fileDataSignature = signature
+        fileDataTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            let data = await Task.detached(priority: .userInitiated) {
+                DashboardFileData(snapshot: snapshot, signature: signature)
+            }.value
+            guard !Task.isCancelled else { return }
+            fileData = data
+        }
+    }
+
+    private var fileDataLoadingView: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("파일 목록을 준비하고 있습니다.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text("파일 수가 많아도 클릭 반응이 멈추지 않도록 목록 가공을 분리했습니다.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
     }
 }
 
@@ -400,7 +448,7 @@ private enum DashboardLargeList {
     static let increment = 10
 }
 
-private struct DashboardFileData {
+private struct DashboardFileData: Sendable {
     var signature: Signature
     var manifestFiles: [DashboardFileItem]
     var newFiles: [DashboardFileItem]
@@ -537,7 +585,7 @@ private struct DashboardFileData {
         }
     }
 
-    struct Signature: Equatable {
+    struct Signature: Equatable, Sendable {
         private var value: Int
 
         init(snapshot: EngineSnapshot) {

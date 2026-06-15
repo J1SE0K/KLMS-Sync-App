@@ -3541,10 +3541,10 @@ private struct CompanionItemListInputKey: Hashable {
 }
 
 private enum CompanionLargeList {
-    static let initialVisibleLimit = 16
-    static let previewVisibleLimit = 10
-    static let calendarVisibleLimit = 16
-    static let increment = 16
+    static let initialVisibleLimit = 10
+    static let previewVisibleLimit = 8
+    static let calendarVisibleLimit = 10
+    static let increment = 12
 }
 
 private func companionItemsFingerprint(_ items: [ServerRelaySyncItem]) -> Int {
