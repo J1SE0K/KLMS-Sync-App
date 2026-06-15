@@ -1909,7 +1909,7 @@ private struct CompanionSplitRootView: View {
     var body: some View {
         HStack(spacing: 0) {
             WorkstationSidebar(selectedSection: $selectedSection)
-                .frame(width: 176)
+                .frame(width: 154)
             Rectangle()
                 .fill(Color.klmsBorder)
                 .frame(width: 1)
@@ -1962,7 +1962,8 @@ private struct WorkstationSidebar: View {
                         section: section,
                         isSelected: selectedSection == section,
                         showsIcon: true,
-                        showsArrow: false
+                        showsArrow: false,
+                        isCompact: true
                     ) {
                         guard selectedSection != section else { return }
                         selectedSection = section
@@ -1984,15 +1985,16 @@ private struct CompanionSidebarButton: View {
     var isSelected: Bool
     var showsIcon = true
     var showsArrow = true
+    var isCompact = false
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 10) {
+            HStack(spacing: isCompact ? 7 : 10) {
                 if showsIcon {
                     Image(systemName: section.systemImage)
-                        .font(.body.weight(.semibold))
-                        .frame(width: 22)
+                        .font((isCompact ? Font.subheadline : Font.body).weight(.semibold))
+                        .frame(width: isCompact ? 18 : 22)
                         .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
                 }
                 Text(section.title)
@@ -2005,8 +2007,9 @@ private struct CompanionSidebarButton: View {
                         .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.70))
                 }
             }
-            .padding(9)
-            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            .padding(.horizontal, isCompact ? 8 : 9)
+            .padding(.vertical, isCompact ? 8 : 9)
+            .frame(maxWidth: .infinity, minHeight: isCompact ? 40 : 36, alignment: .leading)
             .background(
                 isSelected
                     ? Color.klmsSelectedBackground
