@@ -713,12 +713,19 @@ final class DashboardDataModelTests: XCTestCase {
         let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
         let mac = try String(contentsOf: macRoot, encoding: .utf8)
         let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let macDesignWindow = try sourceBody(
+            after: "struct MacDesignWindowRootView: View",
+            in: mac,
+            description: "Mac design window root view"
+        )
 
         XCTAssertTrue(mac.contains("ScrollView(.vertical, showsIndicators: true)"))
         XCTAssertTrue(mac.contains(".scrollIndicators(.visible)"))
         XCTAssertTrue(mac.contains("private struct WholeScreenVerticalScrollView"))
         XCTAssertTrue(mac.contains("GeometryReader { geometry in"))
         XCTAssertTrue(mac.contains("minHeight: geometry.size.height"))
+        XCTAssertTrue(macDesignWindow.contains("WholeScreenVerticalScrollView"))
+        XCTAssertTrue(macDesignWindow.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertFalse(mac.contains("ScrollView(.horizontal)"))
         XCTAssertTrue(ios.contains("ScrollView(.vertical, showsIndicators: true)"))
         XCTAssertTrue(ios.contains(".scrollIndicators(.visible)"))

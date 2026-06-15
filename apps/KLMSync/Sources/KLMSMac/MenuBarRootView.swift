@@ -42,17 +42,20 @@ struct MacDesignWindowRootView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            attentionBanner
-            HStack(alignment: .top, spacing: 14) {
-                controlRail
-                    .frame(width: 284, alignment: .topLeading)
-                workspace
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+        WholeScreenVerticalScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                attentionBanner
+                HStack(alignment: .top, spacing: 14) {
+                    controlRail
+                        .frame(width: 284, alignment: .topLeading)
+                    workspace
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
             }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.klmsMacScreenBackground)
         .tint(.klmsMacCommandAccent)
