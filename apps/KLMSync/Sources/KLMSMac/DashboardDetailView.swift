@@ -64,6 +64,16 @@ struct DashboardDetailPanelView: View {
     @State private var showHidden = false
     @State private var newOnly = false
     @State private var recentOnly = false
+    @State private var fileData: DashboardFileData
+    @State private var fileDataSignature: DashboardFileData.Signature
+
+    init(kind: DashboardDetailKind, model: KLMSMacModel) {
+        self.kind = kind
+        self.model = model
+        let initialFileData = DashboardFileData(snapshot: model.snapshot)
+        _fileData = State(initialValue: initialFileData)
+        _fileDataSignature = State(initialValue: initialFileData.signature)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -147,19 +157,24 @@ struct DashboardDetailPanelView: View {
             case .notices:
                 NoticeListView(filters: filters, model: model)
             case .files:
-                FileManifestListView(filters: filters, model: model)
+                FileManifestListView(files: fileData.manifestFiles, filters: filters, model: model)
             case .missingFiles:
-                MissingFilesListView(filters: filters, model: model)
+                MissingFilesListView(files: fileData.missingFiles, filters: filters, model: model)
             case .newFiles:
-                NewFilesListView(filters: filters, model: model)
+                NewFilesListView(files: fileData.newFiles, filters: filters, model: model)
             case .quarantine:
-                QuarantineListView(filters: filters, model: model)
+                QuarantineListView(files: fileData.quarantineFiles, filters: filters, model: model)
             case .pruned:
                 PrunedListView(filters: filters, snapshot: model.snapshot)
             case .calendar:
                 CalendarDetailView(snapshot: model.snapshot, filters: filters, model: model)
             case .hidden:
-                HiddenItemsListView(filters: filters, model: model)
+                HiddenItemsListView(
+                    filters: filters,
+                    hiddenFileItems: fileData.hiddenFiles,
+                    hiddenQuarantineItems: fileData.hiddenQuarantineFiles,
+                    model: model
+                )
             }
         }
         .padding(10)
@@ -167,6 +182,12 @@ struct DashboardDetailPanelView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
+        .onChange(of: currentFileDataSignature) { _, signature in
+            rebuildFileDataIfNeeded(signature)
+        }
+        .onAppear {
+            rebuildFileDataIfNeeded(currentFileDataSignature)
         }
     }
 
@@ -198,6 +219,18 @@ struct DashboardDetailPanelView: View {
     private var hiddenCount: Int {
         model.snapshot.hiddenSummary.total
     }
+
+    private var currentFileDataSignature: DashboardFileData.Signature {
+        DashboardFileData.Signature(snapshot: model.snapshot)
+    }
+
+    private func rebuildFileDataIfNeeded(_ signature: DashboardFileData.Signature) {
+        guard fileDataSignature != signature else {
+            return
+        }
+        fileData = DashboardFileData(snapshot: model.snapshot, signature: signature)
+        fileDataSignature = signature
+    }
 }
 
 private struct DashboardDetailFilters {
@@ -225,6 +258,242 @@ private struct DashboardDetailFilters {
 private enum DashboardLargeList {
     static let initialVisibleLimit = 16
     static let increment = 16
+}
+
+private struct DashboardFileData {
+    var signature: Signature
+    var manifestFiles: [DashboardFileItem]
+    var newFiles: [DashboardFileItem]
+    var missingFiles: [DashboardFileItem]
+    var quarantineFiles: [DashboardFileItem]
+    var hiddenFiles: [DashboardFileItem]
+    var hiddenQuarantineFiles: [DashboardFileItem]
+
+    init(snapshot: EngineSnapshot, signature: Signature? = nil) {
+        let resolvedSignature = signature ?? Signature(snapshot: snapshot)
+        let missingPaths = dashboardMissingPathSet(from: snapshot)
+        let appFileState = snapshot.appUserState?.files ?? [:]
+        let appQuarantineState = snapshot.appUserState?.quarantine ?? [:]
+        let recentKeys = Self.recentFileKeys(snapshot: snapshot)
+        let manifestLookup = Self.manifestLookup(snapshot.courseFileManifest)
+
+        self.signature = resolvedSignature
+        manifestFiles = snapshot.courseFileManifest.map { entry in
+            let key = fileKey(url: entry.url, path: entry.absolutePath, fallback: entry.relativePath)
+            return DashboardFileItem(
+                key: key,
+                title: fileDisplayTitle(filename: entry.filename, relativePath: entry.relativePath),
+                course: entry.course,
+                academicTerm: entry.academicTerm,
+                path: entry.absolutePath,
+                sortPath: entry.relativePath,
+                bucket: entry.bucket,
+                url: entry.url,
+                isRecent: recentKeys.contains(entry.url) || recentKeys.contains(entry.relativePath),
+                recencyText: entry.localDownloadedAt,
+                klmsTimestampEpoch: entry.klmsTimestampEpoch,
+                pathExists: dashboardPathExists(path: entry.absolutePath, missingPaths: missingPaths),
+                interaction: appFileState[key]
+            )
+        }
+
+        newFiles = (snapshot.downloadResult?.results.filter(\.copiedToNewFilesInbox) ?? []).map { item in
+            let manifest = (!item.url.isEmpty ? manifestLookup.byURL[item.url] : nil)
+                ?? manifestLookup.byRelativePath[item.relativePath]
+            let key = fileKey(url: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath)
+            return DashboardFileItem(
+                key: key,
+                title: item.relativePath,
+                course: manifest?.course ?? "",
+                academicTerm: manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]),
+                path: manifest?.absolutePath ?? "",
+                sortPath: item.relativePath,
+                bucket: manifest?.bucket ?? fileBucket(from: item.relativePath),
+                url: item.url,
+                isRecent: true,
+                recencyText: manifest?.localDownloadedAt ?? "",
+                klmsTimestampEpoch: manifest?.klmsTimestampEpoch,
+                pathExists: dashboardPathExists(path: manifest?.absolutePath ?? "", missingPaths: missingPaths),
+                interaction: appFileState[key]
+            )
+        }
+
+        missingFiles = (snapshot.verifyResult?.files?.missingFiles ?? []).map { path in
+            let relativePath = Self.normalizedMissingFilePath(path)
+            let key = fileKey(url: "", path: path, fallback: relativePath)
+            let title = fileDisplayTitle(filename: URL(fileURLWithPath: relativePath).lastPathComponent, relativePath: relativePath)
+            let course = relativePath.split(separator: "/", omittingEmptySubsequences: true).first.map(String.init) ?? ""
+            return DashboardFileItem(
+                key: key,
+                title: title,
+                course: course,
+                academicTerm: AcademicTerm.infer(title: relativePath, dateTexts: [relativePath, path]),
+                path: path,
+                sortPath: relativePath,
+                bucket: fileBucket(from: relativePath),
+                url: "",
+                isRecent: true,
+                recencyText: "",
+                pathExists: false,
+                interaction: appFileState[key]
+            )
+        }
+
+        quarantineFiles = (snapshot.quarantineReport?.records ?? []).map { record in
+            let key = fileKey(url: record.url, path: record.quarantinePath, fallback: record.quarantineRelativePath)
+            return DashboardFileItem(
+                key: key,
+                title: record.quarantineRelativePath,
+                course: "격리",
+                academicTerm: AcademicTerm.infer(
+                    title: record.quarantineRelativePath,
+                    dateTexts: [record.quarantinePath, record.quarantineRelativePath]
+                ),
+                path: record.quarantinePath,
+                sortPath: record.quarantineRelativePath,
+                bucket: "quarantine",
+                url: record.url,
+                isRecent: true,
+                recencyText: "",
+                pathExists: !record.quarantinePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                interaction: appQuarantineState[key]
+            )
+        }
+
+        hiddenFiles = appFileState.compactMap { key, item in
+            guard item.isHiddenLike else { return nil }
+            return DashboardFileItem(
+                key: key,
+                title: item.title,
+                course: item.course,
+                academicTerm: item.academicTerm,
+                path: item.path,
+                sortPath: fileSortPath(from: item.path),
+                bucket: fileBucket(from: item.path),
+                url: item.url,
+                isRecent: item.trashedAt != nil,
+                recencyText: item.updatedAt,
+                pathExists: dashboardPathExists(path: item.path, missingPaths: missingPaths),
+                interaction: item
+            )
+        }
+
+        hiddenQuarantineFiles = appQuarantineState.compactMap { key, item in
+            guard item.isHiddenLike else { return nil }
+            return DashboardFileItem(
+                key: key,
+                title: item.title,
+                course: item.course,
+                academicTerm: item.academicTerm,
+                path: item.path,
+                sortPath: fileSortPath(from: item.path),
+                bucket: "quarantine",
+                url: item.url,
+                isRecent: item.trashedAt != nil,
+                recencyText: item.updatedAt,
+                pathExists: !item.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                interaction: item
+            )
+        }
+    }
+
+    struct Signature: Equatable {
+        private var value: Int
+
+        init(snapshot: EngineSnapshot) {
+            var hasher = Hasher()
+            for entry in snapshot.courseFileManifest {
+                hasher.combine(entry.id)
+                hasher.combine(entry.absolutePath)
+                hasher.combine(entry.localDownloadedAt)
+                hasher.combine(entry.klmsTimestampEpoch ?? -1)
+                hasher.combine(entry.bucket)
+            }
+            for item in snapshot.downloadResult?.results ?? [] {
+                hasher.combine(item.id)
+                hasher.combine(item.copiedToNewFilesInbox)
+                hasher.combine(item.skippedExisting)
+                hasher.combine(item.restoredFromArchive)
+                hasher.combine(item.reusedLoggedFile)
+                hasher.combine(item.failed)
+                hasher.combine(item.quarantined)
+            }
+            for path in snapshot.verifyResult?.files?.missingFiles ?? [] {
+                hasher.combine(path)
+            }
+            for record in snapshot.quarantineReport?.records ?? [] {
+                hasher.combine(record.id)
+                hasher.combine(record.url)
+                hasher.combine(record.bytes)
+            }
+            for (key, item) in (snapshot.appUserState?.files ?? [:]).sorted(by: { $0.key < $1.key }) {
+                DashboardFileData.combineInteractionState(key: key, item: item, into: &hasher)
+            }
+            for (key, item) in (snapshot.appUserState?.quarantine ?? [:]).sorted(by: { $0.key < $1.key }) {
+                DashboardFileData.combineInteractionState(key: key, item: item, into: &hasher)
+            }
+            value = hasher.finalize()
+        }
+    }
+
+    private static func manifestLookup(_ manifest: [CourseFileManifestEntry]) -> (
+        byURL: [String: CourseFileManifestEntry],
+        byRelativePath: [String: CourseFileManifestEntry]
+    ) {
+        var byURL: [String: CourseFileManifestEntry] = [:]
+        var byRelativePath: [String: CourseFileManifestEntry] = [:]
+        for entry in manifest {
+            if !entry.url.isEmpty {
+                byURL[entry.url] = entry
+            }
+            if !entry.relativePath.isEmpty {
+                byRelativePath[entry.relativePath] = entry
+            }
+        }
+        return (byURL, byRelativePath)
+    }
+
+    private static func recentFileKeys(snapshot: EngineSnapshot) -> Set<String> {
+        var keys = Set<String>()
+        for result in snapshot.downloadResult?.results ?? [] {
+            let isRecent = result.copiedToNewFilesInbox
+                || (!result.skippedExisting
+                    && !result.restoredFromArchive
+                    && !result.reusedLoggedFile
+                    && !result.failed
+                    && !result.quarantined)
+            guard isRecent else {
+                continue
+            }
+            if !result.url.isEmpty {
+                keys.insert(result.url)
+            }
+            if !result.relativePath.isEmpty {
+                keys.insert(result.relativePath)
+            }
+        }
+        return keys
+    }
+
+    private static func normalizedMissingFilePath(_ path: String) -> String {
+        let marker = "/KLMSNotesSync/course_files/"
+        if let range = path.range(of: marker) {
+            return String(path[range.upperBound...])
+        }
+        return path
+    }
+
+    private static func combineInteractionState(key: String, item: FileInteractionState, into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(item.title)
+        hasher.combine(item.course)
+        hasher.combine(item.path)
+        hasher.combine(item.url)
+        hasher.combine(item.hidden)
+        hasher.combine(item.ignored)
+        hasher.combine(item.trashedAt ?? "")
+        hasher.combine(item.updatedAt)
+    }
 }
 
 private struct DashboardShowMoreButton: View {
@@ -1504,16 +1773,17 @@ private struct NoticeAttachmentDisplay: Identifiable {
 }
 
 private struct NewFilesListView: View {
+    var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
-        let files = filteredItems
-        let sortedFiles = files.sorted(by: sortOption)
+        let filteredFiles = files.filter { $0.matches(filters: filters) }
+        let sortedFiles = filteredFiles.sorted(by: sortOption)
         let visibleFiles = sortedFiles.prefix(visibleLimit)
-        if files.isEmpty {
+        if filteredFiles.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 새 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "새 파일이 없습니다.")
         } else {
             VStack(alignment: .leading, spacing: 8) {
@@ -1532,58 +1802,20 @@ private struct NewFilesListView: View {
             }
         }
     }
-
-    private var filteredItems: [DashboardFileItem] {
-        let downloadItems = model.snapshot.downloadResult?.results.filter(\.copiedToNewFilesInbox) ?? []
-        let missingPaths = dashboardMissingPathSet(from: model.snapshot)
-        var manifestsByURL: [String: CourseFileManifestEntry] = [:]
-        var manifestsByRelativePath: [String: CourseFileManifestEntry] = [:]
-        for entry in model.snapshot.courseFileManifest {
-            if !entry.url.isEmpty {
-                manifestsByURL[entry.url] = entry
-            }
-            if !entry.relativePath.isEmpty {
-                manifestsByRelativePath[entry.relativePath] = entry
-            }
-        }
-        return downloadItems.compactMap { item in
-            let manifest = (!item.url.isEmpty ? manifestsByURL[item.url] : nil)
-                ?? manifestsByRelativePath[item.relativePath]
-            let file = DashboardFileItem(
-                key: fileKey(url: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath),
-                title: item.relativePath,
-                course: manifest?.course ?? "",
-                academicTerm: manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]),
-                path: manifest?.absolutePath ?? "",
-                sortPath: item.relativePath,
-                bucket: manifest?.bucket ?? fileBucket(from: item.relativePath),
-                url: item.url,
-                isRecent: true,
-                recencyText: manifest?.localDownloadedAt ?? "",
-                klmsTimestampEpoch: manifest?.klmsTimestampEpoch,
-                pathExists: dashboardPathExists(path: manifest?.absolutePath ?? "", missingPaths: missingPaths),
-                interaction: interaction(for: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath)
-            )
-            return file.matches(filters: filters) ? file : nil
-        }
-    }
-
-    private func interaction(for url: String, path: String, fallback: String) -> FileInteractionState? {
-        model.snapshot.appUserState?.files[fileKey(url: url, path: path, fallback: fallback)]
-    }
 }
 
 private struct FileManifestListView: View {
+    var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
-        let files = filteredItems
-        let sortedFiles = files.sorted(by: sortOption)
+        let filteredFiles = files.filter { $0.matches(filters: filters) }
+        let sortedFiles = filteredFiles.sorted(by: sortOption)
         let visibleFiles = sortedFiles.prefix(visibleLimit)
-        if files.isEmpty {
+        if filteredFiles.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "파일 목록이 없습니다. 파일 동기화를 한 번 실행하면 KLMS 파일 목록이 여기에 표시됩니다.")
         } else {
             VStack(alignment: .leading, spacing: 8) {
@@ -1602,65 +1834,20 @@ private struct FileManifestListView: View {
             }
         }
     }
-
-    private var filteredItems: [DashboardFileItem] {
-        let recentKeys = recentFileKeys
-        let missingPaths = dashboardMissingPathSet(from: model.snapshot)
-        return model.snapshot.courseFileManifest.compactMap { entry in
-            let key = fileKey(url: entry.url, path: entry.absolutePath, fallback: entry.relativePath)
-            let item = DashboardFileItem(
-                key: key,
-                title: fileDisplayTitle(filename: entry.filename, relativePath: entry.relativePath),
-                course: entry.course,
-                academicTerm: entry.academicTerm,
-                path: entry.absolutePath,
-                sortPath: entry.relativePath,
-                bucket: entry.bucket,
-                url: entry.url,
-                isRecent: recentKeys.contains(entry.url) || recentKeys.contains(entry.relativePath),
-                recencyText: entry.localDownloadedAt,
-                klmsTimestampEpoch: entry.klmsTimestampEpoch,
-                pathExists: dashboardPathExists(path: entry.absolutePath, missingPaths: missingPaths),
-                interaction: model.snapshot.appUserState?.files[key]
-            )
-            return item.matches(filters: filters) ? item : nil
-        }
-    }
-
-    private var recentFileKeys: Set<String> {
-        var keys = Set<String>()
-        for result in model.snapshot.downloadResult?.results ?? [] {
-            let isRecent = result.copiedToNewFilesInbox
-                || (!result.skippedExisting
-                    && !result.restoredFromArchive
-                    && !result.reusedLoggedFile
-                    && !result.failed
-                    && !result.quarantined)
-            guard isRecent else {
-                continue
-            }
-            if !result.url.isEmpty {
-                keys.insert(result.url)
-            }
-            if !result.relativePath.isEmpty {
-                keys.insert(result.relativePath)
-            }
-        }
-        return keys
-    }
 }
 
 private struct MissingFilesListView: View {
+    var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
-        let files = filteredItems
-        let sortedFiles = files.sorted(by: sortOption)
+        let filteredFiles = files.filter { $0.matches(filters: filters) }
+        let sortedFiles = filteredFiles.sorted(by: sortOption)
         let visibleFiles = sortedFiles.prefix(visibleLimit)
-        if files.isEmpty {
+        if filteredFiles.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 누락 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "로컬에서 누락된 파일이 없습니다.")
         } else {
             VStack(alignment: .leading, spacing: 8) {
@@ -1682,41 +1869,6 @@ private struct MissingFilesListView: View {
                 .id(sortOption.rawValue)
             }
         }
-    }
-
-    private var filteredItems: [DashboardFileItem] {
-        (model.snapshot.verifyResult?.files?.missingFiles ?? []).compactMap { path in
-            let relativePath = normalizedMissingFilePath(path)
-            let key = fileKey(url: "", path: path, fallback: relativePath)
-            let title = fileDisplayTitle(filename: URL(fileURLWithPath: relativePath).lastPathComponent, relativePath: relativePath)
-            let course = relativePath.split(separator: "/", omittingEmptySubsequences: true).first.map(String.init) ?? ""
-            let item = DashboardFileItem(
-                key: key,
-                title: title,
-                course: course,
-                academicTerm: AcademicTerm.infer(
-                    title: relativePath,
-                    dateTexts: [relativePath, path]
-                ),
-                path: path,
-                sortPath: relativePath,
-                bucket: fileBucket(from: relativePath),
-                url: "",
-                isRecent: true,
-                recencyText: "",
-                pathExists: false,
-                interaction: model.snapshot.appUserState?.files[key]
-            )
-            return item.matches(filters: filters) ? item : nil
-        }
-    }
-
-    private func normalizedMissingFilePath(_ path: String) -> String {
-        let marker = "/KLMSNotesSync/course_files/"
-        if let range = path.range(of: marker) {
-            return String(path[range.upperBound...])
-        }
-        return path
     }
 }
 
@@ -2148,6 +2300,8 @@ private enum DashboardFileRowKind {
 
 private struct HiddenItemsListView: View {
     var filters: DashboardDetailFilters
+    var hiddenFileItems: [DashboardFileItem]
+    var hiddenQuarantineItems: [DashboardFileItem]
     @ObservedObject var model: KLMSMacModel
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -2174,17 +2328,17 @@ private struct HiddenItemsListView: View {
 
     @ViewBuilder
     private var hiddenFileRows: some View {
-        let hiddenFileItems = hiddenFiles + hiddenQuarantine
-        let visibleItems = hiddenFileItems.prefix(visibleLimit)
-        if hiddenFileItems.isEmpty {
+        let items = (hiddenFileItems + hiddenQuarantineItems).filter { $0.matches(filters: filters) }
+        let visibleItems = items.prefix(visibleLimit)
+        if items.isEmpty {
             EmptyDetailText(text: "숨긴 파일이 없습니다.")
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
                 ForEach(visibleItems) { item in
                     FileRowView(item: item, kind: item.bucket == "quarantine" ? .quarantine : .file, model: model)
                 }
-                if hiddenFileItems.count > visibleItems.count {
-                    DashboardShowMoreButton(remainingCount: hiddenFileItems.count - visibleItems.count) {
+                if items.count > visibleItems.count {
+                    DashboardShowMoreButton(remainingCount: items.count - visibleItems.count) {
                         visibleLimit += DashboardLargeList.increment
                     }
                 }
@@ -2210,49 +2364,6 @@ private struct HiddenItemsListView: View {
         return ((content?.examItems ?? []) + (content?.examCandidates ?? []))
             .filter { model.snapshot.manualOverrides?.isExamHidden($0) == true }
             .filter { !$0.isPastDashboardExamForApp }
-    }
-
-    private var hiddenFiles: [DashboardFileItem] {
-        let missingPaths = dashboardMissingPathSet(from: model.snapshot)
-        return (model.snapshot.appUserState?.files ?? [:]).compactMap { key, item in
-            guard item.isHiddenLike else { return nil }
-            let file = DashboardFileItem(
-                key: key,
-                title: item.title,
-                course: item.course,
-                academicTerm: item.academicTerm,
-                path: item.path,
-                sortPath: fileSortPath(from: item.path),
-                bucket: fileBucket(from: item.path),
-                url: item.url,
-                isRecent: item.trashedAt != nil,
-                recencyText: item.updatedAt,
-                pathExists: dashboardPathExists(path: item.path, missingPaths: missingPaths),
-                interaction: item
-            )
-            return file.matches(filters: filters) ? file : nil
-        }
-    }
-
-    private var hiddenQuarantine: [DashboardFileItem] {
-        (model.snapshot.appUserState?.quarantine ?? [:]).compactMap { key, item in
-            guard item.isHiddenLike else { return nil }
-            let file = DashboardFileItem(
-                key: key,
-                title: item.title,
-                course: item.course,
-                academicTerm: item.academicTerm,
-                path: item.path,
-                sortPath: fileSortPath(from: item.path),
-                bucket: "quarantine",
-                url: item.url,
-                isRecent: item.trashedAt != nil,
-                recencyText: item.updatedAt,
-                pathExists: !item.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                interaction: item
-            )
-            return file.matches(filters: filters) ? file : nil
-        }
     }
 }
 
@@ -2280,13 +2391,14 @@ private extension StateItem {
 }
 
 private struct QuarantineListView: View {
+    var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
-        let records = filteredItems
+        let records = files.filter { $0.matches(filters: filters) }
         let sortedRecords = records.sorted(by: sortOption)
         let visibleRecords = sortedRecords.prefix(visibleLimit)
         if records.isEmpty {
@@ -2310,31 +2422,6 @@ private struct QuarantineListView: View {
                 }
                 .id(sortOption.rawValue)
             }
-        }
-    }
-
-    private var filteredItems: [DashboardFileItem] {
-        let records = model.snapshot.quarantineReport?.records ?? []
-        return records.compactMap { record in
-            let key = fileKey(url: record.url, path: record.quarantinePath, fallback: record.quarantineRelativePath)
-            let item = DashboardFileItem(
-                key: key,
-                title: record.quarantineRelativePath,
-                course: "격리",
-                academicTerm: AcademicTerm.infer(
-                    title: record.quarantineRelativePath,
-                    dateTexts: [record.quarantinePath, record.quarantineRelativePath]
-                ),
-                path: record.quarantinePath,
-                sortPath: record.quarantineRelativePath,
-                bucket: "quarantine",
-                url: record.url,
-                isRecent: true,
-                recencyText: "",
-                pathExists: !record.quarantinePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                interaction: model.snapshot.appUserState?.quarantine[key]
-            )
-            return item.matches(filters: filters) ? item : nil
         }
     }
 }

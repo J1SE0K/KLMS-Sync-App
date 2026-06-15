@@ -1095,7 +1095,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(fileItem.contains("var pathExists: Bool = false"))
         XCTAssertTrue(fileItem.contains("private var searchBlob: String = \"\""))
         XCTAssertTrue(fileItem.contains("courseSortKey = course.normalizedFileSortKey"))
-        XCTAssertTrue(detail.contains("dashboardMissingPathSet(from: model.snapshot)"))
+        XCTAssertTrue(detail.contains("private struct DashboardFileData"))
+        XCTAssertTrue(detail.contains("var manifestFiles: [DashboardFileItem]"))
+        XCTAssertTrue(detail.contains("var newFiles: [DashboardFileItem]"))
+        XCTAssertTrue(detail.contains("var missingFiles: [DashboardFileItem]"))
+        XCTAssertTrue(detail.contains("var quarantineFiles: [DashboardFileItem]"))
+        XCTAssertTrue(detail.contains("struct Signature: Equatable"))
+        XCTAssertFalse(detail.contains("dashboardMissingPathSet(from: model.snapshot)"))
         XCTAssertFalse(detail.contains("private func dashboardFilePathExists"))
     }
 
