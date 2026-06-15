@@ -751,6 +751,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: view,
             description: "Mac primary button style"
         )
+        let secondaryButtonStyle = try sourceBody(
+            after: "private struct MacDesignSecondaryButtonStyle: ButtonStyle",
+            in: view,
+            description: "Mac secondary button style"
+        )
         let rootActionButtonStyle = try sourceBody(
             after: "private struct KLMSMacRootActionButtonStyle: ButtonStyle",
             in: view,
@@ -812,6 +817,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(commandPanel.contains(".padding(.horizontal, 8)"))
         XCTAssertTrue(commandPanel.contains(".buttonStyle(MacPressFeedbackButtonStyle())"))
         XCTAssertTrue(commandPanel.contains(".buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12))"))
+        XCTAssertTrue(commandPanel.contains("let isRunning = model.runningCommand == command"))
+        XCTAssertTrue(commandPanel.contains("Text(isRunning ? \"전체 동기화 중단\" : \"전체 동기화\")"))
+        XCTAssertTrue(commandPanel.contains("Image(systemName: isRunning ? \"stop.fill\" : \"play.fill\")"))
+        XCTAssertTrue(commandPanel.contains("Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.88)"))
+        XCTAssertTrue(commandPanel.contains(".disabled(model.runningCommand != nil && !isRunning)"))
+        XCTAssertTrue(commandPanel.contains("private func runOrCancel(_ command: KLMSEngineCommand)"))
+        XCTAssertTrue(view.contains(".buttonStyle(MacDesignSecondaryButtonStyle(isActive: isRunning))"))
         XCTAssertTrue(view.contains(".font(.system(size: 28, weight: .bold, design: .rounded))"))
         XCTAssertTrue(view.contains(".buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 13))"))
         XCTAssertTrue(view.contains(".buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))"))
@@ -836,6 +848,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(primaryButtonStyle.contains("return isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)"))
         XCTAssertTrue(primaryButtonStyle.contains("Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
         XCTAssertFalse(primaryButtonStyle.contains("Color.klmsMacDangerBackground"))
+        XCTAssertTrue(secondaryButtonStyle.contains("var isActive = false"))
+        XCTAssertTrue(secondaryButtonStyle.contains(".opacity(isEnabled || isActive ? 1.0 : 0.48)"))
+        XCTAssertTrue(secondaryButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
+        XCTAssertTrue(secondaryButtonStyle.contains("Color.klmsMacPrimaryCommandButtonPressedBackground"))
+        XCTAssertTrue(secondaryButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 0.58)"))
         XCTAssertTrue(rootActionButtonStyle.contains("background(isPressed: configuration.isPressed)"))
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacPrimaryCommandButtonPressedBackground"))
@@ -900,7 +917,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettingsButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
         XCTAssertTrue(macSettingsButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46)"))
         XCTAssertTrue(macSettingsButtonStyle.contains("Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)"))
-        XCTAssertTrue(mac.contains("Image(systemName: \"play.fill\")"))
+        XCTAssertTrue(mac.contains("Image(systemName: isRunning ? \"stop.fill\" : \"play.fill\")"))
         XCTAssertTrue(mac.contains(".font(.headline.weight(.black))"))
         XCTAssertFalse(macDesignSources.contains(".foregroundStyle(.secondary)"))
         XCTAssertFalse(macDesignSources.contains("return .secondary"))

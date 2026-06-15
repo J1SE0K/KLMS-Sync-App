@@ -395,15 +395,16 @@ struct MacDesignWindowRootView: View {
     }
 
     private func syncButton(_ title: String, _ command: KLMSEngineCommand) -> some View {
-        Button {
+        let isRunning = model.runningCommand == command
+        return Button {
             runOrCancel(command)
         } label: {
             Text(title)
                 .font(.caption.weight(.bold))
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
-        .buttonStyle(MacDesignSecondaryButtonStyle())
-        .disabled(model.runningCommand != nil)
+        .buttonStyle(MacDesignSecondaryButtonStyle(isActive: isRunning))
+        .disabled(model.runningCommand != nil && !isRunning)
     }
 
     private func navigationButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -588,6 +589,7 @@ private struct MacDesignPrimaryButtonStyle: ButtonStyle {
 }
 
 private struct MacDesignSecondaryButtonStyle: ButtonStyle {
+    var isActive = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -599,17 +601,24 @@ private struct MacDesignSecondaryButtonStyle: ButtonStyle {
                     .stroke(secondaryBorder(isPressed: configuration.isPressed), lineWidth: 1)
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
-            .opacity(isEnabled ? 1.0 : 0.48)
+            .opacity(isEnabled || isActive ? 1.0 : 0.48)
             .animation(.linear(duration: 0.035), value: configuration.isPressed)
             .animation(.linear(duration: 0.08), value: isEnabled)
+            .animation(.linear(duration: 0.08), value: isActive)
     }
 
     private func secondaryBackground(isPressed: Bool) -> Color {
-        isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground
+        if isActive {
+            return isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacCommandButtonPressedBackground
+        }
+        return isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground
     }
 
     private func secondaryBorder(isPressed: Bool) -> Color {
-        isPressed ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46) : Color.klmsMacCommandButtonBorder
+        if isActive {
+            return Color.klmsMacPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 0.58)
+        }
+        return isPressed ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46) : Color.klmsMacCommandButtonBorder
     }
 }
 
@@ -3961,23 +3970,25 @@ private struct CommandPanelView: View {
     }
 
     private func primaryCommandActionCard(_ command: KLMSEngineCommand) -> some View {
-        Button {
-            Task {
-                await model.run(command)
-            }
+        let isRunning = model.runningCommand == command
+        return Button {
+            runOrCancel(command)
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                Text("전체 동기화")
+                Text(isRunning ? "전체 동기화 중단" : "전체 동기화")
                     .font(.system(size: 18, weight: .black, design: .rounded))
                 Spacer(minLength: 0)
-                Image(systemName: "play.fill")
+                Image(systemName: isRunning ? "stop.fill" : "play.fill")
                     .font(.headline.weight(.black))
             }
             .foregroundStyle(Color.klmsMacCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 15)
-            .background(Color.klmsMacPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
+            .background(
+                isRunning ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground,
+                in: RoundedRectangle(cornerRadius: 12)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.klmsMacPrimaryCommandButtonBorder, lineWidth: 1)
@@ -3988,14 +3999,13 @@ private struct CommandPanelView: View {
         .help(command.shortDescription)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
-        .disabled(model.runningCommand != nil)
+        .disabled(model.runningCommand != nil && !isRunning)
     }
 
     private func commandActionCard(_ command: KLMSEngineCommand) -> some View {
-        Button {
-            Task {
-                await model.run(command)
-            }
+        let isRunning = model.runningCommand == command
+        return Button {
+            runOrCancel(command)
         } label: {
             HStack(spacing: 7) {
                 Text(shortTitle(for: command))
@@ -4007,10 +4017,16 @@ private struct CommandPanelView: View {
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .center)
             .padding(.horizontal, 8)
             .padding(.vertical, 9)
-            .background(Color.klmsMacCommandButtonBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
+            .background(
+                isRunning ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.88),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.klmsMacCommandButtonBorder.opacity(0.88), lineWidth: 1)
+                    .stroke(
+                        isRunning ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.58) : Color.klmsMacCommandButtonBorder.opacity(0.88),
+                        lineWidth: 1
+                    )
             }
         }
         .buttonStyle(MacPressFeedbackButtonStyle())
@@ -4018,7 +4034,17 @@ private struct CommandPanelView: View {
         .help(command.shortDescription)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
-        .disabled(model.runningCommand != nil)
+        .disabled(model.runningCommand != nil && !isRunning)
+    }
+
+    private func runOrCancel(_ command: KLMSEngineCommand) {
+        Task {
+            if model.runningCommand == command {
+                await model.cancelRunningCommand()
+            } else {
+                await model.run(command)
+            }
+        }
     }
 
     private func shortTitle(for command: KLMSEngineCommand) -> String {
