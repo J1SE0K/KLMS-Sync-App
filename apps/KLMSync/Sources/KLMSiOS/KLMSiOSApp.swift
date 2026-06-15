@@ -1879,13 +1879,14 @@ private struct CompanionCompactTabBar: View {
                         .background(
                             isSelected
                                 ? Color.klmsSelectedBackground
-                                : Color.klmsSubtleCardBackground,
+                                : Color.clear,
                             in: RoundedRectangle(cornerRadius: 10)
                         )
                         .overlay {
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
+                                .stroke(isSelected ? Color.klmsSelectedBorder : Color.clear, lineWidth: 1)
                         }
+                        .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(KLMSCardButtonStyle())
