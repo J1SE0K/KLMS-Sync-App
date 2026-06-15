@@ -1904,6 +1904,7 @@ private struct CompanionCompactTabBar: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
+        .frame(height: 56)
     }
 
     private func compactTabMinWidth(for section: CompanionAppSection) -> CGFloat {

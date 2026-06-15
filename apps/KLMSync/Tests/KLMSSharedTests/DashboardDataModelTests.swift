@@ -1116,6 +1116,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(compactTabBar.contains(".padding(6)"))
         XCTAssertFalse(compactTabBar.contains(".padding(.horizontal, 6)"))
         XCTAssertFalse(compactTabBar.contains(".padding(7)"))
+        XCTAssertTrue(compactTabBar.contains(".frame(height: 56)"))
         XCTAssertTrue(compactTabBar.contains("RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(compactTabBar.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(sectionContent.contains("CompanionDashboardCategoryScreen(title: \"파일\", category: .files"))
