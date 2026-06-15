@@ -787,7 +787,8 @@ final class DashboardDataModelTests: XCTestCase {
         let issueRowView = try sourceStructBody(named: "IssueRowView", in: view)
 
         XCTAssertTrue(app.contains("KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()"))
-        XCTAssertTrue(app.contains("MacDesignWindowRootView(model: model)"))
+        XCTAssertTrue(app.contains("MenuBarRootView(model: model)"))
+        XCTAssertFalse(app.contains("MacDesignWindowRootView(model: model)"))
         XCTAssertFalse(app.contains("Window(\"KLMS Sync\""))
         XCTAssertFalse(app.contains("Window(\"KLMS Sync 진단\""))
         XCTAssertFalse(app.contains("Settings {"))

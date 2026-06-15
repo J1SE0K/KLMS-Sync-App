@@ -87,7 +87,7 @@ private struct KLMSMacWindowRootContainerView: View {
     @ObservedObject var model: KLMSMacModel
 
     var body: some View {
-        MacDesignWindowRootView(model: model)
+        MenuBarRootView(model: model)
             .klmsPreferredAppearance()
     }
 }
