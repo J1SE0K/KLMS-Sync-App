@@ -116,8 +116,6 @@ private struct MacWorkstationLayoutView: View {
     @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
-    @State private var displayedSection: KLMSMacSection = .dashboard
-    @State private var deferredSectionTask: Task<Void, Never>?
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -127,15 +125,6 @@ private struct MacWorkstationLayoutView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onAppear {
-            displayedSection = selectedSection
-        }
-        .onChange(of: selectedSection) { _, newSection in
-            deferDisplayedSection(newSection)
-        }
-        .onDisappear {
-            deferredSectionTask?.cancel()
-        }
     }
 
     private var controlRail: some View {
@@ -150,7 +139,7 @@ private struct MacWorkstationLayoutView: View {
     @ViewBuilder
     private var workspace: some View {
         VStack(alignment: .leading, spacing: 16) {
-            switch displayedSection {
+            switch selectedSection {
             case .dashboard:
                 DashboardSummaryView(model: model)
             case .files:
@@ -179,23 +168,6 @@ private struct MacWorkstationLayoutView: View {
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private func deferDisplayedSection(_ section: KLMSMacSection) {
-        guard displayedSection != section else {
-            return
-        }
-        deferredSectionTask?.cancel()
-        guard klmsMacInteractionDetailDelayNanoseconds > 0 else {
-            displayedSection = section
-            return
-        }
-        deferredSectionTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: klmsMacInteractionDetailDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            displayedSection = section
-        }
     }
 }
 
@@ -4660,11 +4632,12 @@ private struct MetricTile: View {
         }
         .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
         .padding(12)
-        .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .background(isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
         .overlay {
             RoundedRectangle(cornerRadius: 13)
-                .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacBorder, lineWidth: 1)
+                .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacBorder, lineWidth: isSelected ? 1.2 : 1)
         }
+        .shadow(color: isSelected ? Color.klmsMacSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
         .contentShape(RoundedRectangle(cornerRadius: 13))
     }
 

@@ -1816,12 +1816,10 @@ struct CompanionRootView: View {
 private struct CompanionTabRootView: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedSection: CompanionAppSection = .status
-    @State private var displayedSection: CompanionAppSection = .status
-    @State private var deferredSectionTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
-            CompanionSectionContent(section: displayedSection, model: model)
+            CompanionSectionContent(section: selectedSection, model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
             CompanionCompactTabBar(selectedSection: $selectedSection)
@@ -1831,29 +1829,6 @@ private struct CompanionTabRootView: View {
                 .background(Color.klmsScreenBackground)
         }
         .background(Color.klmsScreenBackground.ignoresSafeArea())
-        .onChange(of: selectedSection) { _, newSection in
-            deferDisplayedSection(newSection)
-        }
-        .onDisappear {
-            deferredSectionTask?.cancel()
-        }
-    }
-
-    private func deferDisplayedSection(_ section: CompanionAppSection) {
-        guard displayedSection != section else {
-            return
-        }
-        deferredSectionTask?.cancel()
-        guard klmsInteractionDetailDelayNanoseconds > 0 else {
-            displayedSection = section
-            return
-        }
-        deferredSectionTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            displayedSection = section
-        }
     }
 }
 
@@ -1922,8 +1897,6 @@ private struct CompanionCompactTabBar: View {
 private struct CompanionSplitRootView: View {
     @ObservedObject var model: CompanionModel
     @Binding var selectedSection: CompanionAppSection?
-    @State private var displayedSection: CompanionAppSection = .status
-    @State private var deferredSectionTask: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1932,37 +1905,15 @@ private struct CompanionSplitRootView: View {
             Rectangle()
                 .fill(Color.klmsBorder)
                 .frame(width: 1)
-            CompanionSectionContent(section: displayedSection, model: model)
+            CompanionSectionContent(section: currentSection, model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.klmsScreenBackground.ignoresSafeArea())
-        .onAppear {
-            displayedSection = selectedSection ?? .status
-        }
-        .onChange(of: selectedSection) { _, newSection in
-            deferDisplayedSection(newSection ?? .status)
-        }
-        .onDisappear {
-            deferredSectionTask?.cancel()
-        }
     }
 
-    private func deferDisplayedSection(_ section: CompanionAppSection) {
-        guard displayedSection != section else {
-            return
-        }
-        deferredSectionTask?.cancel()
-        guard klmsInteractionDetailDelayNanoseconds > 0 else {
-            displayedSection = section
-            return
-        }
-        deferredSectionTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            displayedSection = section
-        }
+    private var currentSection: CompanionAppSection {
+        selectedSection ?? .status
     }
 }
 
@@ -2097,9 +2048,6 @@ private struct CompanionStatusScreen: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
-    @State private var displayedDashboardPreview: DashboardMetricCategory?
-    @State private var displayedChangeSummary: RemoteChangeSummaryKind?
-    @State private var deferredDashboardDetailTask: Task<Void, Never>?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -2117,9 +2065,6 @@ private struct CompanionStatusScreen: View {
                 }
             }
         }
-        .onDisappear {
-            deferredDashboardDetailTask?.cancel()
-        }
     }
 
     private var statusSummaryColumn: some View {
@@ -2131,13 +2076,11 @@ private struct CompanionStatusScreen: View {
                 onCategoryTap: { category in
                     selectedChangeSummary = nil
                     selectedDashboardPreview = category
-                    deferDashboardCategory(category)
                 },
                 selectedChangeSummary: selectedChangeSummary,
                 onChangeSummaryTap: { kind in
                     selectedDashboardPreview = nil
                     selectedChangeSummary = kind
-                    deferChangeSummary(kind)
                 }
             )
         }
@@ -2145,53 +2088,15 @@ private struct CompanionStatusScreen: View {
 
     @ViewBuilder
     private var workstationStatusDetailColumn: some View {
-        if let kind = displayedChangeSummary {
+        if let kind = selectedChangeSummary {
             RemoteChangeSummaryDetailPanel(kind: kind, model: model)
                 .id(kind)
         } else {
             WorkstationDashboardDetailPanel(
-                category: displayedDashboardPreview ?? defaultDashboardCategory ?? .files,
+                category: selectedDashboardPreview ?? defaultDashboardCategory ?? .files,
                 model: model
             )
-            .id(displayedDashboardPreview ?? defaultDashboardCategory ?? .files)
-        }
-    }
-
-    private func deferDashboardCategory(_ category: DashboardMetricCategory) {
-        guard displayedDashboardPreview != category || displayedChangeSummary != nil else {
-            return
-        }
-        deferredDashboardDetailTask?.cancel()
-        guard klmsInteractionDetailDelayNanoseconds > 0 else {
-            displayedChangeSummary = nil
-            displayedDashboardPreview = category
-            return
-        }
-        deferredDashboardDetailTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            displayedChangeSummary = nil
-            displayedDashboardPreview = category
-        }
-    }
-
-    private func deferChangeSummary(_ kind: RemoteChangeSummaryKind) {
-        guard displayedChangeSummary != kind || displayedDashboardPreview != nil else {
-            return
-        }
-        deferredDashboardDetailTask?.cancel()
-        guard klmsInteractionDetailDelayNanoseconds > 0 else {
-            displayedDashboardPreview = nil
-            displayedChangeSummary = kind
-            return
-        }
-        deferredDashboardDetailTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            displayedDashboardPreview = nil
-            displayedChangeSummary = kind
+            .id(selectedDashboardPreview ?? defaultDashboardCategory ?? .files)
         }
     }
 
@@ -3429,11 +3334,11 @@ private struct CompanionItemListControls: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(isSelected ? Color.klmsSelectedBackground : Color.klmsSubtleCardBackground, in: Capsule())
+                .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground, in: Capsule())
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 .overlay {
                     Capsule()
-                        .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
+                        .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
                 }
                 .contentShape(Capsule())
         }
@@ -4204,13 +4109,13 @@ private struct FlowChipLayout: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         selectedKind == entry.kind
-                            ? Color.klmsSelectedBackground
+                            ? Color.klmsSelectedBackground.opacity(0.96)
                             : entry.kind.tint.opacity(0.10),
                         in: RoundedRectangle(cornerRadius: 8)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(selectedKind == entry.kind ? Color.klmsSelectedBorder : entry.kind.tint.opacity(0.26), lineWidth: 1)
+                            .stroke(selectedKind == entry.kind ? Color.klmsSelectedBorder.opacity(0.92) : entry.kind.tint.opacity(0.26), lineWidth: selectedKind == entry.kind ? 1.2 : 1)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -4256,12 +4161,13 @@ private struct RemoteMetricTile: View {
             }
             .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
             .padding(11)
-            .background(isSelected ? Color.klmsSelectedBackground : Color.klmsCardBackground)
+            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
             )
+            .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 14))
@@ -4368,11 +4274,12 @@ private struct WorkstationMetricCard: View {
             }
             .padding(11)
             .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
-            .background(isSelected ? Color.klmsSelectedBackground : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
             .overlay(
                 RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
             )
+            .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
             .contentShape(RoundedRectangle(cornerRadius: 13))
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
@@ -8900,13 +8807,14 @@ private struct ServerSyncDataRow: View, Equatable {
             }
         }
         .padding(10)
-        .background(isSelected ? Color.klmsSelectedBackground : Color.klmsSubtleCardBackground)
+        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
+                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
         )
+        .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
     }
 
     private var primaryForeground: Color {

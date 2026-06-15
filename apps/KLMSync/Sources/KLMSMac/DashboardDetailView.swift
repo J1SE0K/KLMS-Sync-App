@@ -1817,10 +1817,10 @@ private struct DashboardControlChip: View {
                 .frame(minWidth: 42)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
-                .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground, in: Capsule())
+                .background(isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacSubtleCardBackground, in: Capsule())
                 .overlay {
                     Capsule()
-                        .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder, lineWidth: 1)
+                        .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacCommandBorder, lineWidth: isSelected ? 1.2 : 1)
                 }
         }
         .buttonStyle(KLMSMacPressFeedbackButtonStyle())
