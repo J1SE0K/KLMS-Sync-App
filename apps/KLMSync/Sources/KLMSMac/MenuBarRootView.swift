@@ -44,14 +44,6 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
                     .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(
-                        Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0),
-                        lineWidth: 1
-                    )
-                    .allowsHitTesting(false)
-            }
             .opacity(isEnabled ? 1.0 : 0.48)
     }
 }

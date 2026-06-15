@@ -2302,7 +2302,7 @@ final class KLMSMacModel: ObservableObject {
                 for: item,
                 currentKey: snapshot.manualOverrides?.assignmentOverrideKey(for: item)
             )
-            reloadSnapshot()
+            reloadManualOverrideState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2322,7 +2322,7 @@ final class KLMSMacModel: ObservableObject {
                 for: item,
                 currentKey: currentKey
             )
-            reloadSnapshot()
+            reloadManualOverrideState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2341,7 +2341,7 @@ final class KLMSMacModel: ObservableObject {
     func setNoticeRead(_ isRead: Bool, for notice: NoticeDigestEntry) {
         do {
             try NoticeUserStateStore(url: paths.noticeUserStateURL).setRead(isRead, notice: notice)
-            reloadSnapshot()
+            reloadNoticeInteractionState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2350,7 +2350,7 @@ final class KLMSMacModel: ObservableObject {
     func setNoticeHidden(_ isHidden: Bool, for notice: NoticeDigestEntry) {
         do {
             try NoticeUserStateStore(url: paths.noticeUserStateURL).setHidden(isHidden, notice: notice)
-            reloadSnapshot()
+            reloadNoticeInteractionState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2359,7 +2359,7 @@ final class KLMSMacModel: ObservableObject {
     func setNoticeImportant(_ isImportant: Bool, for notice: NoticeDigestEntry) {
         do {
             try NoticeUserStateStore(url: paths.noticeUserStateURL).setImportant(isImportant, notice: notice)
-            reloadSnapshot()
+            reloadNoticeInteractionState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2376,7 +2376,7 @@ final class KLMSMacModel: ObservableObject {
                 url: sourceURL,
                 bucket: .files
             )
-            reloadSnapshot()
+            reloadFileInteractionState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2393,7 +2393,7 @@ final class KLMSMacModel: ObservableObject {
                 url: sourceURL,
                 bucket: .quarantine
             )
-            reloadSnapshot()
+            reloadFileInteractionState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -2421,7 +2421,7 @@ final class KLMSMacModel: ObservableObject {
                 url: sourceURL,
                 bucket: bucket
             )
-            reloadSnapshot()
+            reloadFileInteractionState()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -3508,6 +3508,27 @@ final class KLMSMacModel: ObservableObject {
             EngineSnapshotStore(paths: paths).load(),
             showLoginTransition: showLoginTransition
         )
+    }
+
+    private func reloadManualOverrideState() {
+        var nextSnapshot = snapshot
+        let overrides = (try? ManualOverrideStore(url: paths.overridesURL).load()) ?? ManualOverridesSnapshot()
+        nextSnapshot.manualOverrides = overrides
+        nextSnapshot.legacyState = nextSnapshot.rawLegacyState?.applyingManualOverrides(overrides)
+        replaceSnapshot(nextSnapshot)
+    }
+
+    private func reloadNoticeInteractionState() {
+        var nextSnapshot = snapshot
+        nextSnapshot.noticeUserState = (try? NoticeUserStateStore(url: paths.noticeUserStateURL).load())?
+            .migratingLegacyNoticeKeys(for: nextSnapshot.noticeDigest)
+        replaceSnapshot(nextSnapshot)
+    }
+
+    private func reloadFileInteractionState() {
+        var nextSnapshot = snapshot
+        nextSnapshot.appUserState = try? AppUserStateStore(url: paths.appUserStateURL).load()
+        replaceSnapshot(nextSnapshot)
     }
 
     private func applySnapshot(_ nextSnapshot: EngineSnapshot, showLoginTransition: Bool) {

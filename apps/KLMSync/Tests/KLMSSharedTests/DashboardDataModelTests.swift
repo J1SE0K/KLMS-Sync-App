@@ -915,8 +915,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detailPressFeedbackStyle.contains("RoundedRectangle(cornerRadius: cornerRadius)"))
         XCTAssertFalse(pressFeedbackStyle.contains(".scaleEffect(configuration.isPressed"))
         XCTAssertTrue(pressFeedbackStyle.contains("Color.klmsMacCommandButtonPressedOverlay"))
-        XCTAssertTrue(pressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
-        XCTAssertTrue(detailPressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
+        XCTAssertFalse(pressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
+        XCTAssertFalse(detailPressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
         XCTAssertFalse(pressFeedbackStyle.contains("duration: 0.035"))
         XCTAssertTrue(view.contains("alpha: 0.105"))
         XCTAssertTrue(view.contains("alpha: 0.140"))
@@ -1075,6 +1075,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(sources.contains("private var cachedCurrentPhaseText: String?"))
         XCTAssertTrue(sources.contains("private static func extractLiveProgressLine(from text: String) -> String?"))
         XCTAssertTrue(sources.contains("private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 3_000_000_000"))
+        XCTAssertTrue(sources.contains("private let dashboardDetailExpansionDelayNanoseconds: UInt64 = 45_000_000"))
+        XCTAssertTrue(sources.contains("private struct DeferredDashboardExpansion"))
+        XCTAssertTrue(sources.contains("reloadManualOverrideState()"))
+        XCTAssertTrue(sources.contains("reloadNoticeInteractionState()"))
+        XCTAssertTrue(sources.contains("reloadFileInteractionState()"))
+        XCTAssertFalse(sources.contains("try NoticeUserStateStore(url: paths.noticeUserStateURL).setRead(isRead, notice: notice)\n            reloadSnapshot()"))
+        XCTAssertFalse(sources.contains("try AppUserStateStore(url: paths.appUserStateURL).setHidden(")
+            && sources.contains("bucket: .files\n            )\n            reloadSnapshot()"))
     }
 
     func testMacFileDashboardAvoidsPerRowFilesystemTasks() throws {
@@ -1111,12 +1119,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("static let initialVisibleLimit = 6"))
         XCTAssertTrue(detail.contains("static let increment = 10"))
         XCTAssertTrue(detail.contains("private struct DashboardRowDisclosureButton"))
+        XCTAssertTrue(detail.contains("private struct DeferredDashboardExpansion"))
         XCTAssertEqual(detail.components(separatedBy: "@ObservedObject var model: KLMSMacModel").count - 1, 0)
         XCTAssertTrue(detail.contains("struct DashboardDetailPanelView: View, @preconcurrency Equatable"))
         XCTAssertTrue(detail.contains("struct DashboardRenderSignature: Equatable"))
         XCTAssertTrue(fileRow.contains("@State private var isExpanded = false"))
         XCTAssertTrue(fileRow.contains("if isExpanded, !item.path.isEmpty"))
-        XCTAssertTrue(fileRow.contains("if isExpanded {\n                actionBar(hidden: hidden, pathExists: pathExists)"))
+        XCTAssertTrue(fileRow.contains("DeferredDashboardExpansion(isExpanded: isExpanded)"))
+        XCTAssertTrue(fileRow.contains("actionBar(hidden: hidden, pathExists: pathExists)"))
     }
 
     func testIOSDashboardAndSettingsFollowDesignNavigation() throws {
@@ -1692,7 +1702,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosSidebarButton.contains(".contentShape(RoundedRectangle(cornerRadius: 10))"))
         XCTAssertTrue(iosCardButtonStyle.contains("var cornerRadius: CGFloat = 10"))
         XCTAssertTrue(iosCardButtonStyle.contains("RoundedRectangle(cornerRadius: cornerRadius)"))
-        XCTAssertTrue(iosCardButtonStyle.contains("Color.klmsPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
+        XCTAssertTrue(iosCardButtonStyle.contains("Color.klmsCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0)"))
+        XCTAssertFalse(iosCardButtonStyle.contains("Color.klmsPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
         XCTAssertFalse(iosSidebarButton.contains(".animation(.easeOut(duration: 0.10), value: isSelected)"))
         XCTAssertTrue(iosSplitRoot.contains("currentSection"))
         XCTAssertFalse(iosSplitRoot.contains("deferDisplayedSection(newSection ?? .status)"))

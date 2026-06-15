@@ -2,6 +2,8 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
+private let dashboardDetailExpansionDelayNanoseconds: UInt64 = 45_000_000
+
 enum DashboardDetailKind: String, CaseIterable, Identifiable {
     case assignments
     case assignmentRecords
@@ -698,6 +700,55 @@ private struct DashboardShowMoreButton: View {
     }
 }
 
+private struct DeferredDashboardExpansion<Content: View>: View {
+    var isExpanded: Bool
+    var delayNanoseconds = dashboardDetailExpansionDelayNanoseconds
+    private let content: () -> Content
+    @State private var isVisible = false
+    @State private var deferredTask: Task<Void, Never>?
+
+    init(
+        isExpanded: Bool,
+        delayNanoseconds: UInt64 = dashboardDetailExpansionDelayNanoseconds,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.isExpanded = isExpanded
+        self.delayNanoseconds = delayNanoseconds
+        self.content = content
+    }
+
+    var body: some View {
+        Group {
+            if isVisible {
+                content()
+            }
+        }
+        .onAppear {
+            updateVisibility(isExpanded)
+        }
+        .onChange(of: isExpanded) { _, newValue in
+            updateVisibility(newValue)
+        }
+        .onDisappear {
+            deferredTask?.cancel()
+        }
+    }
+
+    private func updateVisibility(_ expanded: Bool) {
+        deferredTask?.cancel()
+        guard expanded else {
+            isVisible = false
+            return
+        }
+        deferredTask = Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard !Task.isCancelled else { return }
+            isVisible = true
+        }
+    }
+}
+
 private struct DashboardRowDisclosureButton: View {
     @Binding var isExpanded: Bool
     var collapsedTitle = "작업"
@@ -1290,7 +1341,7 @@ private struct StateItemRowView: View {
                 DashboardRowDisclosureButton(isExpanded: $isExpanded)
             }
 
-            if isExpanded {
+            DeferredDashboardExpansion(isExpanded: isExpanded) {
                 DashboardActionCaption("수정")
                 switch editor {
                 case .assignment:
@@ -1830,7 +1881,7 @@ private struct NoticeRowView: View {
                 DashboardRowDisclosureButton(isExpanded: $isExpanded)
             }
 
-            if isExpanded {
+            DeferredDashboardExpansion(isExpanded: isExpanded) {
                 if !notice.summary.isEmpty {
                     Text(notice.summary.klmsDisplayText)
                         .font(.caption2)
@@ -2348,14 +2399,6 @@ private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle {
                     .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(
-                        Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0),
-                        lineWidth: 1
-                    )
-                    .allowsHitTesting(false)
-            }
             .opacity(isEnabled ? 1.0 : 0.48)
     }
 }
@@ -2791,7 +2834,7 @@ private struct FileRowView: View {
                 }
                 DashboardRowDisclosureButton(isExpanded: $isExpanded)
             }
-            if isExpanded {
+            DeferredDashboardExpansion(isExpanded: isExpanded) {
                 actionBar(hidden: hidden, pathExists: pathExists)
             }
         }
