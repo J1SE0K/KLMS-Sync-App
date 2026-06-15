@@ -222,7 +222,7 @@ private struct WorkspaceNavigationView: View {
                         .padding(.leading, 8)
                         .padding(.trailing, 10)
                         .padding(.vertical, 9)
-                        .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         .background(
                             isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground.opacity(0.58),
                             in: RoundedRectangle(cornerRadius: 10)

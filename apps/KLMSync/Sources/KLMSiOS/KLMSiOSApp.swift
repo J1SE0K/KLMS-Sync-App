@@ -1873,7 +1873,7 @@ private struct CompanionCompactTabBar: View {
                             .minimumScaleFactor(0.74)
                     }
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .background(
                         isSelected
                             ? Color.klmsSelectedBackground
@@ -2019,7 +2019,7 @@ private struct CompanionSidebarButton: View {
             .padding(.leading, isCompact ? 7 : 8)
             .padding(.trailing, isCompact ? 8 : 9)
             .padding(.vertical, isCompact ? 8 : 9)
-            .frame(maxWidth: .infinity, minHeight: isCompact ? 40 : 36, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(
                 isSelected
                     ? Color.klmsSelectedBackground
