@@ -2489,12 +2489,14 @@ private struct CompanionStatusScreen: View {
         if let kind = selectedChangeSummary {
             RemoteChangeSummaryDetailPanel(kind: kind, model: model)
                 .id(kind)
-        } else {
+        } else if let category = selectedDashboardPreview {
             WorkstationDashboardDetailPanel(
-                category: selectedDashboardPreview ?? defaultDashboardCategory ?? .files,
+                category: category,
                 model: model
             )
-            .id(selectedDashboardPreview ?? defaultDashboardCategory ?? .files)
+            .id(category)
+        } else {
+            WorkstationDashboardOverviewPanel(model: model)
         }
     }
 
@@ -2509,20 +2511,6 @@ private struct CompanionStatusScreen: View {
         }
     }
 
-    private var defaultDashboardCategory: DashboardMetricCategory? {
-        let preferred: [DashboardMetricCategory] = [
-            .files,
-            .assignments,
-            .notices,
-            .exams,
-            .helpDesk,
-            .calendar,
-            .quarantine
-        ]
-        return preferred.first { category in
-            category.value(from: model.dashboardStatus) > 0
-        } ?? .files
-    }
 }
 
 private struct RemoteDashboardStatusStrip: View {
@@ -3317,19 +3305,19 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable, Sendab
     var workstationDescription: String {
         switch self {
         case .assignments:
-            "미리알림 완료 상태까지 같이 확인합니다."
+            "미리알림 완료 상태 반영"
         case .exams:
-            "KLMS와 메일 판독 시험을 한 목록에서 봅니다."
+            "KLMS + 메일 시험 통합"
         case .notices:
-            "읽음과 중요 표시를 유지한 공지 목록입니다."
+            "읽음/중요 상태 유지"
         case .files:
-            "강의자료와 공지 첨부 파일을 구분해 봅니다."
+            "강의자료와 첨부 파일 구분"
         case .quarantine:
-            "주의가 필요한 파일만 따로 모아 둡니다."
+            "주의 파일만 표시"
         case .calendar:
-            "등록, 수정, 삭제가 필요한 일정을 확인합니다."
+            "등록/수정/삭제 확인"
         case .helpDesk:
-            "시험 관련 헬프데스크 일정을 모아 봅니다."
+            "헬프데스크 일정"
         }
     }
 
@@ -4828,6 +4816,84 @@ private struct WorkstationMetricCard: View {
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
         .accessibilityLabel("\(category.title) \(value)개")
+    }
+}
+
+private struct WorkstationDashboardOverviewPanel: View {
+    @ObservedObject var model: CompanionModel
+
+    private var status: SanitizedRemoteStatus {
+        model.dashboardStatus
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("대시보드")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Color.klmsPrimaryText)
+                    Text("카드를 누르면 이곳에 상세 목록이 열립니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
+                Spacer(minLength: 8)
+                Text("최신순")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
+                    .overlay(
+                        Capsule().stroke(Color.klmsBorder, lineWidth: 1)
+                    )
+            }
+
+            LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
+                ForEach(overviewMetrics) { metric in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("\(metric.value)")
+                            .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(Color.klmsPrimaryText)
+                        Text(metric.title)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(Color.klmsSecondaryText)
+                    }
+                    .padding(11)
+                    .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+                    .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 13)
+                            .stroke(Color.klmsBorder, lineWidth: 1)
+                    )
+                }
+            }
+
+            WorkstationChangeSummaryCard(model: model)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var overviewColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 2)
+    }
+
+    private var overviewMetrics: [MetricSummary] {
+        [
+            MetricSummary(title: "파일", value: status.fileTotal),
+            MetricSummary(title: "과제", value: status.assignments),
+            MetricSummary(title: "공지", value: status.notices),
+            MetricSummary(title: "시험", value: status.exams),
+        ]
+    }
+
+    private struct MetricSummary: Identifiable {
+        var title: String
+        var value: Int
+
+        var id: String {
+            title
+        }
     }
 }
 
