@@ -93,7 +93,39 @@ private struct KLMSPreferredAppearanceModifier: ViewModifier {
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
 
     func body(content: Content) -> some View {
-        content.preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
+        content
+            .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
+            .onAppear {
+                Self.schedulePlatformAppearance(appearanceMode)
+            }
+            .onChange(of: appearanceMode) { _, newValue in
+                Self.schedulePlatformAppearance(newValue)
+            }
+    }
+
+    private static func schedulePlatformAppearance(_ rawValue: String) {
+        Task { @MainActor in
+            applyPlatformAppearance(rawValue)
+        }
+    }
+
+    @MainActor
+    private static func applyPlatformAppearance(_ rawValue: String) {
+        let mode = KLMSAppearanceMode(rawValue: rawValue) ?? .system
+        let appearance: NSAppearance?
+        switch mode {
+        case .system:
+            appearance = nil
+        case .light:
+            appearance = NSAppearance(named: .aqua)
+        case .dark:
+            appearance = NSAppearance(named: .darkAqua)
+        }
+
+        NSApp.appearance = appearance
+        for window in NSApp.windows {
+            window.appearance = appearance
+        }
     }
 }
 

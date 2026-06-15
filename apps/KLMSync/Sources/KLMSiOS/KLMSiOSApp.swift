@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let klmsInteractionDetailDelayNanoseconds: UInt64 = 16_000_000
+private let klmsInteractionDetailDelayNanoseconds: UInt64 = 1_000_000
 
 #if canImport(AppKit)
 import AppKit
@@ -68,7 +68,42 @@ struct KLMSiOSApp: App {
             CompanionRootView()
                 .background(Color.klmsScreenBackground.ignoresSafeArea())
                 .preferredColorScheme(KLMSAppearanceMode(rawValue: appearanceMode)?.colorScheme)
+                .onAppear {
+                    Self.schedulePlatformAppearance(appearanceMode)
+                }
+                .onChange(of: appearanceMode) { _, newValue in
+                    Self.schedulePlatformAppearance(newValue)
+                }
         }
+    }
+
+    private static func schedulePlatformAppearance(_ rawValue: String) {
+        Task { @MainActor in
+            applyPlatformAppearance(rawValue)
+        }
+    }
+
+    @MainActor
+    private static func applyPlatformAppearance(_ rawValue: String) {
+        #if canImport(UIKit)
+        let mode = KLMSAppearanceMode(rawValue: rawValue) ?? .system
+        let style: UIUserInterfaceStyle
+        switch mode {
+        case .system:
+            style = .unspecified
+        case .light:
+            style = .light
+        case .dark:
+            style = .dark
+        }
+
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.overrideUserInterfaceStyle = style
+            }
+        }
+        #endif
     }
 }
 
