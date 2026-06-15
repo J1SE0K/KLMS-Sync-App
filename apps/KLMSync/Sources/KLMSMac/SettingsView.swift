@@ -191,12 +191,12 @@ struct SettingsView: View {
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .background(
-                isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground.opacity(0.58),
+                isSelected ? Color.klmsMacSelectedBackground : Color.clear,
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.52), lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.clear, lineWidth: 1)
             }
             .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 10))

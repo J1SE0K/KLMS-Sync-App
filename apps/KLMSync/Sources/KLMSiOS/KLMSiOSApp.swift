@@ -2026,12 +2026,12 @@ private struct CompanionSidebarButton: View {
             .background(
                 isSelected
                     ? Color.klmsSelectedBackground
-                    : Color.klmsCardBackground.opacity(0.58),
+                    : Color.clear,
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.52), lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.clear, lineWidth: 1)
             )
             .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 10))
