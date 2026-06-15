@@ -851,7 +851,11 @@ private struct WorkspaceNavigationView: View {
                         guard selection != section else { return }
                         selection = section
                     } label: {
-                        HStack(spacing: 9) {
+                        HStack(spacing: 10) {
+                            Image(systemName: section.systemImage)
+                                .font(.subheadline.weight(.semibold))
+                                .frame(width: 20)
+                                .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
                             Text(section.title)
                                 .font(.subheadline.weight(isSelected ? .semibold : .regular))
                                 .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
