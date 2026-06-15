@@ -1064,12 +1064,39 @@ final class DashboardDataModelTests: XCTestCase {
             ),
             "직접 누르는 UI의 전환 애니메이션은 0.10초 이하로 유지해야 합니다."
         )
-        XCTAssertTrue(sources.contains("private static let liveCommandOutputMaxCharacters = 12_000"))
+        XCTAssertTrue(sources.contains("private static let liveCommandOutputMaxCharacters = 8_000"))
         XCTAssertTrue(sources.contains("private static let liveAuthObservationMaxCharacters = 4_000"))
         XCTAssertTrue(sources.contains("appendLiveAuthObservation(displayChunk)"))
         XCTAssertFalse(sources.contains("let currentOutput = liveCommandOutputBuffer"))
-        XCTAssertTrue(sources.contains("private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 350_000_000"))
+        XCTAssertTrue(sources.contains("private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 500_000_000"))
+        XCTAssertTrue(sources.contains("private var cachedLiveProgressLine: String?"))
+        XCTAssertTrue(sources.contains("private var cachedCurrentPhaseText: String?"))
+        XCTAssertTrue(sources.contains("private static func extractLiveProgressLine(from text: String) -> String?"))
         XCTAssertTrue(sources.contains("private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 3_000_000_000"))
+    }
+
+    func testMacFileDashboardAvoidsPerRowFilesystemTasks() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let detailRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/DashboardDetailView.swift")
+        let detail = try String(contentsOf: detailRoot, encoding: .utf8)
+        let fileRow = try sourceStructBody(named: "FileRowView", in: detail)
+        let fileItem = try sourceBody(
+            after: "private struct DashboardFileItem",
+            in: detail,
+            description: "DashboardFileItem"
+        )
+
+        XCTAssertFalse(fileRow.contains(".task(id: item.path)"))
+        XCTAssertFalse(fileRow.contains("FileManager.default.fileExists"))
+        XCTAssertTrue(fileRow.contains("let pathExists = item.pathExists"))
+        XCTAssertTrue(fileItem.contains("var pathExists: Bool = false"))
+        XCTAssertTrue(fileItem.contains("private var searchBlob: String = \"\""))
+        XCTAssertTrue(fileItem.contains("courseSortKey = course.normalizedFileSortKey"))
+        XCTAssertTrue(detail.contains("dashboardMissingPathSet(from: model.snapshot)"))
+        XCTAssertFalse(detail.contains("private func dashboardFilePathExists"))
     }
 
     func testIOSDashboardAndSettingsFollowDesignNavigation() throws {

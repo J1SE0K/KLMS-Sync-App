@@ -120,6 +120,8 @@ final class KLMSMacModel: ObservableObject {
     private var pasteboardClearTask: Task<Void, Never>?
     private var liveCommandOutputBuffer = ""
     private var liveAuthObservationBuffer = ""
+    private var cachedLiveProgressLine: String?
+    private var cachedCurrentPhaseText: String?
     private var liveCommandOutputPublishTask: Task<Void, Never>?
     private var activeRemoteCommandID: UUID?
     private var pendingRunCancellationRequested = false
@@ -152,8 +154,8 @@ final class KLMSMacModel: ObservableObject {
     private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 3_000_000_000
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 60_000_000_000
     private static let passiveAuxiliaryRefreshMinimumInterval: TimeInterval = 300
-    private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 350_000_000
-    private static let liveCommandOutputMaxCharacters = 12_000
+    private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 500_000_000
+    private static let liveCommandOutputMaxCharacters = 8_000
     private static let liveAuthObservationMaxCharacters = 4_000
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
@@ -251,17 +253,14 @@ final class KLMSMacModel: ObservableObject {
     }
 
     var liveProgressLine: String? {
-        liveCommandOutput
-            .split(whereSeparator: \.isNewline)
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .last { !$0.isEmpty }
+        cachedLiveProgressLine
     }
 
     var currentPhaseText: String? {
         guard runningCommand != nil else {
             return nil
         }
-        return KLMSLiveCommandPhase.currentPhase(in: liveCommandOutput).displayName
+        return cachedCurrentPhaseText
     }
 
     var appRunEnvironment: [String: String] {
@@ -3572,6 +3571,8 @@ final class KLMSMacModel: ObservableObject {
         liveCommandOutputPublishTask = nil
         liveCommandOutputBuffer = ""
         liveAuthObservationBuffer = ""
+        cachedLiveProgressLine = nil
+        cachedCurrentPhaseText = nil
         liveCommandOutput = ""
     }
 
@@ -3594,6 +3595,8 @@ final class KLMSMacModel: ObservableObject {
         liveCommandOutputPublishTask?.cancel()
         liveCommandOutputPublishTask = nil
         if liveCommandOutput != liveCommandOutputBuffer {
+            cachedLiveProgressLine = Self.extractLiveProgressLine(from: liveCommandOutputBuffer)
+            cachedCurrentPhaseText = KLMSLiveCommandPhase.currentPhase(in: liveCommandOutputBuffer).displayName
             liveCommandOutput = liveCommandOutputBuffer
         }
     }
@@ -3640,6 +3643,15 @@ final class KLMSMacModel: ObservableObject {
             return text
         }
         return String(text.suffix(maxCharacters))
+    }
+
+    private static func extractLiveProgressLine(from text: String) -> String? {
+        text
+            .split(whereSeparator: \.isNewline)
+            .reversed()
+            .lazy
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 
     private func notifyAuthDigitsIfNeeded(_ digits: String) async {

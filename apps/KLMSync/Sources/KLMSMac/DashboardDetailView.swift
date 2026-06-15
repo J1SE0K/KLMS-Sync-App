@@ -223,8 +223,8 @@ private struct DashboardDetailFilters {
 }
 
 private enum DashboardLargeList {
-    static let initialVisibleLimit = 40
-    static let increment = 40
+    static let initialVisibleLimit = 28
+    static let increment = 28
 }
 
 private struct DashboardShowMoreButton: View {
@@ -1535,6 +1535,7 @@ private struct NewFilesListView: View {
 
     private var filteredItems: [DashboardFileItem] {
         let downloadItems = model.snapshot.downloadResult?.results.filter(\.copiedToNewFilesInbox) ?? []
+        let missingPaths = dashboardMissingPathSet(from: model.snapshot)
         var manifestsByURL: [String: CourseFileManifestEntry] = [:]
         var manifestsByRelativePath: [String: CourseFileManifestEntry] = [:]
         for entry in model.snapshot.courseFileManifest {
@@ -1560,6 +1561,7 @@ private struct NewFilesListView: View {
                 isRecent: true,
                 recencyText: manifest?.localDownloadedAt ?? "",
                 klmsTimestampEpoch: manifest?.klmsTimestampEpoch,
+                pathExists: dashboardPathExists(path: manifest?.absolutePath ?? "", missingPaths: missingPaths),
                 interaction: interaction(for: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath)
             )
             return file.matches(filters: filters) ? file : nil
@@ -1603,6 +1605,7 @@ private struct FileManifestListView: View {
 
     private var filteredItems: [DashboardFileItem] {
         let recentKeys = recentFileKeys
+        let missingPaths = dashboardMissingPathSet(from: model.snapshot)
         return model.snapshot.courseFileManifest.compactMap { entry in
             let key = fileKey(url: entry.url, path: entry.absolutePath, fallback: entry.relativePath)
             let item = DashboardFileItem(
@@ -1617,6 +1620,7 @@ private struct FileManifestListView: View {
                 isRecent: recentKeys.contains(entry.url) || recentKeys.contains(entry.relativePath),
                 recencyText: entry.localDownloadedAt,
                 klmsTimestampEpoch: entry.klmsTimestampEpoch,
+                pathExists: dashboardPathExists(path: entry.absolutePath, missingPaths: missingPaths),
                 interaction: model.snapshot.appUserState?.files[key]
             )
             return item.matches(filters: filters) ? item : nil
@@ -1700,6 +1704,7 @@ private struct MissingFilesListView: View {
                 url: "",
                 isRecent: true,
                 recencyText: "",
+                pathExists: false,
                 interaction: model.snapshot.appUserState?.files[key]
             )
             return item.matches(filters: filters) ? item : nil
@@ -1727,7 +1732,61 @@ private struct DashboardFileItem: Identifiable {
     var isRecent: Bool
     var recencyText: String
     var klmsTimestampEpoch: Int? = nil
+    var pathExists: Bool = false
     var interaction: FileInteractionState?
+    private var searchBlob: String = ""
+    private var courseSortKey: String = ""
+    private var titleSortKey: String = ""
+    private var pathSortKey: String = ""
+    private var kindSortKey: String = ""
+    private var recencySortKey: String = ""
+    var fileKindLabel: String = ""
+    var fileKindIcon: String = ""
+    var fileKindColor: Color = .klmsMacSecondaryText
+
+    init(
+        key: String,
+        title: String,
+        course: String,
+        academicTerm: AcademicTerm?,
+        path: String,
+        sortPath: String,
+        bucket: String,
+        url: String,
+        isRecent: Bool,
+        recencyText: String,
+        klmsTimestampEpoch: Int? = nil,
+        pathExists: Bool = false,
+        interaction: FileInteractionState?
+    ) {
+        self.key = key
+        self.title = title
+        self.course = course
+        self.academicTerm = academicTerm
+        self.path = path
+        self.sortPath = sortPath
+        self.bucket = bucket
+        self.url = url
+        self.isRecent = isRecent
+        self.recencyText = recencyText
+        self.klmsTimestampEpoch = klmsTimestampEpoch
+        self.pathExists = pathExists
+        self.interaction = interaction
+        searchBlob = [academicTerm?.displayName ?? "", title, course, path, url]
+            .joined(separator: " ")
+        courseSortKey = course.normalizedFileSortKey
+        titleSortKey = title.normalizedFileSortKey
+        pathSortKey = (sortPath.isEmpty ? title : sortPath).normalizedFileSortKey
+        let kind = DashboardFileKindStyle(bucket: bucket)
+        kindSortKey = kind.label.normalizedFileSortKey
+        fileKindLabel = kind.label
+        fileKindIcon = kind.icon
+        fileKindColor = kind.color
+        let trimmedRecency = recencyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        recencySortKey = trimmedRecency.isEmpty
+            ? (isRecent ? "9999-12-31 23:59 KST" : "0000-00-00 00:00 KST")
+            : trimmedRecency
+    }
 
     var id: String { key }
 
@@ -1752,9 +1811,7 @@ private struct DashboardFileItem: Identifiable {
         }
         let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return true }
-        return [academicTerm?.displayName ?? "", title, course, path, url]
-            .joined(separator: " ")
-            .localizedCaseInsensitiveContains(query)
+        return searchBlob.localizedCaseInsensitiveContains(query)
     }
 }
 
@@ -1985,23 +2042,20 @@ private extension DashboardFileItem {
     func sortKeys(for option: DashboardFileSortOption) -> [String] {
         switch option {
         case .course:
-            [course.normalizedFileSortKey, title.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
+            [courseSortKey, titleSortKey, pathSortKey, url]
         case .kind:
-            [fileKindLabel.normalizedFileSortKey, course.normalizedFileSortKey, title.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
+            [kindSortKey, courseSortKey, titleSortKey, pathSortKey, url]
         case .name:
-            [title.normalizedFileSortKey, course.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
+            [titleSortKey, courseSortKey, pathSortKey, url]
         case .path:
-            [(sortPath.isEmpty ? title : sortPath).normalizedFileSortKey, title.normalizedFileSortKey, course.normalizedFileSortKey, url]
+            [pathSortKey, titleSortKey, courseSortKey, url]
         case .recent:
-            [course.normalizedFileSortKey, title.normalizedFileSortKey, sortPath.normalizedFileSortKey, url]
+            [courseSortKey, titleSortKey, pathSortKey, url]
         }
     }
 
     var recencySortText: String {
-        if !recencyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return recencyText
-        }
-        return isRecent ? "9999-12-31 23:59 KST" : "0000-00-00 00:00 KST"
+        recencySortKey
     }
 }
 
@@ -2044,10 +2098,19 @@ private func fileSortPath(from path: String) -> String {
     return trimmed
 }
 
-private func dashboardFilePathExists(_ path: String) -> Bool {
-    let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return false }
-    return FileManager.default.fileExists(atPath: trimmed)
+private func dashboardMissingPathSet(from snapshot: EngineSnapshot) -> Set<String> {
+    Set((snapshot.verifyResult?.files?.missingFiles ?? []).map(dashboardNormalizedPathForExistence))
+}
+
+private func dashboardPathExists(path: String, missingPaths: Set<String>) -> Bool {
+    let normalized = dashboardNormalizedPathForExistence(path)
+    guard !normalized.isEmpty else { return false }
+    return !missingPaths.contains(normalized)
+}
+
+private func dashboardNormalizedPathForExistence(_ path: String) -> String {
+    path.trimmingCharacters(in: .whitespacesAndNewlines)
+        .precomposedStringWithCanonicalMapping
 }
 
 private func fileBucket(from path: String) -> String {
@@ -2150,7 +2213,8 @@ private struct HiddenItemsListView: View {
     }
 
     private var hiddenFiles: [DashboardFileItem] {
-        (model.snapshot.appUserState?.files ?? [:]).compactMap { key, item in
+        let missingPaths = dashboardMissingPathSet(from: model.snapshot)
+        return (model.snapshot.appUserState?.files ?? [:]).compactMap { key, item in
             guard item.isHiddenLike else { return nil }
             let file = DashboardFileItem(
                 key: key,
@@ -2163,6 +2227,7 @@ private struct HiddenItemsListView: View {
                 url: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
+                pathExists: dashboardPathExists(path: item.path, missingPaths: missingPaths),
                 interaction: item
             )
             return file.matches(filters: filters) ? file : nil
@@ -2183,6 +2248,7 @@ private struct HiddenItemsListView: View {
                 url: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
+                pathExists: !item.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 interaction: item
             )
             return file.matches(filters: filters) ? file : nil
@@ -2265,6 +2331,7 @@ private struct QuarantineListView: View {
                 url: record.url,
                 isRecent: true,
                 recencyText: "",
+                pathExists: !record.quarantinePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 interaction: model.snapshot.appUserState?.quarantine[key]
             )
             return item.matches(filters: filters) ? item : nil
@@ -2342,10 +2409,10 @@ private struct FileRowView: View {
     var kind: DashboardFileRowKind
     var model: KLMSMacModel?
     @State private var didRequestSync = false
-    @State private var pathExists = false
 
     var body: some View {
         let hidden = item.isHidden
+        let pathExists = item.pathExists
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -2411,16 +2478,6 @@ private struct FileRowView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(hidden ? Color.klmsMacWarningBorder : Color.klmsMacBorder, lineWidth: 1)
         }
-        .task(id: item.path) {
-            pathExists = false
-            pathExists = await Self.pathExists(for: item.path)
-        }
-    }
-
-    private static func pathExists(for path: String) async -> Bool {
-        await Task.detached(priority: .utility) {
-            dashboardFilePathExists(path)
-        }.value
     }
 
     @ViewBuilder
@@ -2511,59 +2568,49 @@ private struct FileRowView: View {
     }
 }
 
-private extension DashboardFileItem {
-    var fileKindLabel: String {
+private struct DashboardFileKindStyle {
+    var label: String
+    var icon: String
+    var color: Color
+
+    init(bucket: String) {
         switch bucket.trimmingCharacters(in: .whitespacesAndNewlines) {
         case "board-attachments":
-            "공지 첨부"
+            label = "공지 첨부"
+            icon = "megaphone"
+            color = Color.klmsMacCommandAccent
         case "assignment-attachments":
-            "과제 첨부"
+            label = "과제 첨부"
+            icon = "checklist"
+            color = Color.klmsMacSuccessBorder
         case "resources":
-            "강의 자료"
+            label = "강의 자료"
+            icon = "books.vertical"
+            color = Color.klmsMacSecondaryText
         case "folders":
-            "폴더 자료"
+            label = "폴더 자료"
+            icon = "folder"
+            color = Color.klmsMacSecondaryText
         case "page-attachments":
-            "페이지 첨부"
+            label = "페이지 첨부"
+            icon = "doc"
+            color = Color.klmsMacSecondaryText
         case "quarantine":
-            "격리"
+            label = "격리"
+            icon = "exclamationmark.triangle"
+            color = Color.klmsMacWarningBorder
         case "deleted":
-            "삭제 기록"
+            label = "삭제 기록"
+            icon = "trash"
+            color = Color.klmsMacSecondaryText
         case "":
-            "기타 파일"
+            label = "기타 파일"
+            icon = "doc"
+            color = Color.klmsMacSecondaryText
         default:
-            bucket
-        }
-    }
-
-    var fileKindIcon: String {
-        switch bucket.trimmingCharacters(in: .whitespacesAndNewlines) {
-        case "board-attachments":
-            "megaphone"
-        case "assignment-attachments":
-            "checklist"
-        case "resources":
-            "books.vertical"
-        case "folders":
-            "folder"
-        case "quarantine":
-            "exclamationmark.triangle"
-        default:
-            "doc"
-        }
-    }
-
-    var fileKindColor: Color {
-        switch bucket.trimmingCharacters(in: .whitespacesAndNewlines) {
-        case "board-attachments":
-            Color.klmsMacCommandAccent
-        case "assignment-attachments":
-            Color.klmsMacSuccessBorder
-        case "resources", "folders":
-            Color.klmsMacSecondaryText
-        case "quarantine":
-            Color.klmsMacWarningBorder
-        default:
-            Color.klmsMacSecondaryText
+            label = bucket
+            icon = "doc"
+            color = Color.klmsMacSecondaryText
         }
     }
 }
