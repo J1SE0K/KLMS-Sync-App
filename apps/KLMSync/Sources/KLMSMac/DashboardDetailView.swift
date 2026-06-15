@@ -1560,7 +1560,8 @@ private struct NewFilesListView: View {
                 isRecent: true,
                 recencyText: manifest?.localDownloadedAt ?? "",
                 klmsTimestampEpoch: manifest?.klmsTimestampEpoch,
-                interaction: interaction(for: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath)
+                interaction: interaction(for: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath),
+                pathExists: dashboardFilePathExists(manifest?.absolutePath ?? "")
             )
             return file.matches(filters: filters) ? file : nil
         }
@@ -1617,7 +1618,8 @@ private struct FileManifestListView: View {
                 isRecent: recentKeys.contains(entry.url) || recentKeys.contains(entry.relativePath),
                 recencyText: entry.localDownloadedAt,
                 klmsTimestampEpoch: entry.klmsTimestampEpoch,
-                interaction: model.snapshot.appUserState?.files[key]
+                interaction: model.snapshot.appUserState?.files[key],
+                pathExists: dashboardFilePathExists(entry.absolutePath)
             )
             return item.matches(filters: filters) ? item : nil
         }
@@ -1700,7 +1702,8 @@ private struct MissingFilesListView: View {
                 url: "",
                 isRecent: true,
                 recencyText: "",
-                interaction: model.snapshot.appUserState?.files[key]
+                interaction: model.snapshot.appUserState?.files[key],
+                pathExists: dashboardFilePathExists(path)
             )
             return item.matches(filters: filters) ? item : nil
         }
@@ -1728,6 +1731,7 @@ private struct DashboardFileItem: Identifiable {
     var recencyText: String
     var klmsTimestampEpoch: Int? = nil
     var interaction: FileInteractionState?
+    var pathExists: Bool = false
 
     var id: String { key }
 
@@ -2053,6 +2057,12 @@ private func fileSortPath(from path: String) -> String {
     return trimmed
 }
 
+private func dashboardFilePathExists(_ path: String) -> Bool {
+    let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return false }
+    return FileManager.default.fileExists(atPath: trimmed)
+}
+
 private func fileBucket(from path: String) -> String {
     let components = fileSortPath(from: path)
         .split(separator: "/", omittingEmptySubsequences: true)
@@ -2166,7 +2176,8 @@ private struct HiddenItemsListView: View {
                 url: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
-                interaction: item
+                interaction: item,
+                pathExists: dashboardFilePathExists(item.path)
             )
             return file.matches(filters: filters) ? file : nil
         }
@@ -2186,7 +2197,8 @@ private struct HiddenItemsListView: View {
                 url: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
-                interaction: item
+                interaction: item,
+                pathExists: dashboardFilePathExists(item.path)
             )
             return file.matches(filters: filters) ? file : nil
         }
@@ -2268,7 +2280,8 @@ private struct QuarantineListView: View {
                 url: record.url,
                 isRecent: true,
                 recencyText: "",
-                interaction: model.snapshot.appUserState?.quarantine[key]
+                interaction: model.snapshot.appUserState?.quarantine[key],
+                pathExists: dashboardFilePathExists(record.quarantinePath)
             )
             return item.matches(filters: filters) ? item : nil
         }
@@ -2334,7 +2347,8 @@ private struct PrunedListView: View {
                 url: "",
                 isRecent: false,
                 recencyText: "",
-                interaction: nil
+                interaction: nil,
+                pathExists: dashboardFilePathExists(action.path)
             )
         }
     }
@@ -2348,7 +2362,7 @@ private struct FileRowView: View {
 
     var body: some View {
         let hidden = item.isHidden
-        let pathExists = !item.path.isEmpty && FileManager.default.fileExists(atPath: item.path)
+        let pathExists = item.pathExists
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {

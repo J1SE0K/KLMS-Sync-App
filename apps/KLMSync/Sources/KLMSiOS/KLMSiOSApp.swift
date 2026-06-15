@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let klmsInteractionDetailDelayNanoseconds: UInt64 = 1_000_000
+private let klmsInteractionDetailDelayNanoseconds: UInt64 = 0
 
 #if canImport(AppKit)
 import AppKit
@@ -10826,10 +10826,14 @@ private struct RemoteFileAccessRequestRow: View {
 private struct CompanionInlineLogBlock: View {
     var text: String
 
+    private var displayText: String {
+        Self.boundedText(text).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "표시할 로그가 없습니다."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CompanionReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: text))
-            Text(text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "표시할 로그가 없습니다.")
+            CompanionReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: displayText))
+            Text(displayText)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(Color.klmsSecondaryText)
                 .textSelection(.enabled)
@@ -10842,6 +10846,15 @@ private struct CompanionInlineLogBlock: View {
                 )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private static func boundedText(_ text: String) -> String {
+        let maxCharacters = 6_000
+        guard text.count > maxCharacters else {
+            return text
+        }
+        let prefix = "... 화면 표시용으로 이전 로그 일부를 접었습니다 ...\n"
+        return prefix + String(text.suffix(maxCharacters - prefix.count))
     }
 }
 

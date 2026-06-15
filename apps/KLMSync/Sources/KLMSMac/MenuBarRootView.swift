@@ -2,13 +2,12 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
-private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 1_000_000
+private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 0
 
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
     @State private var expandedLogSummaryKind: LogSummaryKind?
-    @State private var isWorkspaceReady = false
 
     var body: some View {
         WholeScreenVerticalScrollView {
@@ -21,33 +20,14 @@ struct MenuBarRootView: View {
                 )
                 CommandPanelView(model: model)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                if isWorkspaceReady {
-                    MacWorkstationLayoutView(
-                        model: model,
-                        selectedSection: $selectedSection,
-                        expandedLogSummaryKind: $expandedLogSummaryKind
-                    )
-                } else {
-                    SectionBox(title: "작업 공간") {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("대시보드를 준비하고 있습니다.")
-                                .font(.callout.weight(.semibold))
-                                .foregroundStyle(Color.klmsMacSecondaryText)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
-                    }
-                }
+                MacWorkstationLayoutView(
+                    model: model,
+                    selectedSection: $selectedSection,
+                    expandedLogSummaryKind: $expandedLogSummaryKind
+                )
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .onAppear {
-            guard !isWorkspaceReady else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                isWorkspaceReady = true
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
@@ -2260,10 +2240,14 @@ private struct LogTextBlock: View {
     var text: String
     var detailed = false
 
+    private var displayText: String {
+        Self.boundedText(text, detailed: detailed)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: text), detailed: detailed)
-            Text(text)
+            ReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: displayText), detailed: detailed)
+            Text(displayText)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(Color.klmsMacSecondaryText)
                 .textSelection(.enabled)
@@ -2277,6 +2261,15 @@ private struct LogTextBlock: View {
                 )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private static func boundedText(_ text: String, detailed: Bool) -> String {
+        let maxCharacters = detailed ? 18_000 : 8_000
+        guard text.count > maxCharacters else {
+            return text
+        }
+        let prefix = "... 화면 표시용으로 이전 로그 일부를 접었습니다 ...\n"
+        return prefix + String(text.suffix(maxCharacters - prefix.count))
     }
 }
 

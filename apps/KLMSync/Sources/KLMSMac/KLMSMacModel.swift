@@ -121,10 +121,13 @@ final class KLMSMacModel: ObservableObject {
     private var activeRemoteCommandID: UUID?
     private var pendingRunCancellationRequested = false
     private var serverRelayLastStatusPublishAt: Date?
+    private var serverRelayLastSyncDataFetchAt: Date?
+    private var serverRelayLastSyncDataPublishAt: Date?
     private var serverRelayLastInboxUpdatedAt: String?
     private var cachedMailDashboardItemsByKind: [String: [ServerRelaySyncItem]] = [:]
     private var cachedMailCalendarChanges: [CalendarChange] = []
     private var serverRelaySharedSettingsSignature: Int?
+    private var lastPassiveAuxiliaryRefreshAt: Date?
     private static let sharedAppearanceModeKey = "KLMS_APPEARANCE_MODE"
     private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
@@ -139,8 +142,14 @@ final class KLMSMacModel: ObservableObject {
     private static let mailDashboardItemsKey = "KLMSMailDashboardItems"
     private static let serverRelayIdleStatusPublishMinimumInterval: TimeInterval = 30
     private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 0.5
-    private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
-    private static let liveCommandOutputMaxCharacters = 80_000
+    private static let serverRelayIdleSyncDataPublishMinimumInterval: TimeInterval = 300
+    private static let serverRelayActiveSyncDataPublishMinimumInterval: TimeInterval = 10
+    private static let serverRelaySyncDataFetchMinimumInterval: TimeInterval = 30
+    private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 30_000_000_000
+    private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
+    private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 60_000_000_000
+    private static let passiveAuxiliaryRefreshMinimumInterval: TimeInterval = 300
+    private static let liveCommandOutputMaxCharacters = 24_000
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
     init() {
@@ -547,14 +556,17 @@ final class KLMSMacModel: ObservableObject {
             )
             try await store.publishSyncData(serverRelaySyncData(from: snapshot))
             if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8) {
-                serverRelayRecentFileAccessRequests = recentFileRequests
+                if serverRelayRecentFileAccessRequests != recentFileRequests {
+                    serverRelayRecentFileAccessRequests = recentFileRequests
+                }
             }
             if let requestLog = try? await store.fetchRecentRequestLog(limit: 20) {
-                serverRelayRecentRequestLog = requestLog
+                if serverRelayRecentRequestLog != requestLog {
+                    serverRelayRecentRequestLog = requestLog
+                }
             }
             if let syncData = try? await store.fetchSyncData(limit: 1) {
-                serverRelaySharedRunLogs = syncData.runLogs
-                _ = applyServerRelaySharedSettings(syncData.sharedSettings)
+                applyServerRelaySyncData(syncData)
             }
             serverRelayLastStatusPublishAt = Date()
             if enableOnSuccess && !serverRelayEnabled {
@@ -584,14 +596,17 @@ final class KLMSMacModel: ObservableObject {
             remoteProcessingStatusMessage = nil
             errorMessage = nil
             if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8) {
-                serverRelayRecentFileAccessRequests = recentFileRequests
+                if serverRelayRecentFileAccessRequests != recentFileRequests {
+                    serverRelayRecentFileAccessRequests = recentFileRequests
+                }
             }
             if let requestLog = try? await store.fetchRecentRequestLog(limit: 20) {
-                serverRelayRecentRequestLog = requestLog
+                if serverRelayRecentRequestLog != requestLog {
+                    serverRelayRecentRequestLog = requestLog
+                }
             }
             if let syncData = try? await store.fetchSyncData(limit: 1) {
-                serverRelaySharedRunLogs = syncData.runLogs
-                _ = applyServerRelaySharedSettings(syncData.sharedSettings)
+                applyServerRelaySyncData(syncData)
             }
         } catch {
             serverRelayStatusMessage = "로그 지우기 실패: \(error.localizedDescription)"
@@ -781,7 +796,7 @@ final class KLMSMacModel: ObservableObject {
                 await processServerRelayCommands(silent: true)
                 let fallbackPoller = Task { [weak self] in
                     while !Task.isCancelled {
-                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        try? await Task.sleep(nanoseconds: Self.serverRelayFallbackPollIntervalNanoseconds)
                         guard !Task.isCancelled else { return }
                         await self?.processServerRelayCommands(silent: true)
                     }
@@ -888,11 +903,46 @@ final class KLMSMacModel: ObservableObject {
             return
         }
 
+        guard shouldPublishServerRelaySyncData(now: now, force: force) else {
+            return
+        }
         do {
             try await store.publishSyncData(serverRelaySyncData(from: snapshot))
+            serverRelayLastSyncDataPublishAt = now
         } catch {
             serverRelayStatusMessage = "서버 상태는 갱신됐지만 대시보드 요약 업로드 실패: \(error.localizedDescription)"
         }
+    }
+
+    private func shouldPublishServerRelaySyncData(now: Date, force: Bool) -> Bool {
+        if force {
+            return true
+        }
+        let minimumInterval = runningCommand == nil
+            ? Self.serverRelayIdleSyncDataPublishMinimumInterval
+            : Self.serverRelayActiveSyncDataPublishMinimumInterval
+        guard let serverRelayLastSyncDataPublishAt else {
+            return true
+        }
+        return now.timeIntervalSince(serverRelayLastSyncDataPublishAt) >= minimumInterval
+    }
+
+    private func shouldFetchServerRelaySyncData(force: Bool) -> Bool {
+        if force {
+            return true
+        }
+        guard let serverRelayLastSyncDataFetchAt else {
+            return true
+        }
+        return Date().timeIntervalSince(serverRelayLastSyncDataFetchAt) >= Self.serverRelaySyncDataFetchMinimumInterval
+    }
+
+    private func applyServerRelaySyncData(_ syncData: ServerRelaySyncData) {
+        if serverRelaySharedRunLogs != syncData.runLogs {
+            serverRelaySharedRunLogs = syncData.runLogs
+        }
+        _ = applyServerRelaySharedSettings(syncData.sharedSettings)
+        serverRelayLastSyncDataFetchAt = Date()
     }
 
     private func serverRelayPublicStatusMessage(
@@ -1946,8 +1996,19 @@ final class KLMSMacModel: ObservableObject {
                     continue
                 }
                 self.reloadSnapshot(showLoginTransition: true)
-                self.commandHistory = CommandRunHistoryStore(url: self.paths.appHistoryURL).load()
-                self.latestBackup = AppDataBackupManager(paths: self.paths).latestBackup()
+                let now = Date()
+                if self.lastPassiveAuxiliaryRefreshAt == nil
+                    || now.timeIntervalSince(self.lastPassiveAuxiliaryRefreshAt!) >= Self.passiveAuxiliaryRefreshMinimumInterval {
+                    let nextHistory = CommandRunHistoryStore(url: self.paths.appHistoryURL).load()
+                    if self.commandHistory != nextHistory {
+                        self.commandHistory = nextHistory
+                    }
+                    let nextBackup = AppDataBackupManager(paths: self.paths).latestBackup()
+                    if self.latestBackup != nextBackup {
+                        self.latestBackup = nextBackup
+                    }
+                    self.lastPassiveAuxiliaryRefreshAt = now
+                }
             }
         }
     }
@@ -2475,12 +2536,16 @@ final class KLMSMacModel: ObservableObject {
                 waitSeconds: 0
             )
             serverRelayLastInboxUpdatedAt = inbox.statusResponse.updatedAt
-            serverRelayRecentRequestLog = inbox.recentRequestLog
-            serverRelayRecentFileAccessRequests = inbox.recentFileAccessRequests
+            if serverRelayRecentRequestLog != inbox.recentRequestLog {
+                serverRelayRecentRequestLog = inbox.recentRequestLog
+            }
+            if serverRelayRecentFileAccessRequests != inbox.recentFileAccessRequests {
+                serverRelayRecentFileAccessRequests = inbox.recentFileAccessRequests
+            }
             _ = applyServerRelaySharedSettings(inbox.sharedSettings)
-            if let syncData = try? await store.fetchSyncData(limit: 1) {
-                serverRelaySharedRunLogs = syncData.runLogs
-                _ = applyServerRelaySharedSettings(syncData.sharedSettings)
+            if shouldFetchServerRelaySyncData(force: false),
+               let syncData = try? await store.fetchSyncData(limit: 1) {
+                applyServerRelaySyncData(syncData)
             }
             let pendingFileRequests = inbox.pendingFileAccessRequests
             if let fileRequest = pendingFileRequests.first {
@@ -3516,7 +3581,7 @@ final class KLMSMacModel: ObservableObject {
         runningCommandStatusPollTask?.cancel()
         runningCommandStatusPollTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(nanoseconds: Self.runningSnapshotRefreshIntervalNanoseconds)
                 guard !Task.isCancelled, let self, self.runningCommand != nil else {
                     return
                 }

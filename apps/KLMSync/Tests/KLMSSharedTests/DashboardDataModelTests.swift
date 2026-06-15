@@ -838,7 +838,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("DashboardLogSummaryPanelView(model: model)"))
         XCTAssertTrue(view.contains("DashboardSummaryView(model: model)"))
         XCTAssertTrue(view.contains("CommandStageDurationSummaryView(durations: stageDurations)"))
-        XCTAssertTrue(view.contains("private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 1_000_000"))
+        XCTAssertTrue(view.contains("private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 0"))
         XCTAssertTrue(app.contains(".onChange(of: appearanceMode)"))
         XCTAssertTrue(app.contains("Self.schedulePlatformAppearance(newValue)"))
         XCTAssertTrue(app.contains("NSApp.appearance = appearance"))
@@ -1710,7 +1710,7 @@ final class DashboardDataModelTests: XCTestCase {
         let workstationDetailPanel = try sourceStructBody(named: "WorkstationDashboardDetailPanel", in: ios)
 
         XCTAssertTrue(ios.contains("private struct CompanionItemListData"))
-        XCTAssertTrue(ios.contains("private let klmsInteractionDetailDelayNanoseconds: UInt64 = 1_000_000"))
+        XCTAssertTrue(ios.contains("private let klmsInteractionDetailDelayNanoseconds: UInt64 = 0"))
         XCTAssertTrue(ios.contains(".onChange(of: appearanceMode)"))
         XCTAssertTrue(ios.contains("Self.schedulePlatformAppearance(newValue)"))
         XCTAssertTrue(ios.contains("window.overrideUserInterfaceStyle = style"))
