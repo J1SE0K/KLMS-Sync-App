@@ -54,7 +54,6 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
                     )
                     .allowsHitTesting(false)
             }
-            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
     }
 }
@@ -221,7 +220,6 @@ private struct WorkspaceNavigationView: View {
                             RoundedRectangle(cornerRadius: 10)
                                 .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacCommandBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
                         }
-                        .shadow(color: isSelected ? Color.klmsMacSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(MacPressFeedbackButtonStyle())
@@ -675,9 +673,7 @@ private struct ExternalIntegrationStatusView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Button {
-                    withAnimation(.linear(duration: 0.04)) {
-                        isExpanded.toggle()
-                    }
+                    isExpanded.toggle()
                 } label: {
                     HStack(spacing: 8) {
                         Label("연동 상태", systemImage: "link")
@@ -968,7 +964,6 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
     }
 
@@ -1422,9 +1417,7 @@ private struct LogSummaryPanelView: View {
     }
 
     private func toggle(_ kind: LogSummaryKind) {
-        withAnimation(.linear(duration: 0.04)) {
-            expandedKind = expandedKind == kind ? nil : kind
-        }
+        expandedKind = expandedKind == kind ? nil : kind
     }
 }
 
@@ -2991,9 +2984,7 @@ private struct SharedRunLogActivityRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.linear(duration: 0.04)) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         }
     }
 
@@ -3050,9 +3041,7 @@ private struct ServerRequestLogActivityRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.linear(duration: 0.04)) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         }
     }
 
@@ -3147,9 +3136,7 @@ private struct RemoteCommandActivityRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.linear(duration: 0.04)) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         }
     }
 
@@ -3288,9 +3275,7 @@ private struct FileAccessActivityRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.linear(duration: 0.04)) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         }
     }
 
@@ -4689,7 +4674,6 @@ private struct MetricTile: View {
             RoundedRectangle(cornerRadius: 13)
                 .stroke(isSelected ? tint.opacity(0.92) : Color.klmsMacBorder, lineWidth: isSelected ? 1.4 : 1)
         }
-        .shadow(color: isSelected ? tint.opacity(0.12) : Color.clear, radius: 9, x: 0, y: 5)
         .contentShape(RoundedRectangle(cornerRadius: 13))
     }
 
@@ -4748,9 +4732,7 @@ struct CollapsibleSectionBox<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.linear(duration: 0.04)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(spacing: 8) {
                     if let systemImage {

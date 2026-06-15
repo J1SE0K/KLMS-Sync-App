@@ -1851,7 +1851,6 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
     }
 
@@ -1920,7 +1919,6 @@ private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle {
                     )
                     .allowsHitTesting(false)
             }
-            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
     }
 }
@@ -1948,7 +1946,6 @@ private struct KLMSMacIconButtonStyle: ButtonStyle {
                         lineWidth: 1
                     )
             }
-            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
     }
 }
@@ -3060,9 +3057,7 @@ struct MacMailPasteAnalyzerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.linear(duration: 0.04)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 MacMailPasteHeaderButtonContent(isExpanded: isExpanded, analysis: analysis)
             }

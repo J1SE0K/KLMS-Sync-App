@@ -2063,7 +2063,6 @@ private struct CompanionCompactTabBar: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
             }
-            .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSCardButtonStyle())
@@ -2189,7 +2188,6 @@ private struct CompanionSidebarButton: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.48), lineWidth: isSelected ? 1.2 : 1)
             )
-            .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSCardButtonStyle())
@@ -2787,9 +2785,7 @@ private struct ServerRelayConnectionPanel: View {
             }
 
             Button {
-                withAnimation(.linear(duration: 0.04)) {
-                    showConnectionFields.toggle()
-                }
+                showConnectionFields.toggle()
             } label: {
                 HStack(spacing: 8) {
                     Label("서버 릴레이 정보", systemImage: "link")
@@ -4500,7 +4496,6 @@ private struct RemoteMetricTile: View {
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
             )
-            .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 14))
@@ -4527,7 +4522,6 @@ private struct KLMSCardButtonStyle: ButtonStyle {
                     )
                     .allowsHitTesting(false)
             }
-            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
     }
 }
@@ -4610,7 +4604,6 @@ private struct WorkstationMetricCard: View {
                 RoundedRectangle(cornerRadius: 13)
                     .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
             )
-            .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
             .contentShape(RoundedRectangle(cornerRadius: 13))
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
@@ -4791,9 +4784,7 @@ private struct CompactDashboardSelectedRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.linear(duration: 0.04)) {
-                    expanded.toggle()
-                }
+                expanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -4879,7 +4870,6 @@ private struct KLMSActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
     }
 
@@ -4959,7 +4949,6 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 9)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
     }
 
@@ -5853,9 +5842,7 @@ private struct MailPasteAnalyzerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.linear(duration: 0.04)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -9133,7 +9120,6 @@ private struct ServerSyncDataRow: View, Equatable {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
         )
-        .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
     }
 
     private var primaryForeground: Color {
@@ -10341,9 +10327,7 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private func toggle(_ kind: RemoteLogSummaryKind) {
-        withAnimation(.linear(duration: 0.04)) {
-            expandedKind = expandedKind == kind ? nil : kind
-        }
+        expandedKind = expandedKind == kind ? nil : kind
     }
 }
 
@@ -10579,9 +10563,7 @@ private struct SharedRunLogRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.linear(duration: 0.04)) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         }
     }
 
@@ -10781,9 +10763,7 @@ private struct ServerRequestLogRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.linear(duration: 0.04)) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         }
     }
 
@@ -10889,9 +10869,7 @@ private struct RemoteFileAccessRequestRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.linear(duration: 0.04)) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         }
     }
 
@@ -11254,9 +11232,7 @@ private struct RemoteCommandRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.linear(duration: 0.04)) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         }
     }
 

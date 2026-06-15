@@ -219,7 +219,6 @@ struct SettingsView: View {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacCommandBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
             }
-            .shadow(color: isSelected ? Color.klmsMacSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSMacSettingsSidebarButtonStyle())
@@ -816,7 +815,6 @@ private struct KLMSMacSettingsSidebarButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.996 : 1.0)
             .brightness(configuration.isPressed ? -0.018 : 0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.45)
     }
@@ -842,7 +840,6 @@ private struct KLMSMacSettingsButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
-            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
     }
 
