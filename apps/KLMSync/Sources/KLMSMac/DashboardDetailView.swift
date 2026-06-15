@@ -223,8 +223,8 @@ private struct DashboardDetailFilters {
 }
 
 private enum DashboardLargeList {
-    static let initialVisibleLimit = 28
-    static let increment = 28
+    static let initialVisibleLimit = 16
+    static let increment = 16
 }
 
 private struct DashboardShowMoreButton: View {
@@ -2845,9 +2845,11 @@ private struct CalendarChangeListView: View {
     var filters: DashboardDetailFilters
     @ObservedObject var model: KLMSMacModel
     var hasLegacyCountWithoutDetails: Bool
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
         let visibleChanges = filteredChanges
+        let renderedChanges = visibleChanges.prefix(visibleLimit)
         VStack(alignment: .leading, spacing: 6) {
             Text("상세 변경")
                 .font(.caption.weight(.semibold))
@@ -2857,17 +2859,25 @@ private struct CalendarChangeListView: View {
                 EmptyDetailText(text: emptyText)
             } else {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(visibleChanges.prefix(50))) { change in
+                    ForEach(renderedChanges) { change in
                         CalendarChangeRowView(change: change, model: model)
                     }
                 }
-                if visibleChanges.count > 50 {
-                    Text("최근 50개만 표시 중 · 전체 \(visibleChanges.count)개")
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
+                if visibleChanges.count > renderedChanges.count {
+                    DashboardShowMoreButton(remainingCount: visibleChanges.count - renderedChanges.count) {
+                        visibleLimit += DashboardLargeList.increment
+                    }
                 }
             }
         }
+        .onChange(of: visibleChangesResetKey) { _, _ in
+            visibleLimit = DashboardLargeList.initialVisibleLimit
+        }
+    }
+
+    private var visibleChangesResetKey: String {
+        let visibleChanges = filteredChanges
+        return "\(visibleChanges.count):\(visibleChanges.first?.id ?? ""):\(visibleChanges.last?.id ?? "")"
     }
 
     private var filteredChanges: [CalendarChange] {

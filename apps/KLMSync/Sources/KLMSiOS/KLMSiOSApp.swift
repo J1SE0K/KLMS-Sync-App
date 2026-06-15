@@ -3565,8 +3565,10 @@ private struct CompanionItemListInputKey: Hashable {
 }
 
 private enum CompanionLargeList {
-    static let initialVisibleLimit = 30
-    static let increment = 40
+    static let initialVisibleLimit = 16
+    static let previewVisibleLimit = 10
+    static let calendarVisibleLimit = 16
+    static let increment = 16
 }
 
 private func companionItemsFingerprint(_ items: [ServerRelaySyncItem]) -> Int {
@@ -4995,7 +4997,7 @@ private struct CompactDashboardSelectedRow: View {
     }
 
     private var rowSubtitle: String {
-        [item.course, item.timestamp, item.detail]
+        [item.course, item.timestamp]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .prefix(2)
             .joined(separator: " · ")
@@ -5187,6 +5189,7 @@ private struct DashboardMetricDetailPanel: View {
     var items: [ServerRelaySyncItem]
     var onSelect: (ServerRelaySyncItem) -> Void = { _ in }
     @State private var selectedItemID: String?
+    @State private var visibleLimit = CompanionLargeList.previewVisibleLimit
 
     private var filteredItems: [ServerRelaySyncItem] {
         let defaultFilter = CompanionItemStatusFilter.defaultFilter(for: category)
@@ -5199,6 +5202,7 @@ private struct DashboardMetricDetailPanel: View {
 
     var body: some View {
         let filtered = filteredItems
+        let visibleItems = filtered.prefix(visibleLimit)
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Label(category.title, systemImage: category.systemImage)
@@ -5218,7 +5222,7 @@ private struct DashboardMetricDetailPanel: View {
                 emptyState
             } else {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(filtered) { item in
+                    ForEach(visibleItems) { item in
                         Button {
                             selectedItemID = item.id
                             onSelect(item)
@@ -5228,6 +5232,11 @@ private struct DashboardMetricDetailPanel: View {
                         }
                         .buttonStyle(KLMSCardButtonStyle())
                         .accessibilityHint("항목 상세를 엽니다.")
+                    }
+                    if filtered.count > visibleItems.count {
+                        CompanionShowMoreRowsButton(remainingCount: filtered.count - visibleItems.count) {
+                            visibleLimit += CompanionLargeList.increment
+                        }
                     }
                 }
             }
@@ -5239,6 +5248,14 @@ private struct DashboardMetricDetailPanel: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(category.tint.opacity(0.30), lineWidth: 1)
         )
+        .onChange(of: visibleItemsResetKey) { _, _ in
+            visibleLimit = CompanionLargeList.previewVisibleLimit
+        }
+    }
+
+    private var visibleItemsResetKey: String {
+        let filtered = filteredItems
+        return "\(category.rawValue):\(filtered.count):\(filtered.first?.id ?? ""):\(filtered.last?.id ?? "")"
     }
 
     private var calendarSummary: some View {
@@ -5280,6 +5297,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     @State private var newOnly = false
     @State private var recentOnly = false
     @State private var cachedListData: CompanionItemListData?
+    @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
 
     init(
         category: DashboardMetricCategory,
@@ -5321,6 +5339,9 @@ private struct DashboardCategoryInlineDetailPanel: View {
         .task(id: listInputKey) {
             await rebuildCachedListData()
         }
+        .onChange(of: calendarChangesResetKey) { _, _ in
+            calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+        }
     }
 
     private var summaryHeader: some View {
@@ -5353,6 +5374,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     @ViewBuilder
     private var detailContent: some View {
         if category == .calendar {
+            let visibleChanges = calendarChanges.prefix(calendarVisibleLimit)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     DashboardCountPill(title: "생성", value: status.calendarCreated, tint: category.tint)
@@ -5363,12 +5385,17 @@ private struct DashboardCategoryInlineDetailPanel: View {
                 if calendarChanges.isEmpty {
                     panelEmptyText("최근 캘린더 변경 상세가 아직 서버에 올라오지 않았습니다.")
                 } else {
-                    ForEach(calendarChanges) { change in
+                    ForEach(visibleChanges) { change in
                         DashboardCalendarChangeDetailRow(
                             change: change,
                             activeAction: model.activeCalendarAction(for: change)
                         ) { action, edit in
                             await model.createCalendarAction(action, change: change, edit: edit)
+                        }
+                    }
+                    if calendarChanges.count > visibleChanges.count {
+                        CompanionShowMoreRowsButton(remainingCount: calendarChanges.count - visibleChanges.count) {
+                            calendarVisibleLimit += CompanionLargeList.increment
                         }
                     }
                 }
@@ -5435,6 +5462,10 @@ private struct DashboardCategoryInlineDetailPanel: View {
             newOnly: newOnly,
             recentOnly: recentOnly
         )
+    }
+
+    private var calendarChangesResetKey: String {
+        "\(calendarChanges.count):\(calendarChanges.first?.id ?? ""):\(calendarChanges.last?.id ?? "")"
     }
 
     private func rebuildCachedListData() async {
@@ -7585,6 +7616,7 @@ private struct DashboardCategoryDetailScreen: View {
     var items: [ServerRelaySyncItem]
     var calendarChanges: [CalendarChange]
     var onSelect: (ServerRelaySyncItem) -> Void
+    @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
     @State private var query = ""
     @State private var sortOption = CompanionItemSortOption.recent
     @State private var visibilityFilter = CompanionItemVisibilityFilter.visible
@@ -7613,6 +7645,7 @@ private struct DashboardCategoryDetailScreen: View {
     }
 
     var body: some View {
+        let visibleCalendarChanges = calendarChanges.prefix(calendarVisibleLimit)
         List {
             Section {
                 DashboardCategorySummaryRow(category: category, status: status, itemCount: cachedListData?.filteredItems.count ?? 0)
@@ -7631,8 +7664,13 @@ private struct DashboardCategoryDetailScreen: View {
                     }
                 } else {
                     Section("\(calendarChanges.count)개 변경") {
-                        ForEach(calendarChanges) { change in
+                        ForEach(visibleCalendarChanges) { change in
                             DashboardCalendarChangeDetailRow(change: change)
+                        }
+                        if calendarChanges.count > visibleCalendarChanges.count {
+                            CompanionShowMoreRowsButton(remainingCount: calendarChanges.count - visibleCalendarChanges.count) {
+                                calendarVisibleLimit += CompanionLargeList.increment
+                            }
                         }
                     }
                 }
@@ -7689,6 +7727,13 @@ private struct DashboardCategoryDetailScreen: View {
         .task(id: listInputKey) {
             await rebuildCachedListData()
         }
+        .onChange(of: calendarChangesResetKey) { _, _ in
+            calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+        }
+    }
+
+    private var calendarChangesResetKey: String {
+        "\(calendarChanges.count):\(calendarChanges.first?.id ?? ""):\(calendarChanges.last?.id ?? "")"
     }
 
     private var listInputKey: CompanionItemListInputKey {
@@ -9386,9 +9431,6 @@ private struct ServerSyncDataRow: View, Equatable {
             if item.isImportant {
                 parts.append("중요")
             }
-        }
-        if !item.detail.isEmpty {
-            parts.append(item.detail)
         }
         return parts.isEmpty ? "세부 정보 없음" : parts.joined(separator: " · ")
     }
