@@ -63,6 +63,16 @@ const state = {
   busy: false
 };
 
+const refreshScopes = {
+  full: { commands: true, syncData: true, itemActions: true, fileAccess: true, sharedSettings: false },
+  state: { commands: true, syncData: false, itemActions: true, fileAccess: false, sharedSettings: false },
+  syncData: { commands: false, syncData: true, itemActions: false, fileAccess: false, sharedSettings: false },
+  fileAccess: { commands: false, syncData: false, itemActions: false, fileAccess: true, sharedSettings: false },
+  itemActions: { commands: false, syncData: false, itemActions: true, fileAccess: false, sharedSettings: false },
+  settings: { commands: false, syncData: false, itemActions: true, fileAccess: false, sharedSettings: true },
+  displayLogs: { commands: true, syncData: false, itemActions: true, fileAccess: true, sharedSettings: false }
+};
+
 const $ = (id) => document.getElementById(id);
 let refreshTimer = null;
 let realtimeLoopID = 0;
@@ -73,7 +83,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderAll();
   await loadConfig();
   if (state.configured) {
-    await refreshAll({ quiet: true, auto: true });
+    await refreshAll({ quiet: true, auto: true, realtime: true });
   }
 });
 
@@ -132,7 +142,7 @@ async function saveConnection(options = {}) {
       toast("서버 연결 정보를 저장했습니다.");
     }
     if (options.refresh !== false) {
-      await refreshAll({ quiet: true });
+      await refreshAll({ quiet: true, realtime: true });
     }
     return true;
   } catch (error) {
@@ -223,30 +233,47 @@ async function refreshAll(options = {}) {
     return;
   }
   if (options.auto && state.busy) {
-    scheduleAutoRefresh(2000);
+    if (!options.realtime) {
+      scheduleAutoRefresh(2000);
+    }
     return;
   }
   try {
+    const scope = options.scope || refreshScopes.full;
     if (!options.auto) {
       setBusy(true);
       updateConnectionState("확인 중", "muted");
     }
-    await window.klmsWindows.relayRequest({ path: "/healthz" });
-    const [statusResponse, commandResponse, syncData, actionResponse, fileAccessResponse] = await Promise.all([
+    if (!options.auto && !options.realtime) {
+      await window.klmsWindows.relayRequest({ path: "/healthz" });
+    }
+    const [statusResponse, commandResponse, syncData, actionResponse, fileAccessResponse, sharedSettingsResponse] = await Promise.all([
       window.klmsWindows.relayRequest({ path: "/v1/status" }),
-      window.klmsWindows.relayRequest({ path: "/v1/commands/recent?limit=8" }),
-      window.klmsWindows.relayRequest({ path: "/v1/sync-data?limit=2000" }),
-      window.klmsWindows.relayRequest({ path: "/v1/item-actions/recent?limit=10" }),
-      window.klmsWindows.relayRequest({ path: "/v1/file-access/recent?limit=20" })
+      scope.commands ? window.klmsWindows.relayRequest({ path: "/v1/commands/recent?limit=8" }) : null,
+      scope.syncData ? window.klmsWindows.relayRequest({ path: "/v1/sync-data?limit=2000" }) : null,
+      scope.itemActions ? window.klmsWindows.relayRequest({ path: "/v1/item-actions/recent?limit=10" }) : null,
+      scope.fileAccess ? window.klmsWindows.relayRequest({ path: "/v1/file-access/recent?limit=20" }) : null,
+      scope.sharedSettings ? window.klmsWindows.relayRequest({ path: "/v1/shared-settings" }) : null
     ]);
     applyStatus(statusResponse);
-    state.recentCommands = commandResponse.commands || [];
-    state.items = syncData.items || [];
-    state.calendarChanges = syncData.calendarChanges || [];
-    state.verifySummary = syncData.verifySummary || null;
-    applySharedSettings(syncData.sharedSettings || []);
-    state.recentActions = actionResponse.actions || [];
-    state.recentFileAccess = fileAccessResponse.requests || [];
+    if (commandResponse) {
+      state.recentCommands = commandResponse.commands || [];
+    }
+    if (syncData) {
+      state.items = syncData.items || [];
+      state.calendarChanges = syncData.calendarChanges || [];
+      state.verifySummary = syncData.verifySummary || null;
+      applySharedSettings(syncData.sharedSettings || []);
+    }
+    if (actionResponse) {
+      state.recentActions = actionResponse.actions || [];
+    }
+    if (fileAccessResponse) {
+      state.recentFileAccess = fileAccessResponse.requests || [];
+    }
+    if (sharedSettingsResponse) {
+      applySharedSettings(Array.isArray(sharedSettingsResponse) ? sharedSettingsResponse : sharedSettingsResponse.settings || []);
+    }
     updateConnectionState("연결됨", "ok");
     if (options.check) {
       toast("서버 릴레이와 연결됐습니다.");
@@ -261,7 +288,9 @@ async function refreshAll(options = {}) {
     if (!options.auto) {
       setBusy(false);
     }
-    scheduleAutoRefresh();
+    if (!options.realtime) {
+      scheduleAutoRefresh();
+    }
   }
 }
 
@@ -309,6 +338,7 @@ function startRealtimeRefresh() {
     stopRealtimeRefresh();
     return;
   }
+  stopAutoRefresh();
   const loopID = ++realtimeLoopID;
   runRealtimeRefreshLoop(loopID);
 }
@@ -328,7 +358,12 @@ async function runRealtimeRefreshLoop(loopID) {
         state.relayEventSince = event.updatedAt;
       }
       updateConnectionState("실시간 연결됨", "ok");
-      await refreshAll({ quiet: true, auto: true, realtime: true });
+      await refreshAll({
+        quiet: true,
+        auto: true,
+        realtime: true,
+        scope: refreshScopeForRelayEvent(event)
+      });
     } catch (error) {
       if (loopID !== realtimeLoopID || !state.configured) {
         return;
@@ -376,6 +411,32 @@ function applyStatus(payload) {
   }
 }
 
+function refreshScopeForRelayEvent(event) {
+  const reason = String(event?.reason || "").trim();
+  if (reason === "state" || reason === "updated") {
+    return refreshScopes.state;
+  }
+  if (reason === "sync-data" || reason.startsWith("sync-data:")) {
+    return refreshScopes.syncData;
+  }
+  if (reason === "shared-settings") {
+    return refreshScopes.settings;
+  }
+  if (reason.startsWith("file-access:")) {
+    return refreshScopes.fileAccess;
+  }
+  if (reason.startsWith("logs-display:") || reason.startsWith("logs:")) {
+    if (reason.includes("fileAccess") || reason.includes("file-access")) {
+      return refreshScopes.fileAccess;
+    }
+    if (reason.includes("command")) {
+      return refreshScopes.state;
+    }
+    return refreshScopes.displayLogs;
+  }
+  return refreshScopes.full;
+}
+
 function delay(milliseconds) {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
@@ -406,7 +467,7 @@ async function createCommand(kind) {
       }
     });
     toast(`${commandLabel(kind)} 요청을 보냈습니다.`);
-    await refreshAll({ quiet: true });
+    await refreshAll({ quiet: true, scope: refreshScopes.state });
   } catch (error) {
     showError(error);
   } finally {
@@ -434,7 +495,7 @@ async function createItemAction(action, item) {
     });
     applyOptimisticItemAction(action, item);
     toast(`${actionLabel(action)} 요청을 보냈습니다.`);
-    await refreshAll({ quiet: true });
+    await refreshAll({ quiet: true, scope: refreshScopes.itemActions });
   } catch (error) {
     showError(error);
   } finally {
@@ -503,7 +564,7 @@ async function createFileAccess(item) {
       }
     });
     toast("Mac에 파일 열기 링크를 요청했습니다.");
-    await refreshAll({ quiet: true });
+    await refreshAll({ quiet: true, scope: refreshScopes.fileAccess });
   } catch (error) {
     showError(error);
   } finally {

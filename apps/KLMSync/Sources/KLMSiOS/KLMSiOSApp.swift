@@ -205,18 +205,120 @@ final class CompanionModel: ObservableObject {
         var silentErrors: Bool
         var includeSyncData: Bool?
         var showsActivity: Bool
+        var scope: RelayRefreshScope
 
         mutating func merge(
             silentErrors newSilentErrors: Bool,
             includeSyncData newIncludeSyncData: Bool?,
-            showsActivity newShowsActivity: Bool
+            showsActivity newShowsActivity: Bool,
+            scope newScope: RelayRefreshScope
         ) {
             silentErrors = silentErrors && newSilentErrors
             showsActivity = showsActivity || newShowsActivity
             if includeSyncData != true {
                 includeSyncData = newIncludeSyncData
             }
+            scope.formUnion(newScope)
         }
+    }
+
+    struct RelayRefreshScope: Equatable {
+        var fetchesCommands: Bool
+        var fetchesSyncData: Bool
+        var fetchesFileRequests: Bool
+        var fetchesItemActions: Bool
+        var fetchesRequestLog: Bool
+        var fetchesSettingActions: Bool
+
+        var hasClientFetchWork: Bool {
+            fetchesCommands
+                || fetchesSyncData
+                || fetchesFileRequests
+                || fetchesItemActions
+                || fetchesRequestLog
+                || fetchesSettingActions
+        }
+
+        mutating func formUnion(_ other: RelayRefreshScope) {
+            fetchesCommands = fetchesCommands || other.fetchesCommands
+            fetchesSyncData = fetchesSyncData || other.fetchesSyncData
+            fetchesFileRequests = fetchesFileRequests || other.fetchesFileRequests
+            fetchesItemActions = fetchesItemActions || other.fetchesItemActions
+            fetchesRequestLog = fetchesRequestLog || other.fetchesRequestLog
+            fetchesSettingActions = fetchesSettingActions || other.fetchesSettingActions
+        }
+
+        static let full = RelayRefreshScope(
+            fetchesCommands: true,
+            fetchesSyncData: true,
+            fetchesFileRequests: true,
+            fetchesItemActions: true,
+            fetchesRequestLog: true,
+            fetchesSettingActions: true
+        )
+
+        static let state = RelayRefreshScope(
+            fetchesCommands: true,
+            fetchesSyncData: false,
+            fetchesFileRequests: false,
+            fetchesItemActions: true,
+            fetchesRequestLog: true,
+            fetchesSettingActions: true
+        )
+
+        static let syncData = RelayRefreshScope(
+            fetchesCommands: false,
+            fetchesSyncData: true,
+            fetchesFileRequests: false,
+            fetchesItemActions: false,
+            fetchesRequestLog: false,
+            fetchesSettingActions: false
+        )
+
+        static let fileAccess = RelayRefreshScope(
+            fetchesCommands: false,
+            fetchesSyncData: false,
+            fetchesFileRequests: true,
+            fetchesItemActions: false,
+            fetchesRequestLog: true,
+            fetchesSettingActions: false
+        )
+
+        static let itemActions = RelayRefreshScope(
+            fetchesCommands: false,
+            fetchesSyncData: false,
+            fetchesFileRequests: false,
+            fetchesItemActions: true,
+            fetchesRequestLog: true,
+            fetchesSettingActions: false
+        )
+
+        static let settings = RelayRefreshScope(
+            fetchesCommands: false,
+            fetchesSyncData: true,
+            fetchesFileRequests: false,
+            fetchesItemActions: false,
+            fetchesRequestLog: true,
+            fetchesSettingActions: true
+        )
+
+        static let requestLog = RelayRefreshScope(
+            fetchesCommands: false,
+            fetchesSyncData: false,
+            fetchesFileRequests: false,
+            fetchesItemActions: false,
+            fetchesRequestLog: true,
+            fetchesSettingActions: false
+        )
+
+        static let displayLogs = RelayRefreshScope(
+            fetchesCommands: true,
+            fetchesSyncData: false,
+            fetchesFileRequests: true,
+            fetchesItemActions: true,
+            fetchesRequestLog: true,
+            fetchesSettingActions: true
+        )
     }
 
     private struct RelayEventEnvelope: Decodable {
@@ -1002,13 +1104,15 @@ final class CompanionModel: ObservableObject {
     func refreshRecent(
         silentErrors: Bool = false,
         includeSyncData: Bool? = nil,
-        showsActivity: Bool = true
+        showsActivity: Bool = true,
+        scope: RelayRefreshScope = .full
     ) async {
         guard !refreshInProgress else {
             queueRefreshIfNeeded(
                 silentErrors: silentErrors,
                 includeSyncData: includeSyncData,
-                showsActivity: showsActivity
+                showsActivity: showsActivity,
+                scope: scope
             )
             return
         }
@@ -1025,14 +1129,15 @@ final class CompanionModel: ObservableObject {
         }
         do {
             if let serverRelayStore {
-                let shouldLoadSyncData = shouldFetchSyncData(includeSyncData: includeSyncData)
+                let shouldLoadSyncData = includeSyncData == true
+                    || (scope.fetchesSyncData && shouldFetchSyncData(includeSyncData: includeSyncData))
                 async let responseTask = serverRelayStore.fetchStatusResponse()
-                async let commandsTask: [RemoteRunCommand]? = try? serverRelayStore.fetchRecent(limit: 8)
+                async let commandsTask = Self.fetchRecentCommandsIfNeeded(scope.fetchesCommands, store: serverRelayStore, limit: 8)
                 async let syncDataTask = Self.fetchSyncDataIfNeeded(shouldLoadSyncData, store: serverRelayStore)
-                async let fileRequestsTask: [ServerRelayFileAccessRequest]? = try? serverRelayStore.fetchRecentFileAccessRequests(limit: 20)
-                async let itemActionsTask: [ServerRelayItemAction]? = try? serverRelayStore.fetchRecentItemActions(limit: 40)
-                async let requestLogTask: [ServerRelayRequestLogEntry]? = try? serverRelayStore.fetchRecentRequestLog(limit: 30)
-                async let settingActionsTask: [ServerRelaySettingAction]? = try? serverRelayStore.fetchRecentSettingActions(limit: 20)
+                async let fileRequestsTask = Self.fetchRecentFileAccessRequestsIfNeeded(scope.fetchesFileRequests, store: serverRelayStore, limit: 20)
+                async let itemActionsTask = Self.fetchRecentItemActionsIfNeeded(scope.fetchesItemActions, store: serverRelayStore, limit: 40)
+                async let requestLogTask = Self.fetchRecentRequestLogIfNeeded(scope.fetchesRequestLog, store: serverRelayStore, limit: 30)
+                async let settingActionsTask = Self.fetchRecentSettingActionsIfNeeded(scope.fetchesSettingActions, store: serverRelayStore, limit: 20)
 
                 let response = try await responseTask
                 var didChange = apply(response)
@@ -1114,25 +1219,83 @@ final class CompanionModel: ObservableObject {
         return try? await store.fetchSyncData(limit: 2000)
     }
 
+    private static func fetchRecentCommandsIfNeeded(
+        _ shouldFetch: Bool,
+        store: ServerRelayCommandStore,
+        limit: Int
+    ) async -> [RemoteRunCommand]? {
+        guard shouldFetch else {
+            return nil
+        }
+        return try? await store.fetchRecent(limit: limit)
+    }
+
+    private static func fetchRecentFileAccessRequestsIfNeeded(
+        _ shouldFetch: Bool,
+        store: ServerRelayCommandStore,
+        limit: Int
+    ) async -> [ServerRelayFileAccessRequest]? {
+        guard shouldFetch else {
+            return nil
+        }
+        return try? await store.fetchRecentFileAccessRequests(limit: limit)
+    }
+
+    private static func fetchRecentItemActionsIfNeeded(
+        _ shouldFetch: Bool,
+        store: ServerRelayCommandStore,
+        limit: Int
+    ) async -> [ServerRelayItemAction]? {
+        guard shouldFetch else {
+            return nil
+        }
+        return try? await store.fetchRecentItemActions(limit: limit)
+    }
+
+    private static func fetchRecentRequestLogIfNeeded(
+        _ shouldFetch: Bool,
+        store: ServerRelayCommandStore,
+        limit: Int
+    ) async -> [ServerRelayRequestLogEntry]? {
+        guard shouldFetch else {
+            return nil
+        }
+        return try? await store.fetchRecentRequestLog(limit: limit)
+    }
+
+    private static func fetchRecentSettingActionsIfNeeded(
+        _ shouldFetch: Bool,
+        store: ServerRelayCommandStore,
+        limit: Int
+    ) async -> [ServerRelaySettingAction]? {
+        guard shouldFetch else {
+            return nil
+        }
+        return try? await store.fetchRecentSettingActions(limit: limit)
+    }
+
     private func queueRefreshIfNeeded(
         silentErrors: Bool,
         includeSyncData: Bool?,
-        showsActivity: Bool
+        showsActivity: Bool,
+        scope: RelayRefreshScope
     ) {
-        guard showsActivity || includeSyncData == true || !silentErrors else {
+        guard showsActivity || includeSyncData == true || !silentErrors || scope.hasClientFetchWork else {
             return
         }
         if pendingRefreshRequest == nil {
             pendingRefreshRequest = PendingRefreshRequest(
                 silentErrors: silentErrors,
                 includeSyncData: includeSyncData,
-                showsActivity: showsActivity
+                showsActivity: showsActivity,
+                scope: scope
             )
         } else {
             pendingRefreshRequest?.merge(
                 silentErrors: silentErrors,
                 includeSyncData: includeSyncData,
-                showsActivity: showsActivity
+                showsActivity: showsActivity,
+                scope: scope
             )
         }
         if showsActivity {
@@ -1151,7 +1314,8 @@ final class CompanionModel: ObservableObject {
             await self?.refreshRecent(
                 silentErrors: request.silentErrors,
                 includeSyncData: request.includeSyncData,
-                showsActivity: request.showsActivity
+                showsActivity: request.showsActivity,
+                scope: request.scope
             )
         }
     }
@@ -1429,8 +1593,13 @@ final class CompanionModel: ObservableObject {
                 await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false)
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
                     let message = try await task.receive()
-                    let includeSyncData = Self.relayEventRequiresSyncDataRefresh(message) ? true : nil
-                    await refreshRecent(silentErrors: true, includeSyncData: includeSyncData, showsActivity: false)
+                    let scope = Self.relayRefreshScope(for: message)
+                    await refreshRecent(
+                        silentErrors: true,
+                        includeSyncData: scope.fetchesSyncData ? true : false,
+                        showsActivity: false,
+                        scope: scope
+                    )
                 }
             } catch {
                 if !Task.isCancelled, serverRelayEventStreamKey == key {
@@ -1440,7 +1609,7 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    private static func relayEventRequiresSyncDataRefresh(_ message: URLSessionWebSocketTask.Message) -> Bool {
+    private static func relayRefreshScope(for message: URLSessionWebSocketTask.Message) -> RelayRefreshScope {
         let data: Data?
         switch message {
         case .data(let payload):
@@ -1452,11 +1621,34 @@ final class CompanionModel: ObservableObject {
         }
         guard let data,
               let event = try? JSONDecoder().decode(RelayEventEnvelope.self, from: data) else {
-            return false
+            return .full
         }
-        return event.reason == "sync-data"
-            || event.reason == "shared-settings"
-            || event.reason?.hasPrefix("sync-data:") == true
+        let reason = event.reason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if reason == "state" || reason == "updated" {
+            return .state
+        }
+        if reason == "sync-data" || reason.hasPrefix("sync-data:") {
+            return .syncData
+        }
+        if reason == "shared-settings" {
+            return .settings
+        }
+        if reason.hasPrefix("file-access:") {
+            return .fileAccess
+        }
+        if reason.hasPrefix("logs-display:") || reason.hasPrefix("logs:") {
+            if reason.contains("fileAccess") || reason.contains("file-access") {
+                return .fileAccess
+            }
+            if reason.contains("requestLog") || reason.contains("request-log") {
+                return .requestLog
+            }
+            if reason.contains("command") {
+                return .state
+            }
+            return .displayLogs
+        }
+        return .full
     }
 
     @discardableResult
@@ -4544,19 +4736,25 @@ private struct DeferredInteractionExpansion<Content: View>: View {
     }
 
     var body: some View {
-        Group {
-            if isVisible {
+        if delayNanoseconds == 0 {
+            if isExpanded {
                 content()
             }
-        }
-        .onAppear {
-            updateVisibility(isExpanded)
-        }
-        .onChange(of: isExpanded) { _, newValue in
-            updateVisibility(newValue)
-        }
-        .onDisappear {
-            deferredTask?.cancel()
+        } else {
+            Group {
+                if isVisible {
+                    content()
+                }
+            }
+            .onAppear {
+                updateVisibility(isExpanded)
+            }
+            .onChange(of: isExpanded) { _, newValue in
+                updateVisibility(newValue)
+            }
+            .onDisappear {
+                deferredTask?.cancel()
+            }
         }
     }
 

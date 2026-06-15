@@ -18,8 +18,6 @@ struct MenuBarRootView: View {
                     selectedSection: $selectedSection,
                     expandedLogSummaryKind: $expandedLogSummaryKind
                 )
-                CommandPanelView(model: model)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 MacWorkstationLayoutView(
                     model: model,
                     selectedSection: $selectedSection,
@@ -76,19 +74,25 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
     }
 
     var body: some View {
-        Group {
-            if isVisible {
+        if delayNanoseconds == 0 {
+            if isExpanded {
                 content()
             }
-        }
-        .onAppear {
-            updateVisibility(isExpanded)
-        }
-        .onChange(of: isExpanded) { _, newValue in
-            updateVisibility(newValue)
-        }
-        .onDisappear {
-            deferredTask?.cancel()
+        } else {
+            Group {
+                if isVisible {
+                    content()
+                }
+            }
+            .onAppear {
+                updateVisibility(isExpanded)
+            }
+            .onChange(of: isExpanded) { _, newValue in
+                updateVisibility(newValue)
+            }
+            .onDisappear {
+                deferredTask?.cancel()
+            }
         }
     }
 
@@ -128,6 +132,7 @@ private struct MacWorkstationLayoutView: View {
 
     private var controlRail: some View {
         VStack(alignment: .leading, spacing: 12) {
+            CommandPanelView(model: model)
             WorkspaceNavigationView(selection: $selectedSection)
             DashboardRuntimePanelView(model: model)
         }
