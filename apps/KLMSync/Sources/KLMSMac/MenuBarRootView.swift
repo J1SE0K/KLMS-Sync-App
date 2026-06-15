@@ -147,12 +147,15 @@ private struct MacWorkstationLayoutView: View {
                 DashboardSummaryView(model: model)
             case .files:
                 DashboardDetailPanelView(kind: .files, model: model)
+                    .equatable()
             case .notices:
                 DashboardDetailPanelView(kind: .notices, model: model)
+                    .equatable()
             case .tasks:
                 TaskAndExamWorkspaceView(model: model)
             case .calendar:
                 DashboardDetailPanelView(kind: .calendar, model: model)
+                    .equatable()
             case .activityLogs:
                 LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                 RemoteActivityPanelView(model: model)
@@ -579,11 +582,14 @@ private struct TaskAndExamWorkspaceView: View {
     @ViewBuilder
     private var taskPanels: some View {
         DashboardDetailPanelView(kind: .assignments, model: model)
+            .equatable()
             .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
         DashboardDetailPanelView(kind: .exams, model: model)
+            .equatable()
             .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
         if (model.snapshot.visibleCounts.helpDesk) > 0 {
             DashboardDetailPanelView(kind: .helpDesk, model: model)
+                .equatable()
                 .frame(minWidth: 260, maxWidth: .infinity, alignment: .topLeading)
         }
     }
@@ -2417,14 +2423,33 @@ private struct AuthCodeBannerView: View {
 
 private struct DashboardSummaryView: View {
     @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        DashboardSummaryContentView(
+            model: model,
+            snapshot: model.snapshot,
+            summary: model.dashboardSummaryCache,
+            renderSignature: DashboardRenderSignature(snapshot: model.snapshot, summary: model.dashboardSummaryCache)
+        )
+        .equatable()
+    }
+}
+
+private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
+    var model: KLMSMacModel
+    var snapshot: EngineSnapshot
+    var summary: KLMSMacDashboardSummaryCache
+    var renderSignature: DashboardRenderSignature
     @State private var selectedDetail: DashboardDetailKind?
     @State private var displayedDetail: DashboardDetailKind?
     @State private var deferredDetailTask: Task<Void, Never>?
 
+    static func == (lhs: DashboardSummaryContentView, rhs: DashboardSummaryContentView) -> Bool {
+        lhs.renderSignature == rhs.renderSignature
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            let snapshot = model.snapshot
-            let summary = model.dashboardSummaryCache
             let counts = summary.visibleCounts
             let primaryMetrics = [
                 Metric("파일", snapshot.courseFileManifest.count, detail: .files),
@@ -2535,7 +2560,8 @@ private struct DashboardSummaryView: View {
     }
 
     private func dashboardDetailColumn(kind: DashboardDetailKind) -> some View {
-        DashboardDetailPanelView(kind: kind, model: model)
+        DashboardDetailPanelView(kind: kind, model: model, snapshot: snapshot)
+            .equatable()
             .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
@@ -4843,8 +4869,8 @@ extension Color {
 
     static var klmsMacCommandAccent: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
-            dark: NSColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 1.0),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 1.0)
         )
     }
 
@@ -4899,15 +4925,15 @@ extension Color {
 
     static var klmsMacSelectedBackground: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(red: 0.858, green: 0.839, blue: 0.773, alpha: 1.0),
-            dark: NSColor(red: 0.282, green: 0.263, blue: 0.218, alpha: 1.0)
+            light: NSColor(red: 0.894, green: 0.878, blue: 0.827, alpha: 1.0),
+            dark: NSColor(red: 0.224, green: 0.212, blue: 0.184, alpha: 1.0)
         )
     }
 
     static var klmsMacSelectedBorder: Color {
         klmsMacAdaptiveColor(
-            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.72),
-            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.68)
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.56),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.48)
         )
     }
 

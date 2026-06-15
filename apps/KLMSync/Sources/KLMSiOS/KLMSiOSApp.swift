@@ -11848,13 +11848,13 @@ private extension Color {
     static var klmsCommandAccent: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
-            dark: UIColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
+            light: UIColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 1.0),
+            dark: UIColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.090, green: 0.086, blue: 0.075, alpha: 1.0),
-            dark: NSColor(red: 0.969, green: 0.953, blue: 0.918, alpha: 1.0)
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 1.0),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 1.0)
         )
         #else
         return Color.gray
@@ -12072,13 +12072,13 @@ private extension Color {
     static var klmsSelectedBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.858, green: 0.839, blue: 0.773, alpha: 1.0),
-            dark: UIColor(red: 0.282, green: 0.263, blue: 0.218, alpha: 1.0)
+            light: UIColor(red: 0.894, green: 0.878, blue: 0.827, alpha: 1.0),
+            dark: UIColor(red: 0.224, green: 0.212, blue: 0.184, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.858, green: 0.839, blue: 0.773, alpha: 1.0),
-            dark: NSColor(red: 0.282, green: 0.263, blue: 0.218, alpha: 1.0)
+            light: NSColor(red: 0.894, green: 0.878, blue: 0.827, alpha: 1.0),
+            dark: NSColor(red: 0.224, green: 0.212, blue: 0.184, alpha: 1.0)
         )
         #else
         return Color.gray.opacity(0.18)
@@ -12088,13 +12088,13 @@ private extension Color {
     static var klmsSelectedBorder: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.72),
-            dark: UIColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.68)
+            light: UIColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.56),
+            dark: UIColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.48)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.72),
-            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.68)
+            light: NSColor(red: 0.165, green: 0.165, blue: 0.153, alpha: 0.56),
+            dark: NSColor(red: 0.941, green: 0.875, blue: 0.722, alpha: 0.48)
         )
         #else
         return Color.gray.opacity(0.72)

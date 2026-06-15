@@ -54,9 +54,118 @@ enum DashboardDetailKind: String, CaseIterable, Identifiable {
     }
 }
 
-struct DashboardDetailPanelView: View {
+struct DashboardRenderSignature: Equatable {
+    private var value: Int
+
+    init(snapshot: EngineSnapshot, summary: KLMSMacDashboardSummaryCache) {
+        var hasher = Hasher()
+        hasher.combine(summary.visibleCounts.assignments)
+        hasher.combine(summary.visibleCounts.exams)
+        hasher.combine(summary.visibleCounts.helpDesk)
+        hasher.combine(summary.visibleCounts.notices)
+        hasher.combine(summary.visibleCounts.newFiles)
+        hasher.combine(summary.visibleCounts.quarantine)
+        hasher.combine(summary.hiddenSummary.total)
+        hasher.combine(summary.assignmentCandidateCount)
+        hasher.combine(summary.examCandidateCount)
+        hasher.combine(summary.completedAssignmentCount)
+        hasher.combine(summary.localMissingFileCount)
+        hasher.combine(summary.prunedFileCount)
+        hasher.combine(summary.calendarAttentionCount)
+        hasher.combine(summary.mailAssignmentCount)
+        hasher.combine(summary.mailExamCount)
+        Self.combineStateItems(snapshot.legacyState?.content.assignments, into: &hasher)
+        Self.combineStateItems(snapshot.legacyState?.content.completedAssignments, into: &hasher)
+        Self.combineStateItems(snapshot.legacyState?.content.assignmentCandidates, into: &hasher)
+        Self.combineStateItems(snapshot.legacyState?.content.examItems, into: &hasher)
+        Self.combineStateItems(snapshot.legacyState?.content.examCandidates, into: &hasher)
+        Self.combineStateItems(snapshot.legacyState?.content.helpDeskItems, into: &hasher)
+        Self.combineNotices(snapshot.noticeDigest?.notices, generatedAt: snapshot.noticeDigest?.generatedAt ?? "", into: &hasher)
+        Self.combineFiles(snapshot.courseFileManifest, into: &hasher)
+        Self.combineCalendar(snapshot.calendarSyncResult?.changes, into: &hasher)
+        Self.combineNoticeInteractions(snapshot.noticeUserState?.notices ?? [:], into: &hasher)
+        Self.combineFileInteractions(snapshot.appUserState?.files ?? [:], into: &hasher)
+        Self.combineFileInteractions(snapshot.appUserState?.quarantine ?? [:], into: &hasher)
+        hasher.combine(snapshot.verifyResult?.status ?? "")
+        hasher.combine(snapshot.verifyResult?.files?.missingFileCount ?? 0)
+        hasher.combine(snapshot.syncReport?.status ?? "")
+        value = hasher.finalize()
+    }
+
+    private static func combineStateItems(_ items: [StateItem]?, into hasher: inout Hasher) {
+        let items = items ?? []
+        hasher.combine(items.count)
+        for item in Array(items.prefix(3)) + Array(items.suffix(3)) {
+            hasher.combine(item.id)
+            hasher.combine(item.title)
+            hasher.combine(item.due)
+            hasher.combine(item.category)
+        }
+    }
+
+    private static func combineNotices(_ notices: [NoticeDigestEntry]?, generatedAt: String, into hasher: inout Hasher) {
+        let notices = notices ?? []
+        hasher.combine(generatedAt)
+        hasher.combine(notices.count)
+        for notice in Array(notices.prefix(3)) + Array(notices.suffix(3)) {
+            hasher.combine(notice.id)
+            hasher.combine(notice.title)
+            hasher.combine(notice.fingerprint)
+            hasher.combine(notice.changeState)
+        }
+    }
+
+    private static func combineFiles(_ files: [CourseFileManifestEntry], into hasher: inout Hasher) {
+        hasher.combine(files.count)
+        for file in Array(files.prefix(4)) + Array(files.suffix(4)) {
+            hasher.combine(file.id)
+            hasher.combine(file.relativePath)
+            hasher.combine(file.localDownloadedAt)
+            hasher.combine(file.klmsTimestampEpoch ?? -1)
+        }
+    }
+
+    private static func combineCalendar(_ changes: [CalendarChange]?, into hasher: inout Hasher) {
+        let changes = changes ?? []
+        hasher.combine(changes.count)
+        for change in Array(changes.prefix(3)) + Array(changes.suffix(3)) {
+            hasher.combine(change.id)
+            hasher.combine(change.action)
+            hasher.combine(change.title)
+        }
+    }
+
+    private static func combineNoticeInteractions(_ states: [String: NoticeInteractionState], into hasher: inout Hasher) {
+        hasher.combine(states.count)
+        for key in states.keys.sorted().prefix(80) {
+            guard let state = states[key] else { continue }
+            hasher.combine(key)
+            hasher.combine(state.readFingerprint ?? "")
+            hasher.combine(state.readAt ?? "")
+            hasher.combine(state.important)
+            hasher.combine(state.hidden)
+            hasher.combine(state.updatedAt)
+        }
+    }
+
+    private static func combineFileInteractions(_ states: [String: FileInteractionState], into hasher: inout Hasher) {
+        hasher.combine(states.count)
+        for key in states.keys.sorted().prefix(80) {
+            guard let state = states[key] else { continue }
+            hasher.combine(key)
+            hasher.combine(state.hidden)
+            hasher.combine(state.ignored)
+            hasher.combine(state.trashedAt ?? "")
+            hasher.combine(state.updatedAt)
+        }
+    }
+}
+
+struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     var kind: DashboardDetailKind
-    @ObservedObject var model: KLMSMacModel
+    var model: KLMSMacModel
+    var snapshot: EngineSnapshot
+    private var renderSignature: DashboardRenderSignature
     @State private var searchText = ""
     @State private var selectedCourse = DashboardCourseFilter.all
     @State private var selectedYear = DashboardTermFilter.allYears
@@ -67,17 +176,24 @@ struct DashboardDetailPanelView: View {
     @State private var fileData: DashboardFileData?
     @State private var fileDataSignature: DashboardFileData.Signature?
 
-    init(kind: DashboardDetailKind, model: KLMSMacModel) {
+    init(kind: DashboardDetailKind, model: KLMSMacModel, snapshot: EngineSnapshot? = nil) {
+        let resolvedSnapshot = snapshot ?? model.snapshot
         self.kind = kind
         self.model = model
+        self.snapshot = resolvedSnapshot
+        renderSignature = DashboardRenderSignature(snapshot: resolvedSnapshot, summary: model.dashboardSummaryCache)
         if kind.requiresFileData {
-            let initialFileData = DashboardFileData(snapshot: model.snapshot)
+            let initialFileData = DashboardFileData(snapshot: resolvedSnapshot)
             _fileData = State(initialValue: initialFileData)
             _fileDataSignature = State(initialValue: initialFileData.signature)
         } else {
             _fileData = State(initialValue: nil)
             _fileDataSignature = State(initialValue: nil)
         }
+    }
+
+    static func == (lhs: DashboardDetailPanelView, rhs: DashboardDetailPanelView) -> Bool {
+        lhs.kind == rhs.kind && lhs.renderSignature == rhs.renderSignature
     }
 
     var body: some View {
@@ -113,54 +229,60 @@ struct DashboardDetailPanelView: View {
             switch kind {
             case .assignments:
                 StateItemListView(
-                    items: ((model.snapshot.legacyState?.content.assignments ?? []) + model.mailDashboardStateItems(kind: "assignment")).dedupedDashboardItems(),
+                    items: ((snapshot.legacyState?.content.assignments ?? []) + model.mailDashboardStateItems(kind: "assignment")).dedupedDashboardItems(),
                     emptyText: "과제가 없습니다.",
                     editor: .assignment,
                     filters: filters,
+                    snapshot: snapshot,
                     model: model
                 )
             case .assignmentRecords:
                 StateItemListView(
-                    items: model.snapshot.legacyState?.content.completedAssignments ?? [],
+                    items: snapshot.legacyState?.content.completedAssignments ?? [],
                     emptyText: "완료 기록이 없습니다.",
                     editor: .assignmentRecord,
                     filters: filters,
+                    snapshot: snapshot,
                     model: model
                 )
             case .assignmentCandidates:
                 StateItemListView(
-                    items: model.snapshot.legacyState?.content.assignmentCandidates ?? [],
+                    items: snapshot.legacyState?.content.assignmentCandidates ?? [],
                     emptyText: "과제 후보가 없습니다.",
                     editor: .assignment,
                     filters: filters,
+                    snapshot: snapshot,
                     model: model
                 )
             case .exams:
                 StateItemListView(
-                    items: ((model.snapshot.legacyState?.content.examItems ?? []) + model.mailDashboardStateItems(kind: "exam")).dedupedDashboardItems(),
+                    items: ((snapshot.legacyState?.content.examItems ?? []) + model.mailDashboardStateItems(kind: "exam")).dedupedDashboardItems(),
                     emptyText: "시험 항목이 없습니다.",
                     editor: .exam,
                     filters: filters,
+                    snapshot: snapshot,
                     model: model
                 )
             case .examCandidates:
                 StateItemListView(
-                    items: model.snapshot.legacyState?.content.examCandidates ?? [],
+                    items: snapshot.legacyState?.content.examCandidates ?? [],
                     emptyText: "시험 후보가 없습니다.",
                     editor: .exam,
                     filters: filters,
+                    snapshot: snapshot,
                     model: model
                 )
             case .helpDesk:
                 StateItemListView(
-                    items: model.snapshot.legacyState?.content.helpDeskItems ?? [],
+                    items: snapshot.legacyState?.content.helpDeskItems ?? [],
                     emptyText: "헬프데스크 항목이 없습니다.",
                     editor: .assignment,
                     filters: filters,
+                    snapshot: snapshot,
                     model: model
                 )
             case .notices:
-                NoticeListView(filters: filters, model: model)
+                NoticeListView(filters: filters, snapshot: snapshot, model: model)
             case .files:
                 FileManifestListView(files: activeFileData.manifestFiles, filters: filters, model: model)
             case .missingFiles:
@@ -170,14 +292,15 @@ struct DashboardDetailPanelView: View {
             case .quarantine:
                 QuarantineListView(files: activeFileData.quarantineFiles, filters: filters, model: model)
             case .pruned:
-                PrunedListView(filters: filters, snapshot: model.snapshot)
+                PrunedListView(filters: filters, snapshot: snapshot)
             case .calendar:
-                CalendarDetailView(snapshot: model.snapshot, filters: filters, model: model)
+                CalendarDetailView(snapshot: snapshot, filters: filters, model: model)
             case .hidden:
                 HiddenItemsListView(
                     filters: filters,
                     hiddenFileItems: activeFileData.hiddenFiles,
                     hiddenQuarantineItems: activeFileData.hiddenQuarantineFiles,
+                    snapshot: snapshot,
                     model: model
                 )
             }
@@ -210,30 +333,30 @@ struct DashboardDetailPanelView: View {
     }
 
     private var courseOptions: [String] {
-        DashboardCourseFilter.options(for: kind, snapshot: model.snapshot)
+        DashboardCourseFilter.options(for: kind, snapshot: snapshot)
     }
 
     private var yearOptions: [String] {
-        DashboardTermFilter.yearOptions(for: kind, snapshot: model.snapshot)
+        DashboardTermFilter.yearOptions(for: kind, snapshot: snapshot)
     }
 
     private var semesterOptions: [String] {
-        DashboardTermFilter.semesterOptions(for: kind, snapshot: model.snapshot)
+        DashboardTermFilter.semesterOptions(for: kind, snapshot: snapshot)
     }
 
     private var hiddenCount: Int {
-        model.snapshot.hiddenSummary.total
+        snapshot.hiddenSummary.total
     }
 
     private var activeFileData: DashboardFileData {
-        fileData ?? DashboardFileData(snapshot: model.snapshot)
+        fileData ?? DashboardFileData(snapshot: snapshot)
     }
 
     private var currentFileDataSignature: DashboardFileData.Signature? {
         guard kind.requiresFileData else {
             return nil
         }
-        return DashboardFileData.Signature(snapshot: model.snapshot)
+        return DashboardFileData.Signature(snapshot: snapshot)
     }
 
     private func rebuildFileDataIfNeeded(_ signature: DashboardFileData.Signature?) {
@@ -245,7 +368,7 @@ struct DashboardDetailPanelView: View {
         guard fileDataSignature != signature else {
             return
         }
-        fileData = DashboardFileData(snapshot: model.snapshot, signature: signature)
+        fileData = DashboardFileData(snapshot: snapshot, signature: signature)
         fileDataSignature = signature
     }
 }
@@ -273,8 +396,8 @@ private struct DashboardDetailFilters {
 }
 
 private enum DashboardLargeList {
-    static let initialVisibleLimit = 8
-    static let increment = 12
+    static let initialVisibleLimit = 6
+    static let increment = 10
 }
 
 private struct DashboardFileData {
@@ -996,6 +1119,7 @@ private struct StateItemListView: View {
     var emptyText: String
     var editor: StateItemEditorKind
     var filters: DashboardDetailFilters
+    var snapshot: EngineSnapshot
     var model: KLMSMacModel
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -1007,7 +1131,7 @@ private struct StateItemListView: View {
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
                 ForEach(renderedItems) { item in
-                    StateItemRowView(item: item, editor: editor, model: model)
+                    StateItemRowView(item: item, editor: editor, snapshot: snapshot, model: model)
                 }
                 if visibleItems.count > renderedItems.count {
                     DashboardShowMoreButton(remainingCount: visibleItems.count - renderedItems.count) {
@@ -1049,9 +1173,9 @@ private struct StateItemListView: View {
     private func isHidden(_ item: StateItem) -> Bool {
         switch editor {
         case .assignment, .assignmentRecord:
-            model.snapshot.manualOverrides?.isAssignmentHidden(item) == true
+            snapshot.manualOverrides?.isAssignmentHidden(item) == true
         case .exam:
-            model.snapshot.manualOverrides?.isExamHidden(item) == true
+            snapshot.manualOverrides?.isExamHidden(item) == true
         }
     }
 
@@ -1069,6 +1193,7 @@ private struct StateItemListView: View {
 private struct StateItemRowView: View {
     var item: StateItem
     var editor: StateItemEditorKind
+    var snapshot: EngineSnapshot
     var model: KLMSMacModel
     @State private var didRequestSync = false
     @State private var isExpanded = false
@@ -1121,13 +1246,13 @@ private struct StateItemRowView: View {
                 DashboardActionCaption("수정")
                 switch editor {
                 case .assignment:
-                    AssignmentOverridePicker(item: item, model: model)
+                    AssignmentOverridePicker(item: item, snapshot: snapshot, model: model)
                 case .assignmentRecord:
                     RecordStatusView(item: item)
                 case .exam:
                     ExamOverrideEditor(
                         item: item,
-                        override: model.snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride(),
+                        override: snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride(),
                         model: model
                     )
                 }
@@ -1194,14 +1319,14 @@ private struct StateItemRowView: View {
     private var isHidden: Bool {
         switch editor {
         case .assignment, .assignmentRecord:
-            model.snapshot.manualOverrides?.isAssignmentHidden(item) == true
+            snapshot.manualOverrides?.isAssignmentHidden(item) == true
         case .exam:
-            model.snapshot.manualOverrides?.isExamHidden(item) == true
+            snapshot.manualOverrides?.isExamHidden(item) == true
         }
     }
 
     private var isManualCompleted: Bool {
-        let overrideStatus = model.snapshot.manualOverrides?.assignmentStatus(for: item) ?? ""
+        let overrideStatus = snapshot.manualOverrides?.assignmentStatus(for: item) ?? ""
         return overrideStatus == "completed" || item.completionReason == "manual_completed"
     }
 
@@ -1215,7 +1340,7 @@ private struct StateItemRowView: View {
     }
 
     private func approveExam() {
-        var override = model.snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride()
+        var override = snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride()
         override.status = "approved"
         model.setExamOverride(override, for: item)
     }
@@ -1289,6 +1414,7 @@ private extension StateItem {
 
 private struct AssignmentOverridePicker: View {
     var item: StateItem
+    var snapshot: EngineSnapshot
     var model: KLMSMacModel
 
     var body: some View {
@@ -1305,7 +1431,7 @@ private struct AssignmentOverridePicker: View {
     private var binding: Binding<String> {
         Binding(
             get: {
-                model.snapshot.manualOverrides?.assignmentStatus(for: item) ?? ""
+                snapshot.manualOverrides?.assignmentStatus(for: item) ?? ""
             },
             set: { value in
                 model.setAssignmentOverride(value, for: item)
@@ -1413,6 +1539,7 @@ private struct ExamOverrideEditor: View {
 
 private struct NoticeListView: View {
     var filters: DashboardDetailFilters
+    var snapshot: EngineSnapshot
     var model: KLMSMacModel
     @State private var category: NoticeListCategory
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
@@ -1420,9 +1547,11 @@ private struct NoticeListView: View {
     init(
         filters: DashboardDetailFilters,
         defaultCategory: NoticeListCategory = .all,
+        snapshot: EngineSnapshot,
         model: KLMSMacModel
     ) {
         self.filters = filters
+        self.snapshot = snapshot
         self.model = model
         _category = State(initialValue: defaultCategory)
     }
@@ -1431,7 +1560,7 @@ private struct NoticeListView: View {
         VStack(alignment: .leading, spacing: 8) {
             NoticeCategoryPickerView(
                 category: $category,
-                snapshot: model.snapshot,
+                snapshot: snapshot,
                 hiddenOnly: filters.hiddenOnly
             )
             noticeRows
@@ -1447,7 +1576,7 @@ private struct NoticeListView: View {
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
                 ForEach(renderedNotices) { notice in
-                    NoticeRowView(notice: notice, model: model)
+                    NoticeRowView(notice: notice, snapshot: snapshot, model: model)
                 }
                 if notices.count > renderedNotices.count {
                     DashboardShowMoreButton(remainingCount: notices.count - renderedNotices.count) {
@@ -1459,9 +1588,9 @@ private struct NoticeListView: View {
     }
 
     private var filteredNotices: [NoticeDigestEntry] {
-        let state = model.snapshot.noticeUserState?.notices ?? [:]
-        let generatedAt = model.snapshot.noticeDigest?.generatedAt ?? ""
-        return (model.snapshot.noticeDigest?.notices ?? []).filter { notice in
+        let state = snapshot.noticeUserState?.notices ?? [:]
+        let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
+        return (snapshot.noticeDigest?.notices ?? []).filter { notice in
             let interaction = state[notice.noticeIdentifier]
             let hidden = interaction?.hidden == true
             let important = interaction?.important == true
@@ -1609,14 +1738,15 @@ private struct NoticeCategoryPickerView: View {
 
 private struct NoticeRowView: View {
     var notice: NoticeDigestEntry
+    var snapshot: EngineSnapshot
     var model: KLMSMacModel
     @State private var didRequestSync = false
     @State private var isExpanded = false
 
     var body: some View {
-        let hidden = model.snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true
+        let hidden = snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true
         let fresh = notice.changeState == "new" || notice.changeState == "updated"
-        let term = notice.academicTerm(generatedAt: model.snapshot.noticeDigest?.generatedAt ?? "")
+        let term = notice.academicTerm(generatedAt: snapshot.noticeDigest?.generatedAt ?? "")
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -1740,7 +1870,7 @@ private struct NoticeRowView: View {
     private var readBinding: Binding<Bool> {
         Binding(
             get: {
-                guard let state = model.snapshot.noticeUserState?.notices[notice.noticeIdentifier] else {
+                guard let state = snapshot.noticeUserState?.notices[notice.noticeIdentifier] else {
                     return false
                 }
                 return noticeReadStateMatches(state, fingerprint: notice.fingerprint)
@@ -1754,7 +1884,7 @@ private struct NoticeRowView: View {
     private var importantBinding: Binding<Bool> {
         Binding(
             get: {
-                model.snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.important == true
+                snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.important == true
             },
             set: { value in
                 model.setNoticeImportant(value, for: notice)
@@ -1765,7 +1895,7 @@ private struct NoticeRowView: View {
     private var hiddenBinding: Binding<Bool> {
         Binding(
             get: {
-                model.snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true
+                snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true
             },
             set: { value in
                 model.setNoticeHidden(value, for: notice)
@@ -2352,6 +2482,7 @@ private struct HiddenItemsListView: View {
     var filters: DashboardDetailFilters
     var hiddenFileItems: [DashboardFileItem]
     var hiddenQuarantineItems: [DashboardFileItem]
+    var snapshot: EngineSnapshot
     var model: KLMSMacModel
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -2362,6 +2493,7 @@ private struct HiddenItemsListView: View {
                 emptyText: "숨긴 과제가 없습니다.",
                 editor: .assignment,
                 filters: filters,
+                snapshot: snapshot,
                 model: model
             )
             StateItemListView(
@@ -2369,9 +2501,10 @@ private struct HiddenItemsListView: View {
                 emptyText: "숨긴 시험이 없습니다.",
                 editor: .exam,
                 filters: filters,
+                snapshot: snapshot,
                 model: model
             )
-            NoticeListView(filters: filters, defaultCategory: .hidden, model: model)
+            NoticeListView(filters: filters, defaultCategory: .hidden, snapshot: snapshot, model: model)
             hiddenFileRows
         }
     }
@@ -2397,7 +2530,8 @@ private struct HiddenItemsListView: View {
     }
 
     private var hiddenAssignments: [StateItem] {
-        let content = model.snapshot.rawLegacyState?.content ?? model.snapshot.legacyState?.content
+        let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content
+        let overrides = snapshot.manualOverrides
         return (
             (content?.assignments ?? [])
                 + (content?.assignmentCandidates ?? [])
@@ -2405,14 +2539,15 @@ private struct HiddenItemsListView: View {
                 + (content?.assignmentRecords ?? [])
                 + (content?.helpDeskItems ?? [])
         )
-            .filter { model.snapshot.manualOverrides?.isAssignmentHidden($0) == true }
+            .filter { overrides?.isAssignmentHidden($0) == true }
             .dedupedDashboardItems()
     }
 
     private var hiddenExams: [StateItem] {
-        let content = model.snapshot.rawLegacyState?.content ?? model.snapshot.legacyState?.content
+        let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content
+        let overrides = snapshot.manualOverrides
         return ((content?.examItems ?? []) + (content?.examCandidates ?? []))
-            .filter { model.snapshot.manualOverrides?.isExamHidden($0) == true }
+            .filter { overrides?.isExamHidden($0) == true }
             .filter { !$0.isPastDashboardExamForApp }
     }
 }
