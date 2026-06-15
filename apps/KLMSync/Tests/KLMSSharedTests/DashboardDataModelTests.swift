@@ -778,7 +778,9 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(app.contains("KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()"))
         XCTAssertTrue(app.contains("MenuBarRootView(model: model)"))
+        XCTAssertTrue(app.contains("KLMSMacWorkspaceRootContainerView(model: model)"))
         XCTAssertFalse(app.contains("MacDesignWindowRootView(model: model)"))
+        XCTAssertFalse(app.contains("KLMSMacWindowRootContainerView(model: model)"))
         XCTAssertFalse(app.contains("Window(\"KLMS Sync\""))
         XCTAssertFalse(app.contains("Window(\"KLMS Sync 진단\""))
         XCTAssertFalse(app.contains("Settings {"))
@@ -789,6 +791,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(view.contains("struct MacDesignWindowRootView"))
         XCTAssertFalse(view.contains("MacDesignWorkspace"))
         XCTAssertFalse(view.contains("MacDesignMetricKind"))
+        XCTAssertFalse(view.contains("private struct SectionPickerView"))
 
         XCTAssertTrue(view.contains("DashboardLogSummaryPanelView(model: model)"))
         XCTAssertTrue(view.contains("DashboardSummaryView(model: model)"))
@@ -913,6 +916,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("light: NSColor(red: 0.165, green: 0.165, blue: 0.153"))
         XCTAssertTrue(mac.contains("dark: NSColor(red: 0.941, green: 0.875, blue: 0.722"))
         XCTAssertTrue(mac.contains("light: NSColor(red: 1.000, green: 0.980, blue: 0.941"))
+        XCTAssertTrue(ios.contains("light: UIColor(red: 0.812, green: 0.788, blue: 0.718"))
+        XCTAssertTrue(ios.contains("dark: UIColor(red: 0.318, green: 0.298, blue: 0.251"))
+        XCTAssertFalse(ios.contains("light: UIColor(red: 0.862, green: 0.840, blue: 0.782"))
+        XCTAssertFalse(ios.contains("dark: UIColor(red: 0.251, green: 0.239, blue: 0.208"))
         XCTAssertTrue(mac.contains("static var klmsMacPrimaryText: Color"))
         XCTAssertTrue(mac.contains("static var klmsMacSecondaryText: Color"))
         XCTAssertTrue(mac.contains("static var klmsMacSecondaryCommandButtonForeground: Color"))
@@ -947,8 +954,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("static var klmsCommandButtonPressedBackground: Color"))
         XCTAssertTrue(ios.contains("static var klmsCommandButtonPressedOverlay: Color"))
         XCTAssertTrue(ios.contains("static var klmsPrimaryCommandButtonPressedBackground: Color"))
-        XCTAssertTrue(ios.contains("light: UIColor(red: 0.862, green: 0.840, blue: 0.782"))
-        XCTAssertTrue(ios.contains("dark: UIColor(red: 0.251, green: 0.239, blue: 0.208"))
+        XCTAssertTrue(ios.contains("light: UIColor(red: 0.812, green: 0.788, blue: 0.718"))
+        XCTAssertTrue(ios.contains("dark: UIColor(red: 0.318, green: 0.298, blue: 0.251"))
         XCTAssertTrue(ios.contains("light: UIColor(red: 1.000, green: 0.980, blue: 0.941"))
         XCTAssertTrue(ios.contains("static var klmsPrimaryText: Color"))
         XCTAssertTrue(ios.contains("static var klmsSecondaryText: Color"))
@@ -1339,6 +1346,7 @@ final class DashboardDataModelTests: XCTestCase {
         let iosMetricTile = try sourceStructBody(named: "RemoteMetricTile", in: ios)
         let iosWorkstationMetricCard = try sourceStructBody(named: "WorkstationMetricCard", in: ios)
         let iosWorkstationDetailPanel = try sourceStructBody(named: "WorkstationDashboardDetailPanel", in: ios)
+        let topUtilityActions = try sourceStructBody(named: "TopUtilityActionsView", in: mac)
         let iosCardButtonStyle = try sourceBody(
             after: "private struct KLMSCardButtonStyle: ButtonStyle",
             in: ios,
@@ -1381,6 +1389,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(workstationBody.contains("LogSummaryPanelView"))
         XCTAssertTrue(workstationBody.contains("RemoteActivityPanelView"))
         XCTAssertTrue(workstationBody.contains("RunLogArchivePanelView"))
+        XCTAssertTrue(topUtilityActions.contains("utilityLabel(\"설정\", systemImage: \"gearshape\", isSelected: selectedSection == .settings)"))
+        XCTAssertTrue(topUtilityActions.contains("isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground"))
+        XCTAssertTrue(topUtilityActions.contains("isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder"))
         XCTAssertTrue(workstationBody.contains("case .diagnostics:"))
         XCTAssertTrue(workstationBody.contains("VerifyPanelView"))
 

@@ -1093,37 +1093,6 @@ private struct IntegrationStatusTile: View {
     }
 }
 
-private struct SectionPickerView: View {
-    @Binding var selection: KLMSMacSection
-
-    var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 6)], spacing: 6) {
-            ForEach(KLMSMacSection.allCases) { section in
-                let isSelected = selection == section
-                Button {
-                    guard selection != section else { return }
-                    selection = section
-                } label: {
-                    Label(section.title, systemImage: section.systemImage)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
-                .controlSize(.small)
-                .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacBorder, lineWidth: 1)
-                }
-            }
-        }
-    }
-}
-
 private struct ImportantLogPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
@@ -4472,7 +4441,7 @@ private struct TopUtilityActionsView: View {
             Button {
                 selectedSection = .settings
             } label: {
-                utilityLabel("설정", systemImage: "gearshape")
+                utilityLabel("설정", systemImage: "gearshape", isSelected: selectedSection == .settings)
             }
             .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 999))
             Menu {
@@ -4510,17 +4479,17 @@ private struct TopUtilityActionsView: View {
         }
     }
 
-    private func utilityLabel(_ title: String, systemImage: String) -> some View {
+    private func utilityLabel(_ title: String, systemImage: String, isSelected: Bool = false) -> some View {
         Label(title, systemImage: systemImage)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(Color.klmsMacPrimaryText)
+            .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
             .labelStyle(.titleAndIcon)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(Color.klmsMacSubtleCardBackground, in: Capsule())
+            .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground, in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(Color.klmsMacCommandBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder, lineWidth: 1)
             }
     }
 }

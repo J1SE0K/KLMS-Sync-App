@@ -11457,13 +11457,13 @@ private extension Color {
     static var klmsCommandButtonPressedBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
-            light: UIColor(red: 0.862, green: 0.840, blue: 0.782, alpha: 1.0),
-            dark: UIColor(red: 0.251, green: 0.239, blue: 0.208, alpha: 1.0)
+            light: UIColor(red: 0.812, green: 0.788, blue: 0.718, alpha: 1.0),
+            dark: UIColor(red: 0.318, green: 0.298, blue: 0.251, alpha: 1.0)
         )
         #elseif canImport(AppKit)
         return klmsAppKitAdaptiveColor(
-            light: NSColor(red: 0.862, green: 0.840, blue: 0.782, alpha: 1.0),
-            dark: NSColor(red: 0.251, green: 0.239, blue: 0.208, alpha: 1.0)
+            light: NSColor(red: 0.812, green: 0.788, blue: 0.718, alpha: 1.0),
+            dark: NSColor(red: 0.318, green: 0.298, blue: 0.251, alpha: 1.0)
         )
         #else
         return Color.black.opacity(0.24)

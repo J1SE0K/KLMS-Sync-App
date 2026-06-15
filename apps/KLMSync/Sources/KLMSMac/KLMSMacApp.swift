@@ -83,7 +83,7 @@ private struct KLMSMacRootContainerView: View {
     }
 }
 
-private struct KLMSMacWindowRootContainerView: View {
+private struct KLMSMacWorkspaceRootContainerView: View {
     @ObservedObject var model: KLMSMacModel
 
     var body: some View {
@@ -179,7 +179,7 @@ private final class KLMSDashboardWindowCoordinator {
         }
         let initialSize = NSSize(width: 1080, height: 760)
 
-        let rootView = KLMSMacWindowRootContainerView(model: model)
+        let rootView = KLMSMacWorkspaceRootContainerView(model: model)
             .frame(width: initialSize.width, height: initialSize.height, alignment: .topLeading)
 
         let window = NSWindow(
