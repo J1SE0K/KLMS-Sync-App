@@ -2471,21 +2471,23 @@ private struct DashboardSummaryView: View {
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
-                HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 12) {
                     metricColumn(
                         primaryMetrics: primaryMetrics,
                         attentionMetrics: attentionMetrics,
                         archiveMetrics: archiveMetrics,
                         activeDetail: activeDetail
                     )
-                    .frame(minWidth: 340, idealWidth: 420, maxWidth: 500, alignment: .topLeading)
-                    if let renderedDetail {
-                        dashboardDetailColumn(kind: renderedDetail)
-                            .frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
-                    } else {
-                        dashboardDetailPlaceholder
-                            .frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                    Group {
+                        if let renderedDetail {
+                            dashboardDetailColumn(kind: renderedDetail)
+                        } else {
+                            dashboardDetailPlaceholder
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
         }
@@ -2545,11 +2547,8 @@ private struct DashboardSummaryView: View {
     }
 
     private func dashboardDetailColumn(kind: DashboardDetailKind) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            DashboardDetailPanelView(kind: kind, model: model)
-            DashboardLogSummaryPanelView(model: model)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        DashboardDetailPanelView(kind: kind, model: model)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var dashboardDetailPlaceholder: some View {

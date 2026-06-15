@@ -835,7 +835,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(view.contains("MacDesignMetricKind"))
         XCTAssertFalse(view.contains("private struct SectionPickerView"))
 
-        XCTAssertTrue(view.contains("DashboardLogSummaryPanelView(model: model)"))
+        XCTAssertFalse(view.contains("DashboardLogSummaryPanelView(model: model)"))
         XCTAssertTrue(view.contains("DashboardSummaryView(model: model)"))
         XCTAssertTrue(view.contains("CommandStageDurationSummaryView(durations: stageDurations)"))
         XCTAssertTrue(view.contains("private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 0"))
@@ -1612,7 +1612,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardBody.contains("CommandOutputPanelView"))
         XCTAssertFalse(dashboardBody.contains("LogSummaryPanelView"))
         XCTAssertFalse(dashboardBody.contains("RemoteActivityPanelView"))
-        XCTAssertTrue(mac.contains("DashboardLogSummaryPanelView(model: model)"))
+        XCTAssertFalse(mac.contains("DashboardLogSummaryPanelView(model: model)"))
 
         let diagnosticsBody = try sectionBody(in: workstationBody, from: "case .diagnostics:", to: ".padding(.vertical, 4)")
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticToolsPanelView"))
@@ -2013,7 +2013,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSummary.contains("private func metricColumn("))
         XCTAssertTrue(dashboardSummary.contains("private func dashboardDetailColumn(kind: DashboardDetailKind)"))
         XCTAssertTrue(dashboardSummary.contains("DashboardDetailPanelView(kind: kind"))
-        XCTAssertTrue(dashboardSummary.contains(".frame(minWidth: 340, idealWidth: 420, maxWidth: 500"))
+        XCTAssertFalse(dashboardSummary.contains(".frame(minWidth: 340, idealWidth: 420, maxWidth: 500"))
+        XCTAssertTrue(dashboardSummary.contains("VStack(alignment: .leading, spacing: 12)"))
         XCTAssertTrue(dashboardSummary.contains("await Task.yield()"))
         XCTAssertTrue(dashboardSummary.contains("guard selectedDetail != detail || displayedDetail != detail else"))
         XCTAssertTrue(commandPanel.contains("MacMailPasteAnalyzerPanel"))
