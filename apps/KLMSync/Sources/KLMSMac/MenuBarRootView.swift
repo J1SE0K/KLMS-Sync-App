@@ -153,6 +153,14 @@ private struct MacWorkstationLayoutView: View {
             switch displayedSection {
             case .dashboard:
                 DashboardSummaryView(model: model)
+            case .files:
+                DashboardDetailPanelView(kind: .files, model: model)
+            case .notices:
+                DashboardDetailPanelView(kind: .notices, model: model)
+            case .tasks:
+                TaskAndExamWorkspaceView(model: model)
+            case .calendar:
+                DashboardDetailPanelView(kind: .calendar, model: model)
             case .activityLogs:
                 LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                 RemoteActivityPanelView(model: model)
@@ -274,7 +282,7 @@ private struct DashboardTopBarView: View {
                 .foregroundStyle(statusColor)
                 .background(statusColor.opacity(0.12), in: Capsule())
 
-            TopUtilityActionsView(model: model, selectedSection: $selectedSection)
+            TopUtilityActionsView(model: model)
         }
         .padding(.horizontal, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -522,6 +530,10 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
 
 private enum KLMSMacSection: String, CaseIterable, Identifiable {
     case dashboard
+    case files
+    case notices
+    case tasks
+    case calendar
     case activityLogs
     case diagnostics
     case settings
@@ -532,6 +544,14 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard:
             "대시보드"
+        case .files:
+            "파일"
+        case .notices:
+            "공지"
+        case .tasks:
+            "과제/시험"
+        case .calendar:
+            "캘린더"
         case .activityLogs:
             "로그"
         case .diagnostics:
@@ -545,12 +565,48 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard:
             "gauge.with.dots.needle.67percent"
+        case .files:
+            "folder"
+        case .notices:
+            "megaphone"
+        case .tasks:
+            "checklist"
+        case .calendar:
+            "calendar"
         case .activityLogs:
             "list.bullet.rectangle.portrait"
         case .diagnostics:
             "wrench.and.screwdriver"
         case .settings:
             "gearshape"
+        }
+    }
+}
+
+private struct TaskAndExamWorkspaceView: View {
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 12) {
+                taskPanels
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                taskPanels
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var taskPanels: some View {
+        DashboardDetailPanelView(kind: .assignments, model: model)
+            .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
+        DashboardDetailPanelView(kind: .exams, model: model)
+            .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
+        if (model.snapshot.visibleCounts.helpDesk) > 0 {
+            DashboardDetailPanelView(kind: .helpDesk, model: model)
+                .frame(minWidth: 260, maxWidth: .infinity, alignment: .topLeading)
         }
     }
 }
@@ -4434,16 +4490,9 @@ private extension EngineIssue.Severity {
 
 private struct TopUtilityActionsView: View {
     @ObservedObject var model: KLMSMacModel
-    @Binding var selectedSection: KLMSMacSection
 
     var body: some View {
         HStack(spacing: 8) {
-            Button {
-                selectedSection = .settings
-            } label: {
-                utilityLabel("설정", systemImage: "gearshape", isSelected: selectedSection == .settings)
-            }
-            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 999))
             Menu {
                 Button {
                     Task {
@@ -4479,17 +4528,17 @@ private struct TopUtilityActionsView: View {
         }
     }
 
-    private func utilityLabel(_ title: String, systemImage: String, isSelected: Bool = false) -> some View {
+    private func utilityLabel(_ title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
+            .foregroundStyle(Color.klmsMacPrimaryText)
             .labelStyle(.titleAndIcon)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground, in: Capsule())
+            .background(Color.klmsMacSubtleCardBackground, in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder, lineWidth: 1)
+                    .stroke(Color.klmsMacCommandBorder, lineWidth: 1)
             }
     }
 }
