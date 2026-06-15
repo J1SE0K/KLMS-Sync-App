@@ -135,19 +135,23 @@ struct MacDesignWindowRootView: View {
         VStack(alignment: .leading, spacing: 12) {
             MacDesignPanel(title: "동기화") {
                 VStack(alignment: .leading, spacing: 9) {
+                    let isFullSyncRunning = model.runningCommand == .fullSync
                     Button {
                         runOrCancel(.fullSync)
                     } label: {
                         HStack(spacing: 10) {
-                            Text(model.runningCommand == nil ? "전체 동기화" : "동기화 중단")
+                            Text(isFullSyncRunning ? "전체 동기화 중단" : "전체 동기화")
                                 .font(.title3.weight(.bold))
                             Spacer()
-                            Image(systemName: model.runningCommand == nil ? "play.fill" : "stop.fill")
+                            Image(systemName: isFullSyncRunning ? "stop.fill" : "play.fill")
                                 .font(.headline.weight(.bold))
                         }
                         .frame(maxWidth: .infinity, minHeight: 56)
                     }
-                    .buttonStyle(MacDesignPrimaryButtonStyle(isDestructive: model.runningCommand != nil))
+                    .buttonStyle(MacDesignPrimaryButtonStyle(isActive: isFullSyncRunning))
+                    .disabled(model.runningCommand != nil && !isFullSyncRunning)
+                    .accessibilityLabel(isFullSyncRunning ? "전체 동기화 중단" : "전체 동기화 실행")
+                    .accessibilityHint(isFullSyncRunning ? "현재 실행 중인 전체 동기화를 중단합니다." : "KLMS 전체 동기화를 실행합니다.")
 
                     HStack(spacing: 8) {
                         syncButton("파일", .filesSync)
@@ -444,7 +448,7 @@ struct MacDesignWindowRootView: View {
 
     private func runOrCancel(_ command: KLMSEngineCommand) {
         Task {
-            if model.runningCommand != nil {
+            if model.runningCommand == command {
                 await model.cancelRunningCommand()
             } else {
                 await model.run(command)
@@ -555,13 +559,13 @@ private struct MacDesignNoticeStrip: View {
 }
 
 private struct MacDesignPrimaryButtonStyle: ButtonStyle {
-    var isDestructive: Bool = false
+    var isActive: Bool = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .padding(.horizontal, 14)
-            .foregroundStyle(isDestructive ? Color.klmsMacDangerBorder : Color.klmsMacCommandButtonForeground)
+            .foregroundStyle(Color.klmsMacCommandButtonForeground)
             .background(primaryBackground(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
@@ -574,15 +578,15 @@ private struct MacDesignPrimaryButtonStyle: ButtonStyle {
     }
 
     private func primaryBackground(isPressed: Bool) -> Color {
-        if isDestructive {
-            return isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+        if isActive {
+            return Color.klmsMacPrimaryCommandButtonPressedBackground
         }
         return isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
     }
 
     private func primaryBorder(isPressed: Bool) -> Color {
-        if isDestructive {
-            return Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
+        if isActive {
+            return Color.klmsMacPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 0.58)
         }
         return Color.klmsMacPrimaryCommandButtonBorder
     }
