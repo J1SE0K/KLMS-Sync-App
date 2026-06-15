@@ -223,8 +223,8 @@ private struct DashboardDetailFilters {
 }
 
 private enum DashboardLargeList {
-    static let initialVisibleLimit = 80
-    static let increment = 80
+    static let initialVisibleLimit = 60
+    static let increment = 60
 }
 
 private struct DashboardShowMoreButton: View {

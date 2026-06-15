@@ -4062,6 +4062,7 @@ private struct RunLogArchivePanelView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
     @State private var showingSystemLogs = false
+    @State private var visibleLimit = 60
 
     private var records: [CommandRunRecord] {
         model.commandHistory.records
@@ -4072,6 +4073,9 @@ private struct RunLogArchivePanelView: View {
     }
 
     var body: some View {
+        let summary = RunLogArchiveSummary(records: records)
+        let filtered = filteredRecords
+        let visible = filtered.prefix(visibleLimit)
         VStack(alignment: .leading, spacing: 12) {
             SectionBox(title: "실행 로그") {
                 VStack(alignment: .leading, spacing: 10) {
@@ -4081,10 +4085,10 @@ private struct RunLogArchivePanelView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
-                        RunLogStatChip(title: "전체", value: "\(records.count)", systemImage: "tray.full", tint: .klmsMacCommandAccent)
-                        RunLogStatChip(title: "성공", value: "\(records.filter(\.succeeded).count)", systemImage: "checkmark.circle", tint: Color.klmsMacSuccessBorder)
-                        RunLogStatChip(title: "실패", value: "\(records.filter(\.needsAttention).count)", systemImage: "exclamationmark.triangle", tint: Color.klmsMacWarningBorder)
-                        RunLogStatChip(title: "중단", value: "\(records.filter(\.wasCancelled).count)", systemImage: "stop.circle", tint: .klmsMacSecondaryText)
+                        RunLogStatChip(title: "전체", value: "\(summary.total)", systemImage: "tray.full", tint: .klmsMacCommandAccent)
+                        RunLogStatChip(title: "성공", value: "\(summary.succeeded)", systemImage: "checkmark.circle", tint: Color.klmsMacSuccessBorder)
+                        RunLogStatChip(title: "실패", value: "\(summary.needsAttention)", systemImage: "exclamationmark.triangle", tint: Color.klmsMacWarningBorder)
+                        RunLogStatChip(title: "중단", value: "\(summary.cancelled)", systemImage: "stop.circle", tint: .klmsMacSecondaryText)
                     }
 
                     if let latest = records.first {
@@ -4107,15 +4111,33 @@ private struct RunLogArchivePanelView: View {
             CurrentRunLogCardView(model: model)
 
             SectionBox(title: "\(filter.title) 기록") {
-                if filteredRecords.isEmpty {
+                if filtered.isEmpty {
                     Text(emptyText)
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(filteredRecords) { record in
+                        ForEach(visible) { record in
                             RunLogArchiveRowView(record: record)
+                        }
+                        if filtered.count > visible.count {
+                            Button {
+                                visibleLimit += 60
+                            } label: {
+                                HStack {
+                                    Text("더 보기")
+                                        .font(.caption.weight(.semibold))
+                                    Spacer()
+                                    Text("남은 \(filtered.count - visible.count)개")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.klmsMacSecondaryText)
+                                }
+                                .padding(9)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(MacPressFeedbackButtonStyle())
                         }
                     }
                 }
@@ -4148,6 +4170,9 @@ private struct RunLogArchivePanelView: View {
                 }
             }
         }
+        .onChange(of: filter) { _, _ in
+            visibleLimit = 60
+        }
     }
 
     private var emptyText: String {
@@ -4160,6 +4185,28 @@ private struct RunLogArchivePanelView: View {
     private var systemLogSummary: String {
         let relayHasLog = !model.snapshot.relayLogTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return relayHasLog ? "서버" : "없음"
+    }
+}
+
+private struct RunLogArchiveSummary {
+    var total = 0
+    var succeeded = 0
+    var needsAttention = 0
+    var cancelled = 0
+
+    init(records: [CommandRunRecord]) {
+        total = records.count
+        for record in records {
+            if record.succeeded {
+                succeeded += 1
+            }
+            if record.needsAttention {
+                needsAttention += 1
+            }
+            if record.wasCancelled {
+                cancelled += 1
+            }
+        }
     }
 }
 

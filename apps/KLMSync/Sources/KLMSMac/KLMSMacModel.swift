@@ -151,8 +151,8 @@ final class KLMSMacModel: ObservableObject {
     private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 60_000_000_000
     private static let passiveAuxiliaryRefreshMinimumInterval: TimeInterval = 300
-    private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 120_000_000
-    private static let liveCommandOutputMaxCharacters = 24_000
+    private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 250_000_000
+    private static let liveCommandOutputMaxCharacters = 16_000
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
     init() {
@@ -1272,7 +1272,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func serverRelayRunLogs() -> [ServerRelayRunLog] {
-        return commandHistory.records.prefix(40).map { record in
+        return commandHistory.records.prefix(20).map { record in
             ServerRelayRunLog(
                 id: record.id,
                 command: record.command.rawValue,
@@ -1483,12 +1483,12 @@ final class KLMSMacModel: ObservableObject {
             .split(whereSeparator: \.isNewline)
             .map(String.init)
             .filter { !serverRelayLooksPrivateLogLine($0) }
-        let tailLines = safeLines.suffix(80)
+        let tailLines = safeLines.suffix(40)
         let joined = tailLines.joined(separator: "\n")
-        guard joined.count > 12_000 else {
+        guard joined.count > 6_000 else {
             return joined
         }
-        return "...\n" + String(joined.suffix(12_000))
+        return "...\n" + String(joined.suffix(6_000))
     }
 
     private func serverRelayLooksPrivateLogLine(_ line: String) -> Bool {

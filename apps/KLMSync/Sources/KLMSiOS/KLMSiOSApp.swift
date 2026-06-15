@@ -1857,7 +1857,6 @@ final class CompanionModel: ObservableObject {
             hasher.combine(log.id)
             hasher.combine(log.status)
             hasher.combine(log.updatedAt)
-            hasher.combine(log.outputTail)
         }
         return hasher.finalize()
     }
@@ -2825,7 +2824,7 @@ private struct CompanionScreenContainer<Content: View>: View {
                     content()
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 10)
+                .padding(.top, horizontalSizeClass == .regular ? 10 : 2)
                 .padding(.bottom, 20)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -2856,20 +2855,18 @@ private struct CompanionScreenHeader: View {
     }
 
     private var compactHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Spacer(minLength: 0)
+        HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(Color.klmsPrimaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 5) {
                 Text("KLMS Sync")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(1)
-            }
-
-            HStack(alignment: .center, spacing: 12) {
-                Text(title)
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                Spacer(minLength: 8)
                 statusPill
             }
         }
@@ -3538,8 +3535,8 @@ private struct CompanionItemListInputKey: Hashable {
 }
 
 private enum CompanionLargeList {
-    static let initialVisibleLimit = 60
-    static let increment = 80
+    static let initialVisibleLimit = 45
+    static let increment = 60
 }
 
 private func companionItemsFingerprint(_ items: [ServerRelaySyncItem]) -> Int {
@@ -5760,7 +5757,7 @@ private struct CompanionInlineItemRowsView: View {
     }
 
     var body: some View {
-        let visibleItems = Array(items.prefix(visibleLimit))
+        let visibleItems = items.prefix(visibleLimit)
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(visibleItems) { item in
                 let isSelected = activeSelectedItemID == item.id
@@ -5855,7 +5852,7 @@ private struct CompanionSelectableItemListRows: View {
     }
 
     var body: some View {
-        let visibleItems = Array(items.prefix(visibleLimit))
+        let visibleItems = items.prefix(visibleLimit)
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(visibleItems) { item in
                 Button {
