@@ -2424,39 +2424,27 @@ private struct DashboardSummaryView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             let snapshot = model.snapshot
-            let state = snapshot.legacyState?.content
-            let counts = snapshot.visibleCounts
-            let assignmentCandidateCount = state?.assignmentCandidates.count ?? 0
-            let examCandidateCount = state?.examCandidates.count ?? 0
-            let completedAssignmentCount = state?.completedAssignments.count ?? 0
-            let localMissingFileCount = snapshot.verifyResult?.files?.missingFileCount ?? 0
-            let prunedCount = snapshot.cleanupResult?.actions.filter { $0.action == "deleted" }.count ?? 0
-            let hiddenCount = snapshot.hiddenSummary.total
-            let calendarAttentionCount = (
-                (snapshot.calendarSyncResult?.changes ?? []) + model.mailCalendarChanges()
-            )
-            .dedupedForCalendarDisplay()
-            .filter { $0.isUserVisibleCalendarChange && !model.isCalendarChangeResolved($0) }
-            .count
+            let summary = model.dashboardSummaryCache
+            let counts = summary.visibleCounts
             let primaryMetrics = [
                 Metric("파일", snapshot.courseFileManifest.count, detail: .files),
-                Metric("과제", counts.assignments + model.mailDashboardItems(kind: "assignment").count, detail: .assignments),
+                Metric("과제", counts.assignments + summary.mailAssignmentCount, detail: .assignments),
                 Metric("공지", counts.notices, detail: .notices),
-                Metric("시험", counts.exams + model.mailDashboardItems(kind: "exam").count, detail: .exams),
+                Metric("시험", counts.exams + summary.mailExamCount, detail: .exams),
             ].filter { $0.value > 0 }
             let attentionMetrics = [
                 Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
                 Metric("새 파일", counts.newFiles, detail: .newFiles),
-                Metric("캘린더", calendarAttentionCount, detail: .calendar),
+                Metric("캘린더", summary.calendarAttentionCount, detail: .calendar),
                 Metric("격리", counts.quarantine, detail: .quarantine),
-                Metric("과제 후보", assignmentCandidateCount, detail: .assignmentCandidates),
-                Metric("시험 후보", examCandidateCount, detail: .examCandidates),
-                Metric("누락 파일", localMissingFileCount, detail: .missingFiles),
-                Metric("정리된 파일", prunedCount, detail: .pruned),
+                Metric("과제 후보", summary.assignmentCandidateCount, detail: .assignmentCandidates),
+                Metric("시험 후보", summary.examCandidateCount, detail: .examCandidates),
+                Metric("누락 파일", summary.localMissingFileCount, detail: .missingFiles),
+                Metric("정리된 파일", summary.prunedFileCount, detail: .pruned),
             ].filter { $0.value > 0 }
             let archiveMetrics = [
-                Metric("완료 기록", completedAssignmentCount, detail: .assignmentRecords),
-                Metric("보관함", hiddenCount, detail: .hidden),
+                Metric("완료 기록", summary.completedAssignmentCount, detail: .assignmentRecords),
+                Metric("보관함", summary.hiddenSummary.total, detail: .hidden),
             ].filter { $0.value > 0 }
             let visibleMetrics = primaryMetrics + attentionMetrics + archiveMetrics
             let activeDetail = selectedDetail.flatMap { selected in

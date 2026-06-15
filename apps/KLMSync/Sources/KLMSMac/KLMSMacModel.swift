@@ -15,6 +15,19 @@ struct KLMSPermissionProbeRow: Identifiable, Equatable {
     var isWarning: Bool
 }
 
+struct KLMSMacDashboardSummaryCache: Equatable {
+    var visibleCounts = EngineVisibleCounts()
+    var hiddenSummary = EngineHiddenSummary()
+    var assignmentCandidateCount = 0
+    var examCandidateCount = 0
+    var completedAssignmentCount = 0
+    var localMissingFileCount = 0
+    var prunedFileCount = 0
+    var calendarAttentionCount = 0
+    var mailAssignmentCount = 0
+    var mailExamCount = 0
+}
+
 private struct PermissionProbeResult: Sendable {
     var name: String
     var ok: Bool
@@ -100,6 +113,7 @@ final class KLMSMacModel: ObservableObject {
     @Published private var authDigitsSuppressed = false
     @Published var errorMessage: String?
     @Published var payload: EnginePayload?
+    private(set) var dashboardSummaryCache = KLMSMacDashboardSummaryCache()
 
     private let runner = KLMSCommandRunner()
     private let installer = EngineInstaller()
@@ -1427,6 +1441,29 @@ final class KLMSMacModel: ObservableObject {
             .compactMap(\.mailCalendarChange)
             .filter { !isCalendarChangeResolved($0) }
             .dedupedForCalendarDisplay()
+        rebuildDashboardSummaryCache()
+    }
+
+    private func rebuildDashboardSummaryCache() {
+        let content = snapshot.legacyState?.content
+        let calendarAttentionCount = (
+            (snapshot.calendarSyncResult?.changes ?? []) + cachedMailCalendarChanges
+        )
+        .dedupedForCalendarDisplay()
+        .filter { $0.isUserVisibleCalendarChange && !isCalendarChangeResolved($0) }
+        .count
+        dashboardSummaryCache = KLMSMacDashboardSummaryCache(
+            visibleCounts: snapshot.visibleCounts,
+            hiddenSummary: snapshot.hiddenSummary,
+            assignmentCandidateCount: content?.assignmentCandidates.count ?? 0,
+            examCandidateCount: content?.examCandidates.count ?? 0,
+            completedAssignmentCount: content?.completedAssignments.count ?? 0,
+            localMissingFileCount: snapshot.verifyResult?.files?.missingFileCount ?? 0,
+            prunedFileCount: snapshot.cleanupResult?.actions.filter { $0.action == "deleted" }.count ?? 0,
+            calendarAttentionCount: calendarAttentionCount,
+            mailAssignmentCount: cachedMailDashboardItemsByKind["assignment"]?.count ?? 0,
+            mailExamCount: cachedMailDashboardItemsByKind["exam"]?.count ?? 0
+        )
     }
 
     private static func sortedMailDashboardItems(_ items: [ServerRelaySyncItem]) -> [ServerRelaySyncItem] {

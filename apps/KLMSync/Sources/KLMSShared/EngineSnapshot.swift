@@ -279,10 +279,10 @@ public struct EngineVisibleCounts: Sendable, Equatable {
         guard let downloadResult = snapshot.downloadResult else {
             return snapshot.syncReport?.files.newFiles ?? 0
         }
+        let manifestLookup = courseFileManifestLookup(snapshot.courseFileManifest)
         return downloadResult.results.filter(\.copiedToNewFilesInbox).filter { item in
-            let manifest = snapshot.courseFileManifest.first { entry in
-                (!item.url.isEmpty && entry.url == item.url) || entry.relativePath == item.relativePath
-            }
+            let manifest = (!item.url.isEmpty ? manifestLookup.byURL[item.url] : nil)
+                ?? manifestLookup.byRelativePath[item.relativePath]
             let key = EngineFileInteractionKey.key(
                 url: item.url,
                 path: manifest?.absolutePath ?? "",
@@ -290,6 +290,25 @@ public struct EngineVisibleCounts: Sendable, Equatable {
             )
             return snapshot.appUserState?.files[key]?.isHiddenLike != true
         }.count
+    }
+
+    private static func courseFileManifestLookup(_ manifest: [CourseFileManifestEntry]) -> (
+        byURL: [String: CourseFileManifestEntry],
+        byRelativePath: [String: CourseFileManifestEntry]
+    ) {
+        var byURL: [String: CourseFileManifestEntry] = [:]
+        var byRelativePath: [String: CourseFileManifestEntry] = [:]
+        byURL.reserveCapacity(manifest.count)
+        byRelativePath.reserveCapacity(manifest.count)
+        for entry in manifest {
+            if !entry.url.isEmpty {
+                byURL[entry.url] = entry
+            }
+            if !entry.relativePath.isEmpty {
+                byRelativePath[entry.relativePath] = entry
+            }
+        }
+        return (byURL, byRelativePath)
     }
 
     private static func visibleQuarantineCount(snapshot: EngineSnapshot) -> Int {
