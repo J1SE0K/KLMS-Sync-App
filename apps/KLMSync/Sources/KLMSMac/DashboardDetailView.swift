@@ -800,7 +800,7 @@ private struct StateItemRowView: View {
                         Image(systemName: "safari")
                     }
                     .help("KLMS 열기")
-                    .buttonStyle(.borderless)
+                    .buttonStyle(KLMSMacIconButtonStyle())
                 }
             }
 
@@ -1331,7 +1331,7 @@ private struct NoticeRowView: View {
                         Image(systemName: "safari")
                     }
                     .help("공지 열기")
-                    .buttonStyle(.borderless)
+                    .buttonStyle(KLMSMacIconButtonStyle())
                 }
             }
 
@@ -1373,7 +1373,7 @@ private struct NoticeRowView: View {
                                 } label: {
                                     Image(systemName: "folder")
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(KLMSMacIconButtonStyle())
                                 .help("Finder에서 보기")
                             }
                         }
@@ -1920,6 +1920,36 @@ private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle {
     }
 }
 
+private struct KLMSMacIconButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground)
+            .frame(width: 26, height: 26)
+            .background(
+                configuration.isPressed
+                    ? Color.klmsMacCommandButtonPressedBackground
+                    : Color.klmsMacCommandButtonBackground.opacity(0.88),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(
+                        configuration.isPressed
+                            ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46)
+                            : Color.klmsMacCommandButtonBorder.opacity(0.84),
+                        lineWidth: 1
+                    )
+            }
+            .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
+            .opacity(isEnabled ? 1.0 : 0.48)
+            .animation(.linear(duration: 0.035), value: configuration.isPressed)
+            .animation(.linear(duration: 0.08), value: isEnabled)
+    }
+}
+
 private extension Array where Element == DashboardFileItem {
     func sorted(by option: DashboardFileSortOption) -> [DashboardFileItem] {
         sorted { lhs, rhs in
@@ -2353,7 +2383,7 @@ private struct FileRowView: View {
                     } label: {
                         Image(systemName: "folder")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(KLMSMacIconButtonStyle())
                     .help("Finder에서 보기")
                 }
                 if !item.url.isEmpty {
@@ -2362,7 +2392,7 @@ private struct FileRowView: View {
                     } label: {
                         Image(systemName: "safari")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(KLMSMacIconButtonStyle())
                     .help("KLMS 열기")
                 }
             }

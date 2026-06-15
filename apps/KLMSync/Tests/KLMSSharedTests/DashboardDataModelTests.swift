@@ -761,6 +761,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: detail,
             description: "Mac action button style"
         )
+        let iconButtonStyle = try sourceBody(
+            after: "private struct KLMSMacIconButtonStyle: ButtonStyle",
+            in: detail,
+            description: "Mac icon button style"
+        )
         let verifyCheckRow = try sourceStructBody(named: "VerifyCheckExplanationRowView", in: view)
         let issueRowView = try sourceStructBody(named: "IssueRowView", in: view)
 
@@ -803,9 +808,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(commandPanel.contains(".buttonStyle(MacPressFeedbackButtonStyle())"))
         XCTAssertFalse(view.contains(".buttonStyle(.plain)"))
         XCTAssertFalse(detail.contains(".buttonStyle(.plain)"))
+        XCTAssertFalse(detail.contains(".buttonStyle(.borderless)"))
         XCTAssertTrue(pressFeedbackStyle.contains(".scaleEffect(configuration.isPressed ? 0.997 : 1.0)"))
         XCTAssertTrue(pressFeedbackStyle.contains("Color.klmsMacCommandButtonPressedOverlay"))
         XCTAssertTrue(pressFeedbackStyle.contains("duration: 0.035"))
+        XCTAssertTrue(view.contains("alpha: 0.180"))
+        XCTAssertTrue(view.contains("alpha: 0.220"))
         XCTAssertTrue(primaryButtonStyle.contains(".scaleEffect(configuration.isPressed ? 0.997 : 1.0)"))
         XCTAssertTrue(primaryButtonStyle.contains("duration: 0.035"))
         XCTAssertTrue(primaryButtonStyle.contains("primaryBackground(isPressed: configuration.isPressed)"))
@@ -821,6 +829,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(rootActionButtonStyle.contains("Color.klmsMacDangerBackground"))
         XCTAssertTrue(actionButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
         XCTAssertTrue(actionButtonStyle.contains("Color.klmsMacPrimaryCommandButtonPressedBackground"))
+        XCTAssertTrue(iconButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
+        XCTAssertTrue(iconButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46)"))
+        XCTAssertTrue(iconButtonStyle.contains(".frame(width: 26, height: 26)"))
         XCTAssertTrue(commandPanel.contains("Color.klmsMacCommandButtonBackground.opacity(0.90)"))
         XCTAssertFalse(commandPanel.contains(".background(Color.klmsMacDangerBackground, in: RoundedRectangle(cornerRadius: 10))"))
         XCTAssertTrue(verifyCheckRow.contains(".background(Color.klmsMacSubtleCardBackground"))
