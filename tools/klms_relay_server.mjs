@@ -292,7 +292,7 @@ async function route(request, response) {
     });
     state.message = "실행 중단 요청 대기 중";
     state.updatedAt = new Date().toISOString();
-    await saveState();
+    await saveState("cancel:requested");
     sendJSON(response, 202, cancelRequest);
     return;
   }
@@ -346,7 +346,7 @@ async function route(request, response) {
     state.running = false;
     state.message = `${displayCommandName(command.kind)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveState();
+    await saveState("commands:pending");
     sendJSON(response, 201, command);
     return;
   }
@@ -400,7 +400,7 @@ async function route(request, response) {
     state.running = command.status === "running";
     state.message = `${displayCommandName(command.kind)} · ${displayStatus(command.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveState();
+    await saveState(`commands:${command.status || "updated"}`);
     sendJSON(response, 200, command);
     return;
   }
@@ -426,7 +426,7 @@ async function route(request, response) {
     });
     state.message = `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveState();
+    await saveState("item-actions:pending");
     sendJSON(response, 201, action);
     return;
   }
@@ -476,7 +476,7 @@ async function route(request, response) {
     upsertItemAction(action);
     state.message = `${displayItemActionName(action.action)} · ${displayStatus(action.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveState();
+    await saveState(`item-actions:${action.status || "updated"}`);
     sendJSON(response, 200, action);
     return;
   }
@@ -503,7 +503,7 @@ async function route(request, response) {
     });
     state.message = `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveState();
+    await saveState("setting-actions:pending");
     sendJSON(response, 201, action);
     return;
   }
@@ -556,7 +556,7 @@ async function route(request, response) {
     upsertSettingAction(action);
     state.message = `${action.title || action.key} · ${displayStatus(action.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveState();
+    await saveState(`setting-actions:${action.status || "updated"}`);
     sendJSON(response, 200, action);
     return;
   }
@@ -589,7 +589,7 @@ async function route(request, response) {
     });
     state.message = `파일 열기 요청 대기 중: ${fileRequest.itemTitle || fileRequest.itemID}`;
     state.updatedAt = new Date().toISOString();
-    await saveState();
+    await saveState("file-access:pending");
     sendJSON(response, 201, fileAccessResponseItem(fileRequest, request));
     return;
   }
@@ -1413,7 +1413,7 @@ async function cancelPendingCommandIfNeeded(cancelRequest, request) {
   state.running = false;
   state.message = `${displayCommandName(cancelled.kind)} · ${displayStatus(cancelled.status)}`;
   state.updatedAt = cancelled.updatedAt;
-  await saveState();
+  await saveState("commands:cancelled");
   return normalizeCancelRequest({
     requested: false,
     requestedAt: cancelRequest.requestedAt,
@@ -1659,7 +1659,7 @@ function deduplicateByID(items, limit) {
     .slice(0, limit);
 }
 
-function saveState() {
+function saveState(reason = "state") {
   db.exec("BEGIN IMMEDIATE");
   try {
     setMeta("status", JSON.stringify(normalizeStatus(state.status || defaultStatus)));
@@ -1707,7 +1707,7 @@ function saveState() {
     }
     setMeta("settingActions", JSON.stringify((state.settingActions || []).slice(0, MAX_SETTING_ACTIONS)));
     db.exec("COMMIT");
-    touchRelayEvent("state", state.updatedAt);
+    touchRelayEvent(reason, state.updatedAt);
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;

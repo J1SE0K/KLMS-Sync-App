@@ -223,8 +223,8 @@ private struct DashboardDetailFilters {
 }
 
 private enum DashboardLargeList {
-    static let initialVisibleLimit = 60
-    static let increment = 60
+    static let initialVisibleLimit = 40
+    static let increment = 40
 }
 
 private struct DashboardShowMoreButton: View {
@@ -690,7 +690,7 @@ private struct StateItemListView: View {
 
     var body: some View {
         let visibleItems = filteredItems
-        let renderedItems = Array(visibleItems.prefix(visibleLimit))
+        let renderedItems = visibleItems.prefix(visibleLimit)
         if visibleItems.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 항목이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : emptyText)
         } else {
@@ -1126,7 +1126,7 @@ private struct NoticeListView: View {
     @ViewBuilder
     private var noticeRows: some View {
         let notices = filteredNotices
-        let renderedNotices = Array(notices.prefix(visibleLimit))
+        let renderedNotices = notices.prefix(visibleLimit)
         if notices.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 공지가 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "공지 목록이 없습니다.")
         } else {
@@ -1512,7 +1512,7 @@ private struct NewFilesListView: View {
     var body: some View {
         let files = filteredItems
         let sortedFiles = files.sorted(by: sortOption)
-        let visibleFiles = Array(sortedFiles.prefix(visibleLimit))
+        let visibleFiles = sortedFiles.prefix(visibleLimit)
         if files.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 새 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "새 파일이 없습니다.")
         } else {
@@ -1580,7 +1580,7 @@ private struct FileManifestListView: View {
     var body: some View {
         let files = filteredItems
         let sortedFiles = files.sorted(by: sortOption)
-        let visibleFiles = Array(sortedFiles.prefix(visibleLimit))
+        let visibleFiles = sortedFiles.prefix(visibleLimit)
         if files.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "파일 목록이 없습니다. 파일 동기화를 한 번 실행하면 KLMS 파일 목록이 여기에 표시됩니다.")
         } else {
@@ -1655,7 +1655,7 @@ private struct MissingFilesListView: View {
     var body: some View {
         let files = filteredItems
         let sortedFiles = files.sorted(by: sortOption)
-        let visibleFiles = Array(sortedFiles.prefix(visibleLimit))
+        let visibleFiles = sortedFiles.prefix(visibleLimit)
         if files.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 누락 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "로컬에서 누락된 파일이 없습니다.")
         } else {
@@ -2112,7 +2112,7 @@ private struct HiddenItemsListView: View {
     @ViewBuilder
     private var hiddenFileRows: some View {
         let hiddenFileItems = hiddenFiles + hiddenQuarantine
-        let visibleItems = Array(hiddenFileItems.prefix(visibleLimit))
+        let visibleItems = hiddenFileItems.prefix(visibleLimit)
         if hiddenFileItems.isEmpty {
             EmptyDetailText(text: "숨긴 파일이 없습니다.")
         } else {
@@ -2222,7 +2222,7 @@ private struct QuarantineListView: View {
     var body: some View {
         let records = filteredItems
         let sortedRecords = records.sorted(by: sortOption)
-        let visibleRecords = Array(sortedRecords.prefix(visibleLimit))
+        let visibleRecords = sortedRecords.prefix(visibleLimit)
         if records.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 격리 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "격리 파일이 없습니다.")
         } else {
@@ -2281,7 +2281,7 @@ private struct PrunedListView: View {
     var body: some View {
         let deleted = filteredItems
         let sortedDeleted = deleted.sorted(by: sortOption)
-        let visibleDeleted = Array(sortedDeleted.prefix(visibleLimit))
+        let visibleDeleted = sortedDeleted.prefix(visibleLimit)
         if deleted.isEmpty {
             EmptyDetailText(text: "정리된 파일 기록이 없습니다.")
         } else {

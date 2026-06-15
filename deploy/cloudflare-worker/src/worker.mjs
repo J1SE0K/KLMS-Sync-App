@@ -331,7 +331,7 @@ async function route(request, env) {
     });
     state.message = "실행 중단 요청 대기 중";
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, "cancel:requested");
     return sendJSON(202, cancelRequest);
   }
 
@@ -375,7 +375,7 @@ async function route(request, env) {
     state.running = false;
     state.message = `${displayCommandName(command.kind)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, "commands:pending");
     return sendJSON(201, command);
   }
 
@@ -413,7 +413,7 @@ async function route(request, env) {
     state.running = command.status === "running";
     state.message = `${displayCommandName(command.kind)} · ${displayStatus(command.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, `commands:${command.status || "updated"}`);
     return sendJSON(200, command);
   }
 
@@ -434,7 +434,7 @@ async function route(request, env) {
     });
     state.message = `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, "item-actions:pending");
     return sendJSON(201, action);
   }
 
@@ -468,7 +468,7 @@ async function route(request, env) {
     await upsertItemAction(db, action);
     state.message = `${displayItemActionName(action.action)} · ${displayStatus(action.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, `item-actions:${action.status || "updated"}`);
     return sendJSON(200, action);
   }
 
@@ -489,7 +489,7 @@ async function route(request, env) {
     });
     state.message = `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, "setting-actions:pending");
     return sendJSON(201, action);
   }
 
@@ -523,7 +523,7 @@ async function route(request, env) {
     await upsertSettingAction(db, action);
     state.message = `${action.title || action.key} · ${displayStatus(action.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, `setting-actions:${action.status || "updated"}`);
     return sendJSON(200, action);
   }
 
@@ -552,7 +552,7 @@ async function route(request, env) {
     });
     state.message = `파일 열기 요청 대기 중: ${fileRequest.itemTitle || fileRequest.itemID}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, "file-access:pending");
     return sendJSON(201, fileAccessResponseItem(fileRequest, request, env));
   }
 
@@ -1035,7 +1035,7 @@ function deduplicateByID(items, limit) {
     .slice(0, limit);
 }
 
-async function saveMetaState(db, state, env = null) {
+async function saveMetaState(db, state, env = null, reason = "state") {
   await db.batch([
     setMetaStatement(db, "status", JSON.stringify(normalizeStatus(state.status || defaultStatus))),
     setMetaStatement(db, "latestCommand", JSON.stringify(state.latestCommand || null)),
@@ -1044,7 +1044,7 @@ async function saveMetaState(db, state, env = null) {
     setMetaStatement(db, "updatedAt", String(state.updatedAt || new Date().toISOString())),
   ]);
   await touchRelayEvent(db, env, {
-    reason: "state",
+    reason,
     updatedAt: state.updatedAt || new Date().toISOString(),
   });
 }
@@ -1926,7 +1926,7 @@ async function cancelPendingCommandIfNeeded(db, state, cancelRequest, request, e
   state.running = false;
   state.message = `${displayCommandName(cancelled.kind)} · ${displayStatus(cancelled.status)}`;
   state.updatedAt = cancelled.updatedAt;
-  await saveMetaState(db, state, env);
+  await saveMetaState(db, state, env, "commands:cancelled");
   return normalizeCancelRequest({
     requested: false,
     requestedAt: cancelRequest.requestedAt,

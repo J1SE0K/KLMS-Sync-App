@@ -261,9 +261,18 @@ final class CompanionModel: ObservableObject {
             fetchesCommands: true,
             fetchesSyncData: false,
             fetchesFileRequests: false,
-            fetchesItemActions: true,
+            fetchesItemActions: false,
+            fetchesRequestLog: false,
+            fetchesSettingActions: false
+        )
+
+        static let commandRequest = RelayRefreshScope(
+            fetchesCommands: true,
+            fetchesSyncData: false,
+            fetchesFileRequests: false,
+            fetchesItemActions: false,
             fetchesRequestLog: true,
-            fetchesSettingActions: true
+            fetchesSettingActions: false
         )
 
         static let syncData = RelayRefreshScope(
@@ -296,6 +305,15 @@ final class CompanionModel: ObservableObject {
         static let settings = RelayRefreshScope(
             fetchesCommands: false,
             fetchesSyncData: true,
+            fetchesFileRequests: false,
+            fetchesItemActions: false,
+            fetchesRequestLog: true,
+            fetchesSettingActions: true
+        )
+
+        static let settingActions = RelayRefreshScope(
+            fetchesCommands: false,
+            fetchesSyncData: false,
             fetchesFileRequests: false,
             fetchesItemActions: false,
             fetchesRequestLog: true,
@@ -1626,6 +1644,18 @@ final class CompanionModel: ObservableObject {
         let reason = event.reason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if reason == "state" || reason == "updated" {
             return .state
+        }
+        if reason == "cancel:requested" {
+            return .state
+        }
+        if reason.hasPrefix("commands:") {
+            return reason == "commands:pending" ? .commandRequest : .state
+        }
+        if reason.hasPrefix("item-actions:") {
+            return .itemActions
+        }
+        if reason.hasPrefix("setting-actions:") {
+            return .settingActions
         }
         if reason == "sync-data" || reason.hasPrefix("sync-data:") {
             return .syncData
@@ -3535,8 +3565,8 @@ private struct CompanionItemListInputKey: Hashable {
 }
 
 private enum CompanionLargeList {
-    static let initialVisibleLimit = 45
-    static let increment = 60
+    static let initialVisibleLimit = 30
+    static let increment = 40
 }
 
 private func companionItemsFingerprint(_ items: [ServerRelaySyncItem]) -> Int {
@@ -4308,11 +4338,6 @@ private struct RemoteDashboardMetricOverview: View {
                     selectedKind: selectedChangeSummary,
                     onSelect: onChangeSummaryTap
                 )
-                if horizontalSizeClass != .regular, let selectedChangeSummary {
-                    RemoteChangeSummaryDetailPanel(kind: selectedChangeSummary, model: model)
-                        .id(selectedChangeSummary)
-                        .transition(.opacity)
-                }
             }
         }
     }
@@ -4348,13 +4373,6 @@ private struct RemoteDashboardMetricOverview: View {
                             }
                         }
                     }
-                }
-                if horizontalSizeClass != .regular,
-                   let selectedCategory,
-                   categories.contains(selectedCategory) {
-                    CompactDashboardSelectionPanel(category: selectedCategory, model: model)
-                        .id(selectedCategory)
-                        .transition(.opacity)
                 }
             }
         }
@@ -4814,26 +4832,42 @@ private struct WorkstationMetricCard: View {
 private struct WorkstationDashboardDetailPanel: View {
     var category: DashboardMetricCategory
     @ObservedObject var model: CompanionModel
+    @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     private var items: [ServerRelaySyncItem] {
         model.cachedVisibleDashboardItems(for: category.rawValue)
     }
 
     var body: some View {
+        let visibleItems = items.prefix(visibleLimit)
         VStack(alignment: .leading, spacing: 14) {
             header
             if items.isEmpty {
                 emptyCard
             } else {
                 LazyVStack(alignment: .leading, spacing: 9) {
-                    ForEach(items) { item in
+                    ForEach(visibleItems) { item in
                         CompactDashboardSelectedRow(item: item, model: model)
+                    }
+                    if items.count > visibleItems.count {
+                        CompanionShowMoreRowsButton(
+                            remainingCount: items.count - visibleItems.count
+                        ) {
+                            visibleLimit += CompanionLargeList.increment
+                        }
                     }
                 }
             }
             WorkstationChangeSummaryCard(model: model)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onChange(of: visibleItemsResetKey) { _, _ in
+            visibleLimit = CompanionLargeList.initialVisibleLimit
+        }
+    }
+
+    private var visibleItemsResetKey: String {
+        "\(category.rawValue):\(items.count):\(items.first?.id ?? ""):\(items.last?.id ?? "")"
     }
 
     private var header: some View {
@@ -4912,67 +4946,6 @@ private struct WorkstationChangeSummaryCard: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
-    }
-}
-
-private struct CompactDashboardSelectionPanel: View {
-    var category: DashboardMetricCategory
-    @ObservedObject var model: CompanionModel
-
-    private var items: [ServerRelaySyncItem] {
-        model.cachedVisibleDashboardItems(for: category.rawValue)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center) {
-                Text("\(category.title) 목록")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                Spacer(minLength: 8)
-                Text("\(items.count)개")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(Color.klmsSubtleCardBackground, in: Capsule())
-            }
-
-            if items.isEmpty {
-                CompactDashboardEmptyRow(category: category)
-            } else {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(items) { item in
-                        CompactDashboardSelectedRow(item: item, model: model)
-                    }
-                }
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        )
-    }
-}
-
-private struct CompactDashboardEmptyRow: View {
-    var category: DashboardMetricCategory
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(category.emptyMessage)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.klmsPrimaryText)
-            Text("Mac 앱이 최신 목록을 올리면 여기에서 바로 확인할 수 있습니다.")
-                .font(.caption)
-                .foregroundStyle(Color.klmsSecondaryText)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 14))
     }
 }
 

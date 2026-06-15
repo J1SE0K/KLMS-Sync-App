@@ -1543,7 +1543,7 @@ private struct LogSummaryDetailView: View {
     }
 
     private func bounded(_ text: String) -> String {
-        let maxCharacters = 60_000
+        let maxCharacters = 24_000
         let prefix = "... 이전 로그 일부 생략됨 ...\n"
         guard text.count > maxCharacters else {
             return text
@@ -1857,7 +1857,7 @@ private struct HeaderView: View {
 private struct CommandOutputPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var showingFullOutput = false
-    private static let maxRenderedOutputCharacters = 80_000
+    private static let maxRenderedOutputCharacters = 32_000
     private static let trimmedOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
     var body: some View {
@@ -2185,7 +2185,7 @@ private struct DiagnosticCommandLogPanelView: View {
     }
 
     private static func boundedLogText(_ text: String) -> String {
-        let maxCharacters = 80_000
+        let maxCharacters = 32_000
         let prefix = "... 이전 로그 일부 생략됨 ...\n"
         guard text.count > maxCharacters else {
             return text
@@ -4062,7 +4062,7 @@ private struct RunLogArchivePanelView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
     @State private var showingSystemLogs = false
-    @State private var visibleLimit = 60
+    @State private var visibleLimit = 30
 
     private var records: [CommandRunRecord] {
         model.commandHistory.records
@@ -4123,7 +4123,7 @@ private struct RunLogArchivePanelView: View {
                         }
                         if filtered.count > visible.count {
                             Button {
-                                visibleLimit += 60
+                                visibleLimit += 30
                             } label: {
                                 HStack {
                                     Text("더 보기")
@@ -4171,7 +4171,7 @@ private struct RunLogArchivePanelView: View {
             }
         }
         .onChange(of: filter) { _, _ in
-            visibleLimit = 60
+            visibleLimit = 30
         }
     }
 
@@ -4318,7 +4318,7 @@ private struct CurrentRunLogCardView: View {
     }
 
     private static func boundedOutput(_ text: String) -> String {
-        let maxCharacters = 80_000
+        let maxCharacters = 32_000
         let prefix = "... 이전 로그 일부 생략됨 ...\n"
         guard text.count > maxCharacters else {
             return text

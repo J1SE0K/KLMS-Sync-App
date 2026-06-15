@@ -119,6 +119,7 @@ final class KLMSMacModel: ObservableObject {
     private var runningCommandStatusPollTask: Task<Void, Never>?
     private var pasteboardClearTask: Task<Void, Never>?
     private var liveCommandOutputBuffer = ""
+    private var liveAuthObservationBuffer = ""
     private var liveCommandOutputPublishTask: Task<Void, Never>?
     private var activeRemoteCommandID: UUID?
     private var pendingRunCancellationRequested = false
@@ -143,16 +144,17 @@ final class KLMSMacModel: ObservableObject {
     private static let deprecatedServerRelayTokenKey = "KLMSServerRelayToken"
     private static let mailDashboardItemsKey = "KLMSMailDashboardItems"
     private static let serverRelayIdleStatusPublishMinimumInterval: TimeInterval = 30
-    private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 0.5
+    private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 1.0
     private static let serverRelayIdleSyncDataPublishMinimumInterval: TimeInterval = 300
-    private static let serverRelayActiveSyncDataPublishMinimumInterval: TimeInterval = 10
+    private static let serverRelayActiveSyncDataPublishMinimumInterval: TimeInterval = 20
     private static let serverRelaySyncDataFetchMinimumInterval: TimeInterval = 30
-    private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 30_000_000_000
-    private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 2_000_000_000
+    private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 120_000_000_000
+    private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 3_000_000_000
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 60_000_000_000
     private static let passiveAuxiliaryRefreshMinimumInterval: TimeInterval = 300
-    private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 250_000_000
-    private static let liveCommandOutputMaxCharacters = 16_000
+    private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 350_000_000
+    private static let liveCommandOutputMaxCharacters = 12_000
+    private static let liveAuthObservationMaxCharacters = 4_000
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
     init() {
@@ -809,8 +811,9 @@ final class KLMSMacModel: ObservableObject {
                 }
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
                     let message = try await task.receive()
-                    handleServerRelayEvent(message)
-                    await processServerRelayCommands(silent: true)
+                    if handleServerRelayEvent(message) {
+                        await processServerRelayCommands(silent: true)
+                    }
                 }
             } catch {
                 if !Task.isCancelled, serverRelayEventStreamKey == key {
@@ -821,9 +824,9 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    private func handleServerRelayEvent(_ message: URLSessionWebSocketTask.Message) {
+    private func handleServerRelayEvent(_ message: URLSessionWebSocketTask.Message) -> Bool {
         guard let reason = Self.serverRelayEventReason(message) else {
-            return
+            return true
         }
         if reason == "sync-data:run-logs-clear" {
             clearLocalStoredLogs()
@@ -838,6 +841,20 @@ final class KLMSMacModel: ObservableObject {
         } else if reason == "logs-display:command" {
             applyServerRelayLogClear(scope: .command)
         }
+        return Self.serverRelayEventNeedsWorkerRefresh(reason)
+    }
+
+    private static func serverRelayEventNeedsWorkerRefresh(_ reason: String) -> Bool {
+        if reason == "cancel:requested" || reason == "shared-settings" {
+            return true
+        }
+        if reason == "commands:pending"
+            || reason == "item-actions:pending"
+            || reason == "setting-actions:pending"
+            || reason == "file-access:pending" {
+            return true
+        }
+        return false
     }
 
     private static func serverRelayEventReason(_ message: URLSessionWebSocketTask.Message) -> String? {
@@ -3523,9 +3540,11 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func handleLiveCommandOutput(_ chunk: String) async {
-        appendLiveCommandOutput(chunk.klmsDisplayText)
-        let currentOutput = liveCommandOutputBuffer
-        if let digits = KLMSCommandRunner.extractAuthDigits(from: currentOutput) {
+        let displayChunk = chunk.klmsDisplayText
+        appendLiveCommandOutput(displayChunk)
+        appendLiveAuthObservation(displayChunk)
+        let authOutput = liveAuthObservationBuffer
+        if let digits = KLMSCommandRunner.extractAuthDigits(from: authOutput) {
             liveAuthDigits = digits
             authStatusMessage = nil
             authStatusClearTask?.cancel()
@@ -3536,13 +3555,13 @@ final class KLMSMacModel: ObservableObject {
             await publishServerRelayStatusIfNeeded(force: true)
         }
         if authDigitsSeenForCurrentRun,
-           KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(currentOutput) {
+           KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(authOutput) {
             await clearAuthDigitsState(showAuthenticatedMessage: true)
             await publishServerRelayStatusIfNeeded(force: true)
             return
         }
         if !authDigitsSeenForCurrentRun,
-           KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(currentOutput) {
+           KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(authOutput) {
             showAlreadyLoggedInStatusIfNeeded()
             await publishServerRelayStatusIfNeeded(force: true)
         }
@@ -3552,11 +3571,18 @@ final class KLMSMacModel: ObservableObject {
         liveCommandOutputPublishTask?.cancel()
         liveCommandOutputPublishTask = nil
         liveCommandOutputBuffer = ""
+        liveAuthObservationBuffer = ""
         liveCommandOutput = ""
     }
 
     private func appendLiveCommandOutput(_ text: String, forcePublish: Bool = false) {
-        liveCommandOutputBuffer = Self.trimLiveCommandOutput(liveCommandOutputBuffer + text)
+        if liveCommandOutputBuffer.isEmpty {
+            liveCommandOutputBuffer = Self.trimLiveCommandOutput(text)
+        } else if liveCommandOutputBuffer.count + text.count > Self.liveCommandOutputMaxCharacters {
+            liveCommandOutputBuffer = Self.trimLiveCommandOutput(liveCommandOutputBuffer + text)
+        } else {
+            liveCommandOutputBuffer += text
+        }
         if forcePublish {
             flushLiveCommandOutput()
             return
@@ -3585,12 +3611,35 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    private func appendLiveAuthObservation(_ text: String) {
+        guard !text.isEmpty else {
+            return
+        }
+        if liveAuthObservationBuffer.isEmpty {
+            liveAuthObservationBuffer = Self.trimSuffix(text, maxCharacters: Self.liveAuthObservationMaxCharacters)
+        } else if liveAuthObservationBuffer.count + text.count > Self.liveAuthObservationMaxCharacters {
+            liveAuthObservationBuffer = Self.trimSuffix(
+                liveAuthObservationBuffer + text,
+                maxCharacters: Self.liveAuthObservationMaxCharacters
+            )
+        } else {
+            liveAuthObservationBuffer += text
+        }
+    }
+
     private static func trimLiveCommandOutput(_ text: String) -> String {
         guard text.count > liveCommandOutputMaxCharacters else {
             return text
         }
         let suffixLength = max(0, liveCommandOutputMaxCharacters - trimmedLiveCommandOutputPrefix.count)
         return trimmedLiveCommandOutputPrefix + String(text.suffix(suffixLength))
+    }
+
+    private static func trimSuffix(_ text: String, maxCharacters: Int) -> String {
+        guard text.count > maxCharacters else {
+            return text
+        }
+        return String(text.suffix(maxCharacters))
     }
 
     private func notifyAuthDigitsIfNeeded(_ digits: String) async {

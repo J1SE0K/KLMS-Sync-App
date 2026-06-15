@@ -1044,10 +1044,12 @@ final class DashboardDataModelTests: XCTestCase {
             .deletingLastPathComponent()
         let macRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
         let macDetailRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/DashboardDetailView.swift")
+        let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
         let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
         let sources = try [
             String(contentsOf: macRoot, encoding: .utf8),
             String(contentsOf: macDetailRoot, encoding: .utf8),
+            String(contentsOf: macModelRoot, encoding: .utf8),
             String(contentsOf: iosRoot, encoding: .utf8),
         ].joined(separator: "\n")
 
@@ -1062,6 +1064,12 @@ final class DashboardDataModelTests: XCTestCase {
             ),
             "직접 누르는 UI의 전환 애니메이션은 0.10초 이하로 유지해야 합니다."
         )
+        XCTAssertTrue(sources.contains("private static let liveCommandOutputMaxCharacters = 12_000"))
+        XCTAssertTrue(sources.contains("private static let liveAuthObservationMaxCharacters = 4_000"))
+        XCTAssertTrue(sources.contains("appendLiveAuthObservation(displayChunk)"))
+        XCTAssertFalse(sources.contains("let currentOutput = liveCommandOutputBuffer"))
+        XCTAssertTrue(sources.contains("private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 350_000_000"))
+        XCTAssertTrue(sources.contains("private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 3_000_000_000"))
     }
 
     func testIOSDashboardAndSettingsFollowDesignNavigation() throws {
@@ -1084,8 +1092,6 @@ final class DashboardDataModelTests: XCTestCase {
         let dashboardSyncCard = try sourceStructBody(named: "RemoteDashboardSyncCard", in: ios)
         let metricOverview = try sourceStructBody(named: "RemoteDashboardMetricOverview", in: ios)
         let metricTile = try sourceStructBody(named: "RemoteMetricTile", in: ios)
-        let compactSelectionPanel = try sourceStructBody(named: "CompactDashboardSelectionPanel", in: ios)
-        let compactEmptyRow = try sourceStructBody(named: "CompactDashboardEmptyRow", in: ios)
         let compactSelectedRow = try sourceStructBody(named: "CompactDashboardSelectedRow", in: ios)
         let cardButtonStyle = try sourceBody(
             after: "private struct KLMSCardButtonStyle: ButtonStyle",
@@ -1201,8 +1207,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(statusScreen.contains("compactStatusDetailColumn"))
         XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel(category: category, model: model)"))
         XCTAssertTrue(statusScreen.contains("WorkstationDashboardDetailPanel"))
-        XCTAssertTrue(metricOverview.contains("CompactDashboardSelectionPanel(category: selectedCategory, model: model)"))
-        XCTAssertTrue(metricOverview.contains("RemoteChangeSummaryDetailPanel(kind: selectedChangeSummary, model: model)"))
+        XCTAssertFalse(metricOverview.contains("CompactDashboardSelectionPanel(category: selectedCategory, model: model)"))
+        XCTAssertFalse(metricOverview.contains("RemoteChangeSummaryDetailPanel(kind: selectedChangeSummary, model: model)"))
         XCTAssertFalse(statusScreen.contains("RemoteLogSummaryPanel"))
         XCTAssertFalse(statusScreen.contains("RemoteCommandPanel"))
         XCTAssertTrue(dashboardSyncCard.contains("RemoteCancelControl(model: model, compact: compact)"))
@@ -1246,14 +1252,6 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(metricTile.contains(".padding(.horizontal, 12)"))
         XCTAssertFalse(metricTile.contains(".padding(.vertical, 8)"))
         XCTAssertTrue(metricTile.contains("RoundedRectangle(cornerRadius: 14)"))
-        XCTAssertTrue(compactSelectionPanel.contains("RoundedRectangle(cornerRadius: 14)"))
-        XCTAssertTrue(compactSelectionPanel.contains("Text(\"\\(category.title) 목록\")"))
-        XCTAssertTrue(compactSelectionPanel.contains("Text(\"\\(items.count)개\")"))
-        XCTAssertTrue(compactSelectionPanel.contains("LazyVStack(alignment: .leading, spacing: 8)"))
-        XCTAssertTrue(compactSelectionPanel.contains("ForEach(items)"))
-        XCTAssertFalse(compactSelectionPanel.contains("선택한 항목"))
-        XCTAssertFalse(compactSelectionPanel.contains("items.prefix(2)"))
-        XCTAssertTrue(compactEmptyRow.contains("RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(compactSelectedRow.contains("RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(cardButtonStyle.contains("Color.klmsCommandButtonPressedOverlay"))
         XCTAssertTrue(cardButtonStyle.contains("@Environment(\\.isEnabled)"))
@@ -1647,7 +1645,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(iosHeader.contains("Text(model.statusLine)"))
         XCTAssertTrue(iosStatusScreen.contains("workstationStatusDetailColumn"))
         XCTAssertTrue(iosStatusScreen.contains("WorkstationDashboardDetailPanel"))
-        XCTAssertTrue(iosMetricOverview.contains("CompactDashboardSelectionPanel(category: selectedCategory, model: model)"))
+        XCTAssertFalse(iosMetricOverview.contains("CompactDashboardSelectionPanel(category: selectedCategory, model: model)"))
         XCTAssertTrue(iosStatusScreen.contains("?? .files"))
         XCTAssertTrue(iosMetricOverview.contains("@Environment(\\.horizontalSizeClass)"))
         XCTAssertTrue(iosMetricOverview.contains("private let compactColumns"))
@@ -1676,9 +1674,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct WorkstationDashboardDetailPanel"))
         XCTAssertFalse(ios.contains("private struct WorkstationSelectedItemCard"))
         XCTAssertTrue(ios.contains("private struct WorkstationChangeSummaryCard"))
-        XCTAssertTrue(ios.contains("private struct CompactDashboardSelectionPanel"))
+        XCTAssertFalse(ios.contains("private struct CompactDashboardSelectionPanel"))
+        XCTAssertFalse(ios.contains("private struct CompactDashboardEmptyRow"))
         XCTAssertTrue(iosWorkstationDetailPanel.contains("LazyVStack(alignment: .leading, spacing: 9)"))
-        XCTAssertTrue(iosWorkstationDetailPanel.contains("ForEach(items)"))
+        XCTAssertTrue(iosWorkstationDetailPanel.contains("let visibleItems = items.prefix(visibleLimit)"))
+        XCTAssertTrue(iosWorkstationDetailPanel.contains("ForEach(visibleItems)"))
+        XCTAssertTrue(iosWorkstationDetailPanel.contains("CompanionShowMoreRowsButton"))
         XCTAssertTrue(iosWorkstationDetailPanel.contains("CompactDashboardSelectedRow(item: item, model: model)"))
         XCTAssertFalse(iosWorkstationDetailPanel.contains("WorkstationSelectedItemCard"))
         XCTAssertFalse(iosWorkstationDetailPanel.contains("selectedItem"))
@@ -1715,7 +1716,6 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "CompanionModel"
         )
-        let compactSelectionPanel = try sourceStructBody(named: "CompactDashboardSelectionPanel", in: ios)
         let workstationDetailPanel = try sourceStructBody(named: "WorkstationDashboardDetailPanel", in: ios)
 
         XCTAssertTrue(ios.contains("private struct CompanionItemListData"))
@@ -1740,11 +1740,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionModel.contains("func cachedVisibleDashboardItems(for categoryID: String)"))
         XCTAssertTrue(companionModel.contains("func visibleCalendarChanges() -> [CalendarChange] {\n        visibleCalendarChangesCache"))
         XCTAssertFalse(companionModel.contains(".filter { $0.itemID == item.id }"))
-        XCTAssertTrue(compactSelectionPanel.contains("model.cachedVisibleDashboardItems(for: category.rawValue)"))
-        XCTAssertFalse(compactSelectionPanel.contains(".filter { category.includes($0) }"))
         XCTAssertTrue(workstationDetailPanel.contains("model.cachedVisibleDashboardItems(for: category.rawValue)"))
         XCTAssertFalse(workstationDetailPanel.contains(".filter { category.includes($0) }"))
         XCTAssertTrue(workstationDetailPanel.contains("LazyVStack(alignment: .leading, spacing: 9)"))
+        XCTAssertTrue(workstationDetailPanel.contains("let visibleItems = items.prefix(visibleLimit)"))
+        XCTAssertTrue(workstationDetailPanel.contains("ForEach(visibleItems)"))
+        XCTAssertTrue(workstationDetailPanel.contains("CompanionShowMoreRowsButton"))
         XCTAssertTrue(workstationDetailPanel.contains("CompactDashboardSelectedRow(item: item, model: model)"))
         XCTAssertFalse(workstationDetailPanel.contains("WorkstationSelectedItemCard"))
         XCTAssertFalse(workstationDetailPanel.contains("selectedItem"))
@@ -1753,7 +1754,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(categoryDetail.contains("@State private var selectedItemID"))
         XCTAssertFalse(categoryDetail.contains("ForEach(filtered)"))
         XCTAssertTrue(selectableRows.contains("@State private var visibleLimit = CompanionLargeList.initialVisibleLimit"))
-        XCTAssertTrue(ios.contains("static let initialVisibleLimit = 45"))
+        XCTAssertTrue(ios.contains("static let initialVisibleLimit = 30"))
         XCTAssertTrue(selectableRows.contains("@State private var selectedItemID"))
         XCTAssertTrue(selectableRows.contains("@State private var deferredSelectionTask"))
         XCTAssertTrue(selectableRows.contains("LazyVStack(alignment: .leading, spacing: 8)"))
@@ -2152,6 +2153,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private static func relayRefreshScope(for message: URLSessionWebSocketTask.Message) -> RelayRefreshScope"))
         XCTAssertTrue(ios.contains("if reason.hasPrefix(\"file-access:\")"))
         XCTAssertTrue(ios.contains("return .fileAccess"))
+        XCTAssertTrue(ios.contains("if reason.hasPrefix(\"commands:\")"))
+        XCTAssertTrue(ios.contains("reason == \"commands:pending\" ? .commandRequest : .state"))
+        XCTAssertTrue(ios.contains("if reason.hasPrefix(\"item-actions:\")"))
+        XCTAssertTrue(ios.contains("return .itemActions"))
+        XCTAssertTrue(ios.contains("if reason.hasPrefix(\"setting-actions:\")"))
+        XCTAssertTrue(ios.contains("return .settingActions"))
         XCTAssertTrue(ios.contains("if reason == \"state\" || reason == \"updated\""))
         XCTAssertTrue(ios.contains("return .state"))
 
@@ -2159,6 +2166,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(macModel.contains("configureServerRelayPolling"))
         XCTAssertFalse(macModel.contains("serverRelayIdlePollingIntervalNanoseconds"))
         XCTAssertFalse(macModel.contains("serverRelayActivePollingIntervalNanoseconds"))
+        XCTAssertTrue(macModel.contains("private static func serverRelayEventNeedsWorkerRefresh"))
+        XCTAssertTrue(macModel.contains("reason == \"commands:pending\""))
+        XCTAssertTrue(macModel.contains("private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 120_000_000_000"))
+        XCTAssertTrue(macModel.contains("private static let serverRelayActiveSyncDataPublishMinimumInterval: TimeInterval = 20"))
+        XCTAssertTrue(macModel.contains("private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 1.0"))
+        XCTAssertFalse(macModel.contains("await processServerRelayCommands(silent: true)\n                }\n            } catch"))
         XCTAssertFalse(ios.contains("pollRecentCommands"))
         XCTAssertFalse(ios.contains("Task.sleep(nanoseconds: interval)"))
         XCTAssertFalse(ios.contains("Task.sleep(nanoseconds: 250_000_000)"))
