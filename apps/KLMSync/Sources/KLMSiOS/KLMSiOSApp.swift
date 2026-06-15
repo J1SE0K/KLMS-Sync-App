@@ -1962,7 +1962,7 @@ private struct WorkstationSidebar: View {
                         section: section,
                         isSelected: selectedSection == section,
                         showsIcon: true,
-                        showsArrow: false,
+                        showsArrow: true,
                         isCompact: true
                     ) {
                         guard selectedSection != section else { return }
@@ -1991,35 +1991,40 @@ private struct CompanionSidebarButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: isCompact ? 7 : 10) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(isSelected ? Color.klmsSelectedBorder : Color.clear)
+                    .frame(width: 4, height: isCompact ? 26 : 28)
                 if showsIcon {
                     Image(systemName: section.systemImage)
                         .font((isCompact ? Font.subheadline : Font.body).weight(.semibold))
-                        .frame(width: isCompact ? 18 : 22)
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
+                        .frame(width: isCompact ? 20 : 22)
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.84))
                 }
                 Text(section.title)
                     .font(.system(size: 12, weight: isSelected ? .bold : .semibold, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 Spacer(minLength: 0)
                 if showsArrow {
-                    Image(systemName: "arrow.right")
+                    Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.70))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedBorder : Color.klmsSecondaryText.opacity(0.52))
                 }
             }
-            .padding(.horizontal, isCompact ? 8 : 9)
+            .padding(.leading, isCompact ? 7 : 8)
+            .padding(.trailing, isCompact ? 8 : 9)
             .padding(.vertical, isCompact ? 8 : 9)
             .frame(maxWidth: .infinity, minHeight: isCompact ? 40 : 36, alignment: .leading)
             .background(
                 isSelected
                     ? Color.klmsSelectedBackground
-                    : Color.klmsSubtleCardBackground,
+                    : Color.klmsCardBackground.opacity(0.58),
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.52), lineWidth: 1)
             )
+            .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSCardButtonStyle())
