@@ -2449,18 +2449,11 @@ private struct CompanionStatusScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: "상태", model: model) {
-            if horizontalSizeClass == .regular {
-                HStack(alignment: .top, spacing: 18) {
-                    statusSummaryColumn
-                        .frame(minWidth: 320, idealWidth: 380, maxWidth: 440, alignment: .topLeading)
-                    workstationStatusDetailColumn
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    statusSummaryColumn
-                    compactStatusDetailColumn
-                }
+            VStack(alignment: .leading, spacing: 14) {
+                statusSummaryColumn
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                statusDetailColumn
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
     }
@@ -2485,29 +2478,15 @@ private struct CompanionStatusScreen: View {
     }
 
     @ViewBuilder
-    private var workstationStatusDetailColumn: some View {
-        if let kind = selectedChangeSummary {
-            RemoteChangeSummaryDetailPanel(kind: kind, model: model)
-                .id(kind)
-        } else if let category = selectedDashboardPreview {
-            WorkstationDashboardDetailPanel(
-                category: category,
-                model: model
-            )
-            .id(category)
-        } else {
-            WorkstationDashboardOverviewPanel(model: model)
-        }
-    }
-
-    @ViewBuilder
-    private var compactStatusDetailColumn: some View {
+    private var statusDetailColumn: some View {
         if let kind = selectedChangeSummary {
             RemoteChangeSummaryDetailPanel(kind: kind, model: model)
                 .id(kind)
         } else if let category = selectedDashboardPreview {
             DashboardCategoryInlineDetailPanel(category: category, model: model)
                 .id(category)
+        } else if horizontalSizeClass == .regular {
+            WorkstationDashboardOverviewPanel(model: model)
         }
     }
 
@@ -4894,90 +4873,6 @@ private struct WorkstationDashboardOverviewPanel: View {
         var id: String {
             title
         }
-    }
-}
-
-private struct WorkstationDashboardDetailPanel: View {
-    var category: DashboardMetricCategory
-    @ObservedObject var model: CompanionModel
-    @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
-
-    private var items: [ServerRelaySyncItem] {
-        model.cachedVisibleDashboardItems(for: category.rawValue)
-    }
-
-    var body: some View {
-        let visibleItems = items.prefix(visibleLimit)
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            if items.isEmpty {
-                emptyCard
-            } else {
-                LazyVStack(alignment: .leading, spacing: 9) {
-                    ForEach(visibleItems) { item in
-                        CompactDashboardSelectedRow(item: item, model: model)
-                    }
-                    if items.count > visibleItems.count {
-                        CompanionShowMoreRowsButton(
-                            remainingCount: items.count - visibleItems.count
-                        ) {
-                            visibleLimit += CompanionLargeList.increment
-                        }
-                    }
-                }
-            }
-            WorkstationChangeSummaryCard(model: model)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onChange(of: visibleItemsResetKey) { _, _ in
-            visibleLimit = CompanionLargeList.initialVisibleLimit
-        }
-    }
-
-    private var visibleItemsResetKey: String {
-        "\(category.rawValue):\(items.count):\(items.first?.id ?? ""):\(items.last?.id ?? "")"
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(category.title) 상세")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                Text("\(items.count)개 항목 · 최신순")
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsSecondaryText)
-            }
-            Spacer(minLength: 8)
-            Text("목록")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.klmsPrimaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(Color.klmsSubtleCardBackground, in: Capsule())
-                .overlay(
-                    Capsule().stroke(Color.klmsBorder, lineWidth: 1)
-            )
-        }
-    }
-
-    private var emptyCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(category.emptyMessage)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(Color.klmsPrimaryText)
-            Text("Mac 앱이 서버에 최신 목록을 올리면 이 영역에서 바로 확인하고 처리할 수 있습니다.")
-                .font(.subheadline)
-                .foregroundStyle(Color.klmsSecondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 164, alignment: .topLeading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        )
     }
 }
 
