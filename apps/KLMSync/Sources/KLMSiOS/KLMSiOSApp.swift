@@ -5938,6 +5938,9 @@ private struct RemoteChangeSummaryDetailPanel: View {
     var kind: RemoteChangeSummaryKind
     @ObservedObject var model: CompanionModel
     @State private var selectedItemID: String?
+    @State private var visibleItemLimit = CompanionLargeList.initialVisibleLimit
+    @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+    @State private var cleanupVisibleLimit = CompanionLargeList.previewVisibleLimit
 
     private var status: SanitizedRemoteStatus {
         model.status
@@ -5973,6 +5976,12 @@ private struct RemoteChangeSummaryDetailPanel: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
+        .onChange(of: visibleContentResetKey) { _, _ in
+            selectedItemID = nil
+            visibleItemLimit = CompanionLargeList.initialVisibleLimit
+            calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+            cleanupVisibleLimit = CompanionLargeList.previewVisibleLimit
+        }
     }
 
     private var header: some View {
@@ -6008,13 +6017,19 @@ private struct RemoteChangeSummaryDetailPanel: View {
             if changedCalendarItems.isEmpty {
                 emptyState
             } else {
+                let visibleCalendarItems = changedCalendarItems.prefix(calendarVisibleLimit)
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(changedCalendarItems) { change in
+                    ForEach(visibleCalendarItems) { change in
                         DashboardCalendarChangeDetailRow(
                             change: change,
                             activeAction: model.activeCalendarAction(for: change)
                         ) { action, edit in
                             await model.createCalendarAction(action, change: change, edit: edit)
+                        }
+                    }
+                    if changedCalendarItems.count > visibleCalendarItems.count {
+                        CompanionShowMoreRowsButton(remainingCount: changedCalendarItems.count - visibleCalendarItems.count) {
+                            calendarVisibleLimit += CompanionLargeList.increment
                         }
                     }
                 }
@@ -6024,8 +6039,9 @@ private struct RemoteChangeSummaryDetailPanel: View {
         } else if changedItems.isEmpty {
             emptyState
         } else {
+            let visibleChangedItems = changedItems.prefix(visibleItemLimit)
             LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(changedItems) { item in
+                ForEach(visibleChangedItems) { item in
                     VStack(alignment: .leading, spacing: 8) {
                         Button {
                             selectedItemID = selectedItemID == item.id ? nil : item.id
@@ -6043,6 +6059,11 @@ private struct RemoteChangeSummaryDetailPanel: View {
                             ServerSyncItemInlineDetailPanel(item: item, model: model)
                                 .transition(.opacity)
                         }
+                    }
+                }
+                if changedItems.count > visibleChangedItems.count {
+                    CompanionShowMoreRowsButton(remainingCount: changedItems.count - visibleChangedItems.count) {
+                        visibleItemLimit += CompanionLargeList.increment
                     }
                 }
             }
@@ -6068,8 +6089,14 @@ private struct RemoteChangeSummaryDetailPanel: View {
                         .padding(10)
                         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                 } else {
-                    ForEach(Array(fileCleanupReports.enumerated()), id: \.offset) { _, report in
+                    let visibleReports = fileCleanupReports.prefix(cleanupVisibleLimit)
+                    ForEach(Array(visibleReports.enumerated()), id: \.offset) { _, report in
                         RemoteDryRunReportRow(report: report)
+                    }
+                    if fileCleanupReports.count > visibleReports.count {
+                        CompanionShowMoreRowsButton(remainingCount: fileCleanupReports.count - visibleReports.count) {
+                            cleanupVisibleLimit += CompanionLargeList.increment
+                        }
                     }
                 }
             }
@@ -6096,6 +6123,19 @@ private struct RemoteChangeSummaryDetailPanel: View {
         case .calendarCreated, .calendarUpdated, .calendarDeleted:
             return "\(count)개 · 일정 내용을 확인하고 필요하면 바로 수정할 수 있습니다."
         }
+    }
+
+    private var visibleContentResetKey: String {
+        [
+            kind.rawValue,
+            "\(changedItems.count)",
+            changedItems.first?.id ?? "",
+            changedItems.last?.id ?? "",
+            "\(changedCalendarItems.count)",
+            changedCalendarItems.first?.id ?? "",
+            changedCalendarItems.last?.id ?? "",
+            "\(fileCleanupReports.count)",
+        ].joined(separator: ":")
     }
 }
 
