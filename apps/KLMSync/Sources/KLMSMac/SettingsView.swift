@@ -6,10 +6,14 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case sync
     case notice
     case files
-    case relay
     case app
+    case relay
 
     var id: String { rawValue }
+
+    static var allCases: [SettingsTab] {
+        [.login, .sync, .notice, .files, .app]
+    }
 
     var title: String {
         switch self {
@@ -65,7 +69,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @ObservedObject var model: KLMSMacModel
-    @State private var selectedTab: SettingsTab = .login
+    @State private var selectedTab: SettingsTab = .app
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
 
     var body: some View {
@@ -484,13 +488,36 @@ struct SettingsView: View {
     private var appSettings: some View {
         settingsForm {
             Section("화면") {
-                Picker("색상 모드", selection: $appearanceMode) {
+                Picker("색상 모드", selection: Binding(
+                    get: { model.serverRelaySharedAppearanceModeValue },
+                    set: { value in
+                        appearanceMode = value
+                        Task {
+                            await model.updateServerRelaySharedAppearanceMode(value)
+                        }
+                    }
+                )) {
                     ForEach(KLMSAppearanceMode.allCases) { mode in
                         Text(mode.title).tag(mode.rawValue)
                     }
                 }
                 .pickerStyle(.segmented)
-                SettingsHelpText("시스템은 macOS 설정을 따릅니다. 라이트/다크를 고르면 KLMS Sync 창에서만 바로 적용됩니다.")
+                SettingsHelpText("시스템은 macOS 설정을 따릅니다. 서버가 연결되어 있으면 iPhone/iPad에도 같은 화면 모드가 바로 공유됩니다.")
+            }
+
+            Section("앱 공통 설정") {
+                Toggle(
+                    "원격 실행 때 공지 메모도 업데이트",
+                    isOn: Binding(
+                        get: { model.serverRelaySharedNoticeUpdateNotesEnabled },
+                        set: { value in
+                            Task {
+                                await model.updateServerRelaySharedNoticeUpdateNotes(value)
+                            }
+                        }
+                    )
+                )
+                SettingsHelpText("iPhone/iPad/Windows에서 실행한 동기화에 적용됩니다. 끄면 공지 메모 쓰기만 건너뛰고 과제, 시험, 파일 수집은 그대로 진행됩니다.")
             }
 
             Section("설치") {
@@ -555,6 +582,110 @@ struct SettingsView: View {
 
             Section {
                 SettingsHelpText("저장할 때 알 수 없는 config.env 항목과 주석은 그대로 보존됩니다.")
+            }
+
+            relaySettingsCollapsed
+        }
+    }
+
+    private var relaySettingsCollapsed: some View {
+        Section {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 12) {
+                    described("Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.") {
+                        TextField(
+                            "서버 URL",
+                            text: Binding(
+                                get: { model.serverRelayURL },
+                                set: { model.setServerRelayURL($0) }
+                            )
+                        )
+                    }
+                    described("iPhone/iPad/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다.") {
+                        SecureField(
+                            "클라이언트 토큰",
+                            text: Binding(
+                                get: { model.serverRelayClientToken },
+                                set: { model.setServerRelayClientToken($0) }
+                            )
+                        )
+                    }
+                    described("Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다.") {
+                        SecureField(
+                            "Mac 전용 토큰",
+                            text: Binding(
+                                get: { model.serverRelayWorkerToken },
+                                set: { model.setServerRelayWorkerToken($0) }
+                            )
+                        )
+                    }
+
+                    Divider()
+
+                    described("iPhone/iPad/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다.") {
+                        Toggle(
+                            "서버 릴레이 사용",
+                            isOn: Binding(
+                                get: { model.serverRelayEnabled },
+                                set: { model.setServerRelayEnabled($0) }
+                            )
+                        )
+                    }
+                    LabeledContent("서버 상태") {
+                        Text(model.serverRelayStatusMessage ?? "대기 중")
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Button("붙여넣기") {
+                                model.pasteServerRelayConnectionInfo()
+                            }
+                            Button("연결 확인") {
+                                Task {
+                                    await model.checkServerRelayConnection()
+                                }
+                            }
+                            .disabled(!model.serverRelayConfigured)
+                            Button("확인 후 켜기") {
+                                Task {
+                                    await model.checkServerRelayConnection(enableOnSuccess: true)
+                                }
+                            }
+                            .disabled(!model.serverRelayConfigured)
+                        }
+                        HStack {
+                            Button("URL 복사") {
+                                model.copyServerRelayURL()
+                            }
+                            .disabled(model.serverRelayURL.isEmpty)
+                            Button("연결 정보 복사") {
+                                model.copyServerRelayConnectionInfo()
+                            }
+                            .disabled(model.serverRelayURL.isEmpty || model.serverRelayClientToken.isEmpty)
+                            Button("클라이언트 토큰 복사") {
+                                model.copyServerRelayClientToken()
+                            }
+                            .disabled(model.serverRelayClientToken.isEmpty)
+                        }
+                    }
+
+                    SettingsHelpText("복사된 토큰은 보안을 위해 잠시 뒤 클립보드에서 자동으로 지워집니다. 서버에는 실행 요청과 요약 숫자만 저장하고, 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
+                }
+                .padding(.top, 8)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "network")
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("서버 릴레이")
+                        Text(model.serverRelayConfigured ? "연결 정보 저장됨" : "접어서 보관 중")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                    }
+                }
             }
         }
     }

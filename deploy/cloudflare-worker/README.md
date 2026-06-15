@@ -195,7 +195,7 @@ curl -fsS -H "Authorization: Bearer <RELAY_CLIENT_TOKEN>" http://127.0.0.1:8787/
 기존 Node/SQLite 릴레이와 동일하다.
 
 - `GET /healthz`
-- 클라이언트/worker: `GET /v1/status`, `POST /v1/commands`, `GET /v1/commands/recent?limit=8`, `GET /v1/sync-data?kind=exam&limit=50`, `POST /v1/item-actions`, `GET /v1/item-actions/recent?limit=10`
+- 클라이언트/worker: `GET /v1/status`, `POST /v1/commands`, `GET /v1/commands/recent?limit=8`, `GET /v1/sync-data?kind=exam&limit=50`, `GET /v1/shared-settings`, `PUT /v1/shared-settings/:key`, `POST /v1/item-actions`, `GET /v1/item-actions/recent?limit=10`
 - 파일 열기: 클라이언트 `POST /v1/file-access`, `GET /v1/file-access/recent`; worker `GET /v1/file-access/pending`, `PUT /v1/file-access/:id`, `PUT /v1/file-access/:id/upload`
 - worker 전용: `POST /v1/status`, `GET /v1/commands/pending`, `PUT /v1/commands/:id`, `POST /v1/sync-data`, `GET /v1/item-actions/pending`, `PUT /v1/item-actions/:id`
 

@@ -1511,14 +1511,22 @@ private struct LogSummaryDetailView: View {
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .textSelection(.enabled)
             }
-            if let command = model.lastRemoteCommand {
+            if let command = activeRemoteCommand {
                 RemoteCommandActivityRow(command: command)
             } else {
-                Text("최근 원격 실행 요청이 없습니다.")
+                Text("현재 진행 중인 원격 요청이 없습니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
             }
         }
+    }
+
+    private var activeRemoteCommand: RemoteRunCommand? {
+        guard let command = model.lastRemoteCommand,
+              command.displayStatus().isInFlight else {
+            return nil
+        }
+        return command
     }
 
     private var fileRequestDetail: some View {

@@ -51,6 +51,7 @@ const state = {
   items: [],
   calendarChanges: [],
   verifySummary: null,
+  sharedSettings: [],
   recentCommands: [],
   recentActions: [],
   recentFileAccess: [],
@@ -83,6 +84,10 @@ function bindEvents() {
   $("pasteClipboardButton").addEventListener("click", pasteConnectionFromClipboard);
   $("parseConnectionButton").addEventListener("click", parseConnectionText);
   $("refreshButton").addEventListener("click", () => refreshAll());
+  $("updateNoticeNotes")?.addEventListener("change", (event) => {
+    updateSharedSetting("KLMS_UPDATE_NOTICE_NOTES", event.target.checked ? "1" : "0")
+      .catch(showError);
+  });
   $("copyStateButton").addEventListener("click", copyState);
   $("searchInput").addEventListener("input", (event) => {
     state.query = event.target.value;
@@ -239,6 +244,7 @@ async function refreshAll(options = {}) {
     state.items = syncData.items || [];
     state.calendarChanges = syncData.calendarChanges || [];
     state.verifySummary = syncData.verifySummary || null;
+    applySharedSettings(syncData.sharedSettings || []);
     state.recentActions = actionResponse.actions || [];
     state.recentFileAccess = fileAccessResponse.requests || [];
     updateConnectionState("연결됨", "ok");
@@ -257,6 +263,45 @@ async function refreshAll(options = {}) {
     }
     scheduleAutoRefresh();
   }
+}
+
+function applySharedSettings(settings) {
+  state.sharedSettings = Array.isArray(settings) ? settings : [];
+  const noticeSetting = state.sharedSettings.find((setting) => setting.key === "KLMS_UPDATE_NOTICE_NOTES");
+  const noticeCheckbox = $("updateNoticeNotes");
+  if (noticeCheckbox && noticeSetting) {
+    noticeCheckbox.checked = isTruthySettingValue(noticeSetting.value);
+  }
+}
+
+async function updateSharedSetting(key, value) {
+  if (!state.configured) {
+    toast("서버 연결 후 설정을 저장할 수 있습니다.");
+    return;
+  }
+  const title = key === "KLMS_UPDATE_NOTICE_NOTES" ? "공지 메모 업데이트" : key;
+  const valueKind = key === "KLMS_UPDATE_NOTICE_NOTES" ? "bool" : "text";
+  const setting = await window.klmsWindows.relayRequest({
+    path: `/v1/shared-settings/${encodeURIComponent(key)}`,
+    method: "PUT",
+    body: {
+      key,
+      title,
+      value,
+      valueKind,
+      options: [],
+      editable: true
+    }
+  });
+  applySharedSettings([
+    ...state.sharedSettings.filter((item) => item.key !== setting.key),
+    setting
+  ]);
+  toast(`${title} 설정을 저장했습니다.`);
+}
+
+function isTruthySettingValue(value) {
+  return ["1", "true", "yes", "y", "on"].includes(String(value || "").trim().toLowerCase());
 }
 
 function startRealtimeRefresh() {

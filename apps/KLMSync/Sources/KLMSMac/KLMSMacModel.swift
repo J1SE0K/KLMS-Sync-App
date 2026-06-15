@@ -80,6 +80,7 @@ final class KLMSMacModel: ObservableObject {
     @Published var serverRelayRecentRequestLog: [ServerRelayRequestLogEntry] = []
     @Published var serverRelayRecentFileAccessRequests: [ServerRelayFileAccessRequest] = []
     @Published var serverRelaySharedRunLogs: [ServerRelayRunLog] = []
+    @Published var serverRelaySharedSettings: [ServerRelaySetting] = []
     @Published var mailDashboardItems: [ServerRelaySyncItem] = []
     @Published var remoteProcessingStatusMessage: String?
     @Published var isCheckingRemoteCommands = false
@@ -123,6 +124,9 @@ final class KLMSMacModel: ObservableObject {
     private var serverRelayLastInboxUpdatedAt: String?
     private var cachedMailDashboardItemsByKind: [String: [ServerRelaySyncItem]] = [:]
     private var cachedMailCalendarChanges: [CalendarChange] = []
+    private var serverRelaySharedSettingsSignature: Int?
+    private static let sharedAppearanceModeKey = "KLMS_APPEARANCE_MODE"
+    private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
     private static let deprecatedRemoteProcessingEnabledKey = "KLMSRemoteProcessingEnabled"
     private static let deprecatedLocalRemoteEnabledKey = "KLMSLocalRemoteEnabled"
@@ -550,6 +554,7 @@ final class KLMSMacModel: ObservableObject {
             }
             if let syncData = try? await store.fetchSyncData(limit: 1) {
                 serverRelaySharedRunLogs = syncData.runLogs
+                _ = applyServerRelaySharedSettings(syncData.sharedSettings)
             }
             serverRelayLastStatusPublishAt = Date()
             if enableOnSuccess && !serverRelayEnabled {
@@ -586,6 +591,7 @@ final class KLMSMacModel: ObservableObject {
             }
             if let syncData = try? await store.fetchSyncData(limit: 1) {
                 serverRelaySharedRunLogs = syncData.runLogs
+                _ = applyServerRelaySharedSettings(syncData.sharedSettings)
             }
         } catch {
             serverRelayStatusMessage = "로그 지우기 실패: \(error.localizedDescription)"
@@ -1067,6 +1073,49 @@ final class KLMSMacModel: ObservableObject {
         rebuildMailDashboardCaches()
     }
 
+    var serverRelaySharedAppearanceModeValue: String {
+        let value = serverRelaySharedSettings
+            .first { $0.key == Self.sharedAppearanceModeKey }?
+            .value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let value, KLMSAppearanceMode(rawValue: value) != nil {
+            return value
+        }
+        let local = UserDefaults.standard.string(forKey: "KLMSAppearanceMode") ?? KLMSAppearanceMode.system.rawValue
+        return KLMSAppearanceMode(rawValue: local)?.rawValue ?? KLMSAppearanceMode.system.rawValue
+    }
+
+    var serverRelaySharedNoticeUpdateNotesEnabled: Bool {
+        guard let setting = serverRelaySharedSettings.first(where: { $0.key == Self.sharedNoticeUpdateNotesKey }) else {
+            return true
+        }
+        return setting.boolValue
+    }
+
+    func updateServerRelaySharedAppearanceMode(_ rawValue: String) async {
+        let normalized = KLMSAppearanceMode(rawValue: rawValue)?.rawValue ?? KLMSAppearanceMode.system.rawValue
+        UserDefaults.standard.set(normalized, forKey: "KLMSAppearanceMode")
+        await updateServerRelaySharedSetting(
+            key: Self.sharedAppearanceModeKey,
+            title: "화면 모드",
+            value: normalized,
+            valueKind: .choice,
+            options: KLMSAppearanceMode.allCases.map(\.rawValue),
+            successMessage: "화면 모드를 저장했습니다."
+        )
+    }
+
+    func updateServerRelaySharedNoticeUpdateNotes(_ enabled: Bool) async {
+        await updateServerRelaySharedSetting(
+            key: Self.sharedNoticeUpdateNotesKey,
+            title: "공지 메모 업데이트",
+            value: enabled ? "1" : "0",
+            valueKind: .bool,
+            options: [],
+            successMessage: enabled ? "원격 실행에서 공지 메모도 업데이트합니다." : "원격 실행에서 공지 메모 업데이트를 건너뜁니다."
+        )
+    }
+
     private func calendarChangeResolvedIDs(for change: CalendarChange) -> [String] {
         var ids = [change.id]
         let publicChangeID = serverRelayCalendarChange(change).id
@@ -1092,6 +1141,81 @@ final class KLMSMacModel: ObservableObject {
                 updatedAt: updatedAt
             )
         }
+    }
+
+    @discardableResult
+    private func applyServerRelaySharedSettings(_ settings: [ServerRelaySetting]) -> Bool {
+        guard !settings.isEmpty else {
+            return false
+        }
+        var mergedByKey = Dictionary(uniqueKeysWithValues: serverRelaySharedSettings.map { ($0.key, $0) })
+        for setting in settings {
+            mergedByKey[setting.key] = setting
+        }
+        let sorted = mergedByKey.values.sorted { $0.key < $1.key }
+        let signature = Self.serverRelaySharedSettingSignature(sorted)
+        guard serverRelaySharedSettingsSignature != signature else {
+            return false
+        }
+        serverRelaySharedSettings = sorted
+        serverRelaySharedSettingsSignature = signature
+        for setting in sorted {
+            switch setting.key {
+            case Self.sharedAppearanceModeKey:
+                let rawValue = KLMSAppearanceMode(rawValue: setting.value)?.rawValue ?? KLMSAppearanceMode.system.rawValue
+                UserDefaults.standard.set(rawValue, forKey: "KLMSAppearanceMode")
+            case Self.sharedNoticeUpdateNotesKey:
+                break
+            default:
+                break
+            }
+        }
+        return true
+    }
+
+    private func updateServerRelaySharedSetting(
+        key: String,
+        title: String,
+        value: String,
+        valueKind: ServerRelaySettingValueKind,
+        options: [String],
+        successMessage: String
+    ) async {
+        let setting = ServerRelaySetting(
+            key: key,
+            title: title,
+            value: value,
+            valueKind: valueKind,
+            options: options,
+            editable: true,
+            updatedAt: ServerRelaySyncItem.isoTimestamp()
+        )
+        _ = applyServerRelaySharedSettings([setting])
+        guard serverRelayConfigured else {
+            serverRelayStatusMessage = "서버 연결 후 다른 기기에도 반영됩니다."
+            return
+        }
+        do {
+            let store = try makeServerRelayStore()
+            let saved = try await store.updateSharedSetting(setting)
+            _ = applyServerRelaySharedSettings([saved])
+            serverRelayStatusMessage = successMessage
+            errorMessage = nil
+        } catch {
+            serverRelayStatusMessage = "공유 설정 저장 실패: \(error.localizedDescription)"
+            errorMessage = serverRelayStatusMessage
+        }
+    }
+
+    private static func serverRelaySharedSettingSignature(_ settings: [ServerRelaySetting]) -> Int {
+        var hasher = Hasher()
+        hasher.combine(settings.count)
+        for setting in settings {
+            hasher.combine(setting.key)
+            hasher.combine(setting.value)
+            hasher.combine(setting.updatedAt)
+        }
+        return hasher.finalize()
     }
 
     private func serverRelayRunLogs() -> [ServerRelayRunLog] {
@@ -2353,8 +2477,10 @@ final class KLMSMacModel: ObservableObject {
             serverRelayLastInboxUpdatedAt = inbox.statusResponse.updatedAt
             serverRelayRecentRequestLog = inbox.recentRequestLog
             serverRelayRecentFileAccessRequests = inbox.recentFileAccessRequests
+            _ = applyServerRelaySharedSettings(inbox.sharedSettings)
             if let syncData = try? await store.fetchSyncData(limit: 1) {
                 serverRelaySharedRunLogs = syncData.runLogs
+                _ = applyServerRelaySharedSettings(syncData.sharedSettings)
             }
             let pendingFileRequests = inbox.pendingFileAccessRequests
             if let fileRequest = pendingFileRequests.first {

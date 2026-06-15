@@ -40,6 +40,22 @@ const CANCEL_REQUEST_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_FILE_ACCESS_TTL_MS = 5 * 60 * 1000;
 const WORKER_INBOX_LONG_POLL_MAX_MS = 25 * 1000;
 const WORKER_INBOX_LONG_POLL_INTERVAL_MS = 250;
+const SHARED_SETTING_DEFINITIONS = [
+  {
+    key: "KLMS_APPEARANCE_MODE",
+    title: "화면 모드",
+    value: "system",
+    valueKind: "choice",
+    options: ["system", "light", "dark"],
+  },
+  {
+    key: "KLMS_UPDATE_NOTICE_NOTES",
+    title: "공지 메모 업데이트",
+    value: "1",
+    valueKind: "bool",
+    options: [],
+  },
+];
 const FILE_DIR = process.env.KLMS_RELAY_FILE_DIR
   ? expandHome(process.env.KLMS_RELAY_FILE_DIR)
   : path.join(path.dirname(DB_PATH), "files");
@@ -189,6 +205,31 @@ async function route(request, response) {
       Number.parseInt(url.searchParams.get("limit") || "250", 10) || 250
     ));
     sendJSON(response, 200, syncDataResponse({ kind, limit }));
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/v1/shared-settings") {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    sendJSON(response, 200, sharedSettingsResponse());
+    return;
+  }
+
+  const sharedSettingMatch = url.pathname.match(/^\/v1\/shared-settings\/([A-Z][A-Z0-9_]*)$/);
+  if (request.method === "PUT" && sharedSettingMatch) {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    const body = await readJSON(request);
+    const setting = updateSharedSetting(sharedSettingMatch[1], body, request);
+    if (!setting) {
+      sendJSON(response, 400, { error: "unsupported shared setting" });
+      return;
+    }
+    sendJSON(response, 200, setting);
     return;
   }
 
@@ -705,6 +746,7 @@ function workerInboxResponse(request) {
       .filter((command) => command.status === "pending")
       .sort((lhs, rhs) => Date.parse(lhs.createdAt) - Date.parse(rhs.createdAt)),
     cancelRequest: loadCancelRequest(),
+    sharedSettings: loadSharedSettings(),
   };
 }
 
@@ -2552,6 +2594,7 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
   const dryRunReports = parseJSON(getMeta("syncDataDryRunReports"), []);
   const calendarChanges = parseJSON(getMeta("syncDataCalendarChanges"), []);
   const settings = parseJSON(getMeta("syncDataSettings"), []);
+  const sharedSettings = loadSharedSettings();
   const runLogs = parseJSON(getMeta("syncDataRunLogs"), []);
   const verifySummary = parseJSON(getMeta("syncDataVerifySummary"), null);
   const runLogsClearedAt = getMeta("syncDataRunLogsClearedAt");
@@ -2562,9 +2605,86 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
     dryRunReports: normalizeDryRunReports(dryRunReports),
     calendarChanges: normalizeCalendarChanges(calendarChanges),
     settings: normalizeSettings(settings),
+    sharedSettings,
     runLogs: normalizeRunLogs(runLogs, runLogsClearedAt),
     verifySummary: normalizeVerifySummary(verifySummary),
   };
+}
+
+function sharedSettingsResponse() {
+  return {
+    settings: loadSharedSettings(),
+  };
+}
+
+function loadSharedSettings() {
+  return normalizedSharedSettings(normalizeSettings(parseJSON(getMeta("sharedSettings"), [])));
+}
+
+function updateSharedSetting(key, body, request) {
+  const setting = normalizeSharedSettingInput(key, body);
+  if (!setting) {
+    return null;
+  }
+  const current = loadSharedSettings();
+  const next = normalizedSharedSettings([
+    ...current.filter((item) => item.key !== setting.key),
+    setting,
+  ]);
+  setMeta("sharedSettings", JSON.stringify(next));
+  setMeta("updatedAt", setting.updatedAt);
+  appendRequestLog(request, {
+    action: `${setting.title} 변경`,
+    status: "updated",
+    message: "서버 공유 설정을 바로 저장했습니다.",
+  });
+  touchRelayEvent("shared-settings", setting.updatedAt);
+  return setting;
+}
+
+function normalizedSharedSettings(stored) {
+  const storedByKey = new Map(normalizeSettings(stored).map((setting) => [setting.key, setting]));
+  return SHARED_SETTING_DEFINITIONS.map((definition) => {
+    const storedSetting = storedByKey.get(definition.key);
+    const value = normalizeSharedSettingValue(definition, storedSetting?.value ?? definition.value);
+    return {
+      key: definition.key,
+      title: definition.title,
+      value,
+      valueKind: definition.valueKind,
+      options: definition.options,
+      editable: true,
+      updatedAt: storedSetting?.updatedAt || "",
+    };
+  });
+}
+
+function normalizeSharedSettingInput(key, body) {
+  const normalizedKey = sanitizeSettingKey(key || body?.key);
+  const definition = SHARED_SETTING_DEFINITIONS.find((item) => item.key === normalizedKey);
+  if (!definition) {
+    return null;
+  }
+  return {
+    key: definition.key,
+    title: definition.title,
+    value: normalizeSharedSettingValue(definition, body?.value),
+    valueKind: definition.valueKind,
+    options: definition.options,
+    editable: true,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function normalizeSharedSettingValue(definition, value) {
+  if (definition.valueKind === "bool") {
+    return normalizeBoolean(value) ? "1" : "0";
+  }
+  const text = sanitizePublicText(value) || definition.value;
+  if (definition.valueKind === "choice") {
+    return definition.options.includes(text) ? text : definition.value;
+  }
+  return text;
 }
 
 function clearSharedRunLogs() {

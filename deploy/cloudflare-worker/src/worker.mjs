@@ -24,6 +24,22 @@ const CANCEL_REQUEST_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_FILE_ACCESS_TTL_MS = 5 * 60 * 1000;
 const WORKER_INBOX_LONG_POLL_MAX_MS = 25 * 1000;
 const WORKER_INBOX_LONG_POLL_INTERVAL_MS = 350;
+const SHARED_SETTING_DEFINITIONS = [
+  {
+    key: "KLMS_APPEARANCE_MODE",
+    title: "화면 모드",
+    value: "system",
+    valueKind: "choice",
+    options: ["system", "light", "dark"],
+  },
+  {
+    key: "KLMS_UPDATE_NOTICE_NOTES",
+    title: "공지 메모 업데이트",
+    value: "1",
+    valueKind: "bool",
+    options: [],
+  },
+];
 
 const defaultStatus = {
   assignments: 0,
@@ -238,6 +254,26 @@ async function route(request, env) {
     const kind = (url.searchParams.get("kind") || "").trim();
     const limit = boundedInt(url.searchParams.get("limit"), 250, 1, MAX_SYNC_ITEMS);
     return sendJSON(200, await syncDataResponse(db, { kind, limit }));
+  }
+
+  if (request.method === "GET" && pathname === "/v1/shared-settings") {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    return sendJSON(200, await sharedSettingsResponse(db));
+  }
+
+  const sharedSettingMatch = pathname.match(/^\/v1\/shared-settings\/([A-Z][A-Z0-9_]*)$/);
+  if (request.method === "PUT" && sharedSettingMatch) {
+    if (!(await authorized(request, env, "client"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
+    const body = await readJSON(request);
+    const setting = await updateSharedSetting(db, env, sharedSettingMatch[1], body, request);
+    if (!setting) {
+      return sendJSON(400, { error: "unsupported shared setting" });
+    }
+    return sendJSON(200, setting);
   }
 
   if (request.method === "POST" && pathname === "/v1/sync-data") {
@@ -618,6 +654,8 @@ function requiredRoleFor(method, pathname) {
   if (method === "GET" && pathname === "/v1/status") return "client";
   if (method === "POST" && pathname === "/v1/status") return "worker";
   if (method === "GET" && pathname === "/v1/sync-data") return "client";
+  if (method === "GET" && pathname === "/v1/shared-settings") return "client";
+  if (method === "PUT" && /^\/v1\/shared-settings\/[A-Z][A-Z0-9_]*$/.test(pathname)) return "client";
   if (method === "POST" && pathname === "/v1/sync-data") return "worker";
   if (method === "DELETE" && pathname === "/v1/sync-data/run-logs") return "client";
   if (method === "POST" && pathname === "/v1/cancel") return "client";
@@ -653,6 +691,7 @@ async function workerInboxResponse(db, request, env, state) {
     recentFileAccess,
     pendingFileAccess,
     cancelRequest,
+    sharedSettings,
   ] = await Promise.all([
     requestLogResponse(db, 20),
     loadFileAccessRequests(db, { limit: 8 }),
@@ -662,6 +701,7 @@ async function workerInboxResponse(db, request, env, state) {
       limit: 20,
     }),
     loadCancelRequest(db),
+    loadSharedSettings(db),
   ]);
   return {
     statusResponse: relayResponse(state),
@@ -682,6 +722,7 @@ async function workerInboxResponse(db, request, env, state) {
       .filter((command) => command.status === "pending")
       .sort((lhs, rhs) => Date.parse(lhs.createdAt) - Date.parse(rhs.createdAt)),
     cancelRequest,
+    sharedSettings,
   };
 }
 
@@ -2555,6 +2596,7 @@ async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {
   const dryRunReports = parseJSON(await getMeta(db, "syncDataDryRunReports"), []);
   const calendarChanges = parseJSON(await getMeta(db, "syncDataCalendarChanges"), []);
   const settings = parseJSON(await getMeta(db, "syncDataSettings"), []);
+  const sharedSettings = await loadSharedSettings(db);
   const runLogs = parseJSON(await getMeta(db, "syncDataRunLogs"), []);
   const verifySummary = parseJSON(await getMeta(db, "syncDataVerifySummary"), null);
   const runLogsClearedAt = await getMeta(db, "syncDataRunLogsClearedAt");
@@ -2572,9 +2614,92 @@ async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {
     dryRunReports: normalizeDryRunReports(dryRunReports),
     calendarChanges: normalizeCalendarChanges(calendarChanges),
     settings: normalizeSettings(settings),
+    sharedSettings,
     runLogs: normalizeRunLogs(runLogs, runLogsClearedAt),
     verifySummary: normalizeVerifySummary(verifySummary),
   };
+}
+
+async function sharedSettingsResponse(db) {
+  return {
+    settings: await loadSharedSettings(db),
+  };
+}
+
+async function loadSharedSettings(db) {
+  const stored = normalizeSettings(parseJSON(await getMeta(db, "sharedSettings"), []));
+  return normalizedSharedSettings(stored);
+}
+
+async function updateSharedSetting(db, env, key, body, request) {
+  const setting = normalizeSharedSettingInput(key, body);
+  if (!setting) {
+    return null;
+  }
+  const current = await loadSharedSettings(db);
+  const next = normalizedSharedSettings([
+    ...current.filter((item) => item.key !== setting.key),
+    setting,
+  ]);
+  await db.batch([
+    setMetaStatement(db, "sharedSettings", JSON.stringify(next)),
+    setMetaStatement(db, "updatedAt", setting.updatedAt),
+  ]);
+  await appendRequestLog(db, request, {
+    action: `${setting.title} 변경`,
+    status: "updated",
+    message: "서버 공유 설정을 바로 저장했습니다.",
+  });
+  await touchRelayEvent(db, env, {
+    reason: "shared-settings",
+    updatedAt: setting.updatedAt,
+  });
+  return setting;
+}
+
+function normalizedSharedSettings(stored) {
+  const storedByKey = new Map(normalizeSettings(stored).map((setting) => [setting.key, setting]));
+  return SHARED_SETTING_DEFINITIONS.map((definition) => {
+    const storedSetting = storedByKey.get(definition.key);
+    const value = normalizeSharedSettingValue(definition, storedSetting?.value ?? definition.value);
+    return {
+      key: definition.key,
+      title: definition.title,
+      value,
+      valueKind: definition.valueKind,
+      options: definition.options,
+      editable: true,
+      updatedAt: storedSetting?.updatedAt || "",
+    };
+  });
+}
+
+function normalizeSharedSettingInput(key, body) {
+  const normalizedKey = sanitizeSettingKey(key || body?.key);
+  const definition = SHARED_SETTING_DEFINITIONS.find((item) => item.key === normalizedKey);
+  if (!definition) {
+    return null;
+  }
+  return {
+    key: definition.key,
+    title: definition.title,
+    value: normalizeSharedSettingValue(definition, body?.value),
+    valueKind: definition.valueKind,
+    options: definition.options,
+    editable: true,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function normalizeSharedSettingValue(definition, value) {
+  if (definition.valueKind === "bool") {
+    return normalizeBoolean(value) ? "1" : "0";
+  }
+  const text = sanitizePublicText(value) || definition.value;
+  if (definition.valueKind === "choice") {
+    return definition.options.includes(text) ? text : definition.value;
+  }
+  return text;
 }
 
 async function clearSharedRunLogs(db, env) {

@@ -103,6 +103,7 @@ Windows 앱은 KLMS를 직접 읽지 않는다. Cloudflare 서버 릴레이의 s
 - 상태 조회는 서버 릴레이의 sanitized `status`, `sync-data`, `commands`, `file-requests`만 사용한다.
 - Windows 앱은 KLMS HTML, raw log, `config.env`, Kaikey state, 로컬 절대 경로를 요청하거나 저장하지 않는다.
 - 항목 처리 요청은 서버에 action으로 남기고, Mac worker가 처리한 뒤 결과를 상태에 반영한다.
+- 화면 모드와 원격 실행의 공지 메모 업데이트 여부처럼 Mac 엔진을 직접 건드리지 않아도 되는 설정은 `/v1/shared-settings`에서 읽고 `PUT /v1/shared-settings/:key`로 바로 저장한다. Windows 로컬 체크박스만 바꾸지 말고 서버 값을 기준으로 렌더링한다.
 - 한 디바이스에서 로그/요청 기록을 지우면 다른 디바이스의 `로그` 화면에도 서버 상태 변경이 반영되어야 한다.
 - 지난 헬프데스크/시험 일정은 활성 캘린더 목록에 남기지 않는다. Mac worker가 다음 상태/캘린더 동기화에서 active 목록에서 제외하면 Windows도 대시보드 카운트와 목록에서 즉시 제거하고, 필요한 경우 완료/기록 영역에만 표시한다.
 - 캘린더 제목을 만들 때는 서버 항목의 `course`와 `title`만 조합한다. 서버/캘린더 prefix는 UI 배지나 종류 라벨로만 표시하고 항목 제목 문자열에 다시 붙이지 않는다.

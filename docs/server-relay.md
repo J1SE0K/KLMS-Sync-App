@@ -168,6 +168,8 @@ Mac 앱은 상태를 올릴 때 과제, 시험, 공지, 파일 목록도 같이 
 - `PUT /v1/commands/:id`: worker 전용. Mac 앱이 실행 상태 갱신.
 - `POST /v1/sync-data`: worker 전용. Mac 앱이 sanitized 과제/시험/공지/파일 목록 게시.
 - `GET /v1/sync-data?kind=exam&limit=50`: 클라이언트/worker. iPhone/Windows/Web 클라이언트가 목록 조회.
+- `GET /v1/shared-settings`: 클라이언트/worker. Mac을 기다리지 않아도 되는 앱 공통 설정 조회.
+- `PUT /v1/shared-settings/:key`: 클라이언트/worker. 허용된 앱 공통 설정만 서버에 바로 저장. 현재 `KLMS_APPEARANCE_MODE`, `KLMS_UPDATE_NOTICE_NOTES`를 지원.
 - `POST /v1/item-actions`: 클라이언트/worker. iPhone/Windows/Web 클라이언트가 항목 처리 요청 생성.
 - `GET /v1/item-actions/recent?limit=10`: 클라이언트/worker. 최근 항목 처리 요청 조회.
 - `GET /v1/item-actions/pending`: worker 전용. Mac 앱이 대기 항목 처리 요청 조회.

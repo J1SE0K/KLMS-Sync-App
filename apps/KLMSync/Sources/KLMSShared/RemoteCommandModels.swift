@@ -1312,6 +1312,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
     public var dryRunReports: [DryRunReport]
     public var calendarChanges: [CalendarChange]
     public var settings: [ServerRelaySetting]
+    public var sharedSettings: [ServerRelaySetting]
     public var runLogs: [ServerRelayRunLog]
     public var verifySummary: ServerRelayVerifySummary?
 
@@ -1321,6 +1322,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         case dryRunReports
         case calendarChanges
         case settings
+        case sharedSettings
         case runLogs
         case verifySummary
     }
@@ -1331,6 +1333,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         dryRunReports: [DryRunReport] = [],
         calendarChanges: [CalendarChange] = [],
         settings: [ServerRelaySetting] = [],
+        sharedSettings: [ServerRelaySetting] = [],
         runLogs: [ServerRelayRunLog] = [],
         verifySummary: ServerRelayVerifySummary? = nil
     ) {
@@ -1339,6 +1342,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         self.dryRunReports = dryRunReports
         self.calendarChanges = calendarChanges
         self.settings = settings
+        self.sharedSettings = sharedSettings
         self.runLogs = runLogs
         self.verifySummary = verifySummary
     }
@@ -1350,6 +1354,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         dryRunReports = try container.decodeIfPresent([DryRunReport].self, forKey: .dryRunReports) ?? []
         calendarChanges = try container.decodeIfPresent([CalendarChange].self, forKey: .calendarChanges) ?? []
         settings = try container.decodeIfPresent([ServerRelaySetting].self, forKey: .settings) ?? []
+        sharedSettings = try container.decodeIfPresent([ServerRelaySetting].self, forKey: .sharedSettings) ?? []
         runLogs = try container.decodeIfPresent([ServerRelayRunLog].self, forKey: .runLogs) ?? []
         verifySummary = try container.decodeIfPresent(ServerRelayVerifySummary.self, forKey: .verifySummary)
     }
@@ -2184,6 +2189,14 @@ public struct ServerRelaySettingActionListResponse: Codable, Sendable, Equatable
     }
 }
 
+public struct ServerRelaySettingListResponse: Codable, Sendable, Equatable {
+    public var settings: [ServerRelaySetting]
+
+    public init(settings: [ServerRelaySetting] = []) {
+        self.settings = settings
+    }
+}
+
 public struct ServerRelayCancelRequest: Codable, Sendable, Equatable {
     public var requested: Bool
     public var requestedAt: Date?
@@ -2212,6 +2225,7 @@ public struct ServerRelayWorkerInbox: Codable, Sendable, Equatable {
     public var pendingItemActions: [ServerRelayItemAction]
     public var pendingCommands: [RemoteRunCommand]
     public var cancelRequest: ServerRelayCancelRequest
+    public var sharedSettings: [ServerRelaySetting]
 
     enum CodingKeys: String, CodingKey {
         case statusResponse
@@ -2222,6 +2236,7 @@ public struct ServerRelayWorkerInbox: Codable, Sendable, Equatable {
         case pendingItemActions
         case pendingCommands
         case cancelRequest
+        case sharedSettings
     }
 
     public init(
@@ -2232,7 +2247,8 @@ public struct ServerRelayWorkerInbox: Codable, Sendable, Equatable {
         pendingSettingActions: [ServerRelaySettingAction] = [],
         pendingItemActions: [ServerRelayItemAction] = [],
         pendingCommands: [RemoteRunCommand] = [],
-        cancelRequest: ServerRelayCancelRequest = ServerRelayCancelRequest()
+        cancelRequest: ServerRelayCancelRequest = ServerRelayCancelRequest(),
+        sharedSettings: [ServerRelaySetting] = []
     ) {
         self.statusResponse = statusResponse
         self.recentRequestLog = recentRequestLog
@@ -2242,6 +2258,7 @@ public struct ServerRelayWorkerInbox: Codable, Sendable, Equatable {
         self.pendingItemActions = pendingItemActions
         self.pendingCommands = pendingCommands
         self.cancelRequest = cancelRequest
+        self.sharedSettings = sharedSettings
     }
 
     public init(from decoder: Decoder) throws {
@@ -2254,6 +2271,7 @@ public struct ServerRelayWorkerInbox: Codable, Sendable, Equatable {
         pendingItemActions = try container.decodeIfPresent([ServerRelayItemAction].self, forKey: .pendingItemActions) ?? []
         pendingCommands = try container.decodeIfPresent([RemoteRunCommand].self, forKey: .pendingCommands) ?? []
         cancelRequest = try container.decodeIfPresent(ServerRelayCancelRequest.self, forKey: .cancelRequest) ?? ServerRelayCancelRequest()
+        sharedSettings = try container.decodeIfPresent([ServerRelaySetting].self, forKey: .sharedSettings) ?? []
     }
 }
 
@@ -2402,6 +2420,27 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         )
     }
 
+    public func fetchSharedSettings() async throws -> [ServerRelaySetting] {
+        do {
+            let response: ServerRelaySettingListResponse = try await send(
+                method: "GET",
+                path: "/v1/shared-settings"
+            )
+            return response.settings
+        } catch {
+            guard Self.isMissingOptionalEndpoint(error) else { throw error }
+            return []
+        }
+    }
+
+    public func updateSharedSetting(_ setting: ServerRelaySetting) async throws -> ServerRelaySetting {
+        try await send(
+            method: "PUT",
+            path: "/v1/shared-settings/\(setting.key)",
+            body: setting
+        )
+    }
+
     public func requestCancel(
         commandID: UUID,
         message: String = "iPhone에서 실행 중단 요청"
@@ -2471,7 +2510,8 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
                 pendingSettingActions: pendingSettingActions,
                 pendingItemActions: pendingItemActions,
                 pendingCommands: pendingCommands,
-                cancelRequest: cancelRequest
+                cancelRequest: cancelRequest,
+                sharedSettings: []
             )
         }
     }

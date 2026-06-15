@@ -205,6 +205,20 @@ async function runSmoke() {
   }
 
   {
+    const initial = await expectJSON("/v1/shared-settings");
+    assert.equal(initial.settings.find((setting) => setting.key === "KLMS_APPEARANCE_MODE")?.value, "system");
+    const updated = await expectJSON("/v1/shared-settings/KLMS_UPDATE_NOTICE_NOTES", {
+      value: "0",
+    }, { method: "PUT" });
+    assert.equal(updated.key, "KLMS_UPDATE_NOTICE_NOTES");
+    assert.equal(updated.value, "0");
+    const afterUpdate = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(afterUpdate.sharedSettings.find((setting) => setting.key === "KLMS_UPDATE_NOTICE_NOTES")?.value, "0");
+    const event = await expectJSON("/v1/events/poll?role=client&waitSeconds=0");
+    assert.equal(event.reason, "shared-settings");
+  }
+
+  {
     const clearRunLogs = await expectJSON("/v1/sync-data/run-logs", undefined, { method: "DELETE" });
     assert.equal(clearRunLogs.runLogs, 1);
     const event = await expectJSON("/v1/events/poll?role=client&waitSeconds=0");
@@ -327,6 +341,7 @@ async function runSmoke() {
     assert.equal(inbox.pendingSettingActions.length, 0);
     assert.equal(inbox.pendingCommands.length, 0);
     assert.equal(inbox.cancelRequest.requested, false);
+    assert.equal(inbox.sharedSettings.find((setting) => setting.key === "KLMS_UPDATE_NOTICE_NOTES")?.value, "0");
   }
   const runningCommand = await expectJSON("/v1/commands", {
     kind: "fullSync",

@@ -128,6 +128,7 @@ final class CompanionModel: ObservableObject {
     @Published var remoteSettings: [ServerRelaySetting] = []
     @Published var sharedRunLogs: [ServerRelayRunLog] = []
     @Published var verifySummary: ServerRelayVerifySummary?
+    @Published var sharedSettings: [ServerRelaySetting] = []
     @Published var mailDashboardItems: [ServerRelaySyncItem] = [] {
         didSet { rebuildDashboardDerivedState(); rebuildVisibleCalendarChanges() }
     }
@@ -179,6 +180,7 @@ final class CompanionModel: ObservableObject {
     private var syncItemsSignature: Int?
     private var calendarChangesSignature: Int?
     private var remoteSettingsSignature: Int?
+    private var sharedSettingsSignature: Int?
     private var sharedRunLogsSignature: Int?
     private var verifySummarySignature: Int?
     private var lastTerminalCommandID: UUID?
@@ -194,6 +196,8 @@ final class CompanionModel: ObservableObject {
     private static let serverURLKey = "KLMSServerRelayURL"
     private static let serverTokenKey = "KLMSServerRelayToken"
     private static let shouldUpdateNoticeNotesKey = "KLMSShouldUpdateNoticeNotes"
+    private static let sharedAppearanceModeKey = "KLMS_APPEARANCE_MODE"
+    private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
     private static let trackedReportNotificationCommandIDsKey = "KLMSTrackedReportNotificationCommandIDs"
     private static let mailDashboardItemsKey = "KLMSCompanionMailDashboardItems"
 
@@ -246,6 +250,25 @@ final class CompanionModel: ObservableObject {
         Self.clearDeprecatedLocalConnectionInfo()
         rebuildDashboardDerivedState()
         rebuildVisibleCalendarChanges()
+    }
+
+    var sharedAppearanceModeValue: String {
+        let remoteValue = sharedSettings
+            .first { $0.key == Self.sharedAppearanceModeKey }?
+            .value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let remoteValue, KLMSAppearanceMode(rawValue: remoteValue) != nil {
+            return remoteValue
+        }
+        let localValue = UserDefaults.standard.string(forKey: "KLMSAppearanceMode") ?? KLMSAppearanceMode.system.rawValue
+        return KLMSAppearanceMode(rawValue: localValue)?.rawValue ?? KLMSAppearanceMode.system.rawValue
+    }
+
+    var sharedNoticeUpdateNotesEnabled: Bool {
+        guard let setting = sharedSettings.first(where: { $0.key == Self.sharedNoticeUpdateNotesKey }) else {
+            return shouldUpdateNoticeNotes
+        }
+        return setting.boolValue
     }
 
     private func rebuildDashboardDerivedState() {
@@ -628,6 +651,74 @@ final class CompanionModel: ObservableObject {
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "설정 요청 실패", message: message)
+        }
+    }
+
+    func updateSharedAppearanceMode(_ rawValue: String) async {
+        let normalized = KLMSAppearanceMode(rawValue: rawValue)?.rawValue ?? KLMSAppearanceMode.system.rawValue
+        await updateSharedSetting(
+            key: Self.sharedAppearanceModeKey,
+            title: "화면 모드",
+            value: normalized,
+            valueKind: .choice,
+            options: KLMSAppearanceMode.allCases.map(\.rawValue),
+            successMessage: "화면 모드를 저장했습니다."
+        )
+    }
+
+    func updateSharedNoticeNotes(_ enabled: Bool) async {
+        await updateSharedSetting(
+            key: Self.sharedNoticeUpdateNotesKey,
+            title: "공지 메모 업데이트",
+            value: enabled ? "1" : "0",
+            valueKind: .bool,
+            options: [],
+            successMessage: enabled ? "공지 메모도 함께 업데이트합니다." : "원격 실행에서 공지 메모 업데이트를 건너뜁니다."
+        )
+    }
+
+    private func updateSharedSetting(
+        key: String,
+        title: String,
+        value: String,
+        valueKind: ServerRelaySettingValueKind,
+        options: [String],
+        successMessage: String
+    ) async {
+        let updatedAt = ServerRelaySyncItem.isoTimestamp()
+        let setting = ServerRelaySetting(
+            key: key,
+            title: title,
+            value: value,
+            valueKind: valueKind,
+            options: options,
+            editable: true,
+            updatedAt: updatedAt
+        )
+        _ = applySharedSettings([setting])
+        guard let serverRelayStore else {
+            connectionMessage = "서버 연결 정보가 없어 이 기기에만 적용했습니다."
+            connectionSucceeded = false
+            return
+        }
+        isSubmitting = true
+        defer {
+            isSubmitting = false
+        }
+        do {
+            let saved = try await serverRelayStore.updateSharedSetting(setting)
+            _ = applySharedSettings([saved])
+            connectionMessage = successMessage
+            connectionSucceeded = true
+            errorMessage = ""
+            await refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false)
+        } catch {
+            guard !isCancellationError(error) else { return }
+            let message = userFacingMessage(for: error)
+            errorMessage = message
+            connectionMessage = "설정 저장 실패"
+            connectionSucceeded = false
+            userAlert = UserAlert(title: "설정 저장 실패", message: message)
         }
     }
 
@@ -1363,7 +1454,9 @@ final class CompanionModel: ObservableObject {
               let event = try? JSONDecoder().decode(RelayEventEnvelope.self, from: data) else {
             return false
         }
-        return event.reason == "sync-data" || event.reason?.hasPrefix("sync-data:") == true
+        return event.reason == "sync-data"
+            || event.reason == "shared-settings"
+            || event.reason?.hasPrefix("sync-data:") == true
     }
 
     @discardableResult
@@ -1475,6 +1568,7 @@ final class CompanionModel: ObservableObject {
             remoteSettingsSignature = nextRemoteSettingsSignature
             didChange = true
         }
+        didChange = applySharedSettings(syncData.sharedSettings) || didChange
         let nextSharedRunLogsSignature = Self.signature(for: syncData.runLogs)
         if sharedRunLogsSignature != nextSharedRunLogsSignature {
             sharedRunLogs = syncData.runLogs
@@ -1490,6 +1584,40 @@ final class CompanionModel: ObservableObject {
         lastSyncDataRefreshAt = Date()
         syncDataNeedsRefresh = false
         return didChange
+    }
+
+    @discardableResult
+    private func applySharedSettings(_ incomingSettings: [ServerRelaySetting]) -> Bool {
+        guard !incomingSettings.isEmpty else {
+            return false
+        }
+        var mergedByKey = Dictionary(uniqueKeysWithValues: sharedSettings.map { ($0.key, $0) })
+        for setting in incomingSettings {
+            mergedByKey[setting.key] = setting
+        }
+        let next = mergedByKey.values.sorted { $0.key < $1.key }
+        let nextSignature = Self.signature(for: next)
+        guard sharedSettingsSignature != nextSignature else {
+            return false
+        }
+        sharedSettings = next
+        sharedSettingsSignature = nextSignature
+        for setting in next {
+            applySharedSettingLocally(setting)
+        }
+        return true
+    }
+
+    private func applySharedSettingLocally(_ setting: ServerRelaySetting) {
+        switch setting.key {
+        case Self.sharedAppearanceModeKey:
+            let rawValue = KLMSAppearanceMode(rawValue: setting.value)?.rawValue ?? KLMSAppearanceMode.system.rawValue
+            UserDefaults.standard.set(rawValue, forKey: "KLMSAppearanceMode")
+        case Self.sharedNoticeUpdateNotesKey:
+            shouldUpdateNoticeNotes = setting.boolValue
+        default:
+            break
+        }
     }
 
     private static func signature(for items: [ServerRelaySyncItem]) -> Int {
@@ -2318,20 +2446,21 @@ private struct CompanionSettingsScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: "설정", model: model) {
-            ServerRelayConnectionPanel(model: model)
-            CompanionAppearancePanel()
+            CompanionAppearancePanel(model: model)
+            CompanionSharedSettingsPanel(model: model)
             if !model.serverRelayConfigured {
                 InfoBanner(message: model.remoteAvailabilityMessage)
             }
             RemoteSettingsPanel(model: model)
             RemoteDiagnosticPanel(model: model)
             RemotePrivacyNote()
+            ServerRelayConnectionPanel(model: model)
         }
     }
 }
 
 private struct CompanionAppearancePanel: View {
-    @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
+    @ObservedObject var model: CompanionModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -2351,12 +2480,70 @@ private struct CompanionAppearancePanel: View {
                 }
             }
 
-            Picker("화면 모드", selection: $appearanceMode) {
+            Picker("화면 모드", selection: Binding(
+                get: { model.sharedAppearanceModeValue },
+                set: { newValue in
+                    Task {
+                        await model.updateSharedAppearanceMode(newValue)
+                    }
+                }
+            )) {
                 ForEach(KLMSAppearanceMode.allCases) { mode in
                     Text(mode.title).tag(mode.rawValue)
                 }
             }
             .pickerStyle(.segmented)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
+    }
+}
+
+private struct CompanionSharedSettingsPanel: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 28, height: 28)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("앱 공통 설정")
+                        .font(.headline)
+                    Text("Mac을 기다리지 않고 서버에 바로 저장되어 모든 기기에 반영됩니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Toggle(isOn: Binding(
+                get: { model.sharedNoticeUpdateNotesEnabled },
+                set: { enabled in
+                    Task {
+                        await model.updateSharedNoticeNotes(enabled)
+                    }
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("원격 실행 때 공지 메모도 업데이트")
+                        .font(.subheadline.weight(.semibold))
+                    Text("끄면 iPhone/iPad/Windows에서 실행한 동기화는 공지 메모 쓰기를 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .disabled(model.isSubmitting)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -9648,7 +9835,7 @@ private struct RemoteSettingsPanel: View {
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 8) {
-                CompanionSettingHelpText("여기에서 바꾼 값은 서버 요청으로 올라가고, Mac 앱이 확인한 뒤 config.env에 반영합니다. 알 수 없는 설정이나 개인정보처럼 보이는 값은 Mac 쪽에서 거부합니다.")
+                CompanionSettingHelpText("이 아래 설정은 실제 동기화 엔진이 쓰는 값이라 Mac 앱이 확인한 뒤 config.env에 반영합니다. 화면 모드와 공지 메모 업데이트 여부는 위의 앱 공통 설정에서 서버에 바로 저장됩니다.")
                 if model.remoteSettings.isEmpty {
                     Text("Mac 앱이 설정 목록을 서버에 올리면 여기에서 일부 설정을 바꿀 수 있습니다.")
                         .font(.caption)
@@ -10091,16 +10278,45 @@ private struct RemoteLogDetailPanel: View {
 
     private var statusDetails: some View {
         VStack(alignment: .leading, spacing: 6) {
-            DetailFieldRow(title: "현재 표시", value: model.statusLine)
-            DetailFieldRow(title: "단계", value: model.status.phase.klmsRemotePhaseName)
-            DetailFieldRow(title: "세부 단계", value: model.runningPhaseDetail ?? "")
-            if let latest = model.latestCommand {
-                DetailFieldRow(title: "최근 요청", value: "\(latest.kind.displayName) · \(latest.displayStatus().displayName)")
+            if let digits = model.status.authDigits {
+                DetailFieldRow(title: "인증번호", value: digits)
             }
-            if let lastRefreshAt = model.lastRefreshAt {
-                DetailFieldRow(title: "최근 갱신", value: lastRefreshAt.formatted(date: .abbreviated, time: .standard))
+            if model.status.loginRequired {
+                DetailFieldRow(title: "로그인", value: "KLMS 로그인이 필요합니다.")
+            }
+            if model.status.phase == "running" || model.hasInFlightRequest {
+                DetailFieldRow(title: "단계", value: model.status.phase.klmsRemotePhaseName)
+                DetailFieldRow(title: "세부 단계", value: model.runningPhaseDetail ?? "처리 중")
+            }
+            if let activeCommand {
+                DetailFieldRow(title: "실행 중", value: "\(activeCommand.kind.displayName) · \(activeCommand.displayStatus().displayName)")
+            }
+            if let activeFileRequest {
+                DetailFieldRow(title: "파일 요청", value: "\(activeFileRequest.itemTitle.nilIfEmpty ?? "파일") · \(activeFileRequest.status.displayName)")
+            }
+            if !hasCurrentDetail {
+                Text("현재 진행 중인 요청이 없습니다.")
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    private var activeCommand: RemoteRunCommand? {
+        model.recentCommands.first { $0.displayStatus().isInFlight }
+    }
+
+    private var activeFileRequest: ServerRelayFileAccessRequest? {
+        model.recentFileAccessRequests.first { $0.status.isInFlight }
+    }
+
+    private var hasCurrentDetail: Bool {
+        model.status.authDigits != nil
+            || model.status.loginRequired
+            || model.status.phase == "running"
+            || activeCommand != nil
+            || activeFileRequest != nil
     }
 }
 
