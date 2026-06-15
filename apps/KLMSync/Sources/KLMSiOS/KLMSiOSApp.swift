@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let klmsInteractionDetailDelayNanoseconds: UInt64 = 0
+private let klmsInteractionDetailDelayNanoseconds: UInt64 = 16_000_000
 
 #if canImport(AppKit)
 import AppKit
