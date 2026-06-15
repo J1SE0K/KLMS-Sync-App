@@ -713,10 +713,10 @@ final class DashboardDataModelTests: XCTestCase {
         let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
         let mac = try String(contentsOf: macRoot, encoding: .utf8)
         let ios = try String(contentsOf: iosRoot, encoding: .utf8)
-        let macDesignWindow = try sourceBody(
-            after: "struct MacDesignWindowRootView: View",
+        let macRootBody = try sourceBody(
+            after: "struct MenuBarRootView: View",
             in: mac,
-            description: "Mac design window root view"
+            description: "Mac root view"
         )
 
         XCTAssertTrue(mac.contains("ScrollView(.vertical, showsIndicators: true)"))
@@ -724,8 +724,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("private struct WholeScreenVerticalScrollView"))
         XCTAssertTrue(mac.contains("GeometryReader { geometry in"))
         XCTAssertTrue(mac.contains("minHeight: geometry.size.height"))
-        XCTAssertTrue(macDesignWindow.contains("WholeScreenVerticalScrollView"))
-        XCTAssertTrue(macDesignWindow.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(macRootBody.contains("WholeScreenVerticalScrollView"))
+        XCTAssertTrue(macRootBody.contains(".frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)"))
         XCTAssertFalse(mac.contains("ScrollView(.horizontal)"))
         XCTAssertTrue(ios.contains("ScrollView(.vertical, showsIndicators: true)"))
         XCTAssertTrue(ios.contains(".scrollIndicators(.visible)"))
@@ -752,16 +752,6 @@ final class DashboardDataModelTests: XCTestCase {
             after: "private struct MacPressFeedbackButtonStyle: ButtonStyle",
             in: view,
             description: "Mac press feedback button style"
-        )
-        let primaryButtonStyle = try sourceBody(
-            after: "private struct MacDesignPrimaryButtonStyle: ButtonStyle",
-            in: view,
-            description: "Mac primary button style"
-        )
-        let secondaryButtonStyle = try sourceBody(
-            after: "private struct MacDesignSecondaryButtonStyle: ButtonStyle",
-            in: view,
-            description: "Mac secondary button style"
         )
         let rootActionButtonStyle = try sourceBody(
             after: "private struct KLMSMacRootActionButtonStyle: ButtonStyle",
@@ -796,18 +786,19 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(app.contains("settingsHeight"))
         XCTAssertFalse(app.contains("KLMSDiagnosticWindowCoordinator"))
         XCTAssertFalse(app.contains("KLMSDiagnosticRootContainerView"))
+        XCTAssertFalse(view.contains("struct MacDesignWindowRootView"))
+        XCTAssertFalse(view.contains("MacDesignWorkspace"))
+        XCTAssertFalse(view.contains("MacDesignMetricKind"))
 
-        XCTAssertTrue(view.contains("MacDesignPanel(title: displayedMetric == .logs ? \"최근 실행 로그\" : \"선택한 대시보드 항목\")"))
-        XCTAssertTrue(view.contains("MacDesignPanel(title: \"로그 요약\")"))
-        XCTAssertTrue(view.contains("compactLogSummaryRow(\"단계별 시간\""))
-        XCTAssertTrue(view.contains("ForEach(rows.prefix(displayedMetric == .logs ? 5 : 4))"))
+        XCTAssertTrue(view.contains("DashboardLogSummaryPanelView(model: model)"))
+        XCTAssertTrue(view.contains("DashboardSummaryView(model: model)"))
+        XCTAssertTrue(view.contains("CommandStageDurationSummaryView(durations: stageDurations)"))
         XCTAssertTrue(view.contains("private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 0"))
         XCTAssertFalse(view.contains("metric.systemImage"))
         XCTAssertFalse(view.contains("row.systemImage"))
-        XCTAssertTrue(view.contains("systemImage: \"gauge.with.dots.needle.67percent\""))
-        XCTAssertTrue(view.contains("chipText: model.snapshot.loginStatus?.loggedIn == true ? \"OK\" : \"대기\""))
-        XCTAssertTrue(view.contains("return model.serverRelayEnabled ? \"Mac 연결됨\" : \"준비됨\""))
-        XCTAssertTrue(view.contains("MacDesignMetric(.files, \"파일\", model.snapshot.courseFileManifest.count)"))
+        XCTAssertTrue(view.contains("\"gauge.with.dots.needle.67percent\""))
+        XCTAssertTrue(view.contains("private var chipText: String"))
+        XCTAssertTrue(view.contains("return \"OK\""))
         XCTAssertTrue(workstationLayout.contains("@State private var displayedSection"))
         XCTAssertTrue(workstationLayout.contains("switch displayedSection"))
         XCTAssertTrue(workstationLayout.contains("deferDisplayedSection(newSection)"))
@@ -826,9 +817,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(navigationView.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(navigationView.contains("guard selection != section else { return }"))
         XCTAssertTrue(navigationView.contains("Image(systemName: section.systemImage)"))
-        XCTAssertTrue(navigationView.contains(".frame(width: 20)"))
-        XCTAssertTrue(navigationView.contains("isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground"))
-        XCTAssertTrue(navigationView.contains("isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder"))
+        XCTAssertTrue(navigationView.contains("RoundedRectangle(cornerRadius: 3)"))
+        XCTAssertTrue(navigationView.contains(".frame(width: 4, height: 28)"))
+        XCTAssertTrue(navigationView.contains(".frame(width: 22)"))
+        XCTAssertTrue(navigationView.contains("Image(systemName: \"chevron.right\")"))
+        XCTAssertTrue(navigationView.contains("isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground.opacity(0.58)"))
+        XCTAssertTrue(navigationView.contains("isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.52)"))
         XCTAssertTrue(view.contains("case settings"))
         XCTAssertTrue(view.contains("case .settings:"))
         XCTAssertTrue(view.contains("\"설정\""))
@@ -846,8 +840,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(commandPanel.contains("Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.88)"))
         XCTAssertTrue(commandPanel.contains(".disabled(model.runningCommand != nil && !isRunning)"))
         XCTAssertTrue(commandPanel.contains("private func runOrCancel(_ command: KLMSEngineCommand)"))
-        XCTAssertTrue(view.contains(".buttonStyle(MacDesignSecondaryButtonStyle(isActive: isRunning))"))
-        XCTAssertTrue(view.contains(".font(.system(size: 28, weight: .bold, design: .rounded))"))
+        XCTAssertTrue(view.contains(".font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())"))
         XCTAssertTrue(view.contains(".buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 13))"))
         XCTAssertTrue(view.contains(".buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))"))
         XCTAssertFalse(view.contains(".buttonStyle(.plain)"))
@@ -864,21 +857,6 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(pressFeedbackStyle.contains("duration: 0.035"))
         XCTAssertTrue(view.contains("alpha: 0.380"))
         XCTAssertTrue(view.contains("alpha: 0.420"))
-        XCTAssertTrue(primaryButtonStyle.contains(".scaleEffect(configuration.isPressed ? 0.997 : 1.0)"))
-        XCTAssertTrue(primaryButtonStyle.contains("duration: 0.035"))
-        XCTAssertTrue(primaryButtonStyle.contains("primaryBackground(isPressed: configuration.isPressed)"))
-        XCTAssertTrue(primaryButtonStyle.contains("var isActive: Bool = false"))
-        XCTAssertTrue(primaryButtonStyle.contains("if isActive"))
-        XCTAssertTrue(primaryButtonStyle.contains("Color.klmsMacPrimaryCommandButtonPressedBackground"))
-        XCTAssertTrue(primaryButtonStyle.contains("return Color.klmsMacPrimaryCommandButtonPressedBackground"))
-        XCTAssertTrue(primaryButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 0.58)"))
-        XCTAssertFalse(primaryButtonStyle.contains("Color.klmsMacDangerBorder"))
-        XCTAssertFalse(primaryButtonStyle.contains("Color.klmsMacDangerBackground"))
-        XCTAssertTrue(secondaryButtonStyle.contains("var isActive = false"))
-        XCTAssertTrue(secondaryButtonStyle.contains(".opacity(isEnabled || isActive ? 1.0 : 0.48)"))
-        XCTAssertTrue(secondaryButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
-        XCTAssertTrue(secondaryButtonStyle.contains("Color.klmsMacPrimaryCommandButtonPressedBackground"))
-        XCTAssertTrue(secondaryButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 0.58)"))
         XCTAssertTrue(rootActionButtonStyle.contains("background(isPressed: configuration.isPressed)"))
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacPrimaryCommandButtonPressedBackground"))
@@ -1311,8 +1289,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("KLMSMacSettingsSidebarButtonStyle"))
         XCTAssertTrue(macSettings.contains("Text(\"앱 안에서 바로 바꿉니다.\")"))
         XCTAssertTrue(macSettings.contains("Text(\"앱 내부 설정\")"))
-        XCTAssertTrue(macSettings.contains("isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground"))
-        XCTAssertTrue(macSettings.contains("isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder"))
+        XCTAssertTrue(macSettings.contains("RoundedRectangle(cornerRadius: 3)"))
+        XCTAssertTrue(macSettings.contains(".frame(width: 4, height: 30)"))
+        XCTAssertTrue(macSettings.contains("Image(systemName: \"chevron.right\")"))
+        XCTAssertTrue(macSettings.contains("isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground.opacity(0.58)"))
+        XCTAssertTrue(macSettings.contains("isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.52)"))
         XCTAssertTrue(macSettings.contains("Section(\"실행 방식\")"))
         XCTAssertTrue(macSettings.contains("Section(\"Safari 자동화\")"))
         XCTAssertTrue(macSettings.contains("Section(\"파일 확인\")"))
@@ -1345,11 +1326,7 @@ final class DashboardDataModelTests: XCTestCase {
         let mac = try String(contentsOf: macRoot, encoding: .utf8)
         let ios = try String(contentsOf: iosRoot, encoding: .utf8)
         let macRootBody = try sourceBody(after: "struct MenuBarRootView: View", in: mac, description: "Mac root view")
-        let macDesignWindow = try sourceBody(
-            after: "struct MacDesignWindowRootView: View",
-            in: mac,
-            description: "Mac design window root view"
-        )
+        let macNavigationView = try sourceStructBody(named: "WorkspaceNavigationView", in: mac)
         let macMetricTile = try sourceStructBody(named: "MetricTile", in: mac)
         let dashboardTopBarView = try sourceStructBody(named: "DashboardTopBarView", in: mac)
         let iosHistoryScreen = try sourceStructBody(named: "CompanionHistoryScreen", in: ios)
@@ -1379,18 +1356,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macRootBody.contains("DashboardTopBarView(model: model, selectedSection: $selectedSection)"))
         XCTAssertTrue(macRootBody.contains("MacAlertBannerView("))
         XCTAssertTrue(macRootBody.contains("MacWorkstationLayoutView("))
-        XCTAssertTrue(macDesignWindow.contains("systemImage: \"gauge.with.dots.needle.67percent\""))
-        XCTAssertTrue(macDesignWindow.contains("systemImage: \"list.bullet.rectangle.portrait\""))
-        XCTAssertTrue(macDesignWindow.contains("systemImage: \"wrench.and.screwdriver\""))
-        XCTAssertTrue(macDesignWindow.contains("systemImage: \"gearshape\""))
-        XCTAssertTrue(macDesignWindow.contains("private func navigationButton(_ title: String, systemImage: String, selected: Bool"))
-        XCTAssertTrue(macDesignWindow.contains("Image(systemName: systemImage)"))
-        XCTAssertTrue(macDesignWindow.contains(".frame(width: 20)"))
-        XCTAssertTrue(mac.contains("selected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground"))
-        XCTAssertTrue(mac.contains("selected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder"))
-        XCTAssertTrue(macDesignWindow.contains("isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground"))
-        XCTAssertTrue(macDesignWindow.contains("isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText"))
-        XCTAssertTrue(macDesignWindow.contains("guard selectedMetric != metric || displayedMetric != metric else"))
+        XCTAssertFalse(mac.contains("struct MacDesignWindowRootView"))
+        XCTAssertTrue(macNavigationView.contains("section.systemImage"))
+        XCTAssertTrue(macNavigationView.contains("RoundedRectangle(cornerRadius: 3)"))
+        XCTAssertTrue(macNavigationView.contains(".frame(width: 4, height: 28)"))
+        XCTAssertTrue(macNavigationView.contains(".frame(width: 22)"))
+        XCTAssertTrue(macNavigationView.contains("Image(systemName: \"chevron.right\")"))
+        XCTAssertTrue(macNavigationView.contains("isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground.opacity(0.58)"))
+        XCTAssertTrue(macNavigationView.contains("isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.52)"))
+        XCTAssertTrue(macNavigationView.contains("guard selection != section else { return }"))
         XCTAssertTrue(macMetricTile.contains("isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground"))
         XCTAssertTrue(macMetricTile.contains("isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText"))
         XCTAssertTrue(macMetricTile.contains("isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacBorder"))

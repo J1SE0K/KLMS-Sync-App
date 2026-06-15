@@ -165,10 +165,13 @@ struct SettingsView: View {
             selectedTab = tab
         } label: {
             HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
+                    .frame(width: 4, height: 30)
                 Image(systemName: tab.systemImage)
                     .font(.subheadline.weight(.semibold))
-                    .frame(width: 20)
-                    .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
+                    .frame(width: 22)
+                    .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(tab.title)
                         .font(.subheadline.weight(isSelected ? .semibold : .regular))
@@ -179,21 +182,23 @@ struct SettingsView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "arrow.right")
+                Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground.opacity(0.85) : Color.klmsMacSecondaryText.opacity(0.62))
+                    .foregroundStyle(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacSecondaryText.opacity(0.52))
             }
-            .padding(.horizontal, 10)
+            .padding(.leading, 8)
+            .padding(.trailing, 10)
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .background(
-                isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground,
+                isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground.opacity(0.58),
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder, lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.52), lineWidth: 1)
             }
+            .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSMacSettingsSidebarButtonStyle())
