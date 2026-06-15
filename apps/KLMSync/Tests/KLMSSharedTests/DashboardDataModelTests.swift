@@ -1271,6 +1271,7 @@ final class DashboardDataModelTests: XCTestCase {
             description: "Mac design window root view"
         )
         let macMetricTile = try sourceStructBody(named: "MetricTile", in: mac)
+        let dashboardTopBarView = try sourceStructBody(named: "DashboardTopBarView", in: mac)
         let iosHistoryScreen = try sourceStructBody(named: "CompanionHistoryScreen", in: ios)
         let iosSplitRoot = try sourceStructBody(named: "CompanionSplitRootView", in: ios)
         let iosSidebar = try sourceStructBody(named: "WorkstationSidebar", in: ios)
@@ -1280,6 +1281,11 @@ final class DashboardDataModelTests: XCTestCase {
         let iosMetricOverview = try sourceStructBody(named: "RemoteDashboardMetricOverview", in: ios)
         let iosMetricTile = try sourceStructBody(named: "RemoteMetricTile", in: ios)
         let iosWorkstationMetricCard = try sourceStructBody(named: "WorkstationMetricCard", in: ios)
+        let iosCardButtonStyle = try sourceBody(
+            after: "private struct KLMSCardButtonStyle: ButtonStyle",
+            in: ios,
+            description: "iOS card button style"
+        )
 
         XCTAssertTrue(mac.contains("case activityLogs"))
         XCTAssertTrue(mac.contains("case diagnostics"))
@@ -1302,6 +1308,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macMetricTile.contains("isSelected ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacCardBackground"))
         XCTAssertTrue(macMetricTile.contains("isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText"))
         XCTAssertTrue(macMetricTile.contains("isSelected ? Color.klmsMacPrimaryCommandButtonBorder : Color.klmsMacBorder"))
+        XCTAssertTrue(macMetricTile.contains(".font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())"))
+        XCTAssertTrue(dashboardTopBarView.contains(".font(.system(size: 26, weight: .bold, design: .rounded))"))
         let workstationBody = try sourceStructBody(named: "MacWorkstationLayoutView", in: mac)
         XCTAssertFalse(workstationBody.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(workstationBody.contains("HStack(alignment: .top, spacing: 14)"))
@@ -1353,6 +1361,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosSidebarButton.contains("isSelected ? Color.klmsPrimaryCommandButtonBorder : Color.klmsBorder"))
         XCTAssertTrue(iosSidebarButton.contains(".buttonStyle(KLMSCardButtonStyle())"))
         XCTAssertTrue(iosSidebarButton.contains(".contentShape(RoundedRectangle(cornerRadius: 10))"))
+        XCTAssertTrue(iosCardButtonStyle.contains("Color.klmsPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
         XCTAssertFalse(iosSidebarButton.contains(".animation(.easeOut(duration: 0.10), value: isSelected)"))
         XCTAssertTrue(iosSplitRoot.contains("displayedSection"))
         XCTAssertTrue(iosSplitRoot.contains("deferDisplayedSection(newSection ?? .status)"))

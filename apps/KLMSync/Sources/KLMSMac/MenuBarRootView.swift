@@ -847,7 +847,7 @@ private struct DashboardTopBarView: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("대시보드")
-                    .font(.system(size: 26, weight: .bold, design: .default))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.klmsMacPrimaryText)
                 Text(statusText)
                     .font(.caption)
@@ -5205,7 +5205,7 @@ private struct MetricTile: View {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("\(metric.value)")
-                        .font(.system(size: 28, weight: .bold, design: .default).monospacedDigit())
+                        .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(isSelected ? Color.klmsMacCommandButtonForeground : Color.klmsMacPrimaryText)
                     Text(metric.label)
                         .font(.caption.weight(.semibold))

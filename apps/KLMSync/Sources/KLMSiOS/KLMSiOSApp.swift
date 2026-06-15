@@ -4232,6 +4232,14 @@ private struct KLMSCardButtonStyle: ButtonStyle {
                     .fill(Color.klmsCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(
+                        Color.klmsPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0),
+                        lineWidth: 1
+                    )
+                    .allowsHitTesting(false)
+            }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
             .animation(.linear(duration: 0.035), value: configuration.isPressed)
