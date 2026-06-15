@@ -2189,14 +2189,14 @@ private struct CompanionTabRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CompanionCompactTabBar(selectedSection: $selectedSection)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 6)
-                .background(Color.klmsScreenBackground)
-
             CompanionSectionContent(section: selectedSection, model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+            CompanionCompactTabBar(selectedSection: $selectedSection)
+                .padding(.horizontal, 16)
+                .padding(.top, 7)
+                .padding(.bottom, 10)
+                .background(Color.klmsScreenBackground)
         }
         .background(Color.klmsScreenBackground.ignoresSafeArea())
     }
@@ -3538,7 +3538,7 @@ private struct CompanionItemListInputKey: Hashable {
 }
 
 private enum CompanionLargeList {
-    static let initialVisibleLimit = 80
+    static let initialVisibleLimit = 60
     static let increment = 80
 }
 

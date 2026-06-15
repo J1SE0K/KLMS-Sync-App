@@ -918,8 +918,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(pressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
         XCTAssertTrue(detailPressFeedbackStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
         XCTAssertFalse(pressFeedbackStyle.contains("duration: 0.035"))
-        XCTAssertTrue(view.contains("alpha: 0.380"))
-        XCTAssertTrue(view.contains("alpha: 0.420"))
+        XCTAssertTrue(view.contains("alpha: 0.105"))
+        XCTAssertTrue(view.contains("alpha: 0.140"))
         XCTAssertTrue(rootActionButtonStyle.contains("background(isPressed: configuration.isPressed)"))
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacPrimaryCommandButtonPressedBackground"))
@@ -1155,6 +1155,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection] {\n        [.status, .history, .settings]"))
         XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .files, .notices, .tasks, .calendar, .history, .settings]"))
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
+        XCTAssertLessThan(
+            compactRoot.range(of: "CompanionSectionContent(section: selectedSection, model: model)")?.lowerBound ?? compactRoot.endIndex,
+            compactRoot.range(of: "CompanionCompactTabBar(selectedSection: $selectedSection)")?.lowerBound ?? compactRoot.startIndex,
+            "iPhone compact layout should keep content first and place the tab bar at the bottom, matching the design preview."
+        )
         XCTAssertFalse(compactRoot.contains("TabView"))
         XCTAssertFalse(compactRoot.contains(".tabItem"))
         XCTAssertTrue(compactTabBar.contains("ForEach(Array(compactRows.enumerated()), id: \\.offset)"))
@@ -1748,6 +1753,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(categoryDetail.contains("@State private var selectedItemID"))
         XCTAssertFalse(categoryDetail.contains("ForEach(filtered)"))
         XCTAssertTrue(selectableRows.contains("@State private var visibleLimit = CompanionLargeList.initialVisibleLimit"))
+        XCTAssertTrue(ios.contains("static let initialVisibleLimit = 60"))
         XCTAssertTrue(selectableRows.contains("@State private var selectedItemID"))
         XCTAssertTrue(selectableRows.contains("@State private var deferredSelectionTask"))
         XCTAssertTrue(selectableRows.contains("LazyVStack(alignment: .leading, spacing: 8)"))
