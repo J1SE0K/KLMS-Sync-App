@@ -1881,15 +1881,15 @@ private struct CompanionCompactTabBar: View {
                         .frame(minWidth: compactTabMinWidth(for: section), minHeight: 42)
                         .background(
                             isSelected
-                                ? Color.klmsSelectedBackground
+                                ? Color.klmsSelectedBackground.opacity(0.96)
                                 : Color.klmsSubtleCardBackground.opacity(0.62),
                             in: RoundedRectangle(cornerRadius: 10)
                         )
                         .overlay {
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.42), lineWidth: 1)
+                                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
                         }
-                        .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
+                        .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(KLMSCardButtonStyle())
@@ -2021,7 +2021,7 @@ private struct CompanionSidebarButton: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(
                                 isSelected
-                                    ? Color.klmsSelectedForeground.opacity(0.12)
+                                    ? Color.klmsSelectedBorder.opacity(0.18)
                                     : Color.klmsSubtleCardBackground.opacity(0.72)
                             )
                         Image(systemName: section.systemImage)
@@ -2046,7 +2046,7 @@ private struct CompanionSidebarButton: View {
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(
                 isSelected
-                    ? Color.klmsSelectedBackground
+                    ? Color.klmsSelectedBackground.opacity(0.96)
                     : Color.klmsSubtleCardBackground.opacity(0.42),
                 in: RoundedRectangle(cornerRadius: 10)
             )
@@ -2058,9 +2058,9 @@ private struct CompanionSidebarButton: View {
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.48), lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.48), lineWidth: isSelected ? 1.2 : 1)
             )
-            .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
+            .shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSCardButtonStyle())

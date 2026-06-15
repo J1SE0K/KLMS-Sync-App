@@ -175,7 +175,7 @@ struct SettingsView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(
                             isSelected
-                                ? Color.klmsMacSelectedForeground.opacity(0.12)
+                                ? Color.klmsMacSelectedBorder.opacity(0.18)
                                 : Color.klmsMacSubtleCardBackground.opacity(0.72)
                         )
                     Image(systemName: tab.systemImage)
@@ -202,7 +202,7 @@ struct SettingsView: View {
             .padding(.vertical, 9)
             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
             .background(
-                isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground.opacity(0.34),
+                isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacSubtleCardBackground.opacity(0.34),
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay(alignment: .leading) {
@@ -213,9 +213,9 @@ struct SettingsView: View {
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacCommandBorder.opacity(0.42), lineWidth: 1)
+                    .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacCommandBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
             }
-            .shadow(color: isSelected ? Color.black.opacity(0.055) : Color.clear, radius: 8, x: 0, y: 4)
+            .shadow(color: isSelected ? Color.klmsMacSelectedBorder.opacity(0.10) : Color.clear, radius: 9, x: 0, y: 5)
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSMacSettingsSidebarButtonStyle())
