@@ -2630,8 +2630,8 @@ private struct CompanionScreenContainer<Content: View>: View {
             Color.klmsScreenBackground.ignoresSafeArea()
             WholeScreenVerticalScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    CompanionScreenHeader(title: title, model: model)
                     RemoteAttentionStack(model: model)
+                    CompanionScreenHeader(title: title, model: model)
                     content()
                 }
                 .padding(.horizontal, 16)
@@ -2725,17 +2725,14 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(.vertical, showsIndicators: true) {
-                content
-                    .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .topLeading)
-                    .contentShape(Rectangle())
-            }
-            .scrollIndicators(.visible)
-            .background(Color.klmsScreenBackground)
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-            .clipped()
+        ScrollView(.vertical, showsIndicators: true) {
+            content
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .contentShape(Rectangle())
         }
+        .scrollIndicators(.visible)
+        .background(Color.klmsScreenBackground)
+        .clipped()
     }
 }
 
@@ -2963,7 +2960,7 @@ private struct ConnectionNoticeBanner: View {
     }
 }
 
-private enum DashboardMetricCategory: String, CaseIterable, Identifiable {
+private enum DashboardMetricCategory: String, CaseIterable, Identifiable, Sendable {
     case assignments
     case exams
     case notices
@@ -3146,7 +3143,7 @@ private func companionItemKindTint(_ kind: String) -> Color {
     }
 }
 
-private enum CompanionItemSortOption: String, CaseIterable, Identifiable {
+private enum CompanionItemSortOption: String, CaseIterable, Identifiable, Sendable {
     case recent
     case updated
     case course
@@ -3178,7 +3175,7 @@ private enum CompanionItemSortOption: String, CaseIterable, Identifiable {
     }
 }
 
-private enum CompanionItemVisibilityFilter: String, CaseIterable, Identifiable {
+private enum CompanionItemVisibilityFilter: String, CaseIterable, Identifiable, Sendable {
     case visible
     case all
     case hidden
@@ -3208,7 +3205,7 @@ private enum CompanionItemVisibilityFilter: String, CaseIterable, Identifiable {
     }
 }
 
-private enum CompanionItemStatusFilter: String, CaseIterable, Identifiable {
+private enum CompanionItemStatusFilter: String, CaseIterable, Identifiable, Sendable {
     case all
     case active
     case completed
@@ -3352,7 +3349,21 @@ private struct CompanionItemListInputKey: Hashable {
     var recentOnly: Bool
 }
 
-private struct CompanionItemListData {
+private func companionItemsFingerprint(_ items: [ServerRelaySyncItem]) -> Int {
+    var hasher = Hasher()
+    hasher.combine(items.count)
+    for item in items {
+        hasher.combine(item.id)
+        hasher.combine(item.kind)
+        hasher.combine(item.updatedAt)
+        hasher.combine(item.isRead)
+        hasher.combine(item.isImportant)
+        hasher.combine(item.isHidden)
+    }
+    return hasher.finalize()
+}
+
+private struct CompanionItemListData: Sendable {
     var baseItems: [ServerRelaySyncItem]
     var courseOptions: [String]
     var yearOptions: [String]
@@ -3388,19 +3399,25 @@ private struct CompanionItemListData {
         let normalizedCourse = courses.contains(selectedCourse) ? selectedCourse : CompanionItemListFilter.allCourses
         let normalizedYear = years.contains(selectedYear) ? selectedYear : CompanionItemListFilter.allYears
         let normalizedSemester = semesters.contains(selectedSemester) ? selectedSemester : CompanionItemListFilter.allSemesters
-        let filtered = base
-            .filter { visibilityFilter.includes($0) }
-            .filter { effectiveStatus.includes($0) }
-            .filter { normalizedCourse == CompanionItemListFilter.allCourses || $0.course == normalizedCourse }
-            .filter { normalizedYear == CompanionItemListFilter.allYears || ($0.academicYear.map(String.init) ?? "") == normalizedYear }
-            .filter { normalizedSemester == CompanionItemListFilter.allSemesters || $0.academicSemester == normalizedSemester }
-            .filter { !newOnly || $0.isCompanionChangedLike }
-            .filter { !recentOnly || $0.isCompanionChangedLike }
-            .filter { item in
-                guard !normalizedQuery.isEmpty else { return true }
-                return item.searchText.localizedCaseInsensitiveContains(normalizedQuery)
+        var filtered: [ServerRelaySyncItem] = []
+        filtered.reserveCapacity(base.count)
+        for item in base {
+            guard visibilityFilter.includes(item),
+                  effectiveStatus.includes(item),
+                  normalizedCourse == CompanionItemListFilter.allCourses || item.course == normalizedCourse,
+                  normalizedYear == CompanionItemListFilter.allYears || (item.academicYear.map(String.init) ?? "") == normalizedYear,
+                  normalizedSemester == CompanionItemListFilter.allSemesters || item.academicSemester == normalizedSemester,
+                  !newOnly || item.isCompanionChangedLike,
+                  !recentOnly || item.isCompanionChangedLike else {
+                continue
             }
-            .companionSorted(by: sortOption)
+            if !normalizedQuery.isEmpty,
+               !item.searchText.localizedCaseInsensitiveContains(normalizedQuery) {
+                continue
+            }
+            filtered.append(item)
+        }
+        let sortedFiltered = filtered.companionSorted(by: sortOption)
 
         self.baseItems = base
         self.courseOptions = courses
@@ -3408,7 +3425,7 @@ private struct CompanionItemListData {
         self.semesterOptions = semesters
         self.availableStatusFilters = statusFilters
         self.effectiveStatusFilter = effectiveStatus
-        self.filteredItems = filtered
+        self.filteredItems = sortedFiltered
     }
 }
 
@@ -4512,8 +4529,6 @@ private struct KLMSCardButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
-            .animation(.linear(duration: 0.035), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 }
 
@@ -4866,8 +4881,6 @@ private struct KLMSActionButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
-            .animation(.linear(duration: 0.035), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 
     private var foreground: Color {
@@ -4948,8 +4961,6 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
-            .animation(.linear(duration: 0.035), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 
     private var foreground: Color {
@@ -5271,19 +5282,32 @@ private struct DashboardCategoryInlineDetailPanel: View {
         }
         await Task.yield()
         guard !Task.isCancelled else { return }
-        let listData = CompanionItemListData(
-            items: model.dashboardSyncItems,
-            category: category,
-            query: query,
-            sortOption: sortOption,
-            visibilityFilter: visibilityFilter,
-            statusFilter: statusFilter,
-            selectedCourse: selectedCourse,
-            selectedYear: selectedYear,
-            selectedSemester: selectedSemester,
-            newOnly: newOnly,
-            recentOnly: recentOnly
-        )
+        let items = model.dashboardSyncItems
+        let category = category
+        let query = query
+        let sortOption = sortOption
+        let visibilityFilter = visibilityFilter
+        let statusFilter = statusFilter
+        let selectedCourse = selectedCourse
+        let selectedYear = selectedYear
+        let selectedSemester = selectedSemester
+        let newOnly = newOnly
+        let recentOnly = recentOnly
+        let listData = await Task.detached(priority: .userInitiated) {
+            CompanionItemListData(
+                items: items,
+                category: category,
+                query: query,
+                sortOption: sortOption,
+                visibilityFilter: visibilityFilter,
+                statusFilter: statusFilter,
+                selectedCourse: selectedCourse,
+                selectedYear: selectedYear,
+                selectedSemester: selectedSemester,
+                newOnly: newOnly,
+                recentOnly: recentOnly
+            )
+        }.value
         guard !Task.isCancelled else { return }
         cachedListData = listData
     }
@@ -7346,6 +7370,7 @@ private struct DashboardCategoryDetailScreen: View {
     @State private var selectedSemester = CompanionItemListFilter.allSemesters
     @State private var newOnly = false
     @State private var recentOnly = false
+    @State private var cachedListData: CompanionItemListData?
 
     init(
         category: DashboardMetricCategory,
@@ -7364,23 +7389,9 @@ private struct DashboardCategoryDetailScreen: View {
     }
 
     var body: some View {
-        let listData = CompanionItemListData(
-            items: items,
-            category: category,
-            query: query,
-            sortOption: sortOption,
-            visibilityFilter: visibilityFilter,
-            statusFilter: statusFilter,
-            selectedCourse: selectedCourse,
-            selectedYear: selectedYear,
-            selectedSemester: selectedSemester,
-            newOnly: newOnly,
-            recentOnly: recentOnly
-        )
-        let filtered = listData.filteredItems
         List {
             Section {
-                DashboardCategorySummaryRow(category: category, status: status, itemCount: filtered.count)
+                DashboardCategorySummaryRow(category: category, status: status, itemCount: cachedListData?.filteredItems.count ?? 0)
             }
 
             if category == .calendar {
@@ -7406,7 +7417,8 @@ private struct DashboardCategoryDetailScreen: View {
                     Text(category.emptyMessage)
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
-            } else {
+            } else if let listData = cachedListData {
+                let filtered = listData.filteredItems
                 Section("보기") {
                     CompanionItemListControls(
                         sortOption: $sortOption,
@@ -7441,12 +7453,72 @@ private struct DashboardCategoryDetailScreen: View {
                         )
                     }
                 }
+            } else {
+                Section {
+                    Text("목록을 준비하고 있습니다.")
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
             }
         }
         .navigationTitle(category.title)
         .searchable(text: $query, prompt: "\(category.title) 검색")
+        .task(id: listInputKey) {
+            await rebuildCachedListData()
+        }
     }
 
+    private var listInputKey: CompanionItemListInputKey {
+        CompanionItemListInputKey(
+            itemsRevision: companionItemsFingerprint(items),
+            category: category.rawValue,
+            query: query,
+            sortOption: sortOption.rawValue,
+            visibilityFilter: visibilityFilter.rawValue,
+            statusFilter: statusFilter.rawValue,
+            selectedCourse: selectedCourse,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester,
+            newOnly: newOnly,
+            recentOnly: recentOnly
+        )
+    }
+
+    private func rebuildCachedListData() async {
+        guard category != .calendar, category != .quarantine else {
+            cachedListData = nil
+            return
+        }
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        let items = items
+        let category = category
+        let query = query
+        let sortOption = sortOption
+        let visibilityFilter = visibilityFilter
+        let statusFilter = statusFilter
+        let selectedCourse = selectedCourse
+        let selectedYear = selectedYear
+        let selectedSemester = selectedSemester
+        let newOnly = newOnly
+        let recentOnly = recentOnly
+        let listData = await Task.detached(priority: .userInitiated) {
+            CompanionItemListData(
+                items: items,
+                category: category,
+                query: query,
+                sortOption: sortOption,
+                visibilityFilter: visibilityFilter,
+                statusFilter: statusFilter,
+                selectedCourse: selectedCourse,
+                selectedYear: selectedYear,
+                selectedSemester: selectedSemester,
+                newOnly: newOnly,
+                recentOnly: recentOnly
+            )
+        }.value
+        guard !Task.isCancelled else { return }
+        cachedListData = listData
+    }
 }
 
 private struct DashboardCategorySummaryRow: View {
@@ -7919,50 +7991,44 @@ private struct ServerSyncDataPanel: View {
     @State private var selectedSemester = CompanionItemListFilter.allSemesters
     @State private var newOnly = false
     @State private var recentOnly = false
+    @State private var cachedListData: CompanionItemListData?
 
     var body: some View {
         if !items.isEmpty {
-            let listData = CompanionItemListData(
-                items: items,
-                category: nil,
-                query: query,
-                sortOption: sortOption,
-                visibilityFilter: visibilityFilter,
-                statusFilter: statusFilter,
-                selectedCourse: selectedCourse,
-                selectedYear: selectedYear,
-                selectedSemester: selectedSemester,
-                newOnly: newOnly,
-                recentOnly: recentOnly
-            )
-            let filtered = listData.filteredItems
             DisclosureGroup(isExpanded: $isExpanded) {
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("동기화 데이터 검색", text: $query)
                         .textFieldStyle(.roundedBorder)
-                    CompanionItemListControls(
-                        sortOption: $sortOption,
-                        visibilityFilter: $visibilityFilter,
-                        statusFilter: $statusFilter,
-                        selectedCourse: $selectedCourse,
-                        selectedYear: $selectedYear,
-                        selectedSemester: $selectedSemester,
-                        newOnly: $newOnly,
-                        recentOnly: $recentOnly,
-                        availableStatusFilters: listData.availableStatusFilters,
-                        courseOptions: listData.courseOptions,
-                        yearOptions: listData.yearOptions,
-                        semesterOptions: listData.semesterOptions,
-                        supportsNewOnly: true,
-                        supportsRecentOnly: true,
-                        defaultStatusFilter: .all,
-                        totalCount: listData.baseItems.count,
-                        filteredCount: filtered.count
-                    )
-                    CompanionSelectableItemListRows(
-                        items: filtered,
-                        onSelect: onSelect
-                    )
+                    if let listData = cachedListData {
+                        let filtered = listData.filteredItems
+                        CompanionItemListControls(
+                            sortOption: $sortOption,
+                            visibilityFilter: $visibilityFilter,
+                            statusFilter: $statusFilter,
+                            selectedCourse: $selectedCourse,
+                            selectedYear: $selectedYear,
+                            selectedSemester: $selectedSemester,
+                            newOnly: $newOnly,
+                            recentOnly: $recentOnly,
+                            availableStatusFilters: listData.availableStatusFilters,
+                            courseOptions: listData.courseOptions,
+                            yearOptions: listData.yearOptions,
+                            semesterOptions: listData.semesterOptions,
+                            supportsNewOnly: true,
+                            supportsRecentOnly: true,
+                            defaultStatusFilter: .all,
+                            totalCount: listData.baseItems.count,
+                            filteredCount: filtered.count
+                        )
+                        CompanionSelectableItemListRows(
+                            items: filtered,
+                            onSelect: onSelect
+                        )
+                    } else {
+                        Text("목록을 준비하고 있습니다.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                    }
                 }
                 .padding(.top, 8)
             } label: {
@@ -7978,7 +8044,58 @@ private struct ServerSyncDataPanel: View {
             .padding(12)
             .background(Color.klmsSubtleCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 8))
+            .task(id: listInputKey) {
+                await rebuildCachedListData()
+            }
         }
+    }
+
+    private var listInputKey: CompanionItemListInputKey {
+        CompanionItemListInputKey(
+            itemsRevision: companionItemsFingerprint(items),
+            category: "all",
+            query: query,
+            sortOption: sortOption.rawValue,
+            visibilityFilter: visibilityFilter.rawValue,
+            statusFilter: statusFilter.rawValue,
+            selectedCourse: selectedCourse,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester,
+            newOnly: newOnly,
+            recentOnly: recentOnly
+        )
+    }
+
+    private func rebuildCachedListData() async {
+        await Task.yield()
+        guard !Task.isCancelled else { return }
+        let items = items
+        let query = query
+        let sortOption = sortOption
+        let visibilityFilter = visibilityFilter
+        let statusFilter = statusFilter
+        let selectedCourse = selectedCourse
+        let selectedYear = selectedYear
+        let selectedSemester = selectedSemester
+        let newOnly = newOnly
+        let recentOnly = recentOnly
+        let listData = await Task.detached(priority: .userInitiated) {
+            CompanionItemListData(
+                items: items,
+                category: nil,
+                query: query,
+                sortOption: sortOption,
+                visibilityFilter: visibilityFilter,
+                statusFilter: statusFilter,
+                selectedCourse: selectedCourse,
+                selectedYear: selectedYear,
+                selectedSemester: selectedSemester,
+                newOnly: newOnly,
+                recentOnly: recentOnly
+            )
+        }.value
+        guard !Task.isCancelled else { return }
+        cachedListData = listData
     }
 }
 

@@ -1560,8 +1560,7 @@ private struct NewFilesListView: View {
                 isRecent: true,
                 recencyText: manifest?.localDownloadedAt ?? "",
                 klmsTimestampEpoch: manifest?.klmsTimestampEpoch,
-                interaction: interaction(for: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath),
-                pathExists: dashboardFilePathExists(manifest?.absolutePath ?? "")
+                interaction: interaction(for: item.url, path: manifest?.absolutePath ?? "", fallback: item.relativePath)
             )
             return file.matches(filters: filters) ? file : nil
         }
@@ -1618,8 +1617,7 @@ private struct FileManifestListView: View {
                 isRecent: recentKeys.contains(entry.url) || recentKeys.contains(entry.relativePath),
                 recencyText: entry.localDownloadedAt,
                 klmsTimestampEpoch: entry.klmsTimestampEpoch,
-                interaction: model.snapshot.appUserState?.files[key],
-                pathExists: dashboardFilePathExists(entry.absolutePath)
+                interaction: model.snapshot.appUserState?.files[key]
             )
             return item.matches(filters: filters) ? item : nil
         }
@@ -1702,8 +1700,7 @@ private struct MissingFilesListView: View {
                 url: "",
                 isRecent: true,
                 recencyText: "",
-                interaction: model.snapshot.appUserState?.files[key],
-                pathExists: dashboardFilePathExists(path)
+                interaction: model.snapshot.appUserState?.files[key]
             )
             return item.matches(filters: filters) ? item : nil
         }
@@ -1731,7 +1728,6 @@ private struct DashboardFileItem: Identifiable {
     var recencyText: String
     var klmsTimestampEpoch: Int? = nil
     var interaction: FileInteractionState?
-    var pathExists: Bool = false
 
     var id: String { key }
 
@@ -1857,8 +1853,6 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
-            .animation(.linear(duration: 0.035), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 
     private var foreground: Color {
@@ -1928,8 +1922,6 @@ private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
-            .animation(.linear(duration: 0.035), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 }
 
@@ -1958,8 +1950,6 @@ private struct KLMSMacIconButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
-            .animation(.linear(duration: 0.035), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 }
 
@@ -2176,8 +2166,7 @@ private struct HiddenItemsListView: View {
                 url: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
-                interaction: item,
-                pathExists: dashboardFilePathExists(item.path)
+                interaction: item
             )
             return file.matches(filters: filters) ? file : nil
         }
@@ -2197,8 +2186,7 @@ private struct HiddenItemsListView: View {
                 url: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
-                interaction: item,
-                pathExists: dashboardFilePathExists(item.path)
+                interaction: item
             )
             return file.matches(filters: filters) ? file : nil
         }
@@ -2280,8 +2268,7 @@ private struct QuarantineListView: View {
                 url: record.url,
                 isRecent: true,
                 recencyText: "",
-                interaction: model.snapshot.appUserState?.quarantine[key],
-                pathExists: dashboardFilePathExists(record.quarantinePath)
+                interaction: model.snapshot.appUserState?.quarantine[key]
             )
             return item.matches(filters: filters) ? item : nil
         }
@@ -2347,8 +2334,7 @@ private struct PrunedListView: View {
                 url: "",
                 isRecent: false,
                 recencyText: "",
-                interaction: nil,
-                pathExists: dashboardFilePathExists(action.path)
+                interaction: nil
             )
         }
     }
@@ -2359,10 +2345,10 @@ private struct FileRowView: View {
     var kind: DashboardFileRowKind
     var model: KLMSMacModel?
     @State private var didRequestSync = false
+    @State private var pathExists = false
 
     var body: some View {
         let hidden = item.isHidden
-        let pathExists = item.pathExists
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -2428,6 +2414,16 @@ private struct FileRowView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(hidden ? Color.klmsMacWarningBorder : Color.klmsMacBorder, lineWidth: 1)
         }
+        .task(id: item.path) {
+            pathExists = false
+            pathExists = await Self.pathExists(for: item.path)
+        }
+    }
+
+    private static func pathExists(for path: String) async -> Bool {
+        await Task.detached(priority: .utility) {
+            dashboardFilePathExists(path)
+        }.value
     }
 
     @ViewBuilder

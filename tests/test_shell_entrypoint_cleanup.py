@@ -606,7 +606,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             mac_view.index("struct MenuBarRootView")
             : mac_view.index("private struct WholeScreenVerticalScrollView")
         ]
-        self.assertLess(mac_root.index("ImportantLogPanelView("), mac_root.index("CommandPanelView(model: model)"))
+        self.assertLess(mac_root.index("MacAlertBannerView("), mac_root.index("CommandPanelView(model: model)"))
 
         container = ios_view[
             ios_view.index("private struct CompanionScreenContainer")
@@ -624,16 +624,21 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         ).read_text(encoding="utf-8")
 
         self.assertIn("private enum SettingsTab", settings)
-        self.assertIn("TabView(selection: $selectedTab)", settings)
-        for label in [
-            'Label("로그인", systemImage: "person.badge.key")',
-            'Label("동기화", systemImage: "arrow.triangle.2.circlepath")',
-            'Label("공지", systemImage: "checklist")',
-            'Label("파일", systemImage: "folder")',
-            'Label("서버", systemImage: "network")',
-            'Label("앱", systemImage: "app.badge")',
-        ]:
+        self.assertIn("settingsSidebar", settings)
+        self.assertIn("settingsContentPanel", settings)
+        self.assertIn("settingsSidebarButton", settings)
+        self.assertIn("ForEach(SettingsTab.allCases)", settings)
+        for label in ['"로그인"', '"동기화"', '"공지"', '"파일"', '"서버"', '"앱"']:
             self.assertIn(label, settings)
+        for symbol in [
+            '"person.badge.key"',
+            '"arrow.triangle.2.circlepath"',
+            '"checklist"',
+            '"folder"',
+            '"network"',
+            '"app.badge"',
+        ]:
+            self.assertIn(symbol, settings)
 
         self.assertEqual(settings.count('Picker("파일 탐색 모드"'), 1)
         sync_settings = settings.split("private var syncSettings", 1)[1].split(
@@ -646,7 +651,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         )[0]
         self.assertNotIn('Picker("파일 탐색 모드"', sync_settings)
         self.assertIn('Picker("파일 탐색 모드"', file_settings)
-        self.assertNotIn("SettingsView(model: model)", root)
+        self.assertIn("SettingsView(model: model)", root)
         self.assertIn("설정 > 서버", root)
         self.assertNotIn("설정 > iPhone 서버 릴레이", root)
         self.assertIn("private func described", settings)
@@ -660,7 +665,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         ]:
             self.assertIn(description, settings)
 
-    def test_mac_settings_open_in_separate_settings_window(self) -> None:
+    def test_mac_settings_live_inside_main_workspace(self) -> None:
         app = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacApp.swift"
         ).read_text(encoding="utf-8")
@@ -668,13 +673,13 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("Settings {", app)
-        self.assertIn("SettingsView(model: model)", app)
-        self.assertIn("@Environment(\\.openSettings)", root)
-        self.assertIn("openSettings()", root)
+        self.assertNotIn("Settings {", app)
+        self.assertNotIn("SettingsView(model: model)", app)
+        self.assertNotIn("@Environment(\\.openSettings)", root)
+        self.assertNotIn("openSettings()", root)
         self.assertNotIn("showingSettings", root)
         self.assertNotIn("if showingSettings", root)
-        self.assertNotIn("SettingsView(model: model)", root)
+        self.assertIn("SettingsView(model: model)", root)
 
     def test_mac_app_exposes_full_file_manifest_list(self) -> None:
         menu = (
@@ -688,7 +693,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             'Metric("파일", snapshot.courseFileManifest.count, detail: .files)',
             menu,
         )
-        self.assertIn("@State private var selectedDetail = DashboardDetailKind.assignments", menu)
+        self.assertIn("@State private var selectedDetail: DashboardDetailKind?", menu)
         self.assertIn("case files", detail)
         self.assertIn("FileManifestListView(filters: filters, model: model)", detail)
         self.assertIn("model.snapshot.courseFileManifest.compactMap", detail)
@@ -748,9 +753,9 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         ).read_text(encoding="utf-8")
 
         self.assertIn("].filter { $0.value > 0 }", menu)
-        self.assertIn("let activeDetail = visibleMetrics.first { $0.detail == selectedDetail }?.detail", menu)
+        self.assertIn("let activeDetail = selectedDetail.flatMap", menu)
         self.assertIn('Text("표시할 대시보드 항목이 없습니다.")', menu)
-        self.assertIn("DashboardDetailPanelView(kind: activeDetail, model: model)", menu)
+        self.assertIn("DashboardDetailPanelView(kind: kind, model: model)", menu)
         self.assertRegex(
             menu,
             r'Metric\("격리", counts\.quarantine, detail: \.quarantine\),\s*'
@@ -967,9 +972,9 @@ if (looksLikeLoginPage({ url: "https://klms.kaist.ac.kr/mod/courseboard/article.
         ).read_text(encoding="utf-8")
 
         self.assertIn("WholeScreenVerticalScrollView", view)
-        self.assertIn("GeometryReader", view)
+        self.assertNotIn("GeometryReader { geometry in", view)
         self.assertIn("ScrollView(.vertical, showsIndicators: true)", view)
-        self.assertIn("minHeight: geometry.size.height", view)
+        self.assertNotIn("minHeight: geometry.size.height", view)
         self.assertNotIn("ScrollView {\n                VStack(alignment: .leading, spacing: 16)", view)
         self.assertIn("private struct LogTextBlock", view)
         self.assertNotIn("ScrollView(.horizontal)", view)
@@ -1344,16 +1349,18 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("requestCancel", shared)
         self.assertIn("fetchCancelRequest", model)
         self.assertIn("await model.cancelRunningCommand()", ios_app)
-        self.assertIn("RemoteCancelControl(model: model, compact: false)", ios_app)
+        self.assertIn("RemoteCancelControl(model: model, compact: compact)", ios_app)
         self.assertIn("private struct RemoteCancelControl", ios_app)
         self.assertIn('return localCancelSubmitting || model.isSubmitting ? "중단 요청 중" : "지금 중단"', ios_app)
         self.assertIn("Label(buttonTitle", ios_app)
         self.assertIn("await model.cancelRunningCommand()", mac_view)
         self.assertIn('model.isCancellingCommand ? "중단 중" : "중단"', mac_view)
-        self.assertIn("TabView", ios_app)
+        self.assertIn("CompanionCompactTabBar", ios_app)
+        self.assertIn("CompanionSplitRootView", ios_app)
+        self.assertIn("CompanionTabRootView", ios_app)
         self.assertIn("CompanionStatusScreen", ios_app)
-        self.assertIn("CompanionRunScreen", ios_app)
-        self.assertIn("CompanionConnectionScreen", ios_app)
+        self.assertIn("RemoteDashboardSyncCard", ios_app)
+        self.assertIn("CompanionSettingsScreen", ios_app)
         self.assertIn("CompanionHistoryScreen", ios_app)
         self.assertIn("SecureField(\"클라이언트 토큰\"", ios_app)
         self.assertIn("clearServerRelayConnectionInfo", ios_app)
@@ -1411,7 +1418,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             "Mac 전용 토큰은 여기에 넣지 않습니다.",
             "복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.",
             "연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다.",
-            "Mac 앱이 요청을 확인하면 설정 파일(config.env)에 반영합니다.",
+            "Mac 앱이 요청을 확인하면 설정에 반영합니다.",
             "읽음/중요 표시는 유지하되, 공지 내용이 그대로면 Notes 메모를 다시 쓰지 않습니다.",
             "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다.",
         ]:

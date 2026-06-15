@@ -56,8 +56,6 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? 1.0 : 0.48)
-            .animation(.linear(duration: 0.035), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 }
 
@@ -500,14 +498,12 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(.vertical, showsIndicators: true) {
-                content
-                    .frame(maxWidth: .infinity, minHeight: geometry.size.height, alignment: .topLeading)
-                    .contentShape(Rectangle())
-            }
-            .scrollIndicators(.visible)
+        ScrollView(.vertical, showsIndicators: true) {
+            content
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .contentShape(Rectangle())
         }
+        .scrollIndicators(.visible)
         .clipped()
     }
 }
@@ -571,13 +567,8 @@ private struct TaskAndExamWorkspaceView: View {
     @ObservedObject var model: KLMSMacModel
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 12) {
-                taskPanels
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                taskPanels
-            }
+        HStack(alignment: .top, spacing: 12) {
+            taskPanels
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -979,8 +970,6 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
-            .animation(.linear(duration: 0.035), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 
     private var foreground: Color {
@@ -2484,35 +2473,20 @@ private struct DashboardSummaryView: View {
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 12) {
-                        metricColumn(
-                            primaryMetrics: primaryMetrics,
-                            attentionMetrics: attentionMetrics,
-                            archiveMetrics: archiveMetrics,
-                            activeDetail: activeDetail
-                        )
-                        .frame(minWidth: 360, idealWidth: 430, maxWidth: 520, alignment: .topLeading)
-                        if let renderedDetail {
-                            dashboardDetailColumn(kind: renderedDetail)
-                                .frame(minWidth: 360, maxWidth: .infinity, alignment: .topLeading)
-                        } else {
-                            dashboardDetailPlaceholder
-                                .frame(minWidth: 360, maxWidth: .infinity, alignment: .topLeading)
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 12) {
-                        metricColumn(
-                            primaryMetrics: primaryMetrics,
-                            attentionMetrics: attentionMetrics,
-                            archiveMetrics: archiveMetrics,
-                            activeDetail: activeDetail
-                        )
-                        if let renderedDetail {
-                            dashboardDetailColumn(kind: renderedDetail)
-                        } else {
-                            dashboardDetailPlaceholder
-                        }
+                HStack(alignment: .top, spacing: 12) {
+                    metricColumn(
+                        primaryMetrics: primaryMetrics,
+                        attentionMetrics: attentionMetrics,
+                        archiveMetrics: archiveMetrics,
+                        activeDetail: activeDetail
+                    )
+                    .frame(minWidth: 340, idealWidth: 420, maxWidth: 500, alignment: .topLeading)
+                    if let renderedDetail {
+                        dashboardDetailColumn(kind: renderedDetail)
+                            .frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
+                    } else {
+                        dashboardDetailPlaceholder
+                            .frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
                     }
                 }
             }

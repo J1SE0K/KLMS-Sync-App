@@ -819,8 +819,6 @@ private struct KLMSMacSettingsSidebarButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.996 : 1.0)
             .brightness(configuration.isPressed ? -0.018 : 0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.45)
-            .animation(.linear(duration: 0.04), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 }
 
@@ -846,8 +844,6 @@ private struct KLMSMacSettingsButtonStyle: ButtonStyle {
             }
             .scaleEffect(configuration.isPressed ? 0.997 : 1.0)
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
-            .animation(.linear(duration: 0.035), value: configuration.isPressed)
-            .animation(.linear(duration: 0.08), value: isEnabled)
     }
 
     private var foreground: Color {
