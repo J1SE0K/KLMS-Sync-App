@@ -2473,8 +2473,22 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     var snapshot: EngineSnapshot
     var summary: KLMSMacDashboardSummaryCache
     var renderSignature: DashboardRenderSignature
+    private var presentation: DashboardSummaryPresentation
     @State private var selectedDetail: DashboardDetailKind?
     @State private var isArchiveMetricsExpanded = false
+
+    init(
+        model: KLMSMacModel,
+        snapshot: EngineSnapshot,
+        summary: KLMSMacDashboardSummaryCache,
+        renderSignature: DashboardRenderSignature
+    ) {
+        self.model = model
+        self.snapshot = snapshot
+        self.summary = summary
+        self.renderSignature = renderSignature
+        self.presentation = DashboardSummaryPresentation(snapshot: snapshot, summary: summary)
+    }
 
     static func == (lhs: DashboardSummaryContentView, rhs: DashboardSummaryContentView) -> Bool {
         lhs.renderSignature == rhs.renderSignature
@@ -2482,46 +2496,25 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            let counts = summary.visibleCounts
-            let primaryMetrics = [
-                Metric("파일", snapshot.courseFileManifest.count, detail: .files),
-                Metric("과제", counts.assignments + summary.mailAssignmentCount, detail: .assignments),
-                Metric("공지", counts.notices, detail: .notices),
-                Metric("시험", counts.exams + summary.mailExamCount, detail: .exams),
-            ].filter { $0.value > 0 }
-            let attentionMetrics = [
-                Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
-                Metric("새 파일", counts.newFiles, detail: .newFiles),
-                Metric("캘린더", summary.calendarAttentionCount, detail: .calendar),
-                Metric("격리", counts.quarantine, detail: .quarantine),
-                Metric("과제 후보", summary.assignmentCandidateCount, detail: .assignmentCandidates),
-                Metric("시험 후보", summary.examCandidateCount, detail: .examCandidates),
-                Metric("누락 파일", summary.localMissingFileCount, detail: .missingFiles),
-                Metric("정리된 파일", summary.prunedFileCount, detail: .pruned),
-            ].filter { $0.value > 0 }
-            let archiveMetrics = [
-                Metric("보관함", summary.hiddenSummary.total, detail: .hidden),
-            ].filter { $0.value > 0 }
-            let selectableArchiveMetrics = isArchiveMetricsExpanded ? archiveMetrics : []
-            let visibleMetrics = primaryMetrics + attentionMetrics + selectableArchiveMetrics
-            let hasAnyMetrics = !primaryMetrics.isEmpty || !attentionMetrics.isEmpty || !archiveMetrics.isEmpty
-            let activeDetail = selectedDetail.flatMap { selected in
-                visibleMetrics.first { $0.detail == selected }?.detail
-            }
-            let renderedDetail = selectedDetail.flatMap { displayed in
-                visibleMetrics.first { $0.detail == displayed }?.detail
-            }
+            let activeDetail = presentation.activeDetail(
+                selectedDetail,
+                archiveExpanded: isArchiveMetricsExpanded
+            )
+            let renderedDetail = presentation.renderedDetail(
+                selectedDetail,
+                archiveExpanded: isArchiveMetricsExpanded
+            )
             IssueSummaryView(issues: model.cachedIssues)
-            if !hasAnyMetrics {
+            if !presentation.hasAnyMetrics {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     metricColumn(
-                        primaryMetrics: primaryMetrics,
-                        attentionMetrics: attentionMetrics,
-                        archiveMetrics: archiveMetrics,
+                        primaryMetrics: presentation.primaryMetrics,
+                        attentionMetrics: presentation.attentionMetrics,
+                        archiveMetrics: presentation.archiveMetrics,
                         isArchiveExpanded: isArchiveMetricsExpanded,
                         activeDetail: activeDetail
                     )
@@ -2635,6 +2628,55 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.klmsMacBorder, lineWidth: 1)
             }
+        }
+    }
+}
+
+private struct DashboardSummaryPresentation {
+    var primaryMetrics: [Metric]
+    var attentionMetrics: [Metric]
+    var archiveMetrics: [Metric]
+
+    init(snapshot: EngineSnapshot, summary: KLMSMacDashboardSummaryCache) {
+        let counts = summary.visibleCounts
+        primaryMetrics = [
+            Metric("파일", snapshot.courseFileManifest.count, detail: .files),
+            Metric("과제", counts.assignments + summary.mailAssignmentCount, detail: .assignments),
+            Metric("공지", counts.notices, detail: .notices),
+            Metric("시험", counts.exams + summary.mailExamCount, detail: .exams),
+        ].filter { $0.value > 0 }
+        attentionMetrics = [
+            Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
+            Metric("새 파일", counts.newFiles, detail: .newFiles),
+            Metric("캘린더", summary.calendarAttentionCount, detail: .calendar),
+            Metric("격리", counts.quarantine, detail: .quarantine),
+            Metric("과제 후보", summary.assignmentCandidateCount, detail: .assignmentCandidates),
+            Metric("시험 후보", summary.examCandidateCount, detail: .examCandidates),
+            Metric("누락 파일", summary.localMissingFileCount, detail: .missingFiles),
+            Metric("정리된 파일", summary.prunedFileCount, detail: .pruned),
+        ].filter { $0.value > 0 }
+        archiveMetrics = [
+            Metric("보관함", summary.hiddenSummary.total, detail: .hidden),
+        ].filter { $0.value > 0 }
+    }
+
+    var hasAnyMetrics: Bool {
+        !primaryMetrics.isEmpty || !attentionMetrics.isEmpty || !archiveMetrics.isEmpty
+    }
+
+    func visibleMetrics(archiveExpanded: Bool) -> [Metric] {
+        primaryMetrics + attentionMetrics + (archiveExpanded ? archiveMetrics : [])
+    }
+
+    func activeDetail(_ selected: DashboardDetailKind?, archiveExpanded: Bool) -> DashboardDetailKind? {
+        selected.flatMap { selected in
+            visibleMetrics(archiveExpanded: archiveExpanded).first { $0.detail == selected }?.detail
+        }
+    }
+
+    func renderedDetail(_ selected: DashboardDetailKind?, archiveExpanded: Bool) -> DashboardDetailKind? {
+        selected.flatMap { displayed in
+            visibleMetrics(archiveExpanded: archiveExpanded).first { $0.detail == displayed }?.detail
         }
     }
 }
