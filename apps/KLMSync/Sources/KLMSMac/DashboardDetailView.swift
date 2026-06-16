@@ -1004,12 +1004,90 @@ private struct DashboardFilterBarView: View {
     var supportsNewOnly: Bool
     var supportsRecentOnly: Bool
     var supportsHiddenToggle: Bool
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            searchControl
-            rangeControl
-            displayControl
+            filterHeader
+            if !isExpanded, hasActiveFilter {
+                collapsedActiveFilterSummary
+            }
+            if isExpanded {
+                searchControl
+                rangeControl
+                displayControl
+            }
+        }
+    }
+
+    private var filterHeader: some View {
+        Button {
+            isExpanded.toggle()
+        } label: {
+            HStack(alignment: .center, spacing: 9) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(isExpanded || hasActiveFilter ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
+                    .frame(width: 24, height: 24)
+                    .background(
+                        isExpanded || hasActiveFilter
+                            ? Color.klmsMacSelectedBackground.opacity(0.78)
+                            : Color.klmsMacSubtleCardBackground.opacity(0.82),
+                        in: RoundedRectangle(cornerRadius: 7)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("필터와 검색")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    Text(hasActiveFilter ? activeFilterSummary : "필요할 때만 펼쳐서 검색, 범위, 표시 조건을 바꿉니다.")
+                        .font(.caption2)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                DashboardFilterExpansionBadge(isExpanded: isExpanded)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.78 : 0.58), in: RoundedRectangle(cornerRadius: 9))
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isExpanded || hasActiveFilter ? Color.klmsMacSelectedBorder.opacity(0.74) : Color.clear)
+                    .frame(width: 3)
+                    .padding(.vertical, 9)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(isExpanded || hasActiveFilter ? Color.klmsMacSelectedBorder.opacity(0.42) : Color.klmsMacBorder.opacity(0.82), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 9))
+        }
+        .buttonStyle(KLMSMacPressFeedbackButtonStyle(cornerRadius: 9))
+        .accessibilityHint(isExpanded ? "필터와 검색 접기" : "필터와 검색 펼치기")
+    }
+
+    private var collapsedActiveFilterSummary: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(activeFilterSummary)
+                .font(.caption)
+                .foregroundStyle(Color.klmsMacSecondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            Button {
+                resetFilters()
+            } label: {
+                Label("필터 초기화", systemImage: "arrow.counterclockwise")
+            }
+            .buttonStyle(KLMSMacActionButtonStyle())
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacCardBackground.opacity(0.78), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder.opacity(0.64), lineWidth: 1)
         }
     }
 
@@ -1110,6 +1188,33 @@ private struct DashboardFilterBarView: View {
             || recentOnly
     }
 
+    private var activeFilterSummary: String {
+        var parts: [String] = []
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            parts.append("검색 \(query)")
+        }
+        if selectedYear != DashboardTermFilter.allYears {
+            parts.append(selectedYear)
+        }
+        if selectedSemester != DashboardTermFilter.allSemesters {
+            parts.append(selectedSemester)
+        }
+        if selectedCourse != DashboardCourseFilter.all {
+            parts.append(selectedCourse)
+        }
+        if newOnly {
+            parts.append("새 항목만")
+        }
+        if recentOnly {
+            parts.append("최근 변경만")
+        }
+        if showHidden {
+            parts.append("숨김 포함")
+        }
+        return parts.isEmpty ? "적용된 필터가 없습니다." : parts.joined(separator: " · ")
+    }
+
     private var normalizedCourseBinding: Binding<String> {
         Binding(
             get: {
@@ -1147,6 +1252,30 @@ private struct DashboardFilterBarView: View {
         showHidden = false
         newOnly = false
         recentOnly = false
+    }
+}
+
+private struct DashboardFilterExpansionBadge: View {
+    var isExpanded: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 10, weight: .bold))
+            Text(isExpanded ? "접기" : "펼치기")
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(isExpanded ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            isExpanded ? Color.klmsMacSelectedBackground.opacity(0.78) : Color.klmsMacSubtleCardBackground,
+            in: Capsule()
+        )
+        .overlay {
+            Capsule()
+                .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.58) : Color.klmsMacBorder.opacity(0.68), lineWidth: 1)
+        }
     }
 }
 
