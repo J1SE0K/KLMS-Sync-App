@@ -2018,11 +2018,11 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertLessThan(
             try XCTUnwrap(logsBody.range(of: "DiagnosticStageDurationPanelView(model: model)")).lowerBound,
-            try XCTUnwrap(logsBody.range(of: "RunLogArchivePanelView(model: model)")).lowerBound
+            try XCTUnwrap(logsBody.range(of: "RemoteActivityPanelView(model: model)")).lowerBound
         )
         XCTAssertLessThan(
-            try XCTUnwrap(logsBody.range(of: "RunLogArchivePanelView(model: model)")).lowerBound,
-            try XCTUnwrap(logsBody.range(of: "RemoteActivityPanelView(model: model)")).lowerBound
+            try XCTUnwrap(logsBody.range(of: "RemoteActivityPanelView(model: model)")).lowerBound,
+            try XCTUnwrap(logsBody.range(of: "RunLogArchivePanelView(model: model)")).lowerBound
         )
         XCTAssertTrue(macRemoteActivityPanel.contains("SectionBox(title: \"서버·파일 요청 기록\")"))
         let issueSummaryView = try sourceStructBody(named: "IssueSummaryView", in: mac)

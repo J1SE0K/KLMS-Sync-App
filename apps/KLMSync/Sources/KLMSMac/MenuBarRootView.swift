@@ -109,8 +109,8 @@ private struct MacWorkstationLayoutView: View {
             case .activityLogs:
                 LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                 DiagnosticStageDurationPanelView(model: model)
-                RunLogArchivePanelView(model: model)
                 RemoteActivityPanelView(model: model)
+                RunLogArchivePanelView(model: model)
             case .diagnostics:
                 VerifyPanelView(snapshot: model.snapshot)
                 DiagnosticToolsPanelView(model: model)
