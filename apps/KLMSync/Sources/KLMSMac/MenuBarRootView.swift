@@ -2108,7 +2108,7 @@ private struct DiagnosticCommandLogPanelView: View {
                             .textSelection(.enabled)
                     }
                     CommandStageDurationSummaryView(durations: KLMSStageDurationParser.parse(from: source.text))
-                    LogTextBlock(text: source.text, detailed: true)
+                    LogTextBlock(text: source.text, detailed: true, rawExpandedByDefault: false)
                 } else {
                     Text("아직 표시할 실행 로그가 없습니다. 위의 권한/환경 진단이나 동기화 버튼을 실행하면 실시간 로그와 마지막 로그가 여기에 표시됩니다.")
                         .font(.caption)
@@ -2240,6 +2240,13 @@ private struct DiagnosticLogSource {
 private struct LogTextBlock: View {
     var text: String
     var detailed = false
+    @State private var isRawExpanded: Bool
+
+    init(text: String, detailed: Bool = false, rawExpandedByDefault: Bool = true) {
+        self.text = text
+        self.detailed = detailed
+        self._isRawExpanded = State(initialValue: rawExpandedByDefault)
+    }
 
     private var displayText: String {
         Self.boundedText(text, detailed: detailed)
@@ -2248,20 +2255,35 @@ private struct LogTextBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: displayText), detailed: detailed)
-            Text(displayText)
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(Color.klmsMacSecondaryText)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .padding(8)
-                .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.klmsMacBorder, lineWidth: 1)
-                )
+            if isRawExpanded {
+                rawLogText
+            } else {
+                DisclosureGroup(isExpanded: $isRawExpanded) {
+                    rawLogText
+                        .padding(.top, 4)
+                } label: {
+                    Label("원본 로그 보기", systemImage: "doc.text.magnifyingglass")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var rawLogText: some View {
+        Text(displayText)
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(Color.klmsMacSecondaryText)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(8)
+            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsMacBorder, lineWidth: 1)
+            )
     }
 
     private static func boundedText(_ text: String, detailed: Bool) -> String {
@@ -3681,11 +3703,14 @@ private struct LoginPanelView: View {
 
 private struct VerifyPanelView: View {
     var snapshot: EngineSnapshot
+    @State private var isRemainingIssuesExpanded = false
 
     var body: some View {
         if let verify = snapshot.verifyResult {
             SectionBox(title: "상태 검사 해설") {
                 let issueChecks = verify.checks.filter { isIssueStatus($0.status) }
+                let primaryIssues = Array(issueChecks.prefix(3))
+                let remainingIssues = Array(issueChecks.dropFirst(3))
                 VStack(alignment: .leading, spacing: 8) {
                     Text(summaryText(for: verify, issueCount: issueChecks.count))
                         .font(.caption)
@@ -3697,8 +3722,21 @@ private struct VerifyPanelView: View {
                             .font(.caption)
                             .foregroundStyle(Color.klmsMacSecondaryText)
                     } else {
-                        ForEach(issueChecks) { check in
+                        ForEach(primaryIssues) { check in
                             VerifyCheckExplanationRowView(check: check)
+                        }
+                        if !remainingIssues.isEmpty {
+                            DisclosureGroup(isExpanded: $isRemainingIssuesExpanded) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(remainingIssues) { check in
+                                        VerifyCheckExplanationRowView(check: check, compact: true)
+                                    }
+                                }
+                                .padding(.top, 4)
+                            } label: {
+                                Text("나머지 확인 항목 \(remainingIssues.count)개")
+                                    .font(.caption.weight(.semibold))
+                            }
                         }
                     }
 
@@ -3813,11 +3851,14 @@ private struct VerifyCheckExplanationRowView: View {
 
 private struct DoctorPanelView: View {
     var snapshot: EngineSnapshot
+    @State private var isRemainingIssuesExpanded = false
 
     var body: some View {
         if let doctor = snapshot.doctorResult {
             SectionBox(title: "진단") {
                 let issueChecks = doctor.checks.filter { ["fail", "failed", "error", "warn", "warning"].contains($0.status.lowercased()) }
+                let primaryIssues = Array(issueChecks.prefix(3))
+                let remainingIssues = Array(issueChecks.dropFirst(3))
                 Text("상태: \(doctor.status.klmsLocalizedStatus) · 정상 \(doctor.checks.filter { $0.status.lowercased() == "ok" }.count)개")
                     .font(.caption)
                     .foregroundStyle(doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
@@ -3827,8 +3868,21 @@ private struct DoctorPanelView: View {
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 } else {
-                    ForEach(issueChecks) { check in
+                    ForEach(primaryIssues) { check in
                         DoctorCheckRowView(check: check)
+                    }
+                    if !remainingIssues.isEmpty {
+                        DisclosureGroup(isExpanded: $isRemainingIssuesExpanded) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(remainingIssues) { check in
+                                    DoctorCheckRowView(check: check, compact: true)
+                                }
+                            }
+                            .padding(.top, 4)
+                        } label: {
+                            Text("나머지 진단 항목 \(remainingIssues.count)개")
+                                .font(.caption.weight(.semibold))
+                        }
                     }
                 }
 
