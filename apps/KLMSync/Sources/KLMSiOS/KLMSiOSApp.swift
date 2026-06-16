@@ -2652,11 +2652,33 @@ private struct CompanionTasksScreen: View {
 
 private struct CompanionSettingsScreen: View {
     @ObservedObject var model: CompanionModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         CompanionScreenContainer(title: "설정", model: model) {
+            if horizontalSizeClass == .regular {
+                HStack(alignment: .top, spacing: 16) {
+                    settingsPrimaryColumn
+                        .frame(minWidth: 320, idealWidth: 390, maxWidth: 450, alignment: .topLeading)
+                    settingsSupportColumn
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            } else {
+                settingsPrimaryColumn
+                settingsSupportColumn
+            }
+        }
+    }
+
+    private var settingsPrimaryColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
             CompanionImmediateSettingsPanel(model: model)
             RemoteSettingsPanel(model: model)
+        }
+    }
+
+    private var settingsSupportColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
             RemoteDiagnosticPanel(model: model)
             RemotePrivacyNote()
             if !model.serverRelayConfigured {
