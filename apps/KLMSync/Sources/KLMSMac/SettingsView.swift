@@ -976,14 +976,6 @@ private struct SettingsFieldRow<Content: View>: View {
                         Text(title)
                             .font(.caption.weight(.bold))
                             .foregroundStyle(Color.klmsMacPrimaryText)
-                        if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
-                           !description.isEmpty {
-                            Text(description)
-                                .font(.caption2)
-                                .foregroundStyle(Color.klmsMacSecondaryText)
-                                .lineLimit(isExpanded ? 3 : 1)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
                     }
                     Spacer(minLength: 8)
                     if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1006,6 +998,10 @@ private struct SettingsFieldRow<Content: View>: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
+                    if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !description.isEmpty {
+                        SettingsFieldDescriptionText(description)
+                    }
                     content()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -1031,6 +1027,35 @@ private struct SettingsFieldRow<Content: View>: View {
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.38) : Color.klmsMacBorder.opacity(0.86), lineWidth: 1)
+        }
+    }
+}
+
+private struct SettingsFieldDescriptionText: View {
+    var text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 7) {
+            Image(systemName: "info.circle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsMacSecondaryText)
+                .frame(width: 14)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(Color.klmsMacSecondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder.opacity(0.48), lineWidth: 1)
         }
     }
 }
