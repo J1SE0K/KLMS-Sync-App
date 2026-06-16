@@ -2603,7 +2603,7 @@ private struct RemoteDashboardStatusStrip: View {
 
     private var chipForeground: Color {
         if model.isRemoteAvailable || model.hasInFlightRequest || model.status.phase == "running" {
-            return Color.klmsCommandButtonForeground
+            return Color.klmsPrimaryCommandButtonForeground
         }
         return Color.klmsWarningBorder
     }
@@ -4263,7 +4263,7 @@ private struct RemoteDashboardSyncCard: View {
     }
 
     private func primaryCommandForeground(isDisabled: Bool) -> Color {
-        isDisabled ? Color.klmsSecondaryText : Color.klmsCommandButtonForeground
+        isDisabled ? Color.klmsSecondaryText : Color.klmsPrimaryCommandButtonForeground
     }
 
     private func primaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
@@ -5028,7 +5028,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .soft:
             return Color.klmsSecondaryCommandButtonForeground
         case .primary:
-            return Color.klmsCommandButtonForeground
+            return Color.klmsPrimaryCommandButtonForeground
         case .destructive:
             return isEnabled ? Color.white : Color.klmsSecondaryText.opacity(0.68)
         case .success:
@@ -5107,7 +5107,7 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
         case .soft:
             return Color.klmsSecondaryCommandButtonForeground
         case .primary, .success:
-            return Color.klmsCommandButtonForeground
+            return Color.klmsPrimaryCommandButtonForeground
         case .destructive:
             return isEnabled ? Color.white : Color.klmsSecondaryText.opacity(0.68)
         case .accent(let color):
@@ -9677,7 +9677,7 @@ private struct RemoteCommandPanel: View {
     }
 
     private func primaryCommandForeground(isDisabled: Bool) -> Color {
-        isDisabled ? Color.klmsSecondaryText : Color.klmsCommandButtonForeground
+        isDisabled ? Color.klmsSecondaryText : Color.klmsPrimaryCommandButtonForeground
     }
 
     private func primaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
@@ -11768,7 +11768,7 @@ private struct AuthCodeHero: View {
             Text(digits)
                 .font(.system(size: 38, weight: .black, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(Color.klmsCommandButtonForeground)
+                .foregroundStyle(Color.klmsPrimaryCommandButtonForeground)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
@@ -12221,6 +12221,10 @@ private extension Color {
     }
 
     static var klmsCommandButtonForeground: Color {
+        klmsPrimaryCommandButtonForeground
+    }
+
+    static var klmsPrimaryCommandButtonForeground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
             light: UIColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0),

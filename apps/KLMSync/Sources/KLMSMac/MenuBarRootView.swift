@@ -470,7 +470,7 @@ private struct MacAlertBannerView: View {
             return Color.klmsMacPrimaryText
         }
         if model.runningCommand != nil {
-            return Color.klmsMacCommandButtonForeground
+            return Color.klmsMacPrimaryCommandButtonForeground
         }
         if model.needsAttention || model.snapshot.syncReport == nil {
             return Color.klmsMacWarningBorder
@@ -998,7 +998,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .soft:
             Color.klmsMacSecondaryCommandButtonForeground
         case .primary:
-            Color.klmsMacCommandButtonForeground
+            Color.klmsMacPrimaryCommandButtonForeground
         case .destructive:
             isEnabled ? Color.white : Color.klmsMacSecondaryText.opacity(0.68)
         case .success:
@@ -3479,7 +3479,7 @@ private struct CommandPanelView: View {
                 Image(systemName: isRunning ? "stop.fill" : "play.fill")
                     .font(.headline.weight(.black))
             }
-            .foregroundStyle(Color.klmsMacCommandButtonForeground)
+            .foregroundStyle(Color.klmsMacPrimaryCommandButtonForeground)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 15)
@@ -5148,6 +5148,10 @@ extension Color {
     }
 
     static var klmsMacCommandButtonForeground: Color {
+        klmsMacPrimaryCommandButtonForeground
+    }
+
+    static var klmsMacPrimaryCommandButtonForeground: Color {
         klmsMacAdaptiveColor(
             light: NSColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0),
             dark: NSColor(red: 0.082, green: 0.075, blue: 0.055, alpha: 1.0)
