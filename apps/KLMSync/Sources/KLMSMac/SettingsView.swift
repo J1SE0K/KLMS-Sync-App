@@ -1001,17 +1001,25 @@ private struct SettingsFieldRow<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             content()
+                .frame(maxWidth: .infinity, alignment: .leading)
             if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
                !description.isEmpty {
                 SettingsHelpText(description)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.klmsMacBorder.opacity(0.50), lineWidth: 1)
+                    }
             }
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacCardBackground.opacity(0.80), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsMacCardBackground.opacity(0.92), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.klmsMacBorder.opacity(0.78), lineWidth: 1)
+                .stroke(Color.klmsMacBorder.opacity(0.86), lineWidth: 1)
         }
     }
 }

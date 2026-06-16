@@ -2776,6 +2776,89 @@ private struct CompanionImmediateSettingRow<Content: View>: View {
     }
 }
 
+private struct CompanionSettingsSubsectionCard<Content: View>: View {
+    var title: String
+    var detail: String
+    var systemImage: String
+    var statusText: String?
+    var statusTint: Color = .klmsSecondaryText
+    @State private var isExpanded: Bool
+    @ViewBuilder var content: () -> Content
+
+    init(
+        title: String,
+        detail: String,
+        systemImage: String,
+        statusText: String? = nil,
+        statusTint: Color = .klmsSecondaryText,
+        defaultExpanded: Bool = false,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.detail = detail
+        self.systemImage = systemImage
+        self.statusText = statusText
+        self.statusTint = statusTint
+        _isExpanded = State(initialValue: defaultExpanded)
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: systemImage)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.klmsCommandAccent)
+                        .frame(width: 28, height: 28)
+                        .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.klmsPrimaryText)
+                        CompanionSettingHelpText(detail)
+                    }
+                    Spacer(minLength: 8)
+                    if let statusText {
+                        Text(statusText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(statusTint)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(Color.klmsCardBackground, in: Capsule())
+                    }
+                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+            .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    content()
+                }
+                .padding(.top, 2)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            isExpanded ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
+        }
+    }
+}
+
 private struct CompanionHistoryScreen: View {
     @ObservedObject var model: CompanionModel
 
@@ -2979,7 +3062,6 @@ private struct RemoteAttentionStack: View {
 private struct ServerRelayConnectionPanel: View {
     @ObservedObject var model: CompanionModel
     @State private var isExpanded = false
-    @State private var showConnectionFields = false
     private let actionColumns = [
         GridItem(.adaptive(minimum: 145), spacing: 8),
     ]
@@ -3023,41 +3105,21 @@ private struct ServerRelayConnectionPanel: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
-                if !model.connectionMessage.isEmpty {
-                    ConnectionNoticeBanner(
-                        message: model.connectionMessage,
-                        succeeded: model.connectionSucceeded
-                    )
-                }
-
-                Button {
-                    showConnectionFields.toggle()
-                } label: {
-                    HStack(spacing: 8) {
-                        Label("서버 연결 정보", systemImage: "link")
-                            .font(.subheadline.weight(.semibold))
-                        Spacer(minLength: 8)
-                        Text(model.serverRelayConfigured ? "저장됨" : "미설정")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
-                        Image(systemName: showConnectionFields ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.klmsSecondaryText)
+                    if !model.connectionMessage.isEmpty {
+                        ConnectionNoticeBanner(
+                            message: model.connectionMessage,
+                            succeeded: model.connectionSucceeded
+                        )
                     }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.klmsBorder, lineWidth: 1)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(KLMSCardButtonStyle())
-                .accessibilityHint(showConnectionFields ? "서버 정보 접기" : "서버 정보 펼치기")
 
-                if showConnectionFields {
-                    VStack(alignment: .leading, spacing: 8) {
+                    CompanionSettingsSubsectionCard(
+                        title: "서버 연결 정보",
+                        detail: "서버 URL과 클라이언트 토큰을 한곳에서 관리합니다.",
+                        systemImage: "link",
+                        statusText: model.serverRelayConfigured ? "저장됨" : "미설정",
+                        statusTint: model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText,
+                        defaultExpanded: !model.serverRelayConfigured
+                    ) {
                         CompanionConnectionInput(
                             title: "서버 URL",
                             detail: "Cloudflare Worker 같은 공개 HTTPS 주소만 넣습니다. 집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.",
@@ -3071,72 +3133,66 @@ private struct ServerRelayConnectionPanel: View {
                         )
                         CompanionSettingHelpText("Mac 앱에는 같은 서버 URL과 별도의 Mac 전용 토큰이 저장되어 있어야 합니다. 실제 KLMS 동기화는 Mac 앱이 처리합니다.")
                     }
-                }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("연결")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsSecondaryText)
-                    LazyVGrid(columns: actionColumns, spacing: 8) {
-                        connectionButton("붙여넣기", systemImage: "doc.on.clipboard") {
-                            model.pasteServerRelayConnectionInfo()
+                    CompanionSettingsSubsectionCard(
+                        title: "연결 확인",
+                        detail: "붙여넣기, 서버 응답 검사, 요약 갱신을 처리합니다.",
+                        systemImage: "checkmark.shield",
+                        defaultExpanded: true
+                    ) {
+                        LazyVGrid(columns: actionColumns, spacing: 8) {
+                            connectionButton("붙여넣기", systemImage: "doc.on.clipboard") {
+                                model.pasteServerRelayConnectionInfo()
+                            }
+                            connectionAsyncButton("연결 확인", systemImage: "checkmark.seal") {
+                                await model.checkServerRelayConnection()
+                            }
+                            .disabled(!model.serverRelayConfigured || model.isRefreshing)
+                            connectionAsyncButton("요약 갱신", systemImage: "arrow.triangle.2.circlepath") {
+                                await model.createCommand(.report)
+                            }
+                            .disabled(!model.serverRelayConfigured || model.isSubmitting || model.hasInFlightRequest)
                         }
-                        connectionAsyncButton("연결 확인", systemImage: "checkmark.seal") {
-                            await model.checkServerRelayConnection()
-                        }
-                        .disabled(!model.serverRelayConfigured || model.isRefreshing)
-                        connectionAsyncButton("요약 갱신", systemImage: "arrow.triangle.2.circlepath") {
-                            await model.createCommand(.report)
-                        }
-                        .disabled(!model.serverRelayConfigured || model.isSubmitting || model.hasInFlightRequest)
+                        CompanionSettingHelpText("붙여넣기는 복사한 연결 정보를 한 번에 입력합니다. 연결 확인은 URL과 토큰으로 서버 응답만 검사합니다.")
                     }
-                    CompanionSettingHelpText("붙여넣기는 복사한 서버 연결 정보를 한 번에 입력합니다. 연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다. 요약 갱신은 Mac 앱에 최신 상태를 다시 올려 달라고 요청합니다.")
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
-                }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("복사")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsSecondaryText)
-                    LazyVGrid(columns: actionColumns, spacing: 8) {
-                        connectionButton("URL 복사", systemImage: "link") {
-                            model.copyServerRelayURL()
+                    CompanionSettingsSubsectionCard(
+                        title: "복사",
+                        detail: "다른 기기에 넣을 서버 주소와 토큰을 복사합니다.",
+                        systemImage: "doc.on.doc"
+                    ) {
+                        LazyVGrid(columns: actionColumns, spacing: 8) {
+                            connectionButton("URL 복사", systemImage: "link") {
+                                model.copyServerRelayURL()
+                            }
+                            .disabled(model.serverURL.isEmpty)
+                            connectionButton("연결 정보 복사", systemImage: "doc.on.doc") {
+                                model.copyServerRelayConnectionInfo()
+                            }
+                            .disabled(model.serverURL.isEmpty || model.serverToken.isEmpty)
+                            connectionButton("클라이언트 토큰 복사", systemImage: "key") {
+                                model.copyServerRelayClientToken()
+                            }
+                            .disabled(model.serverToken.isEmpty)
                         }
-                        .disabled(model.serverURL.isEmpty)
-                        connectionButton("연결 정보 복사", systemImage: "doc.on.doc") {
-                            model.copyServerRelayConnectionInfo()
-                        }
-                        .disabled(model.serverURL.isEmpty || model.serverToken.isEmpty)
-                        connectionButton("클라이언트 토큰 복사", systemImage: "key") {
-                            model.copyServerRelayClientToken()
-                        }
-                        .disabled(model.serverToken.isEmpty)
+                        CompanionSettingHelpText("복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.")
                     }
-                    CompanionSettingHelpText("복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.")
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
-                }
 
-                Button(role: .destructive) {
-                    model.clearServerRelayConnectionInfo()
-                } label: {
-                    Label("연결 정보 지우기", systemImage: "trash")
-                        .frame(maxWidth: .infinity)
+                    CompanionSettingsSubsectionCard(
+                        title: "연결 초기화",
+                        detail: "이 기기에 저장된 서버 URL과 토큰을 지웁니다.",
+                        systemImage: "trash"
+                    ) {
+                        Button(role: .destructive) {
+                            model.clearServerRelayConnectionInfo()
+                        } label: {
+                            Label("연결 정보 지우기", systemImage: "trash")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                        .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
+                    }
                 }
-                .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
-            }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -10071,7 +10127,6 @@ private struct RemoteVerifyCheckRow: View {
 private struct RemoteDiagnosticPanel: View {
     @ObservedObject var model: CompanionModel
     @State private var isPanelExpanded = false
-    @State private var isAdvancedExpanded = false
 
     private let columns = [
         GridItem(.adaptive(minimum: 150), spacing: 8),
@@ -10109,59 +10164,38 @@ private struct RemoteDiagnosticPanel: View {
 
             if isPanelExpanded {
                 VStack(alignment: .leading, spacing: 10) {
-                RemoteVerifySummaryPanel(summary: model.verifySummary)
-                Text("문제가 보이면 상태 검사부터 실행하고, 권한이나 로그인 문제가 의심될 때 권한/환경 진단을 실행하세요.")
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                LazyVGrid(columns: columns, spacing: 8) {
-                    diagnosticButton(.verify)
-                    diagnosticButton(.doctor)
-                    diagnosticButton(.report)
-                }
-                RemoteStageDurationSummaryView(durations: latestStageDurations)
+                    RemoteVerifySummaryPanel(summary: model.verifySummary)
+                    Text("문제가 보이면 상태 검사부터 실행하고, 권한이나 로그인 문제가 의심될 때 권한/환경 진단을 실행하세요.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        diagnosticButton(.verify)
+                        diagnosticButton(.doctor)
+                        diagnosticButton(.report)
+                    }
+                    RemoteStageDurationSummaryView(durations: latestStageDurations)
 
-                DisclosureGroup(isExpanded: $isAdvancedExpanded) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("실제 반영 없이 바뀔 항목 수를 계산하거나, 내부 상태 파일만 다시 생성합니다. 평소에는 열 필요가 없습니다.")
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        diagnosticButton(.v2BuildState)
-                        LazyVGrid(columns: columns, spacing: 8) {
-                            ForEach(dryRunCommands, id: \.self) { command in
-                                dryRunButton(command)
+                    CompanionSettingsSubsectionCard(
+                        title: "고급 도구",
+                        detail: "변경량 계산과 내부 상태 재생성 도구입니다.",
+                        systemImage: "slider.horizontal.3"
+                    ) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("실제 반영 없이 바뀔 항목 수를 계산하거나, 내부 상태 파일만 다시 생성합니다. 평소에는 열 필요가 없습니다.")
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsSecondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                            diagnosticButton(.v2BuildState)
+                            LazyVGrid(columns: columns, spacing: 8) {
+                                ForEach(dryRunCommands, id: \.self) { command in
+                                    dryRunButton(command)
+                                }
                             }
+                            RemoteDryRunPanel(reports: model.dryRunReports)
                         }
-                        RemoteDryRunPanel(reports: model.dryRunReports)
-                    }
-                    .padding(.top, 6)
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Color.klmsCommandAccent)
-                            .frame(width: 24, height: 24)
-                            .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("고급 도구")
-                                .font(.subheadline.weight(.semibold))
-                            CompanionSettingHelpText("변경량 계산과 내부 상태 재생성 도구입니다.")
-                        }
-                        Spacer(minLength: 8)
-                        CompanionExpansionBadge(isExpanded: isAdvancedExpanded, compact: true)
                     }
                 }
-                .padding(10)
-                .background(
-                    isAdvancedExpanded ? Color.klmsCardBackground : Color.klmsSubtleCardBackground.opacity(0.72),
-                    in: RoundedRectangle(cornerRadius: 10)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(isAdvancedExpanded ? Color.klmsSelectedBorder.opacity(0.36) : Color.klmsBorder, lineWidth: 1)
-                )
-            }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
