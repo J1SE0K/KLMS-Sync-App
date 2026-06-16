@@ -2486,11 +2486,16 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                    Group {
-                        if let renderedDetail {
-                            dashboardDetailColumn(kind: renderedDetail)
-                        } else {
-                            dashboardDetailPlaceholder
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .top, spacing: 12) {
+                            dashboardDetailContent(renderedDetail: renderedDetail)
+                                .frame(minWidth: 360, maxWidth: .infinity, alignment: .topLeading)
+                            DashboardLogSummaryPanelView(model: model)
+                                .frame(width: 285, alignment: .topLeading)
+                        }
+                        VStack(alignment: .leading, spacing: 12) {
+                            dashboardDetailContent(renderedDetail: renderedDetail)
+                            DashboardLogSummaryPanelView(model: model)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -2558,6 +2563,15 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
         )
             .equatable()
             .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func dashboardDetailContent(renderedDetail: DashboardDetailKind?) -> some View {
+        if let renderedDetail {
+            dashboardDetailColumn(kind: renderedDetail)
+        } else {
+            dashboardDetailPlaceholder
+        }
     }
 
     private var dashboardDetailPlaceholder: some View {
