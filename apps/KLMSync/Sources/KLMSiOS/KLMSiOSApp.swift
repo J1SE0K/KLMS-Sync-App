@@ -2135,7 +2135,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     var id: String { rawValue }
 
     static var compactTabs: [CompanionAppSection] {
-        [.status, .history, .settings]
+        [.status, .files, .history, .settings]
     }
 
     static var workstationSections: [CompanionAppSection] {
@@ -2145,7 +2145,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     var title: String {
         switch self {
         case .status:
-            return "상태"
+            return "대시보드"
         case .files:
             return "파일"
         case .notices:
@@ -2270,7 +2270,7 @@ private struct CompanionCompactTabBar: View {
 
     private var compactRows: [[CompanionAppSection]] {
         [
-            [.status, .history, .settings],
+            CompanionAppSection.compactTabs,
         ]
     }
 
@@ -2464,7 +2464,7 @@ private struct CompanionStatusScreen: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        CompanionScreenContainer(title: "상태", model: model) {
+        CompanionScreenContainer(title: "대시보드", model: model) {
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 16) {
                     statusSummaryColumn
