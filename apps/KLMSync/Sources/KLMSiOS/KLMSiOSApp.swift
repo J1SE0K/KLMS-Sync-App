@@ -2275,7 +2275,11 @@ private struct CompanionCompactTabBar: View {
     private func compactTabButton(_ section: CompanionAppSection) -> some View {
         Button {
             guard selectedSection != section else { return }
-            selectedSection = section
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                selectedSection = section
+            }
         } label: {
             let isSelected = selectedSection == section
             VStack(spacing: 4) {
@@ -2353,7 +2357,11 @@ private struct WorkstationSidebar: View {
                         isCompact: false
                     ) {
                         guard selectedSection != section else { return }
-                        selectedSection = section
+                        var transaction = Transaction()
+                        transaction.animation = nil
+                        withTransaction(transaction) {
+                            selectedSection = section
+                        }
                     }
                 }
             }
@@ -2436,21 +2444,26 @@ private struct CompanionSectionContent: View {
     @ObservedObject var model: CompanionModel
 
     var body: some View {
-        switch section {
-        case .status:
-            CompanionStatusScreen(model: model)
-        case .files:
-            CompanionDashboardCategoryScreen(title: "파일", category: .files, model: model)
-        case .notices:
-            CompanionDashboardCategoryScreen(title: "공지", category: .notices, model: model)
-        case .tasks:
-            CompanionTasksScreen(model: model)
-        case .calendar:
-            CompanionDashboardCategoryScreen(title: "캘린더", category: .calendar, model: model)
-        case .history:
-            CompanionHistoryScreen(model: model)
-        case .settings:
-            CompanionSettingsScreen(model: model)
+        Group {
+            switch section {
+            case .status:
+                CompanionStatusScreen(model: model)
+            case .files:
+                CompanionDashboardCategoryScreen(title: "파일", category: .files, model: model)
+            case .notices:
+                CompanionDashboardCategoryScreen(title: "공지", category: .notices, model: model)
+            case .tasks:
+                CompanionTasksScreen(model: model)
+            case .calendar:
+                CompanionDashboardCategoryScreen(title: "캘린더", category: .calendar, model: model)
+            case .history:
+                CompanionHistoryScreen(model: model)
+            case .settings:
+                CompanionSettingsScreen(model: model)
+            }
+        }
+        .transaction { transaction in
+            transaction.animation = nil
         }
     }
 }
@@ -3769,10 +3782,10 @@ private struct CompanionItemListInputKey: Hashable {
 }
 
 private enum CompanionLargeList {
-    static let initialVisibleLimit = 10
-    static let previewVisibleLimit = 8
-    static let calendarVisibleLimit = 10
-    static let increment = 12
+    static let initialVisibleLimit = 6
+    static let previewVisibleLimit = 5
+    static let calendarVisibleLimit = 6
+    static let increment = 10
 }
 
 private func companionItemsFingerprint(_ items: [ServerRelaySyncItem]) -> Int {
@@ -5896,7 +5909,11 @@ private struct CompanionInlineItemRowsView: View {
         }
 
         let nextID = selectedItemID == item.id ? nil : item.id
-        selectedItemID = nextID
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            selectedItemID = nextID
+        }
     }
 
 }
@@ -5946,7 +5963,11 @@ private struct CompanionSelectableItemListRows: View {
     }
 
     private func select(_ item: ServerRelaySyncItem) {
-        selectedItemID = item.id
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            selectedItemID = item.id
+        }
         onSelect(item)
     }
 
