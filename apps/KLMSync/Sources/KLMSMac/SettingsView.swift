@@ -212,6 +212,7 @@ struct SettingsView: View {
         }
         .buttonStyle(KLMSMacSettingsTabButtonStyle())
         .accessibilityLabel(tab.title)
+        .accessibilityIdentifier("settings-\(tab.rawValue)")
         .accessibilityValue(isSelected ? "선택됨" : "")
     }
 

@@ -754,6 +754,9 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(script.contains("workspace-settings"))
         XCTAssertTrue(script.contains("workspace-dashboard"))
+        XCTAssertTrue(script.contains("settings-files"))
+        XCTAssertTrue(script.contains("settings-app"))
+        XCTAssertTrue(script.contains("waitForSelectedValue(identifier: identifier"))
         XCTAssertTrue(script.contains("\"AXIdentifier\" as CFString"))
         XCTAssertTrue(script.contains("AXUIElementPerformAction(button, kAXPressAction as CFString)"))
         XCTAssertTrue(script.contains("ok: KLMS Mac workspace accessibility navigation is responsive"))
@@ -1688,6 +1691,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("LazyVGrid(columns: settingsTabColumns, alignment: .leading, spacing: 7)"))
         XCTAssertTrue(macSettings.contains("settingsTabButton"))
         XCTAssertTrue(macSettings.contains("KLMSMacSettingsTabButtonStyle"))
+        XCTAssertTrue(macSettings.contains(".accessibilityIdentifier(\"settings-\\(tab.rawValue)\")"))
         XCTAssertTrue(macSettings.contains("static var allCases: [SettingsTab] {\n        [.app, .login, .sync, .files, .notice]"))
         XCTAssertTrue(macSettings.contains("\"화면/앱\""))
         XCTAssertTrue(macSettings.contains("Text(\"자주 쓰는 값은 위에, 기술적인 값은 접어서 정리했습니다.\")"))
