@@ -1861,6 +1861,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(mac.contains("case runLogs"))
         XCTAssertTrue(macRootBody.contains("DashboardTopBarView(model: model, selectedSection: $selectedSection)"))
         XCTAssertTrue(macRootBody.contains("MacAlertBannerView("))
+        XCTAssertTrue(macRootBody.contains("CommandPanelView(model: model)"))
         XCTAssertTrue(macRootBody.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
         XCTAssertTrue(macRootBody.contains("MacWorkstationLayoutView("))
         XCTAssertTrue(macModel.contains("@Published private(set) var cachedIssues: [EngineIssue] = []"))
@@ -1874,7 +1875,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("renderSignature: model.dashboardRenderSignature"))
         XCTAssertFalse(mac.contains("renderSignature: DashboardRenderSignature(snapshot: model.snapshot, summary: model.dashboardSummaryCache)"))
         let alertRange = try XCTUnwrap(macRootBody.range(of: "MacAlertBannerView("))
+        let commandPanelRange = try XCTUnwrap(macRootBody.range(of: "CommandPanelView(model: model)"))
         let workstationRange = try XCTUnwrap(macRootBody.range(of: "MacWorkstationLayoutView("))
+        XCTAssertLessThan(alertRange.lowerBound, commandPanelRange.lowerBound)
+        XCTAssertLessThan(commandPanelRange.lowerBound, workstationRange.lowerBound)
         XCTAssertLessThan(alertRange.lowerBound, workstationRange.lowerBound)
         XCTAssertFalse(mac.contains("struct MacDesignWindowRootView"))
         XCTAssertTrue(macNavigationView.contains("section.systemImage"))
@@ -1913,11 +1917,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(workstationBody.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(workstationBody.contains("HStack(alignment: .top, spacing: 14)"))
         XCTAssertTrue(workstationBody.contains(".frame(width: 280, alignment: .topLeading)"))
-        XCTAssertTrue(workstationBody.contains("CommandPanelView(model: model)"))
-        XCTAssertLessThan(
-            try XCTUnwrap(workstationBody.range(of: "CommandPanelView(model: model)")).lowerBound,
-            try XCTUnwrap(workstationBody.range(of: "WorkspaceNavigationView(selection: $selectedSection)")).lowerBound
-        )
+        XCTAssertFalse(workstationBody.contains("CommandPanelView(model: model)"))
         XCTAssertTrue(workstationBody.contains("WorkspaceNavigationView(selection: $selectedSection)"))
         XCTAssertTrue(workstationBody.contains("DashboardRuntimePanelView(model: model)"))
         XCTAssertTrue(workstationBody.contains("case .files:"))

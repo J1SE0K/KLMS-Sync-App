@@ -16,6 +16,7 @@ struct MenuBarRootView: View {
                     selectedSection: $selectedSection,
                     expandedLogSummaryKind: $expandedLogSummaryKind
                 )
+                CommandPanelView(model: model)
                 MacWorkstationLayoutView(
                     model: model,
                     selectedSection: $selectedSection,
@@ -82,7 +83,6 @@ private struct MacWorkstationLayoutView: View {
 
     private var controlRail: some View {
         VStack(alignment: .leading, spacing: 12) {
-            CommandPanelView(model: model)
             WorkspaceNavigationView(selection: $selectedSection)
             DashboardRuntimePanelView(model: model)
         }
