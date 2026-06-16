@@ -2419,6 +2419,12 @@ final class DashboardDataModelTests: XCTestCase {
         let calendarActionButton = try sourceStructBody(named: "CalendarActionButton", in: detail)
         let dashboardSummary = try sourceStructBody(named: "DashboardSummaryContentView", in: mac)
         let commandPanel = try sourceStructBody(named: "CommandPanelView", in: mac)
+        let macMailPanel = try sourceBody(
+            after: "struct MacMailPasteAnalyzerPanel: View",
+            in: detail,
+            description: "Mac mail paste analyzer panel"
+        )
+        let macMailHeader = try sourceStructBody(named: "MacMailPasteHeaderButtonContent", in: detail)
         let macMailAnalysisProcess = try sourceStructBody(named: "MacMailAnalysisProcessView", in: detail)
 
         XCTAssertFalse(calendarDetail.contains("MacMailPasteAnalyzerPanel"))
@@ -2451,10 +2457,17 @@ final class DashboardDataModelTests: XCTestCase {
         let macFullSyncIndex = try XCTUnwrap(commandPanel.range(of: "primaryCommandActionCard(primaryCommand)")?.lowerBound)
         XCTAssertTrue(macMailPanelIndex < macFullSyncIndex)
         XCTAssertTrue(detail.contains("메일·캘린더 분석"))
+        XCTAssertTrue(detail.contains("메일 본문을 붙여넣어 판독"))
         XCTAssertTrue(detail.contains("메일 원문 붙여넣기"))
         XCTAssertTrue(detail.contains("원문은 서버로 보내지 않음"))
         XCTAssertTrue(detail.contains("판독 결과"))
         XCTAssertTrue(detail.contains("캘린더에 등록"))
+        XCTAssertTrue(macMailPanel.contains("@State private var deferredAnalysisTask"))
+        XCTAssertTrue(macMailPanel.contains("scheduleAnalysis()"))
+        XCTAssertTrue(macMailPanel.contains("Task.sleep(nanoseconds: 280_000_000)"))
+        XCTAssertTrue(macMailPanel.contains(".onDisappear"))
+        XCTAssertTrue(macMailHeader.contains("Image(systemName: \"envelope.open\")"))
+        XCTAssertTrue(macMailHeader.contains("Image(systemName: isExpanded ? \"chevron.up\" : \"chevron.down\")"))
         XCTAssertTrue(detail.contains("MacMailAnalysisProcessView"))
         XCTAssertTrue(detail.contains("분석 과정"))
         XCTAssertTrue(macMailAnalysisProcess.contains("@State private var isExpanded = false"))

@@ -3627,6 +3627,7 @@ struct MacMailPasteAnalyzerPanel: View {
     @State private var isExpanded = false
     @State private var mailText = ""
     @State private var analysis = MacMailPasteAnalysis.empty
+    @State private var deferredAnalysisTask: Task<Void, Never>?
     @State private var isShowingCreateSheet = false
     @State private var createStatusText: String?
 
@@ -3687,10 +3688,13 @@ struct MacMailPasteAnalyzerPanel: View {
             }
         }
         .onChange(of: mailText) { _, _ in
-            runAnalysis()
+            scheduleAnalysis()
         }
         .onChange(of: snapshot.legacyState?.content.assignments.count ?? 0) { _, _ in
-            runAnalysis()
+            scheduleAnalysis()
+        }
+        .onDisappear {
+            deferredAnalysisTask?.cancel()
         }
         .sheet(isPresented: $isShowingCreateSheet) {
             MailCalendarCreateSheet(analysis: analysis) { draft in
@@ -3718,7 +3722,23 @@ struct MacMailPasteAnalyzerPanel: View {
     }
 
     private func runAnalysis() {
+        deferredAnalysisTask?.cancel()
         analysis = MacMailPasteAnalyzer.analyze(mailText, snapshot: snapshot)
+    }
+
+    private func scheduleAnalysis() {
+        deferredAnalysisTask?.cancel()
+        let text = mailText
+        let currentSnapshot = snapshot
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            analysis = .empty
+            return
+        }
+        deferredAnalysisTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            guard !Task.isCancelled else { return }
+            analysis = MacMailPasteAnalyzer.analyze(text, snapshot: currentSnapshot)
+        }
     }
 }
 
@@ -3728,12 +3748,17 @@ private struct MacMailPasteHeaderButtonContent: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
+            Image(systemName: "envelope.open")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color.klmsMacCommandAccent)
+                .frame(width: 30, height: 30)
+                .background(Color.klmsMacCommandAccent.opacity(colorScheme == .dark ? 0.18 : 0.11), in: RoundedRectangle(cornerRadius: 9))
             VStack(alignment: .leading, spacing: 2) {
                 Text("메일·캘린더 분석")
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
-                Text(isExpanded ? "메일 본문에서 과제·시험·일정을 찾습니다." : "메일 본문 붙여넣기")
+                Text(isExpanded ? "메일 본문에서 과제·시험·일정을 찾습니다." : "메일 본문을 붙여넣어 판독")
                     .font(.caption2)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -3747,12 +3772,12 @@ private struct MacMailPasteHeaderButtonContent: View {
                     .padding(.vertical, 3)
                     .background(analysis.kind.tint.opacity(0.12), in: Capsule())
             }
-            Image(systemName: isExpanded ? "chevron.down" : "arrow.right")
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsMacSecondaryText)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacCommandButtonBackground.opacity(colorScheme == .dark ? 0.82 : 0.92), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
