@@ -1527,6 +1527,11 @@ final class DashboardDataModelTests: XCTestCase {
         let macSettings = try String(contentsOf: macSettingsRoot, encoding: .utf8)
         let macModel = try String(contentsOf: macModelRoot, encoding: .utf8)
         let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let settingsForm = try sourceBody(
+            after: "private func settingsForm",
+            in: macSettings,
+            description: "Mac settings form"
+        )
 
         XCTAssertFalse(macSettings.contains("TabView(selection:"))
         XCTAssertFalse(macSettings.contains(".tabItem"))
@@ -1539,6 +1544,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("Text(\"앱 안에서 바로 바꿉니다.\")"))
         XCTAssertTrue(macSettings.contains("Text(\"앱 내부 설정\")"))
         XCTAssertFalse(macSettings.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(settingsForm.contains("VStack(alignment: .leading, spacing: 12)"))
+        XCTAssertFalse(settingsForm.contains("ScrollView(.horizontal"))
+        XCTAssertFalse(settingsForm.contains("HStack(alignment: .top"))
         XCTAssertTrue(macSettings.contains(".frame(width: 28, height: 28)"))
         XCTAssertTrue(macSettings.contains("Color.klmsMacSelectedBorder.opacity(0.18)"))
         XCTAssertTrue(macSettings.contains("Color.klmsMacSubtleCardBackground.opacity(0.72)"))
@@ -1691,10 +1699,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardBody.contains("RemoteActivityPanelView"))
         XCTAssertFalse(mac.contains("DashboardLogSummaryPanelView(model: model)"))
         let issueSummaryView = try sourceStructBody(named: "IssueSummaryView", in: mac)
+        let issueRowView = try sourceStructBody(named: "IssueRowView", in: mac)
         XCTAssertTrue(issueSummaryView.contains("@State private var isExpanded = false"))
         XCTAssertTrue(issueSummaryView.contains("if isExpanded"))
-        XCTAssertTrue(issueSummaryView.contains("ForEach(issues.prefix(5))"))
-        XCTAssertFalse(issueSummaryView.contains("ForEach(issues.prefix(5)) { issue in\n                    IssueRowView(issue: issue)"))
+        XCTAssertTrue(issueSummaryView.contains("ForEach(issues.prefix(3))"))
+        XCTAssertTrue(issueRowView.contains(".lineLimit(2)"))
+        XCTAssertFalse(issueSummaryView.contains("ForEach(issues.prefix(5))"))
 
         let diagnosticsBody = try sectionBody(in: workstationBody, from: "case .diagnostics:", to: ".padding(.vertical, 4)")
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticToolsPanelView"))
@@ -2067,9 +2077,10 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertFalse(calendarDetail.contains("MacMailPasteAnalyzerPanel"))
         XCTAssertFalse(calendarGuide.contains("model.run(.verify)"))
-        XCTAssertFalse(calendarGuide.contains("model.run(.coreSync)"))
+        XCTAssertTrue(calendarGuide.contains("model.run(.coreSync)"))
         XCTAssertFalse(calendarGuide.contains("model.run(.doctor)"))
         XCTAssertFalse(calendarGuide.contains("캘린더 확인"))
+        XCTAssertTrue(calendarGuide.contains("KLMS 기준 반영"))
         XCTAssertTrue(calendarGuide.contains("캘린더에서 열기"))
         XCTAssertTrue(calendarActionButton.contains("Color.klmsMacCommandButtonBackground.opacity(0.92)"))
         XCTAssertTrue(calendarActionButton.contains("Color.klmsMacCommandButtonBorder.opacity(0.95)"))

@@ -362,7 +362,7 @@ private struct MacAlertBannerView: View {
             return "\(command.displayName) 실행 중"
         }
         if model.needsAttention {
-            return model.attentionSummary
+            return "상태 검사 실패"
         }
         if model.snapshot.syncReport == nil {
             return "첫 실행 준비"
@@ -4657,11 +4657,11 @@ private struct IssueSummaryView: View {
 
                 if isExpanded {
                     VStack(alignment: .leading, spacing: 8) {
-                        ForEach(issues.prefix(5)) { issue in
+                        ForEach(issues.prefix(3)) { issue in
                             IssueRowView(issue: issue)
                         }
-                        if issues.count > 5 {
-                            Text("나머지 \(issues.count - 5)개는 진단 화면에서 확인할 수 있습니다.")
+                        if issues.count > 3 {
+                            Text("나머지 \(issues.count - 3)개는 진단 화면에서 확인할 수 있습니다.")
                                 .font(.caption2)
                                 .foregroundStyle(Color.klmsMacSecondaryText)
                         }
@@ -4699,7 +4699,8 @@ private struct IssueRowView: View {
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                         .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
                 }
             }
         }

@@ -2980,7 +2980,8 @@ private struct CalendarDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             CalendarActionGuideView(
-                hasReportedCalendarChanges: hasReportedCalendarChanges
+                hasReportedCalendarChanges: hasReportedCalendarChanges,
+                model: model
             )
 
             let visibleChanges = visibleCalendarChanges
@@ -3066,6 +3067,7 @@ private struct CalendarDetailView: View {
 
 private struct CalendarActionGuideView: View {
     var hasReportedCalendarChanges: Bool
+    var model: KLMSMacModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -3086,12 +3088,24 @@ private struct CalendarActionGuideView: View {
                 Spacer(minLength: 0)
             }
 
-            CalendarActionButton(
-                title: "캘린더에서 열기",
-                systemImage: "calendar",
-                tint: Color.klmsMacWarningBorder
-            ) {
-                openSystemCalendar()
+            HStack(spacing: 8) {
+                CalendarActionButton(
+                    title: "KLMS 기준 반영",
+                    systemImage: KLMSEngineCommand.coreSync.systemImage,
+                    tint: Color.klmsMacCommandAccent,
+                    disabled: model.runningCommand != nil
+                ) {
+                    Task {
+                        await model.run(.coreSync)
+                    }
+                }
+                CalendarActionButton(
+                    title: "캘린더에서 열기",
+                    systemImage: "calendar",
+                    tint: Color.klmsMacWarningBorder
+                ) {
+                    openSystemCalendar()
+                }
             }
         }
         .padding(10)
@@ -3104,9 +3118,9 @@ private struct CalendarActionGuideView: View {
 
     private var helpText: String {
         if hasReportedCalendarChanges {
-            return "방금 생성, 수정, 정리된 일정입니다. 항목별 수정·삭제는 아래 목록에서 처리하고, 전체 검사는 진단 탭에서 실행하세요."
+            return "방금 생성, 수정, 정리된 일정입니다. 항목별 수정·삭제는 아래 목록에서 처리하고, 전체 재반영은 KLMS 기준 반영을 누르세요."
         }
-        return "최근 캘린더 변경 내역이 없습니다. 캘린더 수가 맞지 않거나 권한이 의심되면 진단 탭의 상태 검사와 권한 점검을 사용하세요."
+        return "캘린더 수가 맞지 않으면 KLMS 기준 반영으로 과제/시험과 Calendar를 다시 맞출 수 있습니다."
     }
 
     private func openSystemCalendar() {

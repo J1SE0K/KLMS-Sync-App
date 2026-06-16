@@ -673,14 +673,12 @@ struct SettingsView: View {
     }
 
     private func settingsForm<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        ScrollView(.horizontal, showsIndicators: true) {
-            HStack(alignment: .top, spacing: 12) {
-                content()
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
-            .frame(minHeight: 360, alignment: .topLeading)
+        VStack(alignment: .leading, spacing: 12) {
+            content()
         }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, minHeight: 360, alignment: .topLeading)
         .buttonStyle(KLMSMacSettingsButtonStyle())
         .textFieldStyle(.roundedBorder)
     }
