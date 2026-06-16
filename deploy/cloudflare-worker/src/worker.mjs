@@ -426,15 +426,20 @@ async function route(request, env) {
     if (!action.action || !action.itemID || !action.itemKind) {
       return sendJSON(400, { error: "missing item action target" });
     }
+    const syncPatch = await applyItemActionToStoredSyncData(db, state, action);
     await upsertItemAction(db, action);
     await appendRequestLog(db, request, {
       action: displayItemActionName(action.action),
-      status: "queued",
-      message: action.itemTitle || action.itemID,
+      status: syncPatch.changed ? "updated" : "queued",
+      message: syncPatch.changed
+        ? "서버 화면에는 바로 반영했고 Mac 로컬 반영을 기다리고 있습니다."
+        : action.itemTitle || action.itemID,
     });
-    state.message = `${displayItemActionName(action.action)} 요청 대기 중`;
+    state.message = syncPatch.changed
+      ? `${displayItemActionName(action.action)} 서버 반영 완료 · Mac 반영 대기 중`
+      : `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "item-actions:pending");
+    await saveMetaState(db, state, env, syncPatch.changed ? "item-actions:server-state" : "item-actions:pending");
     return sendJSON(201, action);
   }
 
@@ -2589,6 +2594,191 @@ async function replaceSyncItems(db, items, generatedAt, extras = {}) {
     setMetaStatement(db, "syncDataGeneratedAt", String(generatedAt || now)),
     setMetaStatement(db, "syncDataUpdatedAt", now),
   ]);
+}
+
+async function applyItemActionToStoredSyncData(db, state, action) {
+  const now = new Date().toISOString();
+  let changed = false;
+  let items = parseJSON(await getMeta(db, "syncDataItems"), [])
+    .map(normalizeSyncItem)
+    .filter(Boolean);
+  let calendarChanges = normalizeCalendarChanges(parseJSON(await getMeta(db, "syncDataCalendarChanges"), []));
+
+  const itemPatch = mutateSyncItemsForItemAction(items, action, now);
+  items = itemPatch.items;
+  changed = changed || itemPatch.changed;
+
+  const calendarPatch = mutateCalendarChangesForItemAction(calendarChanges, action);
+  calendarChanges = calendarPatch.calendarChanges;
+  changed = changed || calendarPatch.changed;
+
+  if (!changed) {
+    return { changed: false };
+  }
+
+  const statements = [
+    setMetaStatement(db, "syncDataUpdatedAt", now),
+  ];
+  if (itemPatch.changed) {
+    statements.push(setMetaStatement(db, "syncDataItems", JSON.stringify(items.slice(0, MAX_SYNC_ITEMS))));
+  }
+  if (calendarPatch.changed) {
+    statements.push(setMetaStatement(db, "syncDataCalendarChanges", JSON.stringify(calendarChanges)));
+  }
+  await db.batch(statements);
+  state.status = statusWithStoredSyncData(state.status, items, calendarChanges);
+  return { changed: true };
+}
+
+function mutateSyncItemsForItemAction(inputItems, action, now) {
+  let items = inputItems.map((item) => ({ ...item }));
+  let changed = false;
+  const markChanged = (nextItems) => {
+    items = nextItems.map(normalizeSyncItem).filter(Boolean).slice(0, MAX_SYNC_ITEMS);
+    changed = true;
+  };
+  const updateTarget = (mutator) => {
+    const index = items.findIndex((item) => item.id === action.itemID);
+    if (index < 0) {
+      return;
+    }
+    const previous = JSON.stringify(items[index]);
+    const next = normalizeSyncItem(mutator({ ...items[index], updatedAt: now }));
+    if (!next) {
+      return;
+    }
+    if (JSON.stringify(next) !== previous) {
+      items[index] = next;
+      changed = true;
+    }
+  };
+
+  switch (action.action) {
+    case "mailDashboardAdd": {
+      const item = normalizeSyncItem(parseJSON(action.message, null)) || normalizeSyncItem({
+        id: action.itemID,
+        kind: action.itemKind,
+        title: action.itemTitle,
+        status: "메일 반영",
+        updatedAt: now,
+      });
+      if (item) {
+        const nextItem = normalizeSyncItem({ ...item, id: action.itemID || item.id, updatedAt: now, isHidden: false });
+        markChanged([nextItem, ...items.filter((existing) => existing.id !== nextItem.id)]);
+      }
+      break;
+    }
+    case "mailDashboardRemove":
+      if (items.some((item) => item.id === action.itemID)) {
+        markChanged(items.filter((item) => item.id !== action.itemID));
+      }
+      break;
+    case "assignmentComplete":
+      updateTarget((item) => ({ ...item, kind: "completedAssignment", status: "완료", isHidden: false }));
+      break;
+    case "assignmentRestore":
+    case "assignmentUnhide":
+      updateTarget((item) => ({ ...item, kind: item.kind === "completedAssignment" ? "assignment" : item.kind, status: "", isHidden: false }));
+      break;
+    case "assignmentHide":
+      updateTarget((item) => ({ ...item, status: "숨김", isHidden: true }));
+      break;
+    case "examPromote":
+      updateTarget((item) => ({ ...item, kind: "exam", status: "시험", isHidden: false }));
+      break;
+    case "examIgnore":
+      updateTarget((item) => ({ ...item, status: "시험 아님", isHidden: true }));
+      break;
+    case "examRestore":
+      updateTarget((item) => ({ ...item, status: "", isHidden: false }));
+      break;
+    case "noticeRead":
+      updateTarget((item) => ({ ...item, isRead: true }));
+      break;
+    case "noticeUnread":
+      updateTarget((item) => ({ ...item, isRead: false }));
+      break;
+    case "noticeImportant":
+      updateTarget((item) => ({ ...item, isImportant: true }));
+      break;
+    case "noticeUnimportant":
+      updateTarget((item) => ({ ...item, isImportant: false }));
+      break;
+    case "noticeHide":
+      updateTarget((item) => ({ ...item, isHidden: true }));
+      break;
+    case "noticeUnhide":
+      updateTarget((item) => ({ ...item, isHidden: false }));
+      break;
+    case "fileHide":
+      updateTarget((item) => ({ ...item, isHidden: true }));
+      break;
+    case "fileUnhide":
+      updateTarget((item) => ({ ...item, isHidden: false }));
+      break;
+    case "fileTrash":
+      updateTarget((item) => ({ ...item, status: "휴지통", isHidden: true }));
+      break;
+    default:
+      break;
+  }
+
+  return { items: items.sort(compareSyncItems), changed };
+}
+
+function mutateCalendarChangesForItemAction(inputChanges, action) {
+  if (!["calendarCreate", "calendarEdit", "calendarDelete"].includes(action.action)) {
+    return { calendarChanges: inputChanges, changed: false };
+  }
+  const calendarChanges = inputChanges.filter((change) => !calendarChangeMatchesItemAction(change, action));
+  return {
+    calendarChanges,
+    changed: calendarChanges.length !== inputChanges.length,
+  };
+}
+
+function calendarChangeMatchesItemAction(change, action) {
+  const itemID = String(action.itemID || "");
+  if (!itemID) {
+    return false;
+  }
+  if (String(change.identifier || "") === itemID) {
+    return true;
+  }
+  return calendarChangeStableID(change) === itemID;
+}
+
+function calendarChangeStableID(change) {
+  const normalized = normalizeCalendarChanges([change])[0] || {};
+  return [
+    normalized.action,
+    normalized.calendar,
+    normalized.bucket,
+    normalized.identifier,
+    normalized.title,
+    normalized.start_at,
+    normalized.due_at,
+    normalized.raw,
+  ].map((part) => String(part || "")).join("|");
+}
+
+function statusWithStoredSyncData(rawStatus, items, calendarChanges) {
+  const status = normalizeStatus(rawStatus || defaultStatus);
+  const visible = items.filter((item) => !item.isHidden);
+  const notices = visible.filter((item) => item.kind === "notice");
+  const files = visible.filter((item) => item.kind === "file");
+  status.assignments = visible.filter((item) => item.kind === "assignment").length;
+  status.exams = visible.filter((item) => item.kind === "exam").length;
+  status.helpDesk = visible.filter((item) => item.kind === "helpDesk").length;
+  status.notices = notices.length;
+  status.noticeNew = notices.filter((item) => !item.isRead).length;
+  status.noticeIgnored = items.filter((item) => item.kind === "notice" && item.isHidden).length;
+  status.fileTotal = files.length;
+  status.newFiles = Math.min(status.newFiles, status.fileTotal);
+  status.calendarCreated = calendarChanges.filter((change) => change.action === "created").length;
+  status.calendarUpdated = calendarChanges.filter((change) => change.action === "updated").length;
+  status.calendarDeleted = calendarChanges.filter((change) => change.action === "deleted").length;
+  return status;
 }
 
 async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {

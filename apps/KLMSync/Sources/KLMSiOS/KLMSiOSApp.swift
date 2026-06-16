@@ -447,7 +447,7 @@ final class CompanionModel: ObservableObject {
                 itemTitle: normalizedItem.title,
                 message: message
             ))
-            await refreshRecent(includeSyncData: false, showsActivity: false)
+            await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             errorMessage = userFacingMessage(for: error)
         }
@@ -475,7 +475,7 @@ final class CompanionModel: ObservableObject {
                 itemTitle: item.title,
                 message: message
             ))
-            await refreshRecent(includeSyncData: false, showsActivity: false)
+            await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             errorMessage = userFacingMessage(for: error)
         }
@@ -866,7 +866,7 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
-            await refreshRecent(includeSyncData: false, showsActivity: false)
+            await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
             recentItemActions.removeAll { $0.itemID == item.id && $0.action == actionKind && $0.status == .pending }
@@ -905,7 +905,7 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: calendarActionRequestMessage(for: actionKind))
-            await refreshRecent(includeSyncData: false, showsActivity: false)
+            await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
             recentItemActions.removeAll { $0.itemID == change.id && $0.action == actionKind && $0.status == .pending }

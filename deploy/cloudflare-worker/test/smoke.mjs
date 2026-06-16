@@ -282,6 +282,69 @@ async function runSmoke() {
     assert.equal(afterNewPost.runLogs[0].commandTitle, "파일");
   }
 
+  const calendarChangeID = [
+    "created",
+    "KLMS 시험",
+    "exam",
+    "",
+    "추가 시험",
+    "2026-06-18 09:00",
+    "2026-06-18 10:00",
+    "",
+  ].join("|");
+  await expectJSON("/v1/sync-data", {
+    generatedAt: "2026-05-31T00:00:00Z",
+    items: [
+      {
+        id: "exam-1",
+        kind: "exam",
+        course: "영미 단편소설",
+        title: "기말고사",
+        timestamp: "2026-06-12 10:00",
+        status: "예정",
+        detail: "범위: 전체",
+        attachmentCount: 0,
+        updatedAt: "2026-05-31T00:00:00Z",
+      },
+      {
+        id: "notice-1",
+        kind: "notice",
+        course: "데이터베이스",
+        title: "공지",
+        timestamp: "2026-05-31 09:00",
+        status: "새 공지",
+        detail: "내용",
+        attachmentCount: 1,
+        updatedAt: "2026-05-31T00:00:01Z",
+        isRead: false,
+        isImportant: false,
+        isHidden: false,
+      },
+      {
+        id: "assignment-1",
+        kind: "assignment",
+        course: "알고리즘 개론",
+        title: "과제 1",
+        timestamp: "2026-06-01 23:59",
+        status: "진행 중",
+        detail: "",
+        attachmentCount: 0,
+        updatedAt: "2026-05-31T00:00:02Z",
+      },
+    ],
+    calendarChanges: [
+      {
+        action: "created",
+        calendar: "KLMS 시험",
+        bucket: "exam",
+        title: "추가 시험",
+        start_at: "2026-06-18 09:00",
+        due_at: "2026-06-18 10:00",
+        changes: ["새 일정"],
+      },
+    ],
+  }, { method: "POST", role: "worker" });
+
   const action = await expectJSON("/v1/item-actions", {
     action: "noticeRead",
     itemID: "notice-1",
@@ -289,6 +352,34 @@ async function runSmoke() {
     itemTitle: "공지",
   }, { method: "POST", status: 201 });
   assert.equal(action.status, "pending");
+  {
+    const payload = await expectJSON("/v1/sync-data?kind=notice&limit=10");
+    assert.equal(payload.items.length, 1);
+    assert.equal(payload.items[0].isRead, true);
+    const status = await expectJSON("/v1/status");
+    assert.equal(status.status.noticeNew, 0);
+    assert.equal(status.status.notices, 1);
+  }
+
+  const calendarAction = await expectJSON("/v1/item-actions", {
+    action: "calendarCreate",
+    itemID: calendarChangeID,
+    itemKind: "calendar",
+    itemTitle: "추가 시험",
+  }, { method: "POST", status: 201 });
+  assert.equal(calendarAction.status, "pending");
+  {
+    const payload = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(payload.calendarChanges.length, 0);
+    const status = await expectJSON("/v1/status");
+    assert.equal(status.status.calendarCreated, 0);
+  }
+  await expectJSON(`/v1/item-actions/${calendarAction.id}`, {
+    ...calendarAction,
+    status: "completed",
+    updatedAt: new Date().toISOString(),
+    message: "calendar done",
+  }, { method: "PUT", role: "worker" });
 
   {
     const payload = await expectJSON("/relay/v1/item-actions/pending", undefined, { role: "worker" });

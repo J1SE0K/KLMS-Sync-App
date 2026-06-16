@@ -418,15 +418,20 @@ async function route(request, response) {
       sendJSON(response, 400, { error: "missing item action target" });
       return;
     }
+    const syncPatch = applyItemActionToStoredSyncData(action);
     upsertItemAction(action);
     appendRequestLog(request, {
       action: displayItemActionName(action.action),
-      status: "queued",
-      message: action.itemTitle || action.itemID,
+      status: syncPatch.changed ? "updated" : "queued",
+      message: syncPatch.changed
+        ? "서버 화면에는 바로 반영했고 Mac 로컬 반영을 기다리고 있습니다."
+        : action.itemTitle || action.itemID,
     });
-    state.message = `${displayItemActionName(action.action)} 요청 대기 중`;
+    state.message = syncPatch.changed
+      ? `${displayItemActionName(action.action)} 서버 반영 완료 · Mac 반영 대기 중`
+      : `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveState("item-actions:pending");
+    await saveState(syncPatch.changed ? "item-actions:server-state" : "item-actions:pending");
     sendJSON(response, 201, action);
     return;
   }
@@ -2573,6 +2578,250 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+function applyItemActionToStoredSyncData(action) {
+  const now = new Date().toISOString();
+  let items = loadAllStoredSyncItems();
+  let calendarChanges = normalizeCalendarChanges(parseJSON(getMeta("syncDataCalendarChanges"), []));
+
+  const itemPatch = mutateSyncItemsForItemAction(items, action, now);
+  items = itemPatch.items;
+
+  const calendarPatch = mutateCalendarChangesForItemAction(calendarChanges, action);
+  calendarChanges = calendarPatch.calendarChanges;
+
+  const changed = itemPatch.changed || calendarPatch.changed;
+  if (!changed) {
+    return { changed: false };
+  }
+
+  saveStoredSyncDataPatch({
+    items,
+    calendarChanges,
+    itemChanged: itemPatch.changed,
+    calendarChanged: calendarPatch.changed,
+    updatedAt: now,
+  });
+  state.status = statusWithStoredSyncData(state.status, items, calendarChanges);
+  return { changed: true };
+}
+
+function loadAllStoredSyncItems() {
+  return db.prepare(`
+    SELECT payload_json
+    FROM sync_items
+    ORDER BY updated_at DESC, timestamp DESC, course ASC, title ASC
+  `).all()
+    .map((row) => normalizeSyncItem(parseJSON(row.payload_json, null)))
+    .filter(Boolean);
+}
+
+function saveStoredSyncDataPatch({ items, calendarChanges, itemChanged, calendarChanged, updatedAt }) {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (itemChanged) {
+      db.prepare("DELETE FROM sync_items").run();
+      const insertItem = db.prepare(`
+        INSERT INTO sync_items (
+          id, kind, course, title, timestamp, status, detail, attachment_count, updated_at, payload_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const item of items.slice(0, MAX_SYNC_ITEMS)) {
+        const normalized = normalizeSyncItem({ ...item, updatedAt: item.updatedAt || updatedAt });
+        if (!normalized) {
+          continue;
+        }
+        insertItem.run(
+          normalized.id,
+          normalized.kind,
+          normalized.course,
+          normalized.title,
+          normalized.timestamp,
+          normalized.status,
+          normalized.detail,
+          normalized.attachmentCount,
+          normalized.updatedAt,
+          JSON.stringify(normalized)
+        );
+      }
+    }
+    if (calendarChanged) {
+      setMeta("syncDataCalendarChanges", JSON.stringify(calendarChanges));
+    }
+    setMeta("syncDataUpdatedAt", updatedAt);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function mutateSyncItemsForItemAction(inputItems, action, now) {
+  let items = inputItems.map((item) => ({ ...item }));
+  let changed = false;
+  const markChanged = (nextItems) => {
+    items = nextItems.map(normalizeSyncItem).filter(Boolean).slice(0, MAX_SYNC_ITEMS);
+    changed = true;
+  };
+  const updateTarget = (mutator) => {
+    const index = items.findIndex((item) => item.id === action.itemID);
+    if (index < 0) {
+      return;
+    }
+    const previous = JSON.stringify(items[index]);
+    const next = normalizeSyncItem(mutator({ ...items[index], updatedAt: now }));
+    if (!next) {
+      return;
+    }
+    if (JSON.stringify(next) !== previous) {
+      items[index] = next;
+      changed = true;
+    }
+  };
+
+  switch (action.action) {
+    case "mailDashboardAdd": {
+      const item = normalizeSyncItem(parseJSON(action.message, null)) || normalizeSyncItem({
+        id: action.itemID,
+        kind: action.itemKind,
+        title: action.itemTitle,
+        status: "메일 반영",
+        updatedAt: now,
+      });
+      if (item) {
+        const nextItem = normalizeSyncItem({ ...item, id: action.itemID || item.id, updatedAt: now, isHidden: false });
+        markChanged([nextItem, ...items.filter((existing) => existing.id !== nextItem.id)]);
+      }
+      break;
+    }
+    case "mailDashboardRemove":
+      if (items.some((item) => item.id === action.itemID)) {
+        markChanged(items.filter((item) => item.id !== action.itemID));
+      }
+      break;
+    case "assignmentComplete":
+      updateTarget((item) => ({ ...item, kind: "completedAssignment", status: "완료", isHidden: false }));
+      break;
+    case "assignmentRestore":
+    case "assignmentUnhide":
+      updateTarget((item) => ({ ...item, kind: item.kind === "completedAssignment" ? "assignment" : item.kind, status: "", isHidden: false }));
+      break;
+    case "assignmentHide":
+      updateTarget((item) => ({ ...item, status: "숨김", isHidden: true }));
+      break;
+    case "examPromote":
+      updateTarget((item) => ({ ...item, kind: "exam", status: "시험", isHidden: false }));
+      break;
+    case "examIgnore":
+      updateTarget((item) => ({ ...item, status: "시험 아님", isHidden: true }));
+      break;
+    case "examRestore":
+      updateTarget((item) => ({ ...item, status: "", isHidden: false }));
+      break;
+    case "noticeRead":
+      updateTarget((item) => ({ ...item, isRead: true }));
+      break;
+    case "noticeUnread":
+      updateTarget((item) => ({ ...item, isRead: false }));
+      break;
+    case "noticeImportant":
+      updateTarget((item) => ({ ...item, isImportant: true }));
+      break;
+    case "noticeUnimportant":
+      updateTarget((item) => ({ ...item, isImportant: false }));
+      break;
+    case "noticeHide":
+      updateTarget((item) => ({ ...item, isHidden: true }));
+      break;
+    case "noticeUnhide":
+      updateTarget((item) => ({ ...item, isHidden: false }));
+      break;
+    case "fileHide":
+      updateTarget((item) => ({ ...item, isHidden: true }));
+      break;
+    case "fileUnhide":
+      updateTarget((item) => ({ ...item, isHidden: false }));
+      break;
+    case "fileTrash":
+      updateTarget((item) => ({ ...item, status: "휴지통", isHidden: true }));
+      break;
+    default:
+      break;
+  }
+
+  return { items: items.sort(compareSyncItems), changed };
+}
+
+function mutateCalendarChangesForItemAction(inputChanges, action) {
+  if (!["calendarCreate", "calendarEdit", "calendarDelete"].includes(action.action)) {
+    return { calendarChanges: inputChanges, changed: false };
+  }
+  const calendarChanges = inputChanges.filter((change) => !calendarChangeMatchesItemAction(change, action));
+  return {
+    calendarChanges,
+    changed: calendarChanges.length !== inputChanges.length,
+  };
+}
+
+function calendarChangeMatchesItemAction(change, action) {
+  const itemID = String(action.itemID || "");
+  if (!itemID) {
+    return false;
+  }
+  if (String(change.identifier || "") === itemID) {
+    return true;
+  }
+  return calendarChangeStableID(change) === itemID;
+}
+
+function calendarChangeStableID(change) {
+  const normalized = normalizeCalendarChanges([change])[0] || {};
+  return [
+    normalized.action,
+    normalized.calendar,
+    normalized.bucket,
+    normalized.identifier,
+    normalized.title,
+    normalized.start_at,
+    normalized.due_at,
+    normalized.raw,
+  ].map((part) => String(part || "")).join("|");
+}
+
+function statusWithStoredSyncData(rawStatus, items, calendarChanges) {
+  const status = normalizeStatus(rawStatus || defaultStatus);
+  const visible = items.filter((item) => !item.isHidden);
+  const notices = visible.filter((item) => item.kind === "notice");
+  const files = visible.filter((item) => item.kind === "file");
+  status.assignments = visible.filter((item) => item.kind === "assignment").length;
+  status.exams = visible.filter((item) => item.kind === "exam").length;
+  status.helpDesk = visible.filter((item) => item.kind === "helpDesk").length;
+  status.notices = notices.length;
+  status.noticeNew = notices.filter((item) => !item.isRead).length;
+  status.noticeIgnored = items.filter((item) => item.kind === "notice" && item.isHidden).length;
+  status.fileTotal = files.length;
+  status.newFiles = Math.min(status.newFiles, status.fileTotal);
+  status.calendarCreated = calendarChanges.filter((change) => change.action === "created").length;
+  status.calendarUpdated = calendarChanges.filter((change) => change.action === "updated").length;
+  status.calendarDeleted = calendarChanges.filter((change) => change.action === "deleted").length;
+  return status;
+}
+
+function compareSyncItems(lhs, rhs) {
+  const updatedDelta = Date.parse(rhs.updatedAt || "") - Date.parse(lhs.updatedAt || "");
+  if (Number.isFinite(updatedDelta) && updatedDelta !== 0) {
+    return updatedDelta;
+  }
+  const timestampDelta = String(rhs.timestamp || "").localeCompare(String(lhs.timestamp || ""));
+  if (timestampDelta !== 0) {
+    return timestampDelta;
+  }
+  const courseDelta = String(lhs.course || "").localeCompare(String(rhs.course || ""), "ko");
+  if (courseDelta !== 0) {
+    return courseDelta;
+  }
+  return String(lhs.title || "").localeCompare(String(rhs.title || ""), "ko");
 }
 
 function syncDataResponse({ kind = "", limit = 250 } = {}) {
