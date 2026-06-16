@@ -2601,14 +2601,14 @@ private struct RemoteDashboardStatusStrip: View {
 
     private var chipForeground: Color {
         if model.isRemoteAvailable || model.hasInFlightRequest || model.status.phase == "running" {
-            return Color.klmsPrimaryCommandButtonForeground
+            return Color.klmsPrimaryText
         }
         return Color.klmsWarningBorder
     }
 
     private var chipBackground: Color {
         if model.isRemoteAvailable || model.hasInFlightRequest || model.status.phase == "running" {
-            return Color.klmsPrimaryCommandButtonBackground
+            return Color.klmsCommandButtonBackground
         }
         return Color.klmsWarningBackground
     }

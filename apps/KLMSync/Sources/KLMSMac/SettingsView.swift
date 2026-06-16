@@ -724,75 +724,81 @@ struct SettingsView: View {
             systemImage: "network"
         ) {
             VStack(alignment: .leading, spacing: 12) {
-                described(
-                    "서버 URL",
-                    summary: model.serverRelayURL.isEmpty ? "미설정" : "저장됨",
-                    "Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요."
+                SettingsActionGroupBox(
+                    title: "연결 정보",
+                    detail: "서버 주소와 기기별 토큰을 한곳에서 관리합니다."
                 ) {
-                    settingsTextInput(
+                    described(
                         "서버 URL",
-                        text: Binding(
-                            get: { model.serverRelayURL },
-                            set: { model.setServerRelayURL($0) }
+                        summary: model.serverRelayURL.isEmpty ? "미설정" : "저장됨",
+                        "Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요."
+                    ) {
+                        settingsTextInput(
+                            "서버 URL",
+                            text: Binding(
+                                get: { model.serverRelayURL },
+                                set: { model.setServerRelayURL($0) }
+                            )
                         )
-                    )
-                }
-                described(
-                    "클라이언트 토큰",
-                    summary: model.serverRelayClientToken.isEmpty ? "미설정" : "저장됨",
-                    "iPhone/iPad/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다."
-                ) {
-                    settingsTextInput(
+                    }
+                    described(
                         "클라이언트 토큰",
-                        text: Binding(
-                            get: { model.serverRelayClientToken },
-                            set: { model.setServerRelayClientToken($0) }
-                        ),
-                        secure: true
-                    )
-                }
-                described(
-                    "Mac 전용 토큰",
-                    summary: model.serverRelayWorkerToken.isEmpty ? "미설정" : "저장됨",
-                    "Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다."
-                ) {
-                    settingsTextInput(
-                        "Mac 전용 토큰",
-                        text: Binding(
-                            get: { model.serverRelayWorkerToken },
-                            set: { model.setServerRelayWorkerToken($0) }
-                        ),
-                        secure: true
-                    )
-                }
-
-                Divider()
-
-                described(
-                    "서버 릴레이 사용",
-                    summary: model.serverRelayEnabled ? "켜짐" : "꺼짐",
-                    "iPhone/iPad/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다."
-                ) {
-                    Toggle(
-                        "서버 릴레이 사용",
-                        isOn: Binding(
-                            get: { model.serverRelayEnabled },
-                            set: { model.setServerRelayEnabled($0) }
+                        summary: model.serverRelayClientToken.isEmpty ? "미설정" : "저장됨",
+                        "iPhone/iPad/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다."
+                    ) {
+                        settingsTextInput(
+                            "클라이언트 토큰",
+                            text: Binding(
+                                get: { model.serverRelayClientToken },
+                                set: { model.setServerRelayClientToken($0) }
+                            ),
+                            secure: true
                         )
-                    )
-                }
-                SettingsFieldRow(
-                    title: "서버 상태",
-                    summary: model.serverRelayStatusMessage ?? "대기 중",
-                    description: "Mac 앱이 서버 요청을 기다리는지 확인합니다."
-                ) {
-                    LabeledContent("서버 상태") {
-                        Text(model.serverRelayStatusMessage ?? "대기 중")
-                            .foregroundStyle(Color.klmsMacSecondaryText)
+                    }
+                    described(
+                        "Mac 전용 토큰",
+                        summary: model.serverRelayWorkerToken.isEmpty ? "미설정" : "저장됨",
+                        "Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다."
+                    ) {
+                        settingsTextInput(
+                            "Mac 전용 토큰",
+                            text: Binding(
+                                get: { model.serverRelayWorkerToken },
+                                set: { model.setServerRelayWorkerToken($0) }
+                            ),
+                            secure: true
+                        )
                     }
                 }
 
-                Divider()
+                SettingsActionGroupBox(
+                    title: "릴레이 동작",
+                    detail: "다른 기기가 서버를 통해 Mac 앱에 요청을 보낼 수 있게 합니다."
+                ) {
+                    described(
+                        "서버 릴레이 사용",
+                        summary: model.serverRelayEnabled ? "켜짐" : "꺼짐",
+                        "iPhone/iPad/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다."
+                    ) {
+                        Toggle(
+                            "서버 릴레이 사용",
+                            isOn: Binding(
+                                get: { model.serverRelayEnabled },
+                                set: { model.setServerRelayEnabled($0) }
+                            )
+                        )
+                    }
+                    SettingsFieldRow(
+                        title: "서버 상태",
+                        summary: model.serverRelayStatusMessage ?? "대기 중",
+                        description: "Mac 앱이 서버 요청을 기다리는지 확인합니다."
+                    ) {
+                        LabeledContent("서버 상태") {
+                            Text(model.serverRelayStatusMessage ?? "대기 중")
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                        }
+                    }
+                }
 
                 SettingsActionGroupBox(
                     title: "서버 확인",
