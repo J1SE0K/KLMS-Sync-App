@@ -6361,7 +6361,7 @@ private struct MailPasteAnalyzerPanel: View {
                         } label: {
                             Label("판독하기", systemImage: "wand.and.stars")
                         }
-                        .buttonStyle(KLMSActionButtonStyle(tone: .primary))
+                        .buttonStyle(KLMSActionButtonStyle())
                         .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                         Spacer(minLength: 0)
@@ -8717,7 +8717,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 Label("\(relevantCommand.displayName) 반영", systemImage: relevantCommand.engineCommand.systemImage)
                     .frame(maxWidth: .infinity, minHeight: 40)
             }
-            .buttonStyle(KLMSActionButtonStyle(tone: .primary))
+            .buttonStyle(KLMSActionButtonStyle())
             .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         }
     }
@@ -8744,7 +8744,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                         } label: {
                             Label("웹 미리보기", systemImage: "safari")
                         }
-                        .buttonStyle(KLMSActionButtonStyle(tone: .primary))
+                        .buttonStyle(KLMSActionButtonStyle())
                     }
                 }
             } else {
@@ -9017,7 +9017,7 @@ private struct ServerSyncItemDetailView: View {
                 Label("\(relevantCommand.displayName) 반영", systemImage: relevantCommand.engineCommand.systemImage)
                     .frame(maxWidth: .infinity, minHeight: 42)
             }
-            .buttonStyle(KLMSActionButtonStyle(tone: .primary))
+            .buttonStyle(KLMSActionButtonStyle())
             .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
         }
     }
@@ -9043,7 +9043,7 @@ private struct ServerSyncItemDetailView: View {
                         } label: {
                             Label("웹 미리보기", systemImage: "safari")
                         }
-                        .buttonStyle(KLMSActionButtonStyle(tone: .primary))
+                        .buttonStyle(KLMSActionButtonStyle())
                     }
                 }
             } else {
@@ -11739,7 +11739,7 @@ private struct RemoteSettingRow: View {
                         await model.createSettingAction(setting: setting, value: draftValue)
                     }
                 }
-                .buttonStyle(KLMSActionButtonStyle(tone: .primary))
+                .buttonStyle(KLMSActionButtonStyle())
                 .disabled(!setting.editable || model.isSubmitting || draftValue == setting.value)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

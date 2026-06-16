@@ -948,6 +948,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(view.contains(".buttonStyle(.plain)"))
         XCTAssertFalse(detail.contains(".buttonStyle(.plain)"))
         XCTAssertFalse(detail.contains(".buttonStyle(.borderless)"))
+        XCTAssertFalse(detail.contains(".buttonStyle(KLMSMacActionButtonStyle(tone: .primary))"))
         XCTAssertTrue(pressFeedbackStyle.contains("var cornerRadius: CGFloat = 10"))
         XCTAssertTrue(pressFeedbackStyle.contains("RoundedRectangle(cornerRadius: cornerRadius)"))
         XCTAssertTrue(detailPressFeedbackStyle.contains("var cornerRadius: CGFloat = 10"))
@@ -1337,6 +1338,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(authCodeHero.contains("Color.klmsPrimaryCommandButtonForeground"))
         XCTAssertTrue(authCodeHero.contains("Color.klmsWarningBorder"))
         XCTAssertTrue(authCodeHero.contains("Color.klmsWarningBackground"))
+        XCTAssertFalse(ios.contains(".buttonStyle(KLMSActionButtonStyle(tone: .primary))"))
 
         XCTAssertTrue(settingsScreen.contains("ServerRelayConnectionPanel"))
         XCTAssertTrue(settingsScreen.contains("CompanionImmediateSettingsPanel"))

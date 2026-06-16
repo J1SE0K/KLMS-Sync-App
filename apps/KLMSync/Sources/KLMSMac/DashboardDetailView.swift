@@ -1365,7 +1365,7 @@ private struct StateItemRowView: View {
                     } label: {
                         Label("동기화 반영", systemImage: KLMSEngineCommand.coreSync.systemImage)
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
+                    .buttonStyle(KLMSMacActionButtonStyle())
                     .disabled(model.runningCommand != nil)
                     if editor == .assignmentRecord, isManualCompleted {
                         Button {
@@ -1937,7 +1937,7 @@ private struct NoticeRowView: View {
                         } label: {
                             Label("메모 반영", systemImage: KLMSEngineCommand.noticeSync.systemImage)
                         }
-                        .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
+                        .buttonStyle(KLMSMacActionButtonStyle())
                         .disabled(model.runningCommand != nil)
                         Button {
                             model.setNoticeHidden(!hidden, for: notice)
@@ -2858,7 +2858,7 @@ private struct FileRowView: View {
                     } label: {
                         Label("파일 반영", systemImage: KLMSEngineCommand.filesSync.systemImage)
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
+                    .buttonStyle(KLMSMacActionButtonStyle())
                     .disabled(model.runningCommand != nil)
                     if hidden {
                         Button {
@@ -3523,7 +3523,7 @@ struct MacMailPasteAnalyzerPanel: View {
                         } label: {
                             Label("판독하기", systemImage: "wand.and.stars")
                         }
-                        .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
+                        .buttonStyle(KLMSMacActionButtonStyle())
                         .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         Button(role: .destructive) {
                             mailText = ""
@@ -3985,7 +3985,7 @@ private struct MailDashboardItemEditSheet: View {
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(KLMSMacActionButtonStyle(tone: .primary))
+                .buttonStyle(KLMSMacActionButtonStyle())
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
