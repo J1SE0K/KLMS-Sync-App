@@ -8,7 +8,7 @@ struct MenuBarRootView: View {
     @State private var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
-        WholeScreenVerticalScrollView {
+        WholeScreenVerticalScrollView(resetID: selectedSection) {
             VStack(alignment: .leading, spacing: 14) {
                 DashboardTopBarView(model: model, selectedSection: $selectedSection)
                 MacAlertBannerView(
@@ -473,17 +473,32 @@ private struct MacAlertBannerView: View {
     }
 }
 
-private struct WholeScreenVerticalScrollView<Content: View>: View {
+private enum KLMSMacScrollAnchor: Hashable {
+    case top
+}
+
+private struct WholeScreenVerticalScrollView<ResetID: Equatable, Content: View>: View {
+    var resetID: ResetID
     @ViewBuilder var content: Content
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            content
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .contentShape(Rectangle())
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: true) {
+                Color.clear
+                    .frame(height: 0)
+                    .id(KLMSMacScrollAnchor.top)
+                content
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .contentShape(Rectangle())
+            }
+            .scrollIndicators(.visible)
+            .clipped()
+            .onChange(of: resetID) { _, _ in
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)
+                }
+            }
         }
-        .scrollIndicators(.visible)
-        .clipped()
     }
 }
 

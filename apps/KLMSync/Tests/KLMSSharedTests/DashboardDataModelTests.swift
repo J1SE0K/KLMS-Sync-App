@@ -720,6 +720,12 @@ final class DashboardDataModelTests: XCTestCase {
         )
 
         XCTAssertTrue(mac.contains("ScrollView(.vertical, showsIndicators: true)"))
+        XCTAssertTrue(mac.contains("WholeScreenVerticalScrollView(resetID: selectedSection)"))
+        XCTAssertTrue(mac.contains("private enum KLMSMacScrollAnchor: Hashable"))
+        XCTAssertTrue(mac.contains("ScrollViewReader { proxy in"))
+        XCTAssertTrue(mac.contains(".id(KLMSMacScrollAnchor.top)"))
+        XCTAssertTrue(mac.contains(".onChange(of: resetID)"))
+        XCTAssertTrue(mac.contains("proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)"))
         XCTAssertTrue(mac.contains(".scrollIndicators(.visible)"))
         XCTAssertTrue(mac.contains("private struct WholeScreenVerticalScrollView"))
         XCTAssertFalse(mac.contains("GeometryReader { geometry in"))
