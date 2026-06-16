@@ -451,7 +451,7 @@ private struct DashboardDetailFilters {
 }
 
 private enum DashboardLargeList {
-    static let initialVisibleLimit = 6
+    static let initialVisibleLimit = 5
     static let increment = 10
 }
 

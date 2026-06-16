@@ -568,7 +568,8 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 SettingsActionGroupBox(
                     title: "연결 정보",
-                    detail: "서버 주소와 기기별 토큰을 한곳에서 관리합니다."
+                    detail: "서버 주소와 기기별 토큰을 한곳에서 관리합니다.",
+                    systemImage: "link"
                 ) {
                     described(
                         "서버 URL",
@@ -615,7 +616,8 @@ struct SettingsView: View {
 
                 SettingsActionGroupBox(
                     title: "릴레이 동작",
-                    detail: "다른 기기가 서버를 통해 Mac 앱에 요청을 보낼 수 있게 합니다."
+                    detail: "다른 기기가 서버를 통해 Mac 앱에 요청을 보낼 수 있게 합니다.",
+                    systemImage: "antenna.radiowaves.left.and.right"
                 ) {
                     described(
                         "서버 릴레이 사용",
@@ -644,7 +646,8 @@ struct SettingsView: View {
 
                 SettingsActionGroupBox(
                     title: "서버 확인",
-                    detail: "연결 정보를 붙여넣고 서버 응답을 검사합니다."
+                    detail: "연결 정보를 붙여넣고 서버 응답을 검사합니다.",
+                    systemImage: "checkmark.seal"
                 ) {
                     LazyVGrid(columns: settingsActionColumns, spacing: 8) {
                         Button {
@@ -673,7 +676,8 @@ struct SettingsView: View {
 
                 SettingsActionGroupBox(
                     title: "연결 정보 복사",
-                    detail: "다른 기기에 넣을 연결 정보를 복사합니다."
+                    detail: "다른 기기에 넣을 연결 정보를 복사합니다.",
+                    systemImage: "doc.on.doc"
                 ) {
                     LazyVGrid(columns: settingsActionColumns, spacing: 8) {
                         Button {
@@ -1095,17 +1099,20 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
 private struct SettingsActionGroupBox<Content: View>: View {
     var title: String
     var detail: String
+    var systemImage: String
     @State private var isExpanded: Bool
     @ViewBuilder var content: () -> Content
 
     init(
         title: String,
         detail: String,
+        systemImage: String,
         defaultExpanded: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.detail = detail
+        self.systemImage = systemImage
         _isExpanded = State(initialValue: defaultExpanded)
         self.content = content
     }
@@ -1117,7 +1124,17 @@ private struct SettingsActionGroupBox<Content: View>: View {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .center, spacing: 9) {
+                    Image(systemName: systemImage)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(isExpanded ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
+                        .frame(width: 24, height: 24)
+                        .background(
+                            isExpanded
+                                ? Color.klmsMacSelectedBackground.opacity(0.74)
+                                : Color.klmsMacSubtleCardBackground.opacity(0.82),
+                            in: RoundedRectangle(cornerRadius: 7)
+                        )
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title)
                             .font(.caption.weight(.semibold))
@@ -1136,6 +1153,13 @@ private struct SettingsActionGroupBox<Content: View>: View {
 
             if isExpanded {
                 content()
+                    .padding(9)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsMacSubtleCardBackground.opacity(0.50), in: RoundedRectangle(cornerRadius: 9))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9)
+                            .stroke(Color.klmsMacBorder.opacity(0.46), lineWidth: 1)
+                    }
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
