@@ -8,25 +8,34 @@ struct MenuBarRootView: View {
     @State private var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
-        WholeScreenVerticalScrollView(resetID: selectedSection) {
-            VStack(alignment: .leading, spacing: 14) {
-                DashboardTopBarView(model: model, selectedSection: $selectedSection)
-                MacAlertBannerView(
-                    model: model,
-                    selectedSection: $selectedSection,
-                    expandedLogSummaryKind: $expandedLogSummaryKind
-                )
-                CommandPanelView(model: model)
-                MacWorkstationLayoutView(
-                    model: model,
-                    selectedSection: $selectedSection,
-                    expandedLogSummaryKind: $expandedLogSummaryKind
-                )
+        HStack(alignment: .top, spacing: 0) {
+            MacWorkspaceSidebarView(model: model, selectedSection: $selectedSection)
+                .frame(width: 264, alignment: .topLeading)
+                .frame(maxHeight: .infinity, alignment: .top)
+            Rectangle()
+                .fill(Color.klmsMacBorder.opacity(0.76))
+                .frame(width: 1)
+            WholeScreenVerticalScrollView(resetID: selectedSection) {
+                VStack(alignment: .leading, spacing: 14) {
+                    DashboardTopBarView(model: model, selectedSection: $selectedSection)
+                    MacAlertBannerView(
+                        model: model,
+                        selectedSection: $selectedSection,
+                        expandedLogSummaryKind: $expandedLogSummaryKind
+                    )
+                    CommandPanelView(model: model)
+                    MacWorkstationLayoutView(
+                        model: model,
+                        selectedSection: $selectedSection,
+                        expandedLogSummaryKind: $expandedLogSummaryKind
+                    )
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
     }
@@ -72,22 +81,9 @@ private struct MacWorkstationLayoutView: View {
     @Binding var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            controlRail
-                .frame(minWidth: 220, idealWidth: 260, maxWidth: 300, alignment: .topLeading)
-            workspace
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .layoutPriority(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private var controlRail: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            WorkspaceNavigationView(selection: $selectedSection)
-            DashboardRuntimePanelView(model: model)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        workspace
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .layoutPriority(1)
     }
 
     @ViewBuilder
@@ -130,64 +126,91 @@ private struct MacWorkstationLayoutView: View {
     }
 }
 
+private struct MacWorkspaceSidebarView: View {
+    @ObservedObject var model: KLMSMacModel
+    @Binding var selectedSection: KLMSMacSection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("KLMS Sync")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text("작업 공간")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+            }
+            .padding(.horizontal, 6)
+
+            WorkspaceNavigationView(selection: $selectedSection)
+
+            Spacer(minLength: 10)
+
+            DashboardRuntimePanelView(model: model)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.klmsMacSidebarBackground)
+    }
+}
+
 private struct WorkspaceNavigationView: View {
     @Binding var selection: KLMSMacSection
 
     var body: some View {
-        SectionBox(title: "작업 공간") {
-            VStack(spacing: 7) {
-                ForEach(KLMSMacSection.allCases) { section in
-                    let isSelected = selection == section
-                    Button {
-                        guard selection != section else { return }
-                        selection = section
-                    } label: {
-                        HStack(spacing: 10) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(
-                                        isSelected
-                                            ? Color.klmsMacSelectedBorder.opacity(0.18)
-                                            : Color.klmsMacSubtleCardBackground.opacity(0.72)
-                                    )
-                                Image(systemName: section.systemImage)
-                                    .font(.subheadline.weight(isSelected ? .bold : .semibold))
-                                    .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
-                            }
-                            .frame(width: 30, height: 30)
-                            Text(section.title)
-                                .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                                .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacSecondaryText.opacity(0.52))
+        VStack(spacing: 7) {
+            ForEach(KLMSMacSection.allCases) { section in
+                let isSelected = selection == section
+                Button {
+                    guard selection != section else { return }
+                    selection = section
+                } label: {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(
+                                    isSelected
+                                        ? Color.klmsMacSelectedBorder.opacity(0.18)
+                                        : Color.klmsMacSubtleCardBackground.opacity(0.72)
+                                )
+                            Image(systemName: section.systemImage)
+                                .font(.subheadline.weight(isSelected ? .bold : .semibold))
+                                .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
                         }
-                        .padding(.leading, 8)
-                        .padding(.trailing, 10)
-                        .padding(.vertical, 9)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .background(
-                            isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacSubtleCardBackground.opacity(0.34),
-                            in: RoundedRectangle(cornerRadius: 10)
-                        )
-                        .overlay(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
-                                .frame(width: 3)
-                                .padding(.vertical, 9)
-                        }
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacCommandBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
-                        }
-                        .contentShape(RoundedRectangle(cornerRadius: 10))
+                        .frame(width: 30, height: 30)
+                        Text(section.title)
+                            .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                            .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacSecondaryText.opacity(0.52))
                     }
-                    .buttonStyle(MacPressFeedbackButtonStyle())
-                    .accessibilityLabel(section.title)
-                    .accessibilityIdentifier("workspace-\(section.rawValue)")
-                    .accessibilityValue(isSelected ? "선택됨" : "")
+                    .padding(.leading, 8)
+                    .padding(.trailing, 10)
+                    .padding(.vertical, 9)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .background(
+                        isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacSubtleCardBackground.opacity(0.34),
+                        in: RoundedRectangle(cornerRadius: 10)
+                    )
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
+                            .frame(width: 3)
+                            .padding(.vertical, 9)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacCommandBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
+                .buttonStyle(MacPressFeedbackButtonStyle())
+                .accessibilityLabel(section.title)
+                .accessibilityIdentifier("workspace-\(section.rawValue)")
+                .accessibilityValue(isSelected ? "선택됨" : "")
             }
         }
     }
@@ -5104,6 +5127,13 @@ extension Color {
         klmsMacAdaptiveColor(
             light: NSColor(red: 0.973, green: 0.969, blue: 0.949, alpha: 1.0),
             dark: NSColor(red: 0.063, green: 0.063, blue: 0.059, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacSidebarBackground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 0.949, green: 0.941, blue: 0.914, alpha: 1.0),
+            dark: NSColor(red: 0.078, green: 0.078, blue: 0.073, alpha: 1.0)
         )
     }
 
