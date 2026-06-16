@@ -1254,7 +1254,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionSection.contains("return \"설정\""))
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection]"))
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection] {\n        [.status, .history, .settings]"))
-        XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .files, .notices, .tasks, .calendar, .history, .settings]"))
+        XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .files, .tasks, .notices, .calendar, .history, .settings]"))
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
         XCTAssertLessThan(
             compactRoot.range(of: "CompanionSectionContent(section: selectedSection, model: model)")?.lowerBound ?? compactRoot.endIndex,
@@ -1545,6 +1545,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("selectedSettingsContent"))
         XCTAssertTrue(macSettings.contains("settingsTabButton"))
         XCTAssertTrue(macSettings.contains("KLMSMacSettingsTabButtonStyle"))
+        XCTAssertTrue(macSettings.contains("static var allCases: [SettingsTab] {\n        [.app, .login, .sync, .files, .notice]"))
+        XCTAssertTrue(macSettings.contains("\"화면/앱\""))
         XCTAssertTrue(macSettings.contains("Text(\"자주 쓰는 값은 위에, 기술적인 값은 접어서 정리했습니다.\")"))
         XCTAssertTrue(macSettings.contains("Text(selectedTab.scopeLabel)"))
         XCTAssertFalse(macSettings.contains("ViewThatFits(in: .horizontal)"))
@@ -1692,10 +1694,18 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(workstationBody.contains("WorkspaceNavigationView(selection: $selectedSection)"))
         XCTAssertTrue(workstationBody.contains("DashboardRuntimePanelView(model: model)"))
         XCTAssertTrue(workstationBody.contains("case .files:"))
-        XCTAssertTrue(workstationBody.contains("case .notices:"))
         XCTAssertTrue(workstationBody.contains("case .tasks:"))
+        XCTAssertTrue(workstationBody.contains("case .notices:"))
         XCTAssertTrue(workstationBody.contains("case .calendar:"))
         XCTAssertTrue(workstationBody.contains("TaskAndExamWorkspaceView(model: model)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(workstationBody.range(of: "case .files:")).lowerBound,
+            try XCTUnwrap(workstationBody.range(of: "case .tasks:")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(workstationBody.range(of: "case .tasks:")).lowerBound,
+            try XCTUnwrap(workstationBody.range(of: "case .notices:")).lowerBound
+        )
         XCTAssertTrue(workstationBody.contains("case .activityLogs:"))
         XCTAssertTrue(workstationBody.contains("LogSummaryPanelView"))
         XCTAssertTrue(workstationBody.contains("RemoteActivityPanelView"))
@@ -1723,7 +1733,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(issueSummaryView.contains("ForEach(issues.prefix(5))"))
 
         let diagnosticsBody = try sectionBody(in: workstationBody, from: "case .diagnostics:", to: ".padding(.vertical, 4)")
+        XCTAssertLessThan(
+            try XCTUnwrap(diagnosticsBody.range(of: "VerifyPanelView")).lowerBound,
+            try XCTUnwrap(diagnosticsBody.range(of: "DiagnosticToolsPanelView")).lowerBound
+        )
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticToolsPanelView"))
+        XCTAssertTrue(diagnosticsBody.contains("DiagnosticStageDurationPanelView"))
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticCommandLogPanelView"))
         XCTAssertFalse(diagnosticsBody.contains("RemoteActivityPanelView"))
 

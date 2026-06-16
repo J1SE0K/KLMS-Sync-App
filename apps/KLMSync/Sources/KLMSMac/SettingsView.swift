@@ -12,7 +12,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static var allCases: [SettingsTab] {
-        [.login, .sync, .notice, .files, .app]
+        [.app, .login, .sync, .files, .notice]
     }
 
     var title: String {
@@ -28,7 +28,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .relay:
             "서버"
         case .app:
-            "앱"
+            "화면/앱"
         }
     }
 
@@ -45,7 +45,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .relay:
             "iPhone/Windows 연결"
         case .app:
-            "화면, 설치, 백업"
+            "화면 모드와 앱 관리"
         }
     }
 

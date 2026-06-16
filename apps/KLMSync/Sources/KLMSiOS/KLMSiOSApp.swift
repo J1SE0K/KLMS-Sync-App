@@ -2124,7 +2124,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     }
 
     static var workstationSections: [CompanionAppSection] {
-        [.status, .files, .notices, .tasks, .calendar, .history, .settings]
+        [.status, .files, .tasks, .notices, .calendar, .history, .settings]
     }
 
     var title: String {
@@ -2643,12 +2643,12 @@ private struct CompanionSettingsScreen: View {
     var body: some View {
         CompanionScreenContainer(title: "설정", model: model) {
             CompanionImmediateSettingsPanel(model: model)
-            if !model.serverRelayConfigured {
-                InfoBanner(message: model.remoteAvailabilityMessage)
-            }
             RemoteSettingsPanel(model: model)
             RemoteDiagnosticPanel(model: model)
             RemotePrivacyNote()
+            if !model.serverRelayConfigured {
+                InfoBanner(message: model.remoteAvailabilityMessage)
+            }
             ServerRelayConnectionPanel(model: model)
         }
     }
@@ -9544,7 +9544,7 @@ private struct RemoteCommandPanel: View {
             .toggleStyle(.switch)
             RemoteStageDurationSummaryView(durations: stageDurations)
             if compact {
-                Text("점검 도구는 실행 탭에서 할 수 있습니다.")
+                Text("상태 검사와 권한 진단은 설정 탭의 진단 카드에서 실행할 수 있습니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
             }
@@ -10063,8 +10063,8 @@ private struct RemoteDiagnosticPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             DisclosureGroup(isExpanded: $isPanelExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
-                    RemoteStageDurationSummaryView(durations: latestStageDurations)
-                    Text("동기화는 실행하지 않고 현재 상태를 확인하거나, 앱 대시보드에 필요한 보조 파일만 갱신합니다.")
+                    RemoteVerifySummaryPanel(summary: model.verifySummary)
+                    Text("문제가 보이면 상태 검사부터 실행하고, 권한이나 로그인 문제가 의심될 때 권한/환경 진단을 실행하세요.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -10072,16 +10072,16 @@ private struct RemoteDiagnosticPanel: View {
                         diagnosticButton(.verify)
                         diagnosticButton(.doctor)
                         diagnosticButton(.report)
-                        diagnosticButton(.v2BuildState)
                     }
-                    RemoteVerifySummaryPanel(summary: model.verifySummary)
+                    RemoteStageDurationSummaryView(durations: latestStageDurations)
 
                     DisclosureGroup(isExpanded: $isAdvancedExpanded) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("실제 반영 없이 바뀔 항목 수만 계산합니다. 일반 실행 카드에서는 숨겨 둔 고급 기능입니다.")
+                            Text("실제 반영 없이 바뀔 항목 수를 계산하거나, 내부 상태 파일만 다시 생성합니다. 평소에는 열 필요가 없습니다.")
                                 .font(.caption2)
                                 .foregroundStyle(Color.klmsSecondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
+                            diagnosticButton(.v2BuildState)
                             LazyVGrid(columns: columns, spacing: 8) {
                                 ForEach(dryRunCommands, id: \.self) { command in
                                     dryRunButton(command)
@@ -10098,7 +10098,7 @@ private struct RemoteDiagnosticPanel: View {
                 .padding(.top, 8)
             } label: {
                 HStack(spacing: 8) {
-                    Label("점검 도구", systemImage: "wrench.and.screwdriver")
+                    Label("진단", systemImage: "wrench.and.screwdriver")
                         .font(.headline)
                     Spacer(minLength: 8)
                     Text(isPanelExpanded ? "접기" : "펼치기")
@@ -10305,12 +10305,6 @@ private struct RemoteSettingGroup: Identifiable {
                 ["SYNC_MODE", "CALENDAR_SKIP_UNCHANGED_DESIRED"]
             ),
             (
-                "Safari",
-                "safari",
-                "KLMS를 읽을 때 쓰는 전용 Safari 창의 동작을 정합니다.",
-                ["KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "KLMS_SAFARI_BACKGROUND_WINDOW_MODE", "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED"]
-            ),
-            (
                 "파일",
                 "folder",
                 "파일 탐색, 다운로드 건너뛰기, 폴더 정리 방식을 정합니다.",
@@ -10321,6 +10315,12 @@ private struct RemoteSettingGroup: Identifiable {
                 "checklist",
                 "Notes 메모에 숨긴 공지를 쓸지, 변경 없는 메모를 다시 쓸지 정합니다.",
                 ["NOTICE_HIDE_HIDDEN_ITEMS", "NOTICE_NATIVE_STABLE_NOOP_SKIP"]
+            ),
+            (
+                "Safari",
+                "safari",
+                "KLMS를 읽을 때 쓰는 전용 Safari 창의 동작을 정합니다.",
+                ["KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "KLMS_SAFARI_BACKGROUND_WINDOW_MODE", "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED"]
             ),
         ]
 

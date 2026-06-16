@@ -140,11 +140,11 @@ private struct MacWorkstationLayoutView: View {
             case .files:
                 DashboardDetailPanelView(kind: .files, model: model)
                     .equatable()
+            case .tasks:
+                TaskAndExamWorkspaceView(model: model)
             case .notices:
                 DashboardDetailPanelView(kind: .notices, model: model)
                     .equatable()
-            case .tasks:
-                TaskAndExamWorkspaceView(model: model)
             case .calendar:
                 DashboardDetailPanelView(kind: .calendar, model: model)
                     .equatable()
@@ -153,9 +153,10 @@ private struct MacWorkstationLayoutView: View {
                 RemoteActivityPanelView(model: model)
                 RunLogArchivePanelView(model: model)
             case .diagnostics:
-                DiagnosticToolsPanelView(model: model)
-                DiagnosticCommandLogPanelView(model: model)
                 VerifyPanelView(snapshot: model.snapshot)
+                DiagnosticToolsPanelView(model: model)
+                DiagnosticStageDurationPanelView(model: model)
+                DiagnosticCommandLogPanelView(model: model)
                 DoctorPanelView(snapshot: model.snapshot)
                 AppDiagnosticsPanelView(model: model)
                 LoginPanelView(model: model)
@@ -531,8 +532,8 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
 private enum KLMSMacSection: String, CaseIterable, Identifiable {
     case dashboard
     case files
-    case notices
     case tasks
+    case notices
     case calendar
     case activityLogs
     case diagnostics
@@ -1976,9 +1977,9 @@ private struct DiagnosticToolsPanelView: View {
     private let dryRunCommands: [KLMSEngineCommand] = [.fullSync, .filesSync, .coreSync, .noticeSync]
 
     var body: some View {
-        SectionBox(title: "점검 도구") {
+        SectionBox(title: "빠른 점검") {
             VStack(alignment: .leading, spacing: 12) {
-                Text("동기화는 실행하지 않고 현재 상태를 확인하거나, 앱 대시보드에 필요한 보조 파일만 갱신합니다.")
+                Text("문제가 보이면 상태 검사부터 실행하고, 권한이나 로그인 문제가 의심될 때 권한/환경 진단을 실행하세요.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1987,15 +1988,15 @@ private struct DiagnosticToolsPanelView: View {
                     diagnosticButton(.verify)
                     diagnosticButton(.doctor)
                     diagnosticButton(.report)
-                    diagnosticButton(.v2BuildState)
                 }
 
                 DisclosureGroup(isExpanded: $isAdvancedExpanded) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("실제 반영 없이 바뀔 항목 수만 계산합니다. 일반 동기화 화면에서는 숨겨 둔 고급 기능입니다.")
+                        Text("실제 반영 없이 바뀔 항목 수를 계산하거나, 내부 상태 파일만 다시 생성합니다. 평소에는 열 필요가 없습니다.")
                             .font(.caption2)
                             .foregroundStyle(Color.klmsMacSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
+                        diagnosticButton(.v2BuildState)
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                             ForEach(dryRunCommands, id: \.self) { command in
                                 dryRunButton(command)
@@ -2009,25 +2010,6 @@ private struct DiagnosticToolsPanelView: View {
                         .font(.caption.weight(.semibold))
                 }
 
-                Divider()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("iPhone 연결은 서버 릴레이로 처리합니다", systemImage: "iphone.and.arrow.forward")
-                        .font(.caption.weight(.semibold))
-                    if model.serverRelayEnabled {
-                        Text(model.serverRelayStatusMessage ?? "서버 릴레이 대기 중")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                    } else {
-                        Text("설정 > 서버에서 서버 URL과 Mac 전용 토큰을 입력한 뒤 릴레이를 켜 주세요.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                    }
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsMacSubtleCardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
     }
@@ -2091,6 +2073,41 @@ private struct DiagnosticToolsPanelView: View {
                 }
             }
         }
+    }
+}
+
+private struct DiagnosticStageDurationPanelView: View {
+    @ObservedObject var model: KLMSMacModel
+
+    var body: some View {
+        if !stageDurations.isEmpty {
+            SectionBox(title: "단계별 소요 시간") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("최근 실행에서 어느 단계가 오래 걸렸는지 확인합니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                    CompactStageDurationRowsView(durations: stageDurations)
+                    DisclosureGroup {
+                        CommandStageDurationSummaryView(durations: stageDurations)
+                            .padding(.top, 6)
+                    } label: {
+                        Text("자세히 보기")
+                            .font(.caption.weight(.semibold))
+                    }
+                }
+            }
+        }
+    }
+
+    private var stageDurations: [KLMSStageDuration] {
+        let liveOutput = model.liveCommandOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !liveOutput.isEmpty {
+            return KLMSStageDurationParser.parse(from: liveOutput)
+        }
+        if let record = model.commandHistory.records.first(where: { !$0.outputTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            return record.visibleStageDurations
+        }
+        return []
     }
 }
 
@@ -3968,97 +3985,115 @@ private struct DoctorCheckRowView: View {
 
 private struct AppDiagnosticsPanelView: View {
     @ObservedObject var model: KLMSMacModel
+    @State private var isExpanded = false
 
     var body: some View {
-        SectionBox(title: "앱/권한") {
+        SectionBox(title: "앱/설치 정보") {
             let diagnostics = model.appDiagnostics
-            VStack(alignment: .leading, spacing: 8) {
-                DiagnosticRowView(
-                    title: "코드 서명",
-                    value: diagnostics.codeSigning.statusTitle,
-                    detail: diagnostics.codeSigning.statusDetail,
-                    isWarning: diagnostics.codeSigning.needsAttention
-                )
-                DiagnosticRowView(
-                    title: "서명 인증서",
-                    value: signingIdentityText,
-                    detail: "고정 인증서로 서명하면 앱 재빌드 후에도 자동화 권한이 안정적으로 유지됩니다.",
-                    isWarning: (diagnostics.codeSigning.validIdentityCount ?? 0) == 0
-                )
-                DiagnosticRowView(
-                    title: "공지 메모 작성",
-                    value: "체크리스트/문단 형식",
-                    detail: "앱은 대시보드 상태를 기준으로 Notes 메모를 다시 작성합니다. 체크리스트와 문단 서식을 적용하려면 자동화 권한과 손쉬운 사용 권한이 필요합니다.",
-                    isWarning: false
-                )
-                DiagnosticRowView(
-                    title: "엔진",
-                    value: diagnostics.installedPayloadVersion.isEmpty ? "설치 필요" : diagnostics.installedPayloadVersion,
-                    detail: diagnostics.engineRoot,
-                    isWarning: diagnostics.installedPayloadVersion.isEmpty
-                )
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    DiagnosticRowView(
+                        title: "코드 서명",
+                        value: diagnostics.codeSigning.statusTitle,
+                        detail: diagnostics.codeSigning.statusDetail,
+                        isWarning: diagnostics.codeSigning.needsAttention
+                    )
+                    DiagnosticRowView(
+                        title: "서명 인증서",
+                        value: signingIdentityText,
+                        detail: "고정 인증서로 서명하면 앱 재빌드 후에도 자동화 권한이 안정적으로 유지됩니다.",
+                        isWarning: (diagnostics.codeSigning.validIdentityCount ?? 0) == 0
+                    )
+                    DiagnosticRowView(
+                        title: "공지 메모 작성",
+                        value: "체크리스트/문단 형식",
+                        detail: "앱은 대시보드 상태를 기준으로 Notes 메모를 다시 작성합니다. 체크리스트와 문단 서식을 적용하려면 자동화 권한과 손쉬운 사용 권한이 필요합니다.",
+                        isWarning: false
+                    )
+                    DiagnosticRowView(
+                        title: "엔진",
+                        value: diagnostics.installedPayloadVersion.isEmpty ? "설치 필요" : diagnostics.installedPayloadVersion,
+                        detail: diagnostics.engineRoot,
+                        isWarning: diagnostics.installedPayloadVersion.isEmpty
+                    )
 
-                HStack {
-                    Button {
-                        Task {
-                            await model.requestAppPermissions()
+                    HStack {
+                        Button {
+                            Task {
+                                await model.requestAppPermissions()
+                            }
+                        } label: {
+                            Label("권한 요청", systemImage: "key")
                         }
-                    } label: {
-                        Label("권한 요청", systemImage: "key")
+                        .disabled(model.runningCommand != nil)
+                        Button {
+                            model.openAutomationSettings()
+                        } label: {
+                            Label("자동화 권한 열기", systemImage: "hand.raised")
+                        }
+                        Button {
+                            model.openAccessibilitySettings()
+                        } label: {
+                            Label("손쉬운 사용 열기", systemImage: "accessibility")
+                        }
+                        Spacer()
                     }
-                    .disabled(model.runningCommand != nil)
-                    Button {
-                        model.openAutomationSettings()
-                    } label: {
-                        Label("자동화 권한 열기", systemImage: "hand.raised")
+                    .buttonStyle(KLMSMacRootActionButtonStyle())
+
+                    if let permissionStatusMessage = model.permissionStatusMessage,
+                       !permissionStatusMessage.isEmpty {
+                        Text(permissionStatusMessage)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Button {
-                        model.openAccessibilitySettings()
-                    } label: {
-                        Label("손쉬운 사용 열기", systemImage: "accessibility")
+
+                    if !model.permissionProbeRows.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("권한 점검 결과")
+                                .font(.caption.weight(.semibold))
+                            ForEach(model.permissionProbeRows) { row in
+                                DiagnosticRowView(
+                                    title: row.title,
+                                    value: row.value,
+                                    detail: row.detail,
+                                    isWarning: row.isWarning
+                                )
+                            }
+                        }
+                    }
+
+                    DisclosureGroup("필요 권한 범위") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            PermissionScopeText("손쉬운 사용: 시스템 설정에서 KLMS Sync를 켜야 합니다. KLMS 공지 메모 렌더러가 따로 보이면 그것도 켜 주세요.")
+                            PermissionScopeText("손쉬운 사용 사용처: Notes 편집 영역 포커스 확인, 체크리스트와 문단 서식 적용")
+                            PermissionScopeText("자동화 · Safari: KLMS 로그인 확인, 페이지 수집, 파일 다운로드")
+                            PermissionScopeText("자동화 · Notes: 공지 메모 열기, 선택, 본문 갱신")
+                            PermissionScopeText("자동화 · System Events: Notes 메뉴 조작과 포커스 확인")
+                            PermissionScopeText("자동화 · Calendar/Reminders: 기존 스크립트와 상태 확인 경로")
+                            PermissionScopeText("캘린더/미리 알림 전체 접근: 일정과 미리 알림 동기화")
+                            PermissionScopeText("알림: KAIST 인증번호와 실패 상태를 앱에서 바로 표시")
+                        }
+                        .padding(.top, 4)
+                    }
+                    .font(.caption)
+                }
+                .padding(.top, 6)
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: "app.badge.checkmark")
+                        .foregroundStyle(diagnostics.codeSigning.needsAttention ? Color.klmsMacWarningBorder : Color.klmsMacSecondaryText)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(diagnostics.codeSigning.needsAttention ? "권한이나 서명 상태를 확인하세요." : "앱과 엔진 정보는 접어 두었습니다.")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                        Text(diagnostics.installedPayloadVersion.isEmpty ? "엔진 설치 상태 확인 필요" : "엔진 \(diagnostics.installedPayloadVersion)")
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                     Spacer()
                 }
-                .buttonStyle(KLMSMacRootActionButtonStyle())
-
-                if let permissionStatusMessage = model.permissionStatusMessage,
-                   !permissionStatusMessage.isEmpty {
-                    Text(permissionStatusMessage)
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if !model.permissionProbeRows.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("권한 점검 결과")
-                            .font(.caption.weight(.semibold))
-                        ForEach(model.permissionProbeRows) { row in
-                            DiagnosticRowView(
-                                title: row.title,
-                                value: row.value,
-                                detail: row.detail,
-                                isWarning: row.isWarning
-                            )
-                        }
-                    }
-                }
-
-                DisclosureGroup("필요 권한 범위") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        PermissionScopeText("손쉬운 사용: 시스템 설정에서 KLMS Sync를 켜야 합니다. KLMS 공지 메모 렌더러가 따로 보이면 그것도 켜 주세요.")
-                        PermissionScopeText("손쉬운 사용 사용처: Notes 편집 영역 포커스 확인, 체크리스트와 문단 서식 적용")
-                        PermissionScopeText("자동화 · Safari: KLMS 로그인 확인, 페이지 수집, 파일 다운로드")
-                        PermissionScopeText("자동화 · Notes: 공지 메모 열기, 선택, 본문 갱신")
-                        PermissionScopeText("자동화 · System Events: Notes 메뉴 조작과 포커스 확인")
-                        PermissionScopeText("자동화 · Calendar/Reminders: 기존 스크립트와 상태 확인 경로")
-                        PermissionScopeText("캘린더/미리 알림 전체 접근: 일정과 미리 알림 동기화")
-                        PermissionScopeText("알림: KAIST 인증번호와 실패 상태를 앱에서 바로 표시")
-                    }
-                    .padding(.top, 4)
-                }
-                .font(.caption)
             }
         }
     }
