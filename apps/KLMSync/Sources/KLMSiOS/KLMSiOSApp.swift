@@ -4435,7 +4435,7 @@ private struct RemoteDashboardSyncCard: View {
                     .stroke(primaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled), lineWidth: 1)
             }
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12, disabledOpacity: 0.78))
         .disabled(isDisabled)
         .accessibilityLabel(isRunning ? "전체 동기화 중단" : "전체 동기화 실행")
         .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 전체 동기화를 중단합니다." : "Mac 앱에 전체 동기화 실행 요청을 보냅니다.")
@@ -4505,16 +4505,16 @@ private struct RemoteDashboardSyncCard: View {
     }
 
     private func primaryCommandForeground(isDisabled: Bool) -> Color {
-        isDisabled ? Color.klmsSecondaryText : Color.klmsPrimaryCommandButtonForeground
+        isDisabled ? Color.klmsPrimaryText.opacity(0.68) : Color.klmsPrimaryCommandButtonForeground
     }
 
     private func primaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
-        if isDisabled { return Color.klmsCommandButtonBackground.opacity(0.92) }
+        if isDisabled { return Color.klmsCommandButtonBackground }
         return isRunning ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground
     }
 
     private func primaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
-        if isDisabled { return Color.klmsCommandButtonBorder.opacity(0.95) }
+        if isDisabled { return Color.klmsCommandButtonBorder }
         return isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.78) : Color.klmsPrimaryCommandButtonBorder
     }
 
@@ -4950,6 +4950,7 @@ private struct RemoteMetricTile: View {
 
 private struct KLMSCardButtonStyle: ButtonStyle {
     var cornerRadius: CGFloat = 10
+    var disabledOpacity: Double = 0.48
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -4959,7 +4960,7 @@ private struct KLMSCardButtonStyle: ButtonStyle {
                     .fill(Color.klmsCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
-            .opacity(isEnabled ? 1.0 : 0.48)
+            .opacity(isEnabled ? 1.0 : disabledOpacity)
     }
 }
 
@@ -9700,7 +9701,7 @@ private struct RemoteCommandPanel: View {
                     .stroke(primaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled), lineWidth: 1)
             }
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12, disabledOpacity: 0.78))
         .disabled(isDisabled)
         .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
         .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 \(kind.displayName)을 중단합니다." : "Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
@@ -9779,16 +9780,16 @@ private struct RemoteCommandPanel: View {
     }
 
     private func primaryCommandForeground(isDisabled: Bool) -> Color {
-        isDisabled ? Color.klmsSecondaryText : Color.klmsPrimaryCommandButtonForeground
+        isDisabled ? Color.klmsPrimaryText.opacity(0.68) : Color.klmsPrimaryCommandButtonForeground
     }
 
     private func primaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
-        if isDisabled { return Color.klmsCommandButtonBackground.opacity(0.92) }
+        if isDisabled { return Color.klmsCommandButtonBackground }
         return isRunning ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground
     }
 
     private func primaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
-        if isDisabled { return Color.klmsCommandButtonBorder.opacity(0.95) }
+        if isDisabled { return Color.klmsCommandButtonBorder }
         return isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.78) : Color.klmsPrimaryCommandButtonBorder
     }
 
