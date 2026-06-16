@@ -750,14 +750,9 @@ struct SettingsView: View {
     @ViewBuilder
     private func described<Content: View>(
         _ description: String?,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        if let description, !description.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                content()
-                SettingsHelpText(description)
-            }
-        } else {
+        SettingsFieldRow(description: description) {
             content()
         }
     }
@@ -910,6 +905,28 @@ private struct SettingsGroupBox<Content: View>: View {
                     isExpanded ? Color.klmsMacSelectedBorder.opacity(0.46) : Color.klmsMacBorder.opacity(0.92),
                     lineWidth: 1
                 )
+        }
+    }
+}
+
+private struct SettingsFieldRow<Content: View>: View {
+    var description: String?
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            content()
+            if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !description.isEmpty {
+                SettingsHelpText(description)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
         }
     }
 }

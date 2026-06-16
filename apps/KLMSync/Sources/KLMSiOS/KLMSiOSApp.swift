@@ -2671,9 +2671,49 @@ private struct CompanionSettingsScreen: View {
 
 private struct CompanionImmediateSettingsPanel: View {
     @ObservedObject var model: CompanionModel
+    @State private var isExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                CompanionImmediateSettingRow(
+                    title: "화면 모드",
+                    detail: "기기 설정을 따르거나, KLMS Sync에서만 라이트/다크 모드를 고정합니다."
+                ) {
+                    Picker("화면 모드", selection: Binding(
+                        get: { model.sharedAppearanceModeValue },
+                        set: { newValue in
+                            Task {
+                                await model.updateSharedAppearanceMode(newValue)
+                            }
+                        }
+                    )) {
+                        ForEach(KLMSAppearanceMode.allCases) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                CompanionImmediateSettingRow(
+                    title: "공지 메모",
+                    detail: "끄면 iPhone/iPad/Windows에서 실행한 동기화는 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다."
+                ) {
+                    Toggle("원격 실행에서 공지 메모도 갱신", isOn: Binding(
+                        get: { model.sharedNoticeUpdateNotesEnabled },
+                        set: { enabled in
+                            Task {
+                                await model.updateSharedNoticeNotes(enabled)
+                            }
+                        }
+                    ))
+                    .font(.subheadline.weight(.semibold))
+                    .toggleStyle(.switch)
+                    .disabled(model.isSubmitting)
+                }
+            }
+            .padding(.top, 8)
+        } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.subheadline.weight(.semibold))
@@ -2696,48 +2736,6 @@ private struct CompanionImmediateSettingsPanel: View {
                     .padding(.vertical, 5)
                     .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("화면 모드")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                Picker("화면 모드", selection: Binding(
-                    get: { model.sharedAppearanceModeValue },
-                    set: { newValue in
-                        Task {
-                            await model.updateSharedAppearanceMode(newValue)
-                        }
-                    }
-                )) {
-                    ForEach(KLMSAppearanceMode.allCases) { mode in
-                        Text(mode.title).tag(mode.rawValue)
-                    }
-                }
-                .pickerStyle(.segmented)
-                CompanionSettingHelpText("기기 설정을 따르거나, KLMS Sync에서만 라이트/다크 모드를 고정합니다.")
-            }
-
-            Divider()
-
-            Toggle(isOn: Binding(
-                get: { model.sharedNoticeUpdateNotesEnabled },
-                set: { enabled in
-                    Task {
-                        await model.updateSharedNoticeNotes(enabled)
-                    }
-                }
-            )) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("원격 실행에서 공지 메모도 갱신")
-                        .font(.subheadline.weight(.semibold))
-                    Text("끄면 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .toggleStyle(.switch)
-            .disabled(model.isSubmitting)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2746,6 +2744,31 @@ private struct CompanionImmediateSettingsPanel: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
+    }
+}
+
+private struct CompanionImmediateSettingRow<Content: View>: View {
+    var title: String
+    var detail: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                CompanionSettingHelpText(detail)
+            }
+            content()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
+        }
     }
 }
 
@@ -10237,7 +10260,7 @@ private struct RemoteDryRunReportRow: View {
 
 private struct RemoteSettingsPanel: View {
     @ObservedObject var model: CompanionModel
-    @State private var isExpanded = true
+    @State private var isExpanded = false
 
     private var settingGroups: [RemoteSettingGroup] {
         RemoteSettingGroup.grouped(settings: model.remoteSettings)
