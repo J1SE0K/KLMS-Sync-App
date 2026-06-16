@@ -996,6 +996,7 @@ private struct SettingsGroupBox<Content: View>: View {
 
 private struct SettingsFieldRow<Content: View>: View {
     var description: String?
+    @State private var isDescriptionExpanded = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
@@ -1004,14 +1005,42 @@ private struct SettingsFieldRow<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
                !description.isEmpty {
-                SettingsHelpText(description)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.08)) {
+                        isDescriptionExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: isDescriptionExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(isDescriptionExpanded ? "설명 접기" : "설명 보기")
+                            .font(.caption2.weight(.semibold))
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
                     .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.klmsMacBorder.opacity(0.50), lineWidth: 1)
                     }
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
+                .accessibilityHint(isDescriptionExpanded ? "설명 접기" : "설명 펼치기")
+
+                if isDescriptionExpanded {
+                    SettingsHelpText(description)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.klmsMacBorder.opacity(0.50), lineWidth: 1)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
         }
         .padding(11)

@@ -2925,9 +2925,13 @@ private struct RemoteActivityPanelView: View {
 
                     if !sharedRunLogs.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("공유 실행 로그")
+                            Text("동기화 단계")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacSecondaryText)
+                            Text("Mac 앱에서 실행한 단계별 소요 시간과 마지막 로그입니다.")
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
                             ForEach(sharedRunLogs.prefix(8)) { log in
                                 SharedRunLogActivityRow(log: log)
                             }
@@ -2979,6 +2983,7 @@ private struct SharedRunLogActivityRow: View {
                     Text("\(log.status) · \(log.duration) · \(log.finishedAt.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
+                    CompactStageDurationRowsView(durations: stageDurations)
                 }
                 Spacer(minLength: 8)
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -3013,6 +3018,10 @@ private struct SharedRunLogActivityRow: View {
             return .klmsMacSecondaryText
         }
         return log.needsAttention ? Color.klmsMacWarningBorder : Color.klmsMacSuccessBorder
+    }
+
+    private var stageDurations: [KLMSStageDuration] {
+        KLMSStageDurationParser.parse(from: log.outputTail)
     }
 }
 

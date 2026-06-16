@@ -2776,15 +2776,36 @@ private struct CompanionImmediateSettingsPanel: View {
 private struct CompanionImmediateSettingRow<Content: View>: View {
     var title: String
     var detail: String
+    @State private var isDetailExpanded = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 8) {
                 Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Spacer(minLength: 8)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.08)) {
+                        isDetailExpanded.toggle()
+                    }
+                } label: {
+                    CompanionDetailDisclosureBadge(isExpanded: isDetailExpanded)
+                }
+                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
+                .accessibilityHint(isDetailExpanded ? "\(title) 설명 접기" : "\(title) 설명 펼치기")
+            }
+            if isDetailExpanded {
                 CompanionSettingHelpText(detail)
+                    .padding(9)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 9))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 9)
+                            .stroke(Color.klmsBorder.opacity(0.62), lineWidth: 1)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
             CompanionSettingsControlContainer {
                 content()
@@ -10995,7 +11016,7 @@ private struct SharedRunLogsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("공유 실행 로그")
+                Text("동기화 단계")
                     .font(.headline)
                 Spacer()
                 if !logs.isEmpty {
@@ -11009,16 +11030,16 @@ private struct SharedRunLogsView: View {
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                    .accessibilityLabel("공유 실행 로그 지우기")
+                    .accessibilityLabel("동기화 단계 기록 지우기")
                     .disabled(clearDisabled)
                 }
             }
-            Text("Mac 앱에서 실행한 동기화 결과를 모든 기기가 함께 보는 기록입니다. 지우면 다른 기기에서도 사라집니다.")
+            Text("Mac 앱에서 실행한 단계별 소요 시간과 마지막 로그입니다. 지우면 다른 기기에서도 사라집니다.")
                 .font(.caption2)
                 .foregroundStyle(Color.klmsSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             if logs.isEmpty {
-                Text("아직 공유 실행 로그가 없습니다.")
+                Text("아직 표시할 동기화 단계 기록이 없습니다.")
                     .foregroundStyle(Color.klmsSecondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
@@ -11542,6 +11563,7 @@ private struct RemoteSettingRow: View {
     var setting: ServerRelaySetting
     @ObservedObject var model: CompanionModel
     @State private var draftValue = ""
+    @State private var isDetailExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -11550,9 +11572,6 @@ private struct RemoteSettingRow: View {
                     Text(setting.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.klmsPrimaryText)
-                    if let detail = settingExplanation {
-                        CompanionSettingHelpText(detail)
-                    }
                 }
                 Spacer(minLength: 8)
                 Text(settingValueSummary)
@@ -11563,6 +11582,30 @@ private struct RemoteSettingRow: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
                     .background(Color.klmsSubtleCardBackground, in: Capsule())
+            }
+            if let detail = settingExplanation {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.08)) {
+                        isDetailExpanded.toggle()
+                    }
+                } label: {
+                    CompanionDetailDisclosureBadge(isExpanded: isDetailExpanded)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 9))
+                .accessibilityHint(isDetailExpanded ? "\(setting.title) 설명 접기" : "\(setting.title) 설명 펼치기")
+
+                if isDetailExpanded {
+                    CompanionSettingHelpText(detail)
+                        .padding(9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.klmsSubtleCardBackground.opacity(0.54), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 9)
+                                .stroke(Color.klmsBorder.opacity(0.62), lineWidth: 1)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
             CompanionSettingsControlContainer {
                 control
@@ -11919,6 +11962,31 @@ private struct CompanionExpansionBadge: View {
                     isExpanded ? Color.klmsSelectedBorder.opacity(0.64) : Color.klmsBorder.opacity(0.72),
                     lineWidth: 1
                 )
+        }
+    }
+}
+
+private struct CompanionDetailDisclosureBadge: View {
+    var isExpanded: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 9, weight: .bold))
+            Text(isExpanded ? "설명 접기" : "설명 보기")
+                .font(.caption2.weight(.semibold))
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(isExpanded ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            isExpanded ? Color.klmsSelectedBackground.opacity(0.20) : Color.klmsSubtleCardBackground.opacity(0.54),
+            in: RoundedRectangle(cornerRadius: 9)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.44) : Color.klmsBorder.opacity(0.62), lineWidth: 1)
         }
     }
 }
