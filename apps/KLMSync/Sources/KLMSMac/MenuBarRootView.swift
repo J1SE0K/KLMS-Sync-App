@@ -2486,19 +2486,8 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .top, spacing: 12) {
-                            dashboardDetailContent(renderedDetail: renderedDetail)
-                                .frame(minWidth: 360, maxWidth: .infinity, alignment: .topLeading)
-                            DashboardLogSummaryPanelView(model: model)
-                                .frame(width: 285, alignment: .topLeading)
-                        }
-                        VStack(alignment: .leading, spacing: 12) {
-                            dashboardDetailContent(renderedDetail: renderedDetail)
-                            DashboardLogSummaryPanelView(model: model)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    dashboardDetailContent(renderedDetail: renderedDetail)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
         }
@@ -2598,99 +2587,6 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                     .stroke(Color.klmsMacBorder, lineWidth: 1)
             }
         }
-    }
-}
-
-private struct DashboardLogSummaryPanelView: View {
-    @ObservedObject var model: KLMSMacModel
-
-    var body: some View {
-        SectionBox(title: "로그 요약") {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: statusImage)
-                        .foregroundStyle(statusColor)
-                        .frame(width: 18)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(statusTitle)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacPrimaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(statusDetail)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                if !stageDurations.isEmpty {
-                    Divider()
-                    CompactStageDurationRowsView(durations: stageDurations)
-                }
-                Text("원본 로그와 요청 기록은 로그 탭에서 확인합니다.")
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var stageDurations: [KLMSStageDuration] {
-        let output = model.liveCommandOutput.isEmpty
-            ? (model.lastCommandResult?.combinedOutput ?? "")
-            : model.liveCommandOutput
-        return KLMSStageDurationParser.parse(from: output)
-    }
-
-    private var statusTitle: String {
-        if let command = model.runningCommand {
-            return "\(command.displayName) 실행 중"
-        }
-        if let result = model.lastCommandResult {
-            if result.wasCancelled {
-                return "\(result.invocation.command.displayName) 중단됨"
-            }
-            return result.succeeded ? "\(result.invocation.command.displayName) 완료" : "\(result.invocation.command.displayName) 실패"
-        }
-        return "아직 실행 기록 없음"
-    }
-
-    private var statusDetail: String {
-        if model.runningCommand != nil {
-            return model.currentPhaseText ?? model.liveProgressLine ?? "진행 상황을 확인 중입니다."
-        }
-        if let result = model.lastCommandResult {
-            if result.wasCancelled {
-                return "사용자가 실행을 중단했습니다."
-            }
-            return result.succeeded ? "종료 코드 \(result.exitCode)" : "마지막 오류는 진단 탭에서 확인하세요."
-        }
-        return "동기화를 실행하면 단계별 소요 시간이 여기에 표시됩니다."
-    }
-
-    private var statusImage: String {
-        if model.runningCommand != nil {
-            return "arrow.triangle.2.circlepath"
-        }
-        guard let result = model.lastCommandResult else {
-            return "circle.dashed"
-        }
-        if result.wasCancelled {
-            return "stop.circle"
-        }
-        return result.succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-    }
-
-    private var statusColor: Color {
-        if model.runningCommand != nil {
-            return .klmsMacCommandAccent
-        }
-        guard let result = model.lastCommandResult else {
-            return .klmsMacSecondaryText
-        }
-        if result.wasCancelled {
-            return .klmsMacSecondaryText
-        }
-        return result.succeeded ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder
     }
 }
 
