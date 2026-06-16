@@ -8443,8 +8443,11 @@ private struct ServerSyncItemInlineDetailPanel: View {
             DetailFieldRow(title: "서버 갱신", value: item.updatedAt)
         }
         .padding(12)
-        .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
     }
 
     private var actionPanel: some View {
@@ -8557,8 +8560,11 @@ private struct ServerSyncItemInlineDetailPanel: View {
             .disabled(!model.serverRelayConfigured || model.isSubmitting || request?.status.isInFlight == true)
         }
         .padding(12)
-        .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
     }
 
     private func fileAccessDescription(_ request: ServerRelayFileAccessRequest) -> String {
@@ -10559,8 +10565,11 @@ private struct RemoteLogSummaryPanel: View {
             }
         }
         .padding(12)
-        .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
     }
 
     private var latestFileRequest: ServerRelayFileAccessRequest? {
@@ -10749,9 +10758,9 @@ private struct RemoteLogDetailPanel: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 12))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -10835,15 +10844,14 @@ private struct RemoteLogSummaryRow: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .background(Color.klmsCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .background(isExpanded ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isExpanded ? tint.opacity(0.32) : Color.klmsBorder, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.82) : Color.klmsBorder.opacity(0.88), lineWidth: isExpanded ? 1.2 : 1)
             )
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
         .accessibilityHint(isExpanded ? "관련 기록 접기" : "관련 기록 펼치기")
     }
 }
@@ -10934,13 +10942,12 @@ private struct SharedRunLogRow: View {
             }
         }
         .padding(12)
-        .background(Color.klmsCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(isExpanded ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 12))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(tint.opacity(0.16), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.82) : tint.opacity(0.20), lineWidth: isExpanded ? 1.2 : 1)
         )
-        .contentShape(Rectangle())
+        .contentShape(RoundedRectangle(cornerRadius: 12))
         .onTapGesture {
             isExpanded.toggle()
         }
