@@ -275,8 +275,8 @@ private struct DashboardTopBarView: View {
             }
             return "\(command.displayName) 실행 중"
         }
-        if model.snapshot.needsAttention {
-            return "확인이 필요합니다 · \(model.snapshot.attentionSummary)"
+        if model.needsAttention {
+            return "확인이 필요합니다 · \(model.attentionSummary)"
         }
         if let report = model.snapshot.syncReport {
             return "준비됨 · 최근 요약 \(report.status.klmsLocalizedStatus)"
@@ -288,7 +288,7 @@ private struct DashboardTopBarView: View {
         if model.runningCommand != nil {
             return "진행 중"
         }
-        if model.snapshot.needsAttention {
+        if model.needsAttention {
             return "확인 필요"
         }
         if model.snapshot.syncReport != nil {
@@ -301,7 +301,7 @@ private struct DashboardTopBarView: View {
         if model.runningCommand != nil {
             return .klmsMacCommandAccent
         }
-        if model.snapshot.needsAttention {
+        if model.needsAttention {
             return .klmsMacWarningBorder
         }
         return .klmsMacSecondaryText
@@ -361,8 +361,8 @@ private struct MacAlertBannerView: View {
         if let command = model.runningCommand {
             return "\(command.displayName) 실행 중"
         }
-        if model.snapshot.needsAttention {
-            return model.snapshot.attentionSummary
+        if model.needsAttention {
+            return model.attentionSummary
         }
         if model.snapshot.syncReport == nil {
             return "첫 실행 준비"
@@ -382,7 +382,7 @@ private struct MacAlertBannerView: View {
                 ?? model.liveProgressLine
                 ?? "실시간 로그에서 진행 상황을 확인할 수 있습니다."
         }
-        if model.snapshot.needsAttention {
+        if model.needsAttention {
             return "진단 보기에서 실패 항목을 자연어로 확인하고 바로 조치할 수 있습니다."
         }
         if model.snapshot.syncReport == nil {
@@ -398,7 +398,7 @@ private struct MacAlertBannerView: View {
         if model.runningCommand != nil {
             return "LOG"
         }
-        if model.snapshot.needsAttention {
+        if model.needsAttention {
             return "진단"
         }
         if model.snapshot.syncReport == nil {
@@ -425,7 +425,7 @@ private struct MacAlertBannerView: View {
         if model.runningCommand != nil {
             return .klmsMacCommandAccent
         }
-        if model.snapshot.needsAttention || model.snapshot.syncReport == nil {
+        if model.needsAttention || model.snapshot.syncReport == nil {
             return .klmsMacWarningBorder
         }
         return .klmsMacCommandAccent
@@ -449,7 +449,7 @@ private struct MacAlertBannerView: View {
         if model.runningCommand != nil {
             return Color.klmsMacCommandButtonForeground
         }
-        if model.snapshot.needsAttention || model.snapshot.syncReport == nil {
+        if model.needsAttention || model.snapshot.syncReport == nil {
             return Color.klmsMacWarningBorder
         }
         return Color.klmsMacPrimaryText
@@ -462,7 +462,7 @@ private struct MacAlertBannerView: View {
         if model.runningCommand != nil {
             return Color.klmsMacPrimaryCommandButtonBackground
         }
-        if model.snapshot.needsAttention || model.snapshot.syncReport == nil {
+        if model.needsAttention || model.snapshot.syncReport == nil {
             return Color.klmsMacWarningBackground
         }
         return Color.klmsMacSubtleCardBackground
@@ -479,7 +479,7 @@ private struct MacAlertBannerView: View {
             selectedSection = .activityLogs
             return
         }
-        if model.snapshot.needsAttention {
+        if model.needsAttention {
             selectedSection = .diagnostics
             return
         }
@@ -1649,10 +1649,10 @@ private struct NextActionPanelView: View {
         if model.currentAuthDigits != nil {
             return nil
         }
-        if model.snapshot.needsAttention {
+        if model.needsAttention {
             return NextAction(
                 kind: .openDiagnostics,
-                title: model.snapshot.attentionSummary,
+                title: model.attentionSummary,
                 detail: "진단 화면에서 권한, 로그인, 파일 상태를 확인하세요.",
                 buttonTitle: "진단 보기",
                 buttonImage: "wrench.and.screwdriver",
@@ -1819,8 +1819,8 @@ private struct HeaderView: View {
         if let command = model.runningCommand {
             return "\(command.displayName) 실행 중"
         }
-        if model.snapshot.needsAttention {
-            return "주의 필요 · \(model.snapshot.attentionSummary)"
+        if model.needsAttention {
+            return "주의 필요 · \(model.attentionSummary)"
         }
         if let report = model.snapshot.syncReport {
             return "준비됨 · \(report.status.klmsLocalizedStatus)"
@@ -1832,7 +1832,7 @@ private struct HeaderView: View {
         if model.runningCommand != nil {
             return .klmsMacCommandAccent
         }
-        if model.snapshot.needsAttention {
+        if model.needsAttention {
             return .klmsMacWarningBorder
         }
         return .klmsMacSecondaryText
@@ -1842,7 +1842,7 @@ private struct HeaderView: View {
         if model.runningCommand != nil {
             return "실행 중"
         }
-        if model.snapshot.needsAttention {
+        if model.needsAttention {
             return "주의"
         }
         if model.snapshot.syncReport != nil {
@@ -2421,7 +2421,7 @@ private struct DashboardSummaryView: View {
             model: model,
             snapshot: model.snapshot,
             summary: model.dashboardSummaryCache,
-            renderSignature: DashboardRenderSignature(snapshot: model.snapshot, summary: model.dashboardSummaryCache)
+            renderSignature: model.dashboardRenderSignature
         )
         .equatable()
     }
@@ -2470,7 +2470,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             let renderedDetail = displayedDetail.flatMap { displayed in
                 visibleMetrics.first { $0.detail == displayed }?.detail
             }
-            IssueSummaryView(issues: snapshot.issues)
+            IssueSummaryView(issues: model.cachedIssues)
             if visibleMetrics.isEmpty {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.caption)
@@ -4531,15 +4531,70 @@ private extension CommandRunRecord {
 
 private struct IssueSummaryView: View {
     var issues: [EngineIssue]
+    @State private var isExpanded = false
 
     var body: some View {
         if !issues.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(issues.prefix(5)) { issue in
-                    IssueRowView(issue: issue)
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    HStack(alignment: .center, spacing: 8) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacWarningBorder)
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(issues.first?.title ?? "확인이 필요합니다")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacPrimaryText)
+                                .lineLimit(1)
+                            Text(issueSummaryText)
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        Text("\(issues.count)")
+                            .font(.caption2.weight(.bold))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.klmsMacWarningBorder)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.klmsMacWarningBackground, in: Capsule())
+                    }
+                    .padding(9)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.klmsMacWarningBorder.opacity(0.24), lineWidth: 1)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(MacPressFeedbackButtonStyle())
+
+                if isExpanded {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(issues.prefix(5)) { issue in
+                            IssueRowView(issue: issue)
+                        }
+                        if issues.count > 5 {
+                            Text("나머지 \(issues.count - 5)개는 진단 화면에서 확인할 수 있습니다.")
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private var issueSummaryText: String {
+        if issues.count == 1 {
+            return "자세한 설명은 눌러서 펼치거나 진단 화면에서 확인하세요."
+        }
+        return "확인할 항목 \(issues.count)개 · 자세한 설명은 눌러서 펼치세요."
     }
 }
 

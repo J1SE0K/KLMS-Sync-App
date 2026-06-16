@@ -113,7 +113,12 @@ final class KLMSMacModel: ObservableObject {
     @Published private var authDigitsSuppressed = false
     @Published var errorMessage: String?
     @Published var payload: EnginePayload?
+    @Published private(set) var cachedIssues: [EngineIssue] = []
     private(set) var dashboardSummaryCache = KLMSMacDashboardSummaryCache()
+    private(set) var dashboardRenderSignature = DashboardRenderSignature(
+        snapshot: EngineSnapshot(),
+        summary: KLMSMacDashboardSummaryCache()
+    )
 
     private let runner = KLMSCommandRunner()
     private let installer = EngineInstaller()
@@ -249,10 +254,18 @@ final class KLMSMacModel: ObservableObject {
         if runningCommand != nil {
             return "arrow.triangle.2.circlepath"
         }
-        if snapshot.needsAttention {
+        if needsAttention {
             return "exclamationmark.triangle"
         }
         return "checkmark.circle"
+    }
+
+    var needsAttention: Bool {
+        !cachedIssues.isEmpty
+    }
+
+    var attentionSummary: String {
+        cachedIssues.first?.title ?? "준비됨"
     }
 
     var currentAuthDigits: String? {
@@ -1464,6 +1477,7 @@ final class KLMSMacModel: ObservableObject {
             mailAssignmentCount: cachedMailDashboardItemsByKind["assignment"]?.count ?? 0,
             mailExamCount: cachedMailDashboardItemsByKind["exam"]?.count ?? 0
         )
+        dashboardRenderSignature = DashboardRenderSignature(snapshot: snapshot, summary: dashboardSummaryCache)
     }
 
     private static func sortedMailDashboardItems(_ items: [ServerRelaySyncItem]) -> [ServerRelaySyncItem] {
@@ -3543,6 +3557,10 @@ final class KLMSMacModel: ObservableObject {
 
     private func replaceSnapshot(_ nextSnapshot: EngineSnapshot) {
         snapshot = nextSnapshot
+        let nextIssues = nextSnapshot.issues
+        if cachedIssues != nextIssues {
+            cachedIssues = nextIssues
+        }
         rebuildMailDashboardCaches()
     }
 
