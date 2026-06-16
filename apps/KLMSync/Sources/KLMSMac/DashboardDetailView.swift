@@ -1747,7 +1747,7 @@ private struct NoticeListView: View {
             NoticeCategoryPickerView(
                 category: $category,
                 snapshot: snapshot,
-                hiddenOnly: filters.hiddenOnly
+                filters: filters
             )
             noticeRows
         }
@@ -1782,21 +1782,12 @@ private struct NoticeListView: View {
             let important = interaction?.important == true
             let read = noticeReadStateMatches(interaction, fingerprint: notice.fingerprint)
             let fresh = notice.changeState == "new" || notice.changeState == "updated"
-            let term = notice.academicTerm(generatedAt: generatedAt)
-            guard filters.showHidden || !hidden else { return false }
-            guard !filters.hiddenOnly || hidden else { return false }
-            guard !filters.newOnly || fresh else { return false }
-            guard !filters.recentOnly || fresh else { return false }
-            guard DashboardTermFilter.matches(
-                term,
-                selectedYear: filters.selectedYear,
-                selectedSemester: filters.selectedSemester
-            ) else {
-                return false
-            }
-            guard filters.selectedCourse == DashboardCourseFilter.all || notice.course == filters.selectedCourse else {
-                return false
-            }
+            guard noticeMatchesDashboardBaseFilters(
+                notice,
+                interaction: interaction,
+                generatedAt: generatedAt,
+                filters: filters
+            ) else { return false }
             guard category.matches(
                 hidden: hidden,
                 important: important,
@@ -1806,17 +1797,43 @@ private struct NoticeListView: View {
             ) else {
                 return false
             }
-            let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !query.isEmpty else { return true }
-            var searchableFields = [term?.displayName ?? "", notice.title, notice.course, notice.postedAt, notice.summary, notice.url]
-            if query.count >= 3 {
-                searchableFields.append(notice.bodyText)
-            }
-            return searchableFields
-                .joined(separator: " ")
-                .localizedCaseInsensitiveContains(query)
+            return true
         }
     }
+}
+
+private func noticeMatchesDashboardBaseFilters(
+    _ notice: NoticeDigestEntry,
+    interaction: NoticeInteractionState?,
+    generatedAt: String,
+    filters: DashboardDetailFilters
+) -> Bool {
+    let hidden = interaction?.hidden == true
+    let fresh = notice.changeState == "new" || notice.changeState == "updated"
+    let term = notice.academicTerm(generatedAt: generatedAt)
+    guard filters.showHidden || !hidden else { return false }
+    guard !filters.hiddenOnly || hidden else { return false }
+    guard !filters.newOnly || fresh else { return false }
+    guard !filters.recentOnly || fresh else { return false }
+    guard DashboardTermFilter.matches(
+        term,
+        selectedYear: filters.selectedYear,
+        selectedSemester: filters.selectedSemester
+    ) else {
+        return false
+    }
+    guard filters.selectedCourse == DashboardCourseFilter.all || notice.course == filters.selectedCourse else {
+        return false
+    }
+    let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else { return true }
+    var searchableFields = [term?.displayName ?? "", notice.title, notice.course, notice.postedAt, notice.summary, notice.url]
+    if query.count >= 3 {
+        searchableFields.append(notice.bodyText)
+    }
+    return searchableFields
+        .joined(separator: " ")
+        .localizedCaseInsensitiveContains(query)
 }
 
 private func noticeReadStateMatches(_ state: NoticeInteractionState?, fingerprint: String) -> Bool {
@@ -1892,7 +1909,7 @@ enum NoticeListCategory: String, CaseIterable, Identifiable {
 private struct NoticeCategoryPickerView: View {
     @Binding var category: NoticeListCategory
     var snapshot: EngineSnapshot
-    var hiddenOnly: Bool
+    var filters: DashboardDetailFilters
 
     var body: some View {
         Picker("공지 분류", selection: $category) {
@@ -1905,18 +1922,25 @@ private struct NoticeCategoryPickerView: View {
 
     private func count(for category: NoticeListCategory) -> Int {
         let state = snapshot.noticeUserState?.notices ?? [:]
+        let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
         return (snapshot.noticeDigest?.notices ?? []).filter { notice in
             let interaction = state[notice.noticeIdentifier]
             let hidden = interaction?.hidden == true
             let important = interaction?.important == true
             let read = noticeReadStateMatches(interaction, fingerprint: notice.fingerprint)
             let fresh = notice.changeState == "new" || notice.changeState == "updated"
+            guard noticeMatchesDashboardBaseFilters(
+                notice,
+                interaction: interaction,
+                generatedAt: generatedAt,
+                filters: filters
+            ) else { return false }
             return category.matches(
                 hidden: hidden,
                 important: important,
                 read: read,
                 fresh: fresh,
-                hiddenOnly: hiddenOnly
+                hiddenOnly: filters.hiddenOnly
             )
         }.count
     }
