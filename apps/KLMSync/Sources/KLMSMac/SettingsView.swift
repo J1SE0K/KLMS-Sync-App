@@ -222,7 +222,12 @@ struct SettingsView: View {
 
     private var loginSettings: some View {
         settingsForm {
-            Section("로그인") {
+            SettingsGroupBox(
+                title: "로그인",
+                detail: "KLMS 로그인 확인과 인증번호 표시 방식을 정합니다.",
+                systemImage: "person.badge.key",
+                defaultExpanded: true
+            ) {
                 configText(
                     "KAIST 아이디",
                     .ssoLoginID,
@@ -246,8 +251,6 @@ struct SettingsView: View {
                     defaultValue: true,
                     description: "iPhone 요청처럼 KLMS Sync 창이 앞에 없을 때도 로그인 확인과 인증번호 표시를 허용합니다."
                 )
-            }
-            Section {
                 SettingsHelpText("동기화 중 인증번호가 필요하면 대시보드 맨 위에 바로 표시됩니다.")
             }
         }
@@ -255,7 +258,12 @@ struct SettingsView: View {
 
     private var syncSettings: some View {
         settingsForm {
-            Section("실행 방식") {
+            SettingsGroupBox(
+                title: "실행 방식",
+                detail: "동기화 범위와 캘린더 반영 방식을 정합니다.",
+                systemImage: "arrow.triangle.2.circlepath",
+                defaultExpanded: true
+            ) {
                 described("자동은 캐시와 변경 여부를 보고 필요한 범위를 고릅니다. 빠른 모드는 기존 데이터를 우선 재사용하고, 전체는 가능한 데이터를 다시 읽습니다.") {
                     Picker("동기화 모드", selection: binding(.syncMode, defaultValue: "auto")) {
                         Text("자동").tag("auto")
@@ -271,7 +279,11 @@ struct SettingsView: View {
                 )
             }
 
-            Section("Safari 자동화") {
+            SettingsGroupBox(
+                title: "Safari 자동화",
+                detail: "KLMS를 읽을 때 쓰는 전용 Safari 창의 동작입니다.",
+                systemImage: "safari"
+            ) {
                 configToggle(
                     "Safari 백그라운드 창 사용",
                     .safariBackgroundWindowEnabled,
@@ -294,7 +306,12 @@ struct SettingsView: View {
 
     private var noticeSettings: some View {
         settingsForm {
-            Section("메모 이름") {
+            SettingsGroupBox(
+                title: "메모 이름",
+                detail: "공지와 확인한 공지를 쓸 Apple Notes 메모 이름입니다.",
+                systemImage: "note.text",
+                defaultExpanded: true
+            ) {
                 configText(
                     "공지 메모",
                     .noticeNoteName,
@@ -307,7 +324,11 @@ struct SettingsView: View {
                 )
             }
 
-            Section("메모 업데이트") {
+            SettingsGroupBox(
+                title: "메모 업데이트",
+                detail: "숨김 처리와 변경 없는 메모의 재작성 방식을 정합니다.",
+                systemImage: "checklist"
+            ) {
                 configToggle(
                     "숨긴 공지는 메모에서 제외",
                     .noticeHideHiddenItems,
@@ -320,9 +341,6 @@ struct SettingsView: View {
                     defaultValue: true,
                     description: "공지 내용이 같아도 Notes 서식을 다시 적용합니다. 조금 느릴 수 있지만, 깨진 체크리스트나 접기 서식을 복구할 때 도움이 됩니다."
                 )
-            }
-
-            Section {
                 SettingsHelpText("읽음/중요 표시는 항상 동기화합니다. Notes 메모 자체를 건드리고 싶지 않을 때는 실행 화면에서 ‘공지 메모도 업데이트’를 끄면 됩니다.")
             }
         }
@@ -330,7 +348,12 @@ struct SettingsView: View {
 
     private var fileSettings: some View {
         settingsForm {
-            Section("파일 확인") {
+            SettingsGroupBox(
+                title: "파일 확인",
+                detail: "파일 탐색 방식과 다운로드 건너뛰기 기준입니다.",
+                systemImage: "folder.badge.gearshape",
+                defaultExpanded: true
+            ) {
                 described("자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠른 모드는 기존 캐시 재사용을 우선합니다.") {
                     Picker("파일 탐색 모드", selection: sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick"])) {
                         Text("자동").tag("auto")
@@ -349,9 +372,14 @@ struct SettingsView: View {
                     defaultValue: true,
                     description: "파일을 과목, 주차 같은 KLMS 출처 구조에 맞춰 정리합니다."
                 )
+                SettingsHelpText("기본적으로 KLMS 등록 시각과 로컬 파일 상태가 달라진 파일만 처리합니다. KLMS 원본 파일은 삭제하지 않고, 앱의 숨김/휴지통 처리는 Mac 로컬 상태에만 적용됩니다.")
             }
 
-            Section("저장 위치") {
+            SettingsGroupBox(
+                title: "저장 위치",
+                detail: "새 파일 보관함과 격리 폴더 위치입니다.",
+                systemImage: "folder"
+            ) {
                 configText(
                     "새 파일 보관함",
                     .fileNewFilesRoot,
@@ -364,7 +392,11 @@ struct SettingsView: View {
                 )
             }
 
-            Section("문제 분석용 보관") {
+            SettingsGroupBox(
+                title: "문제 분석용 보관",
+                detail: "다운로드 문제를 추적할 때만 켜는 보관 옵션입니다.",
+                systemImage: "archivebox"
+            ) {
                 configToggle(
                     "새 다운로드 임시 폴더 유지",
                     .fileKeepFreshDownloads,
@@ -376,16 +408,17 @@ struct SettingsView: View {
                     description: "다운로드 중간 파일을 보존합니다. 문제를 분석할 때는 도움이 되지만 저장 공간을 더 사용합니다."
                 )
             }
-
-            Section {
-                SettingsHelpText("기본적으로 KLMS 등록 시각과 로컬 파일 상태가 달라진 파일만 처리합니다. KLMS 원본 파일은 삭제하지 않고, 앱의 숨김/휴지통 처리는 Mac 로컬 상태에만 적용됩니다.")
-            }
         }
     }
 
     private var relaySettings: some View {
         settingsForm {
-            Section("연결 정보") {
+            SettingsGroupBox(
+                title: "연결 정보",
+                detail: "서버 주소와 Mac/iPhone용 토큰을 입력합니다.",
+                systemImage: "network",
+                defaultExpanded: true
+            ) {
                 described("Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.") {
                     TextField(
                         "서버 URL",
@@ -415,7 +448,11 @@ struct SettingsView: View {
                 }
             }
 
-            Section("릴레이 동작") {
+            SettingsGroupBox(
+                title: "릴레이 동작",
+                detail: "다른 기기가 서버를 통해 Mac 앱에 요청을 보낼 수 있게 합니다.",
+                systemImage: "bolt.horizontal"
+            ) {
                 described("iPhone/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다.") {
                     Toggle(
                         "서버 릴레이 사용",
@@ -431,7 +468,11 @@ struct SettingsView: View {
                 }
             }
 
-            Section("연결 확인") {
+            SettingsGroupBox(
+                title: "연결 확인",
+                detail: "연결 정보를 붙여넣고, 서버 응답을 검사합니다.",
+                systemImage: "checkmark.shield"
+            ) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Button("붙여넣기") {
@@ -470,9 +511,6 @@ struct SettingsView: View {
                     }
                     SettingsHelpText("복사된 토큰은 보안을 위해 잠시 뒤 클립보드에서 자동으로 지워집니다.")
                 }
-            }
-
-            Section {
                 SettingsHelpText("iPhone/Windows에는 클라이언트 토큰만 넣습니다. Mac 앱에는 요청을 처리할 Mac 전용 토큰도 함께 넣어야 합니다. 서버에는 실행 요청과 요약 숫자만 저장하고, 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
             }
         }
@@ -480,7 +518,12 @@ struct SettingsView: View {
 
     private var appSettings: some View {
         settingsForm {
-            Section("바로 반영되는 설정") {
+            SettingsGroupBox(
+                title: "바로 반영되는 설정",
+                detail: "화면 모드와 원격 실행 옵션을 모든 기기에 바로 맞춥니다.",
+                systemImage: "slider.horizontal.3",
+                defaultExpanded: true
+            ) {
                 Picker("색상 모드", selection: Binding(
                     get: { model.serverRelaySharedAppearanceModeValue },
                     set: { value in
@@ -510,7 +553,11 @@ struct SettingsView: View {
                 SettingsHelpText("끄면 iPhone/iPad/Windows에서 실행한 동기화는 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다.")
             }
 
-            Section("설치와 백업") {
+            SettingsGroupBox(
+                title: "설치와 백업",
+                detail: "엔진 설치 정보와 로컬 상태 백업입니다. 필요할 때만 펼치세요.",
+                systemImage: "shippingbox"
+            ) {
                 SettingsDisclosureCard {
                     LabeledContent("엔진 위치") {
                         Text(model.paths.engineRoot.path)
@@ -584,7 +631,11 @@ struct SettingsView: View {
                 }
             }
 
-            Section {
+            SettingsGroupBox(
+                title: "설정 저장 방식",
+                detail: "config.env를 안전하게 수정하는 방식입니다.",
+                systemImage: "doc.text"
+            ) {
                 SettingsHelpText("Mac 설정 파일에 저장하는 값은 알 수 없는 config.env 항목과 주석을 그대로 보존합니다.")
             }
 
@@ -593,103 +644,93 @@ struct SettingsView: View {
     }
 
     private var relaySettingsCollapsed: some View {
-        Section {
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 12) {
-                    described("Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.") {
-                        TextField(
-                            "서버 URL",
-                            text: Binding(
-                                get: { model.serverRelayURL },
-                                set: { model.setServerRelayURL($0) }
-                            )
+        SettingsGroupBox(
+            title: "서버 릴레이",
+            detail: model.serverRelayConfigured ? "연결 정보 저장됨" : "서버 연결이 필요할 때만 펼치세요.",
+            systemImage: "network"
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                described("Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.") {
+                    TextField(
+                        "서버 URL",
+                        text: Binding(
+                            get: { model.serverRelayURL },
+                            set: { model.setServerRelayURL($0) }
                         )
-                    }
-                    described("iPhone/iPad/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다.") {
-                        SecureField(
-                            "클라이언트 토큰",
-                            text: Binding(
-                                get: { model.serverRelayClientToken },
-                                set: { model.setServerRelayClientToken($0) }
-                            )
-                        )
-                    }
-                    described("Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다.") {
-                        SecureField(
-                            "Mac 전용 토큰",
-                            text: Binding(
-                                get: { model.serverRelayWorkerToken },
-                                set: { model.setServerRelayWorkerToken($0) }
-                            )
-                        )
-                    }
-
-                    Divider()
-
-                    described("iPhone/iPad/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다.") {
-                        Toggle(
-                            "서버 릴레이 사용",
-                            isOn: Binding(
-                                get: { model.serverRelayEnabled },
-                                set: { model.setServerRelayEnabled($0) }
-                            )
-                        )
-                    }
-                    LabeledContent("서버 상태") {
-                        Text(model.serverRelayStatusMessage ?? "대기 중")
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Button("붙여넣기") {
-                                model.pasteServerRelayConnectionInfo()
-                            }
-                            Button("연결 확인") {
-                                Task {
-                                    await model.checkServerRelayConnection()
-                                }
-                            }
-                            .disabled(!model.serverRelayConfigured)
-                            Button("확인 후 켜기") {
-                                Task {
-                                    await model.checkServerRelayConnection(enableOnSuccess: true)
-                                }
-                            }
-                            .disabled(!model.serverRelayConfigured)
-                        }
-                        HStack {
-                            Button("URL 복사") {
-                                model.copyServerRelayURL()
-                            }
-                            .disabled(model.serverRelayURL.isEmpty)
-                            Button("연결 정보 복사") {
-                                model.copyServerRelayConnectionInfo()
-                            }
-                            .disabled(model.serverRelayURL.isEmpty || model.serverRelayClientToken.isEmpty)
-                            Button("클라이언트 토큰 복사") {
-                                model.copyServerRelayClientToken()
-                            }
-                            .disabled(model.serverRelayClientToken.isEmpty)
-                        }
-                    }
-
-                    SettingsHelpText("복사된 토큰은 보안을 위해 잠시 뒤 클립보드에서 자동으로 지워집니다. 서버에는 실행 요청과 요약 숫자만 저장하고, 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
+                    )
                 }
-                .padding(.top, 8)
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "network")
+                described("iPhone/iPad/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다.") {
+                    SecureField(
+                        "클라이언트 토큰",
+                        text: Binding(
+                            get: { model.serverRelayClientToken },
+                            set: { model.setServerRelayClientToken($0) }
+                        )
+                    )
+                }
+                described("Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다.") {
+                    SecureField(
+                        "Mac 전용 토큰",
+                        text: Binding(
+                            get: { model.serverRelayWorkerToken },
+                            set: { model.setServerRelayWorkerToken($0) }
+                        )
+                    )
+                }
+
+                Divider()
+
+                described("iPhone/iPad/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다.") {
+                    Toggle(
+                        "서버 릴레이 사용",
+                        isOn: Binding(
+                            get: { model.serverRelayEnabled },
+                            set: { model.setServerRelayEnabled($0) }
+                        )
+                    )
+                }
+                LabeledContent("서버 상태") {
+                    Text(model.serverRelayStatusMessage ?? "대기 중")
                         .foregroundStyle(Color.klmsMacSecondaryText)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("서버 릴레이")
-                        Text(model.serverRelayConfigured ? "연결 정보 저장됨" : "접어서 보관 중")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Button("붙여넣기") {
+                            model.pasteServerRelayConnectionInfo()
+                        }
+                        Button("연결 확인") {
+                            Task {
+                                await model.checkServerRelayConnection()
+                            }
+                        }
+                        .disabled(!model.serverRelayConfigured)
+                        Button("확인 후 켜기") {
+                            Task {
+                                await model.checkServerRelayConnection(enableOnSuccess: true)
+                            }
+                        }
+                        .disabled(!model.serverRelayConfigured)
+                    }
+                    HStack {
+                        Button("URL 복사") {
+                            model.copyServerRelayURL()
+                        }
+                        .disabled(model.serverRelayURL.isEmpty)
+                        Button("연결 정보 복사") {
+                            model.copyServerRelayConnectionInfo()
+                        }
+                        .disabled(model.serverRelayURL.isEmpty || model.serverRelayClientToken.isEmpty)
+                        Button("클라이언트 토큰 복사") {
+                            model.copyServerRelayClientToken()
+                        }
+                        .disabled(model.serverRelayClientToken.isEmpty)
                     }
                 }
+
+                SettingsHelpText("복사된 토큰은 보안을 위해 잠시 뒤 클립보드에서 자동으로 지워집니다. 서버에는 실행 요청과 요약 숫자만 저장하고, 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
             }
         }
     }
@@ -822,6 +863,53 @@ private struct SettingsDisclosureLabel: View {
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+}
+
+private struct SettingsGroupBox<Content: View>: View {
+    var title: String
+    var detail: String
+    var systemImage: String
+    @State private var isExpanded: Bool
+    @ViewBuilder var content: () -> Content
+
+    init(
+        title: String,
+        detail: String,
+        systemImage: String,
+        defaultExpanded: Bool = false,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.detail = detail
+        self.systemImage = systemImage
+        _isExpanded = State(initialValue: defaultExpanded)
+        self.content = content
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
+            .padding(.top, 8)
+        } label: {
+            SettingsDisclosureLabel(
+                title: title,
+                detail: detail,
+                systemImage: systemImage
+            )
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.72 : 0.48), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(
+                    isExpanded ? Color.klmsMacSelectedBorder.opacity(0.46) : Color.klmsMacBorder.opacity(0.92),
+                    lineWidth: 1
+                )
         }
     }
 }

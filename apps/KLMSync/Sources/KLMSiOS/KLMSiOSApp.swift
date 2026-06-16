@@ -10237,7 +10237,7 @@ private struct RemoteDryRunReportRow: View {
 
 private struct RemoteSettingsPanel: View {
     @ObservedObject var model: CompanionModel
-    @State private var isExpanded = false
+    @State private var isExpanded = true
 
     private var settingGroups: [RemoteSettingGroup] {
         RemoteSettingGroup.grouped(settings: model.remoteSettings)
@@ -10302,6 +10302,10 @@ private struct RemoteSettingGroup: Identifiable {
     var settings: [ServerRelaySetting]
 
     var id: String { title }
+    var countText: String { "\(settings.count)개" }
+    var isDefaultExpanded: Bool {
+        title == "로그인" || title == "실행"
+    }
 
     static func grouped(settings: [ServerRelaySetting]) -> [RemoteSettingGroup] {
         let byKey = Dictionary(settings.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
@@ -10368,30 +10372,48 @@ private struct RemoteSettingGroup: Identifiable {
 private struct RemoteSettingGroupSection: View {
     var group: RemoteSettingGroup
     @ObservedObject var model: CompanionModel
+    @State private var isExpanded: Bool
+
+    init(group: RemoteSettingGroup, model: CompanionModel) {
+        self.group = group
+        self.model = model
+        _isExpanded = State(initialValue: group.isDefaultExpanded)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(group.settings) { setting in
+                    RemoteSettingRow(setting: setting, model: model)
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
                 Image(systemName: group.systemImage)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsCommandAccent)
                     .frame(width: 24, height: 24)
-                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 7))
+                    .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(group.title)
                         .font(.subheadline.weight(.semibold))
                     CompanionSettingHelpText(group.detail)
                 }
-            }
-            ForEach(group.settings) { setting in
-                RemoteSettingRow(setting: setting, model: model)
+                Spacer(minLength: 8)
+                Text(group.countText)
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
         }
         .padding(10)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .background(isExpanded ? Color.klmsCardBackground : Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.klmsBorder, lineWidth: 1)
+                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.36) : Color.klmsBorder, lineWidth: 1)
         )
     }
 }
