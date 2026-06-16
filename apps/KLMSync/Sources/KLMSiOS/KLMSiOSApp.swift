@@ -3050,6 +3050,13 @@ private struct ServerRelayConnectionPanel: View {
                     }
                     CompanionSettingHelpText("붙여넣기는 복사한 서버 연결 정보를 한 번에 입력합니다. 연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다. 요약 갱신은 Mac 앱에 최신 상태를 다시 올려 달라고 요청합니다.")
                 }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
+                }
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("복사")
@@ -3070,6 +3077,13 @@ private struct ServerRelayConnectionPanel: View {
                         .disabled(model.serverToken.isEmpty)
                     }
                     CompanionSettingHelpText("복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.")
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
                 }
 
                 Button(role: .destructive) {
@@ -10039,57 +10053,96 @@ private struct RemoteDiagnosticPanel: View {
     private let dryRunCommands: [RemoteCommandKind] = [.fullSync, .filesSync, .coreSync, .noticeSync]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            DisclosureGroup(isExpanded: $isPanelExpanded) {
-                VStack(alignment: .leading, spacing: 10) {
-                    RemoteVerifySummaryPanel(summary: model.verifySummary)
-                    Text("문제가 보이면 상태 검사부터 실행하고, 권한이나 로그인 문제가 의심될 때 권한/환경 진단을 실행하세요.")
+        DisclosureGroup(isExpanded: $isPanelExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                RemoteVerifySummaryPanel(summary: model.verifySummary)
+                Text("문제가 보이면 상태 검사부터 실행하고, 권한이나 로그인 문제가 의심될 때 권한/환경 진단을 실행하세요.")
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                LazyVGrid(columns: columns, spacing: 8) {
+                    diagnosticButton(.verify)
+                    diagnosticButton(.doctor)
+                    diagnosticButton(.report)
+                }
+                RemoteStageDurationSummaryView(durations: latestStageDurations)
+
+                DisclosureGroup(isExpanded: $isAdvancedExpanded) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("실제 반영 없이 바뀔 항목 수를 계산하거나, 내부 상태 파일만 다시 생성합니다. 평소에는 열 필요가 없습니다.")
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        diagnosticButton(.v2BuildState)
+                        LazyVGrid(columns: columns, spacing: 8) {
+                            ForEach(dryRunCommands, id: \.self) { command in
+                                dryRunButton(command)
+                            }
+                        }
+                        RemoteDryRunPanel(reports: model.dryRunReports)
+                    }
+                    .padding(.top, 6)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color.klmsCommandAccent)
+                            .frame(width: 24, height: 24)
+                            .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("고급 도구")
+                                .font(.subheadline.weight(.semibold))
+                            CompanionSettingHelpText("변경량 계산과 내부 상태 재생성 도구입니다.")
+                        }
+                        Spacer(minLength: 8)
+                        Text(isAdvancedExpanded ? "펼침" : "접힘")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(Color.klmsSubtleCardBackground, in: Capsule())
+                    }
+                }
+                .padding(10)
+                .background(
+                    isAdvancedExpanded ? Color.klmsCardBackground : Color.klmsSubtleCardBackground.opacity(0.72),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(isAdvancedExpanded ? Color.klmsSelectedBorder.opacity(0.36) : Color.klmsBorder, lineWidth: 1)
+                )
+            }
+            .padding(.top, 8)
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "wrench.and.screwdriver")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 32, height: 32)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("진단")
+                        .font(.headline)
+                    Text("상태 검사와 권한 점검은 필요할 때만 펼치세요.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        diagnosticButton(.verify)
-                        diagnosticButton(.doctor)
-                        diagnosticButton(.report)
-                    }
-                    RemoteStageDurationSummaryView(durations: latestStageDurations)
-
-                    DisclosureGroup(isExpanded: $isAdvancedExpanded) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("실제 반영 없이 바뀔 항목 수를 계산하거나, 내부 상태 파일만 다시 생성합니다. 평소에는 열 필요가 없습니다.")
-                                .font(.caption2)
-                                .foregroundStyle(Color.klmsSecondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                            diagnosticButton(.v2BuildState)
-                            LazyVGrid(columns: columns, spacing: 8) {
-                                ForEach(dryRunCommands, id: \.self) { command in
-                                    dryRunButton(command)
-                                }
-                            }
-                            RemoteDryRunPanel(reports: model.dryRunReports)
-                        }
-                        .padding(.top, 6)
-                    } label: {
-                        Label("고급 도구", systemImage: "slider.horizontal.3")
-                            .font(.caption.weight(.semibold))
-                    }
                 }
-                .padding(.top, 8)
-            } label: {
-                HStack(spacing: 8) {
-                    Label("진단", systemImage: "wrench.and.screwdriver")
-                        .font(.headline)
-                    Spacer(minLength: 8)
-                    Text(isPanelExpanded ? "접기" : "펼치기")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
+                Spacer(minLength: 0)
+                Text(isPanelExpanded ? "펼침" : "접힘")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
         }
-        .padding(14)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -10165,8 +10218,11 @@ private struct RemoteDryRunPanel: View {
             }
         }
         .padding(12)
-        .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
+        }
     }
 }
 
@@ -10194,8 +10250,11 @@ private struct RemoteDryRunReportRow: View {
                 .foregroundStyle(Color.klmsSecondaryText)
         }
         .padding(10)
-        .background(Color.klmsCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsBorder.opacity(0.72), lineWidth: 1)
+        }
     }
 }
 
@@ -10250,8 +10309,7 @@ private struct RemoteSettingsPanel: View {
             }
         }
         .padding(12)
-        .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
@@ -10357,8 +10415,8 @@ private struct RemoteSettingGroupSection: View {
                 Image(systemName: group.systemImage)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 24, height: 24)
-                    .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                    .frame(width: 28, height: 28)
+                    .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(group.title)
                         .font(.subheadline.weight(.semibold))
@@ -10373,11 +10431,14 @@ private struct RemoteSettingGroupSection: View {
                     .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
         }
-        .padding(10)
-        .background(isExpanded ? Color.klmsCardBackground : Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .padding(11)
+        .background(
+            isExpanded ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.36) : Color.klmsBorder, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
         )
     }
 }
@@ -11362,12 +11423,20 @@ private struct RemoteSettingRow: View {
                     }
                 }
                 Spacer(minLength: 8)
+                Text(settingValueSummary)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
             control
         }
-        .padding(10)
+        .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsCardBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
@@ -11454,6 +11523,17 @@ private struct RemoteSettingRow: View {
             return "KLMS 전용 Safari 창을 처리하는 방식입니다. 기본값은 최소화입니다."
         default:
             return nil
+        }
+    }
+
+    private var settingValueSummary: String {
+        switch setting.valueKind {
+        case .bool:
+            return setting.boolValue ? "켜짐" : "꺼짐"
+        case .choice:
+            return setting.value.nilIfEmpty ?? "선택"
+        case .number, .text:
+            return setting.value.nilIfEmpty ?? "비어 있음"
         }
     }
 }
@@ -11647,8 +11727,8 @@ private struct RemotePrivacyNote: View {
                 Image(systemName: "lock")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 30, height: 30)
-                    .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 9))
+                    .frame(width: 32, height: 32)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("개인정보와 서버 보관")
                         .font(.subheadline.weight(.semibold))
@@ -11657,12 +11737,21 @@ private struct RemotePrivacyNote: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
                 Spacer(minLength: 0)
+                Text(isExpanded ? "펼침" : "접힘")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
     }
 }
 
