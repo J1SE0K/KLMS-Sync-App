@@ -295,7 +295,7 @@ final class CompanionModel: ObservableObject {
 
         static let itemActions = RelayRefreshScope(
             fetchesCommands: false,
-            fetchesSyncData: false,
+            fetchesSyncData: true,
             fetchesFileRequests: false,
             fetchesItemActions: true,
             fetchesRequestLog: true,
