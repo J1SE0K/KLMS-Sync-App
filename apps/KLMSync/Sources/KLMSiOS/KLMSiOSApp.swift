@@ -2642,8 +2642,7 @@ private struct CompanionSettingsScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: "설정", model: model) {
-            CompanionAppearancePanel(model: model)
-            CompanionSharedSettingsPanel(model: model)
+            CompanionImmediateSettingsPanel(model: model)
             if !model.serverRelayConfigured {
                 InfoBanner(message: model.remoteAvailabilityMessage)
             }
@@ -2655,71 +2654,55 @@ private struct CompanionSettingsScreen: View {
     }
 }
 
-private struct CompanionAppearancePanel: View {
+private struct CompanionImmediateSettingsPanel: View {
     @ObservedObject var model: CompanionModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "circle.lefthalf.filled")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 28, height: 28)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("화면 모드")
-                        .font(.headline)
-                    Text("시스템 설정을 따르거나, 이 앱만 라이트/다크로 고정합니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            Picker("화면 모드", selection: Binding(
-                get: { model.sharedAppearanceModeValue },
-                set: { newValue in
-                    Task {
-                        await model.updateSharedAppearanceMode(newValue)
-                    }
-                }
-            )) {
-                ForEach(KLMSAppearanceMode.allCases) { mode in
-                    Text(mode.title).tag(mode.rawValue)
-                }
-            }
-            .pickerStyle(.segmented)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        )
-    }
-}
-
-private struct CompanionSharedSettingsPanel: View {
-    @ObservedObject var model: CompanionModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 28, height: 28)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                    .frame(width: 32, height: 32)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("앱 공통 설정")
+                    Text("바로 반영되는 설정")
                         .font(.headline)
-                    Text("Mac을 기다리지 않고 서버에 바로 저장되어 모든 기기에 반영됩니다.")
+                    Text("서버에 바로 저장되어 Mac, iPhone, iPad, Windows가 같은 값을 씁니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: 0)
+                Text("공통")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("화면 모드")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                Picker("화면 모드", selection: Binding(
+                    get: { model.sharedAppearanceModeValue },
+                    set: { newValue in
+                        Task {
+                            await model.updateSharedAppearanceMode(newValue)
+                        }
+                    }
+                )) {
+                    ForEach(KLMSAppearanceMode.allCases) { mode in
+                        Text(mode.title).tag(mode.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                CompanionSettingHelpText("기기 설정을 따르거나, KLMS Sync에서만 라이트/다크 모드를 고정합니다.")
+            }
+
+            Divider()
 
             Toggle(isOn: Binding(
                 get: { model.sharedNoticeUpdateNotesEnabled },
@@ -2730,9 +2713,9 @@ private struct CompanionSharedSettingsPanel: View {
                 }
             )) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("원격 실행 때 공지 메모도 업데이트")
+                    Text("원격 실행에서 공지 메모도 갱신")
                         .font(.subheadline.weight(.semibold))
-                    Text("끄면 iPhone/iPad/Windows에서 실행한 동기화는 공지 메모 쓰기를 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다.")
+                    Text("끄면 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -10247,12 +10230,15 @@ private struct RemoteSettingsPanel: View {
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 8) {
-                CompanionSettingHelpText("이 아래 설정은 실제 동기화 엔진이 쓰는 값이라 Mac 앱이 확인한 뒤 config.env에 반영합니다. 화면 모드와 공지 메모 업데이트 여부는 위의 앱 공통 설정에서 서버에 바로 저장됩니다.")
+            VStack(alignment: .leading, spacing: 10) {
+                CompanionSettingHelpText("이 설정은 Mac 앱이 받아서 실제 config.env에 저장합니다. 화면 모드와 공지 메모 갱신 여부는 위 카드에서 바로 바뀝니다.")
                 if model.remoteSettings.isEmpty {
-                    Text("Mac 앱이 설정 목록을 서버에 올리면 여기에서 일부 설정을 바꿀 수 있습니다.")
+                    Text("Mac 앱이 설정 목록을 서버에 올리면 여기에서 바꿀 수 있습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
                 } else {
                     ForEach(settingGroups) { group in
                         RemoteSettingGroupSection(group: group, model: model)
@@ -10261,18 +10247,36 @@ private struct RemoteSettingsPanel: View {
             }
             .padding(.top, 8)
         } label: {
-            HStack {
-                Label("Mac 설정", systemImage: "slider.horizontal.3")
-                    .font(.headline)
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "macbook.and.iphone")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 32, height: 32)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Mac 동기화 설정")
+                        .font(.headline)
+                    Text("실행 엔진이 쓰는 값을 Mac 설정 파일에 반영합니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Spacer()
                 Text(model.remoteSettings.isEmpty ? "대기" : "\(model.remoteSettings.count)개")
-                    .font(.caption.monospacedDigit())
+                    .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsCardBackground, in: Capsule())
             }
         }
         .padding(12)
         .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
     }
 }
 
@@ -10352,17 +10356,26 @@ private struct RemoteSettingGroupSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(group.title, systemImage: group.systemImage)
-                .font(.subheadline.weight(.semibold))
-            CompanionSettingHelpText(group.detail)
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: group.systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 24, height: 24)
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.title)
+                        .font(.subheadline.weight(.semibold))
+                    CompanionSettingHelpText(group.detail)
+                }
+            }
             ForEach(group.settings) { setting in
                 RemoteSettingRow(setting: setting, model: model)
             }
         }
         .padding(10)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -11339,20 +11352,25 @@ private struct RemoteSettingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(setting.title)
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsPrimaryText)
                     if let detail = settingExplanation {
                         CompanionSettingHelpText(detail)
                     }
                 }
                 Spacer(minLength: 8)
-                control
             }
+            control
         }
         .padding(10)
-        .background(Color.klmsCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
+        }
         .onAppear {
             if draftValue.isEmpty {
                 draftValue = setting.value
@@ -11375,10 +11393,10 @@ private struct RemoteSettingRow: View {
                     )
                 }
             } label: {
-                Text(setting.boolValue ? "끄기" : "켜기")
-                    .frame(minWidth: 58)
+                Label(setting.boolValue ? "켜짐" : "꺼짐", systemImage: setting.boolValue ? "checkmark.circle.fill" : "circle")
+                    .frame(maxWidth: .infinity, minHeight: 38)
             }
-            .buttonStyle(KLMSActionButtonStyle(tone: setting.boolValue ? .destructive : .success))
+            .buttonStyle(KLMSActionButtonStyle(tone: setting.boolValue ? .success : .soft))
             .disabled(!setting.editable || model.isSubmitting)
         case .choice:
             Menu {
@@ -11390,7 +11408,13 @@ private struct RemoteSettingRow: View {
                     }
                 }
             } label: {
-                Label(setting.value.nilIfEmpty ?? "선택", systemImage: "chevron.up.chevron.down")
+                HStack {
+                    Text(setting.value.nilIfEmpty ?? "선택")
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.up.chevron.down")
+                }
+                .frame(maxWidth: .infinity, minHeight: 38)
             }
             .buttonStyle(KLMSActionButtonStyle())
             .disabled(!setting.editable || model.isSubmitting)
@@ -11398,7 +11422,7 @@ private struct RemoteSettingRow: View {
             HStack(spacing: 6) {
                 TextField("값", text: $draftValue)
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 120)
+                    .frame(minWidth: 120)
                 Button("저장") {
                     Task {
                         await model.createSettingAction(setting: setting, value: draftValue)
@@ -11407,6 +11431,7 @@ private struct RemoteSettingRow: View {
                 .buttonStyle(KLMSActionButtonStyle(tone: .primary))
                 .disabled(!setting.editable || model.isSubmitting || draftValue == setting.value)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

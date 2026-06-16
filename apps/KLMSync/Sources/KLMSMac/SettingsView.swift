@@ -49,6 +49,17 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         }
     }
 
+    var scopeLabel: String {
+        switch self {
+        case .login, .sync, .notice, .files:
+            "Mac 설정 파일"
+        case .relay:
+            "연결 정보"
+        case .app:
+            "바로 반영"
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .login:
@@ -86,7 +97,7 @@ struct SettingsView: View {
                 Text("설정")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
-                Text("앱 안에서 바로 바꿉니다.")
+                Text("자주 쓰는 값은 위에, 기술적인 값은 접어서 정리했습니다.")
                     .font(.caption2)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -123,7 +134,7 @@ struct SettingsView: View {
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 Spacer()
-                Text("앱 내부 설정")
+                Text(selectedTab.scopeLabel)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .padding(.horizontal, 8)
@@ -469,7 +480,7 @@ struct SettingsView: View {
 
     private var appSettings: some View {
         settingsForm {
-            Section("화면") {
+            Section("바로 반영되는 설정") {
                 Picker("색상 모드", selection: Binding(
                     get: { model.serverRelaySharedAppearanceModeValue },
                     set: { value in
@@ -484,12 +495,9 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                SettingsHelpText("시스템은 macOS 설정을 따릅니다. 서버가 연결되어 있으면 iPhone/iPad에도 같은 화면 모드가 바로 공유됩니다.")
-            }
-
-            Section("앱 공통 설정") {
+                SettingsHelpText("화면 모드는 서버에 바로 저장됩니다. 서버가 연결되어 있으면 iPhone/iPad/Windows도 같은 모드를 따라갑니다.")
                 Toggle(
-                    "원격 실행 때 공지 메모도 업데이트",
+                    "원격 실행에서 공지 메모도 갱신",
                     isOn: Binding(
                         get: { model.serverRelaySharedNoticeUpdateNotesEnabled },
                         set: { value in
@@ -499,71 +507,91 @@ struct SettingsView: View {
                         }
                     )
                 )
-                SettingsHelpText("iPhone/iPad/Windows에서 실행한 동기화에 적용됩니다. 끄면 공지 메모 쓰기만 건너뛰고 과제, 시험, 파일 수집은 그대로 진행됩니다.")
+                SettingsHelpText("끄면 iPhone/iPad/Windows에서 실행한 동기화는 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다.")
             }
 
-            Section("설치") {
-                LabeledContent("엔진 위치") {
-                    Text(model.paths.engineRoot.path)
-                        .lineLimit(2)
-                        .textSelection(.enabled)
-                }
-                LabeledContent("앱 내 엔진 버전") {
-                    Text(model.payload?.version ?? "알 수 없음")
-                }
-                LabeledContent("설치된 엔진 버전") {
-                    Text(model.appDiagnostics.installedPayloadVersion.isEmpty ? "아직 없음" : model.appDiagnostics.installedPayloadVersion)
-                        .lineLimit(2)
-                        .textSelection(.enabled)
-                }
-                LabeledContent("앱 경로") {
-                    Text(model.appDiagnostics.bundlePath)
-                        .lineLimit(2)
-                        .textSelection(.enabled)
-                }
-                LabeledContent("코드 서명") {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(model.appDiagnostics.codeSigning.statusTitle)
-                        Text(model.appDiagnostics.codeSigning.statusDetail)
-                            .font(.caption)
-                            .foregroundStyle(model.appDiagnostics.codeSigning.isAdHoc ? Color.klmsMacWarningBorder : Color.klmsMacSecondaryText)
-                            .multilineTextAlignment(.trailing)
-                    }
-                }
-                Button("엔진 다시 설치") {
-                    Task {
-                        await model.installEngine(force: true)
-                        await model.reloadEngineState()
-                    }
-                }
-                SettingsHelpText("엔진 다시 설치는 앱에 포함된 최신 코드만 다시 복사합니다. config.env, 인증 상태, runtime, course_files는 덮어쓰지 않습니다.")
-            }
-
-            Section("백업") {
-                LabeledContent("최근 백업") {
-                    Text(model.latestBackup.map { "\($0.id) · \($0.fileCount)개" } ?? "없음")
-                }
-                HStack {
-                    Button {
-                        model.createBackup()
-                    } label: {
-                        Label("백업 만들기", systemImage: "externaldrive.badge.plus")
-                    }
-                    Button(role: .destructive) {
-                        Task {
-                            await model.restoreLatestBackup()
+            Section("설치와 백업") {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 10) {
+                        LabeledContent("엔진 위치") {
+                            Text(model.paths.engineRoot.path)
+                                .lineLimit(2)
+                                .textSelection(.enabled)
                         }
-                    } label: {
-                        Label("최근 백업 복구", systemImage: "clock.arrow.circlepath")
+                        LabeledContent("앱 내 엔진 버전") {
+                            Text(model.payload?.version ?? "알 수 없음")
+                        }
+                        LabeledContent("설치된 엔진 버전") {
+                            Text(model.appDiagnostics.installedPayloadVersion.isEmpty ? "아직 없음" : model.appDiagnostics.installedPayloadVersion)
+                                .lineLimit(2)
+                                .textSelection(.enabled)
+                        }
+                        LabeledContent("앱 경로") {
+                            Text(model.appDiagnostics.bundlePath)
+                                .lineLimit(2)
+                                .textSelection(.enabled)
+                        }
+                        LabeledContent("코드 서명") {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(model.appDiagnostics.codeSigning.statusTitle)
+                                Text(model.appDiagnostics.codeSigning.statusDetail)
+                                    .font(.caption)
+                                    .foregroundStyle(model.appDiagnostics.codeSigning.isAdHoc ? Color.klmsMacWarningBorder : Color.klmsMacSecondaryText)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+                        Button("엔진 다시 설치") {
+                            Task {
+                                await model.installEngine(force: true)
+                                await model.reloadEngineState()
+                            }
+                        }
+                        SettingsHelpText("앱에 포함된 최신 코드만 다시 복사합니다. config.env, 인증 상태, runtime, course_files는 덮어쓰지 않습니다.")
                     }
-                    .disabled(model.latestBackup == nil)
-                    .buttonStyle(KLMSMacSettingsButtonStyle(tone: .destructive))
+                    .padding(.top, 8)
+                } label: {
+                    SettingsDisclosureLabel(
+                        title: "엔진 설치 정보",
+                        detail: model.appDiagnostics.installedPayloadVersion.isEmpty ? "설치된 버전을 확인하려면 펼치세요." : "설치됨 · \(model.appDiagnostics.installedPayloadVersion)",
+                        systemImage: "shippingbox"
+                    )
                 }
-                SettingsHelpText("백업은 숨김, 완료, 중요 표시처럼 앱에서 편집한 로컬 상태를 복구할 때 사용합니다.")
+
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 10) {
+                        LabeledContent("최근 백업") {
+                            Text(model.latestBackup.map { "\($0.id) · \($0.fileCount)개" } ?? "없음")
+                        }
+                        HStack {
+                            Button {
+                                model.createBackup()
+                            } label: {
+                                Label("백업 만들기", systemImage: "externaldrive.badge.plus")
+                            }
+                            Button(role: .destructive) {
+                                Task {
+                                    await model.restoreLatestBackup()
+                                }
+                            } label: {
+                                Label("최근 백업 복구", systemImage: "clock.arrow.circlepath")
+                            }
+                            .disabled(model.latestBackup == nil)
+                            .buttonStyle(KLMSMacSettingsButtonStyle(tone: .destructive))
+                        }
+                        SettingsHelpText("숨김, 완료, 중요 표시처럼 앱에서 편집한 로컬 상태를 복구할 때 사용합니다.")
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    SettingsDisclosureLabel(
+                        title: "로컬 상태 백업",
+                        detail: model.latestBackup.map { "\($0.fileCount)개 항목 백업 있음" } ?? "백업이 필요할 때만 펼치세요.",
+                        systemImage: "externaldrive"
+                    )
+                }
             }
 
             Section {
-                SettingsHelpText("저장할 때 알 수 없는 config.env 항목과 주석은 그대로 보존됩니다.")
+                SettingsHelpText("Mac 설정 파일에 저장하는 값은 알 수 없는 config.env 항목과 주석을 그대로 보존합니다.")
             }
 
             relaySettingsCollapsed
@@ -681,6 +709,7 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, minHeight: 360, alignment: .topLeading)
         .buttonStyle(KLMSMacSettingsButtonStyle())
         .textFieldStyle(.roundedBorder)
+        .controlSize(.regular)
     }
 
     @ViewBuilder
@@ -776,6 +805,31 @@ struct SettingsView: View {
         )
     }
 
+}
+
+private struct SettingsDisclosureLabel: View {
+    var title: String
+    var detail: String
+    var systemImage: String
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.klmsMacCommandAccent)
+                .frame(width: 26, height: 26)
+                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 }
 
 private struct SettingsHelpText: View {
