@@ -1707,6 +1707,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("settingsTabBar"))
         XCTAssertTrue(macSettings.contains("settingsContentPanel"))
         XCTAssertTrue(macSettings.contains("selectedSettingsContent"))
+        XCTAssertTrue(macSettings.contains(".id(selectedTab.rawValue)"))
+        XCTAssertTrue(macSettings.contains(".accessibilityIdentifier(\"settings-content-\\(selectedTab.rawValue)\")"))
         XCTAssertTrue(macSettings.contains("private let settingsTabColumns"))
         XCTAssertTrue(macSettings.contains("GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 7)"))
         XCTAssertTrue(macSettings.contains("LazyVGrid(columns: settingsTabColumns, alignment: .leading, spacing: 7)"))

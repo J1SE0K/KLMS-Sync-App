@@ -142,6 +142,8 @@ struct SettingsView: View {
             .padding(.top, 12)
 
             selectedSettingsContent
+                .id(selectedTab.rawValue)
+                .accessibilityIdentifier("settings-content-\(selectedTab.rawValue)")
         }
         .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
