@@ -94,7 +94,7 @@ struct SettingsView: View {
                 Text("설정")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
-                Text("자주 쓰는 값은 위에, 기술적인 값은 접어서 정리했습니다.")
+                Text("필요한 묶음만 펼쳐서 바꿔 주세요.")
                     .font(.caption2)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -221,8 +221,7 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "로그인",
                 detail: "KLMS 로그인 확인과 인증번호 표시 방식을 정합니다.",
-                systemImage: "person.badge.key",
-                defaultExpanded: true
+                systemImage: "person.badge.key"
             ) {
                 configText(
                     "KAIST 아이디",
@@ -261,8 +260,7 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "실행 방식",
                 detail: "동기화 범위와 캘린더 반영 방식을 정합니다.",
-                systemImage: "arrow.triangle.2.circlepath",
-                defaultExpanded: true
+                systemImage: "arrow.triangle.2.circlepath"
             ) {
                 described(
                     "동기화 모드",
@@ -317,8 +315,7 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "메모 이름",
                 detail: "공지와 확인한 공지를 쓸 Apple Notes 메모 이름입니다.",
-                systemImage: "note.text",
-                defaultExpanded: true
+                systemImage: "note.text"
             ) {
                 configText(
                     "공지 메모",
@@ -359,8 +356,7 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "파일 확인",
                 detail: "파일 탐색 방식과 다운로드 건너뛰기 기준입니다.",
-                systemImage: "folder.badge.gearshape",
-                defaultExpanded: true
+                systemImage: "folder.badge.gearshape"
             ) {
                 described(
                     "파일 탐색 모드",
@@ -428,8 +424,7 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "바로 반영되는 설정",
                 detail: "화면 모드와 원격 실행 옵션을 모든 기기에 바로 맞춥니다.",
-                systemImage: "slider.horizontal.3",
-                defaultExpanded: true
+                systemImage: "slider.horizontal.3"
             ) {
                 described(
                     "색상 모드",
