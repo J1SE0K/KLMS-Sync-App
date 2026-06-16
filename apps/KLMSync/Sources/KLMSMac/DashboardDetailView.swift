@@ -1702,6 +1702,8 @@ private struct NoticeListView: View {
     var model: KLMSMacModel
     @State private var category: NoticeListCategory
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
+    @State private var presentation: NoticeDashboardPresentation
+    @State private var presentationSignature: NoticeDashboardInputSignature
 
     init(
         filters: DashboardDetailFilters,
@@ -1712,11 +1714,14 @@ private struct NoticeListView: View {
         self.filters = filters
         self.snapshot = snapshot
         self.model = model
+        let signature = NoticeDashboardInputSignature(category: defaultCategory, filters: filters, snapshot: snapshot)
         _category = State(initialValue: defaultCategory)
+        _presentation = State(initialValue: NoticeDashboardPresentation(category: defaultCategory, filters: filters, snapshot: snapshot))
+        _presentationSignature = State(initialValue: signature)
     }
 
     var body: some View {
-        let presentation = noticePresentation
+        let signature = NoticeDashboardInputSignature(category: category, filters: filters, snapshot: snapshot)
         VStack(alignment: .leading, spacing: 8) {
             NoticeCategoryPickerView(
                 category: $category,
@@ -1724,8 +1729,11 @@ private struct NoticeListView: View {
             )
             noticeRows(presentation.notices)
         }
-        .onChange(of: presentation.resetKey) { _, _ in
-            visibleLimit = DashboardLargeList.initialVisibleLimit
+        .onAppear {
+            rebuildPresentationIfNeeded(signature)
+        }
+        .onChange(of: signature) { _, next in
+            rebuildPresentationIfNeeded(next)
         }
     }
 
@@ -1748,7 +1756,61 @@ private struct NoticeListView: View {
         }
     }
 
-    private var noticePresentation: NoticeDashboardPresentation {
+    private func rebuildPresentationIfNeeded(_ signature: NoticeDashboardInputSignature) {
+        guard presentationSignature != signature else {
+            return
+        }
+        presentationSignature = signature
+        presentation = NoticeDashboardPresentation(category: category, filters: filters, snapshot: snapshot)
+        visibleLimit = DashboardLargeList.initialVisibleLimit
+    }
+}
+
+private struct NoticeDashboardInputSignature: Equatable {
+    private var value: Int
+
+    init(category: NoticeListCategory, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
+        var hasher = Hasher()
+        hasher.combine(category.rawValue)
+        hasher.combine(filters.searchText)
+        hasher.combine(filters.selectedCourse)
+        hasher.combine(filters.selectedYear)
+        hasher.combine(filters.selectedSemester)
+        hasher.combine(filters.showHidden)
+        hasher.combine(filters.hiddenOnly)
+        hasher.combine(filters.newOnly)
+        hasher.combine(filters.recentOnly)
+        hasher.combine(snapshot.noticeDigest?.generatedAt ?? "")
+        let notices = snapshot.noticeDigest?.notices ?? []
+        hasher.combine(notices.count)
+        for notice in notices {
+            hasher.combine(notice.id)
+            hasher.combine(notice.title)
+            hasher.combine(notice.course)
+            hasher.combine(notice.postedAt)
+            hasher.combine(notice.fingerprint)
+            hasher.combine(notice.changeState)
+            hasher.combine(notice.noticeIdentifier)
+        }
+        for (key, state) in (snapshot.noticeUserState?.notices ?? [:]).sorted(by: { $0.key < $1.key }) {
+            hasher.combine(key)
+            hasher.combine(state.readFingerprint ?? "")
+            hasher.combine(state.readAt ?? "")
+            hasher.combine(state.important)
+            hasher.combine(state.hidden)
+            hasher.combine(state.updatedAt)
+        }
+        value = hasher.finalize()
+    }
+}
+
+private struct NoticeDashboardPresentation {
+    var notices: [NoticeDigestEntry]
+    var counts: [NoticeListCategory: Int]
+    var category: NoticeListCategory
+    var filters: DashboardDetailFilters
+
+    init(category: NoticeListCategory, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
         let state = snapshot.noticeUserState?.notices ?? [:]
         let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
         var counts: [NoticeListCategory: Int] = [:]
@@ -1784,7 +1846,10 @@ private struct NoticeListView: View {
                 notices.append(notice)
             }
         }
-        return NoticeDashboardPresentation(notices: notices, counts: counts, category: category, filters: filters)
+        self.notices = notices
+        self.counts = counts
+        self.category = category
+        self.filters = filters
     }
 }
 
@@ -1889,30 +1954,6 @@ enum NoticeListCategory: String, CaseIterable, Identifiable, Hashable {
                 hidden
             }
         }
-    }
-}
-
-private struct NoticeDashboardPresentation {
-    var notices: [NoticeDigestEntry]
-    var counts: [NoticeListCategory: Int]
-    var category: NoticeListCategory
-    var filters: DashboardDetailFilters
-
-    var resetKey: String {
-        [
-            category.rawValue,
-            filters.searchText,
-            filters.selectedCourse,
-            filters.selectedYear,
-            filters.selectedSemester,
-            filters.showHidden ? "showHidden" : "",
-            filters.hiddenOnly ? "hiddenOnly" : "",
-            filters.newOnly ? "newOnly" : "",
-            filters.recentOnly ? "recentOnly" : "",
-            "\(notices.count)",
-            notices.first?.id ?? "",
-            notices.last?.id ?? "",
-        ].joined(separator: "|")
     }
 }
 
