@@ -511,44 +511,41 @@ struct SettingsView: View {
             }
 
             Section("설치와 백업") {
-                DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 10) {
-                        LabeledContent("엔진 위치") {
-                            Text(model.paths.engineRoot.path)
-                                .lineLimit(2)
-                                .textSelection(.enabled)
-                        }
-                        LabeledContent("앱 내 엔진 버전") {
-                            Text(model.payload?.version ?? "알 수 없음")
-                        }
-                        LabeledContent("설치된 엔진 버전") {
-                            Text(model.appDiagnostics.installedPayloadVersion.isEmpty ? "아직 없음" : model.appDiagnostics.installedPayloadVersion)
-                                .lineLimit(2)
-                                .textSelection(.enabled)
-                        }
-                        LabeledContent("앱 경로") {
-                            Text(model.appDiagnostics.bundlePath)
-                                .lineLimit(2)
-                                .textSelection(.enabled)
-                        }
-                        LabeledContent("코드 서명") {
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text(model.appDiagnostics.codeSigning.statusTitle)
-                                Text(model.appDiagnostics.codeSigning.statusDetail)
-                                    .font(.caption)
-                                    .foregroundStyle(model.appDiagnostics.codeSigning.isAdHoc ? Color.klmsMacWarningBorder : Color.klmsMacSecondaryText)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
-                        Button("엔진 다시 설치") {
-                            Task {
-                                await model.installEngine(force: true)
-                                await model.reloadEngineState()
-                            }
-                        }
-                        SettingsHelpText("앱에 포함된 최신 코드만 다시 복사합니다. config.env, 인증 상태, runtime, course_files는 덮어쓰지 않습니다.")
+                SettingsDisclosureCard {
+                    LabeledContent("엔진 위치") {
+                        Text(model.paths.engineRoot.path)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
                     }
-                    .padding(.top, 8)
+                    LabeledContent("앱 내 엔진 버전") {
+                        Text(model.payload?.version ?? "알 수 없음")
+                    }
+                    LabeledContent("설치된 엔진 버전") {
+                        Text(model.appDiagnostics.installedPayloadVersion.isEmpty ? "아직 없음" : model.appDiagnostics.installedPayloadVersion)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                    }
+                    LabeledContent("앱 경로") {
+                        Text(model.appDiagnostics.bundlePath)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                    }
+                    LabeledContent("코드 서명") {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(model.appDiagnostics.codeSigning.statusTitle)
+                            Text(model.appDiagnostics.codeSigning.statusDetail)
+                                .font(.caption)
+                                .foregroundStyle(model.appDiagnostics.codeSigning.isAdHoc ? Color.klmsMacWarningBorder : Color.klmsMacSecondaryText)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                    Button("엔진 다시 설치") {
+                        Task {
+                            await model.installEngine(force: true)
+                            await model.reloadEngineState()
+                        }
+                    }
+                    SettingsHelpText("앱에 포함된 최신 코드만 다시 복사합니다. config.env, 인증 상태, runtime, course_files는 덮어쓰지 않습니다.")
                 } label: {
                     SettingsDisclosureLabel(
                         title: "엔진 설치 정보",
@@ -557,30 +554,27 @@ struct SettingsView: View {
                     )
                 }
 
-                DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 10) {
-                        LabeledContent("최근 백업") {
-                            Text(model.latestBackup.map { "\($0.id) · \($0.fileCount)개" } ?? "없음")
-                        }
-                        HStack {
-                            Button {
-                                model.createBackup()
-                            } label: {
-                                Label("백업 만들기", systemImage: "externaldrive.badge.plus")
-                            }
-                            Button(role: .destructive) {
-                                Task {
-                                    await model.restoreLatestBackup()
-                                }
-                            } label: {
-                                Label("최근 백업 복구", systemImage: "clock.arrow.circlepath")
-                            }
-                            .disabled(model.latestBackup == nil)
-                            .buttonStyle(KLMSMacSettingsButtonStyle(tone: .destructive))
-                        }
-                        SettingsHelpText("숨김, 완료, 중요 표시처럼 앱에서 편집한 로컬 상태를 복구할 때 사용합니다.")
+                SettingsDisclosureCard {
+                    LabeledContent("최근 백업") {
+                        Text(model.latestBackup.map { "\($0.id) · \($0.fileCount)개" } ?? "없음")
                     }
-                    .padding(.top, 8)
+                    HStack {
+                        Button {
+                            model.createBackup()
+                        } label: {
+                            Label("백업 만들기", systemImage: "externaldrive.badge.plus")
+                        }
+                        Button(role: .destructive) {
+                            Task {
+                                await model.restoreLatestBackup()
+                            }
+                        } label: {
+                            Label("최근 백업 복구", systemImage: "clock.arrow.circlepath")
+                        }
+                        .disabled(model.latestBackup == nil)
+                        .buttonStyle(KLMSMacSettingsButtonStyle(tone: .destructive))
+                    }
+                    SettingsHelpText("숨김, 완료, 중요 표시처럼 앱에서 편집한 로컬 상태를 복구할 때 사용합니다.")
                 } label: {
                     SettingsDisclosureLabel(
                         title: "로컬 상태 백업",
@@ -828,6 +822,37 @@ private struct SettingsDisclosureLabel: View {
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+}
+
+private struct SettingsDisclosureCard<Content: View, Label: View>: View {
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var label: () -> Label
+
+    init(
+        @ViewBuilder content: @escaping () -> Content,
+        @ViewBuilder label: @escaping () -> Label
+    ) {
+        self.content = content
+        self.label = label
+    }
+
+    var body: some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 10) {
+                content()
+            }
+            .padding(.top, 8)
+        } label: {
+            label()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.klmsMacBorder.opacity(0.92), lineWidth: 1)
         }
     }
 }

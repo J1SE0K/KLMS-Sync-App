@@ -1567,6 +1567,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("Section(\"바로 반영되는 설정\")"))
         XCTAssertTrue(macSettings.contains("Section(\"설치와 백업\")"))
         XCTAssertTrue(macSettings.contains("SettingsDisclosureLabel("))
+        XCTAssertTrue(macSettings.contains("SettingsDisclosureCard {"))
         XCTAssertTrue(macSettings.contains("Section(\"연결 정보\")"))
         XCTAssertTrue(macSettings.contains("Section(\"릴레이 동작\")"))
         XCTAssertTrue(macSettings.contains("Section(\"연결 확인\")"))
