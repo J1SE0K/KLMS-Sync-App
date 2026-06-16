@@ -1281,55 +1281,160 @@ private struct StateItemListView: View {
     var snapshot: EngineSnapshot
     var model: KLMSMacModel
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
+    @State private var presentation: DashboardStateItemListPresentation
+    @State private var presentationSignature: DashboardStateItemListInputSignature
+
+    init(
+        items: [StateItem],
+        emptyText: String,
+        editor: StateItemEditorKind,
+        filters: DashboardDetailFilters,
+        snapshot: EngineSnapshot,
+        model: KLMSMacModel
+    ) {
+        self.items = items
+        self.emptyText = emptyText
+        self.editor = editor
+        self.filters = filters
+        self.snapshot = snapshot
+        self.model = model
+        let signature = DashboardStateItemListInputSignature(items: items, editor: editor, filters: filters, snapshot: snapshot)
+        _presentation = State(initialValue: DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot))
+        _presentationSignature = State(initialValue: signature)
+    }
 
     var body: some View {
-        let visibleItems = filteredItems
-        let renderedItems = visibleItems.prefix(visibleLimit)
-        if visibleItems.isEmpty {
-            EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 항목이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : emptyText)
-        } else {
-            LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(renderedItems) { item in
-                    StateItemRowView(item: item, editor: editor, snapshot: snapshot, model: model)
-                }
-                if visibleItems.count > renderedItems.count {
-                    DashboardShowMoreButton(remainingCount: visibleItems.count - renderedItems.count) {
-                        visibleLimit += DashboardLargeList.increment
+        let signature = DashboardStateItemListInputSignature(items: items, editor: editor, filters: filters, snapshot: snapshot)
+        let renderedItems = presentation.items.prefix(visibleLimit)
+        Group {
+            if presentation.items.isEmpty {
+                EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 항목이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : emptyText)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(renderedItems) { item in
+                        StateItemRowView(item: item, editor: editor, snapshot: snapshot, model: model)
+                    }
+                    if presentation.items.count > renderedItems.count {
+                        DashboardShowMoreButton(remainingCount: presentation.items.count - renderedItems.count) {
+                            visibleLimit += DashboardLargeList.increment
+                        }
                     }
                 }
             }
         }
-    }
-
-    private var filteredItems: [StateItem] {
-        items.filter { item in
-            let hidden = isHidden(item)
-            guard filters.showHidden || !hidden else { return false }
-            guard !filters.hiddenOnly || hidden else { return false }
-            guard courseMatches(item.course) else { return false }
-            guard DashboardTermFilter.matches(
-                item.academicTerm,
-                selectedYear: filters.selectedYear,
-                selectedSemester: filters.selectedSemester
-            ) else {
-                return false
-            }
-            guard searchMatches([
-                item.academicTerm?.displayName ?? "",
-                item.title,
-                item.course,
-                item.due,
-                item.location,
-                item.coverageSummary,
-                item.url,
-            ]) else {
-                return false
-            }
-            return true
+        .onAppear {
+            rebuildPresentationIfNeeded(signature)
+        }
+        .onChange(of: signature) { _, next in
+            rebuildPresentationIfNeeded(next)
         }
     }
 
-    private func isHidden(_ item: StateItem) -> Bool {
+    private func rebuildPresentationIfNeeded(_ signature: DashboardStateItemListInputSignature) {
+        guard presentationSignature != signature else {
+            return
+        }
+        presentationSignature = signature
+        presentation = DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot)
+        visibleLimit = DashboardLargeList.initialVisibleLimit
+    }
+}
+
+private struct DashboardStateItemListInputSignature: Equatable {
+    private var value: Int
+
+    init(items: [StateItem], editor: StateItemEditorKind, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
+        var hasher = Hasher()
+        hasher.combine(editor.signatureValue)
+        hasher.combine(filters.searchText)
+        hasher.combine(filters.selectedCourse)
+        hasher.combine(filters.selectedYear)
+        hasher.combine(filters.selectedSemester)
+        hasher.combine(filters.showHidden)
+        hasher.combine(filters.hiddenOnly)
+        hasher.combine(filters.newOnly)
+        hasher.combine(filters.recentOnly)
+        hasher.combine(items.count)
+        for item in items {
+            hasher.combine(item.id)
+            hasher.combine(item.url)
+            hasher.combine(item.type)
+            hasher.combine(item.category)
+            hasher.combine(item.course)
+            hasher.combine(item.title)
+            hasher.combine(item.due)
+            hasher.combine(item.submission)
+            hasher.combine(item.syncDue)
+            hasher.combine(item.syncStart)
+            hasher.combine(item.location)
+            hasher.combine(item.coverageSummary)
+            hasher.combine(item.autoCompleted)
+            hasher.combine(item.recordStatus)
+            hasher.combine(item.completionReason)
+            hasher.combine(item.academicTerm?.displayName ?? "")
+            switch editor {
+            case .assignment, .assignmentRecord:
+                hasher.combine(snapshot.manualOverrides?.assignmentStatus(for: item) ?? "")
+            case .exam:
+                let override = snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride()
+                hasher.combine(override.status)
+                hasher.combine(override.due)
+                hasher.combine(override.timingPrecision)
+                hasher.combine(override.syncStart)
+                hasher.combine(override.syncDue)
+                hasher.combine(override.location)
+                hasher.combine(override.coverage)
+                hasher.combine(override.coverageSummary)
+                hasher.combine(override.instructionsAppend)
+            }
+        }
+        value = hasher.finalize()
+    }
+}
+
+private struct DashboardStateItemListPresentation {
+    var items: [StateItem] = []
+
+    init() {}
+
+    init(items: [StateItem], editor: StateItemEditorKind, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
+        self.items = items.filter { item in
+            Self.matches(item: item, editor: editor, filters: filters, snapshot: snapshot)
+        }
+    }
+
+    private static func matches(
+        item: StateItem,
+        editor: StateItemEditorKind,
+        filters: DashboardDetailFilters,
+        snapshot: EngineSnapshot
+    ) -> Bool {
+        let hidden = isHidden(item, editor: editor, snapshot: snapshot)
+        guard filters.showHidden || !hidden else { return false }
+        guard !filters.hiddenOnly || hidden else { return false }
+        guard courseMatches(item.course, filters: filters) else { return false }
+        guard DashboardTermFilter.matches(
+            item.academicTerm,
+            selectedYear: filters.selectedYear,
+            selectedSemester: filters.selectedSemester
+        ) else {
+            return false
+        }
+        guard searchMatches([
+            item.academicTerm?.displayName ?? "",
+            item.title,
+            item.course,
+            item.due,
+            item.location,
+            item.coverageSummary,
+            item.url,
+        ], filters: filters) else {
+            return false
+        }
+        return true
+    }
+
+    private static func isHidden(_ item: StateItem, editor: StateItemEditorKind, snapshot: EngineSnapshot) -> Bool {
         switch editor {
         case .assignment, .assignmentRecord:
             snapshot.manualOverrides?.isAssignmentHidden(item) == true
@@ -1338,14 +1443,27 @@ private struct StateItemListView: View {
         }
     }
 
-    private func courseMatches(_ course: String) -> Bool {
+    private static func courseMatches(_ course: String, filters: DashboardDetailFilters) -> Bool {
         filters.selectedCourse == DashboardCourseFilter.all || course == filters.selectedCourse
     }
 
-    private func searchMatches(_ fields: [String]) -> Bool {
+    private static func searchMatches(_ fields: [String], filters: DashboardDetailFilters) -> Bool {
         let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return true }
         return fields.joined(separator: " ").localizedCaseInsensitiveContains(query)
+    }
+}
+
+private extension StateItemEditorKind {
+    var signatureValue: String {
+        switch self {
+        case .assignment:
+            "assignment"
+        case .assignmentRecord:
+            "assignmentRecord"
+        case .exam:
+            "exam"
+        }
     }
 }
 
