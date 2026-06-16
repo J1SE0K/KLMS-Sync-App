@@ -1997,6 +1997,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(logsBody.contains("LogSummaryPanelView(model: model"))
         XCTAssertTrue(logsBody.contains("RemoteActivityPanelView(model: model)"))
         XCTAssertTrue(logsBody.contains("RunLogArchivePanelView(model: model)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(logsBody.range(of: "LogSummaryPanelView(model: model")).lowerBound,
+            try XCTUnwrap(logsBody.range(of: "RunLogArchivePanelView(model: model)")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(logsBody.range(of: "RunLogArchivePanelView(model: model)")).lowerBound,
+            try XCTUnwrap(logsBody.range(of: "RemoteActivityPanelView(model: model)")).lowerBound
+        )
+        XCTAssertTrue(macRemoteActivityPanel.contains("SectionBox(title: \"서버·파일 요청 기록\")"))
         let issueSummaryView = try sourceStructBody(named: "IssueSummaryView", in: mac)
         let issueRowView = try sourceStructBody(named: "IssueRowView", in: mac)
         let appDiagnosticsPanel = try sourceStructBody(named: "AppDiagnosticsPanelView", in: mac)

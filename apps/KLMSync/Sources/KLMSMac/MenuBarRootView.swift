@@ -108,8 +108,8 @@ private struct MacWorkstationLayoutView: View {
                     .equatable()
             case .activityLogs:
                 LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
-                RemoteActivityPanelView(model: model)
                 RunLogArchivePanelView(model: model)
+                RemoteActivityPanelView(model: model)
             case .diagnostics:
                 VerifyPanelView(snapshot: model.snapshot)
                 DiagnosticToolsPanelView(model: model)
@@ -2843,7 +2843,7 @@ private struct RemoteActivityPanelView: View {
         let requestLog = model.serverRelayRecentRequestLog
         let sharedRunLogs = model.serverRelaySharedRunLogs
         if model.lastRemoteCommand != nil || !fileRequests.isEmpty || !requestLog.isEmpty || !sharedRunLogs.isEmpty || model.remoteProcessingStatusMessage?.nilIfBlank != nil {
-            SectionBox(title: "원격/파일 요청 기록") {
+            SectionBox(title: "서버·파일 요청 기록") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Spacer()
