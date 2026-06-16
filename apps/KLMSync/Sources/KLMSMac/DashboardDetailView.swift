@@ -162,6 +162,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     var model: KLMSMacModel
     var snapshot: EngineSnapshot
     private var renderSignature: DashboardRenderSignature
+    private var fileDataRenderSignature: DashboardFileData.Signature?
     @State private var searchText = ""
     @State private var selectedCourse = DashboardCourseFilter.all
     @State private var selectedYear = DashboardTermFilter.allYears
@@ -185,12 +186,15 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         self.snapshot = resolvedSnapshot
         self.renderSignature = renderSignature
             ?? DashboardRenderSignature(snapshot: resolvedSnapshot, summary: model.dashboardSummaryCache)
+        self.fileDataRenderSignature = kind.requiresFileData ? DashboardFileData.Signature(snapshot: resolvedSnapshot) : nil
         _fileData = State(initialValue: nil)
         _fileDataSignature = State(initialValue: nil)
     }
 
     static func == (lhs: DashboardDetailPanelView, rhs: DashboardDetailPanelView) -> Bool {
-        lhs.kind == rhs.kind && lhs.renderSignature == rhs.renderSignature
+        lhs.kind == rhs.kind
+            && lhs.renderSignature == rhs.renderSignature
+            && lhs.fileDataRenderSignature == rhs.fileDataRenderSignature
     }
 
     var body: some View {
@@ -319,11 +323,11 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
-        .onChange(of: currentFileDataSignature) { _, signature in
+        .onChange(of: fileDataRenderSignature) { _, signature in
             rebuildFileDataIfNeeded(signature)
         }
         .onAppear {
-            rebuildFileDataIfNeeded(currentFileDataSignature)
+            rebuildFileDataIfNeeded(fileDataRenderSignature)
         }
         .onDisappear {
             fileDataTask?.cancel()
@@ -357,13 +361,6 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
 
     private var hiddenCount: Int {
         snapshot.hiddenSummary.total
-    }
-
-    private var currentFileDataSignature: DashboardFileData.Signature? {
-        guard kind.requiresFileData else {
-            return nil
-        }
-        return DashboardFileData.Signature(snapshot: snapshot)
     }
 
     private func rebuildFileDataIfNeeded(_ signature: DashboardFileData.Signature?) {
