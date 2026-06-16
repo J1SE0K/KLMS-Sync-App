@@ -2601,6 +2601,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: model,
             description: "Mac mail dashboard items accessor"
         )
+        let mailStateItems = try sourceBody(
+            after: "func mailDashboardStateItems(kind: String)",
+            in: model,
+            description: "Mac mail dashboard state item accessor"
+        )
         let mailCalendar = try sourceBody(
             after: "func mailCalendarChanges()",
             in: model,
@@ -2629,9 +2634,14 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(mailItems.contains("cachedMailDashboardItemsByKind[kind] ?? []"))
         XCTAssertFalse(mailItems.contains("currentServerRelayBaseSyncItems()"))
+        XCTAssertTrue(model.contains("cachedMailDashboardStateItemsByKind"))
+        XCTAssertTrue(mailStateItems.contains("cachedMailDashboardStateItemsByKind[kind] ?? []"))
+        XCTAssertFalse(mailStateItems.contains("compactMap(\\.mailStateItem)"))
         XCTAssertTrue(mailCalendar.contains("cachedMailCalendarChanges"))
         XCTAssertFalse(mailCalendar.contains("currentServerRelayBaseSyncItems()"))
         XCTAssertTrue(rebuildCache.contains("unmatchedMailDashboardItems(comparedTo: currentServerRelayBaseSyncItems())"))
+        XCTAssertTrue(rebuildCache.contains("cachedMailDashboardStateItemsByKind = cachedMailDashboardItemsByKind"))
+        XCTAssertTrue(rebuildCache.contains("items.compactMap(\\.mailStateItem)"))
         XCTAssertTrue(rebuildCache.contains("rebuildDashboardSummaryCache()"))
         XCTAssertTrue(addMailItem.contains("rebuildMailDashboardCaches()"))
         XCTAssertTrue(removeMailItem.contains("rebuildMailDashboardCaches()"))

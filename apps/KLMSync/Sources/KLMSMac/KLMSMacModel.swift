@@ -209,6 +209,7 @@ final class KLMSMacModel: ObservableObject {
     private var serverRelayLastSyncDataPublishAt: Date?
     private var serverRelayLastInboxUpdatedAt: String?
     private var cachedMailDashboardItemsByKind: [String: [ServerRelaySyncItem]] = [:]
+    private var cachedMailDashboardStateItemsByKind: [String: [StateItem]] = [:]
     private var cachedMailCalendarChanges: [CalendarChange] = []
     private var serverRelaySharedSettingsSignature: Int?
     private var lastPassiveAuxiliaryRefreshAt: Date?
@@ -1490,7 +1491,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func mailDashboardStateItems(kind: String) -> [StateItem] {
-        mailDashboardItems(kind: kind).compactMap(\.mailStateItem)
+        cachedMailDashboardStateItemsByKind[kind] ?? []
     }
 
     func mailCalendarChanges() -> [CalendarChange] {
@@ -1513,6 +1514,10 @@ final class KLMSMacModel: ObservableObject {
             .dedupedForServerRelay()
         cachedMailDashboardItemsByKind = Dictionary(grouping: unmatchedItems, by: \.kind)
             .mapValues(Self.sortedMailDashboardItems)
+        cachedMailDashboardStateItemsByKind = cachedMailDashboardItemsByKind
+            .mapValues { items in
+                items.compactMap(\.mailStateItem)
+            }
         cachedMailCalendarChanges = unmatchedItems
             .compactMap(\.mailCalendarChange)
             .filter { !isCalendarChangeResolved($0) }
