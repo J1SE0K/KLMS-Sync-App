@@ -5020,12 +5020,13 @@ private struct WorkstationDashboardOverviewPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("대시보드")
+                    Text("대시보드 상세")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(Color.klmsPrimaryText)
-                    Text("카드를 누르면 이곳에 상세 목록이 열립니다.")
+                    Text("왼쪽 카드나 변경 요약을 누르면 이 패널에서 목록과 처리 버튼이 열립니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
                 Text("최신순")
@@ -5038,6 +5039,8 @@ private struct WorkstationDashboardOverviewPanel: View {
                         Capsule().stroke(Color.klmsBorder, lineWidth: 1)
                     )
             }
+
+            WorkstationDashboardSelectionGuide()
 
             LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
                 ForEach(overviewMetrics) { metric in
@@ -5061,7 +5064,13 @@ private struct WorkstationDashboardOverviewPanel: View {
 
             WorkstationChangeSummaryCard(model: model)
         }
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
     }
 
     private var overviewColumns: [GridItem] {
@@ -5083,6 +5092,48 @@ private struct WorkstationDashboardOverviewPanel: View {
 
         var id: String {
             title
+        }
+    }
+}
+
+private struct WorkstationDashboardSelectionGuide: View {
+    private let rows: [(String, String, String)] = [
+        ("파일", "강의자료와 공지 첨부 파일을 같은 목록에서 확인합니다.", "folder"),
+        ("과제/시험", "미리알림과 캘린더에 반영할 항목을 바로 처리합니다.", "checklist"),
+        ("공지", "읽음, 중요, 숨김 상태를 유지한 채 상세를 봅니다.", "note.text"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("선택하면 할 수 있는 일")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.klmsSecondaryText)
+            ForEach(rows, id: \.0) { row in
+                HStack(alignment: .top, spacing: 9) {
+                    Image(systemName: row.2)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsCommandAccent)
+                        .frame(width: 22, height: 22)
+                        .background(Color.klmsCommandAccent.opacity(0.10), in: RoundedRectangle(cornerRadius: 7))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.0)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsPrimaryText)
+                        Text(row.1)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+                }
+            }
         }
     }
 }
