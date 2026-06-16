@@ -83,6 +83,15 @@ final class StatusModelTests: XCTestCase {
         XCTAssertTrue(change.explanationText.contains("새로 만든 항목"))
     }
 
+    func testDeletedCalendarChangeIsConfirmationOnly() throws {
+        let change = CalendarChange(action: "deleted", title: "지난 일정")
+
+        XCTAssertTrue(change.isDeletedAction)
+        XCTAssertEqual(change.actionDisplayName, "정리됨")
+        XCTAssertTrue(change.explanationText.contains("Apple Calendar에서 정리"))
+        XCTAssertTrue(change.nextActionText.contains("정리된 일정"))
+    }
+
     func testCalendarEventEditMessageRoundTripUsesServerKeys() throws {
         let edit = CalendarEventEdit(
             title: "기말고사 장소 변경",

@@ -7973,17 +7973,31 @@ private struct DashboardCalendarChangeDetailRow: View {
                             .frame(maxWidth: .infinity, minHeight: 34)
                     }
                     .buttonStyle(KLMSActionButtonStyle())
-                    Button(role: .destructive) {
-                        Task {
-                            if let onAction {
-                                await onAction(.calendarDelete, nil)
+                    if change.isDeletedAction {
+                        Button {
+                            Task {
+                                if let onAction {
+                                    await onAction(.calendarDelete, nil)
+                                }
                             }
+                        } label: {
+                            Label("확인", systemImage: "checkmark.circle")
+                                .frame(maxWidth: .infinity, minHeight: 34)
                         }
-                    } label: {
-                        Label("삭제", systemImage: "calendar.badge.minus")
-                            .frame(maxWidth: .infinity, minHeight: 34)
+                        .buttonStyle(KLMSActionButtonStyle())
+                    } else {
+                        Button(role: .destructive) {
+                            Task {
+                                if let onAction {
+                                    await onAction(.calendarDelete, nil)
+                                }
+                            }
+                        } label: {
+                            Label("삭제", systemImage: "calendar.badge.minus")
+                                .frame(maxWidth: .infinity, minHeight: 34)
+                        }
+                        .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     }
-                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     Button {
                         openSystemCalendar()
                     } label: {

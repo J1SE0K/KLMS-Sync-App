@@ -1850,6 +1850,14 @@ final class KLMSMacModel: ObservableObject {
 
     @discardableResult
     func deleteCalendarEvent(change: CalendarChange) async -> Bool {
+        if change.isDeletedAction {
+            markCalendarChangeResolved(change)
+            reloadSnapshot()
+            errorMessage = nil
+            serverRelayStatusMessage = "정리된 캘린더 항목 확인 완료"
+            return true
+        }
+
         do {
             try await performCalendarEventDeletion(change: change)
             markCalendarChangeResolved(change)
@@ -1888,6 +1896,12 @@ final class KLMSMacModel: ObservableObject {
 
     private func applyServerRelayCalendarDeleteAction(_ action: ServerRelayItemAction) async throws -> String {
         let change = try serverRelayCalendarChange(for: action)
+        if change.isDeletedAction {
+            markCalendarChangeResolved(change)
+            reloadSnapshot()
+            return "정리된 캘린더 항목 확인 완료"
+        }
+
         try await performCalendarEventDeletion(change: change)
         markCalendarChangeResolved(change)
         reloadSnapshot()

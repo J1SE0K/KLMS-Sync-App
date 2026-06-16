@@ -443,6 +443,10 @@ public struct CalendarEventEdit: Codable, Sendable, Equatable {
 }
 
 public extension CalendarChange {
+    var isDeletedAction: Bool {
+        normalizedAction == "deleted"
+    }
+
     var explanationText: String {
         switch normalizedAction {
         case "created", "mail":

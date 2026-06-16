@@ -3367,19 +3367,35 @@ private struct CalendarChangeRowView: View {
                     }
                     .buttonStyle(KLMSMacActionButtonStyle())
                     .help("Apple Calendar에 저장된 이 일정의 제목, 시간, 장소를 직접 수정합니다.")
-                    Button(role: .destructive) {
-                        editStatusText = "캘린더 일정을 삭제하는 중입니다."
-                        Task {
-                            let ok = await model.deleteCalendarEvent(change: change)
-                            editStatusText = ok ? "캘린더 일정 삭제 완료" : "캘린더 일정 삭제 실패"
-                            try? await Task.sleep(nanoseconds: 1_500_000_000)
-                            editStatusText = nil
+                    if change.isDeletedAction {
+                        Button {
+                            editStatusText = "정리 결과를 확인하는 중입니다."
+                            Task {
+                                let ok = await model.deleteCalendarEvent(change: change)
+                                editStatusText = ok ? "정리 결과 확인 완료" : "정리 결과 확인 실패"
+                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                editStatusText = nil
+                            }
+                        } label: {
+                            Label("확인", systemImage: "checkmark.circle")
                         }
-                    } label: {
-                        Label("삭제", systemImage: "calendar.badge.minus")
+                        .buttonStyle(KLMSMacActionButtonStyle())
+                        .help("이미 정리된 일정입니다. 확인하면 이 변경 항목만 목록에서 숨깁니다.")
+                    } else {
+                        Button(role: .destructive) {
+                            editStatusText = "캘린더 일정을 삭제하는 중입니다."
+                            Task {
+                                let ok = await model.deleteCalendarEvent(change: change)
+                                editStatusText = ok ? "캘린더 일정 삭제 완료" : "캘린더 일정 삭제 실패"
+                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                editStatusText = nil
+                            }
+                        } label: {
+                            Label("삭제", systemImage: "calendar.badge.minus")
+                        }
+                        .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
+                        .help("Apple Calendar에서 이 이벤트를 삭제합니다.")
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
-                    .help("Apple Calendar에서 이 이벤트를 삭제합니다.")
                     Button {
                         editStatusText = "캘린더에서 일정을 여는 중입니다."
                         Task {
