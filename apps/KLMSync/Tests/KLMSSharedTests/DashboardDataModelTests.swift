@@ -760,6 +760,16 @@ final class DashboardDataModelTests: XCTestCase {
             description: "Mac top bar chip background"
         )
         let commandPanel = try sourceStructBody(named: "CommandPanelView", in: view)
+        let metricGrid = try sourceBody(
+            after: "struct MetricGrid: View",
+            in: view,
+            description: "Mac metric grid"
+        )
+        let dashboardDetailPlaceholder = try sourceBody(
+            after: "private var dashboardDetailPlaceholder: some View",
+            in: view,
+            description: "Mac dashboard detail placeholder"
+        )
         let pressFeedbackStyle = try sourceBody(
             after: "private struct MacPressFeedbackButtonStyle: ButtonStyle",
             in: view,
@@ -880,6 +890,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSummaryContent.contains("DashboardLogSummaryPanelView(model: model)"))
         XCTAssertFalse(dashboardSummaryContent.contains(".frame(width: 285, alignment: .topLeading)"))
         XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(renderedDetail: renderedDetail)"))
+        XCTAssertTrue(metricGrid.contains("GridItem(.flexible(minimum: 128), spacing: 8)"))
+        XCTAssertTrue(metricGrid.contains("let count = min(max(metrics.count, 1), 4)"))
+        XCTAssertFalse(metricGrid.contains("GridItem(.adaptive(minimum: 108)"))
+        XCTAssertTrue(view.contains("private struct DashboardDetailHint"))
+        XCTAssertTrue(dashboardDetailPlaceholder.contains("카드를 선택하면 바로 아래에서 목록과 처리 버튼을 확인할 수 있습니다."))
+        XCTAssertTrue(dashboardDetailPlaceholder.contains("DashboardDetailHint(title: \"파일\", detail: \"정렬, 미리보기, 열기\")"))
+        XCTAssertTrue(dashboardDetailPlaceholder.contains("DashboardDetailHint(title: \"공지\", detail: \"읽음, 중요, 숨김\")"))
+        XCTAssertTrue(dashboardDetailPlaceholder.contains("DashboardDetailHint(title: \"캘린더\", detail: \"등록, 수정, 삭제\")"))
         XCTAssertTrue(view.contains("DashboardSummaryView(model: model)"))
         XCTAssertTrue(view.contains("CommandStageDurationSummaryView(durations: stageDurations)"))
         XCTAssertFalse(view.contains("private let klmsMacInteractionDetailDelayNanoseconds"))

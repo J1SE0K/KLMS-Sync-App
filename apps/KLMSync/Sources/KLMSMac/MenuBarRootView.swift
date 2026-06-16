@@ -2565,18 +2565,26 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
 
     private var dashboardDetailPlaceholder: some View {
         SectionBox(title: "상세 보기") {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "rectangle.grid.2x2")
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("왼쪽 카드나 항목을 선택하면 자세한 내용이 여기에 표시됩니다.")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacPrimaryText)
-                    Text("파일처럼 항목이 많은 목록은 선택한 뒤에만 불러와서 앱 반응을 빠르게 유지합니다.")
-                        .font(.caption)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "rectangle.grid.2x2")
                         .foregroundStyle(Color.klmsMacSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("카드를 선택하면 바로 아래에서 목록과 처리 버튼을 확인할 수 있습니다.")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                        Text("파일처럼 항목이 많은 목록은 선택한 뒤에만 불러와서 앱 반응을 빠르게 유지합니다.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 8)], alignment: .leading, spacing: 8) {
+                    DashboardDetailHint(title: "파일", detail: "정렬, 미리보기, 열기")
+                    DashboardDetailHint(title: "공지", detail: "읽음, 중요, 숨김")
+                    DashboardDetailHint(title: "캘린더", detail: "등록, 수정, 삭제")
                 }
             }
             .padding(12)
@@ -2586,6 +2594,32 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(Color.klmsMacBorder, lineWidth: 1)
             }
+        }
+    }
+}
+
+private struct DashboardDetailHint: View {
+    var title: String
+    var detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.klmsMacPrimaryText)
+            Text(detail)
+                .font(.caption2)
+                .foregroundStyle(Color.klmsMacSecondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacCardBackground.opacity(0.76), in: RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
         }
     }
 }
@@ -4730,6 +4764,14 @@ struct MetricGrid: View {
     var selectedMetricID: String?
     var onSelect: ((Metric) -> Void)?
 
+    private var columns: [GridItem] {
+        let count = min(max(metrics.count, 1), 4)
+        return Array(
+            repeating: GridItem(.flexible(minimum: 128), spacing: 8),
+            count: count
+        )
+    }
+
     init(
         metrics: [Metric],
         selectedMetricID: String? = nil,
@@ -4741,7 +4783,7 @@ struct MetricGrid: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 108), spacing: 8)], spacing: 8) {
+        LazyVGrid(columns: columns, spacing: 8) {
             ForEach(metrics) { metric in
                 if let onSelect {
                     Button {
