@@ -224,7 +224,8 @@ struct SettingsView: View {
                 title: "로그인",
                 detail: "KLMS 로그인 확인과 인증번호 표시 방식을 정합니다.",
                 systemImage: "person.badge.key",
-                badge: "설정 파일 저장"
+                badge: "설정 파일 저장",
+                defaultExpanded: true
             ) {
                 configText(
                     "KAIST 아이디",
@@ -264,7 +265,8 @@ struct SettingsView: View {
                 title: "실행 방식",
                 detail: "동기화 범위와 캘린더 반영 방식을 정합니다.",
                 systemImage: "arrow.triangle.2.circlepath",
-                badge: "설정 파일 저장"
+                badge: "설정 파일 저장",
+                defaultExpanded: true
             ) {
                 described(
                     "동기화 모드",
@@ -339,7 +341,8 @@ struct SettingsView: View {
                 title: "메모 업데이트",
                 detail: "숨김 처리와 변경 없는 메모의 재작성 방식을 정합니다.",
                 systemImage: "checklist",
-                badge: "설정 파일 저장"
+                badge: "설정 파일 저장",
+                defaultExpanded: true
             ) {
                 configToggle(
                     "숨긴 공지는 메모에서 제외",
@@ -364,7 +367,8 @@ struct SettingsView: View {
                 title: "파일 확인",
                 detail: "파일 탐색 방식과 다운로드 건너뛰기 기준입니다.",
                 systemImage: "folder.badge.gearshape",
-                badge: "설정 파일 저장"
+                badge: "설정 파일 저장",
+                defaultExpanded: true
             ) {
                 described(
                     "파일 탐색 모드",
@@ -435,7 +439,8 @@ struct SettingsView: View {
                 title: "바로 반영되는 설정",
                 detail: "화면 모드와 원격 실행 옵션을 모든 기기에 바로 맞춥니다.",
                 systemImage: "slider.horizontal.3",
-                badge: "바로 반영"
+                badge: "바로 반영",
+                defaultExpanded: true
             ) {
                 described(
                     "색상 모드",
@@ -1011,6 +1016,15 @@ private struct SettingsFieldRow<Content: View>: View {
                         Text(title)
                             .font(.caption.weight(.bold))
                             .foregroundStyle(Color.klmsMacPrimaryText)
+                        if !isExpanded,
+                           let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
+                           !description.isEmpty {
+                            Text(description)
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     Spacer(minLength: 8)
                     if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
