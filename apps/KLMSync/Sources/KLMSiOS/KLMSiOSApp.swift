@@ -11756,16 +11756,26 @@ private struct CompanionExpansionBadge: View {
     var compact = false
 
     var body: some View {
-        Text(isExpanded ? "펼침" : "접힘")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Color.klmsSecondaryText)
-            .padding(.horizontal, compact ? 7 : 8)
-            .padding(.vertical, compact ? 4 : 5)
-            .background(Color.klmsSubtleCardBackground, in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(Color.klmsBorder.opacity(0.72), lineWidth: 1)
-            }
+        HStack(spacing: compact ? 4 : 5) {
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: compact ? 9 : 10, weight: .bold))
+            Text(isExpanded ? "접기" : "펼치기")
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(isExpanded ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
+        .padding(.horizontal, compact ? 7 : 8)
+        .padding(.vertical, compact ? 4 : 5)
+        .background(
+            isExpanded ? Color.klmsSelectedBackground.opacity(0.92) : Color.klmsSubtleCardBackground,
+            in: Capsule()
+        )
+        .overlay {
+            Capsule()
+                .stroke(
+                    isExpanded ? Color.klmsSelectedBorder.opacity(0.64) : Color.klmsBorder.opacity(0.72),
+                    lineWidth: 1
+                )
+        }
     }
 }
 

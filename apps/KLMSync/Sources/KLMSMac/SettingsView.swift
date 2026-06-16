@@ -1075,16 +1075,26 @@ private struct SettingsExpansionBadge: View {
     var isExpanded: Bool
 
     var body: some View {
-        Text(isExpanded ? "펼침" : "접힘")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Color.klmsMacSecondaryText)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(Color.klmsMacSubtleCardBackground, in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(Color.klmsMacBorder.opacity(0.68), lineWidth: 1)
-            }
+        HStack(spacing: 5) {
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 10, weight: .bold))
+            Text(isExpanded ? "접기" : "펼치기")
+                .font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(isExpanded ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            isExpanded ? Color.klmsMacSelectedBackground.opacity(0.78) : Color.klmsMacSubtleCardBackground,
+            in: Capsule()
+        )
+        .overlay {
+            Capsule()
+                .stroke(
+                    isExpanded ? Color.klmsMacSelectedBorder.opacity(0.58) : Color.klmsMacBorder.opacity(0.68),
+                    lineWidth: 1
+                )
+        }
     }
 }
 
