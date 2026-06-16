@@ -980,14 +980,7 @@ private struct SettingsFieldRow<Content: View>: View {
                     Spacer(minLength: 8)
                     if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !summary.isEmpty {
-                        Text(summary)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.klmsMacSubtleCardBackground.opacity(0.74), in: Capsule())
+                        SettingsCurrentValueBadge(value: summary)
                     }
                     SettingsExpansionBadge(isExpanded: isExpanded)
                 }
@@ -1028,6 +1021,32 @@ private struct SettingsFieldRow<Content: View>: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.38) : Color.klmsMacBorder.opacity(0.86), lineWidth: 1)
         }
+    }
+}
+
+private struct SettingsCurrentValueBadge: View {
+    var value: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("현재")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.82))
+            Text(value)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.klmsMacPrimaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.klmsMacSubtleCardBackground.opacity(0.78), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(Color.klmsMacBorder.opacity(0.52), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("현재 값 \(value)")
     }
 }
 
