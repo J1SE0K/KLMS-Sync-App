@@ -1761,7 +1761,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("isExpanded ? Color.klmsMacSelectedBackground.opacity(0.78) : Color.klmsMacSubtleCardBackground"))
         XCTAssertTrue(macSettings.contains("isExpanded ? Color.klmsMacSelectedBorder.opacity(0.58) : Color.klmsMacBorder.opacity(0.68)"))
         XCTAssertTrue(macSettings.contains("defaultExpanded: true"))
-        XCTAssertTrue(macSettings.contains("if !isExpanded,"))
+        XCTAssertFalse(macSettings.contains("if !isExpanded,\n                           let description"))
         XCTAssertTrue(macSettings.contains(".lineLimit(2)"))
         XCTAssertTrue(macSettings.contains("title: \"실행 방식\""))
         XCTAssertTrue(macSettings.contains("title: \"Safari 자동화\""))

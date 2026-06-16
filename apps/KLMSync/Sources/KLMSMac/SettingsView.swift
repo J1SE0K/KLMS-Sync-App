@@ -1012,15 +1012,6 @@ private struct SettingsFieldRow<Content: View>: View {
                         Text(title)
                             .font(.caption.weight(.bold))
                             .foregroundStyle(Color.klmsMacPrimaryText)
-                        if !isExpanded,
-                           let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
-                           !description.isEmpty {
-                            Text(description)
-                                .font(.caption2)
-                                .foregroundStyle(Color.klmsMacSecondaryText)
-                                .lineLimit(2)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
                     }
                     Spacer(minLength: 8)
                     if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
