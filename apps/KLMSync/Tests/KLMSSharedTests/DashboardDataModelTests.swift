@@ -941,6 +941,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(navigationView.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(navigationView.contains("guard selection != section else { return }"))
         XCTAssertTrue(navigationView.contains("Image(systemName: section.systemImage)"))
+        XCTAssertTrue(navigationView.contains(".accessibilityIdentifier(\"workspace-\\(section.rawValue)\")"))
         XCTAssertTrue(navigationView.contains(".frame(width: 30, height: 30)"))
         XCTAssertTrue(navigationView.contains("Color.klmsMacSelectedBorder.opacity(0.18)"))
         XCTAssertTrue(navigationView.contains("Color.klmsMacSubtleCardBackground.opacity(0.72)"))

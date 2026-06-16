@@ -183,6 +183,7 @@ private struct WorkspaceNavigationView: View {
                     }
                     .buttonStyle(MacPressFeedbackButtonStyle())
                     .accessibilityLabel(section.title)
+                    .accessibilityIdentifier("workspace-\(section.rawValue)")
                     .accessibilityValue(isSelected ? "선택됨" : "")
                 }
             }
