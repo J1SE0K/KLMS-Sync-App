@@ -420,7 +420,7 @@ struct SettingsView: View {
                 defaultExpanded: true
             ) {
                 described("Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.") {
-                    TextField(
+                    settingsTextInput(
                         "서버 URL",
                         text: Binding(
                             get: { model.serverRelayURL },
@@ -429,21 +429,23 @@ struct SettingsView: View {
                     )
                 }
                 described("iPhone/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다.") {
-                    SecureField(
+                    settingsTextInput(
                         "클라이언트 토큰",
                         text: Binding(
                             get: { model.serverRelayClientToken },
                             set: { model.setServerRelayClientToken($0) }
-                        )
+                        ),
+                        secure: true
                     )
                 }
                 described("Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다.") {
-                    SecureField(
+                    settingsTextInput(
                         "Mac 전용 토큰",
                         text: Binding(
                             get: { model.serverRelayWorkerToken },
                             set: { model.setServerRelayWorkerToken($0) }
-                        )
+                        ),
+                        secure: true
                     )
                 }
             }
@@ -651,7 +653,7 @@ struct SettingsView: View {
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 described("Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.") {
-                    TextField(
+                    settingsTextInput(
                         "서버 URL",
                         text: Binding(
                             get: { model.serverRelayURL },
@@ -660,21 +662,23 @@ struct SettingsView: View {
                     )
                 }
                 described("iPhone/iPad/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다.") {
-                    SecureField(
+                    settingsTextInput(
                         "클라이언트 토큰",
                         text: Binding(
                             get: { model.serverRelayClientToken },
                             set: { model.setServerRelayClientToken($0) }
-                        )
+                        ),
+                        secure: true
                     )
                 }
                 described("Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다.") {
-                    SecureField(
+                    settingsTextInput(
                         "Mac 전용 토큰",
                         text: Binding(
                             get: { model.serverRelayWorkerToken },
                             set: { model.setServerRelayWorkerToken($0) }
-                        )
+                        ),
+                        secure: true
                     )
                 }
 
@@ -759,7 +763,25 @@ struct SettingsView: View {
 
     private func configText(_ title: String, _ key: EnvKnownKey, description: String? = nil) -> some View {
         described(description) {
-            TextField(title, text: binding(key))
+            settingsTextInput(title, text: binding(key))
+        }
+    }
+
+    @ViewBuilder
+    private func settingsTextInput(
+        _ title: String,
+        text: Binding<String>,
+        secure: Bool = false
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsMacPrimaryText)
+            if secure {
+                SecureField("입력", text: text)
+            } else {
+                TextField("입력", text: text)
+            }
         }
     }
 

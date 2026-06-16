@@ -3029,12 +3029,17 @@ private struct ServerRelayConnectionPanel: View {
 
             if showConnectionFields {
                 VStack(alignment: .leading, spacing: 8) {
-                    CompanionSettingHelpText("서버 URL에는 Cloudflare Worker 같은 공개 HTTPS 주소만 넣습니다. 집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.")
-                    TextField("서버 URL", text: $model.serverURL)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    CompanionSettingHelpText("클라이언트 토큰은 iPhone/iPad/Windows용 토큰입니다. 상태 조회와 실행 요청만 할 수 있으며, Mac 전용 토큰은 여기에 넣지 않습니다.")
-                    SecureField("클라이언트 토큰", text: $model.serverToken)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    CompanionConnectionInput(
+                        title: "서버 URL",
+                        detail: "Cloudflare Worker 같은 공개 HTTPS 주소만 넣습니다. 집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.",
+                        text: $model.serverURL
+                    )
+                    CompanionConnectionInput(
+                        title: "클라이언트 토큰",
+                        detail: "iPhone/iPad/Windows용 토큰입니다. 상태 조회와 실행 요청만 할 수 있으며, Mac 전용 토큰은 여기에 넣지 않습니다.",
+                        text: $model.serverToken,
+                        secure: true
+                    )
                     CompanionSettingHelpText("Mac 앱에는 같은 서버 URL과 별도의 Mac 전용 토큰이 저장되어 있어야 합니다. 실제 KLMS 동기화는 Mac 앱이 처리합니다.")
                 }
                 .padding(.top, 8)
@@ -3128,6 +3133,38 @@ private struct ServerRelayConnectionPanel: View {
                 .frame(maxWidth: .infinity, minHeight: 40)
         }
         .buttonStyle(KLMSActionButtonStyle())
+    }
+}
+
+private struct CompanionConnectionInput: View {
+    var title: String
+    var detail: String
+    @Binding var text: String
+    var secure = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                CompanionSettingHelpText(detail)
+            }
+            if secure {
+                SecureField("입력", text: $text)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+            } else {
+                TextField("입력", text: $text)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
+        }
     }
 }
 
