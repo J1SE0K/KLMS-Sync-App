@@ -74,9 +74,10 @@ private struct MacWorkstationLayoutView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             controlRail
-                .frame(width: 280, alignment: .topLeading)
+                .frame(minWidth: 220, idealWidth: 260, maxWidth: 300, alignment: .topLeading)
             workspace
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+                .layoutPriority(1)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -559,9 +560,12 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
 
 private struct TaskAndExamWorkspaceView: View {
     @ObservedObject var model: KLMSMacModel
+    private let columns = [
+        GridItem(.adaptive(minimum: 260), spacing: 12),
+    ]
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
             taskPanels
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -571,14 +575,14 @@ private struct TaskAndExamWorkspaceView: View {
     private var taskPanels: some View {
         DashboardDetailPanelView(kind: .assignments, model: model)
             .equatable()
-            .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         DashboardDetailPanelView(kind: .exams, model: model)
             .equatable()
-            .frame(minWidth: 280, maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         if (model.snapshot.visibleCounts.helpDesk) > 0 {
             DashboardDetailPanelView(kind: .helpDesk, model: model)
                 .equatable()
-                .frame(minWidth: 260, maxWidth: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 }
