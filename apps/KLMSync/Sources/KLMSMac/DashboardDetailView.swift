@@ -403,7 +403,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     }
 }
 
-private struct DashboardDetailFilters {
+private struct DashboardDetailFilters: Equatable {
     var searchText: String
     var selectedCourse: String
     var selectedYear: String
@@ -2150,31 +2150,16 @@ private struct NewFilesListView: View {
     var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
     var model: KLMSMacModel
-    @State private var sortOption = DashboardFileSortOption.recent
-    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
-        let filteredFiles = files.filter { $0.matches(filters: filters) }
-        let sortedFiles = filteredFiles.sorted(by: sortOption)
-        let visibleFiles = sortedFiles.prefix(visibleLimit)
-        if filteredFiles.isEmpty {
-            EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 새 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "새 파일이 없습니다.")
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                FileSortPickerView(selection: $sortOption)
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(visibleFiles) { item in
-                        FileRowView(item: item, kind: .file, model: model)
-                    }
-                    if sortedFiles.count > visibleFiles.count {
-                        DashboardShowMoreButton(remainingCount: sortedFiles.count - visibleFiles.count) {
-                            visibleLimit += DashboardLargeList.increment
-                        }
-                    }
-                }
-                .id(sortOption.rawValue)
-            }
-        }
+        DashboardFileListContentView(
+            files: files,
+            filters: filters,
+            model: model,
+            rowKind: .file,
+            emptyText: "새 파일이 없습니다.",
+            filteredEmptyText: "검색/필터 조건에 맞는 새 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요."
+        )
     }
 }
 
@@ -2182,31 +2167,16 @@ private struct FileManifestListView: View {
     var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
     var model: KLMSMacModel
-    @State private var sortOption = DashboardFileSortOption.recent
-    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
-        let filteredFiles = files.filter { $0.matches(filters: filters) }
-        let sortedFiles = filteredFiles.sorted(by: sortOption)
-        let visibleFiles = sortedFiles.prefix(visibleLimit)
-        if filteredFiles.isEmpty {
-            EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "파일 목록이 없습니다. 파일 동기화를 한 번 실행하면 KLMS 파일 목록이 여기에 표시됩니다.")
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                FileSortPickerView(selection: $sortOption)
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(visibleFiles) { item in
-                        FileRowView(item: item, kind: .file, model: model)
-                    }
-                    if sortedFiles.count > visibleFiles.count {
-                        DashboardShowMoreButton(remainingCount: sortedFiles.count - visibleFiles.count) {
-                            visibleLimit += DashboardLargeList.increment
-                        }
-                    }
-                }
-                .id(sortOption.rawValue)
-            }
-        }
+        DashboardFileListContentView(
+            files: files,
+            filters: filters,
+            model: model,
+            rowKind: .file,
+            emptyText: "파일 목록이 없습니다. 파일 동기화를 한 번 실행하면 KLMS 파일 목록이 여기에 표시됩니다.",
+            filteredEmptyText: "검색/필터 조건에 맞는 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요."
+        )
     }
 }
 
@@ -2214,35 +2184,143 @@ private struct MissingFilesListView: View {
     var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
     var model: KLMSMacModel
-    @State private var sortOption = DashboardFileSortOption.recent
-    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
-        let filteredFiles = files.filter { $0.matches(filters: filters) }
-        let sortedFiles = filteredFiles.sorted(by: sortOption)
-        let visibleFiles = sortedFiles.prefix(visibleLimit)
-        if filteredFiles.isEmpty {
-            EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 누락 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "로컬에서 누락된 파일이 없습니다.")
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("파일 목록에는 있지만 현재 로컬 저장 위치에 없는 항목입니다. 파일 동기화를 실행하면 archive/log에서 복구하거나, 없으면 KLMS에서 다시 받습니다.")
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                FileSortPickerView(selection: $sortOption)
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(visibleFiles) { item in
-                        FileRowView(item: item, kind: .file, model: model)
+        DashboardFileListContentView(
+            files: files,
+            filters: filters,
+            model: model,
+            rowKind: .file,
+            emptyText: "로컬에서 누락된 파일이 없습니다.",
+            filteredEmptyText: "검색/필터 조건에 맞는 누락 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요.",
+            introText: "파일 목록에는 있지만 현재 로컬 저장 위치에 없는 항목입니다. 파일 동기화를 실행하면 archive/log에서 복구하거나, 없으면 KLMS에서 다시 받습니다."
+        )
+    }
+}
+
+private struct DashboardFileListInputSignature: Equatable {
+    private var value: Int
+
+    init(files: [DashboardFileItem], filters: DashboardDetailFilters, sortOption: DashboardFileSortOption) {
+        var hasher = Hasher()
+        hasher.combine(sortOption.rawValue)
+        hasher.combine(filters.searchText)
+        hasher.combine(filters.selectedCourse)
+        hasher.combine(filters.selectedYear)
+        hasher.combine(filters.selectedSemester)
+        hasher.combine(filters.showHidden)
+        hasher.combine(filters.hiddenOnly)
+        hasher.combine(filters.newOnly)
+        hasher.combine(filters.recentOnly)
+        hasher.combine(files.count)
+        for file in files {
+            hasher.combine(file.id)
+            hasher.combine(file.title)
+            hasher.combine(file.course)
+            hasher.combine(file.academicTerm?.displayName ?? "")
+            hasher.combine(file.path)
+            hasher.combine(file.url)
+            hasher.combine(file.isRecent)
+            hasher.combine(file.pathExists)
+            hasher.combine(file.klmsTimestampEpoch ?? -1)
+            hasher.combine(file.isHidden)
+            hasher.combine(file.interaction?.trashedAt ?? "")
+            hasher.combine(file.interaction?.updatedAt ?? "")
+        }
+        value = hasher.finalize()
+    }
+}
+
+private struct DashboardFileListPresentation {
+    var files: [DashboardFileItem] = []
+
+    init() {}
+
+    init(files: [DashboardFileItem], filters: DashboardDetailFilters, sortOption: DashboardFileSortOption) {
+        self.files = files
+            .filter { $0.matches(filters: filters) }
+            .sorted(by: sortOption)
+    }
+}
+
+private struct DashboardFileListContentView: View {
+    var files: [DashboardFileItem]
+    var filters: DashboardDetailFilters
+    var model: KLMSMacModel
+    var rowKind: DashboardFileRowKind
+    var emptyText: String
+    var filteredEmptyText: String
+    var introText: String? = nil
+    @State private var sortOption = DashboardFileSortOption.recent
+    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
+    @State private var presentation: DashboardFileListPresentation
+    @State private var presentationSignature: DashboardFileListInputSignature
+
+    init(
+        files: [DashboardFileItem],
+        filters: DashboardDetailFilters,
+        model: KLMSMacModel,
+        rowKind: DashboardFileRowKind,
+        emptyText: String,
+        filteredEmptyText: String,
+        introText: String? = nil
+    ) {
+        self.files = files
+        self.filters = filters
+        self.model = model
+        self.rowKind = rowKind
+        self.emptyText = emptyText
+        self.filteredEmptyText = filteredEmptyText
+        self.introText = introText
+        let signature = DashboardFileListInputSignature(files: files, filters: filters, sortOption: .recent)
+        _presentation = State(initialValue: DashboardFileListPresentation(files: files, filters: filters, sortOption: .recent))
+        _presentationSignature = State(initialValue: signature)
+    }
+
+    var body: some View {
+        let signature = DashboardFileListInputSignature(files: files, filters: filters, sortOption: sortOption)
+        let visibleFiles = presentation.files.prefix(visibleLimit)
+        Group {
+            if presentation.files.isEmpty {
+                EmptyDetailText(text: filters.hasActiveFilter ? filteredEmptyText : emptyText)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let introText {
+                        Text(introText)
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    if sortedFiles.count > visibleFiles.count {
-                        DashboardShowMoreButton(remainingCount: sortedFiles.count - visibleFiles.count) {
-                            visibleLimit += DashboardLargeList.increment
+                    FileSortPickerView(selection: $sortOption)
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(visibleFiles) { item in
+                            FileRowView(item: item, kind: rowKind, model: model)
+                        }
+                        if presentation.files.count > visibleFiles.count {
+                            DashboardShowMoreButton(remainingCount: presentation.files.count - visibleFiles.count) {
+                                visibleLimit += DashboardLargeList.increment
+                            }
                         }
                     }
+                    .id(sortOption.rawValue)
                 }
-                .id(sortOption.rawValue)
             }
         }
+        .onAppear {
+            rebuildPresentationIfNeeded(signature)
+        }
+        .onChange(of: signature) { _, next in
+            rebuildPresentationIfNeeded(next)
+        }
+    }
+
+    private func rebuildPresentationIfNeeded(_ signature: DashboardFileListInputSignature) {
+        guard presentationSignature != signature else {
+            return
+        }
+        presentationSignature = signature
+        presentation = DashboardFileListPresentation(files: files, filters: filters, sortOption: sortOption)
+        visibleLimit = DashboardLargeList.initialVisibleLimit
     }
 }
 
@@ -2765,35 +2843,16 @@ private struct QuarantineListView: View {
     var files: [DashboardFileItem]
     var filters: DashboardDetailFilters
     var model: KLMSMacModel
-    @State private var sortOption = DashboardFileSortOption.recent
-    @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
-        let records = files.filter { $0.matches(filters: filters) }
-        let sortedRecords = records.sorted(by: sortOption)
-        let visibleRecords = sortedRecords.prefix(visibleLimit)
-        if records.isEmpty {
-            EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 격리 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "격리 파일이 없습니다.")
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                FileSortPickerView(selection: $sortOption)
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(visibleRecords) { item in
-                        FileRowView(
-                            item: item,
-                            kind: .quarantine,
-                            model: model
-                        )
-                    }
-                    if sortedRecords.count > visibleRecords.count {
-                        DashboardShowMoreButton(remainingCount: sortedRecords.count - visibleRecords.count) {
-                            visibleLimit += DashboardLargeList.increment
-                        }
-                    }
-                }
-                .id(sortOption.rawValue)
-            }
-        }
+        DashboardFileListContentView(
+            files: files,
+            filters: filters,
+            model: model,
+            rowKind: .quarantine,
+            emptyText: "격리 파일이 없습니다.",
+            filteredEmptyText: "검색/필터 조건에 맞는 격리 파일이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요."
+        )
     }
 }
 
