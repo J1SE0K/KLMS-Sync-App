@@ -250,9 +250,15 @@ private struct DashboardTopBarView: View {
 
             Spacer(minLength: 12)
 
-            if model.runningCommand != nil {
-                ProgressView()
-                    .controlSize(.small)
+            if let runningPhaseLabel {
+                Label(runningPhaseLabel, systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.klmsMacCommandAccent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsMacCommandAccent.opacity(0.12), in: Capsule())
             }
 
             Text(statusBadgeText)
@@ -295,6 +301,13 @@ private struct DashboardTopBarView: View {
             return "준비됨"
         }
         return "설정 필요"
+    }
+
+    private var runningPhaseLabel: String? {
+        guard model.runningCommand != nil else {
+            return nil
+        }
+        return model.currentPhaseText ?? "진행 중"
     }
 
     private var statusColor: Color {
@@ -359,6 +372,9 @@ private struct MacAlertBannerView: View {
             return message
         }
         if let command = model.runningCommand {
+            if let phase = model.currentPhaseText {
+                return "\(command.displayName) · \(phase)"
+            }
             return "\(command.displayName) 실행 중"
         }
         if model.needsAttention {
@@ -396,7 +412,7 @@ private struct MacAlertBannerView: View {
             return digits
         }
         if model.runningCommand != nil {
-            return "LOG"
+            return model.currentPhaseText ?? "LOG"
         }
         if model.needsAttention {
             return "진단"
@@ -412,7 +428,13 @@ private struct MacAlertBannerView: View {
     }
 
     private var chipHorizontalPadding: CGFloat {
-        model.currentAuthDigits == nil ? 12 : 16
+        if model.currentAuthDigits != nil {
+            return 16
+        }
+        if model.runningCommand != nil, model.currentPhaseText != nil {
+            return 10
+        }
+        return 12
     }
 
     private var bannerTint: Color {
@@ -1899,6 +1921,9 @@ private struct CommandOutputPanelView: View {
 
     private var commandStatusText: String {
         if let command = model.runningCommand {
+            if let phase = model.currentPhaseText {
+                return "\(command.displayName) · \(phase) 진행 중"
+            }
             return "\(command.displayName) 실행 중"
         }
         if let result = model.lastCommandResult {
@@ -4366,6 +4391,9 @@ private struct CurrentRunLogCardView: View {
 
     private var statusText: String {
         if let command = model.runningCommand {
+            if let phase = model.currentPhaseText {
+                return "\(command.displayName) · \(phase) 진행 중"
+            }
             return "\(command.displayName) 실행 중"
         }
         if let result = model.lastCommandResult {

@@ -2562,7 +2562,7 @@ private struct RemoteDashboardStatusStrip: View {
 
     private var chipText: String {
         if model.hasInFlightRequest || model.status.phase == "running" {
-            return "진행 중"
+            return model.runningPhaseDetail ?? "진행 중"
         }
         return model.isRemoteAvailable ? "준비됨" : "연결 필요"
     }
@@ -3894,6 +3894,13 @@ private struct RemoteStatusHeader: View {
                     Text(statusMetadata)
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
+                    if let runningStageText {
+                        Label("현재 단계: \(runningStageText)", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsCommandAccent)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
                 }
                 Spacer(minLength: 0)
                 if model.isRefreshing {
@@ -4027,6 +4034,13 @@ private struct RemoteStatusHeader: View {
             return "\(phase) · \(lastRefreshAt.formatted(date: .omitted, time: .shortened)) 갱신"
         }
         return phase
+    }
+
+    private var runningStageText: String? {
+        guard model.hasInFlightRequest || model.status.phase == "running" else {
+            return nil
+        }
+        return model.runningPhaseDetail ?? model.activeRequestLabel
     }
 
     private var statusImage: String {
