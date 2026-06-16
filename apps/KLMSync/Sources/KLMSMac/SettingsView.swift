@@ -972,6 +972,7 @@ private struct SettingsGroupBox<Content: View>: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: 12))
         .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.72 : 0.48), in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
@@ -1033,10 +1034,11 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.78 : 0.54), in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.klmsMacBorder.opacity(0.92), lineWidth: 1)
+                .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.42) : Color.klmsMacBorder.opacity(0.92), lineWidth: 1)
         }
     }
 }

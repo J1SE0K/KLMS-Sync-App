@@ -2727,12 +2727,7 @@ private struct CompanionImmediateSettingsPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                Text("공통")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.klmsSubtleCardBackground, in: Capsule())
+                CompanionExpansionBadge(isExpanded: isExpanded)
             }
         }
         .padding(12)
@@ -3112,12 +3107,15 @@ private struct ServerRelayConnectionPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                Text(model.serverRelayConfigured ? "저장됨" : "미설정")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.klmsSubtleCardBackground, in: Capsule())
+                VStack(alignment: .trailing, spacing: 5) {
+                    Text(model.serverRelayConfigured ? "저장됨" : "미설정")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.klmsSubtleCardBackground, in: Capsule())
+                    CompanionExpansionBadge(isExpanded: isExpanded)
+                }
             }
         }
         .padding(12)
@@ -10095,12 +10093,7 @@ private struct RemoteDiagnosticPanel: View {
                             CompanionSettingHelpText("변경량 계산과 내부 상태 재생성 도구입니다.")
                         }
                         Spacer(minLength: 8)
-                        Text(isAdvancedExpanded ? "펼침" : "접힘")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .background(Color.klmsSubtleCardBackground, in: Capsule())
+                        CompanionExpansionBadge(isExpanded: isAdvancedExpanded, compact: true)
                     }
                 }
                 .padding(10)
@@ -10130,12 +10123,7 @@ private struct RemoteDiagnosticPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-                Text(isPanelExpanded ? "펼침" : "접힘")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.klmsSubtleCardBackground, in: Capsule())
+                CompanionExpansionBadge(isExpanded: isPanelExpanded)
             }
         }
         .padding(12)
@@ -10300,12 +10288,15 @@ private struct RemoteSettingsPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Text(model.remoteSettings.isEmpty ? "대기" : "\(model.remoteSettings.count)개")
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.klmsCardBackground, in: Capsule())
+                VStack(alignment: .trailing, spacing: 5) {
+                    Text(model.remoteSettings.isEmpty ? "대기" : "\(model.remoteSettings.count)개")
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.klmsSubtleCardBackground, in: Capsule())
+                    CompanionExpansionBadge(isExpanded: isExpanded)
+                }
             }
         }
         .padding(12)
@@ -10423,12 +10414,15 @@ private struct RemoteSettingGroupSection: View {
                     CompanionSettingHelpText(group.detail)
                 }
                 Spacer(minLength: 8)
-                Text(group.countText)
-                    .font(.caption2.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(Color.klmsSubtleCardBackground, in: Capsule())
+                VStack(alignment: .trailing, spacing: 5) {
+                    Text(group.countText)
+                        .font(.caption2.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(Color.klmsCardBackground, in: Capsule())
+                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+                }
             }
         }
         .padding(11)
@@ -11737,12 +11731,7 @@ private struct RemotePrivacyNote: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
                 Spacer(minLength: 0)
-                Text(isExpanded ? "펼침" : "접힘")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.klmsSubtleCardBackground, in: Capsule())
+                CompanionExpansionBadge(isExpanded: isExpanded)
             }
         }
         .padding(12)
@@ -11752,6 +11741,24 @@ private struct RemotePrivacyNote: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
+    }
+}
+
+private struct CompanionExpansionBadge: View {
+    var isExpanded: Bool
+    var compact = false
+
+    var body: some View {
+        Text(isExpanded ? "펼침" : "접힘")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Color.klmsSecondaryText)
+            .padding(.horizontal, compact ? 7 : 8)
+            .padding(.vertical, compact ? 4 : 5)
+            .background(Color.klmsSubtleCardBackground, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.klmsBorder.opacity(0.72), lineWidth: 1)
+            }
     }
 }
 
