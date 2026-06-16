@@ -7,7 +7,6 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     case notice
     case files
     case app
-    case relay
 
     var id: String { rawValue }
 
@@ -25,8 +24,6 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
             "공지"
         case .files:
             "파일"
-        case .relay:
-            "서버"
         case .app:
             "화면/앱"
         }
@@ -42,8 +39,6 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
             "Notes 메모 작성 방식"
         case .files:
             "파일 확인과 저장 위치"
-        case .relay:
-            "iPhone/Windows 연결"
         case .app:
             "화면 모드와 앱 관리"
         }
@@ -53,8 +48,6 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .login, .sync, .notice, .files:
             "Mac 설정 파일"
-        case .relay:
-            "연결 정보"
         case .app:
             "바로 반영"
         }
@@ -70,8 +63,6 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
             "checklist"
         case .files:
             "folder"
-        case .relay:
-            "network"
         case .app:
             "app.badge"
         }
@@ -170,8 +161,6 @@ struct SettingsView: View {
             noticeSettings
         case .files:
             fileSettings
-        case .relay:
-            relaySettings
         case .app:
             appSettings
         }
@@ -429,153 +418,6 @@ struct SettingsView: View {
                     .filePreserveDownloadArchive,
                     description: "다운로드 중간 파일을 보존합니다. 문제를 분석할 때는 도움이 되지만 저장 공간을 더 사용합니다."
                 )
-            }
-        }
-    }
-
-    private var relaySettings: some View {
-        settingsForm {
-            SettingsGroupBox(
-                title: "연결 정보",
-                detail: "서버 주소와 Mac/iPhone용 토큰을 입력합니다.",
-                systemImage: "network",
-                defaultExpanded: true
-            ) {
-                described(
-                    "서버 URL",
-                    summary: model.serverRelayURL.isEmpty ? "미설정" : "저장됨",
-                    "Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요."
-                ) {
-                    settingsTextInput(
-                        "서버 URL",
-                        text: Binding(
-                            get: { model.serverRelayURL },
-                            set: { model.setServerRelayURL($0) }
-                        )
-                    )
-                }
-                described(
-                    "클라이언트 토큰",
-                    summary: model.serverRelayClientToken.isEmpty ? "미설정" : "저장됨",
-                    "iPhone/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다."
-                ) {
-                    settingsTextInput(
-                        "클라이언트 토큰",
-                        text: Binding(
-                            get: { model.serverRelayClientToken },
-                            set: { model.setServerRelayClientToken($0) }
-                        ),
-                        secure: true
-                    )
-                }
-                described(
-                    "Mac 전용 토큰",
-                    summary: model.serverRelayWorkerToken.isEmpty ? "미설정" : "저장됨",
-                    "Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다."
-                ) {
-                    settingsTextInput(
-                        "Mac 전용 토큰",
-                        text: Binding(
-                            get: { model.serverRelayWorkerToken },
-                            set: { model.setServerRelayWorkerToken($0) }
-                        ),
-                        secure: true
-                    )
-                }
-            }
-
-            SettingsGroupBox(
-                title: "릴레이 동작",
-                detail: "다른 기기가 서버를 통해 Mac 앱에 요청을 보낼 수 있게 합니다.",
-                systemImage: "bolt.horizontal"
-            ) {
-                described(
-                    "서버 릴레이 사용",
-                    summary: model.serverRelayEnabled ? "켜짐" : "꺼짐",
-                    "iPhone/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다."
-                ) {
-                    Toggle(
-                        "서버 릴레이 사용",
-                        isOn: Binding(
-                            get: { model.serverRelayEnabled },
-                            set: { model.setServerRelayEnabled($0) }
-                        )
-                    )
-                }
-                SettingsFieldRow(
-                    title: "서버 상태",
-                    summary: model.serverRelayStatusMessage ?? "대기 중",
-                    description: "Mac 앱이 서버 요청을 기다리는지 확인합니다."
-                ) {
-                    LabeledContent("서버 상태") {
-                        Text(model.serverRelayStatusMessage ?? "대기 중")
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                    }
-                }
-            }
-
-            SettingsGroupBox(
-                title: "연결 확인",
-                detail: "연결 정보를 붙여넣고, 서버 응답을 검사합니다.",
-                systemImage: "checkmark.shield"
-            ) {
-                SettingsActionGroupBox(
-                    title: "서버 확인",
-                    detail: "붙여넣기와 연결 검사를 여기에서 처리합니다."
-                ) {
-                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
-                        Button {
-                            model.pasteServerRelayConnectionInfo()
-                        } label: {
-                            Label("붙여넣기", systemImage: "doc.on.clipboard")
-                        }
-                        Button {
-                            Task {
-                                await model.checkServerRelayConnection()
-                            }
-                        } label: {
-                            Label("연결 확인", systemImage: "checkmark.seal")
-                        }
-                        .disabled(!model.serverRelayConfigured)
-                        Button {
-                            Task {
-                                await model.checkServerRelayConnection(enableOnSuccess: true)
-                            }
-                        } label: {
-                            Label("확인 후 켜기", systemImage: "bolt.badge.checkmark")
-                        }
-                        .disabled(!model.serverRelayConfigured)
-                    }
-                    SettingsHelpText("붙여넣기는 복사한 서버 연결 정보를 한 번에 입력합니다. 연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다.")
-                }
-
-                SettingsActionGroupBox(
-                    title: "연결 정보 복사",
-                    detail: "다른 기기에 붙여넣을 서버 주소와 토큰을 복사합니다."
-                ) {
-                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
-                        Button {
-                            model.copyServerRelayURL()
-                        } label: {
-                            Label("URL 복사", systemImage: "link")
-                        }
-                        .disabled(model.serverRelayURL.isEmpty)
-                        Button {
-                            model.copyServerRelayConnectionInfo()
-                        } label: {
-                            Label("연결 정보 복사", systemImage: "doc.on.doc")
-                        }
-                        .disabled(model.serverRelayURL.isEmpty || model.serverRelayClientToken.isEmpty)
-                        Button {
-                            model.copyServerRelayClientToken()
-                        } label: {
-                            Label("클라이언트 토큰", systemImage: "key")
-                        }
-                        .disabled(model.serverRelayClientToken.isEmpty)
-                    }
-                    SettingsHelpText("복사된 토큰은 보안을 위해 잠시 뒤 클립보드에서 자동으로 지워집니다.")
-                }
-                SettingsHelpText("iPhone/Windows에는 클라이언트 토큰만 넣습니다. Mac 앱에는 요청을 처리할 Mac 전용 토큰도 함께 넣어야 합니다. 서버에는 실행 요청과 요약 숫자만 저장하고, 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
             }
         }
     }
@@ -1089,6 +931,12 @@ private struct SettingsGroupBox<Content: View>: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.72 : 0.48), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.86) : Color.clear)
+                .frame(width: 3)
+                .padding(.vertical, 10)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(
@@ -1178,6 +1026,12 @@ private struct SettingsFieldRow<Content: View>: View {
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isExpanded ? Color.klmsMacCardBackground.opacity(0.96) : Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.72) : Color.clear)
+                .frame(width: 3)
+                .padding(.vertical, 9)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.38) : Color.klmsMacBorder.opacity(0.86), lineWidth: 1)
@@ -1225,6 +1079,12 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.78 : 0.54), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.76) : Color.clear)
+                .frame(width: 3)
+                .padding(.vertical, 10)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.42) : Color.klmsMacBorder.opacity(0.92), lineWidth: 1)
@@ -1282,6 +1142,12 @@ private struct SettingsActionGroupBox<Content: View>: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.66) : Color.clear)
+                .frame(width: 3)
+                .padding(.vertical, 9)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.34) : Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
