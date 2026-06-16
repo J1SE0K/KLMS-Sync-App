@@ -197,6 +197,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
   <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>NSPrincipalClass</key>
+  <string>KLMSApplication</string>
   <key>CFBundleShortVersionString</key>
   <string>0.1.0</string>
   <key>CFBundleVersion</key>

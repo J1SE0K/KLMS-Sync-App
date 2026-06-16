@@ -2,6 +2,26 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
+@objc(KLMSApplication)
+final class KLMSApplication: NSApplication {
+    override func sendEvent(_ event: NSEvent) {
+        if Self.isQuitShortcut(event) {
+            terminate(nil)
+            return
+        }
+        super.sendEvent(event)
+    }
+
+    private static func isQuitShortcut(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown else { return false }
+        let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isQKey = event.charactersIgnoringModifiers?.lowercased() == "q"
+            || event.keyCode == 12
+        return modifierFlags.contains(.command)
+            && isQKey
+    }
+}
+
 @main
 enum KLMSMacMain {
     static func main() {
@@ -142,6 +162,7 @@ private extension View {
 final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     private var model: KLMSMacModel?
     private var statusItem: NSStatusItem?
+    private var quitKeyMonitor: Any?
     private var terminationCleanupStarted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -150,6 +171,8 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         self.model = model
         KLMSDashboardWindowCoordinator.shared.setModel(model)
         NSApp.setActivationPolicy(.regular)
+        configureApplicationMenu()
+        configureQuitKeyMonitor()
         configureStatusItem(for: model)
         KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
     }
@@ -177,6 +200,43 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         }
         item.menu = menu
         statusItem = item
+    }
+
+    private func configureApplicationMenu() {
+        let mainMenu = NSMenu(title: "KLMS Sync")
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu(title: "KLMS Sync")
+
+        let openItem = NSMenuItem(title: "KLMS Sync 열기", action: #selector(openDashboardFromMenu), keyEquivalent: "o")
+        openItem.keyEquivalentModifierMask = [.command]
+        openItem.target = self
+        appMenu.addItem(openItem)
+
+        appMenu.addItem(.separator())
+
+        let quitItem = NSMenuItem(title: "KLMS Sync 종료", action: #selector(quitFromMenu), keyEquivalent: "q")
+        quitItem.keyEquivalentModifierMask = [.command]
+        quitItem.target = self
+        appMenu.addItem(quitItem)
+
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+        NSApp.mainMenu = mainMenu
+    }
+
+    private func configureQuitKeyMonitor() {
+        guard quitKeyMonitor == nil else { return }
+        quitKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let isQKey = event.charactersIgnoringModifiers?.lowercased() == "q"
+                || event.keyCode == 12
+            guard modifierFlags.contains(.command),
+                  isQKey else {
+                return event
+            }
+            NSApp.terminate(nil)
+            return nil
+        }
     }
 
     @objc private func openDashboardFromMenu(_ sender: Any?) {
@@ -268,7 +328,6 @@ private final class KLMSDashboardWindowCoordinator {
                 maxWidth: .infinity,
                 minHeight: KLMSWindowMetrics.minHeight,
                 idealHeight: KLMSWindowMetrics.initialHeight,
-                maxHeight: .infinity,
                 alignment: .topLeading
             )
 

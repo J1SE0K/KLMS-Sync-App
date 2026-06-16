@@ -1002,16 +1002,8 @@ private struct DashboardFilterBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 8) {
-                    searchControl
-                    rangeControl
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    searchControl
-                    rangeControl
-                }
-            }
+            searchControl
+            rangeControl
             displayControl
         }
     }
@@ -1028,18 +1020,11 @@ private struct DashboardFilterBarView: View {
 
     private var rangeControl: some View {
         DashboardControlBox(title: "범위", systemImage: "line.3.horizontal.decrease.circle") {
-            ViewThatFits(in: .horizontal) {
+            VStack(alignment: .leading, spacing: 8) {
+                coursePickerField
                 HStack(spacing: 8) {
-                    coursePickerField
                     yearPickerField
                     semesterPickerField
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    coursePickerField
-                    HStack(spacing: 8) {
-                        yearPickerField
-                        semesterPickerField
-                    }
                 }
             }
         }
