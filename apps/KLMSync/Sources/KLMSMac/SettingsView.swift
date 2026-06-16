@@ -73,24 +73,16 @@ struct SettingsView: View {
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 12) {
-                settingsSidebar
-                    .frame(width: 214, alignment: .topLeading)
-                settingsContentPanel
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                settingsSidebar
-                settingsContentPanel
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            settingsTabBar
+            settingsContentPanel
         }
         .frame(maxWidth: .infinity, minHeight: 520, alignment: .topLeading)
     }
 
-    private var settingsSidebar: some View {
+    private var settingsTabBar: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text("설정")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
@@ -100,9 +92,9 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(spacing: 7) {
+            HStack(spacing: 7) {
                 ForEach(SettingsTab.allCases) { tab in
-                    settingsSidebarButton(tab)
+                    settingsTabButton(tab)
                 }
             }
         }
@@ -168,13 +160,13 @@ struct SettingsView: View {
         }
     }
 
-    private func settingsSidebarButton(_ tab: SettingsTab) -> some View {
+    private func settingsTabButton(_ tab: SettingsTab) -> some View {
         let isSelected = selectedTab == tab
         return Button {
             guard selectedTab != tab else { return }
             selectedTab = tab
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 7) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(
@@ -186,34 +178,25 @@ struct SettingsView: View {
                         .font(.subheadline.weight(isSelected ? .bold : .semibold))
                         .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
                 }
-                .frame(width: 30, height: 30)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(tab.title)
-                        .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                        .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
-                    Text(tab.detail)
-                        .font(.caption2)
-                        .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground.opacity(0.78) : Color.klmsMacSecondaryText)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacSecondaryText.opacity(0.52))
+                .frame(width: 28, height: 28)
+                Text(tab.title)
+                    .font(.caption.weight(isSelected ? .bold : .semibold))
+                    .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.86)
             }
-            .padding(.leading, 8)
-            .padding(.trailing, 10)
-            .padding(.vertical, 9)
-            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 42, alignment: .center)
             .background(
                 isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacSubtleCardBackground.opacity(0.34),
                 in: RoundedRectangle(cornerRadius: 10)
             )
-            .overlay(alignment: .leading) {
+            .overlay(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
-                    .frame(width: 3)
-                    .padding(.vertical, 9)
+                    .frame(height: 3)
+                    .padding(.horizontal, 10)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
@@ -221,7 +204,7 @@ struct SettingsView: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(KLMSMacSettingsSidebarButtonStyle())
+        .buttonStyle(KLMSMacSettingsTabButtonStyle())
         .accessibilityLabel(tab.title)
         .accessibilityValue(isSelected ? "선택됨" : "")
     }
@@ -690,14 +673,16 @@ struct SettingsView: View {
     }
 
     private func settingsForm<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        Form {
-            content()
+        ScrollView(.horizontal, showsIndicators: true) {
+            HStack(alignment: .top, spacing: 12) {
+                content()
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
+            .frame(minHeight: 360, alignment: .topLeading)
         }
-        .formStyle(.grouped)
         .buttonStyle(KLMSMacSettingsButtonStyle())
-        .scrollContentBackground(.hidden)
-        .padding(.horizontal, 8)
-        .padding(.bottom, 10)
+        .textFieldStyle(.roundedBorder)
     }
 
     @ViewBuilder
@@ -810,7 +795,7 @@ private struct SettingsHelpText: View {
     }
 }
 
-private struct KLMSMacSettingsSidebarButtonStyle: ButtonStyle {
+private struct KLMSMacSettingsTabButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {

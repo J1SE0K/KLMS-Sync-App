@@ -2461,7 +2461,6 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                 Metric("정리된 파일", summary.prunedFileCount, detail: .pruned),
             ].filter { $0.value > 0 }
             let archiveMetrics = [
-                Metric("완료 기록", summary.completedAssignmentCount, detail: .assignmentRecords),
                 Metric("보관함", summary.hiddenSummary.total, detail: .hidden),
             ].filter { $0.value > 0 }
             let selectableArchiveMetrics = isArchiveMetricsExpanded ? archiveMetrics : []

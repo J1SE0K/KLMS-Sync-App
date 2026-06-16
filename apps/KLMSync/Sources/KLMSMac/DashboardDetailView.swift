@@ -70,7 +70,6 @@ struct DashboardRenderSignature: Equatable {
         hasher.combine(summary.hiddenSummary.total)
         hasher.combine(summary.assignmentCandidateCount)
         hasher.combine(summary.examCandidateCount)
-        hasher.combine(summary.completedAssignmentCount)
         hasher.combine(summary.localMissingFileCount)
         hasher.combine(summary.prunedFileCount)
         hasher.combine(summary.calendarAttentionCount)
