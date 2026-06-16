@@ -2133,7 +2133,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     var id: String { rawValue }
 
     static var compactTabs: [CompanionAppSection] {
-        [.status, .files, .history, .settings]
+        [.status, .history, .settings]
     }
 
     static var workstationSections: [CompanionAppSection] {

@@ -1408,7 +1408,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionSection.contains("return \"로그\""))
         XCTAssertTrue(companionSection.contains("return \"설정\""))
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection]"))
-        XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection] {\n        [.status, .files, .history, .settings]"))
+        XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection] {\n        [.status, .history, .settings]"))
         XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .files, .notices, .tasks, .calendar, .history, .settings]"))
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
         XCTAssertLessThan(
@@ -1421,7 +1421,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(compactTabBar.contains("ForEach(Array(compactRows.enumerated()), id: \\.offset)"))
         XCTAssertTrue(compactTabBar.contains("private var compactRows: [[CompanionAppSection]]"))
         XCTAssertTrue(compactTabBar.contains("CompanionAppSection.compactTabs"))
-        XCTAssertFalse(compactTabBar.contains("[.status, .history, .settings]"))
+        XCTAssertFalse(compactTabBar.contains("[.status, .files, .history, .settings]"))
         XCTAssertFalse(compactTabBar.contains("[.status, .files, .notices, .tasks]"))
         XCTAssertFalse(compactTabBar.contains("[.calendar, .history, .settings]"))
         XCTAssertFalse(compactTabBar.contains("withAnimation(.easeOut(duration: 0.12))"))
