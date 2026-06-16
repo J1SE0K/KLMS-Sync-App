@@ -3950,6 +3950,7 @@ private struct DoctorCheckRowView: View {
 private struct AppDiagnosticsPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var isExpanded = false
+    private let permissionActionColumns = [GridItem(.adaptive(minimum: 136), spacing: 8)]
 
     var body: some View {
         SectionBox(title: "앱/설치 정보") {
@@ -3981,7 +3982,7 @@ private struct AppDiagnosticsPanelView: View {
                         isWarning: diagnostics.installedPayloadVersion.isEmpty
                     )
 
-                    HStack {
+                    LazyVGrid(columns: permissionActionColumns, alignment: .leading, spacing: 8) {
                         Button {
                             Task {
                                 await model.requestAppPermissions()
@@ -4000,7 +4001,6 @@ private struct AppDiagnosticsPanelView: View {
                         } label: {
                             Label("손쉬운 사용 열기", systemImage: "accessibility")
                         }
-                        Spacer()
                     }
                     .buttonStyle(KLMSMacRootActionButtonStyle())
 

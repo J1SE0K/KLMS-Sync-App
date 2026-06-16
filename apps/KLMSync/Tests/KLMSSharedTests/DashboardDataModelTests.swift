@@ -1964,11 +1964,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(logsBody.contains("RunLogArchivePanelView(model: model)"))
         let issueSummaryView = try sourceStructBody(named: "IssueSummaryView", in: mac)
         let issueRowView = try sourceStructBody(named: "IssueRowView", in: mac)
+        let appDiagnosticsPanel = try sourceStructBody(named: "AppDiagnosticsPanelView", in: mac)
         XCTAssertTrue(issueSummaryView.contains("@State private var isExpanded = false"))
         XCTAssertTrue(issueSummaryView.contains("if isExpanded"))
         XCTAssertTrue(issueSummaryView.contains("ForEach(issues.prefix(3))"))
         XCTAssertTrue(issueRowView.contains(".lineLimit(2)"))
         XCTAssertFalse(issueSummaryView.contains("ForEach(issues.prefix(5))"))
+        XCTAssertTrue(appDiagnosticsPanel.contains("private let permissionActionColumns = [GridItem(.adaptive(minimum: 136), spacing: 8)]"))
+        XCTAssertTrue(appDiagnosticsPanel.contains("LazyVGrid(columns: permissionActionColumns, alignment: .leading, spacing: 8)"))
+        XCTAssertFalse(appDiagnosticsPanel.contains("HStack {\n                        Button"))
 
         let diagnosticsBody = try sectionBody(in: workstationBody, from: "case .diagnostics:", to: ".padding(.vertical, 4)")
         XCTAssertLessThan(
