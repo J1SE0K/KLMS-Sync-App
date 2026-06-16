@@ -2567,7 +2567,12 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     }
 
     private func dashboardDetailColumn(kind: DashboardDetailKind) -> some View {
-        DashboardDetailPanelView(kind: kind, model: model, snapshot: snapshot)
+        DashboardDetailPanelView(
+            kind: kind,
+            model: model,
+            snapshot: snapshot,
+            renderSignature: renderSignature
+        )
             .equatable()
             .frame(maxWidth: .infinity, alignment: .topLeading)
     }

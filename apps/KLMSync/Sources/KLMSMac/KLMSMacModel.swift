@@ -42,6 +42,65 @@ final class KLMSMacModel: ObservableObject {
         var updatedAt: String?
     }
 
+    private struct SnapshotSourceSignature: Equatable {
+        private struct FileMarker: Equatable {
+            var path: String
+            var exists: Bool
+            var size: Int
+            var modifiedAt: TimeInterval
+
+            init(url: URL, fileManager: FileManager) {
+                path = url.path
+                guard fileManager.fileExists(atPath: url.path),
+                      let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]) else {
+                    exists = false
+                    size = -1
+                    modifiedAt = -1
+                    return
+                }
+                exists = true
+                size = values.fileSize ?? -1
+                modifiedAt = values.contentModificationDate?.timeIntervalSinceReferenceDate ?? -1
+            }
+        }
+
+        private var markers: [FileMarker]
+
+        init(paths: KLMSPaths, fileManager: FileManager = .default) {
+            markers = Self.snapshotSourceURLs(paths: paths).map {
+                FileMarker(url: $0, fileManager: fileManager)
+            }
+        }
+
+        private static func snapshotSourceURLs(paths: KLMSPaths) -> [URL] {
+            [
+                paths.syncReportURL,
+                paths.calendarSyncResultURL,
+                paths.doctorResultURL,
+                paths.verifyResultURL,
+                paths.loginStatusURL,
+                paths.noticeRenderErrorSummaryURL,
+                paths.noticeStageTimingURL,
+                paths.noticeDigestURL,
+                paths.noticeRenderStateURL,
+                paths.noticeArchiveRenderStateURL,
+                paths.noticeUserStateURL,
+                paths.appUserStateURL,
+                paths.stateJSONURL,
+                paths.filePreviewURL,
+                paths.downloadResultURL,
+                paths.quarantineReportURL,
+                paths.cleanupResultURL,
+                paths.courseFileManifestURL,
+                paths.relayStdoutLogURL,
+                paths.relayStderrLogURL,
+                paths.courseFilesURL,
+            ] + [KLMSSyncScope.all, .core, .notice, .files].map {
+                paths.dryRunReportURL(scope: $0)
+            }
+        }
+    }
+
     private struct ServerRelaySettingDefinition {
         var key: EnvKnownKey
         var title: String
@@ -142,6 +201,7 @@ final class KLMSMacModel: ObservableObject {
     private var cachedLiveProgressLine: String?
     private var cachedCurrentPhaseText: String?
     private var liveCommandOutputPublishTask: Task<Void, Never>?
+    private var lastSnapshotSourceSignature: SnapshotSourceSignature?
     private var activeRemoteCommandID: UUID?
     private var pendingRunCancellationRequested = false
     private var serverRelayLastStatusPublishAt: Date?
@@ -2094,7 +2154,7 @@ final class KLMSMacModel: ObservableObject {
                 errorMessage = error.localizedDescription
             }
         }
-        let nextSnapshot = EngineSnapshotStore(paths: paths).load()
+        let nextSnapshot = loadEngineSnapshot(force: true) ?? snapshot
         applySnapshot(nextSnapshot, showLoginTransition: true)
         commandHistory = CommandRunHistoryStore(url: paths.appHistoryURL).load()
         latestBackup = AppDataBackupManager(paths: paths).latestBackup()
@@ -2702,7 +2762,7 @@ final class KLMSMacModel: ObservableObject {
                 completedAction.updatedAt = Date()
                 try await store.updateSettingAction(completedAction)
 
-                let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
+                let refreshedSnapshot = loadEngineSnapshot(force: true) ?? snapshot
                 replaceSnapshot(refreshedSnapshot)
                 try await store.publishStatus(
                     sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: "idle"),
@@ -2764,7 +2824,7 @@ final class KLMSMacModel: ObservableObject {
                 completedAction.updatedAt = Date()
                 try await store.updateItemAction(completedAction)
 
-                let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
+                let refreshedSnapshot = loadEngineSnapshot(force: true) ?? snapshot
                 replaceSnapshot(refreshedSnapshot)
                 try await store.publishStatus(
                     sanitizedRemoteStatus(snapshot: refreshedSnapshot, phase: "idle"),
@@ -2834,7 +2894,7 @@ final class KLMSMacModel: ObservableObject {
             if activeRemoteCommandID == running.id {
                 activeRemoteCommandID = nil
             }
-            let refreshedSnapshot = EngineSnapshotStore(paths: paths).load()
+            let refreshedSnapshot = loadEngineSnapshot(force: true) ?? snapshot
             var completed = running
             completed.status = lastCommandResult?.succeeded == true ? .completed : .failed
             completed.updatedAt = Date()
@@ -3518,10 +3578,10 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func reloadSnapshot(showLoginTransition: Bool = false) {
-        applySnapshot(
-            EngineSnapshotStore(paths: paths).load(),
-            showLoginTransition: showLoginTransition
-        )
+        guard let nextSnapshot = loadEngineSnapshot(force: false) else {
+            return
+        }
+        applySnapshot(nextSnapshot, showLoginTransition: showLoginTransition)
     }
 
     private func reloadManualOverrideState() {
@@ -3556,12 +3616,30 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func replaceSnapshot(_ nextSnapshot: EngineSnapshot) {
+        markCurrentSnapshotSourceSignature()
+        guard snapshot != nextSnapshot else {
+            return
+        }
         snapshot = nextSnapshot
         let nextIssues = nextSnapshot.issues
         if cachedIssues != nextIssues {
             cachedIssues = nextIssues
         }
         rebuildMailDashboardCaches()
+    }
+
+    private func loadEngineSnapshot(force: Bool) -> EngineSnapshot? {
+        let signature = SnapshotSourceSignature(paths: paths)
+        guard force || lastSnapshotSourceSignature != signature else {
+            return nil
+        }
+        let nextSnapshot = EngineSnapshotStore(paths: paths).load()
+        lastSnapshotSourceSignature = signature
+        return nextSnapshot
+    }
+
+    private func markCurrentSnapshotSourceSignature() {
+        lastSnapshotSourceSignature = SnapshotSourceSignature(paths: paths)
     }
 
     private func notifyAuthDigits(_ digits: String) async {
@@ -3763,10 +3841,13 @@ final class KLMSMacModel: ObservableObject {
                 guard !Task.isCancelled, let self, self.runningCommand != nil else {
                     return
                 }
-                let nextSnapshot = EngineSnapshotStore(paths: self.paths).load()
-                self.replaceSnapshot(nextSnapshot)
+                let loadedSnapshot = self.loadEngineSnapshot(force: false)
+                if let loadedSnapshot {
+                    self.replaceSnapshot(loadedSnapshot)
+                }
+                let currentSnapshot = loadedSnapshot ?? self.snapshot
                 if self.authDigitsSeenForCurrentRun,
-                   self.loginStatusWasConfirmed(nextSnapshot.loginStatus, since: startedAt) {
+                   self.loginStatusWasConfirmed(currentSnapshot.loginStatus, since: startedAt) {
                     await self.clearAuthDigitsState(showAuthenticatedMessage: true)
                 }
                 await self.processServerRelayCancelRequestWhileRunning()

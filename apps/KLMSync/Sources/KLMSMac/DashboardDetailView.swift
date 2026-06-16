@@ -178,12 +178,18 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     @State private var fileDataSignature: DashboardFileData.Signature?
     @State private var fileDataTask: Task<Void, Never>?
 
-    init(kind: DashboardDetailKind, model: KLMSMacModel, snapshot: EngineSnapshot? = nil) {
+    init(
+        kind: DashboardDetailKind,
+        model: KLMSMacModel,
+        snapshot: EngineSnapshot? = nil,
+        renderSignature: DashboardRenderSignature? = nil
+    ) {
         let resolvedSnapshot = snapshot ?? model.snapshot
         self.kind = kind
         self.model = model
         self.snapshot = resolvedSnapshot
-        renderSignature = DashboardRenderSignature(snapshot: resolvedSnapshot, summary: model.dashboardSummaryCache)
+        self.renderSignature = renderSignature
+            ?? DashboardRenderSignature(snapshot: resolvedSnapshot, summary: model.dashboardSummaryCache)
         _fileData = State(initialValue: nil)
         _fileDataSignature = State(initialValue: nil)
     }
@@ -1020,11 +1026,11 @@ private struct DashboardFilterBarView: View {
     private var rangeControl: some View {
         DashboardControlBox(title: "범위", systemImage: "line.3.horizontal.decrease.circle") {
             VStack(alignment: .leading, spacing: 8) {
-                coursePickerField
                 HStack(spacing: 8) {
                     yearPickerField
                     semesterPickerField
                 }
+                coursePickerField
             }
         }
     }

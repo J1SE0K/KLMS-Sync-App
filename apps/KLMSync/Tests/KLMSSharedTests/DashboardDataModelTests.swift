@@ -777,8 +777,13 @@ final class DashboardDataModelTests: XCTestCase {
         let verifyCheckRow = try sourceStructBody(named: "VerifyCheckExplanationRowView", in: view)
         let issueRowView = try sourceStructBody(named: "IssueRowView", in: view)
         let dashboardFilterBar = try sourceStructBody(named: "DashboardFilterBarView", in: detail)
+        let yearFieldIndex = try XCTUnwrap(dashboardFilterBar.range(of: "yearPickerField")?.lowerBound)
+        let semesterFieldIndex = try XCTUnwrap(dashboardFilterBar.range(of: "semesterPickerField")?.lowerBound)
+        let courseFieldIndex = try XCTUnwrap(dashboardFilterBar.range(of: "coursePickerField")?.lowerBound)
 
         XCTAssertTrue(app.contains("MenuBarRootView(model: model)"))
+        XCTAssertLessThan(dashboardFilterBar.distance(from: dashboardFilterBar.startIndex, to: yearFieldIndex), dashboardFilterBar.distance(from: dashboardFilterBar.startIndex, to: courseFieldIndex))
+        XCTAssertLessThan(dashboardFilterBar.distance(from: dashboardFilterBar.startIndex, to: semesterFieldIndex), dashboardFilterBar.distance(from: dashboardFilterBar.startIndex, to: courseFieldIndex))
         XCTAssertTrue(app.contains("KLMSMacWorkspaceRootContainerView(model: model)"))
         XCTAssertTrue(app.contains("@objc(KLMSApplication)"))
         XCTAssertTrue(app.contains("final class KLMSApplication: NSApplication"))
@@ -2077,7 +2082,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(detail.contains("hasher.combine(summary.completedAssignmentCount)"))
         XCTAssertTrue(dashboardSummary.contains("private func metricColumn("))
         XCTAssertTrue(dashboardSummary.contains("private func dashboardDetailColumn(kind: DashboardDetailKind)"))
-        XCTAssertTrue(dashboardSummary.contains("DashboardDetailPanelView(kind: kind"))
+        XCTAssertTrue(dashboardSummary.contains("DashboardDetailPanelView("))
+        XCTAssertTrue(dashboardSummary.contains("renderSignature: renderSignature"))
         XCTAssertFalse(dashboardSummary.contains(".frame(minWidth: 340, idealWidth: 420, maxWidth: 500"))
         XCTAssertTrue(dashboardSummary.contains("VStack(alignment: .leading, spacing: 12)"))
         XCTAssertTrue(dashboardSummary.contains("await Task.yield()"))
@@ -2216,7 +2222,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(addMailItem.contains("rebuildMailDashboardCaches()"))
         XCTAssertTrue(removeMailItem.contains("rebuildMailDashboardCaches()"))
         XCTAssertTrue(applySnapshot.contains("replaceSnapshot(nextSnapshot)"))
-        XCTAssertTrue(model.contains("self.replaceSnapshot(nextSnapshot)"))
+        XCTAssertTrue(model.contains("private struct SnapshotSourceSignature: Equatable"))
+        XCTAssertTrue(model.contains("private var lastSnapshotSourceSignature"))
+        XCTAssertTrue(model.contains("guard force || lastSnapshotSourceSignature != signature else"))
+        XCTAssertTrue(model.contains("self.loadEngineSnapshot(force: false)"))
+        XCTAssertTrue(model.contains("self.replaceSnapshot(loadedSnapshot)"))
     }
 
     func testIOSCompanionUsesAdaptiveIPadNavigation() throws {
