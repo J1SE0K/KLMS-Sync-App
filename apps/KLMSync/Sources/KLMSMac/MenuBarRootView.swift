@@ -3704,13 +3704,14 @@ private struct LoginPanelView: View {
 private struct VerifyPanelView: View {
     var snapshot: EngineSnapshot
     @State private var isRemainingIssuesExpanded = false
+    private let primaryVisibleIssueCount = 1
 
     var body: some View {
         if let verify = snapshot.verifyResult {
             SectionBox(title: "상태 검사 해설") {
                 let issueChecks = verify.checks.filter { isIssueStatus($0.status) }
-                let primaryIssues = Array(issueChecks.prefix(3))
-                let remainingIssues = Array(issueChecks.dropFirst(3))
+                let primaryIssues = Array(issueChecks.prefix(primaryVisibleIssueCount))
+                let remainingIssues = Array(issueChecks.dropFirst(primaryVisibleIssueCount))
                 VStack(alignment: .leading, spacing: 8) {
                     Text(summaryText(for: verify, issueCount: issueChecks.count))
                         .font(.caption)
@@ -3805,6 +3806,8 @@ private struct VerifyCheckExplanationRowView: View {
                             .font(.caption2.monospaced())
                             .foregroundStyle(Color.klmsMacSecondaryText)
                             .textSelection(.enabled)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -3852,13 +3855,14 @@ private struct VerifyCheckExplanationRowView: View {
 private struct DoctorPanelView: View {
     var snapshot: EngineSnapshot
     @State private var isRemainingIssuesExpanded = false
+    private let primaryVisibleIssueCount = 1
 
     var body: some View {
         if let doctor = snapshot.doctorResult {
             SectionBox(title: "진단") {
                 let issueChecks = doctor.checks.filter { ["fail", "failed", "error", "warn", "warning"].contains($0.status.lowercased()) }
-                let primaryIssues = Array(issueChecks.prefix(3))
-                let remainingIssues = Array(issueChecks.dropFirst(3))
+                let primaryIssues = Array(issueChecks.prefix(primaryVisibleIssueCount))
+                let remainingIssues = Array(issueChecks.dropFirst(primaryVisibleIssueCount))
                 Text("상태: \(doctor.status.klmsLocalizedStatus) · 정상 \(doctor.checks.filter { $0.status.lowercased() == "ok" }.count)개")
                     .font(.caption)
                     .foregroundStyle(doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
