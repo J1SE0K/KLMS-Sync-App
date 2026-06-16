@@ -5278,7 +5278,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsPrimaryCommandButtonForeground
         case .destructive:
-            return isEnabled ? Color.white : Color.klmsSecondaryText.opacity(0.68)
+            return isEnabled ? Color.klmsDangerCommandButtonForeground : Color.klmsSecondaryText.opacity(0.68)
         case .success:
             return Color.klmsSecondaryCommandButtonForeground
         case .accent(let color):
@@ -5357,7 +5357,7 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
         case .primary, .success:
             return Color.klmsPrimaryCommandButtonForeground
         case .destructive:
-            return isEnabled ? Color.white : Color.klmsSecondaryText.opacity(0.68)
+            return isEnabled ? Color.klmsDangerCommandButtonForeground : Color.klmsSecondaryText.opacity(0.68)
         case .accent(let color):
             return color
         }
@@ -12608,6 +12608,22 @@ private extension Color {
         )
         #else
         return Color.white
+        #endif
+    }
+
+    static var klmsDangerCommandButtonForeground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0),
+            dark: UIColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0),
+            dark: NSColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0)
+        )
+        #else
+        return Color(red: 1.000, green: 0.980, blue: 0.941)
         #endif
     }
 

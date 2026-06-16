@@ -958,7 +958,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         case .primary:
             Color.klmsMacPrimaryCommandButtonForeground
         case .destructive:
-            isEnabled ? Color.white : Color.klmsMacSecondaryText.opacity(0.68)
+            isEnabled ? Color.klmsMacDangerCommandButtonForeground : Color.klmsMacSecondaryText.opacity(0.68)
         case .success:
             Color.klmsMacSecondaryCommandButtonForeground
         case .accent(let color):
@@ -5119,6 +5119,13 @@ extension Color {
         klmsMacAdaptiveColor(
             light: NSColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0),
             dark: NSColor(red: 0.082, green: 0.075, blue: 0.055, alpha: 1.0)
+        )
+    }
+
+    static var klmsMacDangerCommandButtonForeground: Color {
+        klmsMacAdaptiveColor(
+            light: NSColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0),
+            dark: NSColor(red: 1.000, green: 0.980, blue: 0.941, alpha: 1.0)
         )
     }
 
