@@ -2786,7 +2786,9 @@ private struct CompanionImmediateSettingRow<Content: View>: View {
                     .foregroundStyle(Color.klmsSecondaryText)
                 CompanionSettingHelpText(detail)
             }
-            content()
+            CompanionSettingsControlContainer {
+                content()
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2794,6 +2796,24 @@ private struct CompanionImmediateSettingRow<Content: View>: View {
         .overlay {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
+        }
+    }
+}
+
+private struct CompanionSettingsControlContainer<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsCardBackground.opacity(0.78), in: RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(Color.klmsBorder.opacity(0.64), lineWidth: 1)
         }
     }
 }
@@ -11544,7 +11564,9 @@ private struct RemoteSettingRow: View {
                     .padding(.vertical, 4)
                     .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
-            control
+            CompanionSettingsControlContainer {
+                control
+            }
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)

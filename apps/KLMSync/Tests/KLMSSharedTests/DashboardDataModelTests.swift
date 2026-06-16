@@ -1207,6 +1207,11 @@ final class DashboardDataModelTests: XCTestCase {
         )
         let relayConnectionPanel = try sourceStructBody(named: "ServerRelayConnectionPanel", in: ios)
         let immediateSettingsPanel = try sourceStructBody(named: "CompanionImmediateSettingsPanel", in: ios)
+        let immediateSettingRow = try sourceBody(
+            after: "private struct CompanionImmediateSettingRow<Content: View>: View",
+            in: ios,
+            description: "iOS immediate settings row"
+        )
         let remoteSettingsPanel = try sourceStructBody(named: "RemoteSettingsPanel", in: ios)
         let remoteSettingGroupSection = try sourceStructBody(named: "RemoteSettingGroupSection", in: ios)
         let remoteDiagnosticPanel = try sourceStructBody(named: "RemoteDiagnosticPanel", in: ios)
@@ -1425,6 +1430,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(calendarEventEditForm.contains(".buttonStyle(KLMSToolbarButtonStyle())"))
         XCTAssertTrue(calendarEventEditForm.contains(".buttonStyle(KLMSToolbarButtonStyle(tone: action == .calendarCreate ? .success : .primary))"))
         XCTAssertTrue(sheetItemDetail.contains(".buttonStyle(KLMSToolbarButtonStyle())"))
+        XCTAssertTrue(remoteSettingRow.contains("CompanionSettingsControlContainer {"))
         XCTAssertTrue(remoteSettingRow.contains("Text(setting.value.nilIfEmpty ?? \"선택\")"))
         XCTAssertTrue(remoteSettingRow.contains("Label(setting.boolValue ? \"켜짐\" : \"꺼짐\""))
         XCTAssertTrue(remoteSettingRow.contains(".buttonStyle(KLMSActionButtonStyle())"))
@@ -1444,6 +1450,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(immediateSettingsPanel.contains("RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(immediateSettingsPanel.contains("CompanionExpansionBadge(isExpanded: isExpanded)"))
         XCTAssertTrue(immediateSettingsPanel.contains("CompanionImmediateSettingRow("))
+        XCTAssertTrue(immediateSettingRow.contains("CompanionSettingsControlContainer {"))
         XCTAssertTrue(immediateSettingsPanel.contains("Text(\"바로 반영되는 설정\")"))
         XCTAssertTrue(immediateSettingsPanel.contains("Toggle(\"원격 실행에서 공지 메모도 갱신\""))
         XCTAssertTrue(dashboardSyncCard.contains("return \"파일\""))
@@ -1658,6 +1665,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("title: \"클라이언트 토큰\""))
         XCTAssertTrue(ios.contains("private struct CompanionImmediateSettingRow"))
         XCTAssertTrue(ios.contains("CompanionImmediateSettingRow("))
+        XCTAssertTrue(ios.contains("private struct CompanionSettingsControlContainer"))
         XCTAssertTrue(ios.contains("private struct CompanionSettingsSubsectionCard"))
         XCTAssertTrue(ios.contains("@State private var isExpanded = true"))
         XCTAssertTrue(ios.contains("@State private var isExpanded = false"))
