@@ -224,6 +224,7 @@ final class KLMSMacModel: ObservableObject {
     private static let serverRelayWorkerTokenKey = "KLMSServerRelayWorkerToken"
     private static let deprecatedServerRelayTokenKey = "KLMSServerRelayToken"
     private static let mailDashboardItemsKey = "KLMSMailDashboardItems"
+    private static let resolvedCalendarChangeIDsKey = "KLMSResolvedCalendarChangeIDs"
     private static let serverRelayIdleStatusPublishMinimumInterval: TimeInterval = 30
     private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 1.0
     private static let serverRelayIdleSyncDataPublishMinimumInterval: TimeInterval = 300
@@ -263,6 +264,7 @@ final class KLMSMacModel: ObservableObject {
             ?? legacyToken
         serverRelayClientToken = clientToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         serverRelayWorkerToken = workerToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        resolvedCalendarChangeIDs = Self.loadResolvedCalendarChangeIDs()
         mailDashboardItems = Self.loadMailDashboardItems()
         rebuildMailDashboardCaches()
         let clientTokenSaved = Self.persistRelayToken(
@@ -1175,9 +1177,9 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func visibleCalendarChanges(from snapshot: EngineSnapshot) -> [CalendarChange] {
-        let changes = (
-            snapshot.calendarSyncResult?.changes.filter { !isCalendarChangeResolved($0) } ?? []
-        ) + mailCalendarChanges()
+        let engineChanges = snapshot.calendarSyncResult?.changes.filter { !isCalendarChangeResolved($0) } ?? []
+        let mailChanges = mailCalendarChanges().filter { !isCalendarChangeResolved($0) }
+        let changes = engineChanges + mailChanges
         return changes
             .dedupedForCalendarDisplay()
             .filter(\.isUserVisibleCalendarChange)
@@ -1226,6 +1228,7 @@ final class KLMSMacModel: ObservableObject {
 
     private func markCalendarChangeResolved(_ change: CalendarChange) {
         resolvedCalendarChangeIDs.formUnion(calendarChangeResolvedIDs(for: change))
+        persistResolvedCalendarChangeIDs()
         rebuildMailDashboardCaches()
     }
 
@@ -1576,6 +1579,18 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    private static func loadResolvedCalendarChangeIDs() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: resolvedCalendarChangeIDsKey) ?? [])
+    }
+
+    private func persistResolvedCalendarChangeIDs() {
+        let sortedIDs = resolvedCalendarChangeIDs
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted()
+        let cappedIDs = sortedIDs.count > 500 ? Array(sortedIDs.suffix(500)) : sortedIDs
+        UserDefaults.standard.set(cappedIDs, forKey: Self.resolvedCalendarChangeIDsKey)
+    }
+
     private func serverRelayPublicText(_ text: String?) -> String {
         let value = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else {
@@ -1854,7 +1869,7 @@ final class KLMSMacModel: ObservableObject {
             markCalendarChangeResolved(change)
             reloadSnapshot()
             errorMessage = nil
-            serverRelayStatusMessage = "정리된 캘린더 항목 확인 완료"
+            serverRelayStatusMessage = "캘린더 변경 항목 제거 완료"
             return true
         }
 
@@ -1899,7 +1914,7 @@ final class KLMSMacModel: ObservableObject {
         if change.isDeletedAction {
             markCalendarChangeResolved(change)
             reloadSnapshot()
-            return "정리된 캘린더 항목 확인 완료"
+            return "캘린더 변경 항목 제거 완료"
         }
 
         try await performCalendarEventDeletion(change: change)
@@ -3179,11 +3194,31 @@ final class KLMSMacModel: ObservableObject {
         let store = EKEventStore()
         let event = try findCalendarEvent(change: change, store: store)
         let calendarName = event.calendar.title
-        let eventID = event.calendarItemIdentifier
+        let eventUID = event.calendarItemExternalIdentifier.nilIfBlank ?? event.eventIdentifier.nilIfBlank ?? ""
+        let eventTitle = event.title ?? change.title
+        if let dateURL = URL(string: "calshow:\(event.startDate.timeIntervalSinceReferenceDate)") {
+            NSWorkspace.shared.open(dateURL)
+        }
         let script = """
         tell application id "com.apple.iCal"
           activate
-          show event id "\(appleScriptString(eventID))" of calendar "\(appleScriptString(calendarName))"
+          set targetEvent to missing value
+          tell calendar "\(appleScriptString(calendarName))"
+            set uidMatches to {}
+            if "\(appleScriptString(eventUID))" is not "" then
+              try
+                set uidMatches to every event whose uid is "\(appleScriptString(eventUID))"
+              end try
+            end if
+            if (count of uidMatches) > 0 then
+              set targetEvent to item 1 of uidMatches
+            else
+              set titleMatches to every event whose summary is "\(appleScriptString(eventTitle))"
+              if (count of titleMatches) > 0 then set targetEvent to item 1 of titleMatches
+            end if
+          end tell
+          if targetEvent is missing value then error "Calendar 앱에서 해당 일정을 찾지 못했습니다."
+          show targetEvent
         end tell
         """
         var errorInfo: NSDictionary?

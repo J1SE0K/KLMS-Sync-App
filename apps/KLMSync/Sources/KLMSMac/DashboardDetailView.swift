@@ -2990,7 +2990,7 @@ private struct CalendarDetailView: View {
                 MetricGrid(metrics: [
                     Metric("생성", visibleChangeCounts.created),
                     Metric("수정", visibleChangeCounts.updated),
-                    Metric("정리", visibleChangeCounts.deleted),
+                    Metric("삭제", visibleChangeCounts.deleted),
                 ])
             } else {
                 EmptyDetailText(text: "캘린더 결과가 없습니다.")
@@ -3118,7 +3118,7 @@ private struct CalendarActionGuideView: View {
 
     private var helpText: String {
         if hasReportedCalendarChanges {
-            return "방금 생성, 수정, 정리된 일정입니다. 항목별 수정·삭제는 아래 목록에서 처리하고, 전체 재반영은 KLMS 기준 반영을 누르세요."
+            return "방금 생성, 수정, 삭제된 일정입니다. 항목별 수정·삭제는 아래 목록에서 처리하고, 전체 재반영은 KLMS 기준 반영을 누르세요."
         }
         return "캘린더 수가 맞지 않으면 KLMS 기준 반영으로 과제/시험과 Calendar를 다시 맞출 수 있습니다."
     }
@@ -3184,7 +3184,7 @@ private struct CalendarSummaryListView: View {
                         Spacer()
                         Text("생성 \(summary.created)")
                         Text("수정 \(summary.updated)")
-                        Text("정리 \(summary.deleted)")
+                        Text("삭제 \(summary.deleted)")
                         Text("전체 \(summary.total)")
                     }
                     .font(.caption2)
@@ -3369,10 +3369,10 @@ private struct CalendarChangeRowView: View {
                     .help("Apple Calendar에 저장된 이 일정의 제목, 시간, 장소를 직접 수정합니다.")
                     if change.isDeletedAction {
                         Button {
-                            editStatusText = "정리 결과를 확인하는 중입니다."
+                            editStatusText = "삭제된 변경 항목을 없애는 중입니다."
                             Task {
                                 let ok = await model.deleteCalendarEvent(change: change)
-                                editStatusText = ok ? "정리 결과 확인 완료" : "정리 결과 확인 실패"
+                                editStatusText = ok ? "목록에서 제거했습니다." : "변경 항목 제거 실패"
                                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                                 editStatusText = nil
                             }
@@ -3380,7 +3380,7 @@ private struct CalendarChangeRowView: View {
                             Label("확인", systemImage: "checkmark.circle")
                         }
                         .buttonStyle(KLMSMacActionButtonStyle())
-                        .help("이미 정리된 일정입니다. 확인하면 이 변경 항목만 목록에서 숨깁니다.")
+                        .help("이미 삭제된 일정입니다. 확인하면 이 변경 항목을 목록에서 바로 없앱니다.")
                     } else {
                         Button(role: .destructive) {
                             editStatusText = "캘린더 일정을 삭제하는 중입니다."

@@ -200,6 +200,7 @@ final class CompanionModel: ObservableObject {
     private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
     private static let trackedReportNotificationCommandIDsKey = "KLMSTrackedReportNotificationCommandIDs"
     private static let mailDashboardItemsKey = "KLMSCompanionMailDashboardItems"
+    private static let resolvedCalendarChangeIDsKey = "KLMSResolvedCalendarChangeIDs"
 
     private struct PendingRefreshRequest {
         var silentErrors: Bool
@@ -364,6 +365,7 @@ final class CompanionModel: ObservableObject {
         }
         serverToken = storedServerToken
         shouldUpdateNoticeNotes = UserDefaults.standard.object(forKey: Self.shouldUpdateNoticeNotesKey) as? Bool ?? true
+        resolvedCalendarChangeIDs = Self.loadResolvedCalendarChangeIDs()
         mailDashboardItems = Self.loadMailDashboardItems()
         trackedReportNotificationCommandIDs = Self.loadTrackedReportNotificationCommandIDs()
         Self.persistServerToken(storedServerToken)
@@ -500,6 +502,18 @@ final class CompanionModel: ObservableObject {
         if let data = try? JSONEncoder().encode(mailDashboardItems) {
             UserDefaults.standard.set(data, forKey: Self.mailDashboardItemsKey)
         }
+    }
+
+    private static func loadResolvedCalendarChangeIDs() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: resolvedCalendarChangeIDsKey) ?? [])
+    }
+
+    private func persistResolvedCalendarChangeIDs() {
+        let sortedIDs = resolvedCalendarChangeIDs
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted()
+        let cappedIDs = sortedIDs.count > 500 ? Array(sortedIDs.suffix(500)) : sortedIDs
+        UserDefaults.standard.set(cappedIDs, forKey: Self.resolvedCalendarChangeIDsKey)
     }
 
     var isRemoteAvailable: Bool {
@@ -1067,6 +1081,7 @@ final class CompanionModel: ObservableObject {
         }
         guard !resolvedIDs.isEmpty else { return }
         resolvedCalendarChangeIDs.formUnion(resolvedIDs)
+        persistResolvedCalendarChangeIDs()
         rebuildVisibleCalendarChanges()
     }
 
@@ -4409,7 +4424,7 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
         case .calendarUpdated:
             "캘린더 수정"
         case .calendarDeleted:
-            "캘린더 정리"
+            "캘린더 삭제"
         }
     }
 
@@ -4428,7 +4443,7 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
         case .calendarUpdated:
             "수정한 캘린더 일정"
         case .calendarDeleted:
-            "정리한 캘린더 일정"
+            "삭제한 캘린더 일정"
         }
     }
 
@@ -5339,7 +5354,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
                 HStack(spacing: 8) {
                     DashboardCountPill(title: "생성", value: status.calendarCreated, tint: category.tint)
                     DashboardCountPill(title: "수정", value: status.calendarUpdated, tint: category.tint)
-                    DashboardCountPill(title: "정리", value: status.calendarDeleted, tint: category.tint)
+                    DashboardCountPill(title: "삭제", value: status.calendarDeleted, tint: category.tint)
                 }
                 RemoteCalendarActionPanel()
                 if calendarChanges.isEmpty {
@@ -5467,7 +5482,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
 
     private var summaryText: String {
         if category == .calendar {
-            return "생성 \(status.calendarCreated)개 · 수정 \(status.calendarUpdated)개 · 정리 \(status.calendarDeleted)개"
+            return "생성 \(status.calendarCreated)개 · 수정 \(status.calendarUpdated)개 · 삭제 \(status.calendarDeleted)개"
         }
         if category == .quarantine {
             return "\(category.value(from: status))개 · 격리 항목은 Mac 앱 파일 화면에서 처리합니다."
@@ -7655,7 +7670,7 @@ private struct DashboardCategoryDetailScreen: View {
                 Section("캘린더 변경") {
                     DashboardCalendarChangeRow(title: "생성", value: status.calendarCreated)
                     DashboardCalendarChangeRow(title: "수정", value: status.calendarUpdated)
-                    DashboardCalendarChangeRow(title: "정리", value: status.calendarDeleted)
+                    DashboardCalendarChangeRow(title: "삭제", value: status.calendarDeleted)
                 }
                 if calendarChanges.isEmpty {
                     Section {
@@ -7822,7 +7837,7 @@ private struct DashboardCategorySummaryRow: View {
         case .notices:
             "새 \(status.noticeNew)개 · 수정 \(status.noticeUpdated)개"
         case .calendar:
-            "생성 \(status.calendarCreated) · 수정 \(status.calendarUpdated) · 정리 \(status.calendarDeleted)"
+            "생성 \(status.calendarCreated) · 수정 \(status.calendarUpdated) · 삭제 \(status.calendarDeleted)"
         default:
             "상세 목록 \(itemCount)개"
         }
@@ -8216,7 +8231,7 @@ private struct RemoteChangeSummaryPanel: View {
                     lines: [
                         "생성 \(status.calendarCreated)",
                         "수정 \(status.calendarUpdated)",
-                        "정리 \(status.calendarDeleted)",
+                        "삭제 \(status.calendarDeleted)",
                     ]
                 )
             }

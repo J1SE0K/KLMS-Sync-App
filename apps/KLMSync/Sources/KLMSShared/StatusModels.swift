@@ -286,7 +286,7 @@ public struct CalendarChange: Codable, Sendable, Equatable, Identifiable {
         case "updated":
             "수정"
         case "deleted":
-            "정리됨"
+            "삭제됨"
         default:
             action.isEmpty ? "변경" : action
         }
@@ -457,7 +457,7 @@ public extension CalendarChange {
             }
             return "KLMS 일정과 Apple Calendar 일정이 달라서 수정한 항목입니다. 바뀐 값: \(changes.joined(separator: ", "))."
         case "deleted":
-            return "KLMS 기준으로 더 이상 유지할 일정이 아니어서 Apple Calendar에서 정리한 항목입니다."
+            return "KLMS 기준으로 더 이상 유지할 일정이 아니어서 Apple Calendar에서 삭제된 항목입니다."
         default:
             return "최근 동기화에서 캘린더 상태가 바뀐 항목입니다."
         }
@@ -470,7 +470,7 @@ public extension CalendarChange {
         case "updated":
             return "변경된 시간이 맞는지 확인하세요. 직접 고친 일정이 덮였거나 값이 이상하면 ‘내용 수정’으로 Calendar 이벤트를 바로 고치세요."
         case "deleted":
-            return "동기화 결과에서 정리된 일정입니다. 다시 필요하면 위쪽의 과제/시험 재동기화를 실행하세요."
+            return "이미 삭제된 일정입니다. 확인하면 이 항목을 목록에서 바로 없앱니다."
         default:
             return "결과가 맞는지 확인하고, 이상하면 상태 검사 또는 과제/시험 재동기화를 실행하세요."
         }
