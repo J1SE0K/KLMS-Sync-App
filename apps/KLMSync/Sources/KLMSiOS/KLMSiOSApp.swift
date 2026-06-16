@@ -2137,7 +2137,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     }
 
     static var workstationSections: [CompanionAppSection] {
-        [.status, .files, .tasks, .notices, .calendar, .history, .settings]
+        [.status, .files, .notices, .tasks, .calendar, .history, .settings]
     }
 
     var title: String {
@@ -2672,7 +2672,35 @@ private struct CompanionImmediateSettingsPanel: View {
     @State private var isExpanded = true
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsCommandAccent)
+                        .frame(width: 32, height: 32)
+                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("바로 반영되는 설정")
+                            .font(.headline)
+                        Text("서버에 바로 저장되어 Mac, iPhone, iPad, Windows가 같은 값을 씁니다.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                    CompanionExpansionBadge(isExpanded: isExpanded)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .accessibilityHint(isExpanded ? "바로 반영되는 설정 접기" : "바로 반영되는 설정 펼치기")
+
+            if isExpanded {
             VStack(alignment: .leading, spacing: 10) {
                 CompanionImmediateSettingRow(
                     title: "화면 모드",
@@ -2710,24 +2738,7 @@ private struct CompanionImmediateSettingsPanel: View {
                     .disabled(model.isSubmitting)
                 }
             }
-            .padding(.top, 8)
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 32, height: 32)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("바로 반영되는 설정")
-                        .font(.headline)
-                    Text("서버에 바로 저장되어 Mac, iPhone, iPad, Windows가 같은 값을 씁니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-                CompanionExpansionBadge(isExpanded: isExpanded)
+            .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(12)
@@ -2974,8 +2985,44 @@ private struct ServerRelayConnectionPanel: View {
     ]
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: model.serverRelayConfigured ? "checkmark.circle.fill" : "server.rack")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
+                        .frame(width: 32, height: 32)
+                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("서버 릴레이")
+                            .font(.headline)
+                        Text(model.serverRelayConfigured ? "서버 연결 정보가 저장되어 있습니다." : "Cloudflare 릴레이 연결 정보를 붙여넣어 주세요.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                    VStack(alignment: .trailing, spacing: 5) {
+                        Text(model.serverRelayConfigured ? "저장됨" : "미설정")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.klmsSubtleCardBackground, in: Capsule())
+                        CompanionExpansionBadge(isExpanded: isExpanded)
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .accessibilityHint(isExpanded ? "서버 릴레이 설정 접기" : "서버 릴레이 설정 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
                 if !model.connectionMessage.isEmpty {
                     ConnectionNoticeBanner(
                         message: model.connectionMessage,
@@ -3090,32 +3137,7 @@ private struct ServerRelayConnectionPanel: View {
                 .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                 .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
             }
-            .padding(.top, 8)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: model.serverRelayConfigured ? "checkmark.circle.fill" : "server.rack")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
-                    .frame(width: 32, height: 32)
-                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("서버 릴레이")
-                        .font(.headline)
-                    Text(model.serverRelayConfigured ? "서버 연결 정보가 저장되어 있습니다." : "Cloudflare 릴레이 연결 정보를 붙여넣어 주세요.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text(model.serverRelayConfigured ? "저장됨" : "미설정")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color.klmsSubtleCardBackground, in: Capsule())
-                    CompanionExpansionBadge(isExpanded: isExpanded)
-                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(12)
@@ -10057,8 +10079,36 @@ private struct RemoteDiagnosticPanel: View {
     private let dryRunCommands: [RemoteCommandKind] = [.fullSync, .filesSync, .coreSync, .noticeSync]
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isPanelExpanded) {
-            VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isPanelExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsCommandAccent)
+                        .frame(width: 32, height: 32)
+                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("진단")
+                            .font(.headline)
+                        Text("상태 검사와 권한 점검은 필요할 때만 펼치세요.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                    CompanionExpansionBadge(isExpanded: isPanelExpanded)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .accessibilityHint(isPanelExpanded ? "진단 도구 접기" : "진단 도구 펼치기")
+
+            if isPanelExpanded {
+                VStack(alignment: .leading, spacing: 10) {
                 RemoteVerifySummaryPanel(summary: model.verifySummary)
                 Text("문제가 보이면 상태 검사부터 실행하고, 권한이나 로그인 문제가 의심될 때 권한/환경 진단을 실행하세요.")
                     .font(.caption)
@@ -10112,24 +10162,7 @@ private struct RemoteDiagnosticPanel: View {
                         .stroke(isAdvancedExpanded ? Color.klmsSelectedBorder.opacity(0.36) : Color.klmsBorder, lineWidth: 1)
                 )
             }
-            .padding(.top, 8)
-        } label: {
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: "wrench.and.screwdriver")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 32, height: 32)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("진단")
-                        .font(.headline)
-                    Text("상태 검사와 권한 점검은 필요할 때만 펼치세요.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-                CompanionExpansionBadge(isExpanded: isPanelExpanded)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(12)
@@ -10261,7 +10294,43 @@ private struct RemoteSettingsPanel: View {
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    Image(systemName: "macbook.and.iphone")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsCommandAccent)
+                        .frame(width: 32, height: 32)
+                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Mac 동기화 설정")
+                            .font(.headline)
+                        Text("실행 엔진이 쓰는 값을 Mac 설정 파일에 반영합니다.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 5) {
+                        Text(model.remoteSettings.isEmpty ? "대기" : "\(model.remoteSettings.count)개")
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.klmsSubtleCardBackground, in: Capsule())
+                        CompanionExpansionBadge(isExpanded: isExpanded)
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .accessibilityHint(isExpanded ? "Mac 동기화 설정 접기" : "Mac 동기화 설정 펼치기")
+
+            if isExpanded {
             VStack(alignment: .leading, spacing: 10) {
                 CompanionSettingHelpText("이 설정은 Mac 앱이 받아서 실제 config.env에 저장합니다. 화면 모드와 공지 메모 갱신 여부는 위 카드에서 바로 바뀝니다.")
                 if model.remoteSettings.isEmpty {
@@ -10277,32 +10346,7 @@ private struct RemoteSettingsPanel: View {
                     }
                 }
             }
-            .padding(.top, 8)
-        } label: {
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: "macbook.and.iphone")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 32, height: 32)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Mac 동기화 설정")
-                        .font(.headline)
-                    Text("실행 엔진이 쓰는 값을 Mac 설정 파일에 반영합니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text(model.remoteSettings.isEmpty ? "대기" : "\(model.remoteSettings.count)개")
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color.klmsSubtleCardBackground, in: Capsule())
-                    CompanionExpansionBadge(isExpanded: isExpanded)
-                }
+            .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(12)
@@ -10400,35 +10444,46 @@ private struct RemoteSettingGroupSection: View {
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(group.settings) { setting in
-                    RemoteSettingRow(setting: setting, model: model)
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
                 }
+            } label: {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: group.systemImage)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.klmsCommandAccent)
+                        .frame(width: 28, height: 28)
+                        .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(group.title)
+                            .font(.subheadline.weight(.semibold))
+                        CompanionSettingHelpText(group.detail)
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 5) {
+                        Text(group.countText)
+                            .font(.caption2.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(Color.klmsCardBackground, in: Capsule())
+                        CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+                    }
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(.top, 8)
-        } label: {
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: group.systemImage)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 28, height: 28)
-                    .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(group.title)
-                        .font(.subheadline.weight(.semibold))
-                    CompanionSettingHelpText(group.detail)
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+            .accessibilityHint(isExpanded ? "\(group.title) 설정 접기" : "\(group.title) 설정 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(group.settings) { setting in
+                        RemoteSettingRow(setting: setting, model: model)
+                    }
                 }
-                Spacer(minLength: 8)
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text(group.countText)
-                        .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(Color.klmsCardBackground, in: Capsule())
-                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
-                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(11)
@@ -11717,28 +11772,39 @@ private struct RemotePrivacyNote: View {
     @State private var isExpanded = false
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태만 보관합니다. 파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
-                .font(.caption)
-                .foregroundStyle(Color.klmsSecondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 8)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "lock")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 32, height: 32)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("개인정보와 서버 보관")
-                        .font(.subheadline.weight(.semibold))
-                    Text("서버에 무엇이 올라가는지 확인할 때만 펼치세요.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
                 }
-                Spacer(minLength: 0)
-                CompanionExpansionBadge(isExpanded: isExpanded)
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "lock")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsCommandAccent)
+                        .frame(width: 32, height: 32)
+                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("개인정보와 서버 보관")
+                            .font(.subheadline.weight(.semibold))
+                        Text("서버에 무엇이 올라가는지 확인할 때만 펼치세요.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                    }
+                    Spacer(minLength: 0)
+                    CompanionExpansionBadge(isExpanded: isExpanded)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .accessibilityHint(isExpanded ? "개인정보 안내 접기" : "개인정보 안내 펼치기")
+
+            if isExpanded {
+                Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태만 보관합니다. 파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(12)

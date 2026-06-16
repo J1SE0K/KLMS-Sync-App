@@ -954,25 +954,35 @@ private struct SettingsGroupBox<Content: View>: View {
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 10) {
-                content()
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    SettingsDisclosureLabel(
+                        title: title,
+                        detail: detail,
+                        systemImage: systemImage
+                    )
+                    Spacer(minLength: 8)
+                    SettingsExpansionBadge(isExpanded: isExpanded)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(.top, 8)
-        } label: {
-            HStack(alignment: .center, spacing: 10) {
-                SettingsDisclosureLabel(
-                    title: title,
-                    detail: detail,
-                    systemImage: systemImage
-                )
-                Spacer(minLength: 8)
-                SettingsExpansionBadge(isExpanded: isExpanded)
+            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
+            .accessibilityHint(isExpanded ? "설정 묶음 접기" : "설정 묶음 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    content()
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 12))
         .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.72 : 0.48), in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
@@ -989,19 +999,19 @@ private struct SettingsFieldRow<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             content()
             if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
                !description.isEmpty {
                 SettingsHelpText(description)
             }
         }
-        .padding(10)
+        .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsMacCardBackground.opacity(0.80), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
+                .stroke(Color.klmsMacBorder.opacity(0.78), lineWidth: 1)
         }
     }
 }
@@ -1020,21 +1030,31 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 10) {
-                content()
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    label()
+                    Spacer(minLength: 8)
+                    SettingsExpansionBadge(isExpanded: isExpanded)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(.top, 8)
-        } label: {
-            HStack(alignment: .center, spacing: 10) {
-                label()
-                Spacer(minLength: 8)
-                SettingsExpansionBadge(isExpanded: isExpanded)
+            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
+            .accessibilityHint(isExpanded ? "설정 세부 항목 접기" : "설정 세부 항목 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    content()
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 12))
         .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.78 : 0.54), in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
@@ -1046,28 +1066,67 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
 private struct SettingsActionGroupBox<Content: View>: View {
     var title: String
     var detail: String
+    @State private var isExpanded: Bool
     @ViewBuilder var content: () -> Content
+
+    init(
+        title: String,
+        detail: String,
+        defaultExpanded: Bool = true,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.detail = detail
+        _isExpanded = State(initialValue: defaultExpanded)
+        self.content = content
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                Text(detail)
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                        Text(detail)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    SettingsExpansionBadge(isExpanded: isExpanded)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 8))
             }
-            content()
+            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
+
+            if isExpanded {
+                content()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
+                .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.34) : Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
         }
+    }
+}
+
+private struct KLMSMacSettingsDisclosureButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .brightness(configuration.isPressed ? -0.018 : 0)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.92 : 1.0) : 0.48)
     }
 }
 
