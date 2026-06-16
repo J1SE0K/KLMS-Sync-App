@@ -907,9 +907,7 @@ private struct SettingsGroupBox<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     SettingsDisclosureLabel(
@@ -929,7 +927,7 @@ private struct SettingsGroupBox<Content: View>: View {
                 VStack(alignment: .leading, spacing: 10) {
                     content()
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(10)
@@ -975,9 +973,7 @@ private struct SettingsFieldRow<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -1024,7 +1020,7 @@ private struct SettingsFieldRow<Content: View>: View {
                     RoundedRectangle(cornerRadius: 9)
                         .stroke(Color.klmsMacBorder.opacity(0.50), lineWidth: 1)
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(11)
@@ -1059,9 +1055,7 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     label()
@@ -1077,7 +1071,7 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
                 VStack(alignment: .leading, spacing: 10) {
                     content()
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(10)
@@ -1120,9 +1114,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 9) {
                     Image(systemName: systemImage)
@@ -1160,7 +1152,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
                         RoundedRectangle(cornerRadius: 9)
                             .stroke(Color.klmsMacBorder.opacity(0.46), lineWidth: 1)
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
         .padding(10)
