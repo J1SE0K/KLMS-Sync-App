@@ -82,6 +82,9 @@ struct SettingsView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedTab: SettingsTab = .app
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
+    private let settingsActionColumns = [
+        GridItem(.adaptive(minimum: 118), spacing: 8),
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -464,9 +467,11 @@ struct SettingsView: View {
                         )
                     )
                 }
-                LabeledContent("서버 상태") {
-                    Text(model.serverRelayStatusMessage ?? "대기 중")
-                        .foregroundStyle(Color.klmsMacSecondaryText)
+                SettingsFieldRow(description: "Mac 앱이 서버 요청을 기다리는지 확인합니다.") {
+                    LabeledContent("서버 상태") {
+                        Text(model.serverRelayStatusMessage ?? "대기 중")
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                    }
                 }
             }
 
@@ -475,39 +480,57 @@ struct SettingsView: View {
                 detail: "연결 정보를 붙여넣고, 서버 응답을 검사합니다.",
                 systemImage: "checkmark.shield"
             ) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Button("붙여넣기") {
+                SettingsActionGroupBox(
+                    title: "서버 확인",
+                    detail: "붙여넣기와 연결 검사를 여기에서 처리합니다."
+                ) {
+                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
+                        Button {
                             model.pasteServerRelayConnectionInfo()
+                        } label: {
+                            Label("붙여넣기", systemImage: "doc.on.clipboard")
                         }
-                        Button("연결 확인") {
+                        Button {
                             Task {
                                 await model.checkServerRelayConnection()
                             }
+                        } label: {
+                            Label("연결 확인", systemImage: "checkmark.seal")
                         }
                         .disabled(!model.serverRelayConfigured)
-                        Button("확인 후 켜기") {
+                        Button {
                             Task {
                                 await model.checkServerRelayConnection(enableOnSuccess: true)
                             }
+                        } label: {
+                            Label("확인 후 켜기", systemImage: "bolt.badge.checkmark")
                         }
                         .disabled(!model.serverRelayConfigured)
                     }
                     SettingsHelpText("붙여넣기는 복사한 서버 연결 정보를 한 번에 입력합니다. 연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다.")
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Button("URL 복사") {
+                SettingsActionGroupBox(
+                    title: "연결 정보 복사",
+                    detail: "다른 기기에 붙여넣을 서버 주소와 토큰을 복사합니다."
+                ) {
+                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
+                        Button {
                             model.copyServerRelayURL()
+                        } label: {
+                            Label("URL 복사", systemImage: "link")
                         }
                         .disabled(model.serverRelayURL.isEmpty)
-                        Button("연결 정보 복사") {
+                        Button {
                             model.copyServerRelayConnectionInfo()
+                        } label: {
+                            Label("연결 정보 복사", systemImage: "doc.on.doc")
                         }
                         .disabled(model.serverRelayURL.isEmpty || model.serverRelayClientToken.isEmpty)
-                        Button("클라이언트 토큰 복사") {
+                        Button {
                             model.copyServerRelayClientToken()
+                        } label: {
+                            Label("클라이언트 토큰", systemImage: "key")
                         }
                         .disabled(model.serverRelayClientToken.isEmpty)
                     }
@@ -526,33 +549,35 @@ struct SettingsView: View {
                 systemImage: "slider.horizontal.3",
                 defaultExpanded: true
             ) {
-                Picker("색상 모드", selection: Binding(
-                    get: { model.serverRelaySharedAppearanceModeValue },
-                    set: { value in
-                        appearanceMode = value
-                        Task {
-                            await model.updateServerRelaySharedAppearanceMode(value)
-                        }
-                    }
-                )) {
-                    ForEach(KLMSAppearanceMode.allCases) { mode in
-                        Text(mode.title).tag(mode.rawValue)
-                    }
-                }
-                .pickerStyle(.segmented)
-                SettingsHelpText("화면 모드는 서버에 바로 저장됩니다. 서버가 연결되어 있으면 iPhone/iPad/Windows도 같은 모드를 따라갑니다.")
-                Toggle(
-                    "원격 실행에서 공지 메모도 갱신",
-                    isOn: Binding(
-                        get: { model.serverRelaySharedNoticeUpdateNotesEnabled },
+                described("화면 모드는 서버에 바로 저장됩니다. 서버가 연결되어 있으면 iPhone/iPad/Windows도 같은 모드를 따라갑니다.") {
+                    Picker("색상 모드", selection: Binding(
+                        get: { model.serverRelaySharedAppearanceModeValue },
                         set: { value in
+                            appearanceMode = value
                             Task {
-                                await model.updateServerRelaySharedNoticeUpdateNotes(value)
+                                await model.updateServerRelaySharedAppearanceMode(value)
                             }
                         }
+                    )) {
+                        ForEach(KLMSAppearanceMode.allCases) { mode in
+                            Text(mode.title).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                described("끄면 iPhone/iPad/Windows에서 실행한 동기화는 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다.") {
+                    Toggle(
+                        "원격 실행에서 공지 메모도 갱신",
+                        isOn: Binding(
+                            get: { model.serverRelaySharedNoticeUpdateNotesEnabled },
+                            set: { value in
+                                Task {
+                                    await model.updateServerRelaySharedNoticeUpdateNotes(value)
+                                }
+                            }
+                        )
                     )
-                )
-                SettingsHelpText("끄면 iPhone/iPad/Windows에서 실행한 동기화는 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다.")
+                }
             }
 
             SettingsGroupBox(
@@ -693,42 +718,65 @@ struct SettingsView: View {
                         )
                     )
                 }
-                LabeledContent("서버 상태") {
-                    Text(model.serverRelayStatusMessage ?? "대기 중")
-                        .foregroundStyle(Color.klmsMacSecondaryText)
+                SettingsFieldRow(description: "Mac 앱이 서버 요청을 기다리는지 확인합니다.") {
+                    LabeledContent("서버 상태") {
+                        Text(model.serverRelayStatusMessage ?? "대기 중")
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                    }
                 }
 
                 Divider()
 
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Button("붙여넣기") {
+                SettingsActionGroupBox(
+                    title: "서버 확인",
+                    detail: "연결 정보를 붙여넣고 서버 응답을 검사합니다."
+                ) {
+                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
+                        Button {
                             model.pasteServerRelayConnectionInfo()
+                        } label: {
+                            Label("붙여넣기", systemImage: "doc.on.clipboard")
                         }
-                        Button("연결 확인") {
+                        Button {
                             Task {
                                 await model.checkServerRelayConnection()
                             }
+                        } label: {
+                            Label("연결 확인", systemImage: "checkmark.seal")
                         }
                         .disabled(!model.serverRelayConfigured)
-                        Button("확인 후 켜기") {
+                        Button {
                             Task {
                                 await model.checkServerRelayConnection(enableOnSuccess: true)
                             }
+                        } label: {
+                            Label("확인 후 켜기", systemImage: "bolt.badge.checkmark")
                         }
                         .disabled(!model.serverRelayConfigured)
                     }
-                    HStack {
-                        Button("URL 복사") {
+                }
+
+                SettingsActionGroupBox(
+                    title: "연결 정보 복사",
+                    detail: "다른 기기에 넣을 연결 정보를 복사합니다."
+                ) {
+                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
+                        Button {
                             model.copyServerRelayURL()
+                        } label: {
+                            Label("URL 복사", systemImage: "link")
                         }
                         .disabled(model.serverRelayURL.isEmpty)
-                        Button("연결 정보 복사") {
+                        Button {
                             model.copyServerRelayConnectionInfo()
+                        } label: {
+                            Label("연결 정보 복사", systemImage: "doc.on.doc")
                         }
                         .disabled(model.serverRelayURL.isEmpty || model.serverRelayClientToken.isEmpty)
-                        Button("클라이언트 토큰 복사") {
+                        Button {
                             model.copyServerRelayClientToken()
+                        } label: {
+                            Label("클라이언트 토큰", systemImage: "key")
                         }
                         .disabled(model.serverRelayClientToken.isEmpty)
                     }
@@ -912,11 +960,15 @@ private struct SettingsGroupBox<Content: View>: View {
             }
             .padding(.top, 8)
         } label: {
-            SettingsDisclosureLabel(
-                title: title,
-                detail: detail,
-                systemImage: systemImage
-            )
+            HStack(alignment: .center, spacing: 10) {
+                SettingsDisclosureLabel(
+                    title: title,
+                    detail: detail,
+                    systemImage: systemImage
+                )
+                Spacer(minLength: 8)
+                SettingsExpansionBadge(isExpanded: isExpanded)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -954,6 +1006,7 @@ private struct SettingsFieldRow<Content: View>: View {
 }
 
 private struct SettingsDisclosureCard<Content: View, Label: View>: View {
+    @State private var isExpanded = false
     @ViewBuilder var content: () -> Content
     @ViewBuilder var label: () -> Label
 
@@ -966,13 +1019,17 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
     }
 
     var body: some View {
-        DisclosureGroup {
+        DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 10) {
                 content()
             }
             .padding(.top, 8)
         } label: {
-            label()
+            HStack(alignment: .center, spacing: 10) {
+                label()
+                Spacer(minLength: 8)
+                SettingsExpansionBadge(isExpanded: isExpanded)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -981,6 +1038,51 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.klmsMacBorder.opacity(0.92), lineWidth: 1)
         }
+    }
+}
+
+private struct SettingsActionGroupBox<Content: View>: View {
+    var title: String
+    var detail: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            content()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
+        }
+    }
+}
+
+private struct SettingsExpansionBadge: View {
+    var isExpanded: Bool
+
+    var body: some View {
+        Text(isExpanded ? "펼침" : "접힘")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Color.klmsMacSecondaryText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color.klmsMacSubtleCardBackground, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.klmsMacBorder.opacity(0.68), lineWidth: 1)
+            }
     }
 }
 
