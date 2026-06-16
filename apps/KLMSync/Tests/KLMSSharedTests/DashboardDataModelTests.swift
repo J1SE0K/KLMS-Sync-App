@@ -726,6 +726,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains(".id(KLMSMacScrollAnchor.top)"))
         XCTAssertTrue(mac.contains(".onChange(of: resetID)"))
         XCTAssertTrue(mac.contains("proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)"))
+        XCTAssertFalse(mac.contains("withAnimation(.easeInOut(duration: 0.08)) {\n                    proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)"))
         XCTAssertTrue(mac.contains(".scrollIndicators(.visible)"))
         XCTAssertTrue(mac.contains("private struct WholeScreenVerticalScrollView"))
         XCTAssertFalse(mac.contains("GeometryReader { geometry in"))

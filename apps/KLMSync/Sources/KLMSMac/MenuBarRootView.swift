@@ -495,9 +495,7 @@ private struct WholeScreenVerticalScrollView<ResetID: Equatable, Content: View>:
             .scrollIndicators(.visible)
             .clipped()
             .onChange(of: resetID) { _, _ in
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)
-                }
+                proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)
             }
         }
     }
