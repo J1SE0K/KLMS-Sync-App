@@ -2,7 +2,7 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
-private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 60_000_000
+private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 0
 
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
@@ -2435,6 +2435,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     @State private var selectedDetail: DashboardDetailKind?
     @State private var displayedDetail: DashboardDetailKind?
     @State private var deferredDetailTask: Task<Void, Never>?
+    @State private var isArchiveMetricsExpanded = false
 
     static func == (lhs: DashboardSummaryContentView, rhs: DashboardSummaryContentView) -> Bool {
         lhs.renderSignature == rhs.renderSignature
@@ -2463,7 +2464,9 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                 Metric("완료 기록", summary.completedAssignmentCount, detail: .assignmentRecords),
                 Metric("보관함", summary.hiddenSummary.total, detail: .hidden),
             ].filter { $0.value > 0 }
-            let visibleMetrics = primaryMetrics + attentionMetrics + archiveMetrics
+            let selectableArchiveMetrics = isArchiveMetricsExpanded ? archiveMetrics : []
+            let visibleMetrics = primaryMetrics + attentionMetrics + selectableArchiveMetrics
+            let hasAnyMetrics = !primaryMetrics.isEmpty || !attentionMetrics.isEmpty || !archiveMetrics.isEmpty
             let activeDetail = selectedDetail.flatMap { selected in
                 visibleMetrics.first { $0.detail == selected }?.detail
             }
@@ -2471,7 +2474,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                 visibleMetrics.first { $0.detail == displayed }?.detail
             }
             IssueSummaryView(issues: model.cachedIssues)
-            if visibleMetrics.isEmpty {
+            if !hasAnyMetrics {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
@@ -2481,6 +2484,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                         primaryMetrics: primaryMetrics,
                         attentionMetrics: attentionMetrics,
                         archiveMetrics: archiveMetrics,
+                        isArchiveExpanded: isArchiveMetricsExpanded,
                         activeDetail: activeDetail
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -2526,6 +2530,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
         primaryMetrics: [Metric],
         attentionMetrics: [Metric],
         archiveMetrics: [Metric],
+        isArchiveExpanded: Bool,
         activeDetail: DashboardDetailKind?
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2541,14 +2546,25 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                 selectedMetricID: activeDetail?.rawValue,
                 onSelect: selectMetric
             )
-            MetricSectionGrid(
-                title: "기록과 보관",
-                metrics: archiveMetrics,
-                selectedMetricID: activeDetail?.rawValue,
-                onSelect: selectMetric
-            )
+            if !archiveMetrics.isEmpty {
+                DashboardArchiveMetricSection(
+                    metrics: archiveMetrics,
+                    isExpanded: $isArchiveMetricsExpanded,
+                    selectedMetricID: activeDetail?.rawValue,
+                    onSelect: selectMetric
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onChange(of: isArchiveExpanded) { _, expanded in
+            guard !expanded,
+                  let selectedDetail,
+                  archiveMetrics.contains(where: { $0.detail == selectedDetail }) else {
+                return
+            }
+            self.selectedDetail = nil
+            displayedDetail = nil
+        }
     }
 
     private func dashboardDetailColumn(kind: DashboardDetailKind) -> some View {
@@ -3613,6 +3629,57 @@ private struct MetricSectionGrid: View {
     }
 }
 
+private struct DashboardArchiveMetricSection: View {
+    var metrics: [Metric]
+    @Binding var isExpanded: Bool
+    var selectedMetricID: String?
+    var onSelect: (Metric) -> Void
+
+    private var totalCount: Int {
+        metrics.reduce(0) { $0 + $1.value }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .frame(width: 14)
+                    Text("기록과 보관")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                    Spacer(minLength: 8)
+                    Text("\(totalCount)")
+                        .font(.caption2.weight(.bold))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.klmsMacSubtleCardBackground, in: Capsule())
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.klmsMacCommandBorder.opacity(0.62), lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(MacPressFeedbackButtonStyle())
+
+            if isExpanded {
+                MetricGrid(metrics: metrics, selectedMetricID: selectedMetricID, onSelect: onSelect)
+            }
+        }
+    }
+}
+
 private struct LoginPanelView: View {
     @ObservedObject var model: KLMSMacModel
 
@@ -4066,6 +4133,7 @@ private enum RunLogArchiveFilter: String, CaseIterable, Identifiable {
 private struct RunLogArchivePanelView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
+    @State private var isHistoryExpanded = false
     @State private var showingSystemLogs = false
     @State private var visibleLimit = 30
 
@@ -4079,10 +4147,8 @@ private struct RunLogArchivePanelView: View {
 
     var body: some View {
         let summary = RunLogArchiveSummary(records: records)
-        let filtered = filteredRecords
-        let visible = filtered.prefix(visibleLimit)
         VStack(alignment: .leading, spacing: 12) {
-            SectionBox(title: "실행 로그") {
+            CollapsibleSectionBox(title: "실행 로그", systemImage: "clock.arrow.circlepath", isExpanded: $isHistoryExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("앱에서 실행한 동기화, 변경량 계산, 진단 명령의 누적 기록입니다. 각 항목을 펼치면 해당 실행의 마지막 로그를 확인할 수 있습니다.")
                         .font(.caption)
@@ -4112,37 +4178,48 @@ private struct RunLogArchivePanelView: View {
                     .controlSize(.small)
                 }
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.klmsMacBorder, lineWidth: 1)
+            }
 
             CurrentRunLogCardView(model: model)
 
-            SectionBox(title: "\(filter.title) 기록") {
-                if filtered.isEmpty {
-                    Text(emptyText)
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(visible) { record in
-                            RunLogArchiveRowView(record: record)
-                        }
-                        if filtered.count > visible.count {
-                            Button {
-                                visibleLimit += 30
-                            } label: {
-                                HStack {
-                                    Text("더 보기")
-                                        .font(.caption.weight(.semibold))
-                                    Spacer()
-                                    Text("남은 \(filtered.count - visible.count)개")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.klmsMacSecondaryText)
-                                }
-                                .padding(9)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            if isHistoryExpanded {
+                let filtered = filteredRecords
+                let visible = filtered.prefix(visibleLimit)
+                SectionBox(title: "\(filter.title) 기록") {
+                    if filtered.isEmpty {
+                        Text(emptyText)
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 8) {
+                            ForEach(visible) { record in
+                                RunLogArchiveRowView(record: record)
                             }
-                            .buttonStyle(MacPressFeedbackButtonStyle())
+                            if filtered.count > visible.count {
+                                Button {
+                                    visibleLimit += 30
+                                } label: {
+                                    HStack {
+                                        Text("더 보기")
+                                            .font(.caption.weight(.semibold))
+                                        Spacer()
+                                        Text("남은 \(filtered.count - visible.count)개")
+                                            .font(.caption2)
+                                            .foregroundStyle(Color.klmsMacSecondaryText)
+                                    }
+                                    .padding(9)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                                }
+                                .buttonStyle(MacPressFeedbackButtonStyle())
+                            }
                         }
                     }
                 }
