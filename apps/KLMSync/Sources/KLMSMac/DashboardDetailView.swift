@@ -1743,19 +1743,21 @@ private struct NoticeListView: View {
     }
 
     var body: some View {
+        let presentation = noticePresentation
         VStack(alignment: .leading, spacing: 8) {
             NoticeCategoryPickerView(
                 category: $category,
-                snapshot: snapshot,
-                filters: filters
+                counts: presentation.counts
             )
-            noticeRows
+            noticeRows(presentation.notices)
+        }
+        .onChange(of: presentation.resetKey) { _, _ in
+            visibleLimit = DashboardLargeList.initialVisibleLimit
         }
     }
 
     @ViewBuilder
-    private var noticeRows: some View {
-        let notices = filteredNotices
+    private func noticeRows(_ notices: [NoticeDigestEntry]) -> some View {
         let renderedNotices = notices.prefix(visibleLimit)
         if notices.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 공지가 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "공지 목록이 없습니다.")
@@ -1773,10 +1775,12 @@ private struct NoticeListView: View {
         }
     }
 
-    private var filteredNotices: [NoticeDigestEntry] {
+    private var noticePresentation: NoticeDashboardPresentation {
         let state = snapshot.noticeUserState?.notices ?? [:]
         let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
-        return (snapshot.noticeDigest?.notices ?? []).filter { notice in
+        var counts: [NoticeListCategory: Int] = [:]
+        var notices: [NoticeDigestEntry] = []
+        for notice in snapshot.noticeDigest?.notices ?? [] {
             let interaction = state[notice.noticeIdentifier]
             let hidden = interaction?.hidden == true
             let important = interaction?.important == true
@@ -1787,18 +1791,27 @@ private struct NoticeListView: View {
                 interaction: interaction,
                 generatedAt: generatedAt,
                 filters: filters
-            ) else { return false }
-            guard category.matches(
+            ) else { continue }
+            for item in NoticeListCategory.allCases where item.matches(
                 hidden: hidden,
                 important: important,
                 read: read,
                 fresh: fresh,
                 hiddenOnly: filters.hiddenOnly
-            ) else {
-                return false
+            ) {
+                counts[item, default: 0] += 1
             }
-            return true
+            if category.matches(
+                hidden: hidden,
+                important: important,
+                read: read,
+                fresh: fresh,
+                hiddenOnly: filters.hiddenOnly
+            ) {
+                notices.append(notice)
+            }
         }
+        return NoticeDashboardPresentation(notices: notices, counts: counts, category: category, filters: filters)
     }
 }
 
@@ -1846,7 +1859,7 @@ private func noticeReadStateMatches(_ state: NoticeInteractionState?, fingerprin
     return !fingerprint.isEmpty && state.readFingerprint == fingerprint
 }
 
-enum NoticeListCategory: String, CaseIterable, Identifiable {
+enum NoticeListCategory: String, CaseIterable, Identifiable, Hashable {
     case all
     case important
     case fresh
@@ -1906,43 +1919,41 @@ enum NoticeListCategory: String, CaseIterable, Identifiable {
     }
 }
 
+private struct NoticeDashboardPresentation {
+    var notices: [NoticeDigestEntry]
+    var counts: [NoticeListCategory: Int]
+    var category: NoticeListCategory
+    var filters: DashboardDetailFilters
+
+    var resetKey: String {
+        [
+            category.rawValue,
+            filters.searchText,
+            filters.selectedCourse,
+            filters.selectedYear,
+            filters.selectedSemester,
+            filters.showHidden ? "showHidden" : "",
+            filters.hiddenOnly ? "hiddenOnly" : "",
+            filters.newOnly ? "newOnly" : "",
+            filters.recentOnly ? "recentOnly" : "",
+            "\(notices.count)",
+            notices.first?.id ?? "",
+            notices.last?.id ?? "",
+        ].joined(separator: "|")
+    }
+}
+
 private struct NoticeCategoryPickerView: View {
     @Binding var category: NoticeListCategory
-    var snapshot: EngineSnapshot
-    var filters: DashboardDetailFilters
+    var counts: [NoticeListCategory: Int]
 
     var body: some View {
         Picker("공지 분류", selection: $category) {
             ForEach(NoticeListCategory.allCases) { item in
-                Text("\(item.title) \(count(for: item))").tag(item)
+                Text("\(item.title) \(counts[item, default: 0])").tag(item)
             }
         }
         .pickerStyle(.segmented)
-    }
-
-    private func count(for category: NoticeListCategory) -> Int {
-        let state = snapshot.noticeUserState?.notices ?? [:]
-        let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
-        return (snapshot.noticeDigest?.notices ?? []).filter { notice in
-            let interaction = state[notice.noticeIdentifier]
-            let hidden = interaction?.hidden == true
-            let important = interaction?.important == true
-            let read = noticeReadStateMatches(interaction, fingerprint: notice.fingerprint)
-            let fresh = notice.changeState == "new" || notice.changeState == "updated"
-            guard noticeMatchesDashboardBaseFilters(
-                notice,
-                interaction: interaction,
-                generatedAt: generatedAt,
-                filters: filters
-            ) else { return false }
-            return category.matches(
-                hidden: hidden,
-                important: important,
-                read: read,
-                fresh: fresh,
-                hiddenOnly: filters.hiddenOnly
-            )
-        }.count
     }
 }
 
