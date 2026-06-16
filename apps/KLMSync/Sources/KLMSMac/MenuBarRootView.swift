@@ -2,8 +2,6 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
-private let klmsMacInteractionDetailDelayNanoseconds: UInt64 = 0
-
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
@@ -50,59 +48,19 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
 
 private struct DeferredMacInteractionExpansion<Content: View>: View {
     var isExpanded: Bool
-    var delayNanoseconds = klmsMacInteractionDetailDelayNanoseconds
     private let content: () -> Content
-    @State private var isVisible = false
-    @State private var deferredTask: Task<Void, Never>?
 
     init(
         isExpanded: Bool,
-        delayNanoseconds: UInt64 = klmsMacInteractionDetailDelayNanoseconds,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.isExpanded = isExpanded
-        self.delayNanoseconds = delayNanoseconds
         self.content = content
     }
 
     var body: some View {
-        if delayNanoseconds == 0 {
-            if isExpanded {
-                content()
-            }
-        } else {
-            Group {
-                if isVisible {
-                    content()
-                }
-            }
-            .onAppear {
-                updateVisibility(isExpanded)
-            }
-            .onChange(of: isExpanded) { _, newValue in
-                updateVisibility(newValue)
-            }
-            .onDisappear {
-                deferredTask?.cancel()
-            }
-        }
-    }
-
-    private func updateVisibility(_ expanded: Bool) {
-        deferredTask?.cancel()
-        guard expanded else {
-            isVisible = false
-            return
-        }
-        guard delayNanoseconds > 0 else {
-            isVisible = true
-            return
-        }
-        deferredTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: delayNanoseconds)
-            guard !Task.isCancelled else { return }
-            isVisible = true
+        if isExpanded {
+            content()
         }
     }
 }
@@ -2475,8 +2433,6 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     var summary: KLMSMacDashboardSummaryCache
     var renderSignature: DashboardRenderSignature
     @State private var selectedDetail: DashboardDetailKind?
-    @State private var displayedDetail: DashboardDetailKind?
-    @State private var deferredDetailTask: Task<Void, Never>?
     @State private var isArchiveMetricsExpanded = false
 
     static func == (lhs: DashboardSummaryContentView, rhs: DashboardSummaryContentView) -> Bool {
@@ -2511,7 +2467,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             let activeDetail = selectedDetail.flatMap { selected in
                 visibleMetrics.first { $0.detail == selected }?.detail
             }
-            let renderedDetail = displayedDetail.flatMap { displayed in
+            let renderedDetail = selectedDetail.flatMap { displayed in
                 visibleMetrics.first { $0.detail == displayed }?.detail
             }
             IssueSummaryView(issues: model.cachedIssues)
@@ -2542,28 +2498,14 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onDisappear {
-            deferredDetailTask?.cancel()
-        }
     }
 
     private func selectMetric(_ metric: Metric) {
         if let detail = metric.detail {
-            guard selectedDetail != detail || displayedDetail != detail else {
+            guard selectedDetail != detail else {
                 return
             }
             selectedDetail = detail
-            deferredDetailTask?.cancel()
-            guard klmsMacInteractionDetailDelayNanoseconds > 0 else {
-                displayedDetail = detail
-                return
-            }
-            deferredDetailTask = Task { @MainActor in
-                await Task.yield()
-                try? await Task.sleep(nanoseconds: klmsMacInteractionDetailDelayNanoseconds)
-                guard !Task.isCancelled else { return }
-                displayedDetail = detail
-            }
         }
     }
 
@@ -2604,7 +2546,6 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                 return
             }
             self.selectedDetail = nil
-            displayedDetail = nil
         }
     }
 

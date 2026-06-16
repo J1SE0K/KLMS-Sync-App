@@ -1,7 +1,5 @@
 import SwiftUI
 
-private let klmsInteractionDetailDelayNanoseconds: UInt64 = 0
-
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -2974,126 +2972,139 @@ private struct RemoteAttentionStack: View {
 
 private struct ServerRelayConnectionPanel: View {
     @ObservedObject var model: CompanionModel
+    @State private var isExpanded = false
     @State private var showConnectionFields = false
     private let actionColumns = [
         GridItem(.adaptive(minimum: 145), spacing: 8),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 12) {
+                if !model.connectionMessage.isEmpty {
+                    ConnectionNoticeBanner(
+                        message: model.connectionMessage,
+                        succeeded: model.connectionSucceeded
+                    )
+                }
+
+                Button {
+                    showConnectionFields.toggle()
+                } label: {
+                    HStack(spacing: 8) {
+                        Label("서버 연결 정보", systemImage: "link")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer(minLength: 8)
+                        Text(model.serverRelayConfigured ? "저장됨" : "미설정")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
+                        Image(systemName: showConnectionFields ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsSecondaryText)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.klmsBorder, lineWidth: 1)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(KLMSCardButtonStyle())
+                .accessibilityHint(showConnectionFields ? "서버 정보 접기" : "서버 정보 펼치기")
+
+                if showConnectionFields {
+                    VStack(alignment: .leading, spacing: 8) {
+                        CompanionConnectionInput(
+                            title: "서버 URL",
+                            detail: "Cloudflare Worker 같은 공개 HTTPS 주소만 넣습니다. 집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.",
+                            text: $model.serverURL
+                        )
+                        CompanionConnectionInput(
+                            title: "클라이언트 토큰",
+                            detail: "iPhone/iPad/Windows용 토큰입니다. 상태 조회와 실행 요청만 할 수 있으며, Mac 전용 토큰은 여기에 넣지 않습니다.",
+                            text: $model.serverToken,
+                            secure: true
+                        )
+                        CompanionSettingHelpText("Mac 앱에는 같은 서버 URL과 별도의 Mac 전용 토큰이 저장되어 있어야 합니다. 실제 KLMS 동기화는 Mac 앱이 처리합니다.")
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("연결")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                    LazyVGrid(columns: actionColumns, spacing: 8) {
+                        connectionButton("붙여넣기", systemImage: "doc.on.clipboard") {
+                            model.pasteServerRelayConnectionInfo()
+                        }
+                        connectionAsyncButton("연결 확인", systemImage: "checkmark.seal") {
+                            await model.checkServerRelayConnection()
+                        }
+                        .disabled(!model.serverRelayConfigured || model.isRefreshing)
+                        connectionAsyncButton("요약 갱신", systemImage: "arrow.triangle.2.circlepath") {
+                            await model.createCommand(.report)
+                        }
+                        .disabled(!model.serverRelayConfigured || model.isSubmitting || model.hasInFlightRequest)
+                    }
+                    CompanionSettingHelpText("붙여넣기는 복사한 서버 연결 정보를 한 번에 입력합니다. 연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다. 요약 갱신은 Mac 앱에 최신 상태를 다시 올려 달라고 요청합니다.")
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("복사")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                    LazyVGrid(columns: actionColumns, spacing: 8) {
+                        connectionButton("URL 복사", systemImage: "link") {
+                            model.copyServerRelayURL()
+                        }
+                        .disabled(model.serverURL.isEmpty)
+                        connectionButton("연결 정보 복사", systemImage: "doc.on.doc") {
+                            model.copyServerRelayConnectionInfo()
+                        }
+                        .disabled(model.serverURL.isEmpty || model.serverToken.isEmpty)
+                        connectionButton("클라이언트 토큰 복사", systemImage: "key") {
+                            model.copyServerRelayClientToken()
+                        }
+                        .disabled(model.serverToken.isEmpty)
+                    }
+                    CompanionSettingHelpText("복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.")
+                }
+
+                Button(role: .destructive) {
+                    model.clearServerRelayConnectionInfo()
+                } label: {
+                    Label("연결 정보 지우기", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
+            }
+            .padding(.top, 8)
+        } label: {
+            HStack(spacing: 10) {
                 Image(systemName: model.serverRelayConfigured ? "checkmark.circle.fill" : "server.rack")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
+                    .frame(width: 32, height: 32)
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("서버 릴레이")
                         .font(.headline)
                     Text(model.serverRelayConfigured ? "서버 연결 정보가 저장되어 있습니다." : "Cloudflare 릴레이 연결 정보를 붙여넣어 주세요.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
-            }
-
-            if !model.connectionMessage.isEmpty {
-                ConnectionNoticeBanner(
-                    message: model.connectionMessage,
-                    succeeded: model.connectionSucceeded
-                )
-            }
-
-            Button {
-                showConnectionFields.toggle()
-            } label: {
-                HStack(spacing: 8) {
-                    Label("서버 릴레이 정보", systemImage: "link")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer(minLength: 8)
-                    Text(model.serverRelayConfigured ? "저장됨" : "미설정")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
-                    Image(systemName: showConnectionFields ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.klmsBorder, lineWidth: 1)
-                )
-                .contentShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(KLMSCardButtonStyle())
-            .accessibilityHint(showConnectionFields ? "서버 정보 접기" : "서버 정보 펼치기")
-
-            if showConnectionFields {
-                VStack(alignment: .leading, spacing: 8) {
-                    CompanionConnectionInput(
-                        title: "서버 URL",
-                        detail: "Cloudflare Worker 같은 공개 HTTPS 주소만 넣습니다. 집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.",
-                        text: $model.serverURL
-                    )
-                    CompanionConnectionInput(
-                        title: "클라이언트 토큰",
-                        detail: "iPhone/iPad/Windows용 토큰입니다. 상태 조회와 실행 요청만 할 수 있으며, Mac 전용 토큰은 여기에 넣지 않습니다.",
-                        text: $model.serverToken,
-                        secure: true
-                    )
-                    CompanionSettingHelpText("Mac 앱에는 같은 서버 URL과 별도의 Mac 전용 토큰이 저장되어 있어야 합니다. 실제 KLMS 동기화는 Mac 앱이 처리합니다.")
-                }
-                .padding(.top, 8)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("연결")
-                    .font(.caption.weight(.semibold))
+                Text(model.serverRelayConfigured ? "저장됨" : "미설정")
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
-                LazyVGrid(columns: actionColumns, spacing: 8) {
-                    connectionButton("붙여넣기", systemImage: "doc.on.clipboard") {
-                        model.pasteServerRelayConnectionInfo()
-                    }
-                    connectionAsyncButton("연결 확인", systemImage: "checkmark.seal") {
-                        await model.checkServerRelayConnection()
-                    }
-                    .disabled(!model.serverRelayConfigured || model.isRefreshing)
-                    connectionAsyncButton("요약 갱신", systemImage: "arrow.triangle.2.circlepath") {
-                        await model.createCommand(.report)
-                    }
-                    .disabled(!model.serverRelayConfigured || model.isSubmitting || model.hasInFlightRequest)
-                }
-                CompanionSettingHelpText("붙여넣기는 복사한 서버 연결 정보를 한 번에 입력합니다. 연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다. 요약 갱신은 Mac 앱에 최신 상태를 다시 올려 달라고 요청합니다.")
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("복사")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                LazyVGrid(columns: actionColumns, spacing: 8) {
-                    connectionButton("URL 복사", systemImage: "link") {
-                        model.copyServerRelayURL()
-                    }
-                    .disabled(model.serverURL.isEmpty)
-                    connectionButton("연결 정보 복사", systemImage: "doc.on.doc") {
-                        model.copyServerRelayConnectionInfo()
-                    }
-                    .disabled(model.serverURL.isEmpty || model.serverToken.isEmpty)
-                    connectionButton("클라이언트 토큰 복사", systemImage: "key") {
-                        model.copyServerRelayClientToken()
-                    }
-                    .disabled(model.serverToken.isEmpty)
-                }
-                CompanionSettingHelpText("복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.")
-            }
-
-            Button(role: .destructive) {
-                model.clearServerRelayConnectionInfo()
-            } label: {
-                Label("연결 정보 지우기", systemImage: "trash")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-            .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
         }
         .padding(12)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
@@ -4783,59 +4794,19 @@ private struct KLMSCardButtonStyle: ButtonStyle {
 
 private struct DeferredInteractionExpansion<Content: View>: View {
     var isExpanded: Bool
-    var delayNanoseconds = klmsInteractionDetailDelayNanoseconds
     private let content: () -> Content
-    @State private var isVisible = false
-    @State private var deferredTask: Task<Void, Never>?
 
     init(
         isExpanded: Bool,
-        delayNanoseconds: UInt64 = klmsInteractionDetailDelayNanoseconds,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.isExpanded = isExpanded
-        self.delayNanoseconds = delayNanoseconds
         self.content = content
     }
 
     var body: some View {
-        if delayNanoseconds == 0 {
-            if isExpanded {
-                content()
-            }
-        } else {
-            Group {
-                if isVisible {
-                    content()
-                }
-            }
-            .onAppear {
-                updateVisibility(isExpanded)
-            }
-            .onChange(of: isExpanded) { _, newValue in
-                updateVisibility(newValue)
-            }
-            .onDisappear {
-                deferredTask?.cancel()
-            }
-        }
-    }
-
-    private func updateVisibility(_ expanded: Bool) {
-        deferredTask?.cancel()
-        guard expanded else {
-            isVisible = false
-            return
-        }
-        guard delayNanoseconds > 0 else {
-            isVisible = true
-            return
-        }
-        deferredTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: delayNanoseconds)
-            guard !Task.isCancelled else { return }
-            isVisible = true
+        if isExpanded {
+            content()
         }
     }
 }
@@ -5575,8 +5546,6 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     var category: DashboardMetricCategory
     @ObservedObject var model: CompanionModel
     @State private var selectedItemID: String?
-    @State private var detailItemID: String?
-    @State private var deferredDetailTask: Task<Void, Never>?
 
     private var items: [ServerRelaySyncItem] {
         model.cachedVisibleDashboardItems(for: category.rawValue)
@@ -5587,10 +5556,6 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     private var selectedItem: ServerRelaySyncItem? {
-        if let detailItemID,
-           let item = items.first(where: { $0.id == detailItemID }) {
-            return item
-        }
         if let selectedItemID,
            let item = items.first(where: { $0.id == selectedItemID }) {
             return item
@@ -5619,32 +5584,16 @@ private struct WorkstationDashboardCategoryWorkspace: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onDisappear {
-            deferredDetailTask?.cancel()
-        }
     }
 
     private func selectItem(_ item: ServerRelaySyncItem) {
         selectedItemID = item.id
-        deferredDetailTask?.cancel()
-        guard klmsInteractionDetailDelayNanoseconds > 0 else {
-            detailItemID = item.id
-            return
-        }
-        deferredDetailTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            detailItemID = item.id
-        }
     }
 }
 
 private struct WorkstationTasksWorkspace: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedItemID: String?
-    @State private var detailItemID: String?
-    @State private var deferredDetailTask: Task<Void, Never>?
 
     private var combinedItems: [ServerRelaySyncItem] {
         [
@@ -5659,10 +5608,6 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var selectedItem: ServerRelaySyncItem? {
-        if let detailItemID,
-           let item = combinedItems.first(where: { $0.id == detailItemID }) {
-            return item
-        }
         if let selectedItemID,
            let item = combinedItems.first(where: { $0.id == selectedItemID }) {
             return item
@@ -5691,9 +5636,6 @@ private struct WorkstationTasksWorkspace: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onDisappear {
-            deferredDetailTask?.cancel()
-        }
     }
 
     private func taskPanel(_ category: DashboardMetricCategory) -> some View {
@@ -5708,17 +5650,6 @@ private struct WorkstationTasksWorkspace: View {
 
     private func selectItem(_ item: ServerRelaySyncItem) {
         selectedItemID = item.id
-        deferredDetailTask?.cancel()
-        guard klmsInteractionDetailDelayNanoseconds > 0 else {
-            detailItemID = item.id
-            return
-        }
-        deferredDetailTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            detailItemID = item.id
-        }
     }
 }
 
@@ -5775,8 +5706,6 @@ private struct CompanionInlineItemRowsView: View {
     var externalSelectedItemID: String?
     var onSelectItem: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
-    @State private var detailItemID: String?
-    @State private var deferredDetailTask: Task<Void, Never>?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
@@ -5814,7 +5743,7 @@ private struct CompanionInlineItemRowsView: View {
                     .buttonStyle(KLMSCardButtonStyle())
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "오른쪽 상세 패널에 항목을 표시합니다.")
 
-                    if presentation == .inlineDetail && detailItemID == item.id {
+                    if presentation == .inlineDetail && selectedItemID == item.id {
                         ServerSyncItemInlineDetailPanel(item: item, model: model)
                     }
                 }
@@ -5851,26 +5780,12 @@ private struct CompanionInlineItemRowsView: View {
 
     private func select(_ item: ServerRelaySyncItem) {
         if presentation == .externalDetail {
-            selectedItemID = item.id
-            detailItemID = nil
-            deferredDetailTask?.cancel()
             onSelectItem(item)
             return
         }
 
         let nextID = selectedItemID == item.id ? nil : item.id
         selectedItemID = nextID
-        deferredDetailTask?.cancel()
-        guard klmsInteractionDetailDelayNanoseconds > 0 else {
-            detailItemID = nextID
-            return
-        }
-        deferredDetailTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            detailItemID = nextID
-        }
     }
 
 }
@@ -5879,7 +5794,6 @@ private struct CompanionSelectableItemListRows: View {
     var items: [ServerRelaySyncItem]
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
-    @State private var deferredSelectionTask: Task<Void, Never>?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
@@ -5922,17 +5836,7 @@ private struct CompanionSelectableItemListRows: View {
 
     private func select(_ item: ServerRelaySyncItem) {
         selectedItemID = item.id
-        deferredSelectionTask?.cancel()
-        guard klmsInteractionDetailDelayNanoseconds > 0 else {
-            onSelect(item)
-            return
-        }
-        deferredSelectionTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: klmsInteractionDetailDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            onSelect(item)
-        }
+        onSelect(item)
     }
 
 }
@@ -11729,13 +11633,31 @@ private struct RemoteCommandRow: View {
 }
 
 private struct RemotePrivacyNote: View {
+    @State private var isExpanded = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("원격 요청은 클라이언트 토큰으로 보호됩니다", systemImage: "lock")
-                .font(.subheadline.weight(.semibold))
+        DisclosureGroup(isExpanded: $isExpanded) {
             Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태만 보관합니다. 파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
                 .font(.caption)
                 .foregroundStyle(Color.klmsSecondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "lock")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 30, height: 30)
+                    .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 9))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("개인정보와 서버 보관")
+                        .font(.subheadline.weight(.semibold))
+                    Text("서버에 무엇이 올라가는지 확인할 때만 펼치세요.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
+                Spacer(minLength: 0)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
