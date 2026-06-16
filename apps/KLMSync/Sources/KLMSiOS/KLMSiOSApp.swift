@@ -2696,9 +2696,7 @@ private struct CompanionImmediateSettingsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "slider.horizontal.3")
@@ -2762,7 +2760,7 @@ private struct CompanionImmediateSettingsPanel: View {
                     .disabled(model.isSubmitting)
                 }
             }
-            .transition(.opacity.combined(with: .move(edge: .top)))
+            .transition(.opacity)
             }
         }
         .padding(12)
@@ -2785,9 +2783,7 @@ private struct CompanionImmediateSettingRow<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -2821,7 +2817,7 @@ private struct CompanionImmediateSettingRow<Content: View>: View {
                     content()
                 }
                 .padding(.top, 2)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(10)
@@ -2882,9 +2878,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 8) {
                     Image(systemName: systemImage)
@@ -2919,7 +2913,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
                     content()
                 }
                 .padding(.top, 2)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(10)
@@ -3145,9 +3139,7 @@ private struct ServerRelayConnectionPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: model.serverRelayConfigured ? "checkmark.circle.fill" : "server.rack")
@@ -3269,7 +3261,7 @@ private struct ServerRelayConnectionPanel: View {
                         .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(12)
@@ -10263,9 +10255,7 @@ private struct RemoteDiagnosticPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isPanelExpanded.toggle()
-                }
+                isPanelExpanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: "wrench.and.screwdriver")
@@ -10323,7 +10313,7 @@ private struct RemoteDiagnosticPanel: View {
                         }
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(12)
@@ -10457,9 +10447,7 @@ private struct RemoteSettingsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: "macbook.and.iphone")
@@ -10507,7 +10495,7 @@ private struct RemoteSettingsPanel: View {
                     }
                 }
             }
-            .transition(.opacity.combined(with: .move(edge: .top)))
+            .transition(.opacity)
             }
         }
         .padding(12)
@@ -10607,9 +10595,7 @@ private struct RemoteSettingGroupSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .center, spacing: 8) {
                     Image(systemName: group.systemImage)
@@ -10644,7 +10630,7 @@ private struct RemoteSettingGroupSection: View {
                         RemoteSettingRow(setting: setting, model: model)
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(11)
@@ -11632,9 +11618,7 @@ private struct RemoteSettingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -11672,7 +11656,7 @@ private struct RemoteSettingRow: View {
                     control
                 }
                 .padding(.top, 2)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .padding(11)
@@ -11970,9 +11954,7 @@ private struct RemotePrivacyNote: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                withAnimation(.easeInOut(duration: 0.08)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "lock")
@@ -12000,7 +11982,7 @@ private struct RemotePrivacyNote: View {
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
         .padding(12)
