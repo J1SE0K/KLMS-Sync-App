@@ -242,7 +242,11 @@ struct SettingsView: View {
                     defaultValue: true,
                     description: "동기화 전에 로그인 여부를 확인하고, 필요하면 인증번호를 앱에 표시합니다."
                 )
-                described("수동 인증번호는 앱에 표시된 번호를 휴대폰에서 선택하는 방식입니다. Kaikey 자동은 가능한 경우 그 선택 과정까지 자동으로 처리합니다.") {
+                described(
+                    "보조 모드",
+                    summary: binding(.loginAssistMode, defaultValue: "manual-digits").wrappedValue == "kaikey-auto" ? "Kaikey 자동" : "수동 인증번호",
+                    "수동 인증번호는 앱에 표시된 번호를 휴대폰에서 선택하는 방식입니다. Kaikey 자동은 가능한 경우 그 선택 과정까지 자동으로 처리합니다."
+                ) {
                     Picker("보조 모드", selection: binding(.loginAssistMode, defaultValue: "manual-digits")) {
                         Text("수동 인증번호").tag("manual-digits")
                         Text("Kaikey 자동").tag("kaikey-auto")
@@ -267,7 +271,11 @@ struct SettingsView: View {
                 systemImage: "arrow.triangle.2.circlepath",
                 defaultExpanded: true
             ) {
-                described("자동은 캐시와 변경 여부를 보고 필요한 범위를 고릅니다. 빠른 모드는 기존 데이터를 우선 재사용하고, 전체는 가능한 데이터를 다시 읽습니다.") {
+                described(
+                    "동기화 모드",
+                    summary: settingsModeSummary(binding(.syncMode, defaultValue: "auto").wrappedValue),
+                    "자동은 캐시와 변경 여부를 보고 필요한 범위를 고릅니다. 빠른 모드는 기존 데이터를 우선 재사용하고, 전체는 가능한 데이터를 다시 읽습니다."
+                ) {
                     Picker("동기화 모드", selection: binding(.syncMode, defaultValue: "auto")) {
                         Text("자동").tag("auto")
                         Text("빠른 모드").tag("quick")
@@ -292,7 +300,11 @@ struct SettingsView: View {
                     .safariBackgroundWindowEnabled,
                     description: "KLMS를 읽을 때 쓰는 전용 Safari 창을 최소화해 현재 작업 화면을 덜 가리게 합니다."
                 )
-                described("옆으로 치우는 방식은 쓰지 않습니다. KLMS 전용 Safari 창을 만들고, 필요할 때 최소화한 채 재사용합니다.") {
+                described(
+                    "Safari 백그라운드 방식",
+                    summary: binding(.safariBackgroundWindowMode, defaultValue: "minimize").wrappedValue == "none" ? "사용 안 함" : "최소화",
+                    "옆으로 치우는 방식은 쓰지 않습니다. KLMS 전용 Safari 창을 만들고, 필요할 때 최소화한 채 재사용합니다."
+                ) {
                     Picker("Safari 백그라운드 방식", selection: binding(.safariBackgroundWindowMode, defaultValue: "minimize")) {
                         Text("최소화").tag("minimize")
                         Text("사용 안 함").tag("none")
@@ -357,7 +369,11 @@ struct SettingsView: View {
                 systemImage: "folder.badge.gearshape",
                 defaultExpanded: true
             ) {
-                described("자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠른 모드는 기존 캐시 재사용을 우선합니다.") {
+                described(
+                    "파일 탐색 모드",
+                    summary: settingsModeSummary(sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick"]).wrappedValue),
+                    "자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠른 모드는 기존 캐시 재사용을 우선합니다."
+                ) {
                     Picker("파일 탐색 모드", selection: sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick"])) {
                         Text("자동").tag("auto")
                         Text("빠른 모드").tag("quick")
@@ -422,7 +438,11 @@ struct SettingsView: View {
                 systemImage: "network",
                 defaultExpanded: true
             ) {
-                described("Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.") {
+                described(
+                    "서버 URL",
+                    summary: model.serverRelayURL.isEmpty ? "미설정" : "저장됨",
+                    "Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요."
+                ) {
                     settingsTextInput(
                         "서버 URL",
                         text: Binding(
@@ -431,7 +451,11 @@ struct SettingsView: View {
                         )
                     )
                 }
-                described("iPhone/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다.") {
+                described(
+                    "클라이언트 토큰",
+                    summary: model.serverRelayClientToken.isEmpty ? "미설정" : "저장됨",
+                    "iPhone/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다."
+                ) {
                     settingsTextInput(
                         "클라이언트 토큰",
                         text: Binding(
@@ -441,7 +465,11 @@ struct SettingsView: View {
                         secure: true
                     )
                 }
-                described("Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다.") {
+                described(
+                    "Mac 전용 토큰",
+                    summary: model.serverRelayWorkerToken.isEmpty ? "미설정" : "저장됨",
+                    "Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다."
+                ) {
                     settingsTextInput(
                         "Mac 전용 토큰",
                         text: Binding(
@@ -458,7 +486,11 @@ struct SettingsView: View {
                 detail: "다른 기기가 서버를 통해 Mac 앱에 요청을 보낼 수 있게 합니다.",
                 systemImage: "bolt.horizontal"
             ) {
-                described("iPhone/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다.") {
+                described(
+                    "서버 릴레이 사용",
+                    summary: model.serverRelayEnabled ? "켜짐" : "꺼짐",
+                    "iPhone/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다."
+                ) {
                     Toggle(
                         "서버 릴레이 사용",
                         isOn: Binding(
@@ -467,7 +499,11 @@ struct SettingsView: View {
                         )
                     )
                 }
-                SettingsFieldRow(description: "Mac 앱이 서버 요청을 기다리는지 확인합니다.") {
+                SettingsFieldRow(
+                    title: "서버 상태",
+                    summary: model.serverRelayStatusMessage ?? "대기 중",
+                    description: "Mac 앱이 서버 요청을 기다리는지 확인합니다."
+                ) {
                     LabeledContent("서버 상태") {
                         Text(model.serverRelayStatusMessage ?? "대기 중")
                             .foregroundStyle(Color.klmsMacSecondaryText)
@@ -549,7 +585,11 @@ struct SettingsView: View {
                 systemImage: "slider.horizontal.3",
                 defaultExpanded: true
             ) {
-                described("화면 모드는 서버에 바로 저장됩니다. 서버가 연결되어 있으면 iPhone/iPad/Windows도 같은 모드를 따라갑니다.") {
+                described(
+                    "색상 모드",
+                    summary: KLMSAppearanceMode(rawValue: model.serverRelaySharedAppearanceModeValue)?.title ?? "시스템",
+                    "화면 모드는 서버에 바로 저장됩니다. 서버가 연결되어 있으면 iPhone/iPad/Windows도 같은 모드를 따라갑니다."
+                ) {
                     Picker("색상 모드", selection: Binding(
                         get: { model.serverRelaySharedAppearanceModeValue },
                         set: { value in
@@ -565,7 +605,11 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                described("끄면 iPhone/iPad/Windows에서 실행한 동기화는 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다.") {
+                described(
+                    "공지 메모 갱신",
+                    summary: model.serverRelaySharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐",
+                    "끄면 iPhone/iPad/Windows에서 실행한 동기화는 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다."
+                ) {
                     Toggle(
                         "원격 실행에서 공지 메모도 갱신",
                         isOn: Binding(
@@ -677,7 +721,11 @@ struct SettingsView: View {
             systemImage: "network"
         ) {
             VStack(alignment: .leading, spacing: 12) {
-                described("Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.") {
+                described(
+                    "서버 URL",
+                    summary: model.serverRelayURL.isEmpty ? "미설정" : "저장됨",
+                    "Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요."
+                ) {
                     settingsTextInput(
                         "서버 URL",
                         text: Binding(
@@ -686,7 +734,11 @@ struct SettingsView: View {
                         )
                     )
                 }
-                described("iPhone/iPad/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다.") {
+                described(
+                    "클라이언트 토큰",
+                    summary: model.serverRelayClientToken.isEmpty ? "미설정" : "저장됨",
+                    "iPhone/iPad/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다."
+                ) {
                     settingsTextInput(
                         "클라이언트 토큰",
                         text: Binding(
@@ -696,7 +748,11 @@ struct SettingsView: View {
                         secure: true
                     )
                 }
-                described("Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다.") {
+                described(
+                    "Mac 전용 토큰",
+                    summary: model.serverRelayWorkerToken.isEmpty ? "미설정" : "저장됨",
+                    "Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다."
+                ) {
                     settingsTextInput(
                         "Mac 전용 토큰",
                         text: Binding(
@@ -709,7 +765,11 @@ struct SettingsView: View {
 
                 Divider()
 
-                described("iPhone/iPad/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다.") {
+                described(
+                    "서버 릴레이 사용",
+                    summary: model.serverRelayEnabled ? "켜짐" : "꺼짐",
+                    "iPhone/iPad/Windows가 Mac과 같은 네트워크에 없어도 서버를 통해 Mac 앱에 실행 요청과 상태 확인을 보낼 수 있게 합니다."
+                ) {
                     Toggle(
                         "서버 릴레이 사용",
                         isOn: Binding(
@@ -718,7 +778,11 @@ struct SettingsView: View {
                         )
                     )
                 }
-                SettingsFieldRow(description: "Mac 앱이 서버 요청을 기다리는지 확인합니다.") {
+                SettingsFieldRow(
+                    title: "서버 상태",
+                    summary: model.serverRelayStatusMessage ?? "대기 중",
+                    description: "Mac 앱이 서버 요청을 기다리는지 확인합니다."
+                ) {
                     LabeledContent("서버 상태") {
                         Text(model.serverRelayStatusMessage ?? "대기 중")
                             .foregroundStyle(Color.klmsMacSecondaryText)
@@ -801,16 +865,26 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func described<Content: View>(
+        _ title: String,
+        summary: String? = nil,
         _ description: String?,
+        defaultExpanded: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        SettingsFieldRow(description: description) {
+        SettingsFieldRow(
+            title: title,
+            summary: summary,
+            description: description,
+            defaultExpanded: defaultExpanded
+        ) {
             content()
         }
     }
 
     private func configText(_ title: String, _ key: EnvKnownKey, description: String? = nil) -> some View {
-        described(description) {
+        let value = model.configValue(key)
+        let summary = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "비어 있음" : value
+        return described(title, summary: summary, description) {
             settingsTextInput(title, text: binding(key))
         }
     }
@@ -839,7 +913,7 @@ struct SettingsView: View {
         defaultValue: Bool = false,
         description: String? = nil
     ) -> some View {
-        described(description) {
+        described(title, summary: model.boolConfigValue(key, default: defaultValue) ? "켜짐" : "꺼짐", description) {
             Toggle(title, isOn: boolBinding(key, defaultValue: defaultValue))
         }
     }
@@ -850,8 +924,19 @@ struct SettingsView: View {
         defaultValue: Bool = false,
         description: String? = nil
     ) -> some View {
-        described(description) {
+        described(title, summary: !model.boolConfigValue(key, default: defaultValue) ? "켜짐" : "꺼짐", description) {
             Toggle(title, isOn: invertedBoolBinding(key, defaultValue: defaultValue))
+        }
+    }
+
+    private func settingsModeSummary(_ value: String) -> String {
+        switch value {
+        case "quick":
+            return "빠른 모드"
+        case "full":
+            return "전체"
+        default:
+            return "자동"
         }
     }
 
@@ -995,60 +1080,87 @@ private struct SettingsGroupBox<Content: View>: View {
 }
 
 private struct SettingsFieldRow<Content: View>: View {
+    var title: String
+    var summary: String?
     var description: String?
-    @State private var isDescriptionExpanded = false
+    @State private var isExpanded: Bool
     @ViewBuilder var content: () -> Content
+
+    init(
+        title: String,
+        summary: String? = nil,
+        description: String? = nil,
+        defaultExpanded: Bool = false,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.summary = summary
+        self.description = description
+        _isExpanded = State(initialValue: defaultExpanded)
+        self.content = content
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            content()
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !description.isEmpty {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.08)) {
-                        isDescriptionExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: isDescriptionExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 9, weight: .bold))
-                        Text(isDescriptionExpanded ? "설명 접기" : "설명 보기")
-                            .font(.caption2.weight(.semibold))
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.klmsMacBorder.opacity(0.50), lineWidth: 1)
-                    }
-                    .contentShape(RoundedRectangle(cornerRadius: 8))
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
                 }
-                .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
-                .accessibilityHint(isDescriptionExpanded ? "설명 접기" : "설명 펼치기")
-
-                if isDescriptionExpanded {
-                    SettingsHelpText(description)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 8))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.klmsMacBorder.opacity(0.50), lineWidth: 1)
+            } label: {
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                        if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
+                           !description.isEmpty {
+                            Text(description)
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                                .lineLimit(isExpanded ? 3 : 1)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                    Spacer(minLength: 8)
+                    if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !summary.isEmpty {
+                        Text(summary)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.klmsMacSubtleCardBackground.opacity(0.74), in: Capsule())
+                    }
+                    SettingsExpansionBadge(isExpanded: isExpanded)
                 }
+                .contentShape(RoundedRectangle(cornerRadius: 9))
+            }
+            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
+            .accessibilityHint(isExpanded ? "\(title) 설정 접기" : "\(title) 설정 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    content()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 9))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 9)
+                        .stroke(Color.klmsMacBorder.opacity(0.50), lineWidth: 1)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacCardBackground.opacity(0.92), in: RoundedRectangle(cornerRadius: 10))
+        .background(isExpanded ? Color.klmsMacCardBackground.opacity(0.96) : Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.klmsMacBorder.opacity(0.86), lineWidth: 1)
+                .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.38) : Color.klmsMacBorder.opacity(0.86), lineWidth: 1)
         }
     }
 }

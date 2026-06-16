@@ -2726,6 +2726,7 @@ private struct CompanionImmediateSettingsPanel: View {
             VStack(alignment: .leading, spacing: 10) {
                 CompanionImmediateSettingRow(
                     title: "화면 모드",
+                    statusText: KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue)?.title ?? "시스템",
                     detail: "기기 설정을 따르거나, KLMS Sync에서만 라이트/다크 모드를 고정합니다."
                 ) {
                     Picker("화면 모드", selection: Binding(
@@ -2745,6 +2746,7 @@ private struct CompanionImmediateSettingsPanel: View {
 
                 CompanionImmediateSettingRow(
                     title: "공지 메모",
+                    statusText: model.sharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐",
                     detail: "끄면 iPhone/iPad/Windows에서 실행한 동기화는 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다."
                 ) {
                     Toggle("원격 실행에서 공지 메모도 갱신", isOn: Binding(
@@ -2775,48 +2777,59 @@ private struct CompanionImmediateSettingsPanel: View {
 
 private struct CompanionImmediateSettingRow<Content: View>: View {
     var title: String
+    var statusText: String
     var detail: String
-    @State private var isDetailExpanded = false
+    @State private var isExpanded = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                Spacer(minLength: 8)
-                Button {
-                    withAnimation(.easeInOut(duration: 0.08)) {
-                        isDetailExpanded.toggle()
-                    }
-                } label: {
-                    CompanionDetailDisclosureBadge(isExpanded: isDetailExpanded)
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
                 }
-                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
-                .accessibilityHint(isDetailExpanded ? "\(title) 설명 접기" : "\(title) 설명 펼치기")
-            }
-            if isDetailExpanded {
-                CompanionSettingHelpText(detail)
-                    .padding(9)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 9))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 9)
-                            .stroke(Color.klmsBorder.opacity(0.62), lineWidth: 1)
+            } label: {
+                HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.klmsPrimaryText)
+                        Text(detail)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .lineLimit(isExpanded ? 3 : 1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    Spacer(minLength: 8)
+                    Text(statusText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.74)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(Color.klmsCardBackground, in: Capsule())
+                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 9))
             }
-            CompanionSettingsControlContainer {
-                content()
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 9))
+            .accessibilityHint(isExpanded ? "\(title) 설정 접기" : "\(title) 설정 펼치기")
+
+            if isExpanded {
+                CompanionSettingsControlContainer {
+                    content()
+                }
+                .padding(.top, 2)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 10))
+        .background(isExpanded ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
+                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.44) : Color.klmsBorder.opacity(0.82), lineWidth: 1)
         }
     }
 }
@@ -11563,60 +11576,60 @@ private struct RemoteSettingRow: View {
     var setting: ServerRelaySetting
     @ObservedObject var model: CompanionModel
     @State private var draftValue = ""
-    @State private var isDetailExpanded = false
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(setting.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.klmsPrimaryText)
+            Button {
+                withAnimation(.easeInOut(duration: 0.08)) {
+                    isExpanded.toggle()
                 }
-                Spacer(minLength: 8)
-                Text(settingValueSummary)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.74)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(Color.klmsSubtleCardBackground, in: Capsule())
-            }
-            if let detail = settingExplanation {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.08)) {
-                        isDetailExpanded.toggle()
-                    }
-                } label: {
-                    CompanionDetailDisclosureBadge(isExpanded: isDetailExpanded)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 9))
-                .accessibilityHint(isDetailExpanded ? "\(setting.title) 설명 접기" : "\(setting.title) 설명 펼치기")
-
-                if isDetailExpanded {
-                    CompanionSettingHelpText(detail)
-                        .padding(9)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.klmsSubtleCardBackground.opacity(0.54), in: RoundedRectangle(cornerRadius: 9))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 9)
-                                .stroke(Color.klmsBorder.opacity(0.62), lineWidth: 1)
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(setting.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.klmsPrimaryText)
+                        if let detail = settingExplanation {
+                            Text(detail)
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsSecondaryText)
+                                .lineLimit(isExpanded ? 3 : 1)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 5) {
+                        Text(settingValueSummary)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.74)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(Color.klmsSubtleCardBackground, in: Capsule())
+                        CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+                    }
                 }
+                .contentShape(RoundedRectangle(cornerRadius: 9))
             }
-            CompanionSettingsControlContainer {
-                control
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 9))
+            .accessibilityHint(isExpanded ? "\(setting.title) 설정 접기" : "\(setting.title) 설정 펼치기")
+
+            if isExpanded {
+                CompanionSettingsControlContainer {
+                    control
+                }
+                .padding(.top, 2)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground.opacity(0.88), in: RoundedRectangle(cornerRadius: 10))
+        .background(isExpanded ? Color.klmsCardBackground.opacity(0.96) : Color.klmsCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
+                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.44) : Color.klmsBorder.opacity(0.82), lineWidth: 1)
         }
         .onAppear {
             if draftValue.isEmpty {
