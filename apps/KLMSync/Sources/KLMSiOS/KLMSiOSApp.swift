@@ -12139,10 +12139,14 @@ private struct AuthCodeHero: View {
             Text(digits)
                 .font(.system(size: 38, weight: .black, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(Color.klmsPrimaryCommandButtonForeground)
+                .foregroundStyle(Color.klmsWarningBorder)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(Color.klmsPrimaryCommandButtonBackground, in: RoundedRectangle(cornerRadius: 12))
+                .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: 12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.klmsWarningBorder.opacity(0.44), lineWidth: 1)
+                }
                 .accessibilityLabel("KAIST 인증 번호 \(digits)")
         }
         .padding(14)

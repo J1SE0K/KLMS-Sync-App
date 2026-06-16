@@ -1250,6 +1250,7 @@ final class DashboardDataModelTests: XCTestCase {
         let remoteCancelControl = try sourceStructBody(named: "RemoteCancelControl", in: ios)
         let remoteVerifyCheckRow = try sourceStructBody(named: "RemoteVerifyCheckRow", in: ios)
         let errorBanner = try sourceStructBody(named: "ErrorBanner", in: ios)
+        let authCodeHero = try sourceStructBody(named: "AuthCodeHero", in: ios)
         let companionSection = try sourceBody(
             after: "private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable",
             in: ios,
@@ -1332,6 +1333,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSyncCard.contains("MailPasteAnalyzerPanel(model: model)"))
         XCTAssertFalse(remoteCommandPanel.contains("MailPasteAnalyzerPanel"))
         XCTAssertFalse(statusScreen.contains("RecentRemoteCommandsView"))
+        XCTAssertFalse(authCodeHero.contains("Color.klmsPrimaryCommandButtonBackground"))
+        XCTAssertFalse(authCodeHero.contains("Color.klmsPrimaryCommandButtonForeground"))
+        XCTAssertTrue(authCodeHero.contains("Color.klmsWarningBorder"))
+        XCTAssertTrue(authCodeHero.contains("Color.klmsWarningBackground"))
 
         XCTAssertTrue(settingsScreen.contains("ServerRelayConnectionPanel"))
         XCTAssertTrue(settingsScreen.contains("CompanionImmediateSettingsPanel"))
