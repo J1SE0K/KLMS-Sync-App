@@ -1050,7 +1050,8 @@ final class CompanionModel: ObservableObject {
         return recentItemActions.contains { action in
             action.itemKind == "calendar"
                 && action.itemID == change.id
-                && action.status == .completed
+                && action.status != .failed
+                && action.status != .macUnavailable
                 && action.action.resolvesCalendarChange
         }
     }
@@ -9371,9 +9372,9 @@ private extension ServerRelayItemActionKind {
 
     var resolvesCalendarChange: Bool {
         switch self {
-        case .calendarEdit, .calendarApply, .calendarDelete:
+        case .calendarCreate, .calendarEdit, .calendarApply, .calendarDelete:
             true
-        case .calendarVerify, .calendarCreate:
+        case .calendarVerify:
             false
         default:
             false

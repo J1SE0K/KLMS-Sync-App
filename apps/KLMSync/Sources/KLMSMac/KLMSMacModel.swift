@@ -1917,6 +1917,9 @@ final class KLMSMacModel: ObservableObject {
             location: edit.location,
             notes: "iPhone/iPad 메일 내용 자동 판독에서 요청한 수동 일정입니다."
         )
+        if let change = try? serverRelayCalendarChange(for: action) {
+            markCalendarChangeResolved(change)
+        }
         reloadSnapshot()
         return "캘린더 일정 등록 완료"
     }
