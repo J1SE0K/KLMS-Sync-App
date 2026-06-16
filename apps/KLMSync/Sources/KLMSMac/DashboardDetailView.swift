@@ -163,6 +163,10 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     var snapshot: EngineSnapshot
     private var renderSignature: DashboardRenderSignature
     private var fileDataRenderSignature: DashboardFileData.Signature?
+    private var courseOptions: [String]
+    private var yearOptions: [String]
+    private var semesterOptions: [String]
+    private var hiddenCount: Int
     @State private var searchText = ""
     @State private var selectedCourse = DashboardCourseFilter.all
     @State private var selectedYear = DashboardTermFilter.allYears
@@ -187,6 +191,10 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         self.renderSignature = renderSignature
             ?? DashboardRenderSignature(snapshot: resolvedSnapshot, summary: model.dashboardSummaryCache)
         self.fileDataRenderSignature = kind.requiresFileData ? DashboardFileData.Signature(snapshot: resolvedSnapshot) : nil
+        self.courseOptions = DashboardCourseFilter.options(for: kind, snapshot: resolvedSnapshot)
+        self.yearOptions = DashboardTermFilter.yearOptions(for: kind, snapshot: resolvedSnapshot)
+        self.semesterOptions = DashboardTermFilter.semesterOptions(for: kind, snapshot: resolvedSnapshot)
+        self.hiddenCount = resolvedSnapshot.hiddenSummary.total
         _fileData = State(initialValue: nil)
         _fileDataSignature = State(initialValue: nil)
     }
@@ -345,22 +353,6 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             newOnly: newOnly,
             recentOnly: recentOnly
         )
-    }
-
-    private var courseOptions: [String] {
-        DashboardCourseFilter.options(for: kind, snapshot: snapshot)
-    }
-
-    private var yearOptions: [String] {
-        DashboardTermFilter.yearOptions(for: kind, snapshot: snapshot)
-    }
-
-    private var semesterOptions: [String] {
-        DashboardTermFilter.semesterOptions(for: kind, snapshot: snapshot)
-    }
-
-    private var hiddenCount: Int {
-        snapshot.hiddenSummary.total
     }
 
     private func rebuildFileDataIfNeeded(_ signature: DashboardFileData.Signature?) {
