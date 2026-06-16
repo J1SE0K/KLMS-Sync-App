@@ -10528,7 +10528,7 @@ private struct RemoteSettingGroup: Identifiable {
     var id: String { title }
     var countText: String { "\(settings.count)개" }
     var isDefaultExpanded: Bool {
-        title == "로그인" || title == "실행"
+        false
     }
 
     static func grouped(settings: [ServerRelaySetting]) -> [RemoteSettingGroup] {
@@ -11774,8 +11774,19 @@ private struct RemoteSettingRow: View {
         case .choice:
             return setting.value.nilIfEmpty ?? "선택"
         case .number, .text:
-            return setting.value.nilIfEmpty ?? "비어 있음"
+            return compactSettingValueSummary(setting.value)
         }
+    }
+
+    private func compactSettingValueSummary(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "비어 있음"
+        }
+        if trimmed.contains("/") || trimmed.contains("\\") || trimmed.count > 18 {
+            return "저장됨"
+        }
+        return trimmed
     }
 }
 

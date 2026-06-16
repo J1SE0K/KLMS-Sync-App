@@ -892,10 +892,21 @@ struct SettingsView: View {
 
     private func configText(_ title: String, _ key: EnvKnownKey, description: String? = nil) -> some View {
         let value = model.configValue(key)
-        let summary = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "비어 있음" : value
+        let summary = settingsInlineSummary(value)
         return described(title, summary: summary, description) {
             settingsTextInput(title, text: binding(key))
         }
+    }
+
+    private func settingsInlineSummary(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "비어 있음"
+        }
+        if trimmed.contains("/") || trimmed.contains("\\") || trimmed.count > 18 {
+            return "저장됨"
+        }
+        return trimmed
     }
 
     @ViewBuilder
@@ -1230,7 +1241,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
     init(
         title: String,
         detail: String,
-        defaultExpanded: Bool = true,
+        defaultExpanded: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
