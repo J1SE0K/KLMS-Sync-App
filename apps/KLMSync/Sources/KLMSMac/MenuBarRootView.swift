@@ -3703,6 +3703,7 @@ private struct LoginPanelView: View {
 private struct VerifyPanelView: View {
     var snapshot: EngineSnapshot
     @State private var isRemainingIssuesExpanded = false
+    @State private var isAllChecksExpanded = false
     private let primaryVisibleIssueCount = 1
 
     var body: some View {
@@ -3740,15 +3741,13 @@ private struct VerifyPanelView: View {
                         }
                     }
 
-                    DisclosureGroup {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(verify.checks) { check in
-                                VerifyCheckExplanationRowView(check: check, compact: true)
-                            }
+                    DiagnosticChecksDisclosure(
+                        title: "전체 상태 검사 항목 \(verify.checks.count)개",
+                        isExpanded: $isAllChecksExpanded
+                    ) {
+                        ForEach(verify.checks) { check in
+                            VerifyCheckExplanationRowView(check: check, compact: true)
                         }
-                    } label: {
-                        Text("전체 상태 검사 항목 \(verify.checks.count)개")
-                            .font(.caption)
                     }
                 }
             }
@@ -3771,6 +3770,7 @@ private struct VerifyPanelView: View {
 private struct VerifyCheckExplanationRowView: View {
     var check: VerifyCheck
     var compact = false
+    @State private var isRawDetailExpanded = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -3795,19 +3795,25 @@ private struct VerifyCheckExplanationRowView: View {
                     Text(check.diagnosticExplanation)
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacPrimaryText)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(check.diagnosticNextAction)
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     if !rawDetail.isEmpty {
-                        Text("원본: \(rawDetail)")
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .textSelection(.enabled)
-                            .lineLimit(2)
-                            .truncationMode(.middle)
-                            .fixedSize(horizontal: false, vertical: true)
+                        DiagnosticChecksDisclosure(
+                            title: "원본 보기",
+                            isExpanded: $isRawDetailExpanded,
+                            compact: true
+                        ) {
+                            Text(rawDetail)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
             }
@@ -3854,6 +3860,7 @@ private struct VerifyCheckExplanationRowView: View {
 private struct DoctorPanelView: View {
     var snapshot: EngineSnapshot
     @State private var isRemainingIssuesExpanded = false
+    @State private var isAllChecksExpanded = false
     private let primaryVisibleIssueCount = 1
 
     var body: some View {
@@ -3889,16 +3896,57 @@ private struct DoctorPanelView: View {
                     }
                 }
 
-                DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(doctor.checks) { check in
-                            DoctorCheckRowView(check: check, compact: true)
-                        }
+                DiagnosticChecksDisclosure(
+                    title: "전체 진단 항목 \(doctor.checks.count)개",
+                    isExpanded: $isAllChecksExpanded
+                ) {
+                    ForEach(doctor.checks) { check in
+                        DoctorCheckRowView(check: check, compact: true)
                     }
-                } label: {
-                    Text("전체 진단 항목 \(doctor.checks.count)개")
-                        .font(.caption)
                 }
+            }
+        }
+    }
+}
+
+private struct DiagnosticChecksDisclosure<Content: View>: View {
+    var title: String
+    @Binding var isExpanded: Bool
+    var compact = false
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 5 : 7) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .frame(width: 12)
+                    Text(title)
+                        .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(Color.klmsMacSecondaryText)
+                .contentShape(RoundedRectangle(cornerRadius: 7))
+            }
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 7))
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: compact ? 5 : 6) {
+                    content()
+                }
+                .padding(.top, compact ? 1 : 3)
+            }
+        }
+        .padding(compact ? 0 : 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(compact ? Color.clear : Color.klmsMacSubtleCardBackground.opacity(0.56), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            if !compact {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsMacBorder.opacity(0.54), lineWidth: 1)
             }
         }
     }

@@ -224,8 +224,7 @@ struct SettingsView: View {
                 title: "로그인",
                 detail: "KLMS 로그인 확인과 인증번호 표시 방식을 정합니다.",
                 systemImage: "person.badge.key",
-                badge: "설정 파일 저장",
-                defaultExpanded: true
+                badge: "설정 파일 저장"
             ) {
                 configText(
                     "KAIST 아이디",
@@ -265,8 +264,7 @@ struct SettingsView: View {
                 title: "실행 방식",
                 detail: "동기화 범위와 캘린더 반영 방식을 정합니다.",
                 systemImage: "arrow.triangle.2.circlepath",
-                badge: "설정 파일 저장",
-                defaultExpanded: true
+                badge: "설정 파일 저장"
             ) {
                 described(
                     "동기화 모드",
@@ -341,8 +339,7 @@ struct SettingsView: View {
                 title: "메모 업데이트",
                 detail: "숨김 처리와 변경 없는 메모의 재작성 방식을 정합니다.",
                 systemImage: "checklist",
-                badge: "설정 파일 저장",
-                defaultExpanded: true
+                badge: "설정 파일 저장"
             ) {
                 configToggle(
                     "숨긴 공지는 메모에서 제외",
@@ -367,8 +364,7 @@ struct SettingsView: View {
                 title: "파일 확인",
                 detail: "파일 탐색 방식과 다운로드 건너뛰기 기준입니다.",
                 systemImage: "folder.badge.gearshape",
-                badge: "설정 파일 저장",
-                defaultExpanded: true
+                badge: "설정 파일 저장"
             ) {
                 described(
                     "파일 탐색 모드",
