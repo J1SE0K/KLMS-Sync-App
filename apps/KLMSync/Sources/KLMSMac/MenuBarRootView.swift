@@ -108,6 +108,7 @@ private struct MacWorkstationLayoutView: View {
                     .equatable()
             case .activityLogs:
                 LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
+                DiagnosticStageDurationPanelView(model: model)
                 RunLogArchivePanelView(model: model)
                 RemoteActivityPanelView(model: model)
             case .diagnostics:

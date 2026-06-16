@@ -1973,6 +1973,7 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertTrue(workstationBody.contains("case .activityLogs:"))
         XCTAssertTrue(workstationBody.contains("LogSummaryPanelView"))
+        XCTAssertTrue(workstationBody.contains("DiagnosticStageDurationPanelView"))
         XCTAssertTrue(workstationBody.contains("RemoteActivityPanelView"))
         XCTAssertTrue(workstationBody.contains("RunLogArchivePanelView"))
         XCTAssertTrue(macRemoteActivityPanel.contains("Text(\"동기화 단계\")"))
@@ -1998,10 +1999,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSummaryContent.contains("ViewThatFits(in: .horizontal)"))
         let logsBody = try sectionBody(in: workstationBody, from: "case .activityLogs:", to: "case .diagnostics:")
         XCTAssertTrue(logsBody.contains("LogSummaryPanelView(model: model"))
+        XCTAssertTrue(logsBody.contains("DiagnosticStageDurationPanelView(model: model)"))
         XCTAssertTrue(logsBody.contains("RemoteActivityPanelView(model: model)"))
         XCTAssertTrue(logsBody.contains("RunLogArchivePanelView(model: model)"))
         XCTAssertLessThan(
             try XCTUnwrap(logsBody.range(of: "LogSummaryPanelView(model: model")).lowerBound,
+            try XCTUnwrap(logsBody.range(of: "DiagnosticStageDurationPanelView(model: model)")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(logsBody.range(of: "DiagnosticStageDurationPanelView(model: model)")).lowerBound,
             try XCTUnwrap(logsBody.range(of: "RunLogArchivePanelView(model: model)")).lowerBound
         )
         XCTAssertLessThan(
