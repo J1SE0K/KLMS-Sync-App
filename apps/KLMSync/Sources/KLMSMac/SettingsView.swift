@@ -47,7 +47,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     var scopeLabel: String {
         switch self {
         case .login, .sync, .notice, .files:
-            "Mac 설정 파일"
+            "설정 파일 저장"
         case .app:
             "바로 반영"
         }
@@ -221,7 +221,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "로그인",
                 detail: "KLMS 로그인 확인과 인증번호 표시 방식을 정합니다.",
-                systemImage: "person.badge.key"
+                systemImage: "person.badge.key",
+                badge: "설정 파일 저장"
             ) {
                 configText(
                     "KAIST 아이디",
@@ -260,7 +261,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "실행 방식",
                 detail: "동기화 범위와 캘린더 반영 방식을 정합니다.",
-                systemImage: "arrow.triangle.2.circlepath"
+                systemImage: "arrow.triangle.2.circlepath",
+                badge: "설정 파일 저장"
             ) {
                 described(
                     "동기화 모드",
@@ -284,7 +286,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "Safari 자동화",
                 detail: "KLMS를 읽을 때 쓰는 전용 Safari 창의 동작입니다.",
-                systemImage: "safari"
+                systemImage: "safari",
+                badge: "설정 파일 저장"
             ) {
                 configToggle(
                     "Safari 백그라운드 창 사용",
@@ -315,7 +318,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "메모 이름",
                 detail: "공지와 확인한 공지를 쓸 Apple Notes 메모 이름입니다.",
-                systemImage: "note.text"
+                systemImage: "note.text",
+                badge: "설정 파일 저장"
             ) {
                 configText(
                     "공지 메모",
@@ -332,7 +336,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "메모 업데이트",
                 detail: "숨김 처리와 변경 없는 메모의 재작성 방식을 정합니다.",
-                systemImage: "checklist"
+                systemImage: "checklist",
+                badge: "설정 파일 저장"
             ) {
                 configToggle(
                     "숨긴 공지는 메모에서 제외",
@@ -356,7 +361,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "파일 확인",
                 detail: "파일 탐색 방식과 다운로드 건너뛰기 기준입니다.",
-                systemImage: "folder.badge.gearshape"
+                systemImage: "folder.badge.gearshape",
+                badge: "설정 파일 저장"
             ) {
                 described(
                     "파일 탐색 모드",
@@ -386,7 +392,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "저장 위치",
                 detail: "새 파일 보관함과 격리 폴더 위치입니다.",
-                systemImage: "folder"
+                systemImage: "folder",
+                badge: "설정 파일 저장"
             ) {
                 configText(
                     "새 파일 보관함",
@@ -403,7 +410,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "문제 분석용 보관",
                 detail: "다운로드 문제를 추적할 때만 켜는 보관 옵션입니다.",
-                systemImage: "archivebox"
+                systemImage: "archivebox",
+                badge: "필요할 때만"
             ) {
                 configToggle(
                     "새 다운로드 임시 폴더 유지",
@@ -424,7 +432,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "바로 반영되는 설정",
                 detail: "화면 모드와 원격 실행 옵션을 모든 기기에 바로 맞춥니다.",
-                systemImage: "slider.horizontal.3"
+                systemImage: "slider.horizontal.3",
+                badge: "바로 반영"
             ) {
                 described(
                     "색상 모드",
@@ -468,7 +477,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "설치와 백업",
                 detail: "엔진 설치 정보와 로컬 상태 백업입니다. 필요할 때만 펼치세요.",
-                systemImage: "shippingbox"
+                systemImage: "shippingbox",
+                badge: "필요할 때만"
             ) {
                 SettingsDisclosureCard {
                     LabeledContent("엔진 위치") {
@@ -546,7 +556,8 @@ struct SettingsView: View {
             SettingsGroupBox(
                 title: "설정 저장 방식",
                 detail: "config.env를 안전하게 수정하는 방식입니다.",
-                systemImage: "doc.text"
+                systemImage: "doc.text",
+                badge: "안내"
             ) {
                 SettingsHelpText("Mac 설정 파일에 저장하는 값은 알 수 없는 config.env 항목과 주석을 그대로 보존합니다.")
             }
@@ -559,7 +570,8 @@ struct SettingsView: View {
         SettingsGroupBox(
             title: "서버 릴레이",
             detail: model.serverRelayConfigured ? "연결 정보 저장됨" : "서버 연결이 필요할 때만 펼치세요.",
-            systemImage: "network"
+            systemImage: "network",
+            badge: "서버"
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 SettingsActionGroupBox(
@@ -858,6 +870,7 @@ private struct SettingsDisclosureLabel: View {
     var title: String
     var detail: String
     var systemImage: String
+    var badge: String? = nil
 
     var body: some View {
         HStack(spacing: 9) {
@@ -867,9 +880,25 @@ private struct SettingsDisclosureLabel: View {
                 .frame(width: 26, height: 26)
                 .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    if let badge = badge?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !badge.isEmpty {
+                        Text(badge)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .lineLimit(1)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.klmsMacCardBackground.opacity(0.72), in: Capsule())
+                            .overlay {
+                                Capsule()
+                                    .stroke(Color.klmsMacBorder.opacity(0.52), lineWidth: 1)
+                            }
+                    }
+                }
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
@@ -883,6 +912,7 @@ private struct SettingsGroupBox<Content: View>: View {
     var title: String
     var detail: String
     var systemImage: String
+    var badge: String?
     @State private var isExpanded: Bool
     @ViewBuilder var content: () -> Content
 
@@ -890,12 +920,14 @@ private struct SettingsGroupBox<Content: View>: View {
         title: String,
         detail: String,
         systemImage: String,
+        badge: String? = nil,
         defaultExpanded: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.detail = detail
         self.systemImage = systemImage
+        self.badge = badge
         _isExpanded = State(initialValue: defaultExpanded)
         self.content = content
     }
@@ -909,7 +941,8 @@ private struct SettingsGroupBox<Content: View>: View {
                     SettingsDisclosureLabel(
                         title: title,
                         detail: detail,
-                        systemImage: systemImage
+                        systemImage: systemImage,
+                        badge: badge
                     )
                     Spacer(minLength: 8)
                     SettingsExpansionBadge(isExpanded: isExpanded)
