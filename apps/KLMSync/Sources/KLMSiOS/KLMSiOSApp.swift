@@ -3762,17 +3762,6 @@ private struct CompanionItemListControls: View {
 
             CompanionControlBox(title: "범위", systemImage: "line.3.horizontal.decrease.circle") {
                 VStack(alignment: .leading, spacing: 8) {
-                    if courseOptions.count > 1 {
-                        companionPickerField(title: "과목", systemImage: "book.closed") {
-                            Picker("과목", selection: $selectedCourse) {
-                                ForEach(courseOptions, id: \.self) { course in
-                                    Text(course).tag(course)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                        }
-                    }
-
                     HStack(spacing: 8) {
                         if yearOptions.count > 1 {
                             companionPickerField(title: "년도", systemImage: "calendar") {
@@ -3794,6 +3783,17 @@ private struct CompanionItemListControls: View {
                                 }
                                 .pickerStyle(.menu)
                             }
+                        }
+                    }
+
+                    if courseOptions.count > 1 {
+                        companionPickerField(title: "과목", systemImage: "book.closed") {
+                            Picker("과목", selection: $selectedCourse) {
+                                ForEach(courseOptions, id: \.self) { course in
+                                    Text(course).tag(course)
+                                }
+                            }
+                            .pickerStyle(.menu)
                         }
                     }
 
