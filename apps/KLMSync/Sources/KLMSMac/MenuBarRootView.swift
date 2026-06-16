@@ -4910,7 +4910,7 @@ private struct MetricTile: View {
 
     private var tint: Color {
         switch metric.detail {
-        case .assignments, .assignmentRecords, .assignmentCandidates:
+        case .assignments, .assignmentCandidates:
             return .klmsMacWarningBorder
         case .exams, .examCandidates, .calendar:
             return .klmsMacSuccessBorder

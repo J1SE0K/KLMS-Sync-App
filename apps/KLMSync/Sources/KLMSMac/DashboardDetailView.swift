@@ -4,7 +4,6 @@ import SwiftUI
 
 enum DashboardDetailKind: String, CaseIterable, Identifiable {
     case assignments
-    case assignmentRecords
     case assignmentCandidates
     case exams
     case examCandidates
@@ -24,8 +23,6 @@ enum DashboardDetailKind: String, CaseIterable, Identifiable {
         switch self {
         case .assignments:
             "과제"
-        case .assignmentRecords:
-            "완료 기록"
         case .assignmentCandidates:
             "과제 후보"
         case .exams:
@@ -232,15 +229,6 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
                     items: ((snapshot.legacyState?.content.assignments ?? []) + model.mailDashboardStateItems(kind: "assignment")).dedupedDashboardItems(),
                     emptyText: "과제가 없습니다.",
                     editor: .assignment,
-                    filters: filters,
-                    snapshot: snapshot,
-                    model: model
-                )
-            case .assignmentRecords:
-                StateItemListView(
-                    items: snapshot.legacyState?.content.completedAssignments ?? [],
-                    emptyText: "완료 기록이 없습니다.",
-                    editor: .assignmentRecord,
                     filters: filters,
                     snapshot: snapshot,
                     model: model
@@ -746,8 +734,6 @@ private enum DashboardCourseFilter {
         switch kind {
         case .assignments:
             courses = snapshot.legacyState?.content.assignments.map(\.course) ?? []
-        case .assignmentRecords:
-            courses = snapshot.legacyState?.content.completedAssignments.map(\.course) ?? []
         case .assignmentCandidates:
             courses = snapshot.legacyState?.content.assignmentCandidates.map(\.course) ?? []
         case .exams:
@@ -842,8 +828,6 @@ private enum DashboardTermFilter {
         switch kind {
         case .assignments:
             terms = snapshot.legacyState?.content.assignments.map(\.academicTerm) ?? []
-        case .assignmentRecords:
-            terms = snapshot.legacyState?.content.completedAssignments.map(\.academicTerm) ?? []
         case .assignmentCandidates:
             terms = snapshot.legacyState?.content.assignmentCandidates.map(\.academicTerm) ?? []
         case .exams:
