@@ -741,6 +741,24 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(ios.contains("minHeight: geometry.size.height"))
     }
 
+    func testMacWorkspaceAccessibilitySmokeScriptTargetsNavigation() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let repoRoot = packageRoot
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let scriptRoot = repoRoot.appendingPathComponent("tools/smoke_klms_mac_accessibility.swift")
+        let script = try String(contentsOf: scriptRoot, encoding: .utf8)
+
+        XCTAssertTrue(script.contains("workspace-settings"))
+        XCTAssertTrue(script.contains("workspace-dashboard"))
+        XCTAssertTrue(script.contains("\"AXIdentifier\" as CFString"))
+        XCTAssertTrue(script.contains("AXUIElementPerformAction(button, kAXPressAction as CFString)"))
+        XCTAssertTrue(script.contains("ok: KLMS Mac workspace accessibility navigation is responsive"))
+    }
+
     func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
