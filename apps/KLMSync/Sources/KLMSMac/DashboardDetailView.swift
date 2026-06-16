@@ -2,8 +2,6 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
-private let dashboardDetailExpansionDelayNanoseconds: UInt64 = 45_000_000
-
 enum DashboardDetailKind: String, CaseIterable, Identifiable {
     case assignments
     case assignmentRecords
@@ -707,49 +705,19 @@ private struct DashboardShowMoreButton: View {
 
 private struct DeferredDashboardExpansion<Content: View>: View {
     var isExpanded: Bool
-    var delayNanoseconds = dashboardDetailExpansionDelayNanoseconds
     private let content: () -> Content
-    @State private var isVisible = false
-    @State private var deferredTask: Task<Void, Never>?
 
     init(
         isExpanded: Bool,
-        delayNanoseconds: UInt64 = dashboardDetailExpansionDelayNanoseconds,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.isExpanded = isExpanded
-        self.delayNanoseconds = delayNanoseconds
         self.content = content
     }
 
     var body: some View {
-        Group {
-            if isVisible {
-                content()
-            }
-        }
-        .onAppear {
-            updateVisibility(isExpanded)
-        }
-        .onChange(of: isExpanded) { _, newValue in
-            updateVisibility(newValue)
-        }
-        .onDisappear {
-            deferredTask?.cancel()
-        }
-    }
-
-    private func updateVisibility(_ expanded: Bool) {
-        deferredTask?.cancel()
-        guard expanded else {
-            isVisible = false
-            return
-        }
-        deferredTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: delayNanoseconds)
-            guard !Task.isCancelled else { return }
-            isVisible = true
+        if isExpanded {
+            content()
         }
     }
 }
