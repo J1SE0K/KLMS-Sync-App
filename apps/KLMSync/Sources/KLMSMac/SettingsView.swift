@@ -82,6 +82,9 @@ struct SettingsView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedTab: SettingsTab = .app
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
+    private let settingsTabColumns = [
+        GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 7),
+    ]
     private let settingsActionColumns = [
         GridItem(.adaptive(minimum: 118), spacing: 8),
     ]
@@ -106,7 +109,7 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: 7) {
+            LazyVGrid(columns: settingsTabColumns, alignment: .leading, spacing: 7) {
                 ForEach(SettingsTab.allCases) { tab in
                     settingsTabButton(tab)
                 }
