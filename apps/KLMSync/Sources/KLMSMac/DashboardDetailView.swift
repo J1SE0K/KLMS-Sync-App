@@ -4047,7 +4047,7 @@ private struct MacMailAnalysisStep: Identifiable {
 
 private struct MacMailAnalysisProcessView: View {
     var steps: [MacMailAnalysisStep]
-    @State private var isExpanded = true
+    @State private var isExpanded = false
 
     var body: some View {
         if !steps.isEmpty {

@@ -2370,6 +2370,7 @@ final class DashboardDataModelTests: XCTestCase {
         let calendarActionButton = try sourceStructBody(named: "CalendarActionButton", in: detail)
         let dashboardSummary = try sourceStructBody(named: "DashboardSummaryContentView", in: mac)
         let commandPanel = try sourceStructBody(named: "CommandPanelView", in: mac)
+        let macMailAnalysisProcess = try sourceStructBody(named: "MacMailAnalysisProcessView", in: detail)
 
         XCTAssertFalse(calendarDetail.contains("MacMailPasteAnalyzerPanel"))
         XCTAssertFalse(calendarGuide.contains("model.run(.verify)"))
@@ -2407,6 +2408,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("캘린더에 등록"))
         XCTAssertTrue(detail.contains("MacMailAnalysisProcessView"))
         XCTAssertTrue(detail.contains("분석 과정"))
+        XCTAssertTrue(macMailAnalysisProcess.contains("@State private var isExpanded = false"))
+        XCTAssertFalse(macMailAnalysisProcess.contains("@State private var isExpanded = true"))
         XCTAssertTrue(detail.contains("analysisSteps"))
         XCTAssertTrue(detail.contains("assignmentScore"))
         XCTAssertTrue(detail.contains("examScore"))
