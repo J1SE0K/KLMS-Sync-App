@@ -428,7 +428,7 @@ private struct MacAlertBannerView: View {
             return Color.klmsMacPrimaryText
         }
         if model.runningCommand != nil {
-            return Color.klmsMacPrimaryCommandButtonForeground
+            return Color.klmsMacSecondaryCommandButtonForeground
         }
         if model.needsAttention || model.snapshot.syncReport == nil {
             return Color.klmsMacWarningBorder
@@ -441,7 +441,7 @@ private struct MacAlertBannerView: View {
             return Color.klmsMacWarningBackground
         }
         if model.runningCommand != nil {
-            return Color.klmsMacPrimaryCommandButtonBackground
+            return Color.klmsMacCommandButtonPressedBackground
         }
         if model.needsAttention || model.snapshot.syncReport == nil {
             return Color.klmsMacWarningBackground
@@ -3486,7 +3486,7 @@ private struct CommandPanelView: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        isRunning ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.58) : Color.klmsMacCommandButtonBorder.opacity(0.88),
+                        Color.klmsMacCommandButtonBorder.opacity(isRunning ? 1.0 : 0.88),
                         lineWidth: 1
                     )
             }

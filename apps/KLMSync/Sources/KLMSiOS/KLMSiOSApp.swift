@@ -4456,7 +4456,7 @@ private struct RemoteDashboardSyncCard: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(
-                            isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.58) : Color.klmsCommandButtonBorder,
+                            Color.klmsCommandButtonBorder.opacity(isRunning ? 1.0 : 0.92),
                             lineWidth: 1
                         )
                 }
@@ -9820,7 +9820,7 @@ private struct RemoteCommandPanel: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.58) : Color.klmsCommandButtonBorder.opacity(0.88),
+                        Color.klmsCommandButtonBorder.opacity(isRunning ? 1.0 : 0.88),
                         lineWidth: 1
                     )
             }

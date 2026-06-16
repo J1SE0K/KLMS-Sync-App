@@ -749,6 +749,16 @@ final class DashboardDataModelTests: XCTestCase {
         let workstationLayout = try sourceStructBody(named: "MacWorkstationLayoutView", in: view)
         let dashboardSummaryContent = try sourceStructBody(named: "DashboardSummaryContentView", in: view)
         let navigationView = try sourceStructBody(named: "WorkspaceNavigationView", in: view)
+        let topBarChipForeground = try sourceBody(
+            after: "private var chipForeground: Color",
+            in: view,
+            description: "Mac top bar chip foreground"
+        )
+        let topBarChipBackground = try sourceBody(
+            after: "private var chipBackground: Color",
+            in: view,
+            description: "Mac top bar chip background"
+        )
         let commandPanel = try sourceStructBody(named: "CommandPanelView", in: view)
         let pressFeedbackStyle = try sourceBody(
             after: "private struct MacPressFeedbackButtonStyle: ButtonStyle",
@@ -916,6 +926,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(navigationView.contains(".frame(width: 3)"))
         XCTAssertTrue(navigationView.contains("isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacCommandBorder.opacity(0.42)"))
         XCTAssertTrue(navigationView.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
+        XCTAssertTrue(topBarChipBackground.contains("return Color.klmsMacCommandButtonPressedBackground"))
+        XCTAssertTrue(topBarChipForeground.contains("return Color.klmsMacSecondaryCommandButtonForeground"))
+        XCTAssertFalse(topBarChipBackground.contains("return Color.klmsMacPrimaryCommandButtonBackground"))
+        XCTAssertFalse(topBarChipForeground.contains("return Color.klmsMacPrimaryCommandButtonForeground"))
         XCTAssertTrue(view.contains("case settings"))
         XCTAssertTrue(view.contains("case .settings:"))
         XCTAssertTrue(view.contains("case files"))
@@ -979,6 +993,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iconButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46)"))
         XCTAssertTrue(iconButtonStyle.contains(".frame(width: 26, height: 26)"))
         XCTAssertTrue(commandPanel.contains("Color.klmsMacCommandButtonBackground.opacity(0.90)"))
+        XCTAssertTrue(commandPanel.contains("Color.klmsMacCommandButtonBorder.opacity(isRunning ? 1.0 : 0.88)"))
+        XCTAssertFalse(commandPanel.contains("isRunning ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.58)"))
         XCTAssertFalse(commandPanel.contains(".background(Color.klmsMacDangerBackground, in: RoundedRectangle(cornerRadius: 10))"))
         XCTAssertTrue(verifyCheckRow.contains(".background(Color.klmsMacSubtleCardBackground"))
         XCTAssertTrue(verifyCheckRow.contains(".frame(width: 3)"))
@@ -1475,6 +1491,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSyncCard.contains("return \"과제/시험\""))
         XCTAssertTrue(dashboardSyncCard.contains("return \"공지\""))
         XCTAssertTrue(dashboardSyncCard.contains(".buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))"))
+        XCTAssertFalse(dashboardSyncCard.contains("isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.58)"))
         XCTAssertTrue(remoteCommandPanel.contains("primaryCommandTitle(isRunning: isRunning, isDisabled: isDisabled)"))
         XCTAssertTrue(remoteCommandPanel.contains("primaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled)"))
         XCTAssertTrue(remoteCommandPanel.contains("Color.klmsPrimaryCommandButtonForeground"))
@@ -1488,6 +1505,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteCommandPanel.contains(".font(.system(size: 11, weight: .bold, design: .rounded))"))
         XCTAssertTrue(remoteCommandPanel.contains(".font(.system(size: 18, weight: .heavy, design: .rounded))"))
         XCTAssertTrue(remoteCommandPanel.contains(".padding(.horizontal, 5)"))
+        XCTAssertFalse(remoteCommandPanel.contains("isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.58)"))
         XCTAssertTrue(remoteCommandPanel.contains("return \"파일\""))
         XCTAssertTrue(remoteCommandPanel.contains("return \"과제/시험\""))
         XCTAssertTrue(remoteCommandPanel.contains("return \"공지\""))
