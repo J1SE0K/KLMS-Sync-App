@@ -2640,7 +2640,35 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
         if let renderedDetail {
             dashboardDetailColumn(kind: renderedDetail)
         } else {
-            EmptyView()
+            DashboardDetailHint()
+        }
+    }
+}
+
+private struct DashboardDetailHint: View {
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "rectangle.stack.badge.cursorarrow")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.klmsMacSecondaryText)
+                .frame(width: 26)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("대시보드 항목을 선택해 주세요.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text("카드를 누르면 바로 아래에서 목록과 처리 버튼을 확인할 수 있습니다.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
 }
@@ -2687,7 +2715,7 @@ private struct DashboardSummaryPresentation {
            let detail = metrics.first(where: { $0.detail == selected })?.detail {
             return detail
         }
-        return preferredDetail(in: metrics)
+        return nil
     }
 
     func renderedDetail(_ selected: DashboardDetailKind?, archiveExpanded: Bool) -> DashboardDetailKind? {
@@ -2696,14 +2724,7 @@ private struct DashboardSummaryPresentation {
            let detail = metrics.first(where: { $0.detail == displayed })?.detail {
             return detail
         }
-        return preferredDetail(in: metrics)
-    }
-
-    private func preferredDetail(in metrics: [Metric]) -> DashboardDetailKind? {
-        if let files = metrics.first(where: { $0.detail == .files })?.detail {
-            return files
-        }
-        return metrics.first?.detail
+        return nil
     }
 }
 
