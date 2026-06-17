@@ -4999,6 +4999,7 @@ struct MetricGrid: View {
     var metrics: [Metric]
     var selectedMetricID: String?
     var onSelect: ((Metric) -> Void)?
+    @State private var hoveredMetricID: String?
 
     private var columns: [GridItem] {
         let count = min(max(metrics.count, 1), 4)
@@ -5021,16 +5022,22 @@ struct MetricGrid: View {
     var body: some View {
         LazyVGrid(columns: columns, spacing: 8) {
             ForEach(metrics) { metric in
+                let isInteractive = metric.detail != nil
+                let isSelected = metric.detail?.rawValue == selectedMetricID
+                let isHovered = hoveredMetricID == metric.id
                 if let onSelect {
                     Button {
                         onSelect(metric)
                     } label: {
-                        MetricTile(metric: metric, isSelected: metric.detail?.rawValue == selectedMetricID)
+                        MetricTile(metric: metric, isSelected: isSelected, isHovered: isHovered && isInteractive)
                     }
                     .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 13))
-                    .disabled(metric.detail == nil)
+                    .disabled(!isInteractive)
+                    .onHover { hovering in
+                        hoveredMetricID = hovering && isInteractive ? metric.id : (hoveredMetricID == metric.id ? nil : hoveredMetricID)
+                    }
                 } else {
-                    MetricTile(metric: metric, isSelected: false)
+                    MetricTile(metric: metric, isSelected: false, isHovered: false)
                 }
             }
         }
@@ -5040,6 +5047,7 @@ struct MetricGrid: View {
 private struct MetricTile: View {
     var metric: Metric
     var isSelected: Bool
+    var isHovered: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -5058,18 +5066,32 @@ private struct MetricTile: View {
                 if metric.detail != nil {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(isSelected ? tint : Color.klmsMacSecondaryText.opacity(0.70))
+                        .foregroundStyle(isSelected ? tint : (isHovered ? Color.klmsMacPrimaryText : Color.klmsMacSecondaryText.opacity(0.70)))
                 }
             }
         }
         .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
         .padding(12)
-        .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .background(metricBackground, in: RoundedRectangle(cornerRadius: 13))
         .overlay {
             RoundedRectangle(cornerRadius: 13)
-                .stroke(isSelected ? tint.opacity(0.92) : Color.klmsMacBorder, lineWidth: isSelected ? 1.4 : 1)
+                .stroke(metricBorder, lineWidth: isSelected ? 1.4 : 1)
         }
         .contentShape(RoundedRectangle(cornerRadius: 13))
+    }
+
+    private var metricBackground: Color {
+        if isSelected {
+            return Color.klmsMacSelectedBackground
+        }
+        return isHovered ? Color.klmsMacSubtleCardBackground.opacity(0.64) : Color.klmsMacCardBackground
+    }
+
+    private var metricBorder: Color {
+        if isSelected {
+            return tint.opacity(0.92)
+        }
+        return isHovered ? Color.klmsMacCommandBorder.opacity(0.78) : Color.klmsMacBorder
     }
 
     private var tint: Color {
