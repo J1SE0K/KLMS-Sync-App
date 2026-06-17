@@ -4496,16 +4496,16 @@ private struct RemoteDashboardSyncCard: View {
     }
 
     private func primaryCommandForeground(isDisabled: Bool) -> Color {
-        isDisabled ? Color.klmsPrimaryCommandButtonForeground.opacity(0.82) : Color.klmsPrimaryCommandButtonForeground
+        isDisabled ? Color.klmsSecondaryText.opacity(0.76) : Color.klmsPrimaryCommandButtonForeground
     }
 
     private func primaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
-        if isDisabled { return Color.klmsPrimaryCommandButtonBackground.opacity(0.72) }
+        if isDisabled { return Color.klmsSubtleCardBackground.opacity(0.86) }
         return isRunning ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground
     }
 
     private func primaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
-        if isDisabled { return Color.klmsPrimaryCommandButtonBorder.opacity(0.62) }
+        if isDisabled { return Color.klmsCommandButtonBorder.opacity(0.64) }
         return isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.78) : Color.klmsPrimaryCommandButtonBorder
     }
 
@@ -9915,16 +9915,16 @@ private struct RemoteCommandPanel: View {
     }
 
     private func primaryCommandForeground(isDisabled: Bool) -> Color {
-        isDisabled ? Color.klmsPrimaryCommandButtonForeground.opacity(0.82) : Color.klmsPrimaryCommandButtonForeground
+        isDisabled ? Color.klmsSecondaryText.opacity(0.76) : Color.klmsPrimaryCommandButtonForeground
     }
 
     private func primaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
-        if isDisabled { return Color.klmsPrimaryCommandButtonBackground.opacity(0.72) }
+        if isDisabled { return Color.klmsSubtleCardBackground.opacity(0.86) }
         return isRunning ? Color.klmsPrimaryCommandButtonPressedBackground : Color.klmsPrimaryCommandButtonBackground
     }
 
     private func primaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
-        if isDisabled { return Color.klmsPrimaryCommandButtonBorder.opacity(0.62) }
+        if isDisabled { return Color.klmsCommandButtonBorder.opacity(0.64) }
         return isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.78) : Color.klmsPrimaryCommandButtonBorder
     }
 
