@@ -2475,7 +2475,7 @@ private struct CompanionStatusScreen: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        CompanionScreenContainer(title: "대시보드", model: model) {
+        CompanionScreenContainer(title: horizontalSizeClass == .regular ? "대시보드" : "상태", model: model) {
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 16) {
                     statusSummaryColumn
