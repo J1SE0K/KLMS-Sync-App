@@ -187,6 +187,7 @@ final class CompanionModel: ObservableObject {
     private var activeItemActionByItemID: [String: ServerRelayItemAction] = [:]
     private var activeCalendarActionByID: [String: ServerRelayItemAction] = [:]
     private var visibleDashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
+    private var visibleDashboardTaskItems: [ServerRelaySyncItem] = []
 
     private static let deprecatedLocalHostKey = "KLMSLocalRemoteHost"
     private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
@@ -410,6 +411,13 @@ final class CompanionModel: ObservableObject {
                 .companionSorted(by: .recent)
         }
         visibleDashboardItemsByCategoryID = next
+        visibleDashboardTaskItems = [
+            next[DashboardMetricCategory.assignments.rawValue] ?? [],
+            next[DashboardMetricCategory.exams.rawValue] ?? [],
+            next[DashboardMetricCategory.helpDesk.rawValue] ?? [],
+        ]
+        .flatMap { $0 }
+        .companionSorted(by: .recent)
     }
 
     private func rebuildDashboardStatus() {
@@ -1055,6 +1063,10 @@ final class CompanionModel: ObservableObject {
 
     func cachedVisibleDashboardItems(for categoryID: String) -> [ServerRelaySyncItem] {
         visibleDashboardItemsByCategoryID[categoryID] ?? []
+    }
+
+    func cachedVisibleDashboardTaskItems() -> [ServerRelaySyncItem] {
+        visibleDashboardTaskItems
     }
 
     private func isCalendarChangeResolved(_ change: CalendarChange) -> Bool {
@@ -5313,12 +5325,7 @@ private struct WorkstationDashboardOverviewData: Equatable {
         filePreviewItems = Array(model.cachedVisibleDashboardItems(for: DashboardMetricCategory.files.rawValue).prefix(2))
         noticePreviewItems = Array(model.cachedVisibleDashboardItems(for: DashboardMetricCategory.notices.rawValue).prefix(2))
         previewTaskItems = Array(
-            (
-                model.cachedVisibleDashboardItems(for: DashboardMetricCategory.assignments.rawValue)
-                + model.cachedVisibleDashboardItems(for: DashboardMetricCategory.exams.rawValue)
-            )
-            .companionSorted(by: .recent)
-            .prefix(2)
+            model.cachedVisibleDashboardTaskItems().prefix(2)
         )
     }
 }
@@ -6180,11 +6187,7 @@ private struct WorkstationTasksWorkspace: View {
     @State private var externalDetailTask: Task<Void, Never>?
 
     private var combinedItems: [ServerRelaySyncItem] {
-        [
-            model.cachedVisibleDashboardItems(for: DashboardMetricCategory.assignments.rawValue),
-            model.cachedVisibleDashboardItems(for: DashboardMetricCategory.exams.rawValue),
-            model.cachedVisibleDashboardItems(for: DashboardMetricCategory.helpDesk.rawValue),
-        ].flatMap { $0 }
+        model.cachedVisibleDashboardTaskItems()
     }
 
     private var activeSelectedItemID: String? {
