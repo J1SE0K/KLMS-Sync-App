@@ -117,10 +117,10 @@ final class CompanionModel: ObservableObject {
     }
     @Published var recentSettingActions: [ServerRelaySettingAction] = []
     @Published var syncItems: [ServerRelaySyncItem] = [] {
-        didSet { rebuildDashboardDerivedState(); rebuildVisibleCalendarChanges() }
+        didSet { rebuildDashboardDerivedState(); rebuildChangeSummaryItemLookup(); rebuildVisibleCalendarChanges() }
     }
     @Published var dryRunReports: [DryRunReport] = [] {
-        didSet { rebuildDashboardFileCleanupDetails() }
+        didSet { rebuildDashboardFileCleanupDetails(); rebuildFileCleanupReportCache() }
     }
     @Published var calendarChanges: [CalendarChange] = [] {
         didSet { rebuildVisibleCalendarChanges() }
@@ -136,6 +136,9 @@ final class CompanionModel: ObservableObject {
     @Published private(set) var dashboardSyncItemsRevision = 0
     @Published private(set) var dashboardHasFileCleanupDetails = false
     @Published private(set) var visibleCalendarChangesCache: [CalendarChange] = []
+    @Published private(set) var changeSummaryItemsByKindID: [String: [ServerRelaySyncItem]] = [:]
+    @Published private(set) var changeSummaryCalendarChangesByKindID: [String: [CalendarChange]] = [:]
+    @Published private(set) var fileCleanupReportsForDashboard: [DryRunReport] = []
     @Published private(set) var dashboardStatus = SanitizedRemoteStatus()
     @Published var status = SanitizedRemoteStatus() {
         didSet { rebuildDashboardStatus() }
@@ -438,6 +441,39 @@ final class CompanionModel: ObservableObject {
         }
         if dashboardHasFileCleanupDetails != next {
             dashboardHasFileCleanupDetails = next
+        }
+    }
+
+    private func rebuildChangeSummaryItemLookup() {
+        var next: [String: [ServerRelaySyncItem]] = [:]
+        for kind in RemoteChangeSummaryKind.allCases where !kind.isCalendarChange && kind != .fileCleanup {
+            next[kind.rawValue] = syncItems
+                .filter { kind.includes($0) }
+                .companionSorted(by: .recent)
+        }
+        if changeSummaryItemsByKindID != next {
+            changeSummaryItemsByKindID = next
+        }
+    }
+
+    private func rebuildChangeSummaryCalendarLookup(using changes: [CalendarChange]? = nil) {
+        let source = changes ?? visibleCalendarChangesCache
+        var next: [String: [CalendarChange]] = [:]
+        for kind in RemoteChangeSummaryKind.allCases where kind.isCalendarChange {
+            next[kind.rawValue] = source.filter { kind.includes($0) }
+        }
+        if changeSummaryCalendarChangesByKindID != next {
+            changeSummaryCalendarChangesByKindID = next
+        }
+    }
+
+    private func rebuildFileCleanupReportCache() {
+        let next = dryRunReports.filter { report in
+            report.scope == "files"
+                && (report.wouldPrune > 0 || report.wouldPruneCourseFiles > 0 || report.wouldPruneArchive > 0 || report.wouldDelete > 0)
+        }
+        if fileCleanupReportsForDashboard != next {
+            fileCleanupReportsForDashboard = next
         }
     }
 
@@ -1082,6 +1118,18 @@ final class CompanionModel: ObservableObject {
         visibleDashboardTaskItems
     }
 
+    func cachedChangeSummaryItems(for kindID: String) -> [ServerRelaySyncItem] {
+        changeSummaryItemsByKindID[kindID] ?? []
+    }
+
+    func cachedChangeSummaryCalendarChanges(for kindID: String) -> [CalendarChange] {
+        changeSummaryCalendarChangesByKindID[kindID] ?? []
+    }
+
+    func cachedFileCleanupReportsForDashboard() -> [DryRunReport] {
+        fileCleanupReportsForDashboard
+    }
+
     private func isCalendarChangeResolved(_ change: CalendarChange) -> Bool {
         let ids = calendarChangeResolvedIDs(for: change)
         if ids.contains(where: { resolvedCalendarChangeIDs.contains($0) }) {
@@ -1211,6 +1259,7 @@ final class CompanionModel: ObservableObject {
         if visibleCalendarChangesCache != next {
             visibleCalendarChangesCache = next
         }
+        rebuildChangeSummaryCalendarLookup(using: next)
     }
 
     func refreshRecent(
@@ -2611,7 +2660,14 @@ private struct CompanionStatusScreen: View {
     @ViewBuilder
     private var statusDetailColumn: some View {
         if let kind = displayedChangeSummary {
-            RemoteChangeSummaryDetailPanel(kind: kind, model: model)
+            RemoteChangeSummaryDetailPanel(
+                kind: kind,
+                status: model.dashboardStatus,
+                changedItems: model.cachedChangeSummaryItems(for: kind.rawValue),
+                changedCalendarItems: model.cachedChangeSummaryCalendarChanges(for: kind.rawValue),
+                fileCleanupReports: model.cachedFileCleanupReportsForDashboard(),
+                model: model
+            )
                 .id(kind)
         } else if let kind = selectedChangeSummary {
             CompanionDashboardDetailPreparingView(
@@ -5106,7 +5162,14 @@ private struct RemoteDashboardChangeSummary: View {
     private func compactChangeDetail(for kind: RemoteChangeSummaryKind) -> some View {
         if horizontalSizeClass != .regular {
             if displayedKind == kind {
-                RemoteChangeSummaryDetailPanel(kind: kind, model: model)
+                RemoteChangeSummaryDetailPanel(
+                    kind: kind,
+                    status: status,
+                    changedItems: model.cachedChangeSummaryItems(for: kind.rawValue),
+                    changedCalendarItems: model.cachedChangeSummaryCalendarChanges(for: kind.rawValue),
+                    fileCleanupReports: model.cachedFileCleanupReportsForDashboard(),
+                    model: model
+                )
                     .id(kind)
             } else {
                 CompanionDashboardDetailPreparingView(
@@ -6629,32 +6692,15 @@ private struct CompanionShowMoreRowsButton: View {
 
 private struct RemoteChangeSummaryDetailPanel: View {
     var kind: RemoteChangeSummaryKind
-    @ObservedObject var model: CompanionModel
+    var status: SanitizedRemoteStatus
+    var changedItems: [ServerRelaySyncItem]
+    var changedCalendarItems: [CalendarChange]
+    var fileCleanupReports: [DryRunReport]
+    let model: CompanionModel
     @State private var selectedItemID: String?
     @State private var visibleItemLimit = CompanionLargeList.initialVisibleLimit
     @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
     @State private var cleanupVisibleLimit = CompanionLargeList.previewVisibleLimit
-
-    private var status: SanitizedRemoteStatus {
-        model.status
-    }
-
-    private var changedItems: [ServerRelaySyncItem] {
-        model.syncItems
-            .filter { kind.includes($0) }
-            .companionSorted(by: .recent)
-    }
-
-    private var changedCalendarItems: [CalendarChange] {
-        model.visibleCalendarChanges().filter { kind.includes($0) }
-    }
-
-    private var fileCleanupReports: [DryRunReport] {
-        model.dryRunReports.filter { report in
-            report.scope == "files"
-                && (report.wouldPrune > 0 || report.wouldPruneCourseFiles > 0 || report.wouldPruneArchive > 0 || report.wouldDelete > 0)
-        }
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
