@@ -902,15 +902,17 @@ final class CompanionModel: ObservableObject {
         defer {
             isSubmitting = false
         }
+        let actionItemID = serverRelayCalendarChange(change).id
+        let candidateIDs = calendarChangeResolvedIDs(for: change)
         do {
             let action = ServerRelayItemAction(
                 action: actionKind,
-                itemID: change.id,
+                itemID: actionItemID,
                 itemKind: "calendar",
                 itemTitle: change.title.nilIfEmpty ?? change.course.nilIfEmpty ?? "캘린더 변경",
                 message: try edit?.encodedMessage() ?? ""
             )
-            recentItemActions.removeAll { $0.itemID == action.itemID }
+            recentItemActions.removeAll { candidateIDs.contains($0.itemID) }
             recentItemActions.insert(action, at: 0)
             try await serverRelayStore.createItemAction(action)
             connectionMessage = "\(actionKind.displayName) 요청을 보냈습니다."
@@ -920,7 +922,7 @@ final class CompanionModel: ObservableObject {
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
-            recentItemActions.removeAll { $0.itemID == change.id && $0.action == actionKind && $0.status == .pending }
+            recentItemActions.removeAll { candidateIDs.contains($0.itemID) && $0.action == actionKind && $0.status == .pending }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "요청 실패", message: message)
@@ -1056,16 +1058,69 @@ final class CompanionModel: ObservableObject {
     }
 
     private func isCalendarChangeResolved(_ change: CalendarChange) -> Bool {
-        if resolvedCalendarChangeIDs.contains(change.id) {
+        let ids = calendarChangeResolvedIDs(for: change)
+        if ids.contains(where: { resolvedCalendarChangeIDs.contains($0) }) {
             return true
         }
         return recentItemActions.contains { action in
             action.itemKind == "calendar"
-                && action.itemID == change.id
+                && ids.contains(action.itemID)
                 && action.status != .failed
                 && action.status != .macUnavailable
                 && action.action.resolvesCalendarChange
         }
+    }
+
+    private func calendarChangeResolvedIDs(for change: CalendarChange) -> [String] {
+        var ids = [change.id]
+        let publicChangeID = serverRelayCalendarChange(change).id
+        if publicChangeID != change.id {
+            ids.append(publicChangeID)
+        }
+        if let identifier = change.identifier.nilIfBlank {
+            ids.append(identifier)
+        }
+        return ids
+    }
+
+    private func serverRelayCalendarChange(_ change: CalendarChange) -> CalendarChange {
+        CalendarChange(
+            action: Self.serverRelayPublicText(change.action),
+            calendar: Self.serverRelayPublicText(change.calendar),
+            bucket: Self.serverRelayPublicText(change.bucket),
+            identifier: Self.serverRelayPublicText(change.identifier),
+            title: Self.serverRelayPublicText(change.title),
+            course: Self.serverRelayPublicText(change.course),
+            url: "",
+            startAt: Self.serverRelayPublicText(change.startAt),
+            dueAt: Self.serverRelayPublicText(change.dueAt),
+            location: Self.serverRelayPublicText(change.location),
+            changes: change.changes.compactMap { Self.serverRelayPublicText($0).nilIfBlank },
+            raw: "",
+            parseError: Self.serverRelayPublicText(change.parseError)
+        )
+    }
+
+    private static func serverRelayPublicText(_ text: String?) -> String {
+        let value = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            return ""
+        }
+        return serverRelayLooksPrivate(value) ? "" : value
+    }
+
+    private static func serverRelayLooksPrivate(_ text: String) -> Bool {
+        let lowercased = text.lowercased()
+        if lowercased.contains("/users/") || lowercased.contains("address") || text.contains("주소") {
+            return true
+        }
+        if text.range(of: #"(?<!\d)\d{5}(?!\d)"#, options: .regularExpression) != nil {
+            return true
+        }
+        if text.range(of: #"[가-힣A-Za-z0-9_.-]+(로|길)\s*\d{1,4}(\s*-\s*\d{1,4})?"#, options: .regularExpression) != nil {
+            return true
+        }
+        return false
     }
 
     private func recordResolvedCalendarChanges(_ actions: [ServerRelayItemAction]) {
