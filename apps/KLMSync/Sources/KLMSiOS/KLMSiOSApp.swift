@@ -10117,6 +10117,8 @@ private struct RemoteRunRequestHistoryPanel: View {
 private struct RemoteVerifySummaryPanel: View {
     var summary: ServerRelayVerifySummary?
     @State private var showsAllChecks = false
+    @State private var showsRemainingIssues = false
+    private let primaryVisibleIssueCount = 1
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -10140,8 +10142,23 @@ private struct RemoteVerifySummaryPanel: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    ForEach(issueChecks, id: \.id) { check in
+                    let primaryIssues = Array(issueChecks.prefix(primaryVisibleIssueCount))
+                    let remainingIssues = Array(issueChecks.dropFirst(primaryVisibleIssueCount))
+                    ForEach(primaryIssues, id: \.id) { check in
                         RemoteVerifyCheckRow(check: check)
+                    }
+                    if !remainingIssues.isEmpty {
+                        DisclosureGroup(isExpanded: $showsRemainingIssues) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(remainingIssues, id: \.id) { check in
+                                    RemoteVerifyCheckRow(check: check, compact: true)
+                                }
+                            }
+                            .padding(.top, 4)
+                        } label: {
+                            Text("나머지 확인 항목 \(remainingIssues.count)개")
+                                .font(.caption.weight(.semibold))
+                        }
                     }
                 }
 
