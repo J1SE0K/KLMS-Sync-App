@@ -4020,7 +4020,7 @@ private struct VerifyPanelView: View {
 
     var body: some View {
         if let verify = snapshot.verifyResult {
-            SectionBox(title: "상태 검사 해설") {
+            SectionBox(title: "상태 검사") {
                 let issueChecks = verify.checks.filter { isIssueStatus($0.status) }
                 let primaryIssues = Array(issueChecks.prefix(primaryVisibleIssueCount))
                 let remainingIssues = Array(issueChecks.dropFirst(primaryVisibleIssueCount))
@@ -4031,7 +4031,7 @@ private struct VerifyPanelView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     if issueChecks.isEmpty {
-                        Text("메모, 파일, 캘린더, 미리 알림 검사에서 설명이 필요한 실패 항목이 없습니다.")
+                        Text("상태 검사에서 설명이 필요한 실패 항목이 없습니다.")
                             .font(.caption)
                             .foregroundStyle(Color.klmsMacSecondaryText)
                     } else {
@@ -4189,16 +4189,16 @@ private struct DoctorPanelView: View {
 
     var body: some View {
         if let doctor = snapshot.doctorResult {
-            SectionBox(title: "진단") {
+            SectionBox(title: "권한/환경 진단") {
                 let issueChecks = doctor.checks.filter { ["fail", "failed", "error", "warn", "warning"].contains($0.status.lowercased()) }
                 let primaryIssues = Array(issueChecks.prefix(primaryVisibleIssueCount))
                 let remainingIssues = Array(issueChecks.dropFirst(primaryVisibleIssueCount))
-                Text("상태: \(doctor.status.klmsLocalizedStatus) · 정상 \(doctor.checks.filter { $0.status.lowercased() == "ok" }.count)개")
+                Text(summaryText(for: doctor, issueCount: issueChecks.count))
                     .font(.caption)
-                    .foregroundStyle(doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
+                    .foregroundStyle(issueChecks.isEmpty && doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
 
                 if issueChecks.isEmpty {
-                    Text("진단에서 발견된 문제가 없습니다.")
+                    Text("권한과 실행 환경에서 설명이 필요한 실패 항목이 없습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 } else {
@@ -4230,6 +4230,14 @@ private struct DoctorPanelView: View {
                 }
             }
         }
+    }
+
+    private func summaryText(for doctor: DoctorResult, issueCount: Int) -> String {
+        let okCount = doctor.checks.filter { $0.status.lowercased() == "ok" }.count
+        if issueCount == 0 {
+            return "상태: \(doctor.status.klmsLocalizedStatus) · 정상 \(okCount)개"
+        }
+        return "상태: \(doctor.status.klmsLocalizedStatus) · 확인 필요 \(issueCount)개 · 정상 \(okCount)개"
     }
 }
 
