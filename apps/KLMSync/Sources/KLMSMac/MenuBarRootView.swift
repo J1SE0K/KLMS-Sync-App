@@ -440,7 +440,7 @@ private struct MacAlertBannerView: View {
         if model.snapshot.syncReport == nil {
             return "검사"
         }
-        return "OK"
+        return "확인"
     }
 
     private var chipFont: Font {
