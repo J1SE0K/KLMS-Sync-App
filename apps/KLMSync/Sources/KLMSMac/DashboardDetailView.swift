@@ -2462,18 +2462,7 @@ private struct DashboardFileListBaseInputSignature: Equatable {
         hasher.combine(filters.recentOnly)
         hasher.combine(files.count)
         for file in files {
-            hasher.combine(file.id)
-            hasher.combine(file.title)
-            hasher.combine(file.course)
-            hasher.combine(file.academicTerm?.displayName ?? "")
-            hasher.combine(file.path)
-            hasher.combine(file.url)
-            hasher.combine(file.isRecent)
-            hasher.combine(file.pathExists)
-            hasher.combine(file.klmsTimestampEpoch ?? -1)
-            hasher.combine(file.isHidden)
-            hasher.combine(file.interaction?.trashedAt ?? "")
-            hasher.combine(file.interaction?.updatedAt ?? "")
+            hasher.combine(file.renderSignatureValue)
         }
         value = hasher.finalize()
     }
@@ -2628,6 +2617,7 @@ private struct DashboardFileItem: Identifiable, Sendable {
     private var pathSortKey: String = ""
     private var kindSortKey: String = ""
     private var recencySortKey: String = ""
+    private var renderSignatureHash: Int = 0
     var fileKindLabel: String = ""
     var fileKindIcon: String = ""
     var fileKindColor: Color = .klmsMacSecondaryText
@@ -2674,9 +2664,25 @@ private struct DashboardFileItem: Identifiable, Sendable {
         recencySortKey = trimmedRecency.isEmpty
             ? (isRecent ? "9999-12-31 23:59 KST" : "0000-00-00 00:00 KST")
             : trimmedRecency
+        var hasher = Hasher()
+        hasher.combine(key)
+        hasher.combine(title)
+        hasher.combine(course)
+        hasher.combine(academicTerm?.displayName ?? "")
+        hasher.combine(path)
+        hasher.combine(url)
+        hasher.combine(isRecent)
+        hasher.combine(pathExists)
+        hasher.combine(klmsTimestampEpoch ?? -1)
+        hasher.combine(interaction?.isHiddenLike == true)
+        hasher.combine(interaction?.trashedAt ?? "")
+        hasher.combine(interaction?.updatedAt ?? "")
+        renderSignatureHash = hasher.finalize()
     }
 
     var id: String { key }
+
+    var renderSignatureValue: Int { renderSignatureHash }
 
     var isHidden: Bool {
         interaction?.isHiddenLike == true
