@@ -714,18 +714,21 @@ private struct DeferredDashboardExpansion<Content: View>: View {
 }
 
 private struct DashboardRowDisclosureButton: View {
-    @Binding var isExpanded: Bool
+    var isExpanded: Bool
     var collapsedTitle = "작업"
     var expandedTitle = "접기"
 
     var body: some View {
-        Button {
-            isExpanded.toggle()
-        } label: {
-            Label(isExpanded ? expandedTitle : collapsedTitle, systemImage: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
-        }
-        .buttonStyle(KLMSMacActionButtonStyle())
+        Label(isExpanded ? expandedTitle : collapsedTitle, systemImage: isExpanded ? "chevron.up" : "chevron.down")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Color.klmsMacSecondaryText)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.klmsMacBorder.opacity(0.72), lineWidth: 1)
+            }
     }
 }
 
@@ -1574,7 +1577,11 @@ private struct StateItemRowView: View {
                     .help("KLMS 열기")
                     .buttonStyle(KLMSMacIconButtonStyle())
                 }
-                DashboardRowDisclosureButton(isExpanded: $isExpanded)
+                DashboardRowDisclosureButton(isExpanded: isExpanded)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isExpanded.toggle()
             }
 
             DeferredDashboardExpansion(isExpanded: isExpanded) {
@@ -2236,7 +2243,11 @@ private struct NoticeRowView: View {
                     .help("공지 열기")
                     .buttonStyle(KLMSMacIconButtonStyle())
                 }
-                DashboardRowDisclosureButton(isExpanded: $isExpanded)
+                DashboardRowDisclosureButton(isExpanded: isExpanded)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isExpanded.toggle()
             }
 
             DeferredDashboardExpansion(isExpanded: isExpanded) {
@@ -3298,7 +3309,11 @@ private struct FileRowView: View {
                     .buttonStyle(KLMSMacIconButtonStyle())
                     .help("KLMS 열기")
                 }
-                DashboardRowDisclosureButton(isExpanded: $isExpanded)
+                DashboardRowDisclosureButton(isExpanded: isExpanded)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isExpanded.toggle()
             }
             DeferredDashboardExpansion(isExpanded: isExpanded) {
                 actionBar(hidden: hidden, pathExists: pathExists)

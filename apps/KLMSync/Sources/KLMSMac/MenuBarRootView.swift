@@ -116,7 +116,6 @@ private struct MacWorkstationLayoutView: View {
                 DoctorPanelView(snapshot: model.snapshot)
                 AppDiagnosticsPanelView(model: model)
                 LoginPanelView(model: model)
-                LogPanelView(snapshot: model.snapshot, history: model.commandHistory)
             case .settings:
                 SettingsView(model: model)
             }

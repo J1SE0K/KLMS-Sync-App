@@ -1480,6 +1480,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("static let increment = 10"))
         XCTAssertTrue(detail.contains("private struct DashboardRowDisclosureButton"))
         XCTAssertTrue(detail.contains("private struct DeferredDashboardExpansion"))
+        let rowDisclosureButton = try sourceStructBody(named: "DashboardRowDisclosureButton", in: detail)
+        XCTAssertFalse(rowDisclosureButton.contains("Button {"))
+        XCTAssertTrue(rowDisclosureButton.contains("Label(isExpanded ? expandedTitle : collapsedTitle"))
+        XCTAssertGreaterThanOrEqual(detail.components(separatedBy: ".onTapGesture {\n                isExpanded.toggle()\n            }").count - 1, 3)
         XCTAssertEqual(detail.components(separatedBy: "@ObservedObject var model: KLMSMacModel").count - 1, 0)
         XCTAssertTrue(detail.contains("struct DashboardDetailPanelView: View, @preconcurrency Equatable"))
         XCTAssertTrue(detail.contains("struct DashboardRenderSignature: Equatable"))
@@ -2461,6 +2465,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticStageDurationPanelView"))
         XCTAssertFalse(diagnosticsBody.contains("DiagnosticCommandLogPanelView"))
         XCTAssertFalse(diagnosticsBody.contains("RemoteActivityPanelView"))
+        XCTAssertFalse(diagnosticsBody.contains("LogPanelView"))
 
         XCTAssertTrue(ios.contains("return \"로그\""))
         XCTAssertTrue(iosHistoryScreen.contains("CompanionScreenContainer(title: \"로그\""))
