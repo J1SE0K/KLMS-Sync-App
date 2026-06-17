@@ -5026,10 +5026,10 @@ private struct WorkstationDashboardOverviewPanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("대시보드 상세")
+                    Text("대시보드")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(Color.klmsPrimaryText)
-                    Text("왼쪽 카드나 변경 요약을 누르면 이 패널에서 목록과 처리 버튼이 열립니다.")
+                    Text("최신 항목을 먼저 보고, 왼쪽 카드에서 바로 처리합니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -5045,8 +5045,6 @@ private struct WorkstationDashboardOverviewPanel: View {
                         Capsule().stroke(Color.klmsBorder, lineWidth: 1)
                     )
             }
-
-            WorkstationDashboardSelectionGuide()
 
             LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
                 ForEach(overviewMetrics) { metric in
@@ -5067,6 +5065,30 @@ private struct WorkstationDashboardOverviewPanel: View {
                     )
                 }
             }
+
+            WorkstationDashboardPreviewSection(
+                title: "파일",
+                systemImage: "folder",
+                tint: Color.klmsCommandAccent,
+                items: previewItems(for: .files),
+                emptyMessage: "새로 확인할 파일이 없습니다."
+            )
+
+            WorkstationDashboardPreviewSection(
+                title: "과제/시험",
+                systemImage: "checklist",
+                tint: Color.klmsWarningBorder,
+                items: previewTaskItems,
+                emptyMessage: "진행 중인 과제나 예정 시험이 없습니다."
+            )
+
+            WorkstationDashboardPreviewSection(
+                title: "공지",
+                systemImage: "note.text",
+                tint: Color.klmsCommandAccent,
+                items: previewItems(for: .notices),
+                emptyMessage: "새로 볼 공지가 없습니다."
+            )
 
             WorkstationChangeSummaryCard(model: model)
         }
@@ -5092,6 +5114,21 @@ private struct WorkstationDashboardOverviewPanel: View {
         ]
     }
 
+    private func previewItems(for category: DashboardMetricCategory) -> [ServerRelaySyncItem] {
+        Array(model.cachedVisibleDashboardItems(for: category.rawValue).prefix(2))
+    }
+
+    private var previewTaskItems: [ServerRelaySyncItem] {
+        Array(
+            (
+                model.cachedVisibleDashboardItems(for: DashboardMetricCategory.assignments.rawValue)
+                + model.cachedVisibleDashboardItems(for: DashboardMetricCategory.exams.rawValue)
+            )
+            .companionSorted(by: .recent)
+            .prefix(2)
+        )
+    }
+
     private struct MetricSummary: Identifiable {
         var title: String
         var value: Int
@@ -5102,44 +5139,56 @@ private struct WorkstationDashboardOverviewPanel: View {
     }
 }
 
-private struct WorkstationDashboardSelectionGuide: View {
-    private let rows: [(String, String, String)] = [
-        ("파일", "강의자료와 공지 첨부 파일을 같은 목록에서 확인합니다.", "folder"),
-        ("과제/시험", "미리알림과 캘린더에 반영할 항목을 바로 처리합니다.", "checklist"),
-        ("공지", "읽음, 중요, 숨김 상태를 유지한 채 상세를 봅니다.", "note.text"),
-    ]
+private struct WorkstationDashboardPreviewSection: View {
+    var title: String
+    var systemImage: String
+    var tint: Color
+    var items: [ServerRelaySyncItem]
+    var emptyMessage: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("선택하면 할 수 있는 일")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(Color.klmsSecondaryText)
-            ForEach(rows, id: \.0) { row in
-                HStack(alignment: .top, spacing: 9) {
-                    Image(systemName: row.2)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 22, height: 22)
-                        .background(Color.klmsCommandAccent.opacity(0.10), in: RoundedRectangle(cornerRadius: 7))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.0)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.klmsPrimaryText)
-                        Text(row.1)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(9)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+            HStack(spacing: 7) {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                    .frame(width: 22, height: 22)
+                    .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 7))
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Spacer(minLength: 0)
+                if !items.isEmpty {
+                    Text("\(items.count)개 미리보기")
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText)
                 }
             }
+
+            if items.isEmpty {
+                Text(emptyMessage)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+                    }
+            } else {
+                ForEach(items) { item in
+                    ServerSyncDataRow(item: item, isSelected: false)
+                        .equatable()
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
         }
     }
 }
