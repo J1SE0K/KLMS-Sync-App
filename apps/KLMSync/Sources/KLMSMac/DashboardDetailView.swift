@@ -163,9 +163,6 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     var snapshot: EngineSnapshot
     private var renderSignature: DashboardRenderSignature
     private var fileDataRenderSignature: DashboardFileData.Signature?
-    private var courseOptions: [String]
-    private var yearOptions: [String]
-    private var semesterOptions: [String]
     private var hiddenCount: Int
     @State private var searchText = ""
     @State private var selectedCourse = DashboardCourseFilter.all
@@ -191,9 +188,6 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         self.renderSignature = renderSignature
             ?? DashboardRenderSignature(snapshot: resolvedSnapshot, summary: model.dashboardSummaryCache)
         self.fileDataRenderSignature = kind.requiresFileData ? DashboardFileData.Signature(snapshot: resolvedSnapshot) : nil
-        self.courseOptions = DashboardCourseFilter.options(for: kind, snapshot: resolvedSnapshot)
-        self.yearOptions = DashboardTermFilter.yearOptions(for: kind, snapshot: resolvedSnapshot)
-        self.semesterOptions = DashboardTermFilter.semesterOptions(for: kind, snapshot: resolvedSnapshot)
         self.hiddenCount = resolvedSnapshot.hiddenSummary.total
         _fileData = State(initialValue: nil)
         _fileDataSignature = State(initialValue: nil)
@@ -227,9 +221,9 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
                 showHidden: $showHidden,
                 newOnly: $newOnly,
                 recentOnly: $recentOnly,
-                courses: courseOptions,
-                years: yearOptions,
-                semesters: semesterOptions,
+                courses: { DashboardCourseFilter.options(for: kind, snapshot: snapshot) },
+                years: { DashboardTermFilter.yearOptions(for: kind, snapshot: snapshot) },
+                semesters: { DashboardTermFilter.semesterOptions(for: kind, snapshot: snapshot) },
                 supportsNewOnly: kind.supportsNewOnly,
                 supportsRecentOnly: kind.supportsRecentOnly,
                 supportsHiddenToggle: kind != .calendar && kind != .hidden && hiddenCount > 0
@@ -939,9 +933,9 @@ private struct DashboardFilterBarView: View {
     @Binding var showHidden: Bool
     @Binding var newOnly: Bool
     @Binding var recentOnly: Bool
-    var courses: [String]
-    var years: [String]
-    var semesters: [String]
+    var courses: () -> [String]
+    var years: () -> [String]
+    var semesters: () -> [String]
     var supportsNewOnly: Bool
     var supportsRecentOnly: Bool
     var supportsHiddenToggle: Bool
@@ -1055,7 +1049,8 @@ private struct DashboardFilterBarView: View {
     }
 
     private var coursePickerField: some View {
-        DashboardRangeField(title: "과목", systemImage: "book.closed", minWidth: 150) {
+        let courses = self.courses()
+        return DashboardRangeField(title: "과목", systemImage: "book.closed", minWidth: 150) {
             Picker("과목", selection: normalizedCourseBinding) {
                 ForEach(courses, id: \.self) { course in
                     Text(course).tag(course)
@@ -1067,7 +1062,8 @@ private struct DashboardFilterBarView: View {
     }
 
     private var yearPickerField: some View {
-        DashboardRangeField(title: "년도", systemImage: "calendar", minWidth: 86, disabled: years.count <= 1) {
+        let years = self.years()
+        return DashboardRangeField(title: "년도", systemImage: "calendar", minWidth: 86, disabled: years.count <= 1) {
             Picker("년도", selection: normalizedYearBinding) {
                 ForEach(years, id: \.self) { year in
                     Text(year).tag(year)
@@ -1080,7 +1076,8 @@ private struct DashboardFilterBarView: View {
     }
 
     private var semesterPickerField: some View {
-        DashboardRangeField(title: "학기", systemImage: "calendar.badge.clock", minWidth: 98, disabled: semesters.count <= 1) {
+        let semesters = self.semesters()
+        return DashboardRangeField(title: "학기", systemImage: "calendar.badge.clock", minWidth: 98, disabled: semesters.count <= 1) {
             Picker("학기", selection: normalizedTermBinding) {
                 ForEach(semesters, id: \.self) { semester in
                     Text(semester).tag(semester)
@@ -1159,7 +1156,8 @@ private struct DashboardFilterBarView: View {
     private var normalizedCourseBinding: Binding<String> {
         Binding(
             get: {
-                courses.contains(selectedCourse) ? selectedCourse : DashboardCourseFilter.all
+                let courses = self.courses()
+                return courses.contains(selectedCourse) ? selectedCourse : DashboardCourseFilter.all
             },
             set: { selectedCourse = $0 }
         )
@@ -1168,7 +1166,8 @@ private struct DashboardFilterBarView: View {
     private var normalizedYearBinding: Binding<String> {
         Binding(
             get: {
-                years.contains(selectedYear) ? selectedYear : DashboardTermFilter.allYears
+                let years = self.years()
+                return years.contains(selectedYear) ? selectedYear : DashboardTermFilter.allYears
             },
             set: { selectedYear = $0 }
         )
@@ -1177,7 +1176,8 @@ private struct DashboardFilterBarView: View {
     private var normalizedTermBinding: Binding<String> {
         Binding(
             get: {
-                semesters.contains(selectedSemester)
+                let semesters = self.semesters()
+                return semesters.contains(selectedSemester)
                     ? selectedSemester
                     : DashboardTermFilter.allSemesters
             },
