@@ -95,7 +95,7 @@ struct SettingsView: View {
                 Text("설정")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
-                Text("필요한 묶음만 펼쳐서 바꿔 주세요.")
+                Text("바꿀 항목만 펼치세요.")
                     .font(.caption2)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -918,6 +918,8 @@ private struct SettingsDisclosureLabel: View {
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.88)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
