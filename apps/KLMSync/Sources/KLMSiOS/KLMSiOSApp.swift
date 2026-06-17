@@ -5025,19 +5025,19 @@ private struct FlowChipLayout: View {
                     HStack(spacing: 5) {
                         Image(systemName: entry.kind.systemImage)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(entry.kind.tint)
+                            .foregroundStyle(isSelected ? Color.klmsSelectedForeground : entry.kind.tint)
                         Text("\(entry.value)")
                             .font(.caption.monospacedDigit().weight(.bold))
-                            .foregroundStyle(Color.klmsPrimaryText)
+                            .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                         Text(entry.kind.title)
                             .font(.caption2.weight(.semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
-                            .foregroundStyle(Color.klmsPrimaryText)
+                            .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                         Spacer(minLength: 0)
                         Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsSecondaryText)
+                            .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.86) : Color.klmsSecondaryText)
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
@@ -5085,12 +5085,25 @@ private struct RemoteMetricTile: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("\(value)")
-                    .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                HStack(alignment: .center, spacing: 7) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.9) : Color.klmsCommandAccent)
+                        .frame(width: 26, height: 26)
+                        .background(
+                            isSelected
+                                ? Color.klmsSelectedForeground.opacity(0.12)
+                                : Color.klmsCommandAccent.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 8)
+                        )
+                    Spacer(minLength: 0)
+                    Text("\(value)")
+                        .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                }
                 Text(label)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.klmsSecondaryText)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.82) : Color.klmsSecondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
@@ -5153,12 +5166,26 @@ private struct WorkstationMetricCard: View {
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("\(category.title) \(value)개")
-                    .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: category.systemImage)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.9) : Color.klmsCommandAccent)
+                        .frame(width: 26, height: 26)
+                        .background(
+                            isSelected
+                                ? Color.klmsSelectedForeground.opacity(0.12)
+                                : Color.klmsCommandAccent.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: 8)
+                        )
+                    Text("\(category.title) \(value)개")
+                        .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                }
                 Text(category.workstationDescription)
                     .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundStyle(Color.klmsSecondaryText)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.78) : Color.klmsSecondaryText)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -8914,6 +8941,7 @@ private struct ServerSyncDataPanel: View {
                         onSelect: onSelect
                     )
                 } else {
+                    CompanionItemListControlsPlaceholder()
                     Text("목록을 준비하고 있습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
