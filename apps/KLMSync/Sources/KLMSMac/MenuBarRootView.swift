@@ -632,7 +632,8 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
 private struct TaskAndExamWorkspaceView: View {
     let model: KLMSMacModel
     private let columns = [
-        GridItem(.adaptive(minimum: 260), spacing: 12),
+        GridItem(.flexible(minimum: 280), spacing: 12, alignment: .top),
+        GridItem(.flexible(minimum: 280), spacing: 12, alignment: .top),
     ]
 
     var body: some View {
@@ -654,6 +655,7 @@ private struct TaskAndExamWorkspaceView: View {
             cachedDashboardDetailPanel(kind: .helpDesk)
                 .equatable()
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+                .gridCellColumns(2)
         }
     }
 
