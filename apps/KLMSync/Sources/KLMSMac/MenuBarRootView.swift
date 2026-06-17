@@ -2618,41 +2618,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
         if let renderedDetail {
             dashboardDetailColumn(kind: renderedDetail)
         } else {
-            dashboardDetailPlaceholder
-        }
-    }
-
-    private var dashboardDetailPlaceholder: some View {
-        SectionBox(title: "상세 보기") {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "rectangle.grid.2x2")
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .frame(width: 18)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("카드를 선택하면 바로 아래에서 목록과 처리 버튼을 확인할 수 있습니다.")
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacPrimaryText)
-                        Text("파일처럼 항목이 많은 목록은 선택한 뒤에만 불러와서 앱 반응을 빠르게 유지합니다.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 8)], alignment: .leading, spacing: 8) {
-                    DashboardDetailHint(title: "파일", detail: "정렬, 미리보기, 열기")
-                    DashboardDetailHint(title: "공지", detail: "읽음, 중요, 숨김")
-                    DashboardDetailHint(title: "캘린더", detail: "등록, 수정, 삭제")
-                }
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 130, alignment: .leading)
-            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.klmsMacBorder, lineWidth: 1)
-            }
+            EmptyView()
         }
     }
 }
@@ -2694,41 +2660,28 @@ private struct DashboardSummaryPresentation {
     }
 
     func activeDetail(_ selected: DashboardDetailKind?, archiveExpanded: Bool) -> DashboardDetailKind? {
-        selected.flatMap { selected in
-            visibleMetrics(archiveExpanded: archiveExpanded).first { $0.detail == selected }?.detail
+        let metrics = visibleMetrics(archiveExpanded: archiveExpanded)
+        if let selected,
+           let detail = metrics.first(where: { $0.detail == selected })?.detail {
+            return detail
         }
+        return preferredDetail(in: metrics)
     }
 
     func renderedDetail(_ selected: DashboardDetailKind?, archiveExpanded: Bool) -> DashboardDetailKind? {
-        selected.flatMap { displayed in
-            visibleMetrics(archiveExpanded: archiveExpanded).first { $0.detail == displayed }?.detail
+        let metrics = visibleMetrics(archiveExpanded: archiveExpanded)
+        if let displayed = selected,
+           let detail = metrics.first(where: { $0.detail == displayed })?.detail {
+            return detail
         }
+        return preferredDetail(in: metrics)
     }
-}
 
-private struct DashboardDetailHint: View {
-    var title: String
-    var detail: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(Color.klmsMacPrimaryText)
-            Text(detail)
-                .font(.caption2)
-                .foregroundStyle(Color.klmsMacSecondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
+    private func preferredDetail(in metrics: [Metric]) -> DashboardDetailKind? {
+        if let files = metrics.first(where: { $0.detail == .files })?.detail {
+            return files
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacCardBackground.opacity(0.76), in: RoundedRectangle(cornerRadius: 9))
-        .overlay {
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
-        }
+        return metrics.first?.detail
     }
 }
 
