@@ -3786,6 +3786,7 @@ private enum CompanionLargeList {
     static let previewVisibleLimit = 5
     static let calendarVisibleLimit = 6
     static let increment = 10
+    static let filterRebuildDelayNanoseconds: UInt64 = 80_000_000
 }
 
 private struct CompanionItemListData: Sendable {
@@ -5501,7 +5502,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .task(id: listInputKey) {
-            await rebuildCachedListData()
+            await rebuildCachedListDataAfterInputSettles()
         }
         .onChange(of: calendarChangesResetKey) { _, _ in
             calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
@@ -5630,6 +5631,14 @@ private struct DashboardCategoryInlineDetailPanel: View {
 
     private var calendarChangesResetKey: String {
         "\(calendarChanges.count):\(calendarChanges.first?.id ?? ""):\(calendarChanges.last?.id ?? "")"
+    }
+
+    private func rebuildCachedListDataAfterInputSettles() async {
+        if cachedListData != nil {
+            try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+        }
+        await rebuildCachedListData()
     }
 
     private func rebuildCachedListData() async {
@@ -7873,7 +7882,7 @@ private struct DashboardCategoryDetailScreen: View {
         .navigationTitle(category.title)
         .searchable(text: $query, prompt: "\(category.title) 검색")
         .task(id: listInputKey) {
-            await rebuildCachedListData()
+            await rebuildCachedListDataAfterInputSettles()
         }
         .onChange(of: calendarChangesResetKey) { _, _ in
             calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
@@ -7898,6 +7907,14 @@ private struct DashboardCategoryDetailScreen: View {
             newOnly: newOnly,
             recentOnly: recentOnly
         )
+    }
+
+    private func rebuildCachedListDataAfterInputSettles() async {
+        if cachedListData != nil {
+            try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+        }
+        await rebuildCachedListData()
     }
 
     private func rebuildCachedListData() async {
@@ -8477,7 +8494,7 @@ private struct ServerSyncDataPanel: View {
             .background(Color.klmsSubtleCardBackground)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .task(id: listInputKey) {
-                await rebuildCachedListData()
+                await rebuildCachedListDataAfterInputSettles()
             }
         }
     }
@@ -8496,6 +8513,14 @@ private struct ServerSyncDataPanel: View {
             newOnly: newOnly,
             recentOnly: recentOnly
         )
+    }
+
+    private func rebuildCachedListDataAfterInputSettles() async {
+        if cachedListData != nil {
+            try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+        }
+        await rebuildCachedListData()
     }
 
     private func rebuildCachedListData() async {
