@@ -397,7 +397,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     }
 }
 
-private struct DashboardDetailFilters: Equatable {
+private struct DashboardDetailFilters: Equatable, Sendable {
     var searchText: String
     var selectedCourse: String
     var selectedYear: String
@@ -1288,7 +1288,7 @@ private struct DashboardRangeField<Content: View>: View {
     }
 }
 
-private enum StateItemEditorKind {
+private enum StateItemEditorKind: Sendable {
     case assignment
     case assignmentRecord
     case exam
@@ -1383,7 +1383,11 @@ private struct StateItemListView: View {
                 await Task.yield()
             }
             guard !Task.isCancelled else { return }
-            presentation = DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot)
+            let nextPresentation = await Task.detached(priority: .userInitiated) {
+                DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot)
+            }.value
+            guard !Task.isCancelled else { return }
+            presentation = nextPresentation
             isPreparingPresentation = false
         }
     }
@@ -1441,7 +1445,7 @@ private struct DashboardStateItemListInputSignature: Equatable {
     }
 }
 
-private struct DashboardStateItemListPresentation {
+private struct DashboardStateItemListPresentation: Sendable {
     var items: [StateItem] = []
 
     init() {}
@@ -1954,7 +1958,11 @@ private struct NoticeListView: View {
                 await Task.yield()
             }
             guard !Task.isCancelled else { return }
-            presentation = NoticeDashboardPresentation(category: category, filters: filters, snapshot: snapshot)
+            let nextPresentation = await Task.detached(priority: .userInitiated) {
+                NoticeDashboardPresentation(category: category, filters: filters, snapshot: snapshot)
+            }.value
+            guard !Task.isCancelled else { return }
+            presentation = nextPresentation
             isPreparingPresentation = false
         }
     }
@@ -2002,7 +2010,7 @@ private struct NoticeDashboardInputSignature: Equatable {
     var baseSignature: NoticeDashboardBaseInputSignature
 }
 
-private struct NoticeDashboardPresentation {
+private struct NoticeDashboardPresentation: Sendable {
     var notices: [NoticeDigestEntry] = []
     var counts: [NoticeListCategory: Int] = [:]
     var category: NoticeListCategory = .all
@@ -2097,7 +2105,7 @@ private func noticeReadStateMatches(_ state: NoticeInteractionState?, fingerprin
     return !fingerprint.isEmpty && state.readFingerprint == fingerprint
 }
 
-enum NoticeListCategory: String, CaseIterable, Identifiable, Hashable {
+enum NoticeListCategory: String, CaseIterable, Identifiable, Hashable, Sendable {
     case all
     case important
     case fresh
