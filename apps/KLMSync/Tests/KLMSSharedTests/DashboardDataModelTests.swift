@@ -1736,6 +1736,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteCommandRow.contains("companionPerformWithoutAnimation"))
 
         XCTAssertTrue(settingsScreen.contains("ServerRelayConnectionPanel"))
+        XCTAssertFalse(settingsScreen.contains("InfoBanner(message: model.remoteAvailabilityMessage)"))
         XCTAssertTrue(settingsScreen.contains("CompanionImmediateSettingsPanel"))
         XCTAssertFalse(settingsScreen.contains("CompanionAppearancePanel"))
         XCTAssertTrue(settingsScreen.contains("RemoteSettingsPanel"))

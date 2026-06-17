@@ -2839,9 +2839,6 @@ private struct CompanionSettingsScreen: View {
         VStack(alignment: .leading, spacing: 12) {
             RemoteDiagnosticPanel(model: model)
             RemotePrivacyNote()
-            if !model.serverRelayConfigured {
-                InfoBanner(message: model.remoteAvailabilityMessage)
-            }
             ServerRelayConnectionPanel(model: model)
         }
     }
