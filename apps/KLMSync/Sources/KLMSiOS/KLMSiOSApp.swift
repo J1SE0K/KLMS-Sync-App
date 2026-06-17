@@ -2282,7 +2282,7 @@ struct CompanionRootView: View {
 }
 
 private struct CompanionTabRootView: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @State private var selectedSection: CompanionAppSection = .status
 
     var body: some View {
@@ -2366,7 +2366,7 @@ private struct CompanionCompactTabBar: View {
 }
 
 private struct CompanionSplitRootView: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @Binding var selectedSection: CompanionAppSection?
 
     var body: some View {
@@ -2496,7 +2496,7 @@ private struct CompanionSidebarButton: View {
 
 private struct CompanionSectionContent: View {
     var section: CompanionAppSection
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
 
     var body: some View {
         Group {
@@ -2524,7 +2524,7 @@ private struct CompanionSectionContent: View {
 }
 
 private struct CompanionStatusScreen: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
     @State private var displayedDashboardPreview: DashboardMetricCategory?
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
@@ -2750,7 +2750,7 @@ private struct RemoteDashboardStatusStrip: View {
 private struct CompanionDashboardCategoryScreen: View {
     var title: String
     var category: DashboardMetricCategory
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -2765,7 +2765,7 @@ private struct CompanionDashboardCategoryScreen: View {
 }
 
 private struct CompanionTasksScreen: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -2784,7 +2784,7 @@ private struct CompanionTasksScreen: View {
 }
 
 private struct CompanionSettingsScreen: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
