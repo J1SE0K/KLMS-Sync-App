@@ -23,7 +23,6 @@ struct MenuBarRootView: View {
                         selectedSection: $selectedSection,
                         expandedLogSummaryKind: $expandedLogSummaryKind
                     )
-                    CommandPanelView(model: model)
                     MacWorkstationLayoutView(
                         model: model,
                         selectedSection: $selectedSection,
@@ -131,25 +130,28 @@ private struct MacWorkspaceSidebarView: View {
     @Binding var selectedSection: KLMSMacSection
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("KLMS Sync")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                Text("작업 공간")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacSecondaryText)
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("KLMS Sync")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    Text("작업 공간")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                }
+                .padding(.horizontal, 6)
+
+                CommandPanelView(model: model)
+
+                WorkspaceNavigationView(selection: $selectedSection)
+
+                DashboardRuntimePanelView(model: model)
             }
-            .padding(.horizontal, 6)
-
-            WorkspaceNavigationView(selection: $selectedSection)
-
-            Spacer(minLength: 10)
-
-            DashboardRuntimePanelView(model: model)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.klmsMacSidebarBackground)
     }
