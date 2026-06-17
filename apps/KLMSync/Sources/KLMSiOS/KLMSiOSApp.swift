@@ -4546,8 +4546,21 @@ private struct RemoteDashboardMetricOverview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            metricSection("주요 항목", categories: primaryMetricCategories)
-            metricSection("확인 필요", categories: attentionMetricCategories)
+            if hasVisibleMetrics {
+                metricSection("주요 항목", categories: primaryMetricCategories)
+                metricSection("확인 필요", categories: attentionMetricCategories)
+            } else if !hasVisibleChangeSummary {
+                Text("표시할 대시보드 항목이 없습니다.")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 13)
+                            .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+                    }
+            }
 
             if hasVisibleChangeSummary {
                 RemoteDashboardChangeSummary(
@@ -4602,12 +4615,17 @@ private struct RemoteDashboardMetricOverview: View {
 
     private var primaryMetricCategories: [DashboardMetricCategory] {
         let required: [DashboardMetricCategory] = [.files, .assignments, .notices, .exams]
+            .filter { $0.value(from: displayStatus) > 0 }
         let optional: [DashboardMetricCategory] = [.helpDesk].filter { $0.value(from: displayStatus) > 0 }
         return required + optional
     }
 
     private var attentionMetricCategories: [DashboardMetricCategory] {
         [.quarantine, .calendar].filter { $0.value(from: displayStatus) > 0 }
+    }
+
+    private var hasVisibleMetrics: Bool {
+        !primaryMetricCategories.isEmpty || !attentionMetricCategories.isEmpty
     }
 
     private var hasFileCleanupDetails: Bool {
@@ -5031,23 +5049,36 @@ private struct WorkstationDashboardOverviewPanel: View {
                     )
             }
 
-            LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
-                ForEach(overviewMetrics) { metric in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("\(metric.value)")
-                            .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(Color.klmsPrimaryText)
-                        Text(metric.title)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.klmsSecondaryText)
-                    }
-                    .padding(11)
-                    .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
-                    .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+            if overviewMetrics.isEmpty {
+                Text("표시할 대시보드 항목이 없습니다.")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
                     .overlay(
                         RoundedRectangle(cornerRadius: 13)
-                            .stroke(Color.klmsBorder, lineWidth: 1)
+                            .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
                     )
+            } else {
+                LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
+                    ForEach(overviewMetrics) { metric in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("\(metric.value)")
+                                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(Color.klmsPrimaryText)
+                            Text(metric.title)
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.klmsSecondaryText)
+                        }
+                        .padding(11)
+                        .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+                        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 13)
+                                .stroke(Color.klmsBorder, lineWidth: 1)
+                        )
+                    }
                 }
             }
 
@@ -5096,7 +5127,7 @@ private struct WorkstationDashboardOverviewPanel: View {
             MetricSummary(title: "과제", value: status.assignments),
             MetricSummary(title: "공지", value: status.notices),
             MetricSummary(title: "시험", value: status.exams),
-        ]
+        ].filter { $0.value > 0 }
     }
 
     private func previewItems(for category: DashboardMetricCategory) -> [ServerRelaySyncItem] {
