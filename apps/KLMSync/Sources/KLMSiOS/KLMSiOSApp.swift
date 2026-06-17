@@ -5165,7 +5165,7 @@ private struct WorkstationMetricCard: View {
 }
 
 private struct WorkstationDashboardOverviewPanel: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
 
     private var status: SanitizedRemoteStatus {
         model.dashboardStatus
@@ -5370,7 +5370,7 @@ private struct WorkstationDashboardPreviewSection: View {
 }
 
 private struct WorkstationChangeSummaryCard: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
 
     private var status: SanitizedRemoteStatus {
         model.dashboardStatus
@@ -5639,7 +5639,7 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
 
 private struct DashboardCategoryInlineDetailPanel: View {
     var category: DashboardMetricCategory
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     var itemPresentation: CompanionInlineItemRowsPresentation
     var externallySelectedItemID: String?
     var onSelectItem: (ServerRelaySyncItem) -> Void
@@ -5663,10 +5663,10 @@ private struct DashboardCategoryInlineDetailPanel: View {
         onSelectItem: @escaping (ServerRelaySyncItem) -> Void = { _ in }
     ) {
         self.category = category
+        self.model = model
         self.itemPresentation = itemPresentation
         self.externallySelectedItemID = externallySelectedItemID
         self.onSelectItem = onSelectItem
-        _model = ObservedObject(wrappedValue: model)
         _sortOption = State(initialValue: CompanionItemSortOption.defaultSort(for: category))
         _statusFilter = State(initialValue: CompanionItemStatusFilter.defaultFilter(for: category))
     }
@@ -5902,7 +5902,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
 
 private struct WorkstationDashboardCategoryWorkspace: View {
     var category: DashboardMetricCategory
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @State private var selectedItemID: String?
     @State private var displayedSelectedItemID: String?
     @State private var externalDetailTask: Task<Void, Never>?
@@ -6015,7 +6015,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
 }
 
 private struct WorkstationTasksWorkspace: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @State private var selectedItemID: String?
     @State private var displayedSelectedItemID: String?
     @State private var externalDetailTask: Task<Void, Never>?
