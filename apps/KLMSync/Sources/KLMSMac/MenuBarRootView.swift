@@ -3841,10 +3841,23 @@ private struct CommandPanelView: View {
     }
 
     private var stageDurations: [KLMSStageDuration] {
-        let output = model.liveCommandOutput.isEmpty
-            ? (model.lastCommandResult?.combinedOutput ?? "")
-            : model.liveCommandOutput
-        return KLMSStageDurationParser.parse(from: output)
+        if !model.liveCommandOutput.isEmpty {
+            return KLMSStageDurationParser.parse(from: model.liveCommandOutput)
+        }
+        if let record = model.commandHistory.records.first(where: { !$0.visibleStageDurations.isEmpty }) {
+            return record.visibleStageDurations
+        }
+        guard let result = model.lastCommandResult else {
+            return []
+        }
+        return KLMSStageDurationParser.parse(from: Self.boundedStageDurationSource(result.combinedOutput))
+    }
+
+    private static func boundedStageDurationSource(_ output: String) -> String {
+        guard output.count > 8_000 else {
+            return output
+        }
+        return String(output.suffix(8_000))
     }
 }
 
