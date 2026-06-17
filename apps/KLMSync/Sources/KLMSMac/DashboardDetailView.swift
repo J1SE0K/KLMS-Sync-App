@@ -1280,6 +1280,7 @@ private struct StateItemListView: View {
     var filters: DashboardDetailFilters
     var snapshot: EngineSnapshot
     var model: KLMSMacModel
+    private var inputSignature: DashboardStateItemListInputSignature
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
     @State private var presentation: DashboardStateItemListPresentation
     @State private var presentationSignature: DashboardStateItemListInputSignature
@@ -1299,12 +1300,13 @@ private struct StateItemListView: View {
         self.snapshot = snapshot
         self.model = model
         let signature = DashboardStateItemListInputSignature(items: items, editor: editor, filters: filters, snapshot: snapshot)
+        self.inputSignature = signature
         _presentation = State(initialValue: DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot))
         _presentationSignature = State(initialValue: signature)
     }
 
     var body: some View {
-        let signature = DashboardStateItemListInputSignature(items: items, editor: editor, filters: filters, snapshot: snapshot)
+        let signature = inputSignature
         let renderedItems = presentation.items.prefix(visibleLimit)
         Group {
             if presentation.items.isEmpty {
@@ -1818,6 +1820,7 @@ private struct NoticeListView: View {
     var filters: DashboardDetailFilters
     var snapshot: EngineSnapshot
     var model: KLMSMacModel
+    private var inputBaseSignature: NoticeDashboardBaseInputSignature
     @State private var category: NoticeListCategory
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
     @State private var presentation: NoticeDashboardPresentation
@@ -1832,14 +1835,16 @@ private struct NoticeListView: View {
         self.filters = filters
         self.snapshot = snapshot
         self.model = model
-        let signature = NoticeDashboardInputSignature(category: defaultCategory, filters: filters, snapshot: snapshot)
+        let baseSignature = NoticeDashboardBaseInputSignature(filters: filters, snapshot: snapshot)
+        let signature = NoticeDashboardInputSignature(category: defaultCategory, baseSignature: baseSignature)
+        self.inputBaseSignature = baseSignature
         _category = State(initialValue: defaultCategory)
         _presentation = State(initialValue: NoticeDashboardPresentation(category: defaultCategory, filters: filters, snapshot: snapshot))
         _presentationSignature = State(initialValue: signature)
     }
 
     var body: some View {
-        let signature = NoticeDashboardInputSignature(category: category, filters: filters, snapshot: snapshot)
+        let signature = NoticeDashboardInputSignature(category: category, baseSignature: inputBaseSignature)
         VStack(alignment: .leading, spacing: 8) {
             NoticeCategoryPickerView(
                 category: $category,
@@ -1884,12 +1889,11 @@ private struct NoticeListView: View {
     }
 }
 
-private struct NoticeDashboardInputSignature: Equatable {
+private struct NoticeDashboardBaseInputSignature: Equatable {
     private var value: Int
 
-    init(category: NoticeListCategory, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
+    init(filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
         var hasher = Hasher()
-        hasher.combine(category.rawValue)
         hasher.combine(filters.searchText)
         hasher.combine(filters.selectedCourse)
         hasher.combine(filters.selectedYear)
@@ -1920,6 +1924,11 @@ private struct NoticeDashboardInputSignature: Equatable {
         }
         value = hasher.finalize()
     }
+}
+
+private struct NoticeDashboardInputSignature: Equatable {
+    var category: NoticeListCategory
+    var baseSignature: NoticeDashboardBaseInputSignature
 }
 
 private struct NoticeDashboardPresentation {
@@ -2357,12 +2366,11 @@ private struct MissingFilesListView: View {
     }
 }
 
-private struct DashboardFileListInputSignature: Equatable {
+private struct DashboardFileListBaseInputSignature: Equatable {
     private var value: Int
 
-    init(files: [DashboardFileItem], filters: DashboardDetailFilters, sortOption: DashboardFileSortOption) {
+    init(files: [DashboardFileItem], filters: DashboardDetailFilters) {
         var hasher = Hasher()
-        hasher.combine(sortOption.rawValue)
         hasher.combine(filters.searchText)
         hasher.combine(filters.selectedCourse)
         hasher.combine(filters.selectedYear)
@@ -2390,6 +2398,11 @@ private struct DashboardFileListInputSignature: Equatable {
     }
 }
 
+private struct DashboardFileListInputSignature: Equatable {
+    var baseSignature: DashboardFileListBaseInputSignature
+    var sortOption: DashboardFileSortOption
+}
+
 private struct DashboardFileListPresentation {
     var files: [DashboardFileItem] = []
 
@@ -2410,6 +2423,7 @@ private struct DashboardFileListContentView: View {
     var emptyText: String
     var filteredEmptyText: String
     var introText: String? = nil
+    private var inputBaseSignature: DashboardFileListBaseInputSignature
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
     @State private var presentation: DashboardFileListPresentation
@@ -2431,13 +2445,15 @@ private struct DashboardFileListContentView: View {
         self.emptyText = emptyText
         self.filteredEmptyText = filteredEmptyText
         self.introText = introText
-        let signature = DashboardFileListInputSignature(files: files, filters: filters, sortOption: .recent)
+        let baseSignature = DashboardFileListBaseInputSignature(files: files, filters: filters)
+        let signature = DashboardFileListInputSignature(baseSignature: baseSignature, sortOption: .recent)
+        self.inputBaseSignature = baseSignature
         _presentation = State(initialValue: DashboardFileListPresentation(files: files, filters: filters, sortOption: .recent))
         _presentationSignature = State(initialValue: signature)
     }
 
     var body: some View {
-        let signature = DashboardFileListInputSignature(files: files, filters: filters, sortOption: sortOption)
+        let signature = DashboardFileListInputSignature(baseSignature: inputBaseSignature, sortOption: sortOption)
         let visibleFiles = presentation.files.prefix(visibleLimit)
         Group {
             if presentation.files.isEmpty {
