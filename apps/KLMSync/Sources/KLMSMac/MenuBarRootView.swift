@@ -4941,9 +4941,14 @@ private extension CommandRunRecord {
 private struct IssueSummaryView: View {
     var issues: [EngineIssue]
     @State private var isExpanded = false
+    @State private var isRemainingIssuesExpanded = false
+    private let primaryVisibleIssueCount = 1
+    private let remainingVisibleLimit = 6
 
     var body: some View {
         if !issues.isEmpty {
+            let primaryIssues = Array(issues.prefix(primaryVisibleIssueCount))
+            let remainingIssues = Array(issues.dropFirst(primaryVisibleIssueCount))
             VStack(alignment: .leading, spacing: 8) {
                 Button {
                     isExpanded.toggle()
@@ -4985,13 +4990,41 @@ private struct IssueSummaryView: View {
 
                 if isExpanded {
                     VStack(alignment: .leading, spacing: 8) {
-                        ForEach(issues.prefix(3)) { issue in
+                        ForEach(primaryIssues) { issue in
                             IssueRowView(issue: issue)
                         }
-                        if issues.count > 3 {
-                            Text("나머지 \(issues.count - 3)개는 진단 화면에서 확인할 수 있습니다.")
-                                .font(.caption2)
+                        if !remainingIssues.isEmpty {
+                            Button {
+                                isRemainingIssuesExpanded.toggle()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: isRemainingIssuesExpanded ? "chevron.down" : "chevron.right")
+                                        .font(.caption2.weight(.semibold))
+                                        .frame(width: 12)
+                                    Text("나머지 확인 항목 \(remainingIssues.count)개")
+                                        .font(.caption2.weight(.semibold))
+                                    Spacer(minLength: 0)
+                                }
                                 .foregroundStyle(Color.klmsMacSecondaryText)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+                                .contentShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(MacPressFeedbackButtonStyle())
+
+                            if isRemainingIssuesExpanded {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(remainingIssues.prefix(remainingVisibleLimit)) { issue in
+                                        IssueRowView(issue: issue)
+                                    }
+                                    if remainingIssues.count > remainingVisibleLimit {
+                                        Text("나머지 \(remainingIssues.count - remainingVisibleLimit)개는 진단 화면에서 확인할 수 있습니다.")
+                                            .font(.caption2)
+                                            .foregroundStyle(Color.klmsMacSecondaryText)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
