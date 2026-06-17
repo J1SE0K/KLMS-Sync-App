@@ -140,7 +140,10 @@ final class CompanionModel: ObservableObject {
     }
     @Published var remoteSettings: [ServerRelaySetting] = []
     @Published var sharedRunLogs: [ServerRelayRunLog] = [] {
-        didSet { rebuildRemoteLogDerivedState() }
+        didSet {
+            rebuildSharedRunLogStageDurationCache()
+            rebuildRemoteLogDerivedState()
+        }
     }
     @Published var verifySummary: ServerRelayVerifySummary?
     @Published var sharedSettings: [ServerRelaySetting] = []
@@ -163,6 +166,8 @@ final class CompanionModel: ObservableObject {
     @Published private(set) var hasClearableCommandLogs = false
     @Published private(set) var hasClearableRequestLogs = false
     @Published private(set) var hasClearableFileAccessLogs = false
+    @Published private(set) var sharedRunLogStageDurationsByID: [String: [KLMSStageDuration]] = [:]
+    @Published private(set) var latestSharedRunLogStageDurations: [KLMSStageDuration] = []
     @Published var status = SanitizedRemoteStatus() {
         didSet { rebuildDashboardStatus() }
     }
@@ -689,6 +694,28 @@ final class CompanionModel: ObservableObject {
         }
         if hasClearableRemoteLogsCache != nextHasClearableRemoteLogs {
             hasClearableRemoteLogsCache = nextHasClearableRemoteLogs
+        }
+    }
+
+    private func rebuildSharedRunLogStageDurationCache() {
+        var nextByID: [String: [KLMSStageDuration]] = [:]
+        var nextLatest: [KLMSStageDuration] = []
+        var hasLatest = false
+
+        for log in sharedRunLogs where !log.outputTail.isEmpty {
+            let durations = KLMSStageDurationParser.parse(from: log.outputTail)
+            nextByID[log.id] = durations
+            if !hasLatest {
+                nextLatest = durations
+                hasLatest = true
+            }
+        }
+
+        if sharedRunLogStageDurationsByID != nextByID {
+            sharedRunLogStageDurationsByID = nextByID
+        }
+        if latestSharedRunLogStageDurations != nextLatest {
+            latestSharedRunLogStageDurations = nextLatest
         }
     }
 
@@ -3226,6 +3253,7 @@ private struct CompanionHistoryScreen: View {
             RemoteLogSummaryPanel(model: model, compact: false)
             SharedRunLogsView(
                 logs: model.sharedRunLogs,
+                stageDurationsByID: model.sharedRunLogStageDurationsByID,
                 clearAction: {
                     Task {
                         await model.clearSharedRunLogs()
@@ -10435,7 +10463,7 @@ private struct RemoteCommandPanel: View {
                 }
             }
             .toggleStyle(.switch)
-            RemoteStageDurationSummaryView(durations: stageDurations)
+            RemoteStageDurationSummaryView(durations: model.latestSharedRunLogStageDurations)
             if compact {
                 Text("상태 검사와 권한 진단은 설정 탭의 진단 카드에서 실행할 수 있습니다.")
                     .font(.caption)
@@ -10480,13 +10508,6 @@ private struct RemoteCommandPanel: View {
         .disabled(isDisabled)
         .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
         .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 \(kind.displayName)을 중단합니다." : "Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
-    }
-
-    private var stageDurations: [KLMSStageDuration] {
-        guard let log = model.sharedRunLogs.first(where: { !$0.outputTail.isEmpty }) else {
-            return []
-        }
-        return KLMSStageDurationParser.parse(from: log.outputTail)
     }
 
     private func commandActionCard(_ kind: RemoteCommandKind) -> some View {
@@ -11052,7 +11073,7 @@ private struct RemoteDiagnosticPanel: View {
                         diagnosticButton(.doctor)
                         diagnosticButton(.report)
                     }
-                    RemoteStageDurationSummaryView(durations: latestStageDurations)
+                    RemoteStageDurationSummaryView(durations: model.latestSharedRunLogStageDurations)
 
                     CompanionSettingsSubsectionCard(
                         title: "고급 도구",
@@ -11083,13 +11104,6 @@ private struct RemoteDiagnosticPanel: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
-    }
-
-    private var latestStageDurations: [KLMSStageDuration] {
-        guard let log = model.sharedRunLogs.first(where: { !$0.outputTail.isEmpty }) else {
-            return []
-        }
-        return KLMSStageDurationParser.parse(from: log.outputTail)
     }
 
     private func diagnosticButton(_ kind: RemoteCommandKind) -> some View {
@@ -11801,6 +11815,7 @@ private struct RemoteLogSummaryRow: View {
 
 private struct SharedRunLogsView: View {
     var logs: [ServerRelayRunLog]
+    var stageDurationsByID: [String: [KLMSStageDuration]] = [:]
     var clearAction: (() -> Void)?
     var clearDisabled = false
 
@@ -11839,7 +11854,10 @@ private struct SharedRunLogsView: View {
             } else {
                 LazyVStack(spacing: 8) {
                     ForEach(logs.prefix(30)) { log in
-                        SharedRunLogRow(log: log)
+                        SharedRunLogRow(
+                            log: log,
+                            stageDurations: stageDurationsByID[log.id] ?? []
+                        )
                     }
                 }
             }
@@ -11849,6 +11867,7 @@ private struct SharedRunLogsView: View {
 
 private struct SharedRunLogRow: View {
     var log: ServerRelayRunLog
+    var stageDurations: [KLMSStageDuration]
     @State private var isExpanded = false
 
     var body: some View {
@@ -11913,10 +11932,6 @@ private struct SharedRunLogRow: View {
             return Color.klmsSecondaryText
         }
         return log.needsAttention ? Color.klmsWarningBorder : Color.klmsSuccessBorder
-    }
-
-    private var stageDurations: [KLMSStageDuration] {
-        KLMSStageDurationParser.parse(from: log.outputTail)
     }
 
 }
