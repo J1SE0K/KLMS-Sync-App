@@ -652,6 +652,42 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertEqual(store.load().records.count, 0)
     }
 
+    func testCommandRunHistoryRemoveRecordPersistsRemainingRuns() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("klms-dashboard-remove-history-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let store = CommandRunHistoryStore(url: directory.appendingPathComponent("history.json"))
+        _ = try store.append(KLMSCommandResult(
+            invocation: KLMSEngineCommand.fullSync.invocation(),
+            startedAt: Date(timeIntervalSince1970: 1),
+            finishedAt: Date(timeIntervalSince1970: 3),
+            exitCode: 0,
+            standardOutput: "full",
+            standardError: "",
+            authDigits: nil
+        ))
+        let beforeRemove = try store.append(KLMSCommandResult(
+            invocation: KLMSEngineCommand.noticeSync.invocation(),
+            startedAt: Date(timeIntervalSince1970: 4),
+            finishedAt: Date(timeIntervalSince1970: 6),
+            exitCode: 1,
+            standardOutput: "notice",
+            standardError: "",
+            authDigits: nil
+        ))
+        let noticeID = try XCTUnwrap(beforeRemove.records.first?.id)
+
+        let afterRemove = try store.removeRecord(id: noticeID)
+
+        XCTAssertEqual(afterRemove.records.count, 1)
+        XCTAssertEqual(afterRemove.records.first?.command, .fullSync)
+        XCTAssertEqual(store.load().records.map(\.command), [.fullSync])
+    }
+
     func testCancelledCommandHistoryRedactsAuthDigits() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("klms-dashboard-cancel-history-\(UUID().uuidString)", isDirectory: true)
@@ -999,7 +1035,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("let remainingIssues = Array(issueChecks.dropFirst(primaryVisibleIssueCount))"))
         XCTAssertTrue(view.contains("title: \"원본 보기\""))
         XCTAssertTrue(view.contains("private struct DiagnosticChecksDisclosure"))
-        XCTAssertTrue(view.contains("LogTextBlock(text: source.text, detailed: true, rawExpandedByDefault: false)"))
+        XCTAssertTrue(view.contains("LogTextBlock(text: record.outputTail)"))
         XCTAssertTrue(view.contains("Label(\"원본 로그 보기\", systemImage: \"doc.text.magnifyingglass\")"))
         XCTAssertTrue(logTextBlock.contains("private let highlights: [KLMSLogHighlight]"))
         XCTAssertTrue(logTextBlock.contains("let boundedText = Self.boundedText(text, detailed: detailed)"))
@@ -1903,7 +1939,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("\"화면/앱\""))
         XCTAssertTrue(macSettings.contains("\"설정 파일 저장\""))
         XCTAssertFalse(macSettings.contains("\"Mac 설정 파일\""))
-        XCTAssertTrue(macSettings.contains("Text(\"바꿀 항목만 펼치세요.\")"))
+        XCTAssertTrue(macSettings.contains("Text(\"자주 쓰는 설정은 바로 보이고, 설치/백업 같은 부가 항목만 접어 둡니다.\")"))
         XCTAssertTrue(macSettings.contains("Text(selectedTab.scopeLabel)"))
         XCTAssertFalse(macSettings.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(settingsForm.contains("VStack(alignment: .leading, spacing: 12)"))
@@ -2096,7 +2132,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains(".disabled(model.runningCommand != nil || !model.hasClearableVisibleLogs)"))
         XCTAssertTrue(mac.contains("LinearGradient("))
         XCTAssertTrue(mac.contains("Image(systemName: \"trash\")"))
-        XCTAssertTrue(mac.contains(".accessibilityLabel(\"파일 요청 기록 지우기\")"))
+        XCTAssertTrue(mac.contains(".accessibilityLabel(\"서버·파일 요청 기록 지우기\")"))
+        XCTAssertTrue(macModel.contains("func clearServerRelayActivityLogs() async"))
+        XCTAssertTrue(macModel.contains("var hasClearableServerActivityLogs: Bool"))
         XCTAssertFalse(mac.contains("Label(\"기록 지우기\", systemImage: \"trash\")"))
         XCTAssertTrue(mac.contains("CompactStageDurationRowsView(durations: record.visibleStageDurations)"))
         XCTAssertTrue(mac.contains("record.visibleStageDurations"))
@@ -2109,7 +2147,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(mac.contains("case runLogs"))
         XCTAssertTrue(macRootBody.contains("DashboardTopBarView(model: model, selectedSection: $selectedSection)"))
         XCTAssertTrue(macRootBody.contains("MacAlertBannerView("))
-        XCTAssertTrue(macRootBody.contains("CommandPanelView(model: model)"))
+        XCTAssertFalse(macRootBody.contains("CommandPanelView(model: model)"))
         XCTAssertTrue(macRootBody.contains("MacWorkspaceSidebarView(model: model, selectedSection: $selectedSection)"))
         XCTAssertTrue(macRootBody.contains(".frame(width: 264, alignment: .topLeading)"))
         XCTAssertTrue(macRootBody.contains("Rectangle()\n                .fill(Color.klmsMacBorder.opacity(0.76))"))
@@ -2155,13 +2193,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(logSummaryDetailView.contains("@ObservedObject var model"))
         XCTAssertEqual(mac.components(separatedBy: "@ObservedObject var model: KLMSMacModel").count - 1, 1)
         let alertRange = try XCTUnwrap(macRootBody.range(of: "MacAlertBannerView("))
-        let commandRange = try XCTUnwrap(macRootBody.range(of: "CommandPanelView(model: model)"))
         let workstationRange = try XCTUnwrap(macRootBody.range(of: "MacWorkstationLayoutView("))
         let sidebarRange = try XCTUnwrap(macRootBody.range(of: "MacWorkspaceSidebarView("))
         let scrollRange = try XCTUnwrap(macRootBody.range(of: "WholeScreenVerticalScrollView"))
         XCTAssertLessThan(sidebarRange.lowerBound, scrollRange.lowerBound)
-        XCTAssertLessThan(alertRange.lowerBound, commandRange.lowerBound)
-        XCTAssertLessThan(commandRange.lowerBound, workstationRange.lowerBound)
         XCTAssertLessThan(alertRange.lowerBound, workstationRange.lowerBound)
         XCTAssertFalse(mac.contains("struct MacDesignWindowRootView"))
         XCTAssertTrue(macSidebarView.contains("Text(\"KLMS Sync\")"))
@@ -2233,7 +2268,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(workstationBody.contains(".frame(minWidth: 220, idealWidth: 260, maxWidth: 300, alignment: .topLeading)"))
         XCTAssertTrue(workstationBody.contains(".layoutPriority(1)"))
         XCTAssertFalse(workstationBody.contains(".frame(width: 280, alignment: .topLeading)"))
-        XCTAssertFalse(workstationBody.contains("CommandPanelView(model: model)"))
+        XCTAssertTrue(workstationBody.contains("case .dashboard:\n                CommandPanelView(model: model)\n                DashboardSummaryView(model: model)"))
         XCTAssertFalse(workstationBody.contains("WorkspaceNavigationView(selection: $selectedSection)"))
         XCTAssertFalse(workstationBody.contains("DashboardRuntimePanelView(model: model)"))
         XCTAssertTrue(workstationBody.contains("case .files:"))
@@ -2365,7 +2400,7 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticToolsPanelView"))
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticStageDurationPanelView"))
-        XCTAssertTrue(diagnosticsBody.contains("DiagnosticCommandLogPanelView"))
+        XCTAssertFalse(diagnosticsBody.contains("DiagnosticCommandLogPanelView"))
         XCTAssertFalse(diagnosticsBody.contains("RemoteActivityPanelView"))
 
         XCTAssertTrue(ios.contains("return \"로그\""))

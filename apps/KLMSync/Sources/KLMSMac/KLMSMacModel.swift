@@ -722,6 +722,37 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    var hasClearableServerActivityLogs: Bool {
+        !serverRelaySharedRunLogs.isEmpty
+            || !serverRelayRecentRequestLog.isEmpty
+            || serverRelayRecentFileAccessRequests.contains { !$0.status.isInFlight }
+    }
+
+    func clearServerRelayActivityLogs() async {
+        guard serverRelayConfigured else {
+            serverRelayStatusMessage = "서버 연결 정보가 없어 기록을 지울 수 없습니다."
+            return
+        }
+        var didRequestClear = false
+        if !serverRelaySharedRunLogs.isEmpty {
+            await clearServerRelaySharedRunLogs()
+            didRequestClear = true
+        }
+        if !serverRelayRecentRequestLog.isEmpty {
+            await clearServerRelayLogs(scope: .requestLog)
+            didRequestClear = true
+        }
+        if serverRelayRecentFileAccessRequests.contains(where: { !$0.status.isInFlight }) {
+            await clearServerRelayLogs(scope: .fileAccess)
+            didRequestClear = true
+        }
+        if !didRequestClear {
+            serverRelayStatusMessage = serverRelayRecentFileAccessRequests.contains(where: { $0.status.isInFlight })
+                ? "진행 중인 파일 요청은 끝난 뒤 지울 수 있습니다."
+                : "지울 서버 요청 기록이 없습니다."
+        }
+    }
+
     func clearVisibleLogsAndServerRelayLogs() async {
         guard runningCommand == nil else {
             serverRelayStatusMessage = "동기화가 끝난 뒤 로그를 지울 수 있습니다."
@@ -758,6 +789,14 @@ final class KLMSMacModel: ObservableObject {
             } catch {
                 errorMessage = "로컬 로그 파일 지우기 실패: \(error.localizedDescription)"
             }
+        }
+    }
+
+    func deleteCommandHistoryRecord(id: String) {
+        do {
+            commandHistory = try CommandRunHistoryStore(url: paths.appHistoryURL).removeRecord(id: id)
+        } catch {
+            errorMessage = "실행 로그 삭제 실패: \(error.localizedDescription)"
         }
     }
 
@@ -2511,6 +2550,95 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    func setCourseHidden(_ isHidden: Bool, course rawCourse: String) {
+        let course = rawCourse.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !course.isEmpty else { return }
+
+        do {
+            var changedAssignments = 0
+            var changedExams = 0
+            var changedNotices = 0
+            var changedFiles = 0
+
+            let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content
+            let assignmentStore = ManualOverrideStore(url: paths.overridesURL)
+            let assignmentItems = uniqueStateItems(
+                (content?.assignments ?? [])
+                    + (content?.assignmentCandidates ?? [])
+                    + (content?.completedAssignments ?? [])
+                    + (content?.assignmentRecords ?? [])
+                    + mailDashboardStateItems(kind: "assignment")
+            )
+            for item in assignmentItems where Self.course(item.course, matches: course) {
+                let current = snapshot.manualOverrides?.assignmentStatus(for: item) ?? ""
+                let next = isHidden ? "ignored" : (current == "ignored" ? "" : current)
+                try assignmentStore.saveAssignmentStatus(
+                    next,
+                    for: item,
+                    currentKey: snapshot.manualOverrides?.assignmentOverrideKey(for: item)
+                )
+                changedAssignments += 1
+            }
+
+            let examItems = uniqueStateItems(
+                (content?.examItems ?? [])
+                    + (content?.examCandidates ?? [])
+                    + mailDashboardStateItems(kind: "exam")
+            )
+            for item in examItems where Self.course(item.course, matches: course) {
+                var override = snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride()
+                if isHidden {
+                    override.status = "ignored"
+                } else if override.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ignored" {
+                    override.status = ""
+                }
+                try assignmentStore.saveExamOverride(
+                    override,
+                    for: item,
+                    currentKey: snapshot.manualOverrides?.examOverrideKey(for: item)
+                )
+                changedExams += 1
+            }
+
+            let noticeStore = NoticeUserStateStore(url: paths.noticeUserStateURL)
+            for notice in snapshot.noticeDigest?.notices ?? [] where Self.course(notice.course, matches: course) {
+                try noticeStore.setHidden(isHidden, notice: notice)
+                changedNotices += 1
+            }
+
+            let fileStore = AppUserStateStore(url: paths.appUserStateURL)
+            for entry in snapshot.courseFileManifest where Self.course(entry.course, matches: course) {
+                try fileStore.setHidden(
+                    isHidden,
+                    key: Self.fileStateKey(url: entry.url, path: entry.absolutePath, fallback: entry.relativePath),
+                    title: Self.fileDisplayTitle(filename: entry.filename, relativePath: entry.relativePath),
+                    course: entry.course,
+                    path: entry.absolutePath,
+                    url: entry.url,
+                    bucket: .files
+                )
+                changedFiles += 1
+            }
+
+            if changedAssignments > 0 || changedExams > 0 {
+                reloadManualOverrideState()
+            }
+            if changedNotices > 0 {
+                reloadNoticeInteractionState()
+            }
+            if changedFiles > 0 {
+                reloadFileInteractionState()
+            }
+
+            let total = changedAssignments + changedExams + changedNotices + changedFiles
+            serverRelayStatusMessage = isHidden
+                ? "\(course) 과목 항목 \(total)개를 숨겼습니다."
+                : "\(course) 과목 항목 \(total)개를 복구했습니다."
+        } catch {
+            errorMessage = "과목 숨김 처리 실패: \(error.localizedDescription)"
+        }
+    }
+
     func moveFileToTrash(
         key: String,
         title: String,
@@ -3640,6 +3768,40 @@ final class KLMSMacModel: ObservableObject {
             return
         }
         applySnapshot(nextSnapshot, showLoginTransition: showLoginTransition)
+    }
+
+    private func uniqueStateItems(_ items: [StateItem]) -> [StateItem] {
+        var seen = Set<String>()
+        return items.filter { item in
+            seen.insert(item.id).inserted
+        }
+    }
+
+    private static func course(_ value: String, matches target: String) -> Bool {
+        value.trimmingCharacters(in: .whitespacesAndNewlines) == target
+    }
+
+    private static func fileStateKey(url: String, path: String, fallback: String) -> String {
+        if !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return url
+        }
+        if !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return path
+        }
+        return fallback
+    }
+
+    private static func fileDisplayTitle(filename: String, relativePath: String) -> String {
+        let trimmedFilename = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedFilename.isEmpty {
+            return trimmedFilename
+        }
+        let trimmedRelativePath = relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRelativePath.isEmpty else {
+            return ""
+        }
+        let basename = URL(fileURLWithPath: trimmedRelativePath).lastPathComponent
+        return basename.isEmpty ? trimmedRelativePath : basename
     }
 
     private func reloadManualOverrideState() {

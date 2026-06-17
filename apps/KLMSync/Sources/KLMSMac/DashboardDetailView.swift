@@ -1590,47 +1590,56 @@ private struct StateItemRowView: View {
                     MacInlinePendingActionView(message: "과제/시험 동기화 반영을 시작했습니다.")
                 } else {
                     HStack(spacing: 8) {
-                    if editor == .exam {
-                        Button {
-                            approveExam()
-                        } label: {
-                            Label("시험 반영", systemImage: "checkmark.seal")
+                        if editor == .exam {
+                            Button {
+                                approveExam()
+                            } label: {
+                                Label("시험 반영", systemImage: "checkmark.seal")
+                            }
+                            .buttonStyle(KLMSMacActionButtonStyle(tone: .success))
+                            .disabled(isHidden)
                         }
-                        .buttonStyle(KLMSMacActionButtonStyle(tone: .success))
-                        .disabled(isHidden)
-                    }
-                    Button {
-                        didRequestSync = true
-                        Task { await model.run(.coreSync) }
-                    } label: {
-                        Label("동기화 반영", systemImage: KLMSEngineCommand.coreSync.systemImage)
-                    }
-                    .buttonStyle(KLMSMacActionButtonStyle())
-                    .disabled(model.runningCommand != nil)
-                    if editor == .assignmentRecord, isManualCompleted {
                         Button {
-                            clearCompletion()
+                            didRequestSync = true
+                            Task { await model.run(.coreSync) }
                         } label: {
-                            Label("완료 해제", systemImage: "arrow.uturn.backward")
+                            Label("동기화 반영", systemImage: KLMSEngineCommand.coreSync.systemImage)
                         }
                         .buttonStyle(KLMSMacActionButtonStyle())
-                    }
-                    if hidden {
-                        Button {
-                            restoreHidden()
-                        } label: {
-                            Label("복구", systemImage: "arrow.uturn.backward")
+                        .disabled(model.runningCommand != nil)
+                        if editor == .assignmentRecord, isManualCompleted {
+                            Button {
+                                clearCompletion()
+                            } label: {
+                                Label("완료 해제", systemImage: "arrow.uturn.backward")
+                            }
+                            .buttonStyle(KLMSMacActionButtonStyle())
                         }
-                        .buttonStyle(KLMSMacActionButtonStyle())
-                    } else if editor != .assignmentRecord || isManualCompleted {
-                        Button {
-                            hide()
-                        } label: {
-                            Label(editor == .exam ? "삭제/시험 아님" : "삭제/숨김", systemImage: "eye.slash")
+                        if hidden {
+                            Button {
+                                restoreHidden()
+                            } label: {
+                                Label("복구", systemImage: "arrow.uturn.backward")
+                            }
+                            .buttonStyle(KLMSMacActionButtonStyle())
+                        } else if editor != .assignmentRecord || isManualCompleted {
+                            Button {
+                                hide()
+                            } label: {
+                                Label("숨김", systemImage: "eye.slash")
+                            }
+                            .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                         }
-                        .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
-                    }
-                    Spacer()
+                        if !hidden, !item.course.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button {
+                                model.setCourseHidden(true, course: item.course)
+                            } label: {
+                                Label("과목 숨김", systemImage: "rectangle.stack.badge.minus")
+                            }
+                            .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
+                            .help("\(item.course) 과목의 과제, 시험, 공지, 파일을 앱에서 숨깁니다.")
+                        }
+                        Spacer()
                     }
                     .font(.caption)
                 }
@@ -2295,9 +2304,18 @@ private struct NoticeRowView: View {
                         Button {
                             model.setNoticeHidden(!hidden, for: notice)
                         } label: {
-                            Label(hidden ? "복구" : "삭제/숨김", systemImage: hidden ? "arrow.uturn.backward" : "eye.slash")
+                            Label(hidden ? "복구" : "숨김", systemImage: hidden ? "arrow.uturn.backward" : "eye.slash")
                         }
                         .buttonStyle(KLMSMacActionButtonStyle(tone: hidden ? .soft : .destructive))
+                        if !hidden, !notice.course.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button {
+                                model.setCourseHidden(true, course: notice.course)
+                            } label: {
+                                Label("과목 숨김", systemImage: "rectangle.stack.badge.minus")
+                            }
+                            .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
+                            .help("\(notice.course) 과목의 과제, 시험, 공지, 파일을 앱에서 숨깁니다.")
+                        }
                         Spacer()
                     }
                     .font(.caption)
@@ -3214,7 +3232,6 @@ private struct FileRowView: View {
     var item: DashboardFileItem
     var kind: DashboardFileRowKind
     var model: KLMSMacModel?
-    @State private var didRequestSync = false
     @State private var isExpanded = false
 
     var body: some View {
@@ -3293,54 +3310,63 @@ private struct FileRowView: View {
     @ViewBuilder
     private func actionBar(hidden: Bool, pathExists: Bool) -> some View {
         if let model, kind != .pruned {
-            if didRequestSync {
-                MacInlinePendingActionView(message: "파일 동기화 반영을 시작했습니다.")
-            } else {
-                HStack(spacing: 8) {
-                    if pathExists {
-                        Button {
-                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
-                        } label: {
-                            Label("수정/열기", systemImage: "folder")
-                        }
-                        .buttonStyle(KLMSMacActionButtonStyle())
-                    }
+            HStack(spacing: 8) {
+                if pathExists {
                     Button {
-                        didRequestSync = true
-                        Task { await model.run(.filesSync) }
+                        NSWorkspace.shared.open(URL(fileURLWithPath: item.path))
                     } label: {
-                        Label("파일 반영", systemImage: KLMSEngineCommand.filesSync.systemImage)
+                        Label("열기", systemImage: "doc")
                     }
                     .buttonStyle(KLMSMacActionButtonStyle())
-                    .disabled(model.runningCommand != nil)
-                    if hidden {
-                        Button {
-                            restore(model)
-                        } label: {
-                            Label("복구", systemImage: "arrow.uturn.backward")
-                        }
-                        .buttonStyle(KLMSMacActionButtonStyle())
-                    } else {
-                        Button {
-                            hide(model)
-                        } label: {
-                            Label(kind == .quarantine ? "삭제/무시" : "삭제/숨김", systemImage: "eye.slash")
-                        }
-                        .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
+
+                    Button {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+                    } label: {
+                        Label("수정", systemImage: "pencil")
                     }
-                    if pathExists {
-                        Button(role: .destructive) {
-                            moveToTrash(model)
-                        } label: {
-                            Label("휴지통", systemImage: "trash")
-                        }
-                        .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
-                    }
-                    Spacer()
+                    .buttonStyle(KLMSMacActionButtonStyle())
+                    .help("Finder에서 파일 위치를 열어 직접 수정합니다.")
                 }
-                .font(.caption)
-                .padding(.top, 8)
+                if hidden {
+                    Button {
+                        restore(model)
+                    } label: {
+                        Label("복구", systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(KLMSMacActionButtonStyle())
+                } else {
+                    Button {
+                        hide(model)
+                    } label: {
+                        Label("숨김", systemImage: "eye.slash")
+                    }
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
+                }
+                if !hidden,
+                   kind == .file,
+                   !item.course.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button {
+                        model.setCourseHidden(true, course: item.course)
+                    } label: {
+                        Label("과목 숨김", systemImage: "rectangle.stack.badge.minus")
+                    }
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
+                    .help("\(item.course) 과목의 과제, 시험, 공지, 파일을 앱에서 숨깁니다.")
+                }
+                if pathExists {
+                    Button(role: .destructive) {
+                        moveToTrash(model)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
+                    .help("로컬 파일을 휴지통으로 이동")
+                    .accessibilityLabel("로컬 파일 휴지통으로 이동")
+                }
+                Spacer()
             }
+            .font(.caption)
+            .padding(.top, 8)
         }
     }
 

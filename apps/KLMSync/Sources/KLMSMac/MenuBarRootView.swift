@@ -23,7 +23,6 @@ struct MenuBarRootView: View {
                         selectedSection: $selectedSection,
                         expandedLogSummaryKind: $expandedLogSummaryKind
                     )
-                    CommandPanelView(model: model)
                     MacWorkstationLayoutView(
                         model: model,
                         selectedSection: $selectedSection,
@@ -92,6 +91,7 @@ private struct MacWorkstationLayoutView: View {
         VStack(alignment: .leading, spacing: 16) {
             switch selectedSection {
             case .dashboard:
+                CommandPanelView(model: model)
                 DashboardSummaryView(model: model)
             case .files:
                 cachedDashboardDetailPanel(kind: .files)
@@ -113,7 +113,6 @@ private struct MacWorkstationLayoutView: View {
                 VerifyPanelView(snapshot: model.snapshot)
                 DiagnosticToolsPanelView(model: model)
                 DiagnosticStageDurationPanelView(model: model)
-                DiagnosticCommandLogPanelView(model: model)
                 DoctorPanelView(snapshot: model.snapshot)
                 AppDiagnosticsPanelView(model: model)
                 LoginPanelView(model: model)
@@ -2160,158 +2159,6 @@ private struct DiagnosticStageDurationPanelView: View {
     }
 }
 
-private struct DiagnosticCommandLogPanelView: View {
-    let model: KLMSMacModel
-
-    var body: some View {
-        SectionBox(title: "진단/실행 로그") {
-            VStack(alignment: .leading, spacing: 8) {
-                if let source = activeLogSource {
-                    HStack(spacing: 8) {
-                        Label(source.title, systemImage: source.systemImage)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(source.isWarning ? Color.klmsMacWarningBorder : Color.klmsMacPrimaryText)
-                        Text("\(source.lineCount)줄")
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                        Spacer()
-                    }
-                    if !source.detail.isEmpty {
-                        Text(source.detail)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .textSelection(.enabled)
-                    }
-                    CommandStageDurationSummaryView(durations: KLMSStageDurationParser.parse(from: source.text))
-                    LogTextBlock(text: source.text, detailed: true, rawExpandedByDefault: false)
-                } else {
-                    Text("아직 표시할 실행 로그가 없습니다. 위의 권한/환경 진단이나 동기화 버튼을 실행하면 실시간 로그와 마지막 로그가 여기에 표시됩니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
-    private var activeLogSource: DiagnosticLogSource? {
-        let liveOutput = cleaned(model.liveCommandOutput)
-        if !liveOutput.isEmpty {
-            return DiagnosticLogSource(
-                title: "\(model.runningCommand?.displayName ?? "명령") 실시간 로그",
-                detail: model.currentPhaseText.map { "현재 단계: \($0)" } ?? "실시간으로 들어오는 표준 출력/오류입니다.",
-                systemImage: "dot.radiowaves.left.and.right",
-                text: liveOutput,
-                isWarning: false
-            )
-        }
-
-        if let result = model.lastCommandResult {
-            let rawOutput = result.wasCancelled
-                ? result.combinedOutput.klmsDisplayText.klmsRedactingAuthDigitsForDisplay
-                : result.combinedOutput
-            let output = cleaned(rawOutput)
-            if !output.isEmpty {
-                return DiagnosticLogSource(
-                    title: "\(result.invocation.command.displayName) 마지막 실행 로그",
-                    detail: result.wasCancelled
-                        ? "\(result.startedAt.formatted(date: .numeric, time: .standard)) 시작 · 사용자가 중단함"
-                        : "\(result.startedAt.formatted(date: .numeric, time: .standard)) 시작 · 종료 코드 \(result.exitCode)",
-                    systemImage: result.wasCancelled ? "stop.circle" : (result.succeeded ? "doc.text" : "exclamationmark.triangle"),
-                    text: output,
-                    isWarning: !result.succeeded && !result.wasCancelled
-                )
-            }
-        }
-
-        if let record = model.commandHistory.records.first(where: { $0.command.isDiagnostic && !cleaned($0.outputTail).isEmpty }) {
-            return historySource(record, titlePrefix: "최근 진단 기록")
-        }
-
-        let doctorText = cleaned(doctorResultText)
-        if !doctorText.isEmpty {
-            return DiagnosticLogSource(
-                title: "저장된 진단 결과",
-                detail: "runtime/cache/doctor_result.json에서 읽은 최신 진단 항목입니다.",
-                systemImage: model.snapshot.doctorResult?.status.lowercased() == "ok" ? "checkmark.seal" : "exclamationmark.triangle",
-                text: doctorText,
-                isWarning: model.snapshot.doctorResult?.status.lowercased() != "ok"
-            )
-        }
-
-        if let record = model.commandHistory.records.first(where: { !cleaned($0.outputTail).isEmpty }) {
-            return historySource(record, titlePrefix: "최근 일반 실행 기록")
-        }
-
-        let relayLog = cleaned(model.snapshot.relayLogTail)
-        if !relayLog.isEmpty {
-            return DiagnosticLogSource(
-                title: "서버 릴레이 로그",
-                detail: "runtime/logs/relay.stderr.log와 relay.stdout.log의 최근 항목입니다.",
-                systemImage: "network",
-                text: relayLog,
-                isWarning: relayLog.localizedCaseInsensitiveContains("error")
-                    || relayLog.localizedCaseInsensitiveContains("required")
-                    || relayLog.localizedCaseInsensitiveContains("failed")
-            )
-        }
-
-        return nil
-    }
-
-    private func historySource(_ record: CommandRunRecord, titlePrefix: String) -> DiagnosticLogSource {
-        DiagnosticLogSource(
-            title: "\(titlePrefix) · \(record.command.displayName) · \(record.statusText)",
-            detail: "\(record.startedAt.formatted(date: .numeric, time: .standard)) 시작 · \(record.elapsedSecondsText)",
-            systemImage: record.wasCancelled ? "stop.circle" : (record.succeeded ? "doc.text" : "exclamationmark.triangle"),
-            text: cleaned(record.outputTail),
-            isWarning: record.needsAttention
-        )
-    }
-
-    private func cleaned(_ text: String) -> String {
-        Self.boundedLogText(text.klmsDisplayText.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
-    private static func boundedLogText(_ text: String) -> String {
-        let maxCharacters = 32_000
-        let prefix = "... 이전 로그 일부 생략됨 ...\n"
-        guard text.count > maxCharacters else {
-            return text
-        }
-        let suffixLength = max(0, maxCharacters - prefix.count)
-        return prefix + String(text.suffix(suffixLength))
-    }
-
-    private var doctorResultText: String {
-        guard let doctor = model.snapshot.doctorResult else {
-            return ""
-        }
-        var lines = ["status=\(doctor.status)"]
-        for check in doctor.checks {
-            let detail = check.detail.trimmingCharacters(in: .whitespacesAndNewlines)
-            if detail.isEmpty {
-                lines.append("\(check.status)\t\(check.name)")
-            } else {
-                lines.append("\(check.status)\t\(check.name)\t\(detail)")
-            }
-        }
-        return lines.joined(separator: "\n")
-    }
-}
-
-private struct DiagnosticLogSource {
-    var title: String
-    var detail: String
-    var systemImage: String
-    var text: String
-    var isWarning: Bool
-
-    var lineCount: Int {
-        max(1, text.split(whereSeparator: \.isNewline).count)
-    }
-}
-
 private struct LogTextBlock: View {
     var text: String
     var detailed = false
@@ -3062,43 +2909,15 @@ private struct RemoteActivityPanelView: View {
                         Spacer()
                         Button {
                             Task {
-                                await model.clearServerRelaySharedRunLogs()
+                                await model.clearServerRelayActivityLogs()
                             }
                         } label: {
                             Image(systemName: "trash")
                         }
                         .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
-                        .help("공유 실행 로그 지우기")
-                        .accessibilityLabel("공유 실행 로그 지우기")
-                        .disabled(!model.serverRelayConfigured || sharedRunLogs.isEmpty)
-
-                        Button {
-                            Task {
-                                await model.clearServerRelayLogs(scope: .requestLog)
-                            }
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
-                        .help("서버 요청 기록 지우기")
-                        .accessibilityLabel("서버 요청 기록 지우기")
-                        .disabled(!model.serverRelayConfigured || requestLog.isEmpty)
-
-                        Button {
-                            Task {
-                                await model.clearServerRelayLogs(scope: .fileAccess)
-                            }
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
-                        .help("파일 요청 기록 지우기")
-                        .accessibilityLabel("파일 요청 기록 지우기")
-                        .disabled(
-                            !model.serverRelayConfigured
-                                || fileRequests.isEmpty
-                                || fileRequests.contains { $0.status.isInFlight }
-                        )
+                        .help("서버·파일 요청 기록 지우기")
+                        .accessibilityLabel("서버·파일 요청 기록 지우기")
+                        .disabled(!model.serverRelayConfigured || !model.hasClearableServerActivityLogs)
                     }
 
                     if let message = model.remoteProcessingStatusMessage?.nilIfBlank ?? model.serverRelayStatusMessage?.nilIfBlank {
@@ -4631,7 +4450,7 @@ private struct RunLogArchivePanelView: View {
                     } else {
                         LazyVStack(alignment: .leading, spacing: 8) {
                             ForEach(visible) { record in
-                                RunLogArchiveRowView(record: record)
+                                RunLogArchiveRowView(record: record, model: model)
                             }
                             if filtered.count > visible.count {
                                 Button {
@@ -4846,6 +4665,7 @@ private struct CurrentRunLogCardView: View {
 
 private struct RunLogArchiveRowView: View {
     var record: CommandRunRecord
+    var model: KLMSMacModel
     @State private var isExpanded = false
 
     var body: some View {
@@ -4904,6 +4724,14 @@ private struct RunLogArchiveRowView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(statusColor)
                     .lineLimit(1)
+                Button(role: .destructive) {
+                    model.deleteCommandHistoryRecord(id: record.id)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                .help("이 실행 로그 지우기")
+                .accessibilityLabel("\(record.command.displayName) 실행 로그 지우기")
             }
         }
         .padding(9)

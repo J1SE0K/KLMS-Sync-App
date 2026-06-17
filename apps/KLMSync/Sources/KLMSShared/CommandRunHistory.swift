@@ -169,6 +169,14 @@ public struct CommandRunHistoryStore: Sendable {
         return history
     }
 
+    @discardableResult
+    public func removeRecord(id: String) throws -> CommandRunHistory {
+        var history = load()
+        history.records.removeAll { $0.id == id }
+        try save(history)
+        return history
+    }
+
     private func save(_ history: CommandRunHistory) throws {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),

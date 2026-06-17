@@ -95,7 +95,7 @@ struct SettingsView: View {
                 Text("설정")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
-                Text("바꿀 항목만 펼치세요.")
+	                Text("자주 쓰는 설정은 바로 보이고, 설치/백업 같은 부가 항목만 접어 둡니다.")
                     .font(.caption2)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -232,12 +232,13 @@ struct SettingsView: View {
 
     private var loginSettings: some View {
         settingsForm {
-            SettingsGroupBox(
-                title: "로그인",
-                detail: "KLMS 로그인 확인과 인증번호 표시 방식을 정합니다.",
-                systemImage: "person.badge.key",
-                badge: "설정 파일 저장"
-            ) {
+	            SettingsGroupBox(
+	                title: "로그인",
+	                detail: "KLMS 로그인 확인과 인증번호 표시 방식을 정합니다.",
+	                systemImage: "person.badge.key",
+	                badge: "설정 파일 저장",
+	                defaultExpanded: true
+	            ) {
                 configText(
                     "KAIST 아이디",
                     .ssoLoginID,
@@ -272,12 +273,13 @@ struct SettingsView: View {
 
     private var syncSettings: some View {
         settingsForm {
-            SettingsGroupBox(
-                title: "실행 방식",
-                detail: "동기화 범위와 캘린더 반영 방식을 정합니다.",
-                systemImage: "arrow.triangle.2.circlepath",
-                badge: "설정 파일 저장"
-            ) {
+	            SettingsGroupBox(
+	                title: "실행 방식",
+	                detail: "동기화 범위와 캘린더 반영 방식을 정합니다.",
+	                systemImage: "arrow.triangle.2.circlepath",
+	                badge: "설정 파일 저장",
+	                defaultExpanded: true
+	            ) {
                 described(
                     "동기화 모드",
                     summary: settingsModeSummary(binding(.syncMode, defaultValue: "auto").wrappedValue),
@@ -297,12 +299,13 @@ struct SettingsView: View {
                 )
             }
 
-            SettingsGroupBox(
-                title: "Safari 자동화",
-                detail: "KLMS를 읽을 때 쓰는 전용 Safari 창의 동작입니다.",
-                systemImage: "safari",
-                badge: "설정 파일 저장"
-            ) {
+	            SettingsGroupBox(
+	                title: "Safari 자동화",
+	                detail: "KLMS를 읽을 때 쓰는 전용 Safari 창의 동작입니다.",
+	                systemImage: "safari",
+	                badge: "설정 파일 저장",
+	                defaultExpanded: true
+	            ) {
                 configToggle(
                     "Safari 백그라운드 창 사용",
                     .safariBackgroundWindowEnabled,
@@ -329,12 +332,13 @@ struct SettingsView: View {
 
     private var noticeSettings: some View {
         settingsForm {
-            SettingsGroupBox(
-                title: "메모 이름",
-                detail: "공지와 확인한 공지를 쓸 Apple Notes 메모 이름입니다.",
-                systemImage: "note.text",
-                badge: "설정 파일 저장"
-            ) {
+	            SettingsGroupBox(
+	                title: "메모 이름",
+	                detail: "공지와 확인한 공지를 쓸 Apple Notes 메모 이름입니다.",
+	                systemImage: "note.text",
+	                badge: "설정 파일 저장",
+	                defaultExpanded: true
+	            ) {
                 configText(
                     "공지 메모",
                     .noticeNoteName,
@@ -347,12 +351,13 @@ struct SettingsView: View {
                 )
             }
 
-            SettingsGroupBox(
-                title: "메모 업데이트",
-                detail: "숨김 처리와 변경 없는 메모의 재작성 방식을 정합니다.",
-                systemImage: "checklist",
-                badge: "설정 파일 저장"
-            ) {
+	            SettingsGroupBox(
+	                title: "메모 업데이트",
+	                detail: "숨김 처리와 변경 없는 메모의 재작성 방식을 정합니다.",
+	                systemImage: "checklist",
+	                badge: "설정 파일 저장",
+	                defaultExpanded: true
+	            ) {
                 configToggle(
                     "숨긴 공지는 메모에서 제외",
                     .noticeHideHiddenItems,
@@ -372,12 +377,13 @@ struct SettingsView: View {
 
     private var fileSettings: some View {
         settingsForm {
-            SettingsGroupBox(
-                title: "파일 확인",
-                detail: "파일 탐색 방식과 다운로드 건너뛰기 기준입니다.",
-                systemImage: "folder.badge.gearshape",
-                badge: "설정 파일 저장"
-            ) {
+	            SettingsGroupBox(
+	                title: "파일 확인",
+	                detail: "파일 탐색 방식과 다운로드 건너뛰기 기준입니다.",
+	                systemImage: "folder.badge.gearshape",
+	                badge: "설정 파일 저장",
+	                defaultExpanded: true
+	            ) {
                 described(
                     "파일 탐색 모드",
                     summary: settingsModeSummary(sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick", "full"]).wrappedValue),
@@ -404,12 +410,13 @@ struct SettingsView: View {
                 SettingsHelpText("기본적으로 KLMS 등록 시각과 로컬 파일 상태가 달라진 파일만 처리합니다. KLMS 원본 파일은 삭제하지 않고, 앱의 숨김/휴지통 처리는 Mac 로컬 상태에만 적용됩니다.")
             }
 
-            SettingsGroupBox(
-                title: "저장 위치",
-                detail: "새 파일 보관함과 격리 폴더 위치입니다.",
-                systemImage: "folder",
-                badge: "설정 파일 저장"
-            ) {
+	            SettingsGroupBox(
+	                title: "저장 위치",
+	                detail: "새 파일 보관함과 격리 폴더 위치입니다.",
+	                systemImage: "folder",
+	                badge: "설정 파일 저장",
+	                defaultExpanded: true
+	            ) {
                 configText(
                     "새 파일 보관함",
                     .fileNewFilesRoot,
@@ -569,12 +576,13 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsGroupBox(
-                title: "설정 저장 방식",
-                detail: "config.env를 안전하게 수정하는 방식입니다.",
-                systemImage: "doc.text",
-                badge: "안내"
-            ) {
+	            SettingsGroupBox(
+	                title: "설정 저장 방식",
+	                detail: "config.env를 안전하게 수정하는 방식입니다.",
+	                systemImage: "doc.text",
+	                badge: "안내",
+	                defaultExpanded: true
+	            ) {
                 SettingsHelpText("Mac 설정 파일에 저장하는 값은 알 수 없는 config.env 항목과 주석을 그대로 보존합니다.")
             }
 
@@ -747,7 +755,7 @@ struct SettingsView: View {
         _ title: String,
         summary: String? = nil,
         _ description: String?,
-        defaultExpanded: Bool = false,
+	        defaultExpanded: Bool = true,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         SettingsFieldRow(
