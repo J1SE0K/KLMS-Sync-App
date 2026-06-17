@@ -3782,7 +3782,7 @@ private struct CompanionItemListInputKey: Hashable {
 }
 
 private enum CompanionLargeList {
-    static let initialVisibleLimit = 6
+    static let initialVisibleLimit = 4
     static let previewVisibleLimit = 5
     static let calendarVisibleLimit = 6
     static let increment = 10

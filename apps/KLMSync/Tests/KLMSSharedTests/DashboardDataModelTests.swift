@@ -2436,7 +2436,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(categoryDetail.contains("@State private var selectedItemID"))
         XCTAssertFalse(categoryDetail.contains("ForEach(filtered)"))
         XCTAssertTrue(selectableRows.contains("@State private var visibleLimit = CompanionLargeList.initialVisibleLimit"))
-        XCTAssertTrue(ios.contains("static let initialVisibleLimit = 6"))
+        XCTAssertTrue(ios.contains("static let initialVisibleLimit = 4"))
         XCTAssertTrue(ios.contains("static let previewVisibleLimit = 5"))
         XCTAssertTrue(ios.contains("static let calendarVisibleLimit = 6"))
         XCTAssertTrue(ios.contains("static let filterRebuildDelayNanoseconds: UInt64 = 80_000_000"))
