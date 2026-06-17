@@ -94,15 +94,15 @@ private struct MacWorkstationLayoutView: View {
             case .dashboard:
                 DashboardSummaryView(model: model)
             case .files:
-                DashboardDetailPanelView(kind: .files, model: model)
+                cachedDashboardDetailPanel(kind: .files)
                     .equatable()
             case .tasks:
                 TaskAndExamWorkspaceView(model: model)
             case .notices:
-                DashboardDetailPanelView(kind: .notices, model: model)
+                cachedDashboardDetailPanel(kind: .notices)
                     .equatable()
             case .calendar:
-                DashboardDetailPanelView(kind: .calendar, model: model)
+                cachedDashboardDetailPanel(kind: .calendar)
                     .equatable()
             case .activityLogs:
                 LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
@@ -124,6 +124,15 @@ private struct MacWorkstationLayoutView: View {
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func cachedDashboardDetailPanel(kind: DashboardDetailKind) -> DashboardDetailPanelView {
+        DashboardDetailPanelView(
+            kind: kind,
+            model: model,
+            snapshot: model.snapshot,
+            renderSignature: model.dashboardRenderSignature
+        )
     }
 }
 
@@ -620,17 +629,26 @@ private struct TaskAndExamWorkspaceView: View {
 
     @ViewBuilder
     private var taskPanels: some View {
-        DashboardDetailPanelView(kind: .assignments, model: model)
+        cachedDashboardDetailPanel(kind: .assignments)
             .equatable()
             .frame(maxWidth: .infinity, alignment: .topLeading)
-        DashboardDetailPanelView(kind: .exams, model: model)
+        cachedDashboardDetailPanel(kind: .exams)
             .equatable()
             .frame(maxWidth: .infinity, alignment: .topLeading)
         if (model.snapshot.visibleCounts.helpDesk) > 0 {
-            DashboardDetailPanelView(kind: .helpDesk, model: model)
+            cachedDashboardDetailPanel(kind: .helpDesk)
                 .equatable()
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+    }
+
+    private func cachedDashboardDetailPanel(kind: DashboardDetailKind) -> DashboardDetailPanelView {
+        DashboardDetailPanelView(
+            kind: kind,
+            model: model,
+            snapshot: model.snapshot,
+            renderSignature: model.dashboardRenderSignature
+        )
     }
 }
 
