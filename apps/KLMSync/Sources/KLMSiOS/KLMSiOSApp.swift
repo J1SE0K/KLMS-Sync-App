@@ -11731,14 +11731,21 @@ private struct RemoteFileAccessRequestRow: View {
 
 private struct CompanionInlineLogBlock: View {
     var text: String
+    private let displayText: String
+    private let highlights: [KLMSLogHighlight]
 
-    private var displayText: String {
-        Self.boundedText(text).trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "표시할 로그가 없습니다."
+    init(text: String) {
+        self.text = text
+        let boundedText = Self.boundedText(text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty ?? "표시할 로그가 없습니다."
+        self.displayText = boundedText
+        self.highlights = KLMSReadableLogParser.highlights(from: boundedText)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CompanionReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: displayText))
+            CompanionReadableLogHighlightsView(highlights: highlights)
             Text(displayText)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(Color.klmsSecondaryText)
