@@ -2569,6 +2569,7 @@ private struct CompanionStatusScreen: View {
                     deferDashboardPreview(category)
                 },
                 selectedChangeSummary: selectedChangeSummary,
+                displayedChangeSummary: displayedChangeSummary,
                 onChangeSummaryTap: { kind in
                     selectedDashboardPreview = nil
                     displayedDashboardPreview = nil
@@ -2577,10 +2578,6 @@ private struct CompanionStatusScreen: View {
                     deferChangeSummary(kind)
                 }
             )
-            if horizontalSizeClass != .regular, selectedChangeSummary != nil || displayedChangeSummary != nil {
-                statusDetailColumn
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
         }
     }
 
@@ -4316,6 +4313,8 @@ private struct RemoteStatusHeader: View {
                     status: displayStatus,
                     hasFileCleanupDetails: hasFileCleanupDetails,
                     selectedKind: selectedChangeSummary,
+                    displayedKind: nil,
+                    model: model,
                     onSelect: onChangeSummaryTap
                 )
             }
@@ -4726,6 +4725,7 @@ private struct RemoteDashboardMetricOverview: View {
     var displayedCategory: DashboardMetricCategory?
     var onCategoryTap: (DashboardMetricCategory) -> Void
     var selectedChangeSummary: RemoteChangeSummaryKind?
+    var displayedChangeSummary: RemoteChangeSummaryKind?
     var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -4757,6 +4757,8 @@ private struct RemoteDashboardMetricOverview: View {
                     status: displayStatus,
                     hasFileCleanupDetails: hasFileCleanupDetails,
                     selectedKind: selectedChangeSummary,
+                    displayedKind: displayedChangeSummary,
+                    model: model,
                     onSelect: onChangeSummaryTap
                 )
             }
@@ -5034,7 +5036,10 @@ private struct RemoteDashboardChangeSummary: View {
     var status: SanitizedRemoteStatus
     var hasFileCleanupDetails: Bool
     var selectedKind: RemoteChangeSummaryKind?
+    var displayedKind: RemoteChangeSummaryKind?
+    let model: CompanionModel
     var onSelect: (RemoteChangeSummaryKind) -> Void
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var entries: [RemoteChangeSummaryEntry] {
         RemoteChangeSummaryKind.allCases.compactMap { kind in
@@ -5052,6 +5057,25 @@ private struct RemoteDashboardChangeSummary: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
                 FlowChipLayout(entries: entries, selectedKind: selectedKind, onSelect: onSelect)
+                if let selectedKind, entries.contains(where: { $0.kind == selectedKind }) {
+                    compactChangeDetail(for: selectedKind)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func compactChangeDetail(for kind: RemoteChangeSummaryKind) -> some View {
+        if horizontalSizeClass != .regular {
+            if displayedKind == kind {
+                RemoteChangeSummaryDetailPanel(kind: kind, model: model)
+                    .id(kind)
+            } else {
+                CompanionDashboardDetailPreparingView(
+                    title: kind.detailTitle,
+                    systemImage: kind.systemImage,
+                    tint: kind.tint
+                )
             }
         }
     }
