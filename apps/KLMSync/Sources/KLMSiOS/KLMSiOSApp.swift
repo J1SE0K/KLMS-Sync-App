@@ -5967,17 +5967,17 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     private var activeSelectedItemID: String? {
-        selectedItemID ?? items.first?.id
+        selectedItemID
     }
 
     private var selectedItem: ServerRelaySyncItem? {
-        if selectedItemID != nil,
-           let displayedSelectedItemID,
-           let displayedSelectedItem,
-           displayedSelectedItem.id == displayedSelectedItemID {
-            return displayedSelectedItem
+        guard selectedItemID != nil,
+              let displayedSelectedItemID,
+              let displayedSelectedItem,
+              displayedSelectedItem.id == displayedSelectedItemID else {
+            return nil
         }
-        return items.first
+        return displayedSelectedItem
     }
 
     private var isPreparingExternalDetail: Bool {
@@ -6009,9 +6009,9 @@ private struct WorkstationDashboardCategoryWorkspace: View {
                 } else {
                     WorkstationExternalDetailPanel(
                         title: "\(category.title) 상세",
-                        subtitle: "\(items.count)개 항목 · 선택한 항목을 바로 처리합니다.",
+                        subtitle: "\(items.count)개 항목 · 항목을 선택하면 바로 처리할 수 있습니다.",
                         item: selectedItem,
-                        emptyMessage: category.emptyMessage,
+                        emptyMessage: "왼쪽 목록에서 항목을 선택해 주세요.",
                         model: model
                     )
                 }
@@ -6089,17 +6089,17 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var activeSelectedItemID: String? {
-        selectedItemID ?? combinedItems.first?.id
+        selectedItemID
     }
 
     private var selectedItem: ServerRelaySyncItem? {
-        if selectedItemID != nil,
-           let displayedSelectedItemID,
-           let displayedSelectedItem,
-           displayedSelectedItem.id == displayedSelectedItemID {
-            return displayedSelectedItem
+        guard selectedItemID != nil,
+              let displayedSelectedItemID,
+              let displayedSelectedItem,
+              displayedSelectedItem.id == displayedSelectedItemID else {
+            return nil
         }
-        return combinedItems.first
+        return displayedSelectedItem
     }
 
     private var isPreparingExternalDetail: Bool {
@@ -6131,9 +6131,9 @@ private struct WorkstationTasksWorkspace: View {
                 } else {
                     WorkstationExternalDetailPanel(
                         title: "선택한 일정",
-                        subtitle: "과제, 시험, 헬프데스크를 한곳에서 확인하고 처리합니다.",
+                        subtitle: "과제, 시험, 헬프데스크를 선택한 뒤 바로 처리합니다.",
                         item: selectedItem,
-                        emptyMessage: "현재 표시할 과제나 시험이 없습니다.",
+                        emptyMessage: "왼쪽 목록에서 과제나 시험을 선택해 주세요.",
                         model: model
                     )
                 }
