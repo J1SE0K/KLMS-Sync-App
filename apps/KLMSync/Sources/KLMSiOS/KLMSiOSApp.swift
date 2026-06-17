@@ -5849,6 +5849,8 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     var category: DashboardMetricCategory
     @ObservedObject var model: CompanionModel
     @State private var selectedItemID: String?
+    @State private var displayedSelectedItemID: String?
+    @State private var externalDetailTask: Task<Void, Never>?
 
     private var items: [ServerRelaySyncItem] {
         model.cachedVisibleDashboardItems(for: category.rawValue)
@@ -5859,11 +5861,21 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     private var selectedItem: ServerRelaySyncItem? {
-        if let selectedItemID,
-           let item = items.first(where: { $0.id == selectedItemID }) {
+        if selectedItemID != nil,
+           let displayedSelectedItemID,
+           let item = items.first(where: { $0.id == displayedSelectedItemID }) {
             return item
         }
         return items.first
+    }
+
+    private var isPreparingExternalDetail: Bool {
+        guard let selectedItemID else { return false }
+        return displayedSelectedItemID != selectedItemID
+    }
+
+    private var itemsResetKey: String {
+        "\(items.count):\(items.first?.id ?? ""):\(items.last?.id ?? "")"
     }
 
     var body: some View {
@@ -5877,26 +5889,81 @@ private struct WorkstationDashboardCategoryWorkspace: View {
             )
             .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
 
-            WorkstationExternalDetailPanel(
-                title: "\(category.title) 상세",
-                subtitle: "\(items.count)개 항목 · 선택한 항목을 바로 처리합니다.",
-                item: selectedItem,
-                emptyMessage: category.emptyMessage,
-                model: model
-            )
+            Group {
+                if isPreparingExternalDetail {
+                    WorkstationExternalDetailPreparingPanel(
+                        title: "\(category.title) 상세",
+                        subtitle: "선택한 항목을 여는 중입니다."
+                    )
+                } else {
+                    WorkstationExternalDetailPanel(
+                        title: "\(category.title) 상세",
+                        subtitle: "\(items.count)개 항목 · 선택한 항목을 바로 처리합니다.",
+                        item: selectedItem,
+                        emptyMessage: category.emptyMessage,
+                        model: model
+                    )
+                }
+            }
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onChange(of: itemsResetKey) { _, _ in
+            clearStaleExternalSelectionIfNeeded()
+        }
+        .onDisappear {
+            externalDetailTask?.cancel()
+            externalDetailTask = nil
+        }
     }
 
     private func selectItem(_ item: ServerRelaySyncItem) {
-        selectedItemID = item.id
+        if activeSelectedItemID == item.id && displayedSelectedItemID == item.id {
+            return
+        }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            selectedItemID = item.id
+            displayedSelectedItemID = nil
+        }
+        deferExternalDetail(item.id)
+    }
+
+    private func deferExternalDetail(_ itemID: String?) {
+        externalDetailTask?.cancel()
+        guard let itemID else {
+            displayedSelectedItemID = nil
+            externalDetailTask = nil
+            return
+        }
+        externalDetailTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            displayedSelectedItemID = itemID
+            externalDetailTask = nil
+        }
+    }
+
+    private func clearStaleExternalSelectionIfNeeded() {
+        if let selectedItemID,
+           !items.contains(where: { $0.id == selectedItemID }) {
+            self.selectedItemID = nil
+            displayedSelectedItemID = nil
+            externalDetailTask?.cancel()
+            externalDetailTask = nil
+        } else if let displayedSelectedItemID,
+                  !items.contains(where: { $0.id == displayedSelectedItemID }) {
+            self.displayedSelectedItemID = nil
+        }
     }
 }
 
 private struct WorkstationTasksWorkspace: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedItemID: String?
+    @State private var displayedSelectedItemID: String?
+    @State private var externalDetailTask: Task<Void, Never>?
 
     private var combinedItems: [ServerRelaySyncItem] {
         [
@@ -5911,11 +5978,21 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var selectedItem: ServerRelaySyncItem? {
-        if let selectedItemID,
-           let item = combinedItems.first(where: { $0.id == selectedItemID }) {
+        if selectedItemID != nil,
+           let displayedSelectedItemID,
+           let item = combinedItems.first(where: { $0.id == displayedSelectedItemID }) {
             return item
         }
         return combinedItems.first
+    }
+
+    private var isPreparingExternalDetail: Bool {
+        guard let selectedItemID else { return false }
+        return displayedSelectedItemID != selectedItemID
+    }
+
+    private var itemsResetKey: String {
+        "\(combinedItems.count):\(combinedItems.first?.id ?? ""):\(combinedItems.last?.id ?? "")"
     }
 
     var body: some View {
@@ -5929,16 +6006,32 @@ private struct WorkstationTasksWorkspace: View {
             }
             .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
 
-            WorkstationExternalDetailPanel(
-                title: "선택한 일정",
-                subtitle: "과제, 시험, 헬프데스크를 한곳에서 확인하고 처리합니다.",
-                item: selectedItem,
-                emptyMessage: "현재 표시할 과제나 시험이 없습니다.",
-                model: model
-            )
+            Group {
+                if isPreparingExternalDetail {
+                    WorkstationExternalDetailPreparingPanel(
+                        title: "선택한 일정",
+                        subtitle: "선택한 항목을 여는 중입니다."
+                    )
+                } else {
+                    WorkstationExternalDetailPanel(
+                        title: "선택한 일정",
+                        subtitle: "과제, 시험, 헬프데스크를 한곳에서 확인하고 처리합니다.",
+                        item: selectedItem,
+                        emptyMessage: "현재 표시할 과제나 시험이 없습니다.",
+                        model: model
+                    )
+                }
+            }
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onChange(of: itemsResetKey) { _, _ in
+            clearStaleExternalSelectionIfNeeded()
+        }
+        .onDisappear {
+            externalDetailTask?.cancel()
+            externalDetailTask = nil
+        }
     }
 
     private func taskPanel(_ category: DashboardMetricCategory) -> some View {
@@ -5952,7 +6045,72 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private func selectItem(_ item: ServerRelaySyncItem) {
-        selectedItemID = item.id
+        if activeSelectedItemID == item.id && displayedSelectedItemID == item.id {
+            return
+        }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            selectedItemID = item.id
+            displayedSelectedItemID = nil
+        }
+        deferExternalDetail(item.id)
+    }
+
+    private func deferExternalDetail(_ itemID: String?) {
+        externalDetailTask?.cancel()
+        guard let itemID else {
+            displayedSelectedItemID = nil
+            externalDetailTask = nil
+            return
+        }
+        externalDetailTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            displayedSelectedItemID = itemID
+            externalDetailTask = nil
+        }
+    }
+
+    private func clearStaleExternalSelectionIfNeeded() {
+        if let selectedItemID,
+           !combinedItems.contains(where: { $0.id == selectedItemID }) {
+            self.selectedItemID = nil
+            displayedSelectedItemID = nil
+            externalDetailTask?.cancel()
+            externalDetailTask = nil
+        } else if let displayedSelectedItemID,
+                  !combinedItems.contains(where: { $0.id == displayedSelectedItemID }) {
+            self.displayedSelectedItemID = nil
+        }
+    }
+}
+
+private struct WorkstationExternalDetailPreparingPanel: View {
+    var title: String
+    var subtitle: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            CompanionInlineDetailPreparingView()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        )
     }
 }
 
