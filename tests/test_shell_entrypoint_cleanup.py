@@ -246,7 +246,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("configurePassiveSnapshotRefresh", app_model)
         self.assertIn("passiveSnapshotRefreshIntervalNanoseconds", app_model)
         self.assertIn("showLoginTransition: true", app_model)
-        self.assertIn("EngineSnapshotStore(paths: self.paths).load()", app_model)
+        self.assertIn("EngineSnapshotStore(paths: paths).load()", app_model)
         self.assertIn("cancelCommandBeforeTermination", app_model)
         self.assertIn("applicationShouldTerminate", app_entry)
         self.assertIn(".terminateLater", app_entry)
@@ -624,18 +624,17 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         ).read_text(encoding="utf-8")
 
         self.assertIn("private enum SettingsTab", settings)
-        self.assertIn("settingsSidebar", settings)
+        self.assertIn("settingsTabBar", settings)
         self.assertIn("settingsContentPanel", settings)
-        self.assertIn("settingsSidebarButton", settings)
+        self.assertIn("settingsTabButton", settings)
         self.assertIn("ForEach(SettingsTab.allCases)", settings)
-        for label in ['"로그인"', '"동기화"', '"공지"', '"파일"', '"서버"', '"앱"']:
+        for label in ['"로그인"', '"동기화"', '"공지"', '"파일"', '"화면/앱"']:
             self.assertIn(label, settings)
         for symbol in [
             '"person.badge.key"',
             '"arrow.triangle.2.circlepath"',
             '"checklist"',
             '"folder"',
-            '"network"',
             '"app.badge"',
         ]:
             self.assertIn(symbol, settings)
@@ -652,7 +651,9 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertNotIn('Picker("파일 탐색 모드"', sync_settings)
         self.assertIn('Picker("파일 탐색 모드"', file_settings)
         self.assertIn("SettingsView(model: model)", root)
-        self.assertIn("설정 > 서버", root)
+        self.assertIn("relaySettingsCollapsed", settings)
+        self.assertIn('title: "서버 릴레이"', settings)
+        self.assertIn('systemImage: "network"', settings)
         self.assertNotIn("설정 > iPhone 서버 릴레이", root)
         self.assertIn("private func described", settings)
         for description in [
@@ -695,8 +696,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         )
         self.assertIn("@State private var selectedDetail: DashboardDetailKind?", menu)
         self.assertIn("case files", detail)
-        self.assertIn("FileManifestListView(filters: filters, model: model)", detail)
-        self.assertIn("model.snapshot.courseFileManifest.compactMap", detail)
+        self.assertIn("FileManifestListView(files: fileData.manifestFiles, filters: filters, model: model)", detail)
+        self.assertIn("manifestFiles = snapshot.courseFileManifest.map", detail)
         self.assertIn("NoticeAttachmentDisplay", detail)
         self.assertIn('Text("첨부 파일")', detail)
         self.assertIn("notice.attachmentItems.map", detail)
@@ -714,9 +715,9 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn('"경로"', detail)
         self.assertIn('"최근"', detail)
         self.assertIn("private struct FileSortPickerView", detail)
-        self.assertGreaterEqual(detail.count("FileSortPickerView(selection: $sortOption)"), 4)
-        self.assertGreaterEqual(detail.count(".sorted(by: sortOption)"), 4)
-        self.assertEqual(detail.count("@State private var sortOption = DashboardFileSortOption.recent"), 5)
+        self.assertGreaterEqual(detail.count("FileSortPickerView(selection: $sortOption)"), 2)
+        self.assertGreaterEqual(detail.count(".sorted(by: sortOption)"), 2)
+        self.assertEqual(detail.count("@State private var sortOption = DashboardFileSortOption.recent"), 2)
         self.assertNotIn("@State private var sortOption = DashboardFileSortOption.course", detail)
         self.assertNotIn("@State private var sortOption = DashboardFileSortOption.name", detail)
         self.assertNotIn("@State private var sortOption = DashboardFileSortOption.path", detail)
@@ -753,13 +754,13 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         ).read_text(encoding="utf-8")
 
         self.assertIn("].filter { $0.value > 0 }", menu)
-        self.assertIn("let activeDetail = selectedDetail.flatMap", menu)
+        self.assertIn("presentation.activeDetail(", menu)
         self.assertIn('Text("표시할 대시보드 항목이 없습니다.")', menu)
-        self.assertIn("DashboardDetailPanelView(kind: kind, model: model)", menu)
+        self.assertIn("DashboardDetailPanelView(\n            kind: kind,\n            model: model,", menu)
         self.assertRegex(
             menu,
             r'Metric\("격리", counts\.quarantine, detail: \.quarantine\),\s*'
-            r'Metric\("과제 후보", assignmentCandidateCount, detail: \.assignmentCandidates\),',
+            r'Metric\("과제 후보", summary\.assignmentCandidateCount, detail: \.assignmentCandidates\),',
         )
 
     def test_safari_automation_uses_background_windows_by_default(self) -> None:
@@ -1362,11 +1363,12 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("RemoteDashboardSyncCard", ios_app)
         self.assertIn("CompanionSettingsScreen", ios_app)
         self.assertIn("CompanionHistoryScreen", ios_app)
-        self.assertIn("SecureField(\"클라이언트 토큰\"", ios_app)
+        self.assertIn('title: "클라이언트 토큰"', ios_app)
+        self.assertIn("SecureField(\"입력\"", ios_app)
         self.assertIn("clearServerRelayConnectionInfo", ios_app)
         self.assertIn("Cloudflare 서버 릴레이", ios_app)
-        self.assertIn('Text("연결")', ios_app)
-        self.assertIn('Text("복사")', ios_app)
+        self.assertIn('title: "연결 확인"', ios_app)
+        self.assertIn('title: "복사"', ios_app)
         self.assertIn('connectionAsyncButton("연결 확인"', ios_app)
         self.assertIn('connectionAsyncButton("요약 갱신"', ios_app)
         self.assertIn('connectionButton("URL 복사"', ios_app)
@@ -1395,7 +1397,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("@State private var selectedDashboardPreview", ios_app)
         self.assertIn("DashboardCategoryInlineDetailPanel(", ios_app)
         self.assertIn("ServerSyncItemInlineDetailPanel(item: item, model: model)", ios_app)
-        self.assertIn("if let category = selectedDashboardPreview", ios_app)
+        self.assertIn("if let category = displayedDashboardPreview", ios_app)
+        self.assertIn("deferDashboardPreview(category)", ios_app)
         self.assertNotIn('Label("상세 보기", systemImage: "arrow.right.circle")', ios_app)
         status_screen = ios_app.split("private struct CompanionStatusScreen", 1)[1].split(
             "private struct CompanionRunScreen",
@@ -1417,7 +1420,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             "집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.",
             "Mac 전용 토큰은 여기에 넣지 않습니다.",
             "복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.",
-            "연결 확인은 저장된 URL과 토큰으로 서버 응답만 검사합니다.",
+            "연결 확인은 URL과 토큰으로 서버 응답만 검사합니다.",
             "Mac 앱이 요청을 확인하면 설정에 반영합니다.",
             "읽음/중요 표시는 유지하되, 공지 내용이 그대로면 Notes 메모를 다시 쓰지 않습니다.",
             "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다.",
