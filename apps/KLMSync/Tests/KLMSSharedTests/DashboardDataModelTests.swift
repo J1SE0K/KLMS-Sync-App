@@ -49,6 +49,42 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertEqual(content.examItems.map(\.title), ["Z 오전 시험", "A 오후 시험"])
     }
 
+    func testDashboardSortsKoreanAssignmentAndExamDates() throws {
+        let lateAssignment = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=20",
+            title: "A 늦은 한글 과제",
+            course: "알고리즘 개론",
+            due: "2026년 6월 20일(토요일) 오후 11:59"
+        )
+        let earlyAssignment = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=10",
+            title: "Z 빠른 한글 과제",
+            course: "알고리즘 개론",
+            due: "2026년 6월 9일 화요일 오후 11시 59분"
+        )
+        let assignments = LegacySyncState.Content(assignments: [lateAssignment, earlyAssignment])
+            .applyingManualOverrides(ManualOverridesSnapshot())
+        XCTAssertEqual(assignments.assignments.map(\.title), ["Z 빠른 한글 과제", "A 늦은 한글 과제"])
+
+        let afternoonExam = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=20",
+            title: "A 오후 한글 시험",
+            course: "데이타베이스 개론",
+            category: "exam",
+            due: "2026년 6월 17일(수요일) 오후 1:00 - 오후 4:00"
+        )
+        let morningExam = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=10",
+            title: "Z 오전 한글 시험",
+            course: "전기 전자공학특강",
+            category: "exam",
+            due: "2026년 6월 17일 수요일 오전 9시"
+        )
+        let exams = LegacySyncState.Content(examItems: [afternoonExam, morningExam])
+            .applyingManualOverrides(ManualOverridesSnapshot())
+        XCTAssertEqual(exams.examItems.map(\.title), ["Z 오전 한글 시험", "A 오후 한글 시험"])
+    }
+
     func testCourseFileManifestDecodesKLMSTimestampForLatestSort() throws {
         let payload = """
         [

@@ -438,7 +438,54 @@ public extension StateItem {
             return date
         }
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: trimmed)
+        if let date = formatter.date(from: trimmed) {
+            return date
+        }
+        return dashboardParseKoreanDate(trimmed)
+    }
+
+    private static func dashboardParseKoreanDate(_ value: String) -> Date? {
+        var candidate = value
+            .replacingOccurrences(of: #"\([^)]*\)"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"(월요일|화요일|수요일|목요일|금요일|토요일|일요일)"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"부터.*$"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"까지.*$"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let range = candidate.range(of: #"\s+[-~–—]\s+"#, options: .regularExpression) {
+            candidate = String(candidate[..<range.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        candidate = candidate
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+
+        let currentYear = Calendar(identifier: .gregorian).component(.year, from: Date())
+        let yearlessPattern = #"^\d{1,2}월\s+\d{1,2}일"#
+        if candidate.range(of: yearlessPattern, options: .regularExpression) != nil {
+            candidate = "\(currentYear)년 \(candidate)"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+
+        let formats = [
+            "yyyy년 M월 d일 a h:mm",
+            "yyyy년 M월 d일 a h시 m분",
+            "yyyy년 M월 d일 a h시",
+            "yyyy년 M월 d일 H:mm",
+            "yyyy년 M월 d일 H시 m분",
+            "yyyy년 M월 d일 H시",
+            "yyyy년 M월 d일",
+        ]
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: candidate) {
+                return date
+            }
+        }
+        return nil
     }
 
     private static func dashboardSortFallbackComponents(_ item: StateItem, preferStartDate: Bool) -> [String] {
