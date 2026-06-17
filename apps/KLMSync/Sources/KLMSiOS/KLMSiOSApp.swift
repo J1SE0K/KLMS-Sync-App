@@ -3011,7 +3011,9 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                isExpanded.toggle()
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(alignment: .center, spacing: 8) {
                     Image(systemName: systemImage)
@@ -3272,7 +3274,9 @@ private struct ServerRelayConnectionPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button {
-                isExpanded.toggle()
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: model.serverRelayConfigured ? "checkmark.circle.fill" : "server.rack")
@@ -5197,6 +5201,14 @@ private struct KLMSCardButtonStyle: ButtonStyle {
     }
 }
 
+private func companionPerformWithoutAnimation(_ updates: () -> Void) {
+    var transaction = Transaction()
+    transaction.animation = nil
+    withTransaction(transaction) {
+        updates()
+    }
+}
+
 private struct DeferredInteractionExpansion<Content: View>: View {
     var isExpanded: Bool
     private let content: () -> Content
@@ -5522,7 +5534,9 @@ private struct CompactDashboardSelectedRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                expanded.toggle()
+                companionPerformWithoutAnimation {
+                    expanded.toggle()
+                }
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -5554,7 +5568,6 @@ private struct CompactDashboardSelectedRow: View {
 
             if expanded {
                 ServerSyncItemInlineDetailPanel(item: item, model: model)
-                    .transition(.opacity)
             }
         }
     }
@@ -6685,7 +6698,9 @@ private struct RemoteChangeSummaryDetailPanel: View {
                 ForEach(visibleChangedItems) { item in
                     VStack(alignment: .leading, spacing: 8) {
                         Button {
-                            selectedItemID = selectedItemID == item.id ? nil : item.id
+                            companionPerformWithoutAnimation {
+                                selectedItemID = selectedItemID == item.id ? nil : item.id
+                            }
                         } label: {
                             ServerSyncDataRow(
                                 item: item,
@@ -6698,7 +6713,6 @@ private struct RemoteChangeSummaryDetailPanel: View {
 
                         if selectedItemID == item.id {
                             ServerSyncItemInlineDetailPanel(item: item, model: model)
-                                .transition(.opacity)
                         }
                     }
                 }
@@ -6791,7 +6805,9 @@ private struct MailPasteAnalyzerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                isExpanded.toggle()
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -7092,7 +7108,9 @@ private struct MailPasteAnalysisResultView: View {
                         ForEach(Array(analysis.matchedItems.prefix(5))) { item in
                             VStack(alignment: .leading, spacing: 8) {
                                 Button {
-                                    selectedItemID = selectedItemID == item.id ? nil : item.id
+                                    companionPerformWithoutAnimation {
+                                        selectedItemID = selectedItemID == item.id ? nil : item.id
+                                    }
                                 } label: {
                                     ServerSyncDataRow(
                                         item: item,
@@ -7105,7 +7123,6 @@ private struct MailPasteAnalysisResultView: View {
 
                                 if selectedItemID == item.id {
                                     ServerSyncItemInlineDetailPanel(item: item, model: model)
-                                        .transition(.opacity)
                                 }
                             }
                         }
@@ -11037,7 +11054,9 @@ private struct RemoteSettingsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                isExpanded.toggle()
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: "macbook.and.iphone")
@@ -11185,7 +11204,9 @@ private struct RemoteSettingGroupSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                isExpanded.toggle()
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(alignment: .center, spacing: 8) {
                     Image(systemName: group.systemImage)
@@ -11347,7 +11368,6 @@ private struct RemoteLogSummaryPanel: View {
 
                 if let expandedKind {
                     RemoteLogDetailPanel(kind: expandedKind, model: model)
-                        .transition(.opacity)
                 } else {
                     Text("요약 행을 누르면 관련 기록을 바로 펼칩니다.")
                         .font(.caption2)
@@ -11741,7 +11761,9 @@ private struct SharedRunLogRow: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 12))
         .onTapGesture {
-            isExpanded.toggle()
+            companionPerformWithoutAnimation {
+                isExpanded.toggle()
+            }
         }
     }
 
@@ -11941,7 +11963,9 @@ private struct ServerRequestLogRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            isExpanded.toggle()
+            companionPerformWithoutAnimation {
+                isExpanded.toggle()
+            }
         }
     }
 
@@ -12047,7 +12071,9 @@ private struct RemoteFileAccessRequestRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            isExpanded.toggle()
+            companionPerformWithoutAnimation {
+                isExpanded.toggle()
+            }
         }
     }
 
@@ -12215,7 +12241,9 @@ private struct RemoteSettingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                isExpanded.toggle()
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -12481,7 +12509,9 @@ private struct RemoteCommandRow: View {
         )
         .contentShape(Rectangle())
         .onTapGesture {
-            isExpanded.toggle()
+            companionPerformWithoutAnimation {
+                isExpanded.toggle()
+            }
         }
     }
 
@@ -12551,7 +12581,9 @@ private struct RemotePrivacyNote: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                isExpanded.toggle()
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "lock")
