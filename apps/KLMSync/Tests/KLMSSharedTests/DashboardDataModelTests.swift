@@ -2105,6 +2105,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(importantLogPanelView.contains("@ObservedObject var model"))
         XCTAssertFalse(logSummaryPanelView.contains("@ObservedObject var model"))
         XCTAssertFalse(logSummaryDetailView.contains("@ObservedObject var model"))
+        XCTAssertEqual(mac.components(separatedBy: "@ObservedObject var model: KLMSMacModel").count - 1, 1)
         let alertRange = try XCTUnwrap(macRootBody.range(of: "MacAlertBannerView("))
         let commandRange = try XCTUnwrap(macRootBody.range(of: "CommandPanelView(model: model)"))
         let workstationRange = try XCTUnwrap(macRootBody.range(of: "MacWorkstationLayoutView("))

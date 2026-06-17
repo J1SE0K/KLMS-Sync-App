@@ -1646,7 +1646,7 @@ private struct LogSummaryTile: View {
 }
 
 private struct NextActionPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
 
@@ -1773,7 +1773,7 @@ private struct NextAction {
 }
 
 private struct HeaderView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -1900,7 +1900,7 @@ private struct HeaderView: View {
 }
 
 private struct CommandOutputPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @State private var showingFullOutput = false
     private static let maxRenderedOutputCharacters = 32_000
     private static let trimmedOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
@@ -1995,7 +1995,7 @@ private struct CommandOutputPanelView: View {
 }
 
 private struct DiagnosticToolsPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @State private var isAdvancedExpanded = false
     private let columns = [GridItem(.adaptive(minimum: 170), spacing: 8)]
     private let dryRunCommands: [KLMSEngineCommand] = [.fullSync, .filesSync, .coreSync, .noticeSync]
@@ -2102,7 +2102,7 @@ private struct DiagnosticToolsPanelView: View {
 }
 
 private struct DiagnosticStageDurationPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         if !stageDurations.isEmpty {
@@ -2137,7 +2137,7 @@ private struct DiagnosticStageDurationPanelView: View {
 }
 
 private struct DiagnosticCommandLogPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         SectionBox(title: "진단/실행 로그") {
@@ -2504,7 +2504,7 @@ private struct AuthCodeBannerView: View {
 }
 
 private struct DashboardSummaryView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         DashboardSummaryContentView(
@@ -2797,7 +2797,7 @@ private struct DashboardSummaryPresentation {
 }
 
 private struct DashboardRuntimePanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @AppStorage("KLMSMacRuntimePanelExpanded") private var isExpanded = false
 
     var body: some View {
@@ -2936,7 +2936,7 @@ private struct SlowestWorkView: View {
 }
 
 private struct NoticeMemoStatusView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         let snapshot = model.snapshot
@@ -2990,7 +2990,7 @@ private struct NoticeMemoStatusView: View {
 private struct NoticeMemoRowView: View {
     var label: String
     var state: NoticeNoteRenderState?
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -3026,7 +3026,7 @@ private struct NoticeMemoRowView: View {
 }
 
 private struct RemoteActivityPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         let fileRequests = model.serverRelayRecentFileAccessRequests
@@ -3895,7 +3895,7 @@ private struct DashboardArchiveMetricSection: View {
 }
 
 private struct LoginPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         SectionBox(title: "로그인") {
@@ -4249,7 +4249,7 @@ private struct DoctorCheckRowView: View {
 }
 
 private struct AppDiagnosticsPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @State private var isExpanded = false
     private let permissionActionColumns = [GridItem(.adaptive(minimum: 136), spacing: 8)]
 
@@ -4460,7 +4460,7 @@ private enum RunLogArchiveFilter: String, CaseIterable, Identifiable {
 }
 
 private struct RunLogArchivePanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
     @State private var isHistoryExpanded = false
     @State private var showingSystemLogs = false
@@ -4652,7 +4652,7 @@ private struct RunLogStatChip: View {
 }
 
 private struct CurrentRunLogCardView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         let output = currentOutput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -5096,7 +5096,7 @@ private extension EngineIssue.Severity {
 }
 
 private struct TopUtilityActionsView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         HStack(spacing: 8) {
