@@ -6119,7 +6119,7 @@ private struct WorkstationExternalDetailPanel: View {
     var subtitle: String
     var item: ServerRelaySyncItem?
     var emptyMessage: String
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -8913,7 +8913,7 @@ private struct ServerSyncDataPanel: View {
 
 private struct ServerSyncItemInlineDetailPanel: View {
     var item: ServerRelaySyncItem
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -9560,7 +9560,7 @@ private struct RemoteItemToggleButton: View {
     var systemImage: String
     var action: ServerRelayItemActionKind
     var item: ServerRelaySyncItem
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
 
     var body: some View {
         Button {
