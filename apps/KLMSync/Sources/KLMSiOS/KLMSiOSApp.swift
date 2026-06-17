@@ -6102,7 +6102,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     private func selectItem(_ item: ServerRelaySyncItem) {
-        if activeSelectedItemID == item.id && displayedSelectedItemID == item.id {
+        if activeSelectedItemID == item.id {
             return
         }
         var transaction = Transaction()
@@ -6229,7 +6229,7 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private func selectItem(_ item: ServerRelaySyncItem) {
-        if activeSelectedItemID == item.id && displayedSelectedItemID == item.id {
+        if activeSelectedItemID == item.id {
             return
         }
         var transaction = Transaction()
