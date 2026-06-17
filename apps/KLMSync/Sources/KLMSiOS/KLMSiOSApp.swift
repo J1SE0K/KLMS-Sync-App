@@ -11071,7 +11071,7 @@ private struct RemoteDryRunReportRow: View {
 
 private struct RemoteSettingsPanel: View {
     @ObservedObject var model: CompanionModel
-    @State private var isExpanded = false
+    @State private var isExpanded = true
 
     private var settingGroups: [RemoteSettingGroup] {
         RemoteSettingGroup.grouped(settings: model.remoteSettings)
@@ -11150,7 +11150,7 @@ private struct RemoteSettingGroup: Identifiable {
     var id: String { title }
     var countText: String { "\(settings.count)개" }
     var isDefaultExpanded: Bool {
-        false
+        title != "Safari" && title != "고급"
     }
 
     static func grouped(settings: [ServerRelaySetting]) -> [RemoteSettingGroup] {
