@@ -2794,9 +2794,20 @@ private struct CompanionStatusScreen: View {
                 tint: category.tint
             )
         } else if horizontalSizeClass == .regular {
-            WorkstationDashboardOverviewPanel(data: WorkstationDashboardOverviewData(model: model))
+            WorkstationDashboardOverviewPanel(
+                data: WorkstationDashboardOverviewData(model: model),
+                onOpenCategory: openDashboardCategoryFromOverview
+            )
                 .equatable()
         }
+    }
+
+    private func openDashboardCategoryFromOverview(_ category: DashboardMetricCategory) {
+        selectedChangeSummary = nil
+        displayedChangeSummary = nil
+        displayedDashboardPreview = nil
+        selectedDashboardPreview = category
+        deferDashboardPreview(category)
     }
 
     private func deferDashboardPreview(_ category: DashboardMetricCategory?) {
@@ -5163,9 +5174,14 @@ private struct WorkstationDashboardOverviewData: Equatable {
 
 private struct WorkstationDashboardOverviewPanel: View, Equatable {
     var data: WorkstationDashboardOverviewData
+    var onOpenCategory: (DashboardMetricCategory) -> Void = { _ in }
 
     private var status: SanitizedRemoteStatus {
         data.status
+    }
+
+    nonisolated static func == (lhs: WorkstationDashboardOverviewPanel, rhs: WorkstationDashboardOverviewPanel) -> Bool {
+        lhs.data == rhs.data
     }
 
     var body: some View {
@@ -5206,30 +5222,37 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
             } else {
                 LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
                     ForEach(overviewMetrics) { metric in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(alignment: .center, spacing: 8) {
-                                Image(systemName: metric.systemImage)
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(metric.tint)
-                                    .frame(width: 26, height: 26)
-                                    .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                                Spacer(minLength: 0)
-                                Text("\(metric.value)")
-                                    .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                                    .foregroundStyle(Color.klmsPrimaryText)
+                        Button {
+                            onOpenCategory(metric.category)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(alignment: .center, spacing: 8) {
+                                    Image(systemName: metric.systemImage)
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(metric.tint)
+                                        .frame(width: 26, height: 26)
+                                        .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                    Spacer(minLength: 0)
+                                    Text("\(metric.value)")
+                                        .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                                        .foregroundStyle(Color.klmsPrimaryText)
+                                }
+                                Text(metric.title)
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color.klmsSecondaryText)
+                                    .lineLimit(1)
                             }
-                            Text(metric.title)
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color.klmsSecondaryText)
-                                .lineLimit(1)
+                            .padding(11)
+                            .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+                            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 13)
+                                    .stroke(Color.klmsBorder, lineWidth: 1)
+                            )
+                            .contentShape(RoundedRectangle(cornerRadius: 13))
                         }
-                        .padding(11)
-                        .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
-                        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 13)
-                                .stroke(Color.klmsBorder, lineWidth: 1)
-                        )
+                        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
+                        .accessibilityHint("\(metric.title) 상세를 엽니다.")
                     }
                 }
             }
@@ -5239,8 +5262,10 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                     title: "파일",
                     systemImage: "folder",
                     tint: Color.klmsCommandAccent,
+                    category: .files,
                     items: filePreviewItems,
-                    emptyMessage: "새로 확인할 파일이 없습니다."
+                    emptyMessage: "새로 확인할 파일이 없습니다.",
+                    onOpenCategory: onOpenCategory
                 )
             }
 
@@ -5249,8 +5274,10 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                     title: "과제/시험",
                     systemImage: "checklist",
                     tint: Color.klmsWarningBorder,
+                    category: .assignments,
                     items: previewTaskItems,
-                    emptyMessage: "진행 중인 과제나 예정 시험이 없습니다."
+                    emptyMessage: "진행 중인 과제나 예정 시험이 없습니다.",
+                    onOpenCategory: onOpenCategory
                 )
             }
 
@@ -5259,8 +5286,10 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                     title: "공지",
                     systemImage: "note.text",
                     tint: Color.klmsCommandAccent,
+                    category: .notices,
                     items: noticePreviewItems,
-                    emptyMessage: "새로 볼 공지가 없습니다."
+                    emptyMessage: "새로 볼 공지가 없습니다.",
+                    onOpenCategory: onOpenCategory
                 )
             }
 
@@ -5281,10 +5310,10 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
 
     private var overviewMetrics: [MetricSummary] {
         [
-            MetricSummary(title: "파일", value: status.fileTotal, systemImage: "folder", tint: Color.klmsCommandAccent),
-            MetricSummary(title: "과제", value: status.assignments, systemImage: "checklist", tint: Color.klmsCommandAccent),
-            MetricSummary(title: "공지", value: status.notices, systemImage: "note.text", tint: Color.klmsCommandAccent),
-            MetricSummary(title: "시험", value: status.exams, systemImage: "calendar.badge.clock", tint: Color.klmsWarningBorder),
+            MetricSummary(category: .files, title: "파일", value: status.fileTotal, systemImage: "folder", tint: Color.klmsCommandAccent),
+            MetricSummary(category: .assignments, title: "과제", value: status.assignments, systemImage: "checklist", tint: Color.klmsCommandAccent),
+            MetricSummary(category: .notices, title: "공지", value: status.notices, systemImage: "note.text", tint: Color.klmsCommandAccent),
+            MetricSummary(category: .exams, title: "시험", value: status.exams, systemImage: "calendar.badge.clock", tint: Color.klmsWarningBorder),
         ].filter { $0.value > 0 }
     }
 
@@ -5301,6 +5330,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
     }
 
     private struct MetricSummary: Identifiable {
+        var category: DashboardMetricCategory
         var title: String
         var value: Int
         var systemImage: String
@@ -5316,8 +5346,10 @@ private struct WorkstationDashboardPreviewSection: View {
     var title: String
     var systemImage: String
     var tint: Color
+    var category: DashboardMetricCategory
     var items: [ServerRelaySyncItem]
     var emptyMessage: String
+    var onOpenCategory: (DashboardMetricCategory) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -5351,8 +5383,14 @@ private struct WorkstationDashboardPreviewSection: View {
                     }
             } else {
                 ForEach(items) { item in
-                    ServerSyncDataRow(item: item, isSelected: false)
-                        .equatable()
+                    Button {
+                        onOpenCategory(category)
+                    } label: {
+                        ServerSyncDataRow(item: item, isSelected: false)
+                            .equatable()
+                    }
+                    .buttonStyle(KLMSCardButtonStyle())
+                    .accessibilityHint("\(title) 상세를 엽니다.")
                 }
             }
         }
