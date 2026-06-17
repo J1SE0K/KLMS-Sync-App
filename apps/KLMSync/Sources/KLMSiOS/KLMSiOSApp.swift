@@ -10596,6 +10596,8 @@ private struct RemoteVerifySummaryPanel: View {
 private struct RemoteVerifyCheckRow: View {
     var check: VerifyCheck
     var compact = false
+    @State private var showsGuidance = false
+    @State private var showsRawDetail = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 2 : 5) {
@@ -10615,6 +10617,7 @@ private struct RemoteVerifyCheckRow: View {
                         Text(rawDetail)
                             .font(.caption2)
                             .foregroundStyle(Color.klmsSecondaryText)
+                            .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -10623,17 +10626,36 @@ private struct RemoteVerifyCheckRow: View {
                 Text(check.diagnosticExplanation)
                     .font(.caption2)
                     .foregroundStyle(Color.klmsPrimaryText)
+                    .lineLimit(1)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(check.diagnosticNextAction)
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !rawDetail.isEmpty {
-                    Text("원본: \(rawDetail)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+
+                DisclosureGroup(isExpanded: $showsGuidance) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(check.diagnosticExplanation)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsPrimaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(check.diagnosticNextAction)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !rawDetail.isEmpty {
+                            DisclosureGroup(isExpanded: $showsRawDetail) {
+                                Text(rawDetail)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(Color.klmsSecondaryText)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } label: {
+                                Text("원본 보기")
+                                    .font(.caption2.weight(.semibold))
+                            }
+                        }
+                    }
+                    .padding(.top, 3)
+                } label: {
+                    Text("원인과 조치 보기")
+                        .font(.caption2.weight(.semibold))
                 }
             }
         }
