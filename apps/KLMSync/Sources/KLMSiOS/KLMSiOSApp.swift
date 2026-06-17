@@ -2824,36 +2824,26 @@ private struct CompanionSettingsScreen: View {
 
 private struct CompanionImmediateSettingsPanel: View {
     @ObservedObject var model: CompanionModel
-    @State private var isExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button {
-                isExpanded.toggle()
-            } label: {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 32, height: 32)
-                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("바로 반영되는 설정")
-                            .font(.headline)
-                        Text("서버에 바로 저장되어 Mac, iPhone, iPad, Windows가 같은 값을 씁니다.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 0)
-                    CompanionExpansionBadge(isExpanded: isExpanded)
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 32, height: 32)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("바로 반영되는 설정")
+                        .font(.headline)
+                    Text("서버에 바로 저장되어 Mac, iPhone, iPad, Windows가 같은 값을 씁니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 12))
+                Spacer(minLength: 0)
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-            .accessibilityHint(isExpanded ? "바로 반영되는 설정 접기" : "바로 반영되는 설정 펼치기")
 
-            if isExpanded {
             VStack(alignment: .leading, spacing: 10) {
                 CompanionImmediateSettingRow(
                     title: "화면 모드",
@@ -2892,8 +2882,6 @@ private struct CompanionImmediateSettingsPanel: View {
                     .toggleStyle(.switch)
                     .disabled(model.isSubmitting)
                 }
-            }
-            .transition(.opacity)
             }
         }
         .padding(12)
