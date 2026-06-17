@@ -2305,7 +2305,7 @@ private struct CompanionCompactTabBar: View {
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSCardButtonStyle())
-        .accessibilityLabel(section.title)
+        .accessibilityLabel(section.compactTitle)
         .accessibilityValue(selectedSection == section ? "선택됨" : "")
     }
 }
