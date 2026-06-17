@@ -353,10 +353,12 @@ private struct MacAlertBannerView: View {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.klmsMacPrimaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.86)
                     Text(detail)
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
-                        .lineLimit(2)
+                        .lineLimit(1)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 10)
@@ -1677,10 +1679,12 @@ private struct NextActionPanelView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(action.title)
                         .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                     Text(action.detail)
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 Button {
@@ -1818,6 +1822,8 @@ private struct HeaderView: View {
                     Text(statusText)
                         .font(.subheadline)
                         .foregroundStyle(Color.klmsMacSecondaryText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
