@@ -407,6 +407,26 @@ private struct DashboardDetailFilters: Equatable {
     var newOnly: Bool
     var recentOnly: Bool
 
+    init(
+        searchText: String = "",
+        selectedCourse: String = DashboardCourseFilter.all,
+        selectedYear: String = DashboardTermFilter.allYears,
+        selectedSemester: String = DashboardTermFilter.allSemesters,
+        showHidden: Bool = false,
+        hiddenOnly: Bool = false,
+        newOnly: Bool = false,
+        recentOnly: Bool = false
+    ) {
+        self.searchText = searchText
+        self.selectedCourse = selectedCourse
+        self.selectedYear = selectedYear
+        self.selectedSemester = selectedSemester
+        self.showHidden = showHidden
+        self.hiddenOnly = hiddenOnly
+        self.newOnly = newOnly
+        self.recentOnly = recentOnly
+    }
+
     var hasActiveFilter: Bool {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || selectedCourse != DashboardCourseFilter.all
@@ -1283,7 +1303,9 @@ private struct StateItemListView: View {
     private var inputSignature: DashboardStateItemListInputSignature
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
     @State private var presentation: DashboardStateItemListPresentation
-    @State private var presentationSignature: DashboardStateItemListInputSignature
+    @State private var presentationSignature: DashboardStateItemListInputSignature?
+    @State private var presentationTask: Task<Void, Never>?
+    @State private var isPreparingPresentation = true
 
     init(
         items: [StateItem],
@@ -1301,15 +1323,17 @@ private struct StateItemListView: View {
         self.model = model
         let signature = DashboardStateItemListInputSignature(items: items, editor: editor, filters: filters, snapshot: snapshot)
         self.inputSignature = signature
-        _presentation = State(initialValue: DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot))
-        _presentationSignature = State(initialValue: signature)
+        _presentation = State(initialValue: DashboardStateItemListPresentation())
+        _presentationSignature = State(initialValue: nil)
     }
 
     var body: some View {
         let signature = inputSignature
         let renderedItems = presentation.items.prefix(visibleLimit)
         Group {
-            if presentation.items.isEmpty {
+            if isPreparingPresentation {
+                DashboardListPreparingView(text: "목록을 준비하는 중입니다.")
+            } else if presentation.items.isEmpty {
                 EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 항목이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : emptyText)
             } else {
                 LazyVStack(alignment: .leading, spacing: 8) {
@@ -1330,15 +1354,30 @@ private struct StateItemListView: View {
         .onChange(of: signature) { _, next in
             rebuildPresentationIfNeeded(next)
         }
+        .onDisappear {
+            presentationTask?.cancel()
+        }
     }
 
     private func rebuildPresentationIfNeeded(_ signature: DashboardStateItemListInputSignature) {
-        guard presentationSignature != signature else {
+        guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
+        presentationTask?.cancel()
         presentationSignature = signature
-        presentation = DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot)
+        presentation = DashboardStateItemListPresentation()
         visibleLimit = DashboardLargeList.initialVisibleLimit
+        isPreparingPresentation = true
+        let items = items
+        let editor = editor
+        let filters = filters
+        let snapshot = snapshot
+        presentationTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            presentation = DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot)
+            isPreparingPresentation = false
+        }
     }
 }
 
@@ -1824,7 +1863,9 @@ private struct NoticeListView: View {
     @State private var category: NoticeListCategory
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
     @State private var presentation: NoticeDashboardPresentation
-    @State private var presentationSignature: NoticeDashboardInputSignature
+    @State private var presentationSignature: NoticeDashboardInputSignature?
+    @State private var presentationTask: Task<Void, Never>?
+    @State private var isPreparingPresentation = true
 
     init(
         filters: DashboardDetailFilters,
@@ -1836,11 +1877,10 @@ private struct NoticeListView: View {
         self.snapshot = snapshot
         self.model = model
         let baseSignature = NoticeDashboardBaseInputSignature(filters: filters, snapshot: snapshot)
-        let signature = NoticeDashboardInputSignature(category: defaultCategory, baseSignature: baseSignature)
         self.inputBaseSignature = baseSignature
         _category = State(initialValue: defaultCategory)
-        _presentation = State(initialValue: NoticeDashboardPresentation(category: defaultCategory, filters: filters, snapshot: snapshot))
-        _presentationSignature = State(initialValue: signature)
+        _presentation = State(initialValue: NoticeDashboardPresentation())
+        _presentationSignature = State(initialValue: nil)
     }
 
     var body: some View {
@@ -1858,12 +1898,17 @@ private struct NoticeListView: View {
         .onChange(of: signature) { _, next in
             rebuildPresentationIfNeeded(next)
         }
+        .onDisappear {
+            presentationTask?.cancel()
+        }
     }
 
     @ViewBuilder
     private func noticeRows(_ notices: [NoticeDigestEntry]) -> some View {
         let renderedNotices = notices.prefix(visibleLimit)
-        if notices.isEmpty {
+        if isPreparingPresentation {
+            DashboardListPreparingView(text: "공지 목록을 준비하는 중입니다.")
+        } else if notices.isEmpty {
             EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 공지가 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "공지 목록이 없습니다.")
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
@@ -1880,12 +1925,23 @@ private struct NoticeListView: View {
     }
 
     private func rebuildPresentationIfNeeded(_ signature: NoticeDashboardInputSignature) {
-        guard presentationSignature != signature else {
+        guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
+        presentationTask?.cancel()
         presentationSignature = signature
-        presentation = NoticeDashboardPresentation(category: category, filters: filters, snapshot: snapshot)
+        presentation = NoticeDashboardPresentation()
         visibleLimit = DashboardLargeList.initialVisibleLimit
+        isPreparingPresentation = true
+        let category = category
+        let filters = filters
+        let snapshot = snapshot
+        presentationTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            presentation = NoticeDashboardPresentation(category: category, filters: filters, snapshot: snapshot)
+            isPreparingPresentation = false
+        }
     }
 }
 
@@ -1932,10 +1988,12 @@ private struct NoticeDashboardInputSignature: Equatable {
 }
 
 private struct NoticeDashboardPresentation {
-    var notices: [NoticeDigestEntry]
-    var counts: [NoticeListCategory: Int]
-    var category: NoticeListCategory
-    var filters: DashboardDetailFilters
+    var notices: [NoticeDigestEntry] = []
+    var counts: [NoticeListCategory: Int] = [:]
+    var category: NoticeListCategory = .all
+    var filters: DashboardDetailFilters = DashboardDetailFilters()
+
+    init() {}
 
     init(category: NoticeListCategory, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
         let state = snapshot.noticeUserState?.notices ?? [:]
@@ -2427,7 +2485,9 @@ private struct DashboardFileListContentView: View {
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
     @State private var presentation: DashboardFileListPresentation
-    @State private var presentationSignature: DashboardFileListInputSignature
+    @State private var presentationSignature: DashboardFileListInputSignature?
+    @State private var presentationTask: Task<Void, Never>?
+    @State private var isPreparingPresentation = true
 
     init(
         files: [DashboardFileItem],
@@ -2446,17 +2506,18 @@ private struct DashboardFileListContentView: View {
         self.filteredEmptyText = filteredEmptyText
         self.introText = introText
         let baseSignature = DashboardFileListBaseInputSignature(files: files, filters: filters)
-        let signature = DashboardFileListInputSignature(baseSignature: baseSignature, sortOption: .recent)
         self.inputBaseSignature = baseSignature
-        _presentation = State(initialValue: DashboardFileListPresentation(files: files, filters: filters, sortOption: .recent))
-        _presentationSignature = State(initialValue: signature)
+        _presentation = State(initialValue: DashboardFileListPresentation())
+        _presentationSignature = State(initialValue: nil)
     }
 
     var body: some View {
         let signature = DashboardFileListInputSignature(baseSignature: inputBaseSignature, sortOption: sortOption)
         let visibleFiles = presentation.files.prefix(visibleLimit)
         Group {
-            if presentation.files.isEmpty {
+            if isPreparingPresentation {
+                DashboardListPreparingView(text: "파일 목록을 준비하는 중입니다.")
+            } else if presentation.files.isEmpty {
                 EmptyDetailText(text: filters.hasActiveFilter ? filteredEmptyText : emptyText)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
@@ -2487,15 +2548,29 @@ private struct DashboardFileListContentView: View {
         .onChange(of: signature) { _, next in
             rebuildPresentationIfNeeded(next)
         }
+        .onDisappear {
+            presentationTask?.cancel()
+        }
     }
 
     private func rebuildPresentationIfNeeded(_ signature: DashboardFileListInputSignature) {
-        guard presentationSignature != signature else {
+        guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
+        presentationTask?.cancel()
         presentationSignature = signature
-        presentation = DashboardFileListPresentation(files: files, filters: filters, sortOption: sortOption)
+        presentation = DashboardFileListPresentation()
         visibleLimit = DashboardLargeList.initialVisibleLimit
+        isPreparingPresentation = true
+        let files = files
+        let filters = filters
+        let sortOption = sortOption
+        presentationTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            presentation = DashboardFileListPresentation(files: files, filters: filters, sortOption: sortOption)
+            isPreparingPresentation = false
+        }
     }
 }
 
@@ -5578,6 +5653,21 @@ private struct EmptyDetailText: View {
         Text(text)
             .font(.caption)
             .foregroundStyle(Color.klmsMacSecondaryText)
+    }
+}
+
+private struct DashboardListPreparingView: View {
+    var text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(Color.klmsMacSecondaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
