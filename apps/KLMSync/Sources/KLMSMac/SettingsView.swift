@@ -72,6 +72,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedTab: SettingsTab = .app
+    @State private var hoveredTab: SettingsTab?
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
     private let settingsTabColumns = [
         GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 7),
@@ -170,6 +171,7 @@ struct SettingsView: View {
 
     private func settingsTabButton(_ tab: SettingsTab) -> some View {
         let isSelected = selectedTab == tab
+        let isHovered = hoveredTab == tab
         return Button {
             guard selectedTab != tab else { return }
             selectedTab = tab
@@ -180,16 +182,16 @@ struct SettingsView: View {
                         .fill(
                             isSelected
                                 ? Color.klmsMacSelectedBorder.opacity(0.18)
-                                : Color.klmsMacSubtleCardBackground.opacity(0.72)
+                                : Color.klmsMacSubtleCardBackground.opacity(isHovered ? 0.92 : 0.72)
                         )
                     Image(systemName: tab.systemImage)
                         .font(.subheadline.weight(isSelected ? .bold : .semibold))
-                        .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
+                        .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(isHovered ? 1.0 : 0.84))
                 }
                 .frame(width: 28, height: 28)
                 Text(tab.title)
                     .font(.caption.weight(isSelected ? .bold : .semibold))
-                    .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
+                    .foregroundStyle((isSelected || isHovered) ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.86)
             }
@@ -197,22 +199,32 @@ struct SettingsView: View {
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .center)
             .background(
-                isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacSubtleCardBackground.opacity(0.34),
+                isSelected
+                    ? Color.klmsMacSelectedBackground.opacity(0.96)
+                    : Color.klmsMacSubtleCardBackground.opacity(isHovered ? 0.58 : 0.34),
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay(alignment: .bottom) {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
+                    .fill(isSelected ? Color.klmsMacSelectedBorder : (isHovered ? Color.klmsMacSelectedBorder.opacity(0.34) : Color.clear))
                     .frame(height: 3)
                     .padding(.horizontal, 10)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacCommandBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
+                    .stroke(
+                        isSelected
+                            ? Color.klmsMacSelectedBorder.opacity(0.92)
+                            : Color.klmsMacCommandBorder.opacity(isHovered ? 0.72 : 0.42),
+                        lineWidth: isSelected ? 1.2 : 1
+                    )
             }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSMacSettingsTabButtonStyle())
+        .onHover { hovering in
+            hoveredTab = hovering ? tab : (hoveredTab == tab ? nil : hoveredTab)
+        }
         .accessibilityLabel(tab.title)
         .accessibilityIdentifier("settings-\(tab.rawValue)")
         .accessibilityValue(isSelected ? "선택됨" : "")
