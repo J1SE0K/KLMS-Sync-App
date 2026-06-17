@@ -2545,8 +2545,6 @@ private struct CompanionStatusScreen: View {
                 VStack(alignment: .leading, spacing: 14) {
                     statusSummaryColumn
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                    statusDetailColumn
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
         }
@@ -2576,6 +2574,10 @@ private struct CompanionStatusScreen: View {
                     deferChangeSummary(kind)
                 }
             )
+            if horizontalSizeClass != .regular {
+                statusDetailColumn
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
         }
     }
 
@@ -2584,13 +2586,21 @@ private struct CompanionStatusScreen: View {
         if let kind = displayedChangeSummary {
             RemoteChangeSummaryDetailPanel(kind: kind, model: model)
                 .id(kind)
-        } else if selectedChangeSummary != nil {
-            CompanionDashboardDetailPreparingView()
+        } else if let kind = selectedChangeSummary {
+            CompanionDashboardDetailPreparingView(
+                title: kind.detailTitle,
+                systemImage: kind.systemImage,
+                tint: kind.tint
+            )
         } else if let category = displayedDashboardPreview {
             DashboardCategoryInlineDetailPanel(category: category, model: model)
                 .id(category)
-        } else if selectedDashboardPreview != nil {
-            CompanionDashboardDetailPreparingView()
+        } else if let category = selectedDashboardPreview {
+            CompanionDashboardDetailPreparingView(
+                title: category.title,
+                systemImage: category.systemImage,
+                tint: category.tint
+            )
         } else if horizontalSizeClass == .regular {
             WorkstationDashboardOverviewPanel(model: model)
         }
@@ -2629,21 +2639,35 @@ private struct CompanionStatusScreen: View {
 }
 
 private struct CompanionDashboardDetailPreparingView: View {
+    var title: String
+    var systemImage: String
+    var tint: Color
+
     var body: some View {
         HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(tint)
+                .frame(width: 24, height: 24)
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text("상세를 바로 여는 중입니다.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.klmsSecondaryText)
+            }
+            Spacer(minLength: 0)
             ProgressView()
                 .controlSize(.small)
-            Text("대시보드 상세를 준비하는 중입니다.")
-                .font(.caption)
-                .foregroundStyle(Color.klmsSecondaryText)
-            Spacer(minLength: 0)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsSubtleCardBackground.opacity(0.76), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsBorder.opacity(0.86), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(tint.opacity(0.28), lineWidth: 1)
         }
     }
 }
