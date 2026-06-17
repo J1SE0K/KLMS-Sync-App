@@ -4430,32 +4430,38 @@ private struct RemoteDashboardSyncCard: View {
 
     private func dashboardSecondaryButton(_ kind: RemoteCommandKind) -> some View {
         let isRunning = isCommandActive(kind)
+        let isDisabled = commandDisabled(for: kind)
         return Button {
             runOrCancel(kind)
         } label: {
-            Text(shortTitle(for: kind))
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.klmsSecondaryCommandButtonForeground)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-                .frame(maxWidth: .infinity, minHeight: compact ? 42 : 46, alignment: .center)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 9)
-                .background(
-                    isRunning ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground,
-                    in: RoundedRectangle(cornerRadius: 10)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(
-                            Color.klmsCommandButtonBorder.opacity(isRunning ? 1.0 : 0.92),
-                            lineWidth: 1
-                        )
+            HStack(spacing: 5) {
+                if let systemImage = secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 9, weight: .black, design: .rounded))
                 }
+                Text(shortTitle(for: kind))
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            .foregroundStyle(secondaryCommandForeground(isDisabled: isDisabled))
+            .frame(maxWidth: .infinity, minHeight: compact ? 42 : 46, alignment: .center)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 9)
+            .background(
+                secondaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(
+                        secondaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled),
+                        lineWidth: 1
+                    )
+            }
         }
-        .buttonStyle(KLMSCardButtonStyle())
-        .opacity(commandDisabled(for: kind) ? 0.62 : 1)
-        .disabled(commandDisabled(for: kind))
+        .buttonStyle(KLMSCardButtonStyle(disabledOpacity: 1.0))
+        .disabled(isDisabled)
         .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
         .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 \(kind.displayName)을 중단합니다." : "Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
     }
@@ -4501,6 +4507,26 @@ private struct RemoteDashboardSyncCard: View {
     private func primaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
         if isDisabled { return Color.klmsPrimaryCommandButtonBorder.opacity(0.62) }
         return isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.78) : Color.klmsPrimaryCommandButtonBorder
+    }
+
+    private func secondaryCommandSystemImage(isRunning: Bool, isDisabled: Bool) -> String? {
+        if isRunning { return "stop.fill" }
+        if isDisabled { return "lock.fill" }
+        return nil
+    }
+
+    private func secondaryCommandForeground(isDisabled: Bool) -> Color {
+        isDisabled ? Color.klmsSecondaryText.opacity(0.64) : Color.klmsSecondaryCommandButtonForeground
+    }
+
+    private func secondaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
+        if isDisabled { return Color.klmsSubtleCardBackground.opacity(0.70) }
+        return isRunning ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground
+    }
+
+    private func secondaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
+        if isDisabled { return Color.klmsCommandButtonBorder.opacity(0.54) }
+        return Color.klmsCommandButtonBorder.opacity(isRunning ? 1.0 : 0.92)
     }
 
     private var syncStateTitle: String {
@@ -9823,34 +9849,38 @@ private struct RemoteCommandPanel: View {
 
     private func commandActionCard(_ kind: RemoteCommandKind) -> some View {
         let isRunning = isCommandActive(kind)
+        let isDisabled = commandDisabled(for: kind)
         return Button {
             runOrCancel(kind)
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 5) {
+                if let systemImage = secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                }
                 Text(shortTitle(for: kind))
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
             }
-            .foregroundStyle(Color.klmsSecondaryCommandButtonForeground)
+            .foregroundStyle(secondaryCommandForeground(isDisabled: isDisabled))
             .frame(maxWidth: .infinity, minHeight: compact ? 42 : 46, alignment: .center)
             .padding(.horizontal, 5)
             .padding(.vertical, 9)
             .background(
-                isRunning ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.88),
+                secondaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        Color.klmsCommandButtonBorder.opacity(isRunning ? 1.0 : 0.88),
+                        secondaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled),
                         lineWidth: 1
                     )
             }
         }
-        .buttonStyle(KLMSCardButtonStyle())
-        .opacity(commandDisabled(for: kind) ? 0.48 : 1)
-        .disabled(commandDisabled(for: kind))
+        .buttonStyle(KLMSCardButtonStyle(disabledOpacity: 1.0))
+        .disabled(isDisabled)
         .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
         .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 \(kind.displayName)을 중단합니다." : "Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
     }
@@ -9896,6 +9926,26 @@ private struct RemoteCommandPanel: View {
     private func primaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
         if isDisabled { return Color.klmsPrimaryCommandButtonBorder.opacity(0.62) }
         return isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.78) : Color.klmsPrimaryCommandButtonBorder
+    }
+
+    private func secondaryCommandSystemImage(isRunning: Bool, isDisabled: Bool) -> String? {
+        if isRunning { return "stop.fill" }
+        if isDisabled { return "lock.fill" }
+        return nil
+    }
+
+    private func secondaryCommandForeground(isDisabled: Bool) -> Color {
+        isDisabled ? Color.klmsSecondaryText.opacity(0.64) : Color.klmsSecondaryCommandButtonForeground
+    }
+
+    private func secondaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
+        if isDisabled { return Color.klmsSubtleCardBackground.opacity(0.70) }
+        return isRunning ? Color.klmsCommandButtonPressedBackground : Color.klmsCommandButtonBackground.opacity(0.88)
+    }
+
+    private func secondaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
+        if isDisabled { return Color.klmsCommandButtonBorder.opacity(0.54) }
+        return Color.klmsCommandButtonBorder.opacity(isRunning ? 1.0 : 0.88)
     }
 
     private func shortTitle(for kind: RemoteCommandKind) -> String {
