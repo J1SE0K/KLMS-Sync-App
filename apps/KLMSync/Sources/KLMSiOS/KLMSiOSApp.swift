@@ -4982,17 +4982,13 @@ private struct RemoteDashboardChangeSummary: View {
         }
     }
 
-    private var visibleEntries: [RemoteChangeSummaryEntry] {
-        entries.filter { $0.kind != selectedKind }
-    }
-
     var body: some View {
-        if !visibleEntries.isEmpty {
+        if !entries.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Label("변경 요약", systemImage: "sparkles")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
-                FlowChipLayout(entries: visibleEntries, selectedKind: selectedKind, onSelect: onSelect)
+                FlowChipLayout(entries: entries, selectedKind: selectedKind, onSelect: onSelect)
             }
         }
     }
