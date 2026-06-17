@@ -1417,7 +1417,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionSection.contains("return \"설정\""))
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection]"))
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection] {\n        [.status, .history, .settings]"))
-        XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .files, .notices, .tasks, .calendar, .history, .settings]"))
+        XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .files, .tasks, .notices, .calendar, .history, .settings]"))
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
         XCTAssertLessThan(
             compactRoot.range(of: "CompanionSectionContent(section: selectedSection, model: model)")?.lowerBound ?? compactRoot.endIndex,

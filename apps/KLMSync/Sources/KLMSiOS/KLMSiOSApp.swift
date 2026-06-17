@@ -2137,7 +2137,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     }
 
     static var workstationSections: [CompanionAppSection] {
-        [.status, .files, .notices, .tasks, .calendar, .history, .settings]
+        [.status, .files, .tasks, .notices, .calendar, .history, .settings]
     }
 
     var title: String {
