@@ -3048,7 +3048,6 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
                     content()
                 }
                 .padding(.top, 2)
-                .transition(.opacity)
             }
         }
         .padding(10)
@@ -3398,7 +3397,6 @@ private struct ServerRelayConnectionPanel: View {
                         .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
                     }
                 }
-                .transition(.opacity)
             }
         }
         .padding(12)
@@ -4219,6 +4217,33 @@ private struct CompanionItemListControlsPlaceholder: View {
         .padding(.vertical, 4)
         .redacted(reason: .placeholder)
         .allowsHitTesting(false)
+    }
+}
+
+private struct CompanionSearchFilterPanel<Controls: View>: View {
+    var title: String
+    var fieldPrompt: String
+    @Binding var query: String
+    @ViewBuilder var controls: Controls
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: "magnifyingglass")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+
+            TextField(fieldPrompt, text: $query)
+                .textFieldStyle(.roundedBorder)
+
+            controls
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
     }
 }
 
@@ -5882,34 +5907,29 @@ private struct DashboardCategoryInlineDetailPanel: View {
             panelEmptyText(category.emptyMessage)
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
-                CompanionControlBox(title: "검색과 필터", systemImage: "magnifyingglass") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        TextField("\(category.title) 검색", text: $query)
-                            .textFieldStyle(.roundedBorder)
-
-                        if let listData = cachedListData {
-                            CompanionItemListControls(
-                                sortOption: $sortOption,
-                                visibilityFilter: $visibilityFilter,
-                                statusFilter: $statusFilter,
-                                selectedCourse: $selectedCourse,
-                                selectedYear: $selectedYear,
-                                selectedSemester: $selectedSemester,
-                                newOnly: $newOnly,
-                                recentOnly: $recentOnly,
-                                availableStatusFilters: listData.availableStatusFilters,
-                                courseOptions: listData.courseOptions,
-                                yearOptions: listData.yearOptions,
-                                semesterOptions: listData.semesterOptions,
-                                supportsNewOnly: category.supportsNewOnly,
-                                supportsRecentOnly: category.supportsRecentOnly,
-                                defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
-                                totalCount: listData.baseItems.count,
-                                filteredCount: listData.filteredItems.count
-                            )
-                        } else {
-                            CompanionItemListControlsPlaceholder()
-                        }
+                CompanionSearchFilterPanel(title: "검색과 필터", fieldPrompt: "\(category.title) 검색", query: $query) {
+                    if let listData = cachedListData {
+                        CompanionItemListControls(
+                            sortOption: $sortOption,
+                            visibilityFilter: $visibilityFilter,
+                            statusFilter: $statusFilter,
+                            selectedCourse: $selectedCourse,
+                            selectedYear: $selectedYear,
+                            selectedSemester: $selectedSemester,
+                            newOnly: $newOnly,
+                            recentOnly: $recentOnly,
+                            availableStatusFilters: listData.availableStatusFilters,
+                            courseOptions: listData.courseOptions,
+                            yearOptions: listData.yearOptions,
+                            semesterOptions: listData.semesterOptions,
+                            supportsNewOnly: category.supportsNewOnly,
+                            supportsRecentOnly: category.supportsRecentOnly,
+                            defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
+                            totalCount: listData.baseItems.count,
+                            filteredCount: listData.filteredItems.count
+                        )
+                    } else {
+                        CompanionItemListControlsPlaceholder()
                     }
                 }
 
@@ -6880,7 +6900,6 @@ private struct MailPasteAnalyzerPanel: View {
 
                     MailPasteAnalysisResultView(analysis: analysis, model: model)
                 }
-                .transition(.opacity)
             }
         }
         .padding(14)
@@ -9006,34 +9025,29 @@ private struct ServerSyncDataPanel: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
 
-                CompanionControlBox(title: "검색과 필터", systemImage: "magnifyingglass") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        TextField("동기화 데이터 검색", text: $query)
-                            .textFieldStyle(.roundedBorder)
-
-                        if let listData = cachedListData {
-                            CompanionItemListControls(
-                                sortOption: $sortOption,
-                                visibilityFilter: $visibilityFilter,
-                                statusFilter: $statusFilter,
-                                selectedCourse: $selectedCourse,
-                                selectedYear: $selectedYear,
-                                selectedSemester: $selectedSemester,
-                                newOnly: $newOnly,
-                                recentOnly: $recentOnly,
-                                availableStatusFilters: listData.availableStatusFilters,
-                                courseOptions: listData.courseOptions,
-                                yearOptions: listData.yearOptions,
-                                semesterOptions: listData.semesterOptions,
-                                supportsNewOnly: true,
-                                supportsRecentOnly: true,
-                                defaultStatusFilter: .all,
-                                totalCount: listData.baseItems.count,
-                                filteredCount: listData.filteredItems.count
-                            )
-                        } else {
-                            CompanionItemListControlsPlaceholder()
-                        }
+                CompanionSearchFilterPanel(title: "검색과 필터", fieldPrompt: "동기화 데이터 검색", query: $query) {
+                    if let listData = cachedListData {
+                        CompanionItemListControls(
+                            sortOption: $sortOption,
+                            visibilityFilter: $visibilityFilter,
+                            statusFilter: $statusFilter,
+                            selectedCourse: $selectedCourse,
+                            selectedYear: $selectedYear,
+                            selectedSemester: $selectedSemester,
+                            newOnly: $newOnly,
+                            recentOnly: $recentOnly,
+                            availableStatusFilters: listData.availableStatusFilters,
+                            courseOptions: listData.courseOptions,
+                            yearOptions: listData.yearOptions,
+                            semesterOptions: listData.semesterOptions,
+                            supportsNewOnly: true,
+                            supportsRecentOnly: true,
+                            defaultStatusFilter: .all,
+                            totalCount: listData.baseItems.count,
+                            filteredCount: listData.filteredItems.count
+                        )
+                    } else {
+                        CompanionItemListControlsPlaceholder()
                     }
                 }
 
@@ -10920,7 +10934,6 @@ private struct RemoteDiagnosticPanel: View {
                         }
                     }
                 }
-                .transition(.opacity)
             }
         }
         .padding(12)
@@ -11104,7 +11117,6 @@ private struct RemoteSettingsPanel: View {
                     }
                 }
             }
-            .transition(.opacity)
             }
         }
         .padding(12)
@@ -11241,7 +11253,6 @@ private struct RemoteSettingGroupSection: View {
                         RemoteSettingRow(setting: setting, model: model)
                     }
                 }
-                .transition(.opacity)
             }
         }
         .padding(11)
@@ -12281,7 +12292,6 @@ private struct RemoteSettingRow: View {
                     control
                 }
                 .padding(.top, 2)
-                .transition(.opacity)
             }
         }
         .padding(11)
@@ -12611,7 +12621,6 @@ private struct RemotePrivacyNote: View {
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .transition(.opacity)
             }
         }
         .padding(12)
