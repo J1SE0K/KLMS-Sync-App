@@ -1450,8 +1450,14 @@ private struct DashboardStateItemListPresentation: Sendable {
     init() {}
 
     init(items: [StateItem], editor: StateItemEditorKind, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
-        self.items = items.filter { item in
+        let filtered = items.filter { item in
             Self.matches(item: item, editor: editor, filters: filters, snapshot: snapshot)
+        }
+        switch editor {
+        case .exam:
+            self.items = filtered.sorted(by: StateItem.dashboardScheduleSort)
+        case .assignment, .assignmentRecord:
+            self.items = filtered.sorted(by: StateItem.dashboardAssignmentSort)
         }
     }
 

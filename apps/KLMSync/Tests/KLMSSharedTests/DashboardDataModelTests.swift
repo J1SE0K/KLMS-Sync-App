@@ -2,6 +2,53 @@ import XCTest
 @testable import KLMSShared
 
 final class DashboardDataModelTests: XCTestCase {
+    func testDashboardSortsAssignmentsByDeadlineBeforeTitle() throws {
+        let late = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=2",
+            title: "A 늦은 과제",
+            course: "알고리즘 개론",
+            syncDue: "2026-06-20T14:59:00Z"
+        )
+        let noDate = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=3",
+            title: "B 날짜 없는 과제",
+            course: "알고리즘 개론"
+        )
+        let early = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
+            title: "Z 빠른 과제",
+            course: "데이타베이스 개론",
+            syncDue: "2026-06-10T14:59:00Z"
+        )
+        let content = LegacySyncState.Content(assignments: [late, noDate, early])
+            .applyingManualOverrides(ManualOverridesSnapshot())
+
+        XCTAssertEqual(content.assignments.map(\.title), ["Z 빠른 과제", "A 늦은 과제", "B 날짜 없는 과제"])
+    }
+
+    func testDashboardSortsExamsByStartDateBeforeDueDate() throws {
+        let afternoon = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=2",
+            title: "A 오후 시험",
+            course: "데이타베이스 개론",
+            category: "exam",
+            syncDue: "2026-07-17T07:00:00Z",
+            syncStart: "2026-07-17T04:00:00Z"
+        )
+        let morning = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1",
+            title: "Z 오전 시험",
+            course: "전기전자공학특강",
+            category: "exam",
+            syncDue: "2026-07-17T02:30:00Z",
+            syncStart: "2026-07-17T00:00:00Z"
+        )
+        let content = LegacySyncState.Content(examItems: [afternoon, morning])
+            .applyingManualOverrides(ManualOverridesSnapshot())
+
+        XCTAssertEqual(content.examItems.map(\.title), ["Z 오전 시험", "A 오후 시험"])
+    }
+
     func testCourseFileManifestDecodesKLMSTimestampForLatestSort() throws {
         let payload = """
         [
@@ -1955,11 +2002,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("Color.klmsMacCommandBorder.opacity(isHovered ? 0.72 : 0.42)"))
         XCTAssertTrue(macSettings.contains("private struct SettingsGroupBox"))
         XCTAssertTrue(macSettings.contains("var badge: String?"))
+        XCTAssertTrue(macSettings.contains("var collapsible: Bool"))
         XCTAssertTrue(macSettings.contains("badge: String? = nil"))
+        XCTAssertTrue(macSettings.contains("collapsible: Bool = false"))
         XCTAssertTrue(macSettings.contains("badge: \"설정 파일 저장\""))
         XCTAssertTrue(macSettings.contains("badge: \"바로 반영\""))
         XCTAssertTrue(macSettings.contains("badge: \"필요할 때만\""))
         XCTAssertTrue(macSettings.contains("badge: \"서버\""))
+        XCTAssertTrue(macSettings.contains("badge: \"필요할 때만\",\n                collapsible: true"))
+        XCTAssertTrue(macSettings.contains("badge: \"서버\",\n            collapsible: true"))
         XCTAssertTrue(macSettings.contains("KLMSMacSettingsDisclosureButtonStyle"))
         XCTAssertFalse(macSettings.contains("withAnimation(.easeInOut(duration: 0.08))"))
         XCTAssertFalse(macSettings.contains(".transition(.opacity.combined(with: .move(edge: .top)))"))
@@ -1969,8 +2020,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("Image(systemName: isExpanded ? \"chevron.up\" : \"chevron.down\")"))
         XCTAssertTrue(macSettings.contains("Text(isExpanded ? \"접기\" : \"펼치기\")"))
         XCTAssertTrue(macSettings.contains(".overlay(alignment: .leading)"))
-        XCTAssertTrue(macSettings.contains(".fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.86) : Color.clear)"))
-        XCTAssertTrue(macSettings.contains(".fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.72) : Color.clear)"))
+        XCTAssertTrue(macSettings.contains("if !collapsible || isExpanded"))
+        XCTAssertTrue(macSettings.contains("if collapsible {\n                SettingsExpansionBadge(isExpanded: isExpanded)"))
+        XCTAssertTrue(macSettings.contains(".fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.86) : Color.clear)"))
+        XCTAssertTrue(macSettings.contains(".fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.72) : Color.clear)"))
         XCTAssertTrue(macSettings.contains("isExpanded ? Color.klmsMacSelectedBackground.opacity(0.78) : Color.klmsMacSubtleCardBackground"))
         XCTAssertTrue(macSettings.contains("isExpanded ? Color.klmsMacSelectedBorder.opacity(0.58) : Color.klmsMacBorder.opacity(0.68)"))
         XCTAssertTrue(macSettings.contains("defaultExpanded: true"))
@@ -1997,6 +2050,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("var summary: String?"))
         XCTAssertTrue(macSettings.contains("@State private var isExpanded: Bool"))
         XCTAssertTrue(macSettings.contains("SettingsFieldRow(\n            title: title,"))
+        XCTAssertTrue(macSettings.contains("collapsible: collapsible"))
         XCTAssertTrue(macSettings.contains("SettingsCurrentValueBadge(value: summary)"))
         XCTAssertTrue(macSettings.contains("private struct SettingsCurrentValueBadge"))
         XCTAssertTrue(macSettings.contains("Text(\"현재\")"))
@@ -3443,6 +3497,7 @@ final class DashboardDataModelTests: XCTestCase {
         category: String = "assignment",
         due: String = "",
         syncDue: String = "",
+        syncStart: String = "",
         recordStatus: String = "",
         completionReason: String = ""
     ) throws -> StateItem {
@@ -3454,6 +3509,7 @@ final class DashboardDataModelTests: XCTestCase {
           "category": "\(category)",
           "due": "\(due)",
           "sync_due": "\(syncDue)",
+          "sync_start": "\(syncStart)",
           "record_status": "\(recordStatus)",
           "completion_reason": "\(completionReason)"
         }

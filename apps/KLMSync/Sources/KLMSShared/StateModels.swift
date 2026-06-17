@@ -344,10 +344,10 @@ public extension LegacySyncState.Content {
             processActive(item, asCandidate: true)
         }
 
-        updated.assignments = nextAssignments.sorted(by: StateItem.dashboardSort)
-        updated.assignmentCandidates = nextAssignmentCandidates.sorted(by: StateItem.dashboardSort)
-        updated.completedAssignments = nextCompletedAssignments.sorted(by: StateItem.dashboardSort)
-        updated.assignmentRecords = nextAssignmentRecords.sorted(by: StateItem.dashboardSort)
+        updated.assignments = nextAssignments.sorted(by: StateItem.dashboardAssignmentSort)
+        updated.assignmentCandidates = nextAssignmentCandidates.sorted(by: StateItem.dashboardAssignmentSort)
+        updated.completedAssignments = nextCompletedAssignments.sorted(by: StateItem.dashboardAssignmentSort)
+        updated.assignmentRecords = nextAssignmentRecords.sorted(by: StateItem.dashboardAssignmentSort)
 
         for item in examRecords {
             appendExamRecord(item)
@@ -363,18 +363,99 @@ public extension LegacySyncState.Content {
         for item in examCandidates {
             processExam(item, asCandidate: true)
         }
-        updated.examItems = nextExamItems.sorted(by: StateItem.dashboardSort)
-        updated.examCandidates = nextExamCandidates.sorted(by: StateItem.dashboardSort)
-        updated.pastExams = nextPastExams.sorted(by: StateItem.dashboardSort)
-        updated.examRecords = nextExamRecords.sorted(by: StateItem.dashboardSort)
+        updated.examItems = nextExamItems.sorted(by: StateItem.dashboardScheduleSort)
+        updated.examCandidates = nextExamCandidates.sorted(by: StateItem.dashboardScheduleSort)
+        updated.pastExams = nextPastExams.sorted(by: StateItem.dashboardScheduleSort)
+        updated.examRecords = nextExamRecords.sorted(by: StateItem.dashboardScheduleSort)
 
         for item in helpDeskItems {
             processHelpDesk(item)
         }
-        updated.completedAssignments = nextCompletedAssignments.sorted(by: StateItem.dashboardSort)
-        updated.assignmentRecords = nextAssignmentRecords.sorted(by: StateItem.dashboardSort)
-        updated.helpDeskItems = nextHelpDeskItems.sorted(by: StateItem.dashboardSort)
+        updated.completedAssignments = nextCompletedAssignments.sorted(by: StateItem.dashboardAssignmentSort)
+        updated.assignmentRecords = nextAssignmentRecords.sorted(by: StateItem.dashboardAssignmentSort)
+        updated.helpDeskItems = nextHelpDeskItems.sorted(by: StateItem.dashboardScheduleSort)
         return updated
+    }
+}
+
+public extension StateItem {
+    static func dashboardAssignmentSort(_ lhs: StateItem, _ rhs: StateItem) -> Bool {
+        dashboardCompare(lhs, rhs, preferStartDate: false)
+    }
+
+    static func dashboardScheduleSort(_ lhs: StateItem, _ rhs: StateItem) -> Bool {
+        dashboardCompare(lhs, rhs, preferStartDate: true)
+    }
+
+    private static func dashboardCompare(_ lhs: StateItem, _ rhs: StateItem, preferStartDate: Bool) -> Bool {
+        let leftDate = dashboardSortDate(for: lhs, preferStartDate: preferStartDate)
+        let rightDate = dashboardSortDate(for: rhs, preferStartDate: preferStartDate)
+        switch (leftDate, rightDate) {
+        case let (left?, right?) where left != right:
+            return left < right
+        case (.some, nil):
+            return true
+        case (nil, .some):
+            return false
+        default:
+            break
+        }
+
+        let left = dashboardSortFallbackComponents(lhs, preferStartDate: preferStartDate)
+        let right = dashboardSortFallbackComponents(rhs, preferStartDate: preferStartDate)
+        for index in left.indices {
+            let comparison = left[index].localizedStandardCompare(right[index])
+            if comparison != .orderedSame {
+                return comparison == .orderedAscending
+            }
+        }
+        return false
+    }
+
+    private static func dashboardSortDate(for item: StateItem, preferStartDate: Bool) -> Date? {
+        let dateCandidates = preferStartDate
+            ? [item.syncStart, item.syncDue, item.due]
+            : [item.syncDue, item.due, item.syncStart]
+        for candidate in dateCandidates {
+            if let date = dashboardParseDate(candidate) {
+                return date
+            }
+        }
+        return nil
+    }
+
+    private static func dashboardParseDate(_ value: String) -> Date? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+        if let date = try? Date(trimmed, strategy: .iso8601) {
+            return date
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: trimmed) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: trimmed)
+    }
+
+    private static func dashboardSortFallbackComponents(_ item: StateItem, preferStartDate: Bool) -> [String] {
+        [
+            preferStartDate ? item.syncStart : item.syncDue,
+            preferStartDate ? item.syncDue : item.due,
+            item.course,
+            item.title,
+            item.url,
+        ].map {
+            $0
+                .split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+                .lowercased()
+        }
     }
 }
 
@@ -547,17 +628,6 @@ private extension StateItem {
         item.completionReason = ""
         item.autoCompleted = false
         return item
-    }
-
-    static func dashboardSort(_ lhs: StateItem, _ rhs: StateItem) -> Bool {
-        let left = [lhs.syncDue, lhs.due, lhs.course, lhs.title, lhs.url]
-        let right = [rhs.syncDue, rhs.due, rhs.course, rhs.title, rhs.url]
-        for index in left.indices {
-            if left[index] != right[index] {
-                return left[index] < right[index]
-            }
-        }
-        return false
     }
 
     static func dashboardIdentityComponent(_ value: String) -> String {

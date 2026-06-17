@@ -433,7 +433,8 @@ struct SettingsView: View {
                 title: "문제 분석용 보관",
                 detail: "다운로드 문제를 추적할 때만 켜는 보관 옵션입니다.",
                 systemImage: "archivebox",
-                badge: "필요할 때만"
+                badge: "필요할 때만",
+                collapsible: true
             ) {
                 configToggle(
                     "새 다운로드 임시 폴더 유지",
@@ -501,7 +502,8 @@ struct SettingsView: View {
                 title: "설치와 백업",
                 detail: "엔진 설치 정보와 로컬 상태 백업입니다. 필요할 때만 펼치세요.",
                 systemImage: "shippingbox",
-                badge: "필요할 때만"
+                badge: "필요할 때만",
+                collapsible: true
             ) {
                 SettingsDisclosureCard {
                     LabeledContent("엔진 위치") {
@@ -595,7 +597,8 @@ struct SettingsView: View {
             title: "서버 릴레이",
             detail: model.serverRelayConfigured ? "연결 정보 저장됨" : "서버 연결이 필요할 때만 펼치세요.",
             systemImage: "network",
-            badge: "서버"
+            badge: "서버",
+            collapsible: true
         ) {
             VStack(alignment: .leading, spacing: 12) {
                 SettingsActionGroupBox(
@@ -755,14 +758,16 @@ struct SettingsView: View {
         _ title: String,
         summary: String? = nil,
         _ description: String?,
-	        defaultExpanded: Bool = true,
+        defaultExpanded: Bool = true,
+        collapsible: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
         SettingsFieldRow(
             title: title,
             summary: summary,
             description: description,
-            defaultExpanded: defaultExpanded
+            defaultExpanded: defaultExpanded,
+            collapsible: collapsible
         ) {
             content()
         }
@@ -939,6 +944,7 @@ private struct SettingsGroupBox<Content: View>: View {
     var detail: String
     var systemImage: String
     var badge: String?
+    var collapsible: Bool
     @State private var isExpanded: Bool
     @ViewBuilder var content: () -> Content
 
@@ -948,37 +954,23 @@ private struct SettingsGroupBox<Content: View>: View {
         systemImage: String,
         badge: String? = nil,
         defaultExpanded: Bool = false,
+        collapsible: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.detail = detail
         self.systemImage = systemImage
         self.badge = badge
+        self.collapsible = collapsible
         _isExpanded = State(initialValue: defaultExpanded)
         self.content = content
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button {
-                isExpanded.toggle()
-            } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    SettingsDisclosureLabel(
-                        title: title,
-                        detail: detail,
-                        systemImage: systemImage,
-                        badge: badge
-                    )
-                    Spacer(minLength: 8)
-                    SettingsExpansionBadge(isExpanded: isExpanded)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
-            .accessibilityHint(isExpanded ? "설정 묶음 접기" : "설정 묶음 펼치기")
+            header
 
-            if isExpanded {
+            if !collapsible || isExpanded {
                 VStack(alignment: .leading, spacing: 10) {
                     content()
                 }
@@ -987,20 +979,51 @@ private struct SettingsGroupBox<Content: View>: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.72 : 0.48), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.klmsMacSubtleCardBackground.opacity((!collapsible || isExpanded) ? 0.72 : 0.48), in: RoundedRectangle(cornerRadius: 12))
         .overlay(alignment: .leading) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.86) : Color.clear)
+                .fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.86) : Color.clear)
                 .frame(width: 3)
                 .padding(.vertical, 10)
         }
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(
-                    isExpanded ? Color.klmsMacSelectedBorder.opacity(0.46) : Color.klmsMacBorder.opacity(0.92),
+                    (!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.46) : Color.klmsMacBorder.opacity(0.92),
                     lineWidth: 1
                 )
         }
+    }
+
+    @ViewBuilder
+    private var header: some View {
+        if collapsible {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                headerContent
+            }
+            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
+            .accessibilityHint(isExpanded ? "설정 묶음 접기" : "설정 묶음 펼치기")
+        } else {
+            headerContent
+        }
+    }
+
+    private var headerContent: some View {
+        HStack(alignment: .center, spacing: 10) {
+            SettingsDisclosureLabel(
+                title: title,
+                detail: detail,
+                systemImage: systemImage,
+                badge: badge
+            )
+            Spacer(minLength: 8)
+            if collapsible {
+                SettingsExpansionBadge(isExpanded: isExpanded)
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -1008,6 +1031,7 @@ private struct SettingsFieldRow<Content: View>: View {
     var title: String
     var summary: String?
     var description: String?
+    var collapsible: Bool
     @State private var isExpanded: Bool
     @ViewBuilder var content: () -> Content
 
@@ -1016,39 +1040,22 @@ private struct SettingsFieldRow<Content: View>: View {
         summary: String? = nil,
         description: String? = nil,
         defaultExpanded: Bool = false,
+        collapsible: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.summary = summary
         self.description = description
+        self.collapsible = collapsible
         _isExpanded = State(initialValue: defaultExpanded)
         self.content = content
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Button {
-                isExpanded.toggle()
-            } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Color.klmsMacPrimaryText)
-                    }
-                    Spacer(minLength: 8)
-                    if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !summary.isEmpty {
-                        SettingsCurrentValueBadge(value: summary)
-                    }
-                    SettingsExpansionBadge(isExpanded: isExpanded)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 9))
-            }
-            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
-            .accessibilityHint(isExpanded ? "\(title) 설정 접기" : "\(title) 설정 펼치기")
+            header
 
-            if isExpanded {
+            if !collapsible || isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
                     if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !description.isEmpty {
@@ -1069,17 +1076,51 @@ private struct SettingsFieldRow<Content: View>: View {
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isExpanded ? Color.klmsMacCardBackground.opacity(0.96) : Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
+        .background((!collapsible || isExpanded) ? Color.klmsMacCardBackground.opacity(0.96) : Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
         .overlay(alignment: .leading) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.72) : Color.clear)
+                .fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.72) : Color.clear)
                 .frame(width: 3)
                 .padding(.vertical, 9)
         }
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.38) : Color.klmsMacBorder.opacity(0.86), lineWidth: 1)
+                .stroke((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.38) : Color.klmsMacBorder.opacity(0.86), lineWidth: 1)
         }
+    }
+
+    @ViewBuilder
+    private var header: some View {
+        if collapsible {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                headerContent
+            }
+            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
+            .accessibilityHint(isExpanded ? "\(title) 설정 접기" : "\(title) 설정 펼치기")
+        } else {
+            headerContent
+        }
+    }
+
+    private var headerContent: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+            }
+            Spacer(minLength: 8)
+            if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !summary.isEmpty {
+                SettingsCurrentValueBadge(value: summary)
+            }
+            if collapsible {
+                SettingsExpansionBadge(isExpanded: isExpanded)
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 9))
     }
 }
 
@@ -1193,6 +1234,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
     var title: String
     var detail: String
     var systemImage: String
+    var collapsible: Bool
     @State private var isExpanded: Bool
     @ViewBuilder var content: () -> Content
 
@@ -1201,48 +1243,22 @@ private struct SettingsActionGroupBox<Content: View>: View {
         detail: String,
         systemImage: String,
         defaultExpanded: Bool = false,
+        collapsible: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
         self.detail = detail
         self.systemImage = systemImage
+        self.collapsible = collapsible
         _isExpanded = State(initialValue: defaultExpanded)
         self.content = content
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                isExpanded.toggle()
-            } label: {
-                HStack(alignment: .center, spacing: 9) {
-                    Image(systemName: systemImage)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(isExpanded ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
-                        .frame(width: 24, height: 24)
-                        .background(
-                            isExpanded
-                                ? Color.klmsMacSelectedBackground.opacity(0.74)
-                                : Color.klmsMacSubtleCardBackground.opacity(0.82),
-                            in: RoundedRectangle(cornerRadius: 7)
-                        )
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacPrimaryText)
-                        Text(detail)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 8)
-                    SettingsExpansionBadge(isExpanded: isExpanded)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
+            header
 
-            if isExpanded {
+            if !collapsible || isExpanded {
                 content()
                     .padding(9)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1259,14 +1275,57 @@ private struct SettingsActionGroupBox<Content: View>: View {
         .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
         .overlay(alignment: .leading) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.66) : Color.clear)
+                .fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.66) : Color.clear)
                 .frame(width: 3)
                 .padding(.vertical, 9)
         }
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.34) : Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
+                .stroke((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.34) : Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
         }
+    }
+
+    @ViewBuilder
+    private var header: some View {
+        if collapsible {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                headerContent
+            }
+            .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
+        } else {
+            headerContent
+        }
+    }
+
+    private var headerContent: some View {
+        HStack(alignment: .center, spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle((!collapsible || isExpanded) ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
+                .frame(width: 24, height: 24)
+                .background(
+                    (!collapsible || isExpanded)
+                        ? Color.klmsMacSelectedBackground.opacity(0.74)
+                        : Color.klmsMacSubtleCardBackground.opacity(0.82),
+                    in: RoundedRectangle(cornerRadius: 7)
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            if collapsible {
+                SettingsExpansionBadge(isExpanded: isExpanded)
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
