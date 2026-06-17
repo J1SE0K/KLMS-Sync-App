@@ -3799,8 +3799,10 @@ private struct CalendarChangeRowView: View {
                         editStatusText = "캘린더 일정을 등록하는 중입니다."
                         Task {
                             let ok = await model.createCalendarEvent(change: change, edit: change.editDefaults)
-                            editStatusText = ok ? "캘린더 일정 등록 완료" : "캘린더 일정 등록 실패"
-                            try? await Task.sleep(nanoseconds: 1_500_000_000)
+                            editStatusText = ok ? nil : "캘린더 일정 등록 실패"
+                            if !ok {
+                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                            }
                             editStatusText = nil
                         }
                     } label: {
@@ -3820,8 +3822,10 @@ private struct CalendarChangeRowView: View {
                             editStatusText = "삭제된 변경 항목을 없애는 중입니다."
                             Task {
                                 let ok = await model.deleteCalendarEvent(change: change)
-                                editStatusText = ok ? "목록에서 제거했습니다." : "변경 항목 제거 실패"
-                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                editStatusText = ok ? nil : "변경 항목 제거 실패"
+                                if !ok {
+                                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                }
                                 editStatusText = nil
                             }
                         } label: {
@@ -3834,8 +3838,10 @@ private struct CalendarChangeRowView: View {
                             editStatusText = "캘린더 일정을 삭제하는 중입니다."
                             Task {
                                 let ok = await model.deleteCalendarEvent(change: change)
-                                editStatusText = ok ? "캘린더 일정 삭제 완료" : "캘린더 일정 삭제 실패"
-                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                editStatusText = ok ? nil : "캘린더 일정 삭제 실패"
+                                if !ok {
+                                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                }
                                 editStatusText = nil
                             }
                         } label: {
