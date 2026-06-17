@@ -1945,7 +1945,8 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func serverRelayCalendarChange(for action: ServerRelayItemAction) throws -> CalendarChange {
-        for change in snapshot.calendarSyncResult?.changes ?? [] {
+        let changes = (snapshot.calendarSyncResult?.changes ?? []) + mailCalendarChanges()
+        for change in changes {
             let publicChange = serverRelayCalendarChange(change)
             if publicChange.id == action.itemID || change.id == action.itemID || change.identifier == action.itemID {
                 return change

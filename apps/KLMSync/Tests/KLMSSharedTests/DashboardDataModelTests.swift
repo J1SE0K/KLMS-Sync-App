@@ -2920,6 +2920,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(model.contains("runningAction.action == .calendarCreate"))
         XCTAssertTrue(model.contains("mailCalendarChanges()"))
         XCTAssertTrue(model.contains("visibleCalendarChanges(from: snapshot).map(serverRelayCalendarChange)"))
+        XCTAssertTrue(model.contains("let changes = (snapshot.calendarSyncResult?.changes ?? []) + mailCalendarChanges()"))
         XCTAssertTrue(model.contains("mailDashboardStateItems(kind: String)"))
         XCTAssertTrue(model.contains("resolvedCalendarChangeIDs"))
         XCTAssertTrue(model.contains("location: serverRelayPublicText(change.location)"))
