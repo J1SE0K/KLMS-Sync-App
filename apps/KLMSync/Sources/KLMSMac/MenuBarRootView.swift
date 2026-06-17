@@ -2291,21 +2291,22 @@ private struct DiagnosticLogSource {
 private struct LogTextBlock: View {
     var text: String
     var detailed = false
+    private let displayText: String
+    private let highlights: [KLMSLogHighlight]
     @State private var isRawExpanded: Bool
 
     init(text: String, detailed: Bool = false, rawExpandedByDefault: Bool = true) {
         self.text = text
         self.detailed = detailed
+        let boundedText = Self.boundedText(text, detailed: detailed)
+        self.displayText = boundedText
+        self.highlights = KLMSReadableLogParser.highlights(from: boundedText)
         self._isRawExpanded = State(initialValue: rawExpandedByDefault)
-    }
-
-    private var displayText: String {
-        Self.boundedText(text, detailed: detailed)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights(from: displayText), detailed: detailed)
+            ReadableLogHighlightsView(highlights: highlights, detailed: detailed)
             if isRawExpanded {
                 rawLogText
             } else {
