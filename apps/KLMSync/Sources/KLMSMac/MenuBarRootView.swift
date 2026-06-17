@@ -77,7 +77,7 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
 }
 
 private struct MacWorkstationLayoutView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
 
@@ -128,7 +128,7 @@ private struct MacWorkstationLayoutView: View {
 }
 
 private struct MacWorkspaceSidebarView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
 
     var body: some View {
@@ -241,7 +241,7 @@ private struct WorkspaceNavigationView: View {
 }
 
 private struct DashboardTopBarView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
 
     var body: some View {
@@ -331,7 +331,7 @@ private struct DashboardTopBarView: View {
 }
 
 private struct MacAlertBannerView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
 
@@ -3533,7 +3533,7 @@ private struct FileAccessActivityRow: View {
 }
 
 private struct CommandPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     private let commands: [KLMSEngineCommand] = [.fullSync, .filesSync, .coreSync, .noticeSync]
     private let secondaryCommandColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
 
