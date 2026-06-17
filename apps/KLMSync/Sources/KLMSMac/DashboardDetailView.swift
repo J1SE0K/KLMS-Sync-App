@@ -442,6 +442,7 @@ private struct DashboardDetailFilters: Equatable {
 private enum DashboardLargeList {
     static let initialVisibleLimit = 5
     static let increment = 10
+    static let filterRebuildDelayNanoseconds: UInt64 = 80_000_000
 }
 
 private struct DashboardFileData: Sendable {
@@ -1363,17 +1364,24 @@ private struct StateItemListView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
+        let shouldDelay = presentationSignature != nil && !isPreparingPresentation
         presentationTask?.cancel()
         presentationSignature = signature
-        presentation = DashboardStateItemListPresentation()
         visibleLimit = DashboardLargeList.initialVisibleLimit
-        isPreparingPresentation = true
+        if !shouldDelay {
+            presentation = DashboardStateItemListPresentation()
+            isPreparingPresentation = true
+        }
         let items = items
         let editor = editor
         let filters = filters
         let snapshot = snapshot
         presentationTask = Task { @MainActor in
-            await Task.yield()
+            if shouldDelay {
+                try? await Task.sleep(nanoseconds: DashboardLargeList.filterRebuildDelayNanoseconds)
+            } else {
+                await Task.yield()
+            }
             guard !Task.isCancelled else { return }
             presentation = DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot)
             isPreparingPresentation = false
@@ -1928,16 +1936,23 @@ private struct NoticeListView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
+        let shouldDelay = presentationSignature != nil && !isPreparingPresentation
         presentationTask?.cancel()
         presentationSignature = signature
-        presentation = NoticeDashboardPresentation()
         visibleLimit = DashboardLargeList.initialVisibleLimit
-        isPreparingPresentation = true
+        if !shouldDelay {
+            presentation = NoticeDashboardPresentation()
+            isPreparingPresentation = true
+        }
         let category = category
         let filters = filters
         let snapshot = snapshot
         presentationTask = Task { @MainActor in
-            await Task.yield()
+            if shouldDelay {
+                try? await Task.sleep(nanoseconds: DashboardLargeList.filterRebuildDelayNanoseconds)
+            } else {
+                await Task.yield()
+            }
             guard !Task.isCancelled else { return }
             presentation = NoticeDashboardPresentation(category: category, filters: filters, snapshot: snapshot)
             isPreparingPresentation = false
@@ -2557,16 +2572,23 @@ private struct DashboardFileListContentView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
+        let shouldDelay = presentationSignature != nil && !isPreparingPresentation
         presentationTask?.cancel()
         presentationSignature = signature
-        presentation = DashboardFileListPresentation()
         visibleLimit = DashboardLargeList.initialVisibleLimit
-        isPreparingPresentation = true
+        if !shouldDelay {
+            presentation = DashboardFileListPresentation()
+            isPreparingPresentation = true
+        }
         let files = files
         let filters = filters
         let sortOption = sortOption
         presentationTask = Task { @MainActor in
-            await Task.yield()
+            if shouldDelay {
+                try? await Task.sleep(nanoseconds: DashboardLargeList.filterRebuildDelayNanoseconds)
+            } else {
+                await Task.yield()
+            }
             guard !Task.isCancelled else { return }
             presentation = DashboardFileListPresentation(files: files, filters: filters, sortOption: sortOption)
             isPreparingPresentation = false
