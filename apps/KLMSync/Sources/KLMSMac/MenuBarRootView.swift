@@ -43,6 +43,7 @@ struct MenuBarRootView: View {
 
 private struct MacPressFeedbackButtonStyle: ButtonStyle {
     var cornerRadius: CGFloat = 10
+    var disabledOpacity: Double = 0.48
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -52,7 +53,7 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
                     .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
-            .opacity(isEnabled ? 1.0 : 0.48)
+            .opacity(isEnabled ? 1.0 : disabledOpacity)
     }
 }
 
@@ -3523,6 +3524,7 @@ private struct CommandPanelView: View {
 
     private func primaryCommandActionCard(_ command: KLMSEngineCommand) -> some View {
         let isRunning = model.runningCommand == command
+        let isDisabled = model.runningCommand != nil && !isRunning
         return Button {
             runOrCancel(command)
         } label: {
@@ -3530,63 +3532,68 @@ private struct CommandPanelView: View {
                 Text(isRunning ? "전체 동기화 중단" : "전체 동기화")
                     .font(.system(size: 18, weight: .black, design: .rounded))
                 Spacer(minLength: 0)
-                Image(systemName: isRunning ? "stop.fill" : "play.fill")
+                Image(systemName: primaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled))
                     .font(.headline.weight(.black))
             }
-            .foregroundStyle(Color.klmsMacPrimaryCommandButtonForeground)
+            .foregroundStyle(primaryCommandForeground(isDisabled: isDisabled))
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 15)
             .background(
-                isRunning ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground,
+                primaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
                 in: RoundedRectangle(cornerRadius: 12)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.klmsMacPrimaryCommandButtonBorder, lineWidth: 1)
+                    .stroke(primaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled), lineWidth: 1)
             }
         }
-        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12))
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12, disabledOpacity: 1.0))
         .controlSize(.regular)
         .help(command.shortDescription)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
-        .disabled(model.runningCommand != nil && !isRunning)
+        .disabled(isDisabled)
     }
 
     private func commandActionCard(_ command: KLMSEngineCommand) -> some View {
         let isRunning = model.runningCommand == command
+        let isDisabled = model.runningCommand != nil && !isRunning
         return Button {
             runOrCancel(command)
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 5) {
+                if let systemImage = secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                }
                 Text(shortTitle(for: command))
                     .font(.system(size: 11, weight: .heavy, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
             }
-            .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground)
+            .foregroundStyle(secondaryCommandForeground(isDisabled: isDisabled))
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .center)
             .padding(.horizontal, 8)
             .padding(.vertical, 9)
             .background(
-                isRunning ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.88),
+                secondaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        Color.klmsMacCommandButtonBorder.opacity(isRunning ? 1.0 : 0.88),
+                        secondaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled),
                         lineWidth: 1
                     )
             }
         }
-        .buttonStyle(MacPressFeedbackButtonStyle())
+        .buttonStyle(MacPressFeedbackButtonStyle(disabledOpacity: 1.0))
         .controlSize(.small)
         .help(command.shortDescription)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
-        .disabled(model.runningCommand != nil && !isRunning)
+        .disabled(isDisabled)
     }
 
     private func runOrCancel(_ command: KLMSEngineCommand) {
@@ -3610,6 +3617,46 @@ private struct CommandPanelView: View {
         default:
             return command.displayName
         }
+    }
+
+    private func primaryCommandSystemImage(isRunning: Bool, isDisabled: Bool) -> String {
+        if isRunning { return "stop.fill" }
+        if isDisabled { return "lock.fill" }
+        return "play.fill"
+    }
+
+    private func primaryCommandForeground(isDisabled: Bool) -> Color {
+        isDisabled ? Color.klmsMacSecondaryText.opacity(0.76) : Color.klmsMacPrimaryCommandButtonForeground
+    }
+
+    private func primaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
+        if isDisabled { return Color.klmsMacSubtleCardBackground.opacity(0.86) }
+        return isRunning ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
+    }
+
+    private func primaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
+        if isDisabled { return Color.klmsMacCommandButtonBorder.opacity(0.64) }
+        return isRunning ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.78) : Color.klmsMacPrimaryCommandButtonBorder
+    }
+
+    private func secondaryCommandSystemImage(isRunning: Bool, isDisabled: Bool) -> String? {
+        if isRunning { return "stop.fill" }
+        if isDisabled { return "lock.fill" }
+        return nil
+    }
+
+    private func secondaryCommandForeground(isDisabled: Bool) -> Color {
+        isDisabled ? Color.klmsMacSecondaryText.opacity(0.64) : Color.klmsMacSecondaryCommandButtonForeground
+    }
+
+    private func secondaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
+        if isDisabled { return Color.klmsMacSubtleCardBackground.opacity(0.70) }
+        return isRunning ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.88)
+    }
+
+    private func secondaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
+        if isDisabled { return Color.klmsMacCommandButtonBorder.opacity(0.54) }
+        return Color.klmsMacCommandButtonBorder.opacity(isRunning ? 1.0 : 0.88)
     }
 
     private var commandStatusText: String {
