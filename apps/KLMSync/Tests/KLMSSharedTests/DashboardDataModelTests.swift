@@ -2570,6 +2570,12 @@ final class DashboardDataModelTests: XCTestCase {
         let remoteCalendarPanel = try sourceStructBody(named: "RemoteCalendarActionPanel", in: ios)
 
         XCTAssertTrue(statusScreen.contains("selectedChangeSummary"))
+        XCTAssertTrue(statusScreen.contains("@State private var displayedDashboardPreview"))
+        XCTAssertTrue(statusScreen.contains("@State private var displayedChangeSummary"))
+        XCTAssertTrue(statusScreen.contains("@State private var dashboardDetailTask"))
+        XCTAssertTrue(statusScreen.contains("CompanionDashboardDetailPreparingView()"))
+        XCTAssertTrue(statusScreen.contains("await Task.yield()"))
+        XCTAssertTrue(statusScreen.contains("dashboardDetailTask?.cancel()"))
         XCTAssertTrue(statusScreen.contains("RemoteChangeSummaryDetailPanel"))
         let dashboardSyncCard = try sourceStructBody(named: "RemoteDashboardSyncCard", in: ios)
 

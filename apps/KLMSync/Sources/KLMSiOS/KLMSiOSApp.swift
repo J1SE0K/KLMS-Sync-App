@@ -2471,7 +2471,10 @@ private struct CompanionSectionContent: View {
 private struct CompanionStatusScreen: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
+    @State private var displayedDashboardPreview: DashboardMetricCategory?
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
+    @State private var displayedChangeSummary: RemoteChangeSummaryKind?
+    @State private var dashboardDetailTask: Task<Void, Never>?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -2492,6 +2495,10 @@ private struct CompanionStatusScreen: View {
                 }
             }
         }
+        .onDisappear {
+            dashboardDetailTask?.cancel()
+            dashboardDetailTask = nil
+        }
     }
 
     private var statusSummaryColumn: some View {
@@ -2502,12 +2509,16 @@ private struct CompanionStatusScreen: View {
                 selectedCategory: $selectedDashboardPreview,
                 onCategoryTap: { category in
                     selectedChangeSummary = nil
+                    displayedChangeSummary = nil
                     selectedDashboardPreview = category
+                    deferDashboardPreview(category)
                 },
                 selectedChangeSummary: selectedChangeSummary,
                 onChangeSummaryTap: { kind in
                     selectedDashboardPreview = nil
+                    displayedDashboardPreview = nil
                     selectedChangeSummary = kind
+                    deferChangeSummary(kind)
                 }
             )
         }
@@ -2515,17 +2526,71 @@ private struct CompanionStatusScreen: View {
 
     @ViewBuilder
     private var statusDetailColumn: some View {
-        if let kind = selectedChangeSummary {
+        if let kind = displayedChangeSummary {
             RemoteChangeSummaryDetailPanel(kind: kind, model: model)
                 .id(kind)
-        } else if let category = selectedDashboardPreview {
+        } else if selectedChangeSummary != nil {
+            CompanionDashboardDetailPreparingView()
+        } else if let category = displayedDashboardPreview {
             DashboardCategoryInlineDetailPanel(category: category, model: model)
                 .id(category)
+        } else if selectedDashboardPreview != nil {
+            CompanionDashboardDetailPreparingView()
         } else if horizontalSizeClass == .regular {
             WorkstationDashboardOverviewPanel(model: model)
         }
     }
 
+    private func deferDashboardPreview(_ category: DashboardMetricCategory?) {
+        dashboardDetailTask?.cancel()
+        guard let category else {
+            displayedDashboardPreview = nil
+            dashboardDetailTask = nil
+            return
+        }
+        dashboardDetailTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            displayedDashboardPreview = category
+            dashboardDetailTask = nil
+        }
+    }
+
+    private func deferChangeSummary(_ kind: RemoteChangeSummaryKind?) {
+        dashboardDetailTask?.cancel()
+        guard let kind else {
+            displayedChangeSummary = nil
+            dashboardDetailTask = nil
+            return
+        }
+        dashboardDetailTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            displayedChangeSummary = kind
+            dashboardDetailTask = nil
+        }
+    }
+
+}
+
+private struct CompanionDashboardDetailPreparingView: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("대시보드 상세를 준비하는 중입니다.")
+                .font(.caption)
+                .foregroundStyle(Color.klmsSecondaryText)
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder.opacity(0.86), lineWidth: 1)
+        }
+    }
 }
 
 private struct RemoteDashboardStatusStrip: View {
