@@ -2560,9 +2560,11 @@ private struct CompanionStatusScreen: View {
             RemoteDashboardMetricOverview(
                 model: model,
                 selectedCategory: $selectedDashboardPreview,
+                displayedCategory: displayedDashboardPreview,
                 onCategoryTap: { category in
                     selectedChangeSummary = nil
                     displayedChangeSummary = nil
+                    displayedDashboardPreview = nil
                     selectedDashboardPreview = category
                     deferDashboardPreview(category)
                 },
@@ -2570,11 +2572,12 @@ private struct CompanionStatusScreen: View {
                 onChangeSummaryTap: { kind in
                     selectedDashboardPreview = nil
                     displayedDashboardPreview = nil
+                    displayedChangeSummary = nil
                     selectedChangeSummary = kind
                     deferChangeSummary(kind)
                 }
             )
-            if horizontalSizeClass != .regular {
+            if horizontalSizeClass != .regular, selectedChangeSummary != nil || displayedChangeSummary != nil {
                 statusDetailColumn
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -4720,6 +4723,7 @@ private struct RemoteDashboardSyncCard: View {
 private struct RemoteDashboardMetricOverview: View {
     @ObservedObject var model: CompanionModel
     @Binding var selectedCategory: DashboardMetricCategory?
+    var displayedCategory: DashboardMetricCategory?
     var onCategoryTap: (DashboardMetricCategory) -> Void
     var selectedChangeSummary: RemoteChangeSummaryKind?
     var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void
@@ -4790,7 +4794,26 @@ private struct RemoteDashboardMetricOverview: View {
                             }
                         }
                     }
+                    if let selectedCategory, categories.contains(selectedCategory) {
+                        compactMetricDetail(for: selectedCategory)
+                    }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func compactMetricDetail(for category: DashboardMetricCategory) -> some View {
+        if horizontalSizeClass != .regular {
+            if displayedCategory == category {
+                DashboardCategoryInlineDetailPanel(category: category, model: model)
+                    .id(category)
+            } else {
+                CompanionDashboardDetailPreparingView(
+                    title: category.title,
+                    systemImage: category.systemImage,
+                    tint: category.tint
+                )
             }
         }
     }
