@@ -220,6 +220,7 @@ final class CompanionModel: ObservableObject {
     private var latestFileAccessRequestByItemID: [String: ServerRelayFileAccessRequest] = [:]
     private var activeItemActionByItemID: [String: ServerRelayItemAction] = [:]
     private var activeCalendarActionByID: [String: ServerRelayItemAction] = [:]
+    private var dashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
     private var visibleDashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
     private var visibleDashboardTaskItems: [ServerRelaySyncItem] = []
 
@@ -440,17 +441,20 @@ final class CompanionModel: ObservableObject {
 
     private func rebuildDashboardItemLookup() {
         var next: [String: [ServerRelaySyncItem]] = [:]
+        var nextVisible: [String: [ServerRelaySyncItem]] = [:]
         for category in DashboardMetricCategory.allCases {
-            next[category.rawValue] = dashboardSyncItems
+            let categoryItems = dashboardSyncItems
                 .filter { category.includes($0) }
-                .filter { !$0.isHidden }
                 .companionSorted(by: .recent)
+            next[category.rawValue] = categoryItems
+            nextVisible[category.rawValue] = categoryItems.filter { !$0.isHidden }
         }
-        visibleDashboardItemsByCategoryID = next
+        dashboardItemsByCategoryID = next
+        visibleDashboardItemsByCategoryID = nextVisible
         visibleDashboardTaskItems = [
-            next[DashboardMetricCategory.assignments.rawValue] ?? [],
-            next[DashboardMetricCategory.exams.rawValue] ?? [],
-            next[DashboardMetricCategory.helpDesk.rawValue] ?? [],
+            nextVisible[DashboardMetricCategory.assignments.rawValue] ?? [],
+            nextVisible[DashboardMetricCategory.exams.rawValue] ?? [],
+            nextVisible[DashboardMetricCategory.helpDesk.rawValue] ?? [],
         ]
         .flatMap { $0 }
         .companionSorted(by: .recent)
@@ -1209,6 +1213,10 @@ final class CompanionModel: ObservableObject {
 
     func visibleCalendarChanges() -> [CalendarChange] {
         visibleCalendarChangesCache
+    }
+
+    func cachedDashboardItems(for categoryID: String) -> [ServerRelaySyncItem] {
+        dashboardItemsByCategoryID[categoryID] ?? []
     }
 
     func cachedVisibleDashboardItems(for categoryID: String) -> [ServerRelaySyncItem] {
@@ -4007,6 +4015,7 @@ private struct CompanionItemListData: Sendable {
     init(
         items: [ServerRelaySyncItem],
         category: DashboardMetricCategory?,
+        isCategoryPrefiltered: Bool = false,
         query: String,
         sortOption: CompanionItemSortOption,
         visibilityFilter: CompanionItemVisibilityFilter,
@@ -4018,7 +4027,7 @@ private struct CompanionItemListData: Sendable {
         recentOnly: Bool
     ) {
         let base = category.map { metric in
-            items.filter { metric.includes($0) }
+            isCategoryPrefiltered ? items : items.filter { metric.includes($0) }
         } ?? items
         let courses = CompanionItemListFilter.courseOptions(for: base)
         let years = CompanionItemListFilter.yearOptions(for: base)
@@ -5823,7 +5832,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
         }
         await Task.yield()
         guard !Task.isCancelled else { return }
-        let items = model.dashboardSyncItems
+        let items = model.cachedDashboardItems(for: category.rawValue)
         let category = category
         let query = query
         let sortOption = sortOption
@@ -5838,6 +5847,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
             CompanionItemListData(
                 items: items,
                 category: category,
+                isCategoryPrefiltered: true,
                 query: query,
                 sortOption: sortOption,
                 visibilityFilter: visibilityFilter,
