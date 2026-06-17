@@ -5903,6 +5903,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     let model: CompanionModel
     @State private var selectedItemID: String?
     @State private var displayedSelectedItemID: String?
+    @State private var displayedSelectedItem: ServerRelaySyncItem?
     @State private var externalDetailTask: Task<Void, Never>?
 
     private var items: [ServerRelaySyncItem] {
@@ -5916,8 +5917,9 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     private var selectedItem: ServerRelaySyncItem? {
         if selectedItemID != nil,
            let displayedSelectedItemID,
-           let item = items.first(where: { $0.id == displayedSelectedItemID }) {
-            return item
+           let displayedSelectedItem,
+           displayedSelectedItem.id == displayedSelectedItemID {
+            return displayedSelectedItem
         }
         return items.first
     }
@@ -5979,21 +5981,24 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         withTransaction(transaction) {
             selectedItemID = item.id
             displayedSelectedItemID = nil
+            displayedSelectedItem = nil
         }
-        deferExternalDetail(item.id)
+        deferExternalDetail(item)
     }
 
-    private func deferExternalDetail(_ itemID: String?) {
+    private func deferExternalDetail(_ item: ServerRelaySyncItem?) {
         externalDetailTask?.cancel()
-        guard let itemID else {
+        guard let item else {
             displayedSelectedItemID = nil
+            displayedSelectedItem = nil
             externalDetailTask = nil
             return
         }
         externalDetailTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled else { return }
-            displayedSelectedItemID = itemID
+            displayedSelectedItemID = item.id
+            displayedSelectedItem = item
             externalDetailTask = nil
         }
     }
@@ -6003,11 +6008,15 @@ private struct WorkstationDashboardCategoryWorkspace: View {
            !items.contains(where: { $0.id == selectedItemID }) {
             self.selectedItemID = nil
             displayedSelectedItemID = nil
+            displayedSelectedItem = nil
             externalDetailTask?.cancel()
             externalDetailTask = nil
         } else if let displayedSelectedItemID,
-                  !items.contains(where: { $0.id == displayedSelectedItemID }) {
+                  let refreshed = items.first(where: { $0.id == displayedSelectedItemID }) {
+            displayedSelectedItem = refreshed
+        } else if displayedSelectedItemID != nil {
             self.displayedSelectedItemID = nil
+            displayedSelectedItem = nil
         }
     }
 }
@@ -6016,6 +6025,7 @@ private struct WorkstationTasksWorkspace: View {
     let model: CompanionModel
     @State private var selectedItemID: String?
     @State private var displayedSelectedItemID: String?
+    @State private var displayedSelectedItem: ServerRelaySyncItem?
     @State private var externalDetailTask: Task<Void, Never>?
 
     private var combinedItems: [ServerRelaySyncItem] {
@@ -6029,8 +6039,9 @@ private struct WorkstationTasksWorkspace: View {
     private var selectedItem: ServerRelaySyncItem? {
         if selectedItemID != nil,
            let displayedSelectedItemID,
-           let item = combinedItems.first(where: { $0.id == displayedSelectedItemID }) {
-            return item
+           let displayedSelectedItem,
+           displayedSelectedItem.id == displayedSelectedItemID {
+            return displayedSelectedItem
         }
         return combinedItems.first
     }
@@ -6102,21 +6113,24 @@ private struct WorkstationTasksWorkspace: View {
         withTransaction(transaction) {
             selectedItemID = item.id
             displayedSelectedItemID = nil
+            displayedSelectedItem = nil
         }
-        deferExternalDetail(item.id)
+        deferExternalDetail(item)
     }
 
-    private func deferExternalDetail(_ itemID: String?) {
+    private func deferExternalDetail(_ item: ServerRelaySyncItem?) {
         externalDetailTask?.cancel()
-        guard let itemID else {
+        guard let item else {
             displayedSelectedItemID = nil
+            displayedSelectedItem = nil
             externalDetailTask = nil
             return
         }
         externalDetailTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled else { return }
-            displayedSelectedItemID = itemID
+            displayedSelectedItemID = item.id
+            displayedSelectedItem = item
             externalDetailTask = nil
         }
     }
@@ -6126,11 +6140,15 @@ private struct WorkstationTasksWorkspace: View {
            !combinedItems.contains(where: { $0.id == selectedItemID }) {
             self.selectedItemID = nil
             displayedSelectedItemID = nil
+            displayedSelectedItem = nil
             externalDetailTask?.cancel()
             externalDetailTask = nil
         } else if let displayedSelectedItemID,
-                  !combinedItems.contains(where: { $0.id == displayedSelectedItemID }) {
+                  let refreshed = combinedItems.first(where: { $0.id == displayedSelectedItemID }) {
+            displayedSelectedItem = refreshed
+        } else if displayedSelectedItemID != nil {
             self.displayedSelectedItemID = nil
+            displayedSelectedItem = nil
         }
     }
 }
