@@ -2259,7 +2259,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSharedRunLogActivityRow.contains("KLMSStageDurationParser.parse(from: log.outputTail)"))
         XCTAssertFalse(topUtilityActions.contains("selectedSection = .settings"))
         XCTAssertFalse(topUtilityActions.contains("utilityLabel(\"설정\""))
-        XCTAssertTrue(topUtilityActions.contains("utilityLabel(\"열기\", systemImage: \"square.grid.2x2\")"))
+        XCTAssertTrue(topUtilityActions.contains("utilityLabel(\"바로가기\", systemImage: \"square.grid.2x2\")"))
         XCTAssertTrue(topUtilityActions.contains("Color.klmsMacSubtleCardBackground"))
         XCTAssertTrue(topUtilityActions.contains("Color.klmsMacCommandBorder"))
         XCTAssertTrue(workstationBody.contains("case .diagnostics:"))

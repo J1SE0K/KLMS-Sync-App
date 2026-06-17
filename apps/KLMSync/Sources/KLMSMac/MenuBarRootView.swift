@@ -5245,7 +5245,7 @@ private struct TopUtilityActionsView: View {
                     Label("손쉬운 사용 권한", systemImage: "accessibility")
                 }
             } label: {
-                utilityLabel("열기", systemImage: "square.grid.2x2")
+                utilityLabel("바로가기", systemImage: "square.grid.2x2")
             }
         }
     }
