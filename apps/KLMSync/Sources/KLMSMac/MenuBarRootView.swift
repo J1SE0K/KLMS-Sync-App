@@ -3566,6 +3566,7 @@ private struct CommandPanelView: View {
         SectionBox(title: "동기화") {
             VStack(alignment: .leading, spacing: 10) {
                 MacMailPasteAnalyzerPanel(model: model, snapshot: model.snapshot)
+                commandStatusStrip
 
                 primaryCommandActionCard(primaryCommand)
 
@@ -3603,6 +3604,34 @@ private struct CommandPanelView: View {
                 .accessibilityLabel("\(command.displayName) 중단")
                 .accessibilityHint("현재 실행 중인 동기화를 중단합니다.")
             }
+        }
+    }
+
+    private var commandStatusStrip: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: commandStatusImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(commandStatusColor)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(commandStatusText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                    .lineLimit(1)
+                Text(commandStatusDetailText)
+                    .font(.caption2)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(commandStatusColor.opacity(model.runningCommand == nil ? 0.18 : 0.36), lineWidth: 1)
         }
     }
 
@@ -3770,6 +3799,19 @@ private struct CommandPanelView: View {
             return result.succeeded ? "최근 실행 완료" : "최근 실행 실패"
         }
         return model.snapshot.syncReport == nil ? "대기 중" : "준비됨"
+    }
+
+    private var commandStatusDetailText: String {
+        if model.runningCommand != nil {
+            return model.currentPhaseText.map { "현재 단계: \($0)" } ?? model.liveProgressLine ?? "실시간 로그를 기다리고 있습니다."
+        }
+        if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "중단된 실행은 로그 탭에서 다시 확인할 수 있습니다."
+            }
+            return result.succeeded ? "필요하면 바로 다시 실행할 수 있습니다." : "진단 보기에서 마지막 오류를 확인하세요."
+        }
+        return "전체 동기화 또는 개별 동기화를 실행하세요."
     }
 
     private var commandStatusImage: String {
