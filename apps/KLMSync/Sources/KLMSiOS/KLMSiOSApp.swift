@@ -3092,6 +3092,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
     var systemImage: String
     var statusText: String?
     var statusTint: Color = .klmsSecondaryText
+    var collapsible = false
     @State private var isExpanded: Bool
     @ViewBuilder var content: () -> Content
 
@@ -3101,6 +3102,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
         systemImage: String,
         statusText: String? = nil,
         statusTint: Color = .klmsSecondaryText,
+        collapsible: Bool = false,
         defaultExpanded: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
@@ -3109,46 +3111,29 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
         self.systemImage = systemImage
         self.statusText = statusText
         self.statusTint = statusTint
+        self.collapsible = collapsible
         _isExpanded = State(initialValue: defaultExpanded)
         self.content = content
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                companionPerformWithoutAnimation {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: systemImage)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 28, height: 28)
-                        .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.klmsPrimaryText)
-                        CompanionSettingHelpText(detail)
+            if collapsible {
+                Button {
+                    companionPerformWithoutAnimation {
+                        isExpanded.toggle()
                     }
-                    Spacer(minLength: 8)
-                    if let statusText {
-                        Text(statusText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(statusTint)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .background(Color.klmsCardBackground, in: Capsule())
-                    }
-                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+                } label: {
+                    subsectionHeader
+                        .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
+            } else {
+                subsectionHeader
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
-            .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
 
-            if isExpanded {
+            if !collapsible || isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
                     content()
                 }
@@ -3158,12 +3143,40 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            isExpanded ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
+            (!collapsible || isExpanded) ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
             in: RoundedRectangle(cornerRadius: 12)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 12)
-                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
+                .stroke((!collapsible || isExpanded) ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
+        }
+    }
+
+    private var subsectionHeader: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.klmsCommandAccent)
+                .frame(width: 28, height: 28)
+                .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                CompanionSettingHelpText(detail)
+            }
+            Spacer(minLength: 8)
+            if let statusText {
+                Text(statusText)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(statusTint)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color.klmsCardBackground, in: Capsule())
+            }
+            if collapsible {
+                CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+            }
         }
     }
 }
@@ -7413,11 +7426,18 @@ private struct MailAnalysisStep: Identifiable, Equatable {
 
 private struct MailAnalysisProcessView: View {
     var steps: [MailAnalysisStep]
-    @State private var isExpanded = true
 
     var body: some View {
         if !steps.isEmpty {
-            DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 8) {
+                    Label("분석 과정", systemImage: "list.bullet.clipboard")
+                        .font(.caption.weight(.semibold))
+                    Spacer(minLength: 0)
+                    Text("\(steps.count)단계")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(steps) { step in
                         HStack(alignment: .top, spacing: 9) {
@@ -7440,19 +7460,7 @@ private struct MailAnalysisProcessView: View {
                         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                     }
                 }
-                .padding(.top, 8)
-            } label: {
-                HStack(spacing: 8) {
-                    Label("분석 과정", systemImage: "list.bullet.clipboard")
-                        .font(.caption.weight(.semibold))
-                    Spacer(minLength: 0)
-                    Text("\(steps.count)단계")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(KLMSCardButtonStyle())
             .padding(10)
             .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay(
@@ -10124,7 +10132,8 @@ private struct RemoteDiagnosticPanel: View {
                     CompanionSettingsSubsectionCard(
                         title: "고급 도구",
                         detail: "변경 예정량과 내부 상태 파일을 점검합니다.",
-                        systemImage: "slider.horizontal.3"
+                        systemImage: "slider.horizontal.3",
+                        collapsible: true
                     ) {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("실제 반영 없이 바뀔 항목 수를 보거나 내부 상태 파일만 다시 만듭니다.")
@@ -10258,7 +10267,6 @@ private struct RemoteDryRunReportRow: View {
 
 private struct RemoteSettingsPanel: View {
     @ObservedObject var model: CompanionModel
-    @State private var isExpanded = true
 
     private var settingGroups: [RemoteSettingGroup] {
         RemoteSettingGroup.grouped(settings: model.remoteSettings)
@@ -10266,42 +10274,29 @@ private struct RemoteSettingsPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button {
-                companionPerformWithoutAnimation {
-                    isExpanded.toggle()
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "macbook.and.iphone")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 32, height: 32)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Mac 동기화 설정")
+                        .font(.headline)
+                    Text("실행 엔진이 쓰는 값을 Mac 설정 파일에 반영합니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    Image(systemName: "macbook.and.iphone")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 32, height: 32)
-                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Mac 동기화 설정")
-                            .font(.headline)
-                        Text("실행 엔진이 쓰는 값을 Mac 설정 파일에 반영합니다.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 5) {
-                        Text(model.remoteSettings.isEmpty ? "대기" : "\(model.remoteSettings.count)개")
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(Color.klmsSubtleCardBackground, in: Capsule())
-                        CompanionExpansionBadge(isExpanded: isExpanded)
-                    }
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 12))
+                Spacer()
+                Text(model.remoteSettings.isEmpty ? "대기" : "\(model.remoteSettings.count)개")
+                    .font(.caption.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-            .accessibilityHint(isExpanded ? "Mac 동기화 설정 접기" : "Mac 동기화 설정 펼치기")
 
-            if isExpanded {
             VStack(alignment: .leading, spacing: 10) {
                 CompanionSettingHelpText("Mac 앱이 받아 config.env에 저장합니다. 화면 모드와 공지 메모 갱신은 위 카드에서 바로 바뀝니다.")
                 if model.remoteSettings.isEmpty {
@@ -10316,7 +10311,6 @@ private struct RemoteSettingsPanel: View {
                         RemoteSettingGroupSection(group: group, model: model)
                     }
                 }
-            }
             }
         }
         .padding(12)
@@ -10338,6 +10332,9 @@ private struct RemoteSettingGroup: Identifiable {
     var countText: String { "\(settings.count)개" }
     var isDefaultExpanded: Bool {
         title != "Safari" && title != "고급"
+    }
+    var isCollapsible: Bool {
+        title == "Safari" || title == "고급"
     }
 
     static func grouped(settings: [ServerRelaySetting]) -> [RemoteSettingGroup] {
@@ -10415,39 +10412,22 @@ private struct RemoteSettingGroupSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                companionPerformWithoutAnimation {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: group.systemImage)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 28, height: 28)
-                        .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(group.title)
-                            .font(.subheadline.weight(.semibold))
-                        CompanionSettingHelpText(group.detail)
+            if group.isCollapsible {
+                Button {
+                    companionPerformWithoutAnimation {
+                        isExpanded.toggle()
                     }
-                    Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 5) {
-                        Text(group.countText)
-                            .font(.caption2.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .background(Color.klmsCardBackground, in: Capsule())
-                        CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
-                    }
+                } label: {
+                    groupHeader
+                        .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                .accessibilityHint(isExpanded ? "\(group.title) 설정 접기" : "\(group.title) 설정 펼치기")
+            } else {
+                groupHeader
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
-            .accessibilityHint(isExpanded ? "\(group.title) 설정 접기" : "\(group.title) 설정 펼치기")
 
-            if isExpanded {
+            if !group.isCollapsible || isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(group.settings) { setting in
                         RemoteSettingRow(setting: setting, model: model)
@@ -10457,13 +10437,40 @@ private struct RemoteSettingGroupSection: View {
         }
         .padding(11)
         .background(
-            isExpanded ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
+            (!group.isCollapsible || isExpanded) ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
             in: RoundedRectangle(cornerRadius: 12)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
+                .stroke((!group.isCollapsible || isExpanded) ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
         )
+    }
+
+    private var groupHeader: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: group.systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.klmsCommandAccent)
+                .frame(width: 28, height: 28)
+                .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.title)
+                    .font(.subheadline.weight(.semibold))
+                CompanionSettingHelpText(group.detail)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 5) {
+                Text(group.countText)
+                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color.klmsCardBackground, in: Capsule())
+                if group.isCollapsible {
+                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+                }
+            }
+        }
     }
 }
 
@@ -11767,42 +11774,28 @@ private struct RemoteCommandRow: View {
 }
 
 private struct RemotePrivacyNote: View {
-    @State private var isExpanded = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Button {
-                companionPerformWithoutAnimation {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "lock")
+            HStack(spacing: 10) {
+                Image(systemName: "lock")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 32, height: 32)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("개인정보와 서버 보관")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 32, height: 32)
-                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("개인정보와 서버 보관")
-                            .font(.subheadline.weight(.semibold))
-                        Text("서버에 무엇이 올라가는지 확인할 때만 펼치세요.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                    }
-                    Spacer(minLength: 0)
-                    CompanionExpansionBadge(isExpanded: isExpanded)
+                    Text("서버에는 실행 요청과 요약 상태만 저장됩니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 12))
+                Spacer(minLength: 0)
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-            .accessibilityHint(isExpanded ? "개인정보 안내 접기" : "개인정보 안내 펼치기")
 
-            if isExpanded {
-                Text("Cloudflare 서버 릴레이는 실행 요청과 요약 상태만 보관합니다. 파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text("파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
+                .font(.caption)
+                .foregroundStyle(Color.klmsSecondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
