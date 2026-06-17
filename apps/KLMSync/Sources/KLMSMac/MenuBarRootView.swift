@@ -3851,6 +3851,7 @@ private struct VerifyCheckExplanationRowView: View {
     var check: VerifyCheck
     var compact = false
     @State private var isRawDetailExpanded = false
+    @State private var isGuidanceExpanded = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -3870,31 +3871,42 @@ private struct VerifyCheckExplanationRowView: View {
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                         .textSelection(.enabled)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text(check.diagnosticExplanation)
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacPrimaryText)
-                        .lineLimit(2)
+                        .lineLimit(1)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(check.diagnosticNextAction)
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if !rawDetail.isEmpty {
-                        DiagnosticChecksDisclosure(
-                            title: "원본 보기",
-                            isExpanded: $isRawDetailExpanded,
-                            compact: true
-                        ) {
-                            Text(rawDetail)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(Color.klmsMacSecondaryText)
-                                .textSelection(.enabled)
-                                .fixedSize(horizontal: false, vertical: true)
+                    DiagnosticChecksDisclosure(
+                        title: "원인과 조치 보기",
+                        isExpanded: $isGuidanceExpanded,
+                        compact: true
+                    ) {
+                        Text(check.diagnosticExplanation)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(check.diagnosticNextAction)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !rawDetail.isEmpty {
+                            DiagnosticChecksDisclosure(
+                                title: "원본 보기",
+                                isExpanded: $isRawDetailExpanded,
+                                compact: true
+                            ) {
+                                Text(rawDetail)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
+                    .padding(.top, 1)
                 }
             }
         }
@@ -4049,6 +4061,7 @@ private struct DoctorCheckRowView: View {
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                         .textSelection(.enabled)
+                        .lineLimit(compact ? 2 : 1)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
