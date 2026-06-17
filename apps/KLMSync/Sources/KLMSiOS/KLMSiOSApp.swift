@@ -3788,20 +3788,6 @@ private enum CompanionLargeList {
     static let increment = 10
 }
 
-private func companionItemsFingerprint(_ items: [ServerRelaySyncItem]) -> Int {
-    var hasher = Hasher()
-    hasher.combine(items.count)
-    for item in items {
-        hasher.combine(item.id)
-        hasher.combine(item.kind)
-        hasher.combine(item.updatedAt)
-        hasher.combine(item.isRead)
-        hasher.combine(item.isImportant)
-        hasher.combine(item.isHidden)
-    }
-    return hasher.finalize()
-}
-
 private struct CompanionItemListData: Sendable {
     var baseItems: [ServerRelaySyncItem]
     var courseOptions: [String]
@@ -7775,6 +7761,7 @@ private struct DashboardCategoryDetailScreen: View {
     var category: DashboardMetricCategory
     var status: SanitizedRemoteStatus
     var items: [ServerRelaySyncItem]
+    var itemsRevision: Int
     var calendarChanges: [CalendarChange]
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
@@ -7793,12 +7780,14 @@ private struct DashboardCategoryDetailScreen: View {
         category: DashboardMetricCategory,
         status: SanitizedRemoteStatus,
         items: [ServerRelaySyncItem],
+        itemsRevision: Int,
         calendarChanges: [CalendarChange] = [],
         onSelect: @escaping (ServerRelaySyncItem) -> Void
     ) {
         self.category = category
         self.status = status
         self.items = items
+        self.itemsRevision = itemsRevision
         self.calendarChanges = calendarChanges
         self.onSelect = onSelect
         _sortOption = State(initialValue: CompanionItemSortOption.defaultSort(for: category))
@@ -7899,7 +7888,7 @@ private struct DashboardCategoryDetailScreen: View {
 
     private var listInputKey: CompanionItemListInputKey {
         CompanionItemListInputKey(
-            itemsRevision: companionItemsFingerprint(items),
+            itemsRevision: itemsRevision,
             category: category.rawValue,
             query: query,
             sortOption: sortOption.rawValue,
@@ -8424,6 +8413,7 @@ private struct RemoteSummaryCard: View {
 
 private struct ServerSyncDataPanel: View {
     var items: [ServerRelaySyncItem]
+    var itemsRevision: Int
     var onSelect: (ServerRelaySyncItem) -> Void = { _ in }
     @State private var isExpanded = true
     @State private var query = ""
@@ -8496,7 +8486,7 @@ private struct ServerSyncDataPanel: View {
 
     private var listInputKey: CompanionItemListInputKey {
         CompanionItemListInputKey(
-            itemsRevision: companionItemsFingerprint(items),
+            itemsRevision: itemsRevision,
             category: "all",
             query: query,
             sortOption: sortOption.rawValue,
