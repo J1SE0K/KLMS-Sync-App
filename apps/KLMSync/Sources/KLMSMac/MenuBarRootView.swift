@@ -303,9 +303,9 @@ private struct DashboardTopBarView: View {
             return "확인이 필요합니다 · \(model.attentionSummary)"
         }
         if let report = model.snapshot.syncReport {
-            return "준비됨 · 최근 요약 \(report.status.klmsLocalizedStatus)"
+            return "준비됨 · 최근 상태 \(report.status.klmsLocalizedStatus)"
         }
-        return "첫 실행 전입니다. 전체 동기화나 진단을 실행하세요."
+        return "첫 실행 전 · 전체 동기화나 진단을 실행하세요."
     }
 
     private var statusBadgeText: String {
@@ -318,7 +318,7 @@ private struct DashboardTopBarView: View {
         if model.snapshot.syncReport != nil {
             return "준비됨"
         }
-        return "설정 필요"
+        return "준비 필요"
     }
 
     private var runningPhaseLabel: String? {
@@ -401,7 +401,7 @@ private struct MacAlertBannerView: View {
             return "상태 검사 실패"
         }
         if model.snapshot.syncReport == nil {
-            return "첫 실행 준비"
+            return "처음 실행 준비"
         }
         return model.snapshot.loginStatus?.loggedIn == true ? "이미 로그인됨" : "준비됨"
     }
@@ -419,12 +419,12 @@ private struct MacAlertBannerView: View {
                 ?? "실시간 로그에서 진행 상황을 확인할 수 있습니다."
         }
         if model.needsAttention {
-            return "진단 보기에서 실패 항목을 자연어로 확인하고 바로 조치할 수 있습니다."
+            return "진단 보기에서 실패 원인과 다음 조치를 확인할 수 있습니다."
         }
         if model.snapshot.syncReport == nil {
-            return "환경 진단을 실행하면 권한, 엔진, Notes/Calendar/Reminders 상태를 확인합니다."
+            return "환경 진단을 실행하면 권한, 엔진, 메모/캘린더/미리 알림 상태를 확인합니다."
         }
-        return "동기화를 바로 실행할 수 있습니다. 인증번호가 필요하면 이 위치에 크게 고정됩니다."
+        return "동기화를 바로 실행할 수 있습니다. 인증번호가 필요하면 여기에 크게 고정됩니다."
     }
 
     private var chipText: String {
@@ -1732,8 +1732,8 @@ private struct NextActionPanelView: View {
         if model.snapshot.syncReport == nil {
             return NextAction(
                 kind: .runDoctor,
-                title: "첫 실행 준비",
-                detail: "환경 진단을 먼저 실행하면 권한과 엔진 상태를 확인할 수 있습니다.",
+                title: "처음 실행 준비",
+                detail: "환경 진단으로 권한과 엔진 상태를 먼저 확인합니다.",
                 buttonTitle: "환경 진단",
                 buttonImage: "stethoscope",
                 systemImage: "sparkles",
@@ -1919,7 +1919,7 @@ private struct HeaderView: View {
         if model.snapshot.syncReport != nil {
             return "준비됨"
         }
-        return "설정 필요"
+        return "준비 필요"
     }
 }
 
