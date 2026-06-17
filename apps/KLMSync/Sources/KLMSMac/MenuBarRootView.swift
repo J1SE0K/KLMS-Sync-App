@@ -23,6 +23,7 @@ struct MenuBarRootView: View {
                         selectedSection: $selectedSection,
                         expandedLogSummaryKind: $expandedLogSummaryKind
                     )
+                    CommandPanelView(model: model)
                     MacWorkstationLayoutView(
                         model: model,
                         selectedSection: $selectedSection,
@@ -141,8 +142,6 @@ private struct MacWorkspaceSidebarView: View {
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 .padding(.horizontal, 6)
-
-                CommandPanelView(model: model)
 
                 WorkspaceNavigationView(selection: $selectedSection)
 
