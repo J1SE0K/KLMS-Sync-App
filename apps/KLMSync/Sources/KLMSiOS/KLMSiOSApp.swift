@@ -2716,7 +2716,11 @@ private struct CompanionStatusScreen: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        CompanionScreenContainer(title: horizontalSizeClass == .regular ? "대시보드" : "상태", model: model) {
+        CompanionScreenContainer(
+            title: horizontalSizeClass == .regular ? "대시보드" : "상태",
+            model: model,
+            showsAttentionStack: false
+        ) {
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 16) {
                     statusSummaryColumn
@@ -3221,6 +3225,7 @@ private struct CompanionHistoryScreen: View {
 private struct CompanionScreenContainer<Content: View>: View {
     var title: String
     let model: CompanionModel
+    var showsAttentionStack = true
     @ViewBuilder var content: () -> Content
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -3241,7 +3246,9 @@ private struct CompanionScreenContainer<Content: View>: View {
             Color.klmsScreenBackground.ignoresSafeArea()
             WholeScreenVerticalScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    RemoteAttentionStack(model: model)
+                    if showsAttentionStack {
+                        RemoteAttentionStack(model: model)
+                    }
                     CompanionScreenHeader(title: title, model: model)
                     content()
                 }
@@ -3353,20 +3360,29 @@ private struct RemoteAttentionStack: View {
     @ObservedObject var model: CompanionModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let authDigits = model.status.authDigits {
-                AuthCodeHero(digits: authDigits)
-            }
-            if let message = model.loginAttentionMessage {
-                LoginAttentionBanner(message: message)
-            }
-            if let message = model.authSuccessMessage {
-                AuthSuccessBanner(message: message)
-            }
-            if !model.errorMessage.isEmpty {
-                ErrorBanner(message: model.errorMessage)
+        if hasAttention {
+            VStack(alignment: .leading, spacing: 10) {
+                if let authDigits = model.status.authDigits {
+                    AuthCodeHero(digits: authDigits)
+                }
+                if let message = model.loginAttentionMessage {
+                    LoginAttentionBanner(message: message)
+                }
+                if let message = model.authSuccessMessage {
+                    AuthSuccessBanner(message: message)
+                }
+                if !model.errorMessage.isEmpty {
+                    ErrorBanner(message: model.errorMessage)
+                }
             }
         }
+    }
+
+    private var hasAttention: Bool {
+        model.status.authDigits != nil
+            || model.loginAttentionMessage != nil
+            || model.authSuccessMessage != nil
+            || !model.errorMessage.isEmpty
     }
 }
 
@@ -4386,6 +4402,8 @@ private struct RemoteDashboardSyncCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            RemoteAttentionStack(model: model)
+
             HStack(alignment: .center, spacing: 10) {
                 Text("동기화")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
