@@ -1233,6 +1233,9 @@ function buildLocalDownloadMetadataIndex(downloadLog) {
     const keys = [
       reusableFileKey(result.url, result.filename),
       reusableUrlKey(result.url),
+      reusableRelativePathKey(result.relative_path),
+      reusableRelativePathKey(result.manifest_relative_path),
+      reusableRelativePathKey(result.downloads_relative_path),
     ].filter(Boolean);
     keys.forEach((key) => {
       if (!index[key]) {
@@ -1264,6 +1267,9 @@ function buildPreviousDownloadStateIndex(downloadLog) {
       reusableFileKey(result.url, result.filename),
       reusableFileKey(result.url, result.manifest_filename),
       reusableUrlKey(result.url),
+      reusableRelativePathKey(result.relative_path),
+      reusableRelativePathKey(result.manifest_relative_path),
+      reusableRelativePathKey(result.downloads_relative_path),
     ].filter(Boolean);
     keys.forEach((key) => {
       if (!index[key]) {
@@ -1279,6 +1285,8 @@ function previousDownloadStateForEntry(entry, previousDownloadStateIndex) {
   const keys = [
     reusableFileKey(entry && entry.url, entry && entry.filename),
     reusableUrlKey(entry && entry.url),
+    reusableRelativePathKey(entry && entry.relative_path),
+    reusableRelativePathKey(entry && entry.manifest_relative_path),
   ].filter(Boolean);
 
   for (const key of keys) {
@@ -1371,6 +1379,8 @@ function localDownloadMetadataForEntry(entry, localDownloadMetadataIndex) {
   const keys = [
     reusableFileKey(entry && entry.url, entry && entry.filename),
     reusableUrlKey(entry && entry.url),
+    reusableRelativePathKey(entry && entry.relative_path),
+    reusableRelativePathKey(entry && entry.manifest_relative_path),
   ].filter(Boolean);
 
   for (const key of keys) {
@@ -1519,30 +1529,42 @@ function buildRecordedFilenameIndex(downloadLog) {
     if (!downloadLogFilenameReuseAllowed(result, ambiguousFilenames)) {
       return;
     }
-    const key = reusableUrlKey(result.url);
+    const keys = [
+      reusableUrlKey(result.url),
+      reusableRelativePathKey(result.relative_path),
+      reusableRelativePathKey(result.manifest_relative_path),
+      reusableRelativePathKey(result.downloads_relative_path),
+    ].filter(Boolean);
     const filename = String(
       result.filename || baseName(result.downloads_path || "") || baseName(result.destination_path || "")
     ).trim();
     if (isTransientDownloadName(filename) || isServerTemporaryFilename(filename)) {
       return;
     }
-    if (key && filename && !index[key]) {
-      index[key] = filename;
-    }
+    keys.forEach((key) => {
+      if (key && filename && !index[key]) {
+        index[key] = filename;
+      }
+    });
   });
 
   return index;
 }
 
 function recordedFilenameForEntry(entry, recordedFilenameIndex) {
-  const key = reusableUrlKey(entry && entry.url);
-  if (!key) {
-    return "";
+  const keys = [
+    reusableUrlKey(entry && entry.url),
+    reusableRelativePathKey(entry && entry.relative_path),
+    reusableRelativePathKey(entry && entry.manifest_relative_path),
+  ].filter(Boolean);
+
+  for (const key of keys) {
+    const recordedFilename = String(recordedFilenameIndex[key] || "").trim();
+    if (filenameCompatibleWithExpected(recordedFilename, entry && entry.filename)) {
+      return recordedFilename;
+    }
   }
-  const recordedFilename = String(recordedFilenameIndex[key] || "").trim();
-  return filenameCompatibleWithExpected(recordedFilename, entry && entry.filename)
-    ? recordedFilename
-    : "";
+  return "";
 }
 
 function filenameCompatibleWithExpected(filename, expectedFilename) {
@@ -3450,6 +3472,18 @@ function reusableUrlKey(url) {
     return "";
   }
   return `${normalizedUrl}::*`;
+}
+
+function reusableRelativePathKey(relativePath) {
+  const normalizedPath = String(relativePath || "")
+    .trim()
+    .replace(/^\/+/, "")
+    .replace(/\/+/g, "/")
+    .toLowerCase();
+  if (!normalizedPath) {
+    return "";
+  }
+  return `relative::${normalizedPath}`;
 }
 
 function stripForcedDownloadFlag(url) {

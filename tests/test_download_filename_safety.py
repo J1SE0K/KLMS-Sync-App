@@ -82,6 +82,7 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("local-klms-timestamp-current", text)
         self.assertIn("local-file-mtime-matches-klms-timestamp", text)
         self.assertIn("klms-timestamp-newer-than-previous-record", text)
+        self.assertIn("reusableRelativePathKey", text)
         self.assertNotIn("klms-timestamp-newer-than-local-file", text)
         self.assertIn("refreshed_existing_file", text)
         self.assertIn("dateValue instanceof Date", text)
@@ -105,6 +106,7 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
                 "stripForcedDownloadFlag",
                 "reusableFileKey",
                 "reusableUrlKey",
+                "reusableRelativePathKey",
                 "previousDownloadStateForEntry",
                 "normalizedKlmsTimestampEpoch",
                 "existingFileRefreshDecision",
@@ -115,14 +117,16 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
                 "const $ = { NSFileModificationDate: 'mtime' };",
                 "function fileDateEpoch(path) { return String(path).includes('current') ? 200 : 100; }",
                 helpers,
-                "const entry = { url: 'https://klms.kaist.ac.kr/mod/resource/view.php?id=1', filename: 'file.pdf', klms_timestamp_epoch: 200 };",
+                "const entry = { url: 'https://klms.kaist.ac.kr/mod/resource/view.php?id=1', filename: 'file.pdf', relative_path: 'Course/file.pdf', klms_timestamp_epoch: 200 };",
                 "const staleWithoutPrevious = existingFileRefreshDecision(entry, '/tmp/stale.pdf', {});",
                 "const matchingPreviousIndex = { [reusableUrlKey(entry.url)]: { filename: 'file.pdf', klms_timestamp_epoch: 200 } };",
                 "const matchingPrevious = existingFileRefreshDecision(entry, '/tmp/stale.pdf', matchingPreviousIndex);",
+                "const relativePreviousIndex = { [reusableRelativePathKey(entry.relative_path)]: { filename: 'file.pdf', klms_timestamp_epoch: 200 } };",
+                "const matchingRelativePrevious = existingFileRefreshDecision({ ...entry, url: 'https://klms.kaist.ac.kr/mod/resource/view.php?id=2' }, '/tmp/stale.pdf', relativePreviousIndex);",
                 "const previousIndex = { [reusableUrlKey(entry.url)]: { filename: 'file.pdf', klms_timestamp_epoch: 150 } };",
                 "const currentLocal = existingFileRefreshDecision(entry, '/tmp/current.pdf', previousIndex);",
                 "const staleWithPrevious = existingFileRefreshDecision(entry, '/tmp/stale.pdf', previousIndex);",
-                "console.log(JSON.stringify({ staleWithoutPrevious, matchingPrevious, currentLocal, staleWithPrevious }));",
+                "console.log(JSON.stringify({ staleWithoutPrevious, matchingPrevious, matchingRelativePrevious, currentLocal, staleWithPrevious }));",
             ]
         )
         result = subprocess.run(
@@ -137,6 +141,11 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertEqual(payload["staleWithoutPrevious"]["reason"], "existing-file-current")
         self.assertFalse(payload["matchingPrevious"]["refresh"])
         self.assertEqual(payload["matchingPrevious"]["reason"], "local-klms-timestamp-current")
+        self.assertFalse(payload["matchingRelativePrevious"]["refresh"])
+        self.assertEqual(
+            payload["matchingRelativePrevious"]["reason"],
+            "local-klms-timestamp-current",
+        )
         self.assertFalse(payload["currentLocal"]["refresh"])
         self.assertEqual(payload["currentLocal"]["reason"], "local-file-mtime-matches-klms-timestamp")
         self.assertTrue(payload["staleWithPrevious"]["refresh"])
