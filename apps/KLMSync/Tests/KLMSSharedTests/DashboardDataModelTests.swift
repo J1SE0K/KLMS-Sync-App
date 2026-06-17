@@ -1054,6 +1054,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("cachedDashboardDetailPanel(kind: .notices)"))
         XCTAssertTrue(view.contains("cachedDashboardDetailPanel(kind: .calendar)"))
         XCTAssertTrue(commandPanel.contains(".font(.system(size: 18, weight: .black, design: .rounded))"))
+        XCTAssertTrue(commandPanel.contains("Text(model.currentPhaseText ?? \"진행 상황을 확인 중입니다.\")"))
+        XCTAssertTrue(commandPanel.contains("Text(model.currentPhaseText ?? \"진행 중\")"))
         XCTAssertTrue(commandPanel.contains(".padding(.horizontal, 14)"))
         XCTAssertTrue(commandPanel.contains(".padding(.vertical, 15)"))
         XCTAssertTrue(commandPanel.contains(".font(.system(size: 11, weight: .heavy, design: .rounded))"))

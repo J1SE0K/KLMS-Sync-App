@@ -3614,8 +3614,17 @@ private struct CommandPanelView: View {
             runOrCancel(command)
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                Text(isRunning ? "전체 동기화 중단" : "전체 동기화")
-                    .font(.system(size: 18, weight: .black, design: .rounded))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(isRunning ? "전체 동기화 중단" : "전체 동기화")
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                    if isRunning {
+                        Text(model.currentPhaseText ?? "진행 상황을 확인 중입니다.")
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                            .opacity(0.86)
+                    }
+                }
                 Spacer(minLength: 0)
                 Image(systemName: primaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled))
                     .font(.headline.weight(.black))
@@ -3652,10 +3661,17 @@ private struct CommandPanelView: View {
                     Image(systemName: systemImage)
                         .font(.system(size: 9, weight: .black, design: .rounded))
                 }
-                Text(shortTitle(for: command))
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                VStack(spacing: 2) {
+                    Text(shortTitle(for: command))
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    if isRunning {
+                        Text(model.currentPhaseText ?? "진행 중")
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .opacity(0.78)
+                    }
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
             }
             .foregroundStyle(secondaryCommandForeground(isDisabled: isDisabled))
             .frame(maxWidth: .infinity, minHeight: 42, alignment: .center)
