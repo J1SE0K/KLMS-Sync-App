@@ -1981,10 +1981,11 @@ private struct DiagnosticToolsPanelView: View {
     var body: some View {
         SectionBox(title: "빠른 점검") {
             VStack(alignment: .leading, spacing: 12) {
-                Text("문제가 보이면 상태 검사부터 실행하고, 권한이나 로그인 문제가 의심될 때 권한/환경 진단을 실행하세요.")
+                Text("권장 순서: 상태 검사 → 권한/환경 진단 → 리포트")
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
 
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                     diagnosticButton(.verify)
@@ -1994,7 +1995,7 @@ private struct DiagnosticToolsPanelView: View {
 
                 DisclosureGroup(isExpanded: $isAdvancedExpanded) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("실제 반영 없이 바뀔 항목 수를 계산하거나, 내부 상태 파일만 다시 생성합니다. 평소에는 열 필요가 없습니다.")
+                        Text("변경 예정량만 보거나 내부 상태 파일을 다시 만들 때 사용합니다.")
                             .font(.caption2)
                             .foregroundStyle(Color.klmsMacSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -4253,7 +4254,7 @@ private struct RunLogArchivePanelView: View {
         VStack(alignment: .leading, spacing: 12) {
             CollapsibleSectionBox(title: "실행 로그", systemImage: "clock.arrow.circlepath", isExpanded: $isHistoryExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("앱에서 실행한 동기화, 변경량 계산, 진단 명령의 누적 기록입니다. 각 항목을 펼치면 해당 실행의 마지막 로그를 확인할 수 있습니다.")
+                    Text("각 실행 기록을 펼치면 마지막 로그를 볼 수 있습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)

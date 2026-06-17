@@ -10255,10 +10255,11 @@ private struct RemoteDiagnosticPanel: View {
             if isPanelExpanded {
                 VStack(alignment: .leading, spacing: 10) {
                     RemoteVerifySummaryPanel(summary: model.verifySummary)
-                    Text("문제가 보이면 상태 검사부터 실행하고, 권한이나 로그인 문제가 의심될 때 권한/환경 진단을 실행하세요.")
+                    Text("권장 순서: 상태 검사 → 권한/환경 진단 → 리포트")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
                     LazyVGrid(columns: columns, spacing: 8) {
                         diagnosticButton(.verify)
                         diagnosticButton(.doctor)
@@ -10268,11 +10269,11 @@ private struct RemoteDiagnosticPanel: View {
 
                     CompanionSettingsSubsectionCard(
                         title: "고급 도구",
-                        detail: "변경량 계산과 내부 상태 재생성 도구입니다.",
+                        detail: "변경 예정량과 내부 상태 파일을 점검합니다.",
                         systemImage: "slider.horizontal.3"
                     ) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("실제 반영 없이 바뀔 항목 수를 계산하거나, 내부 상태 파일만 다시 생성합니다. 평소에는 열 필요가 없습니다.")
+                            Text("실제 반영 없이 바뀔 항목 수를 보거나 내부 상태 파일만 다시 만듭니다.")
                                 .font(.caption2)
                                 .foregroundStyle(Color.klmsSecondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -10454,9 +10455,9 @@ private struct RemoteSettingsPanel: View {
 
             if isExpanded {
             VStack(alignment: .leading, spacing: 10) {
-                CompanionSettingHelpText("이 설정은 Mac 앱이 받아서 실제 config.env에 저장합니다. 화면 모드와 공지 메모 갱신 여부는 위 카드에서 바로 바뀝니다.")
+                CompanionSettingHelpText("Mac 앱이 받아 config.env에 저장합니다. 화면 모드와 공지 메모 갱신은 위 카드에서 바로 바뀝니다.")
                 if model.remoteSettings.isEmpty {
-                    Text("Mac 앱이 설정 목록을 서버에 올리면 여기에서 바꿀 수 있습니다.")
+                    Text("Mac 앱이 설정 목록을 올리면 여기에서 바꿀 수 있습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
