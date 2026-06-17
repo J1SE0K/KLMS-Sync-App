@@ -122,11 +122,6 @@ is_truthy() {
 }
 
 if is_truthy "${KLMS_APP_RUN:-0}"; then
-  case "${FILE_REFRESH_MODE:l}" in
-    full)
-      FILE_REFRESH_MODE="auto"
-      ;;
-  esac
   FILE_FORCE_DOWNLOAD="0"
 fi
 

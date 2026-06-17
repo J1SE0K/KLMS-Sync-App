@@ -380,12 +380,13 @@ struct SettingsView: View {
             ) {
                 described(
                     "파일 탐색 모드",
-                    summary: settingsModeSummary(sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick"]).wrappedValue),
-                    "자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠른 모드는 기존 캐시 재사용을 우선합니다."
+                    summary: settingsModeSummary(sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick", "full"]).wrappedValue),
+                    "자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠른 모드는 기존 캐시 재사용을 우선하고, 전체는 파일 페이지를 처음부터 다시 확인합니다."
                 ) {
-                    Picker("파일 탐색 모드", selection: sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick"])) {
+                    Picker("파일 탐색 모드", selection: sanitizedBinding(.fileRefreshMode, defaultValue: "auto", allowedValues: ["auto", "quick", "full"])) {
                         Text("자동").tag("auto")
                         Text("빠른 모드").tag("quick")
+                        Text("전체").tag("full")
                     }
                 }
                 configToggle(

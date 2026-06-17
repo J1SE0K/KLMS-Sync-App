@@ -546,8 +546,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             text.index('if is_truthy "${KLMS_APP_RUN:-0}"; then')
             : text.index('if is_truthy "$FILE_DRY_RUN"; then')
         ]
-        self.assertIn('FILE_REFRESH_MODE="auto"', app_run_block)
         self.assertIn('FILE_FORCE_DOWNLOAD="0"', app_run_block)
+        self.assertNotIn('FILE_REFRESH_MODE="auto"', app_run_block)
         self.assertNotIn("FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY=", app_run_block)
         self.assertIn("manifest_layout_matches()", text)
         self.assertIn('"${FILE_REFRESH_MODE:l}" != "full"', text)
@@ -587,11 +587,11 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn('"FILE_PRESERVE_DOWNLOAD_ARCHIVE": runtimeBoolConfigValue(.filePreserveDownloadArchive, default: false)', model)
         self.assertIn('"FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS": "21600"', model)
         self.assertIn('Picker("파일 탐색 모드"', settings)
-        self.assertIn('allowedValues: ["auto", "quick"]', settings)
+        self.assertIn('allowedValues: ["auto", "quick", "full"]', settings)
         self.assertIn('ServerRelaySettingDefinition(.fileWeeklyFoldersEnabled, title: "주차/출처 폴더 사용", valueKind: .bool, defaultValue: "1")', model)
         self.assertIn('configToggle(\n                    "주차/출처 폴더 사용",\n                    .fileWeeklyFoldersEnabled,\n                    defaultValue: true', settings)
         file_picker = settings.split('Picker("파일 탐색 모드"', 1)[1].split("}", 1)[0]
-        self.assertNotIn('Text("전체").tag("full")', file_picker)
+        self.assertIn('Text("전체").tag("full")', file_picker)
         self.assertNotIn('configToggle("강제 재다운로드"', settings)
 
     def test_app_important_sync_alerts_render_above_command_controls(self) -> None:
