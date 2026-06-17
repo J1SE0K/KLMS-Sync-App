@@ -8408,33 +8408,34 @@ private struct DashboardCategoryDetailScreen: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
             } else {
-                Section("검색과 필터") {
-                    TextField("\(category.title) 검색", text: $query)
-                        .textFieldStyle(.roundedBorder)
-
-                    if let listData = cachedListData {
-                        CompanionItemListControls(
-                            sortOption: $sortOption,
-                            visibilityFilter: $visibilityFilter,
-                            statusFilter: $statusFilter,
-                            selectedCourse: $selectedCourse,
-                            selectedYear: $selectedYear,
-                            selectedSemester: $selectedSemester,
-                            newOnly: $newOnly,
-                            recentOnly: $recentOnly,
-                            availableStatusFilters: listData.availableStatusFilters,
-                            courseOptions: listData.courseOptions,
-                            yearOptions: listData.yearOptions,
-                            semesterOptions: listData.semesterOptions,
-                            supportsNewOnly: category.supportsNewOnly,
-                            supportsRecentOnly: category.supportsRecentOnly,
-                            defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
-                            totalCount: listData.baseItems.count,
-                            filteredCount: listData.filteredItems.count
-                        )
-                    } else {
-                        CompanionItemListControlsPlaceholder()
+                Section {
+                    CompanionSearchFilterPanel(title: "검색과 필터", fieldPrompt: "\(category.title) 검색", query: $query) {
+                        if let listData = cachedListData {
+                            CompanionItemListControls(
+                                sortOption: $sortOption,
+                                visibilityFilter: $visibilityFilter,
+                                statusFilter: $statusFilter,
+                                selectedCourse: $selectedCourse,
+                                selectedYear: $selectedYear,
+                                selectedSemester: $selectedSemester,
+                                newOnly: $newOnly,
+                                recentOnly: $recentOnly,
+                                availableStatusFilters: listData.availableStatusFilters,
+                                courseOptions: listData.courseOptions,
+                                yearOptions: listData.yearOptions,
+                                semesterOptions: listData.semesterOptions,
+                                supportsNewOnly: category.supportsNewOnly,
+                                supportsRecentOnly: category.supportsRecentOnly,
+                                defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
+                                totalCount: listData.baseItems.count,
+                                filteredCount: listData.filteredItems.count
+                            )
+                        } else {
+                            CompanionItemListControlsPlaceholder()
+                        }
                     }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                    .listRowBackground(Color.clear)
                 }
 
                 if let listData = cachedListData {
