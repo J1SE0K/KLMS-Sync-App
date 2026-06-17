@@ -107,15 +107,28 @@ struct KLMSiOSApp: App {
 
 @MainActor
 final class CompanionModel: ObservableObject {
-    @Published var recentCommands: [RemoteRunCommand] = []
-    @Published var recentRequestLog: [ServerRelayRequestLogEntry] = []
+    @Published var recentCommands: [RemoteRunCommand] = [] {
+        didSet { rebuildRemoteLogDerivedState() }
+    }
+    @Published var recentRequestLog: [ServerRelayRequestLogEntry] = [] {
+        didSet { rebuildRemoteLogDerivedState() }
+    }
     @Published var recentFileAccessRequests: [ServerRelayFileAccessRequest] = [] {
-        didSet { rebuildFileAccessLookup() }
+        didSet {
+            rebuildFileAccessLookup()
+            rebuildRemoteLogDerivedState()
+        }
     }
     @Published var recentItemActions: [ServerRelayItemAction] = [] {
-        didSet { rebuildItemActionLookups(); rebuildVisibleCalendarChanges() }
+        didSet {
+            rebuildItemActionLookups()
+            rebuildVisibleCalendarChanges()
+            rebuildRemoteLogDerivedState()
+        }
     }
-    @Published var recentSettingActions: [ServerRelaySettingAction] = []
+    @Published var recentSettingActions: [ServerRelaySettingAction] = [] {
+        didSet { rebuildRemoteLogDerivedState() }
+    }
     @Published var syncItems: [ServerRelaySyncItem] = [] {
         didSet { rebuildDashboardDerivedState(); rebuildChangeSummaryItemLookup(); rebuildVisibleCalendarChanges() }
     }
@@ -126,7 +139,9 @@ final class CompanionModel: ObservableObject {
         didSet { rebuildVisibleCalendarChanges() }
     }
     @Published var remoteSettings: [ServerRelaySetting] = []
-    @Published var sharedRunLogs: [ServerRelayRunLog] = []
+    @Published var sharedRunLogs: [ServerRelayRunLog] = [] {
+        didSet { rebuildRemoteLogDerivedState() }
+    }
     @Published var verifySummary: ServerRelayVerifySummary?
     @Published var sharedSettings: [ServerRelaySetting] = []
     @Published var mailDashboardItems: [ServerRelaySyncItem] = [] {
@@ -140,6 +155,14 @@ final class CompanionModel: ObservableObject {
     @Published private(set) var changeSummaryCalendarChangesByKindID: [String: [CalendarChange]] = [:]
     @Published private(set) var fileCleanupReportsForDashboard: [DryRunReport] = []
     @Published private(set) var dashboardStatus = SanitizedRemoteStatus()
+    @Published private(set) var currentRemoteLogCommand: RemoteRunCommand?
+    @Published private(set) var latestRemoteLogFileRequest: ServerRelayFileAccessRequest?
+    @Published private(set) var activeRemoteLogCommand: RemoteRunCommand?
+    @Published private(set) var activeRemoteLogFileRequest: ServerRelayFileAccessRequest?
+    @Published private(set) var hasClearableRemoteLogsCache = false
+    @Published private(set) var hasClearableCommandLogs = false
+    @Published private(set) var hasClearableRequestLogs = false
+    @Published private(set) var hasClearableFileAccessLogs = false
     @Published var status = SanitizedRemoteStatus() {
         didSet { rebuildDashboardStatus() }
     }
@@ -194,6 +217,8 @@ final class CompanionModel: ObservableObject {
     private var activeCalendarActionByID: [String: ServerRelayItemAction] = [:]
     private var visibleDashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
     private var visibleDashboardTaskItems: [ServerRelaySyncItem] = []
+
+    private static let terminalLogSummaryDisplayInterval: TimeInterval = 5 * 60
 
     private static let deprecatedLocalHostKey = "KLMSLocalRemoteHost"
     private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
@@ -580,12 +605,7 @@ final class CompanionModel: ObservableObject {
     }
 
     var hasClearableRemoteLogs: Bool {
-        recentCommands.contains { !$0.status.isInFlight }
-            || !recentRequestLog.isEmpty
-            || recentFileAccessRequests.contains { !$0.status.isInFlight }
-            || recentItemActions.contains { $0.status != .pending && $0.status != .running }
-            || recentSettingActions.contains { $0.status != .pending && $0.status != .running }
-            || !sharedRunLogs.isEmpty
+        hasClearableRemoteLogsCache
     }
 
     var remoteAvailabilityMessage: String {
@@ -609,13 +629,67 @@ final class CompanionModel: ObservableObject {
 
     var hasInFlightRequest: Bool {
         latestDisplayStatus?.isInFlight == true
-            || recentFileAccessRequests.contains { $0.status.isInFlight }
+            || activeRemoteLogFileRequest != nil
     }
 
     var hasActiveServerWork: Bool {
         hasInFlightRequest
             || recentItemActions.contains { $0.status == .pending || $0.status == .running }
             || recentSettingActions.contains { $0.status == .pending || $0.status == .running }
+    }
+
+    private func rebuildRemoteLogDerivedState() {
+        let now = Date()
+        let nextCurrentCommand = recentCommands.first.flatMap { command -> RemoteRunCommand? in
+            let displayStatus = command.displayStatus()
+            if displayStatus.isInFlight {
+                return command
+            }
+            if now.timeIntervalSince(command.updatedAt) <= Self.terminalLogSummaryDisplayInterval {
+                return command
+            }
+            return nil
+        }
+        let nextLatestFileRequest = recentFileAccessRequests.first(where: { $0.status.isInFlight })
+            ?? recentFileAccessRequests.first {
+                now.timeIntervalSince($0.updatedAt) <= Self.terminalLogSummaryDisplayInterval
+            }
+        let nextActiveCommand = recentCommands.first { $0.displayStatus().isInFlight }
+        let nextActiveFileRequest = recentFileAccessRequests.first { $0.status.isInFlight }
+        let nextHasClearableCommandLogs = recentCommands.contains { !$0.status.isInFlight }
+        let nextHasClearableRequestLogs = !recentRequestLog.isEmpty
+        let nextHasClearableFileAccessLogs = recentFileAccessRequests.contains { !$0.status.isInFlight }
+        let nextHasClearableRemoteLogs = nextHasClearableCommandLogs
+            || nextHasClearableRequestLogs
+            || nextHasClearableFileAccessLogs
+            || recentItemActions.contains { $0.status != .pending && $0.status != .running }
+            || recentSettingActions.contains { $0.status != .pending && $0.status != .running }
+            || !sharedRunLogs.isEmpty
+
+        if currentRemoteLogCommand != nextCurrentCommand {
+            currentRemoteLogCommand = nextCurrentCommand
+        }
+        if latestRemoteLogFileRequest != nextLatestFileRequest {
+            latestRemoteLogFileRequest = nextLatestFileRequest
+        }
+        if activeRemoteLogCommand != nextActiveCommand {
+            activeRemoteLogCommand = nextActiveCommand
+        }
+        if activeRemoteLogFileRequest != nextActiveFileRequest {
+            activeRemoteLogFileRequest = nextActiveFileRequest
+        }
+        if hasClearableCommandLogs != nextHasClearableCommandLogs {
+            hasClearableCommandLogs = nextHasClearableCommandLogs
+        }
+        if hasClearableRequestLogs != nextHasClearableRequestLogs {
+            hasClearableRequestLogs = nextHasClearableRequestLogs
+        }
+        if hasClearableFileAccessLogs != nextHasClearableFileAccessLogs {
+            hasClearableFileAccessLogs = nextHasClearableFileAccessLogs
+        }
+        if hasClearableRemoteLogsCache != nextHasClearableRemoteLogs {
+            hasClearableRemoteLogsCache = nextHasClearableRemoteLogs
+        }
     }
 
     var shouldShowCancelControl: Bool {
@@ -3166,7 +3240,7 @@ private struct CompanionHistoryScreen: View {
                         await model.clearRemoteLogs(scope: .requestLog)
                     }
                 },
-                clearDisabled: !model.serverRelayConfigured || model.isSubmitting || model.recentRequestLog.isEmpty
+                clearDisabled: !model.serverRelayConfigured || model.isSubmitting || !model.hasClearableRequestLogs
             )
             RecentFileAccessRequestsView(
                 requests: model.recentFileAccessRequests,
@@ -3177,8 +3251,8 @@ private struct CompanionHistoryScreen: View {
                 },
                 clearDisabled: !model.serverRelayConfigured
                     || model.isSubmitting
-                    || model.recentFileAccessRequests.isEmpty
-                    || model.recentFileAccessRequests.contains { $0.status.isInFlight }
+                    || !model.hasClearableFileAccessLogs
+                    || model.activeRemoteLogFileRequest != nil
             )
             RecentRemoteCommandsView(
                 commands: model.recentCommands,
@@ -3190,7 +3264,7 @@ private struct CompanionHistoryScreen: View {
                 },
                 clearDisabled: !model.serverRelayConfigured
                     || model.isSubmitting
-                    || !model.recentCommands.contains { !$0.status.isInFlight }
+                    || !model.hasClearableCommandLogs
             )
         }
     }
@@ -11384,7 +11458,6 @@ private struct RemoteLogSummaryPanel: View {
     @ObservedObject var model: CompanionModel
     var compact: Bool
     @State private var expandedKind: RemoteLogSummaryKind?
-    private static let terminalSummaryDisplayInterval: TimeInterval = 5 * 60
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -11430,7 +11503,7 @@ private struct RemoteLogSummaryPanel: View {
                 ) {
                     toggle(.command)
                 }
-                if !compact || latestFileRequest != nil {
+                if !compact || model.latestRemoteLogFileRequest != nil {
                     RemoteLogSummaryRow(
                         title: "파일 요청",
                         value: fileRequestValue,
@@ -11461,27 +11534,8 @@ private struct RemoteLogSummaryPanel: View {
         }
     }
 
-    private var latestFileRequest: ServerRelayFileAccessRequest? {
-        if let active = model.recentFileAccessRequests.first(where: { $0.status.isInFlight }) {
-            return active
-        }
-        return model.recentFileAccessRequests.first {
-            Date().timeIntervalSince($0.updatedAt) <= Self.terminalSummaryDisplayInterval
-        }
-    }
-
     private var currentCommand: RemoteRunCommand? {
-        guard let command = model.latestCommand else {
-            return nil
-        }
-        let status = command.displayStatus()
-        if status.isInFlight {
-            return command
-        }
-        if Date().timeIntervalSince(command.updatedAt) <= Self.terminalSummaryDisplayInterval {
-            return command
-        }
-        return nil
+        model.currentRemoteLogCommand
     }
 
     private var statusSystemImage: String {
@@ -11558,14 +11612,14 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private var fileRequestValue: String {
-        guard let latestFileRequest else {
+        guard let latestFileRequest = model.latestRemoteLogFileRequest else {
             return "요청 없음"
         }
         return latestFileRequest.status.displayName
     }
 
     private var fileRequestDetail: String {
-        guard let latestFileRequest else {
+        guard let latestFileRequest = model.latestRemoteLogFileRequest else {
             return model.recentFileAccessRequests.isEmpty
                 ? "파일 항목에서 링크 요청을 누르면 Mac 앱이 임시 링크를 준비합니다."
                 : "지난 완료/실패 기록은 이 행을 펼쳐서 확인할 수 있습니다."
@@ -11576,7 +11630,7 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private var fileRequestSystemImage: String {
-        switch latestFileRequest?.status {
+        switch model.latestRemoteLogFileRequest?.status {
         case .pending:
             return "clock"
         case .running:
@@ -11591,7 +11645,7 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private var fileRequestTint: Color {
-        switch latestFileRequest?.status {
+        switch model.latestRemoteLogFileRequest?.status {
         case .pending, .running:
             return .klmsCommandAccent
         case .completed:
@@ -11628,7 +11682,7 @@ private struct RemoteLogDetailPanel: View {
                     },
                     clearDisabled: !model.serverRelayConfigured
                         || model.isSubmitting
-                        || !model.recentCommands.contains { !$0.status.isInFlight }
+                        || !model.hasClearableCommandLogs
                 )
             case .fileRequest:
                 RecentFileAccessRequestsView(
@@ -11640,8 +11694,8 @@ private struct RemoteLogDetailPanel: View {
                     },
                     clearDisabled: !model.serverRelayConfigured
                         || model.isSubmitting
-                        || model.recentFileAccessRequests.isEmpty
-                        || model.recentFileAccessRequests.contains { $0.status.isInFlight }
+                        || !model.hasClearableFileAccessLogs
+                        || model.activeRemoteLogFileRequest != nil
                 )
             }
         }
@@ -11682,11 +11736,11 @@ private struct RemoteLogDetailPanel: View {
     }
 
     private var activeCommand: RemoteRunCommand? {
-        model.recentCommands.first { $0.displayStatus().isInFlight }
+        model.activeRemoteLogCommand
     }
 
     private var activeFileRequest: ServerRelayFileAccessRequest? {
-        model.recentFileAccessRequests.first { $0.status.isInFlight }
+        model.activeRemoteLogFileRequest
     }
 
     private var hasCurrentDetail: Bool {
