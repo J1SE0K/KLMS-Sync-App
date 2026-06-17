@@ -2602,7 +2602,8 @@ private struct CompanionStatusScreen: View {
                 tint: category.tint
             )
         } else if horizontalSizeClass == .regular {
-            WorkstationDashboardOverviewPanel(model: model)
+            WorkstationDashboardOverviewPanel(data: WorkstationDashboardOverviewData(model: model))
+                .equatable()
         }
     }
 
@@ -5299,11 +5300,33 @@ private struct WorkstationMetricCard: View {
     }
 }
 
-private struct WorkstationDashboardOverviewPanel: View {
-    let model: CompanionModel
+private struct WorkstationDashboardOverviewData: Equatable {
+    var status: SanitizedRemoteStatus
+    var filePreviewItems: [ServerRelaySyncItem]
+    var noticePreviewItems: [ServerRelaySyncItem]
+    var previewTaskItems: [ServerRelaySyncItem]
+
+    @MainActor
+    init(model: CompanionModel) {
+        status = model.dashboardStatus
+        filePreviewItems = Array(model.cachedVisibleDashboardItems(for: DashboardMetricCategory.files.rawValue).prefix(2))
+        noticePreviewItems = Array(model.cachedVisibleDashboardItems(for: DashboardMetricCategory.notices.rawValue).prefix(2))
+        previewTaskItems = Array(
+            (
+                model.cachedVisibleDashboardItems(for: DashboardMetricCategory.assignments.rawValue)
+                + model.cachedVisibleDashboardItems(for: DashboardMetricCategory.exams.rawValue)
+            )
+            .companionSorted(by: .recent)
+            .prefix(2)
+        )
+    }
+}
+
+private struct WorkstationDashboardOverviewPanel: View, Equatable {
+    var data: WorkstationDashboardOverviewData
 
     private var status: SanitizedRemoteStatus {
-        model.dashboardStatus
+        data.status
     }
 
     var body: some View {
@@ -5402,7 +5425,7 @@ private struct WorkstationDashboardOverviewPanel: View {
                 )
             }
 
-            WorkstationChangeSummaryCard(model: model)
+            WorkstationChangeSummaryCard(status: data.status)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -5426,27 +5449,16 @@ private struct WorkstationDashboardOverviewPanel: View {
         ].filter { $0.value > 0 }
     }
 
-    private func previewItems(for category: DashboardMetricCategory) -> [ServerRelaySyncItem] {
-        Array(model.cachedVisibleDashboardItems(for: category.rawValue).prefix(2))
-    }
-
     private var filePreviewItems: [ServerRelaySyncItem] {
-        previewItems(for: .files)
+        data.filePreviewItems
     }
 
     private var noticePreviewItems: [ServerRelaySyncItem] {
-        previewItems(for: .notices)
+        data.noticePreviewItems
     }
 
     private var previewTaskItems: [ServerRelaySyncItem] {
-        Array(
-            (
-                model.cachedVisibleDashboardItems(for: DashboardMetricCategory.assignments.rawValue)
-                + model.cachedVisibleDashboardItems(for: DashboardMetricCategory.exams.rawValue)
-            )
-            .companionSorted(by: .recent)
-            .prefix(2)
-        )
+        data.previewTaskItems
     }
 
     private struct MetricSummary: Identifiable {
@@ -5516,11 +5528,7 @@ private struct WorkstationDashboardPreviewSection: View {
 }
 
 private struct WorkstationChangeSummaryCard: View {
-    let model: CompanionModel
-
-    private var status: SanitizedRemoteStatus {
-        model.dashboardStatus
-    }
+    var status: SanitizedRemoteStatus
 
     private var lines: [String] {
         [

@@ -2648,7 +2648,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosStatusScreen.contains("HStack(alignment: .top, spacing: 16)"))
         XCTAssertTrue(iosStatusScreen.contains(".frame(minWidth: 320, idealWidth: 380, maxWidth: 430"))
         XCTAssertFalse(iosStatusScreen.contains("WorkstationDashboardDetailPanel"))
-        XCTAssertTrue(iosStatusScreen.contains("WorkstationDashboardOverviewPanel(model: model)"))
+        XCTAssertTrue(iosStatusScreen.contains("WorkstationDashboardOverviewPanel(data: WorkstationDashboardOverviewData(model: model))"))
+        XCTAssertTrue(iosStatusScreen.contains(".equatable()"))
+        XCTAssertTrue(ios.contains("private struct WorkstationDashboardOverviewData: Equatable"))
+        XCTAssertTrue(ios.contains("private struct WorkstationDashboardOverviewPanel: View, Equatable"))
+        XCTAssertFalse(iosStatusScreen.contains("WorkstationDashboardOverviewPanel(model: model)"))
         XCTAssertFalse(iosMetricOverview.contains("CompactDashboardSelectionPanel(category: selectedCategory, model: model)"))
         XCTAssertFalse(iosStatusScreen.contains("?? .files"))
         XCTAssertTrue(iosMetricOverview.contains("@Environment(\\.horizontalSizeClass)"))
@@ -2685,7 +2689,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosWorkstationMetricCard.contains("Color.klmsSelectedBorder.opacity(0.92)"))
         XCTAssertTrue(iosWorkstationMetricCard.contains(".buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))"))
         XCTAssertTrue(ios.contains("private struct WorkstationDashboardOverviewPanel"))
-        let iosWorkstationOverviewPanel = try sourceStructBody(named: "WorkstationDashboardOverviewPanel", in: ios)
+        let iosWorkstationOverviewPanel = try sourceBody(
+            after: "private struct WorkstationDashboardOverviewPanel: View, Equatable",
+            in: ios,
+            description: "WorkstationDashboardOverviewPanel"
+        )
+        XCTAssertFalse(iosWorkstationOverviewPanel.contains("let model: CompanionModel"))
+        XCTAssertFalse(iosWorkstationOverviewPanel.contains("model.cachedVisibleDashboardItems"))
         XCTAssertTrue(iosWorkstationOverviewPanel.contains("Text(\"대시보드\")"))
         XCTAssertTrue(iosWorkstationOverviewPanel.contains("최신 항목을 먼저 보고, 왼쪽 카드에서 바로 처리합니다."))
         XCTAssertFalse(iosWorkstationOverviewPanel.contains("WorkstationDashboardSelectionGuide()"))
@@ -2710,8 +2720,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosWorkstationOverviewPanel.contains("if !noticePreviewItems.isEmpty"))
         XCTAssertFalse(iosWorkstationOverviewPanel.contains("items: previewItems(for: .files)"))
         XCTAssertFalse(iosWorkstationOverviewPanel.contains("items: previewItems(for: .notices)"))
-        XCTAssertTrue(iosWorkstationOverviewPanel.contains(".companionSorted(by: .recent)"))
-        XCTAssertTrue(iosWorkstationOverviewPanel.contains("WorkstationChangeSummaryCard(model: model)"))
+        XCTAssertTrue(ios.contains("private struct WorkstationDashboardOverviewData: Equatable"))
+        XCTAssertTrue(ios.contains(".companionSorted(by: .recent)"))
+        XCTAssertTrue(iosWorkstationOverviewPanel.contains("WorkstationChangeSummaryCard(status: data.status)"))
         XCTAssertTrue(ios.contains("private struct WorkstationDashboardPreviewSection"))
         XCTAssertFalse(ios.contains("private struct WorkstationDashboardSelectionGuide"))
         XCTAssertFalse(ios.contains("Text(\"선택하면 할 수 있는 일\")"))
@@ -2756,7 +2767,11 @@ final class DashboardDataModelTests: XCTestCase {
         let inlineItemDetail = try sourceStructBody(named: "ServerSyncItemInlineDetailPanel", in: ios)
         let workstationExternalDetail = try sourceStructBody(named: "WorkstationExternalDetailPanel", in: ios)
         let remoteItemToggleButton = try sourceStructBody(named: "RemoteItemToggleButton", in: ios)
-        let workstationOverview = try sourceStructBody(named: "WorkstationDashboardOverviewPanel", in: ios)
+        let workstationOverview = try sourceBody(
+            after: "private struct WorkstationDashboardOverviewPanel: View, Equatable",
+            in: ios,
+            description: "WorkstationDashboardOverviewPanel"
+        )
         let workstationChangeSummary = try sourceStructBody(named: "WorkstationChangeSummaryCard", in: ios)
         let workstationCategory = try sourceStructBody(named: "WorkstationDashboardCategoryWorkspace", in: ios)
         let workstationTasks = try sourceStructBody(named: "WorkstationTasksWorkspace", in: ios)
@@ -2950,10 +2965,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(workstationTasks.contains("await Task.yield()"))
         XCTAssertTrue(workstationTasks.contains("clearStaleExternalSelectionIfNeeded()"))
         XCTAssertTrue(workstationTasks.contains("WorkstationExternalDetailPanel"))
-        XCTAssertTrue(workstationOverview.contains("let model: CompanionModel"))
+        XCTAssertTrue(workstationOverview.contains("var data: WorkstationDashboardOverviewData"))
         XCTAssertFalse(workstationOverview.contains("@ObservedObject var model"))
-        XCTAssertTrue(workstationChangeSummary.contains("let model: CompanionModel"))
+        XCTAssertFalse(workstationOverview.contains("let model: CompanionModel"))
+        XCTAssertTrue(workstationChangeSummary.contains("var status: SanitizedRemoteStatus"))
         XCTAssertFalse(workstationChangeSummary.contains("@ObservedObject var model"))
+        XCTAssertFalse(workstationChangeSummary.contains("let model: CompanionModel"))
         XCTAssertTrue(ios.contains("private struct WorkstationExternalDetailPreparingPanel"))
         XCTAssertTrue(recentFileRequests.contains("LazyVStack(spacing: 8)"))
         XCTAssertTrue(recentFileRequests.contains("ForEach(requests.prefix(30))"))
