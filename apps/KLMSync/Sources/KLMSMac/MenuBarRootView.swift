@@ -606,7 +606,7 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
 }
 
 private struct TaskAndExamWorkspaceView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     private let columns = [
         GridItem(.adaptive(minimum: 260), spacing: 12),
     ]
@@ -635,7 +635,7 @@ private struct TaskAndExamWorkspaceView: View {
 }
 
 private struct QuickStatusStripView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         HStack(spacing: 6) {
@@ -713,7 +713,7 @@ private struct StatusChipView: View {
 }
 
 private struct ExternalIntegrationStatusView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @AppStorage("KLMSMacIntegrationStatusExpanded") private var isExpanded = false
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
 
@@ -1183,7 +1183,7 @@ private struct IntegrationStatusTile: View {
 }
 
 private struct ImportantLogPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
 
@@ -1206,7 +1206,7 @@ private enum LogSummaryKind: String {
 }
 
 private struct LogSummaryPanelView: View {
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
     @Binding var expandedKind: LogSummaryKind?
     private static let terminalSummaryDisplayInterval: TimeInterval = 5 * 60
 
@@ -1473,7 +1473,7 @@ private struct LogSummaryPanelView: View {
 
 private struct LogSummaryDetailView: View {
     var kind: LogSummaryKind
-    @ObservedObject var model: KLMSMacModel
+    let model: KLMSMacModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
