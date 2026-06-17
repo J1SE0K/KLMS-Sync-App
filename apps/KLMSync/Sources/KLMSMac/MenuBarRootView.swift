@@ -344,43 +344,58 @@ private struct MacAlertBannerView: View {
     @Binding var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
-        Button {
-            performAction()
-        } label: {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacPrimaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.86)
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: false, vertical: true)
+        if shouldShow {
+            Button {
+                performAction()
+            } label: {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.86)
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 10)
+                    Text(chipText)
+                        .font(chipFont)
+                        .monospacedDigit()
+                        .foregroundStyle(chipForeground)
+                        .padding(.horizontal, chipHorizontalPadding)
+                        .padding(.vertical, 8)
+                        .background(chipBackground, in: Capsule())
                 }
-                Spacer(minLength: 10)
-                Text(chipText)
-                    .font(chipFont)
-                    .monospacedDigit()
-                    .foregroundStyle(chipForeground)
-                    .padding(.horizontal, chipHorizontalPadding)
-                    .padding(.vertical, 8)
-                    .background(chipBackground, in: Capsule())
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(bannerBackground, in: RoundedRectangle(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(bannerBorder, lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 14))
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(bannerBackground, in: RoundedRectangle(cornerRadius: 14))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(bannerBorder, lineWidth: 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
+            .accessibilityLabel(title)
+            .accessibilityHint(detail)
         }
-        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
-        .accessibilityLabel(title)
-        .accessibilityHint(detail)
+    }
+
+    private var shouldShow: Bool {
+        if model.currentAuthDigits != nil {
+            return true
+        }
+        if model.authStatusMessage?.nilIfBlank != nil {
+            return true
+        }
+        if model.needsAttention {
+            return true
+        }
+        return selectedSection == .dashboard
     }
 
     private var title: String {
