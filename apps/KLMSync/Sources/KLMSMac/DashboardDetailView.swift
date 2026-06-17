@@ -361,7 +361,6 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         }
         let snapshot = snapshot
         fileDataTask?.cancel()
-        fileData = nil
         fileDataSignature = signature
         fileDataTask = Task { @MainActor in
             await Task.yield()

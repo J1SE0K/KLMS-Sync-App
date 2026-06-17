@@ -958,6 +958,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSummaryContent.contains("DashboardLogSummaryPanelView(model: model)"))
         XCTAssertFalse(dashboardSummaryContent.contains(".frame(width: 285, alignment: .topLeading)"))
         XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(activeDetail: currentRenderedDetail, displayedDetail: displayedDetail)"))
+        XCTAssertFalse(dashboardSummaryContent.contains("""
+        if displayedDetail == detail {
+            detailDisplayTask = nil
+            return
+        }
+        displayedDetail = nil
+        """))
         XCTAssertTrue(metricGrid.contains("GridItem(.flexible(minimum: 128), spacing: 8)"))
         XCTAssertTrue(metricGrid.contains("let count = min(max(metrics.count, 1), 4)"))
         XCTAssertTrue(metricGrid.contains("@State private var hoveredMetricID"))
@@ -1373,6 +1380,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(detail.contains("return DashboardFileData.Signature(snapshot: snapshot)"))
         XCTAssertTrue(detail.contains("fileDataTask = Task { @MainActor in"))
         XCTAssertTrue(detail.contains("Task.detached(priority: .userInitiated)"))
+        XCTAssertFalse(detail.contains("fileData = nil\n        fileDataSignature = signature"))
         XCTAssertFalse(detail.contains("let initialFileData = DashboardFileData(snapshot: resolvedSnapshot)"))
         XCTAssertFalse(detail.contains("dashboardMissingPathSet(from: model.snapshot)"))
         XCTAssertFalse(detail.contains("private func dashboardFilePathExists"))
@@ -2868,6 +2876,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSummary.contains("await Task.yield()"))
         XCTAssertTrue(dashboardSummary.contains("guard selectedDetail != detail else"))
         XCTAssertTrue(dashboardSummary.contains("private func deferDashboardDetail"))
+        XCTAssertFalse(dashboardSummary.contains("""
+        if displayedDetail == detail {
+            detailDisplayTask = nil
+            return
+        }
+        displayedDetail = nil
+        """))
         XCTAssertTrue(dashboardSummary.contains("DashboardDetailPreparingHint()"))
         XCTAssertTrue(commandPanel.contains("MacMailPasteAnalyzerPanel"))
         let macMailPanelIndex = try XCTUnwrap(commandPanel.range(of: "MacMailPasteAnalyzerPanel")?.lowerBound)

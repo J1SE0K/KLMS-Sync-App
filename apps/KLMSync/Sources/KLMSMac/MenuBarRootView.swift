@@ -2633,7 +2633,6 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             detailDisplayTask = nil
             return
         }
-        displayedDetail = nil
         detailDisplayTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled else { return }
