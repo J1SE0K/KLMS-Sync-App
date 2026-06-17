@@ -2664,6 +2664,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosMetricOverview.contains("WorkstationMetricCard"))
         XCTAssertTrue(iosMetricOverview.contains("if hasVisibleMetrics {"))
         XCTAssertTrue(iosMetricOverview.contains("표시할 대시보드 항목이 없습니다."))
+        XCTAssertTrue(iosMetricOverview.contains("shouldShowInlineEmptyDashboardMessage"))
+        XCTAssertTrue(iosMetricOverview.contains("horizontalSizeClass != .regular && !hasVisibleChangeSummary"))
         XCTAssertTrue(iosMetricOverview.contains(".filter { $0.value(from: displayStatus) > 0 }"))
         XCTAssertTrue(iosMetricOverview.contains("private var hasVisibleMetrics: Bool"))
         XCTAssertFalse(iosMetricOverview.contains("Text(title)"))

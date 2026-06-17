@@ -4757,7 +4757,7 @@ private struct RemoteDashboardMetricOverview: View {
             if hasVisibleMetrics {
                 metricSection("주요 항목", categories: primaryMetricCategories)
                 metricSection("확인 필요", categories: attentionMetricCategories)
-            } else if !hasVisibleChangeSummary {
+            } else if shouldShowInlineEmptyDashboardMessage {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
@@ -4855,6 +4855,10 @@ private struct RemoteDashboardMetricOverview: View {
 
     private var hasVisibleMetrics: Bool {
         !primaryMetricCategories.isEmpty || !attentionMetricCategories.isEmpty
+    }
+
+    private var shouldShowInlineEmptyDashboardMessage: Bool {
+        horizontalSizeClass != .regular && !hasVisibleChangeSummary
     }
 
     private var hasFileCleanupDetails: Bool {
