@@ -143,6 +143,15 @@ async function runSmoke() {
         location: "서울시 테스트로 123",
         changes: ["시간 생성"],
       },
+      {
+        action: "deleted",
+        calendar: "KLMS 시험",
+        bucket: "exam",
+        title: "지난 시험",
+        course: "영미 단편소설",
+        start_at: "2026-03-12 10:00",
+        changes: ["삭제"],
+      },
     ],
     settings: [
       {
@@ -190,6 +199,7 @@ async function runSmoke() {
     assert.equal(payload.items.length, 1);
     assert.equal(payload.items[0].detail, "");
     assert.equal(payload.dryRunReports[0].scope, "notice");
+    assert.equal(payload.calendarChanges.length, 1);
     assert.equal(payload.calendarChanges[0].title, "기말고사");
     assert.equal(payload.settings[0].key, "FILE_REFRESH_MODE");
     assert.equal(payload.calendarChanges[0].url, "");

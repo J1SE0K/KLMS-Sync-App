@@ -294,8 +294,10 @@ public struct CalendarChange: Codable, Sendable, Equatable, Identifiable {
 
     public var isUserVisibleCalendarChange: Bool {
         switch normalizedAction {
-        case "created", "deleted", "mail":
+        case "created", "mail":
             return true
+        case "deleted":
+            return false
         case "updated":
             let meaningfulChanges = changes
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }

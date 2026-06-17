@@ -2791,6 +2791,7 @@ function calendarChangeStableID(change) {
 
 function statusWithStoredSyncData(rawStatus, items, calendarChanges) {
   const status = normalizeStatus(rawStatus || defaultStatus);
+  const visibleCalendarChanges = calendarChanges.filter(isUserVisibleCalendarChange);
   const visible = items.filter((item) => !item.isHidden);
   const notices = visible.filter((item) => item.kind === "notice");
   const files = visible.filter((item) => item.kind === "file");
@@ -2802,10 +2803,28 @@ function statusWithStoredSyncData(rawStatus, items, calendarChanges) {
   status.noticeIgnored = items.filter((item) => item.kind === "notice" && item.isHidden).length;
   status.fileTotal = files.length;
   status.newFiles = Math.min(status.newFiles, status.fileTotal);
-  status.calendarCreated = calendarChanges.filter((change) => change.action === "created").length;
-  status.calendarUpdated = calendarChanges.filter((change) => change.action === "updated").length;
-  status.calendarDeleted = calendarChanges.filter((change) => change.action === "deleted").length;
+  status.calendarCreated = visibleCalendarChanges.filter((change) => change.action === "created" || change.action === "mail").length;
+  status.calendarUpdated = visibleCalendarChanges.filter((change) => change.action === "updated").length;
+  status.calendarDeleted = 0;
   return status;
+}
+
+function isUserVisibleCalendarChange(change) {
+  const action = String(change?.action || "").trim().toLowerCase();
+  if (action === "deleted") {
+    return false;
+  }
+  if (action === "updated") {
+    const meaningfulChanges = Array.isArray(change?.changes) ? change.changes : [];
+    if (meaningfulChanges.length === 0) {
+      return true;
+    }
+    return meaningfulChanges
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean)
+      .some((value) => !["메모", "memo", "note", "notes"].includes(value));
+  }
+  return true;
 }
 
 function compareSyncItems(lhs, rhs) {
@@ -2842,6 +2861,7 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
       `).all(limit);
   const dryRunReports = parseJSON(getMeta("syncDataDryRunReports"), []);
   const calendarChanges = parseJSON(getMeta("syncDataCalendarChanges"), []);
+  const visibleCalendarChanges = normalizeCalendarChanges(calendarChanges).filter(isUserVisibleCalendarChange);
   const settings = parseJSON(getMeta("syncDataSettings"), []);
   const sharedSettings = loadSharedSettings();
   const runLogs = parseJSON(getMeta("syncDataRunLogs"), []);
@@ -2852,7 +2872,7 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
     updatedAt: getMeta("syncDataUpdatedAt") || "",
     items: rows.map((row) => normalizeSyncItem(parseJSON(row.payload_json, null))).filter(Boolean),
     dryRunReports: normalizeDryRunReports(dryRunReports),
-    calendarChanges: normalizeCalendarChanges(calendarChanges),
+    calendarChanges: visibleCalendarChanges,
     settings: normalizeSettings(settings),
     sharedSettings,
     runLogs: normalizeRunLogs(runLogs, runLogsClearedAt),

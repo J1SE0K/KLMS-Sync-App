@@ -83,13 +83,12 @@ final class StatusModelTests: XCTestCase {
         XCTAssertTrue(change.explanationText.contains("새로 만든 항목"))
     }
 
-    func testDeletedCalendarChangeIsConfirmationOnly() throws {
+    func testDeletedCalendarChangeIsRemovedFromUserVisibleLists() throws {
         let change = CalendarChange(action: "deleted", title: "지난 일정")
 
         XCTAssertTrue(change.isDeletedAction)
         XCTAssertEqual(change.actionDisplayName, "삭제됨")
-        XCTAssertTrue(change.explanationText.contains("Apple Calendar에서 삭제"))
-        XCTAssertTrue(change.nextActionText.contains("목록에서 바로 없앱니다"))
+        XCTAssertFalse(change.isUserVisibleCalendarChange)
     }
 
     func testCalendarEventEditMessageRoundTripUsesServerKeys() throws {
