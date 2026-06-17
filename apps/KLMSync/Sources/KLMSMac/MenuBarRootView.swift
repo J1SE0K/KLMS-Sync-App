@@ -4397,8 +4397,8 @@ private enum RunLogArchiveFilter: String, CaseIterable, Identifiable {
 private struct RunLogArchivePanelView: View {
     let model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
-    @State private var isHistoryExpanded = false
-    @State private var showingSystemLogs = false
+    @State private var isHistoryExpanded = true
+    @State private var showingSystemLogs = true
     @State private var visibleLimit = 30
 
     private var records: [CommandRunRecord] {
@@ -4412,34 +4412,69 @@ private struct RunLogArchivePanelView: View {
     var body: some View {
         let summary = RunLogArchiveSummary(records: records)
         VStack(alignment: .leading, spacing: 12) {
-            CollapsibleSectionBox(title: "실행 로그", systemImage: "clock.arrow.circlepath", isExpanded: $isHistoryExpanded) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("각 실행 기록을 펼치면 마지막 로그를 볼 수 있습니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
-                        RunLogStatChip(title: "전체", value: "\(summary.total)", systemImage: "tray.full", tint: .klmsMacCommandAccent)
-                        RunLogStatChip(title: "성공", value: "\(summary.succeeded)", systemImage: "checkmark.circle", tint: Color.klmsMacSuccessBorder)
-                        RunLogStatChip(title: "실패", value: "\(summary.needsAttention)", systemImage: "exclamationmark.triangle", tint: Color.klmsMacWarningBorder)
-                        RunLogStatChip(title: "중단", value: "\(summary.cancelled)", systemImage: "stop.circle", tint: .klmsMacSecondaryText)
-                    }
-
-                    if let latest = records.first {
-                        Text("최근 실행: \(latest.command.displayName) · \(latest.startedAt.formatted(date: .numeric, time: .shortened)) · \(latest.statusText)")
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .textSelection(.enabled)
-                    }
-
-                    Picker("보기", selection: $filter) {
-                        ForEach(RunLogArchiveFilter.allCases) { item in
-                            Text(item.title).tag(item)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Button {
+                        isHistoryExpanded.toggle()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                            Text("실행 로그")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacPrimaryText)
+                            Spacer(minLength: 8)
+                            Image(systemName: isHistoryExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacSecondaryText)
                         }
+                        .contentShape(Rectangle())
                     }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
+                    .buttonStyle(MacPressFeedbackButtonStyle())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+
+                    Button(role: .destructive) {
+                        model.clearExecutionRunLogs()
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                    .help("실행 로그 지우기")
+                    .accessibilityLabel("실행 로그 지우기")
+                    .disabled(model.runningCommand != nil || !model.hasClearableExecutionRunLogs)
+                }
+
+                if isHistoryExpanded {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("각 실행 기록을 펼치면 마지막 로그를 볼 수 있습니다.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
+                            RunLogStatChip(title: "전체", value: "\(summary.total)", systemImage: "tray.full", tint: .klmsMacCommandAccent)
+                            RunLogStatChip(title: "성공", value: "\(summary.succeeded)", systemImage: "checkmark.circle", tint: Color.klmsMacSuccessBorder)
+                            RunLogStatChip(title: "실패", value: "\(summary.needsAttention)", systemImage: "exclamationmark.triangle", tint: Color.klmsMacWarningBorder)
+                            RunLogStatChip(title: "중단", value: "\(summary.cancelled)", systemImage: "stop.circle", tint: .klmsMacSecondaryText)
+                        }
+
+                        if let latest = records.first {
+                            Text("최근 실행: \(latest.command.displayName) · \(latest.startedAt.formatted(date: .numeric, time: .shortened)) · \(latest.statusText)")
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                                .textSelection(.enabled)
+                        }
+
+                        Picker("보기", selection: $filter) {
+                            ForEach(RunLogArchiveFilter.allCases) { item in
+                                Text(item.title).tag(item)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .controlSize(.small)
+                    }
                 }
             }
             .padding(12)
@@ -4490,28 +4525,51 @@ private struct RunLogArchivePanelView: View {
             }
 
             SectionBox(title: "서버 로그") {
-                DisclosureGroup(isExpanded: $showingSystemLogs) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if !model.snapshot.relayLogTail.isEmpty {
-                            Text("서버 릴레이 로그")
-                                .font(.caption.weight(.semibold))
-                            LogTextBlock(text: model.snapshot.relayLogTail.klmsDisplayText)
-                        }
-                        if model.snapshot.relayLogTail.isEmpty {
-                            Text("저장된 서버 로그가 아직 없습니다.")
-                                .font(.caption)
-                                .foregroundStyle(Color.klmsMacSecondaryText)
-                        }
-                    }
-                    .padding(.top, 6)
-                } label: {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        Label("서버 로그 보기", systemImage: "network")
-                            .font(.caption.weight(.semibold))
-                        Spacer()
-                        Text(systemLogSummary)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
+                        Button {
+                            showingSystemLogs.toggle()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Label("서버 로그 보기", systemImage: "network")
+                                    .font(.caption.weight(.semibold))
+                                Spacer()
+                                Text(systemLogSummary)
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
+                                Image(systemName: showingSystemLogs ? "chevron.down" : "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(MacPressFeedbackButtonStyle())
+
+                        Button(role: .destructive) {
+                            model.clearLocalRelayLogs()
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                        .help("서버 로그 지우기")
+                        .accessibilityLabel("서버 로그 지우기")
+                        .disabled(!model.hasClearableLocalRelayLogs)
+                    }
+
+                    if showingSystemLogs {
+                        VStack(alignment: .leading, spacing: 10) {
+                            if !model.snapshot.relayLogTail.isEmpty {
+                                Text("서버 릴레이 로그")
+                                    .font(.caption.weight(.semibold))
+                                LogTextBlock(text: model.snapshot.relayLogTail.klmsDisplayText)
+                            }
+                            if model.snapshot.relayLogTail.isEmpty {
+                                Text("저장된 서버 로그가 아직 없습니다.")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
+                            }
+                        }
+                        .padding(.top, 6)
                     }
                 }
             }
@@ -4738,14 +4796,6 @@ private struct RunLogArchiveRowView: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(statusColor)
                     .lineLimit(1)
-                Button(role: .destructive) {
-                    model.deleteCommandHistoryRecord(id: record.id)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
-                .help("이 실행 로그 지우기")
-                .accessibilityLabel("\(record.command.displayName) 실행 로그 지우기")
             }
         }
         .padding(9)

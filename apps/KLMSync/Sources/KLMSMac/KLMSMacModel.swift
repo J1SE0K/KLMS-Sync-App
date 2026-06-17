@@ -439,6 +439,16 @@ final class KLMSMacModel: ObservableObject {
             || !serverRelaySharedRunLogs.isEmpty
     }
 
+    var hasClearableExecutionRunLogs: Bool {
+        !liveCommandOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || lastCommandResult != nil
+            || !commandHistory.records.isEmpty
+    }
+
+    var hasClearableLocalRelayLogs: Bool {
+        !snapshot.relayLogTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var serverRelayConnectionInfoText: String {
         let publicURL = publicServerRelayURLForSharing() ?? ""
         return """
@@ -770,6 +780,43 @@ final class KLMSMacModel: ObservableObject {
         await clearServerRelaySharedRunLogs()
     }
 
+    func clearExecutionRunLogs() {
+        guard runningCommand == nil else {
+            serverRelayStatusMessage = "동기화가 끝난 뒤 실행 로그를 지울 수 있습니다."
+            return
+        }
+        clearTransientRunState()
+        commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
+        serverRelayStatusMessage = "실행 로그를 지웠습니다."
+        remoteProcessingStatusMessage = nil
+        errorMessage = nil
+    }
+
+    func clearLocalRelayLogs() {
+        snapshot.relayLogTail = ""
+        for url in [paths.relayStdoutLogURL, paths.relayStderrLogURL] {
+            do {
+                try FileManager.default.createDirectory(
+                    at: url.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                if FileManager.default.fileExists(atPath: url.path) {
+                    let handle = try FileHandle(forWritingTo: url)
+                    try handle.truncate(atOffset: 0)
+                    try handle.close()
+                } else {
+                    try Data().write(to: url)
+                }
+            } catch {
+                errorMessage = "서버 로그 파일 지우기 실패: \(error.localizedDescription)"
+                return
+            }
+        }
+        serverRelayStatusMessage = "서버 로그를 지웠습니다."
+        remoteProcessingStatusMessage = nil
+        errorMessage = nil
+    }
+
     private func clearLocalStoredLogs() {
         commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
         snapshot.relayLogTail = ""
@@ -789,14 +836,6 @@ final class KLMSMacModel: ObservableObject {
             } catch {
                 errorMessage = "로컬 로그 파일 지우기 실패: \(error.localizedDescription)"
             }
-        }
-    }
-
-    func deleteCommandHistoryRecord(id: String) {
-        do {
-            commandHistory = try CommandRunHistoryStore(url: paths.appHistoryURL).removeRecord(id: id)
-        } catch {
-            errorMessage = "실행 로그 삭제 실패: \(error.localizedDescription)"
         }
     }
 
