@@ -2922,55 +2922,43 @@ private struct CompanionImmediateSettingRow<Content: View>: View {
     var title: String
     var statusText: String
     var detail: String
-    @State private var isExpanded = false
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                isExpanded.toggle()
-            } label: {
-                HStack(alignment: .center, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.klmsPrimaryText)
-                        Text(detail)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .lineLimit(isExpanded ? 3 : 1)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 8)
-                    Text(statusText)
-                        .font(.caption2.weight(.semibold))
+            HStack(alignment: .center, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsPrimaryText)
+                    Text(detail)
+                        .font(.caption2)
                         .foregroundStyle(Color.klmsSecondaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.74)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(Color.klmsCardBackground, in: Capsule())
-                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 9))
+                Spacer(minLength: 8)
+                Text(statusText)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Color.klmsCardBackground, in: Capsule())
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 9))
-            .accessibilityHint(isExpanded ? "\(title) 설정 접기" : "\(title) 설정 펼치기")
 
-            if isExpanded {
-                CompanionSettingsControlContainer {
-                    content()
-                }
-                .padding(.top, 2)
-                .transition(.opacity)
+            CompanionSettingsControlContainer {
+                content()
             }
+            .padding(.top, 2)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isExpanded ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.44) : Color.klmsBorder.opacity(0.82), lineWidth: 1)
+                .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
         }
     }
 }
