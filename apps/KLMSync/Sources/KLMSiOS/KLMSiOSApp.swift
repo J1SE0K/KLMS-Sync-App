@@ -5082,29 +5082,35 @@ private struct WorkstationDashboardOverviewPanel: View {
                 }
             }
 
-            WorkstationDashboardPreviewSection(
-                title: "파일",
-                systemImage: "folder",
-                tint: Color.klmsCommandAccent,
-                items: previewItems(for: .files),
-                emptyMessage: "새로 확인할 파일이 없습니다."
-            )
+            if !filePreviewItems.isEmpty {
+                WorkstationDashboardPreviewSection(
+                    title: "파일",
+                    systemImage: "folder",
+                    tint: Color.klmsCommandAccent,
+                    items: filePreviewItems,
+                    emptyMessage: "새로 확인할 파일이 없습니다."
+                )
+            }
 
-            WorkstationDashboardPreviewSection(
-                title: "과제/시험",
-                systemImage: "checklist",
-                tint: Color.klmsWarningBorder,
-                items: previewTaskItems,
-                emptyMessage: "진행 중인 과제나 예정 시험이 없습니다."
-            )
+            if !previewTaskItems.isEmpty {
+                WorkstationDashboardPreviewSection(
+                    title: "과제/시험",
+                    systemImage: "checklist",
+                    tint: Color.klmsWarningBorder,
+                    items: previewTaskItems,
+                    emptyMessage: "진행 중인 과제나 예정 시험이 없습니다."
+                )
+            }
 
-            WorkstationDashboardPreviewSection(
-                title: "공지",
-                systemImage: "note.text",
-                tint: Color.klmsCommandAccent,
-                items: previewItems(for: .notices),
-                emptyMessage: "새로 볼 공지가 없습니다."
-            )
+            if !noticePreviewItems.isEmpty {
+                WorkstationDashboardPreviewSection(
+                    title: "공지",
+                    systemImage: "note.text",
+                    tint: Color.klmsCommandAccent,
+                    items: noticePreviewItems,
+                    emptyMessage: "새로 볼 공지가 없습니다."
+                )
+            }
 
             WorkstationChangeSummaryCard(model: model)
         }
@@ -5132,6 +5138,14 @@ private struct WorkstationDashboardOverviewPanel: View {
 
     private func previewItems(for category: DashboardMetricCategory) -> [ServerRelaySyncItem] {
         Array(model.cachedVisibleDashboardItems(for: category.rawValue).prefix(2))
+    }
+
+    private var filePreviewItems: [ServerRelaySyncItem] {
+        previewItems(for: .files)
+    }
+
+    private var noticePreviewItems: [ServerRelaySyncItem] {
+        previewItems(for: .notices)
     }
 
     private var previewTaskItems: [ServerRelaySyncItem] {
