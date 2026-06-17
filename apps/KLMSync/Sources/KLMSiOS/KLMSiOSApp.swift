@@ -119,7 +119,9 @@ final class CompanionModel: ObservableObject {
     @Published var syncItems: [ServerRelaySyncItem] = [] {
         didSet { rebuildDashboardDerivedState(); rebuildVisibleCalendarChanges() }
     }
-    @Published var dryRunReports: [DryRunReport] = []
+    @Published var dryRunReports: [DryRunReport] = [] {
+        didSet { rebuildDashboardFileCleanupDetails() }
+    }
     @Published var calendarChanges: [CalendarChange] = [] {
         didSet { rebuildVisibleCalendarChanges() }
     }
@@ -132,6 +134,7 @@ final class CompanionModel: ObservableObject {
     }
     @Published private(set) var dashboardSyncItems: [ServerRelaySyncItem] = []
     @Published private(set) var dashboardSyncItemsRevision = 0
+    @Published private(set) var dashboardHasFileCleanupDetails = false
     @Published private(set) var visibleCalendarChangesCache: [CalendarChange] = []
     @Published private(set) var dashboardStatus = SanitizedRemoteStatus()
     @Published var status = SanitizedRemoteStatus() {
@@ -425,6 +428,16 @@ final class CompanionModel: ObservableObject {
         next.applyMailDashboardItems(mailDashboardItems, baseItems: syncItems)
         if dashboardStatus != next {
             dashboardStatus = next
+        }
+    }
+
+    private func rebuildDashboardFileCleanupDetails() {
+        let next = dryRunReports.contains { report in
+            report.scope == "files"
+                && (report.wouldPrune > 0 || report.wouldPruneCourseFiles > 0 || report.wouldPruneArchive > 0 || report.wouldDelete > 0)
+        }
+        if dashboardHasFileCleanupDetails != next {
+            dashboardHasFileCleanupDetails = next
         }
     }
 
@@ -2571,6 +2584,8 @@ private struct CompanionStatusScreen: View {
             RemoteDashboardSyncCard(model: model, compact: horizontalSizeClass != .regular)
             RemoteDashboardMetricOverview(
                 model: model,
+                status: model.dashboardStatus,
+                hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
                 selectedCategory: $selectedDashboardPreview,
                 displayedCategory: displayedDashboardPreview,
                 onCategoryTap: { category in
@@ -4411,10 +4426,7 @@ private struct RemoteStatusHeader: View {
     }
 
     private var hasFileCleanupDetails: Bool {
-        model.dryRunReports.contains { report in
-            report.scope == "files"
-                && (report.wouldPrune > 0 || report.wouldPruneCourseFiles > 0 || report.wouldPruneArchive > 0 || report.wouldDelete > 0)
-        }
+        model.dashboardHasFileCleanupDetails
     }
 
     private var hasVisibleChangeSummary: Bool {
@@ -4747,7 +4759,9 @@ private struct RemoteDashboardSyncCard: View {
 }
 
 private struct RemoteDashboardMetricOverview: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
+    var status: SanitizedRemoteStatus
+    var hasFileCleanupDetails: Bool
     @Binding var selectedCategory: DashboardMetricCategory?
     var displayedCategory: DashboardMetricCategory?
     var onCategoryTap: (DashboardMetricCategory) -> Void
@@ -4848,7 +4862,7 @@ private struct RemoteDashboardMetricOverview: View {
     }
 
     private var displayStatus: SanitizedRemoteStatus {
-        model.dashboardStatus
+        status
     }
 
     private var primaryMetricCategories: [DashboardMetricCategory] {
@@ -4868,13 +4882,6 @@ private struct RemoteDashboardMetricOverview: View {
 
     private var shouldShowInlineEmptyDashboardMessage: Bool {
         horizontalSizeClass != .regular && !hasVisibleChangeSummary
-    }
-
-    private var hasFileCleanupDetails: Bool {
-        model.dryRunReports.contains { report in
-            report.scope == "files"
-                && (report.wouldPrune > 0 || report.wouldPruneCourseFiles > 0 || report.wouldPruneArchive > 0 || report.wouldDelete > 0)
-        }
     }
 
     private var hasVisibleChangeSummary: Bool {
