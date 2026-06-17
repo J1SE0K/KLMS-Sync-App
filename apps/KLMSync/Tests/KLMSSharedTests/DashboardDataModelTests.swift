@@ -2264,7 +2264,13 @@ final class DashboardDataModelTests: XCTestCase {
         let iosSplitRoot = try sourceStructBody(named: "CompanionSplitRootView", in: ios)
         let iosSidebar = try sourceStructBody(named: "WorkstationSidebar", in: ios)
         let iosSidebarButton = try sourceStructBody(named: "CompanionSidebarButton", in: ios)
+        let iosScreenContainer = try sourceBody(
+            after: "private struct CompanionScreenContainer<Content: View>: View",
+            in: ios,
+            description: "iOS companion screen container"
+        )
         let iosHeader = try sourceStructBody(named: "CompanionScreenHeader", in: ios)
+        let iosHeaderStatusPill = try sourceStructBody(named: "CompanionHeaderStatusPill", in: ios)
         let iosStatusScreen = try sourceStructBody(named: "CompanionStatusScreen", in: ios)
         let iosMetricOverview = try sourceStructBody(named: "RemoteDashboardMetricOverview", in: ios)
         let iosMetricTile = try sourceStructBody(named: "RemoteMetricTile", in: ios)
@@ -2666,10 +2672,17 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct CompanionSelectableItemListRows"))
         XCTAssertTrue(ios.contains("private struct CompanionInlineItemRowsView"))
         XCTAssertTrue(ios.contains("await Task.yield()"))
+        XCTAssertTrue(iosScreenContainer.contains("let model: CompanionModel"))
+        XCTAssertFalse(iosScreenContainer.contains("@ObservedObject var model"))
         XCTAssertTrue(iosHeader.contains("@Environment(\\.horizontalSizeClass)"))
         XCTAssertTrue(iosHeader.contains("compactHeader"))
         XCTAssertTrue(iosHeader.contains("regularHeader"))
         XCTAssertTrue(iosHeader.contains("Text(\"KLMS Sync\")"))
+        XCTAssertTrue(iosHeader.contains("CompanionHeaderStatusPill(model: model)"))
+        XCTAssertFalse(iosHeader.contains("@ObservedObject var model"))
+        XCTAssertFalse(iosHeader.contains("private var headerStatusText"))
+        XCTAssertTrue(iosHeaderStatusPill.contains("@ObservedObject var model"))
+        XCTAssertTrue(iosHeaderStatusPill.contains("private var headerStatusText"))
         XCTAssertFalse(iosHeader.contains("Text(model.statusLine)"))
         XCTAssertTrue(iosStatusScreen.contains("statusDetailColumn"))
         XCTAssertTrue(iosStatusScreen.contains("DashboardCategoryInlineDetailPanel(category: category, model: model)"))

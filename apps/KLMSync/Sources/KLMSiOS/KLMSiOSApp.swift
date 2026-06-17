@@ -3209,7 +3209,7 @@ private struct CompanionHistoryScreen: View {
 
 private struct CompanionScreenContainer<Content: View>: View {
     var title: String
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @ViewBuilder var content: () -> Content
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -3249,7 +3249,7 @@ private struct CompanionScreenContainer<Content: View>: View {
 
 private struct CompanionScreenHeader: View {
     var title: String
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -3278,7 +3278,7 @@ private struct CompanionScreenHeader: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(1)
-                statusPill
+                CompanionHeaderStatusPill(model: model)
             }
         }
     }
@@ -3289,11 +3289,15 @@ private struct CompanionScreenHeader: View {
                 .font(.title2.weight(.bold))
                 .foregroundStyle(Color.klmsPrimaryText)
             Spacer(minLength: 8)
-            statusPill
+            CompanionHeaderStatusPill(model: model)
         }
     }
+}
 
-    private var statusPill: some View {
+private struct CompanionHeaderStatusPill: View {
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
         Text(headerStatusText)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(Color.klmsSecondaryText)
@@ -3305,7 +3309,7 @@ private struct CompanionScreenHeader: View {
             .overlay {
                 Capsule()
                     .stroke(Color.klmsBorder, lineWidth: 1)
-            }
+        }
     }
 
     private var headerStatusText: String {
