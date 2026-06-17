@@ -4178,6 +4178,34 @@ private struct CompanionItemListControls: View {
     }
 }
 
+private struct CompanionItemListControlsPlaceholder: View {
+    private let controls = [
+        ("정렬", "arrow.up.arrow.down", "최신순으로 준비 중"),
+        ("범위", "line.3.horizontal.decrease.circle", "년도 · 학기 · 과목"),
+        ("상태", "checklist", "전체 상태"),
+        ("표시", "slider.horizontal.3", "새 항목 · 최근 변경"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("목록 기준을 준비하고 있습니다", systemImage: "line.3.horizontal.decrease.circle")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+
+            ForEach(controls, id: \.0) { title, systemImage, detail in
+                CompanionControlBox(title: title, systemImage: systemImage) {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .redacted(reason: .placeholder)
+        .allowsHitTesting(false)
+    }
+}
+
 private struct CompanionControlBox<Content: View>: View {
     var title: String
     var systemImage: String
@@ -5782,6 +5810,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
                         )
                     }
                 } else {
+                    CompanionItemListControlsPlaceholder()
                     panelEmptyText("목록을 준비하고 있습니다.")
                 }
             }
@@ -8230,50 +8259,56 @@ private struct DashboardCategoryDetailScreen: View {
                     Text(category.emptyMessage)
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
-            } else if let listData = cachedListData {
-                let filtered = listData.filteredItems
+            } else {
                 Section("검색") {
                     TextField("\(category.title) 검색", text: $query)
                         .textFieldStyle(.roundedBorder)
                 }
-                Section("보기") {
-                    CompanionItemListControls(
-                        sortOption: $sortOption,
-                        visibilityFilter: $visibilityFilter,
-                        statusFilter: $statusFilter,
-                        selectedCourse: $selectedCourse,
-                        selectedYear: $selectedYear,
-                        selectedSemester: $selectedSemester,
-                        newOnly: $newOnly,
-                        recentOnly: $recentOnly,
-                        availableStatusFilters: listData.availableStatusFilters,
-                        courseOptions: listData.courseOptions,
-                        yearOptions: listData.yearOptions,
-                        semesterOptions: listData.semesterOptions,
-                        supportsNewOnly: category.supportsNewOnly,
-                        supportsRecentOnly: category.supportsRecentOnly,
-                        defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
-                        totalCount: listData.baseItems.count,
-                        filteredCount: filtered.count
-                    )
-                }
-                if filtered.isEmpty {
-                    Section {
-                        Text(category.emptyMessage)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                    }
-                } else {
-                    Section("\(filtered.count)개") {
-                        CompanionSelectableItemListRows(
-                            items: filtered,
-                            onSelect: onSelect
+
+                if let listData = cachedListData {
+                    let filtered = listData.filteredItems
+                    Section("보기") {
+                        CompanionItemListControls(
+                            sortOption: $sortOption,
+                            visibilityFilter: $visibilityFilter,
+                            statusFilter: $statusFilter,
+                            selectedCourse: $selectedCourse,
+                            selectedYear: $selectedYear,
+                            selectedSemester: $selectedSemester,
+                            newOnly: $newOnly,
+                            recentOnly: $recentOnly,
+                            availableStatusFilters: listData.availableStatusFilters,
+                            courseOptions: listData.courseOptions,
+                            yearOptions: listData.yearOptions,
+                            semesterOptions: listData.semesterOptions,
+                            supportsNewOnly: category.supportsNewOnly,
+                            supportsRecentOnly: category.supportsRecentOnly,
+                            defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
+                            totalCount: listData.baseItems.count,
+                            filteredCount: filtered.count
                         )
                     }
-                }
-            } else {
-                Section {
-                    Text("목록을 준비하고 있습니다.")
-                        .foregroundStyle(Color.klmsSecondaryText)
+                    if filtered.isEmpty {
+                        Section {
+                            Text(category.emptyMessage)
+                                .foregroundStyle(Color.klmsSecondaryText)
+                        }
+                    } else {
+                        Section("\(filtered.count)개") {
+                            CompanionSelectableItemListRows(
+                                items: filtered,
+                                onSelect: onSelect
+                            )
+                        }
+                    }
+                } else {
+                    Section("보기") {
+                        CompanionItemListControlsPlaceholder()
+                    }
+                    Section {
+                        Text("목록을 준비하고 있습니다.")
+                            .foregroundStyle(Color.klmsSecondaryText)
+                    }
                 }
             }
         }
