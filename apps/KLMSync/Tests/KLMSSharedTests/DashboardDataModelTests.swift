@@ -2213,6 +2213,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macMetricTile.contains("isHovered ? Color.klmsMacPrimaryText : Color.klmsMacSecondaryText.opacity(0.70)"))
         XCTAssertFalse(macMetricTile.contains(".shadow(color: isSelected ? tint.opacity(0.12) : Color.clear"))
         XCTAssertTrue(macMetricTile.contains(".font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())"))
+        XCTAssertTrue(macMetricTile.contains(".frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)"))
+        XCTAssertFalse(macMetricTile.contains("minHeight: 82"))
         XCTAssertTrue(dashboardTopBarView.contains("Text(selectedSection.title)"))
         XCTAssertFalse(dashboardTopBarView.contains("Text(\"대시보드\")"))
         XCTAssertTrue(dashboardTopBarView.contains(".font(.system(size: 26, weight: .bold, design: .rounded))"))
