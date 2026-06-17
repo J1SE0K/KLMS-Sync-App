@@ -174,7 +174,9 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         configureApplicationMenu()
         configureQuitKeyMonitor()
         configureStatusItem(for: model)
-        KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+        DispatchQueue.main.async {
+            KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()
+        }
     }
 
     private static func clearSavedApplicationState() {
@@ -264,6 +266,10 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
         return true
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

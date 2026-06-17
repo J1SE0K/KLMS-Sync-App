@@ -7,6 +7,8 @@ import Foundation
 private enum SmokeFailure: Error, CustomStringConvertible {
     case accessibilityPermissionMissing
     case appNotRunning(bundleID: String, appName: String)
+    case dashboardOpenControlMissing
+    case dashboardOpenFailed(AXError)
     case workspaceButtonMissing(String)
     case settingsTabMissing(String)
     case pressFailed(identifier: String, AXError)
@@ -19,6 +21,10 @@ private enum SmokeFailure: Error, CustomStringConvertible {
             return "Accessibility permission is not granted for Terminal/Codex. Enable it in System Settings > Privacy & Security > Accessibility."
         case let .appNotRunning(bundleID, appName):
             return "KLMS Mac app is not running. Expected bundle id '\(bundleID)' or app name '\(appName)'."
+        case .dashboardOpenControlMissing:
+            return "Could not find the menu item that opens the KLMS dashboard window."
+        case let .dashboardOpenFailed(error):
+            return "Could not open the KLMS dashboard window from the menu bar: \(error)."
         case let .workspaceButtonMissing(identifier):
             return "Could not find workspace button with accessibility identifier '\(identifier)'."
         case let .settingsTabMissing(identifier):
@@ -52,8 +58,9 @@ guard let app = (runningByBundleID + runningByName).first(where: { !$0.isTermina
     throw SmokeFailure.appNotRunning(bundleID: bundleID, appName: appName)
 }
 
-_ = app.activate(options: [])
 let appElement = AXUIElementCreateApplication(app.processIdentifier)
+
+try openDashboardWindowIfNeeded(appElement: appElement)
 
 try verifyWorkspaceNavigation(
     appElement: appElement,
@@ -77,6 +84,40 @@ try verifyWorkspaceNavigation(
 )
 
 print("ok: KLMS Mac workspace accessibility navigation is responsive")
+
+private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
+    if waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: 0.4) != nil {
+        return
+    }
+
+    requestDashboardWindowReopen()
+    if waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: timeout) != nil {
+        return
+    }
+
+    guard let openItem = waitForElement(withIdentifier: "openDashboardFromMenu", in: appElement, timeout: timeout) else {
+        throw SmokeFailure.dashboardOpenControlMissing
+    }
+    let error = AXUIElementPerformAction(openItem, kAXPressAction as CFString)
+    guard error == .success else {
+        throw SmokeFailure.dashboardOpenFailed(error)
+    }
+
+    guard waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: timeout) != nil else {
+        throw SmokeFailure.workspaceButtonMissing("workspace-dashboard")
+    }
+}
+
+private func requestDashboardWindowReopen() {
+    let escapedAppName = appName.replacingOccurrences(of: "\"", with: "\\\"")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    process.arguments = ["-e", "tell application \"\(escapedAppName)\" to reopen"]
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    try? process.run()
+    process.waitUntilExit()
+}
 
 private func verifyWorkspaceNavigation(
     appElement: AXUIElement,
@@ -136,13 +177,17 @@ private func waitForElement(
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
         if let element = findElement(in: root, maxDepth: 32, maxNodes: 35_000, where: {
-            stringAttribute($0, "AXIdentifier" as CFString) == identifier
+            identifierMatches(stringAttribute($0, "AXIdentifier" as CFString), expected: identifier)
         }) {
             return element
         }
         Thread.sleep(forTimeInterval: 0.1)
     } while Date() < deadline
     return nil
+}
+
+private func identifierMatches(_ actual: String?, expected: String) -> Bool {
+    actual == expected || actual == "\(expected):"
 }
 
 private func waitForText(
@@ -185,9 +230,15 @@ private func findElement(
     where predicate: (AXUIElement) -> Bool
 ) -> AXUIElement? {
     var stack: [(AXUIElement, Int)] = [(root, 0)]
+    var visited = Set<CFHashCode>()
     var visitedCount = 0
 
     while let (element, depth) = stack.popLast() {
+        let elementHash = CFHash(element)
+        guard visited.insert(elementHash).inserted else {
+            continue
+        }
+
         visitedCount += 1
         guard visitedCount <= maxNodes else {
             return nil
