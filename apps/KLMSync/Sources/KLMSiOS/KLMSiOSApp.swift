@@ -4477,10 +4477,8 @@ private struct RemoteDashboardSyncCard: View {
         }
     }
 
-    private func primaryCommandTitle(isRunning: Bool, isDisabled: Bool) -> String {
+    private func primaryCommandTitle(isRunning: Bool, isDisabled _: Bool) -> String {
         if isRunning { return "전체 동기화 중단" }
-        if !model.isRemoteAvailable { return "Mac 연결 필요" }
-        if isDisabled { return "잠시 대기" }
         return "전체 동기화"
     }
 
@@ -9805,10 +9803,8 @@ private struct RemoteCommandPanel: View {
         }
     }
 
-    private func primaryCommandTitle(isRunning: Bool, isDisabled: Bool) -> String {
+    private func primaryCommandTitle(isRunning: Bool, isDisabled _: Bool) -> String {
         if isRunning { return "전체 동기화 중단" }
-        if !model.isRemoteAvailable { return "Mac 연결 필요" }
-        if isDisabled { return "잠시 대기" }
         return "전체 동기화"
     }
 
