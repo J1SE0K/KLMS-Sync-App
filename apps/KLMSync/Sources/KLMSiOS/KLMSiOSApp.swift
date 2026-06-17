@@ -5834,31 +5834,39 @@ private struct DashboardCategoryInlineDetailPanel: View {
             panelEmptyText(category.emptyMessage)
         } else {
             LazyVStack(alignment: .leading, spacing: 8) {
-                TextField("\(category.title) 검색", text: $query)
-                    .textFieldStyle(.roundedBorder)
+                CompanionControlBox(title: "검색과 필터", systemImage: "magnifyingglass") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("\(category.title) 검색", text: $query)
+                            .textFieldStyle(.roundedBorder)
+
+                        if let listData = cachedListData {
+                            CompanionItemListControls(
+                                sortOption: $sortOption,
+                                visibilityFilter: $visibilityFilter,
+                                statusFilter: $statusFilter,
+                                selectedCourse: $selectedCourse,
+                                selectedYear: $selectedYear,
+                                selectedSemester: $selectedSemester,
+                                newOnly: $newOnly,
+                                recentOnly: $recentOnly,
+                                availableStatusFilters: listData.availableStatusFilters,
+                                courseOptions: listData.courseOptions,
+                                yearOptions: listData.yearOptions,
+                                semesterOptions: listData.semesterOptions,
+                                supportsNewOnly: category.supportsNewOnly,
+                                supportsRecentOnly: category.supportsRecentOnly,
+                                defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
+                                totalCount: listData.baseItems.count,
+                                filteredCount: listData.filteredItems.count
+                            )
+                        } else {
+                            CompanionItemListControlsPlaceholder()
+                        }
+                    }
+                }
 
                 if let listData = cachedListData {
                     let filtered = listData.filteredItems
-                    CompanionItemListControls(
-                        sortOption: $sortOption,
-                        visibilityFilter: $visibilityFilter,
-                        statusFilter: $statusFilter,
-                        selectedCourse: $selectedCourse,
-                        selectedYear: $selectedYear,
-                        selectedSemester: $selectedSemester,
-                        newOnly: $newOnly,
-                        recentOnly: $recentOnly,
-                        availableStatusFilters: listData.availableStatusFilters,
-                        courseOptions: listData.courseOptions,
-                        yearOptions: listData.yearOptions,
-                        semesterOptions: listData.semesterOptions,
-                        supportsNewOnly: category.supportsNewOnly,
-                        supportsRecentOnly: category.supportsRecentOnly,
-                        defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
-                        totalCount: listData.baseItems.count,
-                        filteredCount: filtered.count
-                    )
-
                     if filtered.isEmpty {
                         panelEmptyText(category.emptyMessage)
                     } else {
@@ -5872,7 +5880,6 @@ private struct DashboardCategoryInlineDetailPanel: View {
                         )
                     }
                 } else {
-                    CompanionItemListControlsPlaceholder()
                     panelEmptyText("목록을 준비하고 있습니다.")
                 }
             }
@@ -8322,14 +8329,11 @@ private struct DashboardCategoryDetailScreen: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
             } else {
-                Section("검색") {
+                Section("검색과 필터") {
                     TextField("\(category.title) 검색", text: $query)
                         .textFieldStyle(.roundedBorder)
-                }
 
-                if let listData = cachedListData {
-                    let filtered = listData.filteredItems
-                    Section("보기") {
+                    if let listData = cachedListData {
                         CompanionItemListControls(
                             sortOption: $sortOption,
                             visibilityFilter: $visibilityFilter,
@@ -8347,9 +8351,15 @@ private struct DashboardCategoryDetailScreen: View {
                             supportsRecentOnly: category.supportsRecentOnly,
                             defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
                             totalCount: listData.baseItems.count,
-                            filteredCount: filtered.count
+                            filteredCount: listData.filteredItems.count
                         )
+                    } else {
+                        CompanionItemListControlsPlaceholder()
                     }
+                }
+
+                if let listData = cachedListData {
+                    let filtered = listData.filteredItems
                     if filtered.isEmpty {
                         Section {
                             Text(category.emptyMessage)
@@ -8364,9 +8374,6 @@ private struct DashboardCategoryDetailScreen: View {
                         }
                     }
                 } else {
-                    Section("보기") {
-                        CompanionItemListControlsPlaceholder()
-                    }
                     Section {
                         Text("목록을 준비하고 있습니다.")
                             .foregroundStyle(Color.klmsSecondaryText)
@@ -8947,36 +8954,44 @@ private struct ServerSyncDataPanel: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
 
-                TextField("동기화 데이터 검색", text: $query)
-                    .textFieldStyle(.roundedBorder)
+                CompanionControlBox(title: "검색과 필터", systemImage: "magnifyingglass") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("동기화 데이터 검색", text: $query)
+                            .textFieldStyle(.roundedBorder)
+
+                        if let listData = cachedListData {
+                            CompanionItemListControls(
+                                sortOption: $sortOption,
+                                visibilityFilter: $visibilityFilter,
+                                statusFilter: $statusFilter,
+                                selectedCourse: $selectedCourse,
+                                selectedYear: $selectedYear,
+                                selectedSemester: $selectedSemester,
+                                newOnly: $newOnly,
+                                recentOnly: $recentOnly,
+                                availableStatusFilters: listData.availableStatusFilters,
+                                courseOptions: listData.courseOptions,
+                                yearOptions: listData.yearOptions,
+                                semesterOptions: listData.semesterOptions,
+                                supportsNewOnly: true,
+                                supportsRecentOnly: true,
+                                defaultStatusFilter: .all,
+                                totalCount: listData.baseItems.count,
+                                filteredCount: listData.filteredItems.count
+                            )
+                        } else {
+                            CompanionItemListControlsPlaceholder()
+                        }
+                    }
+                }
 
                 if let listData = cachedListData {
                     let filtered = listData.filteredItems
-                    CompanionItemListControls(
-                        sortOption: $sortOption,
-                        visibilityFilter: $visibilityFilter,
-                        statusFilter: $statusFilter,
-                        selectedCourse: $selectedCourse,
-                        selectedYear: $selectedYear,
-                        selectedSemester: $selectedSemester,
-                        newOnly: $newOnly,
-                        recentOnly: $recentOnly,
-                        availableStatusFilters: listData.availableStatusFilters,
-                        courseOptions: listData.courseOptions,
-                        yearOptions: listData.yearOptions,
-                        semesterOptions: listData.semesterOptions,
-                        supportsNewOnly: true,
-                        supportsRecentOnly: true,
-                        defaultStatusFilter: .all,
-                        totalCount: listData.baseItems.count,
-                        filteredCount: filtered.count
-                    )
                     CompanionSelectableItemListRows(
                         items: filtered,
                         onSelect: onSelect
                     )
                 } else {
-                    CompanionItemListControlsPlaceholder()
                     Text("목록을 준비하고 있습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
