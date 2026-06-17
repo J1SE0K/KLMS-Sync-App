@@ -316,7 +316,7 @@ public struct SanitizedRemoteStatus: Codable, Sendable, Equatable {
         fileArchivePruned = snapshot.syncReport?.files.archivePruned ?? 0
         calendarCreated = snapshot.syncReport?.calendar.created ?? 0
         calendarUpdated = snapshot.syncReport?.calendar.updated ?? 0
-        calendarDeleted = snapshot.syncReport?.calendar.deleted ?? 0
+        calendarDeleted = 0
         self.phase = phase
         phaseDetail = nil
         authDigits = nil
