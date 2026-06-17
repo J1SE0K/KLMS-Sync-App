@@ -4959,7 +4959,7 @@ private struct IssueSummaryView: View {
                             .foregroundStyle(Color.klmsMacWarningBorder)
                             .frame(width: 16)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(issues.first?.title ?? "확인이 필요합니다")
+                            Text(compactTitle)
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacPrimaryText)
                                 .lineLimit(1)
@@ -5037,6 +5037,19 @@ private struct IssueSummaryView: View {
             return "자세한 설명은 눌러서 펼치거나 진단 화면에서 확인하세요."
         }
         return "확인할 항목 \(issues.count)개 · 자세한 설명은 눌러서 펼치세요."
+    }
+
+    private var compactTitle: String {
+        guard let first = issues.first else {
+            return "확인이 필요합니다"
+        }
+        if first.title.hasPrefix("상태 검사") {
+            return "상태 검사 실패"
+        }
+        if first.title.hasPrefix("권한") {
+            return "권한 확인 필요"
+        }
+        return first.title
     }
 }
 
