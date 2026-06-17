@@ -442,7 +442,7 @@ private struct DashboardDetailFilters: Equatable, Sendable {
 private enum DashboardLargeList {
     static let initialVisibleLimit = 5
     static let increment = 10
-    static let filterRebuildDelayNanoseconds: UInt64 = 80_000_000
+    static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
 }
 
 private struct DashboardFileData: Sendable {
