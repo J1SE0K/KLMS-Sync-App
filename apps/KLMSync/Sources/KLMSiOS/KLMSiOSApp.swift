@@ -8248,6 +8248,10 @@ private struct DashboardCategoryDetailScreen: View {
                 }
             } else if let listData = cachedListData {
                 let filtered = listData.filteredItems
+                Section("검색") {
+                    TextField("\(category.title) 검색", text: $query)
+                        .textFieldStyle(.roundedBorder)
+                }
                 Section("보기") {
                     CompanionItemListControls(
                         sortOption: $sortOption,
@@ -8290,7 +8294,6 @@ private struct DashboardCategoryDetailScreen: View {
             }
         }
         .navigationTitle(category.title)
-        .searchable(text: $query, prompt: "\(category.title) 검색")
         .task(id: listInputKey) {
             await rebuildCachedListDataAfterInputSettles()
         }
@@ -8840,7 +8843,6 @@ private struct ServerSyncDataPanel: View {
     var items: [ServerRelaySyncItem]
     var itemsRevision: Int
     var onSelect: (ServerRelaySyncItem) -> Void = { _ in }
-    @State private var isExpanded = true
     @State private var query = ""
     @State private var sortOption = CompanionItemSortOption.recent
     @State private var visibilityFilter = CompanionItemVisibilityFilter.visible
@@ -8854,49 +8856,47 @@ private struct ServerSyncDataPanel: View {
 
     var body: some View {
         if !items.isEmpty {
-            DisclosureGroup(isExpanded: $isExpanded) {
-                VStack(alignment: .leading, spacing: 8) {
-                    TextField("동기화 데이터 검색", text: $query)
-                        .textFieldStyle(.roundedBorder)
-                    if let listData = cachedListData {
-                        let filtered = listData.filteredItems
-                        CompanionItemListControls(
-                            sortOption: $sortOption,
-                            visibilityFilter: $visibilityFilter,
-                            statusFilter: $statusFilter,
-                            selectedCourse: $selectedCourse,
-                            selectedYear: $selectedYear,
-                            selectedSemester: $selectedSemester,
-                            newOnly: $newOnly,
-                            recentOnly: $recentOnly,
-                            availableStatusFilters: listData.availableStatusFilters,
-                            courseOptions: listData.courseOptions,
-                            yearOptions: listData.yearOptions,
-                            semesterOptions: listData.semesterOptions,
-                            supportsNewOnly: true,
-                            supportsRecentOnly: true,
-                            defaultStatusFilter: .all,
-                            totalCount: listData.baseItems.count,
-                            filteredCount: filtered.count
-                        )
-                        CompanionSelectableItemListRows(
-                            items: filtered,
-                            onSelect: onSelect
-                        )
-                    } else {
-                        Text("목록을 준비하고 있습니다.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                    }
-                }
-                .padding(.top, 8)
-            } label: {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Label("동기화 데이터", systemImage: "tray.full")
                         .font(.headline)
                     Spacer()
                     Text("\(items.count)개")
                         .font(.caption.monospacedDigit())
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
+
+                TextField("동기화 데이터 검색", text: $query)
+                    .textFieldStyle(.roundedBorder)
+
+                if let listData = cachedListData {
+                    let filtered = listData.filteredItems
+                    CompanionItemListControls(
+                        sortOption: $sortOption,
+                        visibilityFilter: $visibilityFilter,
+                        statusFilter: $statusFilter,
+                        selectedCourse: $selectedCourse,
+                        selectedYear: $selectedYear,
+                        selectedSemester: $selectedSemester,
+                        newOnly: $newOnly,
+                        recentOnly: $recentOnly,
+                        availableStatusFilters: listData.availableStatusFilters,
+                        courseOptions: listData.courseOptions,
+                        yearOptions: listData.yearOptions,
+                        semesterOptions: listData.semesterOptions,
+                        supportsNewOnly: true,
+                        supportsRecentOnly: true,
+                        defaultStatusFilter: .all,
+                        totalCount: listData.baseItems.count,
+                        filteredCount: filtered.count
+                    )
+                    CompanionSelectableItemListRows(
+                        items: filtered,
+                        onSelect: onSelect
+                    )
+                } else {
+                    Text("목록을 준비하고 있습니다.")
+                        .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
             }
