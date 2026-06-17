@@ -2718,8 +2718,7 @@ private struct CompanionStatusScreen: View {
     var body: some View {
         CompanionScreenContainer(
             title: horizontalSizeClass == .regular ? "대시보드" : "상태",
-            model: model,
-            showsAttentionStack: false
+            model: model
         ) {
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 16) {
@@ -3365,6 +3364,9 @@ private struct RemoteAttentionStack: View {
                 if let authDigits = model.status.authDigits {
                     AuthCodeHero(digits: authDigits)
                 }
+                if shouldShowRunningStatus {
+                    RemoteRunningStatusBanner(model: model)
+                }
                 if let message = model.loginAttentionMessage {
                     LoginAttentionBanner(message: message)
                 }
@@ -3380,9 +3382,84 @@ private struct RemoteAttentionStack: View {
 
     private var hasAttention: Bool {
         model.status.authDigits != nil
+            || shouldShowRunningStatus
             || model.loginAttentionMessage != nil
             || model.authSuccessMessage != nil
             || !model.errorMessage.isEmpty
+    }
+
+    private var shouldShowRunningStatus: Bool {
+        model.hasInFlightRequest || model.status.phase == "running"
+    }
+}
+
+private struct RemoteRunningStatusBanner: View {
+    @ObservedObject var model: CompanionModel
+    @State private var localCancelSubmitting = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(Color.klmsCommandAccent)
+                .frame(width: 28, height: 28)
+                .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("동기화 진행 중")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text(statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            if model.shouldShowCancelControl {
+                Button(role: .destructive) {
+                    guard model.canCancelRunningCommand, !localCancelSubmitting else {
+                        return
+                    }
+                    localCancelSubmitting = true
+                    Task {
+                        await model.cancelRunningCommand()
+                        await MainActor.run {
+                            localCancelSubmitting = false
+                        }
+                    }
+                } label: {
+                    Label(cancelButtonTitle, systemImage: cancelAlreadyRequested ? "checkmark.circle" : "stop.fill")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                .disabled(!model.canCancelRunningCommand || localCancelSubmitting)
+                .accessibilityLabel(cancelButtonTitle)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsCommandAccent.opacity(0.42), lineWidth: 1)
+        }
+    }
+
+    private var statusMessage: String {
+        model.statusLine
+    }
+
+    private var cancelAlreadyRequested: Bool {
+        model.isCancelRequestedForLatestCommand
+    }
+
+    private var cancelButtonTitle: String {
+        if cancelAlreadyRequested {
+            return "중단 요청됨"
+        }
+        if localCancelSubmitting || model.isSubmitting {
+            return "요청 중"
+        }
+        return "중단"
     }
 }
 
@@ -4402,8 +4479,6 @@ private struct RemoteDashboardSyncCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            RemoteAttentionStack(model: model)
-
             HStack(alignment: .center, spacing: 10) {
                 Text("동기화")
                     .font(.system(size: 11, weight: .bold, design: .rounded))
@@ -4415,8 +4490,6 @@ private struct RemoteDashboardSyncCard: View {
             MailPasteAnalyzerPanel(model: model)
 
             dashboardPrimaryButton
-
-            RemoteCancelControl(model: model, compact: compact)
 
             LazyVGrid(columns: secondaryColumns, spacing: 7) {
                 ForEach(secondaryCommands, id: \.self) { command in
