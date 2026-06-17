@@ -2484,7 +2484,7 @@ private struct DashboardFileListInputSignature: Equatable {
     var sortOption: DashboardFileSortOption
 }
 
-private struct DashboardFileListPresentation {
+private struct DashboardFileListPresentation: Sendable {
     var files: [DashboardFileItem] = []
 
     init() {}
@@ -2598,13 +2598,17 @@ private struct DashboardFileListContentView: View {
                 await Task.yield()
             }
             guard !Task.isCancelled else { return }
-            presentation = DashboardFileListPresentation(files: files, filters: filters, sortOption: sortOption)
+            let nextPresentation = await Task.detached(priority: .userInitiated) {
+                DashboardFileListPresentation(files: files, filters: filters, sortOption: sortOption)
+            }.value
+            guard !Task.isCancelled else { return }
+            presentation = nextPresentation
             isPreparingPresentation = false
         }
     }
 }
 
-private struct DashboardFileItem: Identifiable {
+private struct DashboardFileItem: Identifiable, Sendable {
     var key: String
     var title: String
     var course: String
@@ -2699,7 +2703,7 @@ private struct DashboardFileItem: Identifiable {
     }
 }
 
-private enum DashboardFileSortOption: String, CaseIterable, Identifiable {
+private enum DashboardFileSortOption: String, CaseIterable, Identifiable, Sendable {
     case course
     case kind
     case name
