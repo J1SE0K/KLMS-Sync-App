@@ -2294,15 +2294,15 @@ private struct CompanionCompactTabBar: View {
             .frame(maxWidth: .infinity, minHeight: 44)
             .background(
                 isSelected
-                    ? Color.klmsSelectedBackground.opacity(0.96)
-                    : Color.klmsSubtleCardBackground.opacity(0.62),
-                in: RoundedRectangle(cornerRadius: 10)
+                    ? Color.klmsSelectedBackground
+                    : Color.klmsSubtleCardBackground.opacity(0.54),
+                in: RoundedRectangle(cornerRadius: 12)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.38), lineWidth: isSelected ? 1.35 : 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel(section.compactTitle)
@@ -2392,7 +2392,7 @@ private struct CompanionSidebarButton: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(
                                 isSelected
-                                    ? Color.klmsSelectedBorder.opacity(0.18)
+                                    ? Color.klmsSelectedBorder.opacity(0.24)
                                     : Color.klmsSubtleCardBackground.opacity(0.72)
                             )
                         Image(systemName: section.systemImage)
@@ -2417,21 +2417,21 @@ private struct CompanionSidebarButton: View {
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(
                 isSelected
-                    ? Color.klmsSelectedBackground.opacity(0.96)
-                    : Color.klmsSubtleCardBackground.opacity(0.42),
-                in: RoundedRectangle(cornerRadius: 10)
+                    ? Color.klmsSelectedBackground
+                    : Color.klmsSubtleCardBackground.opacity(0.30),
+                in: RoundedRectangle(cornerRadius: 12)
             )
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(isSelected ? Color.klmsSelectedBorder : Color.clear)
-                    .frame(width: 3)
+                    .frame(width: isSelected ? 4 : 0)
                     .padding(.vertical, 9)
             }
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.48), lineWidth: isSelected ? 1.2 : 1)
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.40), lineWidth: isSelected ? 1.35 : 1)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel(section.title)
