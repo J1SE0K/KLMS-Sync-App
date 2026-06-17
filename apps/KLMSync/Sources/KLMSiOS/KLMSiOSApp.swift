@@ -9377,7 +9377,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
     private var actionPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !itemActions.isEmpty {
-                Text("수정/삭제 선택")
+                Text("항목 처리")
                     .font(.subheadline.weight(.semibold))
                 if item.kind == "notice" {
                     VStack(spacing: 8) {
@@ -9426,14 +9426,14 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 }
             }
 
-            Text("반영")
+            Text("동기화")
                 .font(.subheadline.weight(.semibold))
             Button {
                 Task {
                     await model.createCommand(relevantCommand)
                 }
             } label: {
-                Label("\(relevantCommand.displayName) 반영", systemImage: relevantCommand.engineCommand.systemImage)
+                Label("\(relevantCommand.displayName) 다시 실행", systemImage: relevantCommand.engineCommand.systemImage)
                     .frame(maxWidth: .infinity, minHeight: 40)
             }
             .buttonStyle(KLMSActionButtonStyle())
@@ -9677,7 +9677,7 @@ private struct ServerSyncItemDetailView: View {
     private var actionPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !itemActions.isEmpty {
-                Text("수정/삭제 선택")
+                Text("항목 처리")
                     .font(.headline)
                 if item.kind == "notice" {
                     VStack(spacing: 8) {
@@ -9726,14 +9726,14 @@ private struct ServerSyncItemDetailView: View {
                 }
             }
 
-            Text("반영")
+            Text("동기화")
                 .font(.headline)
             Button {
                 Task {
                     await model.createCommand(relevantCommand)
                 }
             } label: {
-                Label("\(relevantCommand.displayName) 반영", systemImage: relevantCommand.engineCommand.systemImage)
+                Label("\(relevantCommand.displayName) 다시 실행", systemImage: relevantCommand.engineCommand.systemImage)
                     .frame(maxWidth: .infinity, minHeight: 42)
             }
             .buttonStyle(KLMSActionButtonStyle())
@@ -10159,35 +10159,35 @@ private extension ServerRelayItemActionKind {
     var companionActionTitle: String {
         switch self {
         case .assignmentComplete:
-            "수정/완료"
+            "완료 처리"
         case .assignmentRestore, .assignmentUnhide:
-            "수정/복구"
+            "복구"
         case .assignmentHide:
-            "삭제/숨김"
+            "숨김"
         case .examPromote:
-            "반영/시험 확정"
+            "시험으로 등록"
         case .examIgnore:
-            "삭제/시험 아님"
+            "시험 아님"
         case .examRestore:
-            "수정/복구"
+            "복구"
         case .noticeRead:
-            "수정/읽음"
+            "읽음"
         case .noticeUnread:
-            "수정/읽지 않음"
+            "읽지 않음"
         case .noticeImportant:
-            "수정/중요"
+            "중요"
         case .noticeUnimportant:
-            "수정/중요 해제"
+            "중요 해제"
         case .noticeHide:
-            "삭제/숨김"
+            "숨김"
         case .noticeUnhide:
-            "수정/복구"
+            "복구"
         case .fileHide:
-            "삭제/숨김"
+            "숨김"
         case .fileUnhide:
-            "수정/복구"
+            "복구"
         case .fileTrash:
-            "삭제/휴지통"
+            "삭제"
         case .calendarVerify:
             "캘린더 상태 검사"
         case .calendarApply:
