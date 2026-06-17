@@ -2687,17 +2687,73 @@ private struct DashboardSummaryPresentation {
 
 private struct DashboardRuntimePanelView: View {
     @ObservedObject var model: KLMSMacModel
+    @AppStorage("KLMSMacRuntimePanelExpanded") private var isExpanded = false
 
     var body: some View {
-        SectionBox(title: "연동 상태") {
-            VStack(alignment: .leading, spacing: 8) {
-                MacRailStatusLine(text: integrationSummaryText)
-                MacRailStatusLine(text: noticeMemoSummaryText)
-                if let slowestSummaryText {
-                    MacRailStatusLine(text: slowestSummaryText)
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Label("연동 상태", systemImage: "link")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    Spacer(minLength: 6)
+                    Text(runtimeSummaryBadgeText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(runtimeSummaryBadgeColor)
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(runtimeSummaryBadgeColor.opacity(0.11), in: Capsule())
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12))
+            .help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    MacRailStatusLine(text: integrationSummaryText)
+                    MacRailStatusLine(text: noticeMemoSummaryText)
+                    if let slowestSummaryText {
+                        MacRailStatusLine(text: slowestSummaryText)
+                    }
+                }
+                .transition(.opacity)
             }
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
+    }
+
+    private var runtimeSummaryBadgeText: String {
+        if model.runningCommand != nil {
+            return model.currentPhaseText ?? "실행 중"
+        }
+        if let verify = model.snapshot.verifyResult {
+            return verify.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ok" ? "정상" : "확인 필요"
+        }
+        return "접힘"
+    }
+
+    private var runtimeSummaryBadgeColor: Color {
+        if model.runningCommand != nil {
+            return .klmsMacCommandAccent
+        }
+        if let verify = model.snapshot.verifyResult {
+            return verify.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ok" ? .klmsMacSuccessBorder : .klmsMacWarningBorder
+        }
+        return .klmsMacSecondaryText
     }
 
     private var integrationSummaryText: String {
