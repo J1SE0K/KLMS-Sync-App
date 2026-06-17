@@ -5249,12 +5249,21 @@ private struct WorkstationDashboardOverviewPanel: View {
                 LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
                     ForEach(overviewMetrics) { metric in
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("\(metric.value)")
-                                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                                .foregroundStyle(Color.klmsPrimaryText)
+                            HStack(alignment: .center, spacing: 8) {
+                                Image(systemName: metric.systemImage)
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(metric.tint)
+                                    .frame(width: 26, height: 26)
+                                    .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                Spacer(minLength: 0)
+                                Text("\(metric.value)")
+                                    .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                                    .foregroundStyle(Color.klmsPrimaryText)
+                            }
                             Text(metric.title)
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
                                 .foregroundStyle(Color.klmsSecondaryText)
+                                .lineLimit(1)
                         }
                         .padding(11)
                         .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
@@ -5314,10 +5323,10 @@ private struct WorkstationDashboardOverviewPanel: View {
 
     private var overviewMetrics: [MetricSummary] {
         [
-            MetricSummary(title: "파일", value: status.fileTotal),
-            MetricSummary(title: "과제", value: status.assignments),
-            MetricSummary(title: "공지", value: status.notices),
-            MetricSummary(title: "시험", value: status.exams),
+            MetricSummary(title: "파일", value: status.fileTotal, systemImage: "folder", tint: Color.klmsCommandAccent),
+            MetricSummary(title: "과제", value: status.assignments, systemImage: "checklist", tint: Color.klmsCommandAccent),
+            MetricSummary(title: "공지", value: status.notices, systemImage: "note.text", tint: Color.klmsCommandAccent),
+            MetricSummary(title: "시험", value: status.exams, systemImage: "calendar.badge.clock", tint: Color.klmsWarningBorder),
         ].filter { $0.value > 0 }
     }
 
@@ -5347,6 +5356,8 @@ private struct WorkstationDashboardOverviewPanel: View {
     private struct MetricSummary: Identifiable {
         var title: String
         var value: Int
+        var systemImage: String
+        var tint: Color
 
         var id: String {
             title
