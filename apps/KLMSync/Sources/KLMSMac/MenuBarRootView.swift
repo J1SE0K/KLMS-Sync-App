@@ -158,11 +158,13 @@ private struct MacWorkspaceSidebarView: View {
 
 private struct WorkspaceNavigationView: View {
     @Binding var selection: KLMSMacSection
+    @State private var hoveredSection: KLMSMacSection?
 
     var body: some View {
         VStack(spacing: 7) {
             ForEach(KLMSMacSection.allCases) { section in
                 let isSelected = selection == section
+                let isHovered = hoveredSection == section
                 Button {
                     guard selection != section else { return }
                     selection = section
@@ -170,11 +172,7 @@ private struct WorkspaceNavigationView: View {
                     HStack(spacing: 10) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(
-                                    isSelected
-                                        ? Color.klmsMacSelectedBorder.opacity(0.18)
-                                        : Color.klmsMacSubtleCardBackground.opacity(0.72)
-                                )
+                                .fill(iconBackground(isSelected: isSelected, isHovered: isHovered))
                             Image(systemName: section.systemImage)
                                 .font(.subheadline.weight(isSelected ? .bold : .semibold))
                                 .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText.opacity(0.84))
@@ -193,27 +191,51 @@ private struct WorkspaceNavigationView: View {
                     .padding(.vertical, 9)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .background(
-                        isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacSubtleCardBackground.opacity(0.34),
-                        in: RoundedRectangle(cornerRadius: 10)
+                        rowBackground(isSelected: isSelected, isHovered: isHovered),
+                        in: RoundedRectangle(cornerRadius: 12)
                     )
                     .overlay(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
-                            .frame(width: 3)
+                            .frame(width: isSelected ? 4 : 0)
                             .padding(.vertical, 9)
                     }
                     .overlay {
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(isSelected ? Color.klmsMacSelectedBorder.opacity(0.92) : Color.klmsMacCommandBorder.opacity(0.42), lineWidth: isSelected ? 1.2 : 1)
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(rowBorder(isSelected: isSelected, isHovered: isHovered), lineWidth: isSelected ? 1.4 : 1)
                     }
-                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(MacPressFeedbackButtonStyle())
+                .onHover { hovering in
+                    hoveredSection = hovering ? section : (hoveredSection == section ? nil : hoveredSection)
+                }
                 .accessibilityLabel(section.title)
                 .accessibilityIdentifier("workspace-\(section.rawValue)")
                 .accessibilityValue(isSelected ? "선택됨" : "")
             }
         }
+    }
+
+    private func rowBackground(isSelected: Bool, isHovered: Bool) -> Color {
+        if isSelected {
+            return Color.klmsMacSelectedBackground
+        }
+        return isHovered ? Color.klmsMacSubtleCardBackground.opacity(0.62) : Color.klmsMacSubtleCardBackground.opacity(0.28)
+    }
+
+    private func rowBorder(isSelected: Bool, isHovered: Bool) -> Color {
+        if isSelected {
+            return Color.klmsMacSelectedBorder
+        }
+        return isHovered ? Color.klmsMacCommandBorder.opacity(0.74) : Color.klmsMacCommandBorder.opacity(0.36)
+    }
+
+    private func iconBackground(isSelected: Bool, isHovered: Bool) -> Color {
+        if isSelected {
+            return Color.klmsMacSelectedBorder.opacity(0.24)
+        }
+        return isHovered ? Color.klmsMacCommandButtonPressedOverlay.opacity(0.46) : Color.klmsMacSubtleCardBackground.opacity(0.72)
     }
 }
 
