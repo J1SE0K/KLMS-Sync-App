@@ -705,7 +705,7 @@ private struct DashboardShowMoreButton: View {
         Button(action: action) {
             Label("더 보기 \(remainingCount)개 남음", systemImage: "chevron.down")
                 .font(.caption.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 34)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(KLMSMacActionButtonStyle())
     }
@@ -3610,7 +3610,7 @@ private struct CalendarActionButton: View {
             }
                 .font(.caption.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 30)
+                .frame(minHeight: 40)
                 .padding(.horizontal, 9)
                 .background(
                     (disabled ? Color.klmsMacSubtleCardBackground.opacity(0.58) : Color.klmsMacCommandButtonBackground.opacity(0.92)),

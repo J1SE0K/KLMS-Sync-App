@@ -197,7 +197,7 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, minHeight: 42, alignment: .center)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
             .background(
                 isSelected
                     ? Color.klmsMacSelectedBackground.opacity(0.96)

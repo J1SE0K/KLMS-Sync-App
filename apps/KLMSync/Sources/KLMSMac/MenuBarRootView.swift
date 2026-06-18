@@ -5,6 +5,7 @@ import SwiftUI
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
+    @State private var renderedSection = KLMSMacSection.dashboard
     @State private var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
@@ -25,7 +26,7 @@ struct MenuBarRootView: View {
                     )
                     MacWorkstationLayoutView(
                         model: model,
-                        selectedSection: $selectedSection,
+                        selectedSection: $renderedSection,
                         expandedLogSummaryKind: $expandedLogSummaryKind
                     )
                 }
@@ -38,6 +39,16 @@ struct MenuBarRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
+        .task(id: selectedSection) {
+            let target = selectedSection
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                renderedSection = target
+            }
+        }
     }
 }
 
@@ -2190,7 +2201,7 @@ private struct DiagnosticToolsPanelView: View {
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
-                .frame(maxWidth: .infinity, minHeight: 34)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(KLMSMacRootActionButtonStyle())
         .disabled(model.runningCommand != nil || !command.supportsDryRun)
@@ -3538,7 +3549,7 @@ private struct CommandPanelView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .foregroundStyle(Color.klmsMacDangerBorder)
-                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .background(Color.klmsMacCommandButtonBackground.opacity(0.90), in: RoundedRectangle(cornerRadius: 10))
                     .overlay {
                         RoundedRectangle(cornerRadius: 10)
