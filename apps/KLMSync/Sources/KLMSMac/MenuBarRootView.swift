@@ -80,6 +80,7 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
     var id: String
     var contentIdentifier: String?
     var loadingText: String
+    var loadsImmediately: Bool
     private let content: () -> Content
     @State private var loadedID: String?
 
@@ -87,17 +88,19 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
         id: String,
         contentIdentifier: String? = nil,
         loadingText: String,
+        loadsImmediately: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.id = id
         self.contentIdentifier = contentIdentifier
         self.loadingText = loadingText
+        self.loadsImmediately = loadsImmediately
         self.content = content
     }
 
     var body: some View {
         Group {
-            if loadedID == id {
+            if loadsImmediately || loadedID == id {
                 content()
             } else {
                 HStack(spacing: 8) {
@@ -119,6 +122,10 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
         }
         .accessibilityIdentifier(contentIdentifier ?? id)
         .task(id: id) {
+            guard !loadsImmediately else {
+                loadedID = id
+                return
+            }
             loadedID = nil
             await Task.yield()
             guard !Task.isCancelled else { return }
@@ -144,7 +151,7 @@ private struct MacWorkstationLayoutView: View {
             workspaceContentMarker
             switch selectedSection {
             case .dashboard:
-                DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard", loadingText: "대시보드를 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard", loadingText: "대시보드를 준비하는 중입니다.", loadsImmediately: true) {
                     VStack(alignment: .leading, spacing: 16) {
                         CommandPanelView(model: model)
                         DashboardSummaryView(model: model)
