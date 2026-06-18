@@ -4519,7 +4519,7 @@ private enum RunLogArchiveFilter: String, CaseIterable, Identifiable {
 private struct RunLogArchivePanelView: View {
     let model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
-    @State private var isHistoryExpanded = true
+    @State private var isHistoryExpanded = false
     @State private var showingSystemLogs = true
     @State private var visibleLimit = 30
 
@@ -4545,6 +4545,14 @@ private struct RunLogArchivePanelView: View {
                             Text("실행 로그")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacPrimaryText)
+                            if !isHistoryExpanded {
+                                Text("\(summary.total)개")
+                                    .font(.caption2.monospacedDigit().weight(.semibold))
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(Color.klmsMacSubtleCardBackground, in: Capsule())
+                            }
                             Spacer(minLength: 8)
                             Image(systemName: isHistoryExpanded ? "chevron.down" : "chevron.right")
                                 .font(.caption.weight(.semibold))
