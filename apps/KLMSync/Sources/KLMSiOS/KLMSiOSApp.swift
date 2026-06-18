@@ -6383,42 +6383,62 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-            DashboardCategoryInlineDetailPanel(
-                category: category,
-                model: model,
-                itemPresentation: .externalDetail,
-                externallySelectedItemID: activeSelectedItemID,
-                onSelectItem: selectItem
-            )
-            .frame(
-                minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
-                alignment: .topLeading
-            )
+        categoryRegularWorkspace
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .onAppear {
+                refreshExternalSelection()
+            }
+            .onChange(of: itemsResetKey) { _, _ in
+                refreshExternalSelection()
+            }
+    }
 
-            WorkstationExternalDetailPanel(
-                title: "\(category.title) 상세",
-                subtitle: "\(items.count)개 항목 · 항목을 선택하면 바로 처리할 수 있습니다.",
-                item: selectedItem,
-                emptyMessage: "왼쪽 목록에서 항목을 선택해 주세요.",
-                model: model
-            )
-            .frame(
-                minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                maxWidth: .infinity,
-                alignment: .topLeading
-            )
+    private var categoryRegularWorkspace: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                categoryListPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+
+                categoryDetailPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                categoryListPanel
+                categoryDetailPanel
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onAppear {
-            refreshExternalSelection()
-        }
-        .onChange(of: itemsResetKey) { _, _ in
-            refreshExternalSelection()
-        }
+    }
+
+    private var categoryListPanel: some View {
+        DashboardCategoryInlineDetailPanel(
+            category: category,
+            model: model,
+            itemPresentation: .externalDetail,
+            externallySelectedItemID: activeSelectedItemID,
+            onSelectItem: selectItem
+        )
+    }
+
+    private var categoryDetailPanel: some View {
+        WorkstationExternalDetailPanel(
+            title: "\(category.title) 상세",
+            subtitle: "\(items.count)개 항목 · 항목을 선택하면 바로 처리할 수 있습니다.",
+            item: selectedItem,
+            emptyMessage: "왼쪽 목록에서 항목을 선택해 주세요.",
+            model: model
+        )
     }
 
     private func selectItem(_ item: ServerRelaySyncItem) {
@@ -6478,42 +6498,62 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-            VStack(alignment: .leading, spacing: 16) {
-                taskPanel(.assignments)
-                taskPanel(.exams)
-                if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
-                    taskPanel(.helpDesk)
-                }
+        tasksRegularWorkspace
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .onAppear {
+                refreshExternalSelection()
             }
-            .frame(
-                minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
-                alignment: .topLeading
-            )
+            .onChange(of: itemsResetKey) { _, _ in
+                refreshExternalSelection()
+            }
+    }
 
-            WorkstationExternalDetailPanel(
-                title: "선택한 일정",
-                subtitle: "과제, 시험, 헬프데스크를 선택한 뒤 바로 처리합니다.",
-                item: selectedItem,
-                emptyMessage: "왼쪽 목록에서 과제나 시험을 선택해 주세요.",
-                model: model
-            )
-            .frame(
-                minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                maxWidth: .infinity,
-                alignment: .topLeading
-            )
+    private var tasksRegularWorkspace: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                tasksListPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+
+                tasksDetailPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                tasksListPanel
+                tasksDetailPanel
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onAppear {
-            refreshExternalSelection()
+    }
+
+    private var tasksListPanel: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            taskPanel(.assignments)
+            taskPanel(.exams)
+            if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
+                taskPanel(.helpDesk)
+            }
         }
-        .onChange(of: itemsResetKey) { _, _ in
-            refreshExternalSelection()
-        }
+    }
+
+    private var tasksDetailPanel: some View {
+        WorkstationExternalDetailPanel(
+            title: "선택한 일정",
+            subtitle: "과제, 시험, 헬프데스크를 선택한 뒤 바로 처리합니다.",
+            item: selectedItem,
+            emptyMessage: "왼쪽 목록에서 과제나 시험을 선택해 주세요.",
+            model: model
+        )
     }
 
     private func taskPanel(_ category: DashboardMetricCategory) -> some View {
@@ -6584,30 +6624,42 @@ private struct WorkstationCalendarWorkspace: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-            calendarListPanel
-                .frame(
-                    minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                    maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
-                    alignment: .topLeading
-                )
+        calendarRegularWorkspace
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .onAppear {
+                refreshExternalSelection()
+            }
+            .onChange(of: changesResetKey) { _, _ in
+                calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+                refreshExternalSelection()
+            }
+    }
 
-            calendarDetailPanel
-                .frame(
-                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                    maxWidth: .infinity,
-                    alignment: .topLeading
-                )
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onAppear {
-            refreshExternalSelection()
-        }
-        .onChange(of: changesResetKey) { _, _ in
-            calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
-            refreshExternalSelection()
+    private var calendarRegularWorkspace: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                calendarListPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+
+                calendarDetailPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                calendarListPanel
+                calendarDetailPanel
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
