@@ -3141,6 +3141,9 @@ private struct CompanionImmediateSettingsPanel: View {
                     .font(.subheadline.weight(.semibold))
                     .toggleStyle(.switch)
                     .disabled(model.isSubmitting)
+                    .accessibilityLabel("공지 메모 갱신")
+                    .accessibilityValue(model.sharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐")
+                    .accessibilityHint("원격 동기화에서 Notes 공지 메모를 쓸지 정합니다.")
                 }
             }
         }
