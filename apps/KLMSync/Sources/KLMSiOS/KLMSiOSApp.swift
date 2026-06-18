@@ -2709,10 +2709,7 @@ private struct CompanionSectionContent: View {
 private struct CompanionStatusScreen: View {
     let model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
-    @State private var displayedDashboardPreview: DashboardMetricCategory?
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
-    @State private var displayedChangeSummary: RemoteChangeSummaryKind?
-    @State private var dashboardDetailTask: Task<Void, Never>?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -2736,10 +2733,6 @@ private struct CompanionStatusScreen: View {
                 }
             }
         }
-        .onDisappear {
-            dashboardDetailTask?.cancel()
-            dashboardDetailTask = nil
-        }
     }
 
     private var statusSummaryColumn: some View {
@@ -2757,22 +2750,14 @@ private struct CompanionStatusScreen: View {
                 status: model.dashboardStatus,
                 hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
                 selectedCategory: $selectedDashboardPreview,
-                displayedCategory: displayedDashboardPreview,
                 onCategoryTap: { category in
                     selectedChangeSummary = nil
-                    displayedChangeSummary = nil
-                    displayedDashboardPreview = nil
                     selectedDashboardPreview = category
-                    deferDashboardPreview(category)
                 },
                 selectedChangeSummary: selectedChangeSummary,
-                displayedChangeSummary: displayedChangeSummary,
                 onChangeSummaryTap: { kind in
                     selectedDashboardPreview = nil
-                    displayedDashboardPreview = nil
-                    displayedChangeSummary = nil
                     selectedChangeSummary = kind
-                    deferChangeSummary(kind)
                 }
             )
         }
@@ -2791,29 +2776,21 @@ private struct CompanionStatusScreen: View {
             status: model.dashboardStatus,
             hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
             selectedCategory: $selectedDashboardPreview,
-            displayedCategory: displayedDashboardPreview,
             onCategoryTap: { category in
                 selectedChangeSummary = nil
-                displayedChangeSummary = nil
-                displayedDashboardPreview = nil
                 selectedDashboardPreview = category
-                deferDashboardPreview(category)
             },
             selectedChangeSummary: selectedChangeSummary,
-            displayedChangeSummary: displayedChangeSummary,
             onChangeSummaryTap: { kind in
                 selectedDashboardPreview = nil
-                displayedDashboardPreview = nil
-                displayedChangeSummary = nil
                 selectedChangeSummary = kind
-                deferChangeSummary(kind)
             }
         )
     }
 
     @ViewBuilder
     private var statusDetailColumn: some View {
-        if let kind = displayedChangeSummary {
+        if let kind = selectedChangeSummary {
             RemoteChangeSummaryDetailPanel(
                 kind: kind,
                 status: model.dashboardStatus,
@@ -2823,21 +2800,9 @@ private struct CompanionStatusScreen: View {
                 model: model
             )
                 .id(kind)
-        } else if let kind = selectedChangeSummary {
-            CompanionDashboardDetailPreparingView(
-                title: kind.detailTitle,
-                systemImage: kind.systemImage,
-                tint: kind.tint
-            )
-        } else if let category = displayedDashboardPreview {
+        } else if let category = selectedDashboardPreview {
             DashboardCategoryInlineDetailPanel(category: category, model: model)
                 .id(category)
-        } else if let category = selectedDashboardPreview {
-            CompanionDashboardDetailPreparingView(
-                title: category.title,
-                systemImage: category.systemImage,
-                tint: category.tint
-            )
         } else if horizontalSizeClass == .regular {
             WorkstationDashboardOverviewPanel(
                 data: WorkstationDashboardOverviewData(model: model),
@@ -2850,76 +2815,9 @@ private struct CompanionStatusScreen: View {
 
     private func openDashboardCategoryFromOverview(_ category: DashboardMetricCategory) {
         selectedChangeSummary = nil
-        displayedChangeSummary = nil
-        displayedDashboardPreview = nil
         selectedDashboardPreview = category
-        deferDashboardPreview(category)
     }
 
-    private func deferDashboardPreview(_ category: DashboardMetricCategory?) {
-        dashboardDetailTask?.cancel()
-        guard let category else {
-            displayedDashboardPreview = nil
-            dashboardDetailTask = nil
-            return
-        }
-        dashboardDetailTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            displayedDashboardPreview = category
-            dashboardDetailTask = nil
-        }
-    }
-
-    private func deferChangeSummary(_ kind: RemoteChangeSummaryKind?) {
-        dashboardDetailTask?.cancel()
-        guard let kind else {
-            displayedChangeSummary = nil
-            dashboardDetailTask = nil
-            return
-        }
-        dashboardDetailTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            displayedChangeSummary = kind
-            dashboardDetailTask = nil
-        }
-    }
-
-}
-
-private struct CompanionDashboardDetailPreparingView: View {
-    var title: String
-    var systemImage: String
-    var tint: Color
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(tint)
-                .frame(width: 24, height: 24)
-                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                Text("상세를 바로 여는 중입니다.")
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsSecondaryText)
-            }
-            Spacer(minLength: 0)
-            ProgressView()
-                .controlSize(.small)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.76), in: RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(tint.opacity(0.28), lineWidth: 1)
-        }
-    }
 }
 
 private struct CompanionDashboardQuickAccessGrid: View {
@@ -4910,10 +4808,8 @@ private struct RemoteDashboardMetricOverview: View {
     var status: SanitizedRemoteStatus
     var hasFileCleanupDetails: Bool
     @Binding var selectedCategory: DashboardMetricCategory?
-    var displayedCategory: DashboardMetricCategory?
     var onCategoryTap: (DashboardMetricCategory) -> Void
     var selectedChangeSummary: RemoteChangeSummaryKind?
-    var displayedChangeSummary: RemoteChangeSummaryKind?
     var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -4945,7 +4841,6 @@ private struct RemoteDashboardMetricOverview: View {
                     status: displayStatus,
                     hasFileCleanupDetails: hasFileCleanupDetails,
                     selectedKind: selectedChangeSummary,
-                    displayedKind: displayedChangeSummary,
                     model: model,
                     onSelect: onChangeSummaryTap
                 )
@@ -4995,16 +4890,8 @@ private struct RemoteDashboardMetricOverview: View {
     @ViewBuilder
     private func compactMetricDetail(for category: DashboardMetricCategory) -> some View {
         if horizontalSizeClass != .regular {
-            if displayedCategory == category {
-                DashboardCategoryInlineDetailPanel(category: category, model: model)
-                    .id(category)
-            } else {
-                CompanionDashboardDetailPreparingView(
-                    title: category.title,
-                    systemImage: category.systemImage,
-                    tint: category.tint
-                )
-            }
+            DashboardCategoryInlineDetailPanel(category: category, model: model)
+                .id(category)
         }
     }
 
@@ -5221,7 +5108,6 @@ private struct RemoteDashboardChangeSummary: View {
     var status: SanitizedRemoteStatus
     var hasFileCleanupDetails: Bool
     var selectedKind: RemoteChangeSummaryKind?
-    var displayedKind: RemoteChangeSummaryKind?
     let model: CompanionModel
     var onSelect: (RemoteChangeSummaryKind) -> Void
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -5252,23 +5138,15 @@ private struct RemoteDashboardChangeSummary: View {
     @ViewBuilder
     private func compactChangeDetail(for kind: RemoteChangeSummaryKind) -> some View {
         if horizontalSizeClass != .regular {
-            if displayedKind == kind {
-                RemoteChangeSummaryDetailPanel(
-                    kind: kind,
-                    status: status,
-                    changedItems: model.cachedChangeSummaryItems(for: kind.rawValue),
-                    changedCalendarItems: model.cachedChangeSummaryCalendarChanges(for: kind.rawValue),
-                    fileCleanupReports: model.cachedFileCleanupReportsForDashboard(),
-                    model: model
-                )
-                    .id(kind)
-            } else {
-                CompanionDashboardDetailPreparingView(
-                    title: kind.detailTitle,
-                    systemImage: kind.systemImage,
-                    tint: kind.tint
-                )
-            }
+            RemoteChangeSummaryDetailPanel(
+                kind: kind,
+                status: status,
+                changedItems: model.cachedChangeSummaryItems(for: kind.rawValue),
+                changedCalendarItems: model.cachedChangeSummaryCalendarChanges(for: kind.rawValue),
+                fileCleanupReports: model.cachedFileCleanupReportsForDashboard(),
+                model: model
+            )
+                .id(kind)
         }
     }
 }
