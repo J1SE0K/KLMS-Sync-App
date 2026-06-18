@@ -3740,7 +3740,7 @@ private struct CommandPanelView: View {
 
     private var stageDurations: [KLMSStageDuration] {
         if !model.liveCommandOutput.isEmpty {
-            return KLMSStageDurationParser.parse(from: model.liveCommandOutput)
+            return KLMSStageDurationParser.parse(from: Self.boundedStageDurationSource(model.liveCommandOutput))
         }
         if let record = model.commandHistory.records.first(where: { !$0.visibleStageDurations.isEmpty }) {
             return record.visibleStageDurations

@@ -1124,6 +1124,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardStageDurationStrip.contains(".accessibilityLabel(\"최근 단계별 소요 시간 \\(summaryText). 자세한 기록은 로그 화면에서 확인합니다.\")"))
         XCTAssertTrue(view.contains("model.commandHistory.records.first(where: { !$0.visibleStageDurations.isEmpty })"))
         XCTAssertTrue(view.contains("private static func boundedStageDurationSource(_ output: String) -> String"))
+        XCTAssertTrue(commandPanel.contains("KLMSStageDurationParser.parse(from: Self.boundedStageDurationSource(model.liveCommandOutput))"))
+        XCTAssertFalse(commandPanel.contains("KLMSStageDurationParser.parse(from: model.liveCommandOutput)"))
         XCTAssertFalse(view.contains("? (model.lastCommandResult?.combinedOutput ?? \"\")"))
         XCTAssertTrue(view.contains("private struct MacAlertBannerView"))
         XCTAssertTrue(view.contains("private struct NextActionPanelView"))
