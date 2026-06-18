@@ -1325,8 +1325,6 @@ private struct StateItemListView: View {
         presentationTask = Task { @MainActor in
             if shouldDelay {
                 try? await Task.sleep(nanoseconds: DashboardLargeList.filterRebuildDelayNanoseconds)
-            } else {
-                await Task.yield()
             }
             guard !Task.isCancelled else { return }
             let nextPresentation = await Task.detached(priority: .userInitiated) {
@@ -1924,8 +1922,6 @@ private struct NoticeListView: View {
         presentationTask = Task { @MainActor in
             if shouldDelay {
                 try? await Task.sleep(nanoseconds: DashboardLargeList.filterRebuildDelayNanoseconds)
-            } else {
-                await Task.yield()
             }
             guard !Task.isCancelled else { return }
             let nextPresentation = await Task.detached(priority: .userInitiated) {
@@ -2572,8 +2568,6 @@ private struct DashboardFileListContentView: View {
         presentationTask = Task { @MainActor in
             if shouldDelay {
                 try? await Task.sleep(nanoseconds: DashboardLargeList.filterRebuildDelayNanoseconds)
-            } else {
-                await Task.yield()
             }
             guard !Task.isCancelled else { return }
             let nextPresentation = await Task.detached(priority: .userInitiated) {

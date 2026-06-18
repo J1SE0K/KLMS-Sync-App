@@ -986,6 +986,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(noticeListView.contains("private var inputBaseSignature: NoticeDashboardBaseInputSignature"))
         XCTAssertTrue(noticeListView.contains("NoticeDashboardInputSignature(category: category, baseSignature: inputBaseSignature)"))
         XCTAssertTrue(noticeListView.contains("rebuildPresentationIfNeeded"))
+        XCTAssertFalse(noticeListView.contains("await Task.yield()"))
         XCTAssertFalse(noticeListView.contains("let presentation = noticePresentation"))
         XCTAssertFalse(noticeListView.contains("private var noticePresentation"))
         XCTAssertTrue(noticeListView.contains("NoticeCategoryPickerView(\n                category: $category,\n                counts: presentation.counts"))
@@ -1457,6 +1458,8 @@ final class DashboardDataModelTests: XCTestCase {
         let detailRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/DashboardDetailView.swift")
         let detail = try String(contentsOf: detailRoot, encoding: .utf8)
         let fileRow = try sourceStructBody(named: "FileRowView", in: detail)
+        let fileListContentView = try sourceStructBody(named: "DashboardFileListContentView", in: detail)
+        let stateItemListView = try sourceStructBody(named: "StateItemListView", in: detail)
         let fileItem = try sourceBody(
             after: "private struct DashboardFileItem",
             in: detail,
@@ -1511,7 +1514,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("_presentationSignature = State(initialValue: nil)"))
         XCTAssertTrue(detail.contains("DashboardListPreparingView(text: \"목록을 준비하는 중입니다.\")"))
         XCTAssertFalse(detail.contains("presentation = DashboardStateItemListPresentation()\n        visibleLimit = DashboardLargeList.initialVisibleLimit\n        isPreparingPresentation = true"))
-        XCTAssertTrue(detail.contains("await Task.yield()"))
+        XCTAssertFalse(fileListContentView.contains("await Task.yield()"))
+        XCTAssertFalse(stateItemListView.contains("await Task.yield()"))
         XCTAssertTrue(detail.contains("let nextPresentation = await Task.detached(priority: .userInitiated)"))
         XCTAssertTrue(detail.contains("DashboardStateItemListPresentation(items: items, editor: editor, filters: filters, snapshot: snapshot)"))
         XCTAssertTrue(detail.contains("presentation = nextPresentation"))
