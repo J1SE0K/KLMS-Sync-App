@@ -2804,18 +2804,18 @@ private struct CompanionStatusScreen: View {
             DashboardCategoryInlineDetailPanel(category: category, model: model)
                 .id(category)
         } else if horizontalSizeClass == .regular {
-            WorkstationDashboardOverviewPanel(
-                data: WorkstationDashboardOverviewData(model: model),
-                showsMetrics: false,
-                onOpenCategory: openDashboardCategoryFromOverview
-            )
-                .equatable()
+            DashboardCategoryInlineDetailPanel(category: defaultWorkstationDetailCategory, model: model)
+                .id(defaultWorkstationDetailCategory)
         }
     }
 
     private func openDashboardCategoryFromOverview(_ category: DashboardMetricCategory) {
         selectedChangeSummary = nil
         selectedDashboardPreview = category
+    }
+
+    private var defaultWorkstationDetailCategory: DashboardMetricCategory {
+        DashboardMetricCategory.defaultWorkstationDetail(for: model.dashboardStatus)
     }
 
 }
@@ -3848,6 +3848,11 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable, Sendab
     case helpDesk
 
     var id: String { rawValue }
+
+    static func defaultWorkstationDetail(for status: SanitizedRemoteStatus) -> DashboardMetricCategory {
+        [.files, .assignments, .exams, .notices, .calendar, .helpDesk]
+            .first { $0.value(from: status) > 0 } ?? .files
+    }
 
     var title: String {
         switch self {
