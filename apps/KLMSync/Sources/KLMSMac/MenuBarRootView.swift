@@ -75,6 +75,53 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
     }
 }
 
+private struct DeferredMacWorkspacePanel<Content: View>: View {
+    var id: String
+    var loadingText: String
+    private let content: () -> Content
+    @State private var loadedID: String?
+
+    init(
+        id: String,
+        loadingText: String,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.id = id
+        self.loadingText = loadingText
+        self.content = content
+    }
+
+    var body: some View {
+        Group {
+            if loadedID == id {
+                content()
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(loadingText)
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                    Spacer(minLength: 0)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.klmsMacBorder, lineWidth: 1)
+                }
+            }
+        }
+        .task(id: id) {
+            loadedID = nil
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            loadedID = id
+        }
+    }
+}
+
 private struct MacWorkstationLayoutView: View {
     let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
@@ -108,14 +155,18 @@ private struct MacWorkstationLayoutView: View {
                 LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                 DiagnosticStageDurationPanelView(model: model)
                 RemoteActivityPanelView(model: model)
-                RunLogArchivePanelView(model: model)
+                DeferredMacWorkspacePanel(id: "activity-run-log-archive", loadingText: "실행 기록을 준비하는 중입니다.") {
+                    RunLogArchivePanelView(model: model)
+                }
             case .diagnostics:
                 VerifyPanelView(snapshot: model.snapshot)
                 DiagnosticToolsPanelView(model: model)
                 DiagnosticStageDurationPanelView(model: model)
-                DoctorPanelView(snapshot: model.snapshot)
-                AppDiagnosticsPanelView(model: model)
-                LoginPanelView(model: model)
+                DeferredMacWorkspacePanel(id: "diagnostics-secondary-panels", loadingText: "환경 진단 세부 정보를 준비하는 중입니다.") {
+                    DoctorPanelView(snapshot: model.snapshot)
+                    AppDiagnosticsPanelView(model: model)
+                    LoginPanelView(model: model)
+                }
             case .settings:
                 SettingsView(model: model)
             }

@@ -2296,6 +2296,11 @@ final class DashboardDataModelTests: XCTestCase {
         let dashboardTopBarView = try sourceStructBody(named: "DashboardTopBarView", in: mac)
         let macAlertBannerView = try sourceStructBody(named: "MacAlertBannerView", in: mac)
         let nextActionPanelView = try sourceStructBody(named: "NextActionPanelView", in: mac)
+        let deferredMacWorkspacePanel = try sourceBody(
+            after: "private struct DeferredMacWorkspacePanel<Content: View>: View",
+            in: mac,
+            description: "Mac deferred workspace panel"
+        )
         let macWorkstationLayoutView = try sourceStructBody(named: "MacWorkstationLayoutView", in: mac)
         let taskAndExamWorkspaceView = try sourceStructBody(named: "TaskAndExamWorkspaceView", in: mac)
         let quickStatusStripView = try sourceStructBody(named: "QuickStatusStripView", in: mac)
@@ -2384,6 +2389,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("renderSignature: model.dashboardRenderSignature"))
         XCTAssertFalse(mac.contains("renderSignature: DashboardRenderSignature(snapshot: model.snapshot, summary: model.dashboardSummaryCache)"))
         XCTAssertTrue(macWorkstationLayoutView.contains("let model: KLMSMacModel"))
+        XCTAssertTrue(deferredMacWorkspacePanel.contains("@State private var loadedID"))
+        XCTAssertTrue(deferredMacWorkspacePanel.contains(".task(id: id)"))
+        XCTAssertTrue(deferredMacWorkspacePanel.contains("await Task.yield()"))
+        XCTAssertTrue(deferredMacWorkspacePanel.contains("loadedID = id"))
         XCTAssertTrue(macWorkstationLayoutView.contains("cachedDashboardDetailPanel(kind: .files)"))
         XCTAssertTrue(macWorkstationLayoutView.contains("cachedDashboardDetailPanel(kind: .notices)"))
         XCTAssertTrue(macWorkstationLayoutView.contains("cachedDashboardDetailPanel(kind: .calendar)"))
@@ -2558,6 +2567,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(logsBody.contains("LogSummaryPanelView(model: model"))
         XCTAssertTrue(logsBody.contains("DiagnosticStageDurationPanelView(model: model)"))
         XCTAssertTrue(logsBody.contains("RemoteActivityPanelView(model: model)"))
+        XCTAssertTrue(logsBody.contains("DeferredMacWorkspacePanel(id: \"activity-run-log-archive\""))
+        XCTAssertTrue(logsBody.contains("loadingText: \"실행 기록을 준비하는 중입니다.\""))
         XCTAssertTrue(logsBody.contains("RunLogArchivePanelView(model: model)"))
         XCTAssertLessThan(
             try XCTUnwrap(logsBody.range(of: "LogSummaryPanelView(model: model")).lowerBound,
@@ -2624,6 +2635,11 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticToolsPanelView"))
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticStageDurationPanelView"))
+        XCTAssertTrue(diagnosticsBody.contains("DeferredMacWorkspacePanel(id: \"diagnostics-secondary-panels\""))
+        XCTAssertTrue(diagnosticsBody.contains("loadingText: \"환경 진단 세부 정보를 준비하는 중입니다.\""))
+        XCTAssertTrue(diagnosticsBody.contains("DoctorPanelView(snapshot: model.snapshot)"))
+        XCTAssertTrue(diagnosticsBody.contains("AppDiagnosticsPanelView(model: model)"))
+        XCTAssertTrue(diagnosticsBody.contains("LoginPanelView(model: model)"))
         XCTAssertFalse(diagnosticsBody.contains("DiagnosticCommandLogPanelView"))
         XCTAssertFalse(diagnosticsBody.contains("RemoteActivityPanelView"))
         XCTAssertFalse(diagnosticsBody.contains("LogPanelView"))
