@@ -2981,7 +2981,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosRemoteLogSummaryPanel.contains(".stroke(Color.klmsBorder, lineWidth: 1)"))
         XCTAssertTrue(iosRemoteLogSummaryPanel.contains("실행하면 Mac에 요청이 올라갑니다."))
         XCTAssertTrue(iosRemoteLogSummaryPanel.contains("지난 기록은 펼쳐서 봅니다."))
-        XCTAssertTrue(iosRemoteLogSummaryPanel.contains("상세는 오른쪽에 표시됩니다."))
+        XCTAssertTrue(iosRemoteLogSummaryPanel.contains("상세는 옆 패널에 표시됩니다."))
         XCTAssertTrue(iosRemoteLogSummaryPanel.contains("행을 누르면 펼쳐집니다."))
         XCTAssertFalse(iosRemoteLogSummaryPanel.contains("실행 버튼을 누르면 Mac 앱에 요청이 올라갑니다."))
         XCTAssertFalse(iosRemoteLogSummaryPanel.contains("지난 완료/실패 기록은 이 행을 펼쳐서 확인할 수 있습니다."))

@@ -11008,7 +11008,7 @@ private struct RemoteLogSummaryPanel: View {
                     if showsInlineDetail {
                         RemoteLogDetailPanel(kind: expandedKind, model: model)
                     } else {
-                        Text("상세는 오른쪽에 표시됩니다.")
+                        Text("상세는 옆 패널에 표시됩니다.")
                             .font(.caption2)
                             .foregroundStyle(Color.klmsSecondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
