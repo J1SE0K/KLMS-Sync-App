@@ -2780,6 +2780,7 @@ private struct CompanionStatusScreen: View {
                     selectedCategory: selectedDashboardPreview,
                     onSelect: openDashboardCategoryFromOverview
                 )
+                compactDashboardDetail
             }
             RemoteDashboardMetricOverview(
                 model: model,
@@ -2796,6 +2797,16 @@ private struct CompanionStatusScreen: View {
                     selectedChangeSummary = kind
                 }
             )
+        }
+    }
+
+    @ViewBuilder
+    private var compactDashboardDetail: some View {
+        if horizontalSizeClass != .regular,
+           selectedChangeSummary == nil,
+           let selectedDashboardPreview {
+            DashboardCategoryInlineDetailPanel(category: selectedDashboardPreview, model: model)
+                .id(selectedDashboardPreview)
         }
     }
 
@@ -4883,8 +4894,10 @@ private struct RemoteDashboardMetricOverview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if hasVisibleMetrics {
+            if shouldShowPrimaryMetricSection {
                 metricSection("주요 항목", categories: primaryMetricCategories)
+            }
+            if shouldShowAttentionMetricSection {
                 metricSection("확인 필요", categories: attentionMetricCategories)
             } else if shouldShowInlineEmptyDashboardMessage {
                 Text("표시할 대시보드 항목이 없습니다.")
@@ -4942,19 +4955,8 @@ private struct RemoteDashboardMetricOverview: View {
                             }
                         }
                     }
-                    if let selectedCategory, categories.contains(selectedCategory) {
-                        compactMetricDetail(for: selectedCategory)
-                    }
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private func compactMetricDetail(for category: DashboardMetricCategory) -> some View {
-        if horizontalSizeClass != .regular {
-            DashboardCategoryInlineDetailPanel(category: category, model: model)
-                .id(category)
         }
     }
 
@@ -4970,15 +4972,23 @@ private struct RemoteDashboardMetricOverview: View {
     }
 
     private var attentionMetricCategories: [DashboardMetricCategory] {
-        [.quarantine, .calendar].filter { $0.value(from: displayStatus) > 0 }
+        let categories: [DashboardMetricCategory] = horizontalSizeClass == .regular ? [.quarantine, .calendar] : [.quarantine]
+        return categories.filter { $0.value(from: displayStatus) > 0 }
     }
 
-    private var hasVisibleMetrics: Bool {
-        !primaryMetricCategories.isEmpty || !attentionMetricCategories.isEmpty
+    private var shouldShowPrimaryMetricSection: Bool {
+        horizontalSizeClass == .regular && !primaryMetricCategories.isEmpty
+    }
+
+    private var shouldShowAttentionMetricSection: Bool {
+        !attentionMetricCategories.isEmpty
     }
 
     private var shouldShowInlineEmptyDashboardMessage: Bool {
-        horizontalSizeClass != .regular && !hasVisibleChangeSummary
+        horizontalSizeClass != .regular
+            && primaryMetricCategories.isEmpty
+            && attentionMetricCategories.isEmpty
+            && !hasVisibleChangeSummary
     }
 
     private var hasVisibleChangeSummary: Bool {
