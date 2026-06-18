@@ -3658,6 +3658,7 @@ private struct RemoteRunningStatusBanner: View {
                 } label: {
                     Label(cancelButtonTitle, systemImage: cancelAlreadyRequested ? "checkmark.circle" : "stop.fill")
                         .labelStyle(.titleAndIcon)
+                        .frame(minHeight: 44)
                 }
                 .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                 .disabled(!model.canCancelRunningCommand || localCancelSubmitting)
@@ -12074,6 +12075,7 @@ private struct RemoteSettingRow: View {
                         await model.createSettingAction(setting: setting, value: draftValue)
                     }
                 }
+                .frame(minHeight: 44)
                 .buttonStyle(KLMSActionButtonStyle())
                 .disabled(!setting.editable || model.isSubmitting || draftValue == setting.value)
             }
