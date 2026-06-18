@@ -3627,6 +3627,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("horizontalSizeClass == .regular"))
         XCTAssertTrue(ios.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertFalse(ios.contains(".frame(maxWidth: .infinity, minHeight: isCompact ? 40 : 36, alignment: .leading)"))
+        XCTAssertFalse(ios.contains(".frame(maxWidth: .infinity, minHeight: 40)"))
         XCTAssertTrue(ios.contains("private var screenContent: some View"))
         XCTAssertTrue(ios.contains("NavigationStack {\n                    screenContent"))
         XCTAssertFalse(ios.contains(".listStyle(.sidebar)"))

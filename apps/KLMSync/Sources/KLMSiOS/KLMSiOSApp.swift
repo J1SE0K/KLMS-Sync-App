@@ -3746,7 +3746,7 @@ private struct ServerRelayConnectionPanel: View {
             Label(title, systemImage: systemImage)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, minHeight: 40)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(KLMSActionButtonStyle())
     }
@@ -3764,7 +3764,7 @@ private struct ServerRelayConnectionPanel: View {
             Label(title, systemImage: systemImage)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, minHeight: 40)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(KLMSActionButtonStyle())
     }
@@ -9411,7 +9411,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 }
             } label: {
                 Label("\(relevantCommand.displayName) 다시 실행", systemImage: relevantCommand.engineCommand.systemImage)
-                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(KLMSActionButtonStyle())
             .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
@@ -9455,7 +9455,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 }
             } label: {
                 Label("파일 링크 요청", systemImage: "link.badge.plus")
-                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(KLMSActionButtonStyle())
             .disabled(!model.serverRelayConfigured || model.isSubmitting || request?.status.isInFlight == true)
