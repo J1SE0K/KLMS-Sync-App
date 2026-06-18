@@ -7395,13 +7395,13 @@ private struct MailPasteAnalyzerPanel: View {
 
                         Spacer(minLength: 0)
 
-                        Button(role: .destructive) {
+                        Button {
                             mailText = ""
                             analysis = .empty
                         } label: {
-                            Label("입력 비우기", systemImage: "trash")
+                            Label("입력 비우기", systemImage: "xmark.circle")
                         }
-                        .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                        .buttonStyle(KLMSActionButtonStyle())
                         .disabled(mailText.isEmpty)
                     }
                     .font(.caption.weight(.semibold))

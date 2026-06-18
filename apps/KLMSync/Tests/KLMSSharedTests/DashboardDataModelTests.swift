@@ -3640,6 +3640,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mailPastePanel.contains("@State private var deferredAnalysisTask"))
         XCTAssertTrue(mailPastePanel.contains("scheduleAnalysis()"))
         XCTAssertTrue(mailPastePanel.contains(".buttonStyle(KLMSCardButtonStyle())"))
+        XCTAssertTrue(mailPastePanel.contains("Label(\"입력 비우기\", systemImage: \"xmark.circle\")"))
+        XCTAssertFalse(mailPastePanel.contains("Label(\"입력 비우기\", systemImage: \"trash\")"))
         XCTAssertTrue(mailPastePanel.contains(".onChange(of: model.dashboardSyncItemsRevision)"))
         XCTAssertFalse(mailPastePanel.contains(".onChange(of: model.syncItems)"))
         XCTAssertTrue(mailPasteResult.contains(".buttonStyle(KLMSCardButtonStyle())"))
