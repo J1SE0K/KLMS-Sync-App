@@ -2433,6 +2433,16 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS card button style"
         )
+        let actionButtonStyle = try sourceBody(
+            after: "private struct KLMSActionButtonStyle: ButtonStyle",
+            in: ios,
+            description: "iOS action button style"
+        )
+        let toolbarButtonStyle = try sourceBody(
+            after: "private struct KLMSToolbarButtonStyle: ButtonStyle",
+            in: ios,
+            description: "iOS toolbar button style"
+        )
 
         XCTAssertTrue(mac.contains("case activityLogs"))
         XCTAssertTrue(mac.contains("case diagnostics"))
@@ -2892,6 +2902,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosSidebarButton.contains(".contentShape(RoundedRectangle(cornerRadius: 12))"))
         XCTAssertTrue(iosCardButtonStyle.contains("var cornerRadius: CGFloat = 10"))
         XCTAssertTrue(iosCardButtonStyle.contains("RoundedRectangle(cornerRadius: cornerRadius)"))
+        XCTAssertTrue(iosCardButtonStyle.contains(".frame(minHeight: 44)"))
+        XCTAssertTrue(actionButtonStyle.contains(".frame(minHeight: 44)"))
+        XCTAssertTrue(toolbarButtonStyle.contains(".frame(minHeight: 44)"))
         XCTAssertTrue(iosCardButtonStyle.contains("Color.klmsCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0)"))
         XCTAssertFalse(iosCardButtonStyle.contains("Color.klmsPrimaryCommandButtonBorder.opacity(configuration.isPressed ? 0.52 : 0.0)"))
         XCTAssertFalse(iosSidebarButton.contains(".animation(.easeOut(duration: 0.10), value: isSelected)"))

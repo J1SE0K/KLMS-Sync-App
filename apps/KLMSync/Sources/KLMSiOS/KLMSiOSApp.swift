@@ -5276,6 +5276,7 @@ private struct KLMSCardButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .frame(minHeight: 44)
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(Color.klmsCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
@@ -5774,6 +5775,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 12, weight: .semibold, design: .rounded))
             .foregroundStyle(foreground)
+            .frame(minHeight: 44)
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
             .background {
@@ -5853,6 +5855,7 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 12, weight: .semibold, design: .rounded))
             .foregroundStyle(foreground)
+            .frame(minHeight: 44)
             .padding(.horizontal, 9)
             .padding(.vertical, 6)
             .background {
