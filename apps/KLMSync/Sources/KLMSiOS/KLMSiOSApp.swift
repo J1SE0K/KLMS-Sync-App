@@ -3086,7 +3086,7 @@ private struct CompanionSettingsScreen: View {
     private var settingsPrimaryColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
             CompanionImmediateSettingsPanel(model: model)
-            RemoteSettingsPanel(model: model)
+            RemoteSettingsPanel(model: model, usesWideGrid: horizontalSizeClass == .regular)
         }
     }
 
@@ -10736,6 +10736,7 @@ private struct RemoteDryRunReportRow: View {
 
 private struct RemoteSettingsPanel: View {
     @ObservedObject var model: CompanionModel
+    var usesWideGrid = false
 
     private var settingGroups: [RemoteSettingGroup] {
         RemoteSettingGroup.grouped(settings: model.remoteSettings)
@@ -10775,6 +10776,16 @@ private struct RemoteSettingsPanel: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
                         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
+                } else if usesWideGrid {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 260), spacing: 10, alignment: .top)],
+                        alignment: .leading,
+                        spacing: 10
+                    ) {
+                        ForEach(settingGroups) { group in
+                            RemoteSettingGroupSection(group: group, model: model)
+                        }
+                    }
                 } else {
                     ForEach(settingGroups) { group in
                         RemoteSettingGroupSection(group: group, model: model)
