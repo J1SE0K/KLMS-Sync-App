@@ -4515,6 +4515,7 @@ private struct CompanionItemListControls: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
+                .frame(minHeight: 44)
                 .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground, in: Capsule())
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 .overlay {
@@ -4524,6 +4525,7 @@ private struct CompanionItemListControls: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 999))
+        .accessibilityLabel("\(title) \(isSelected ? "선택됨" : "해제됨")")
     }
 
     private func companionPickerField<Content: View>(
@@ -4870,7 +4872,7 @@ private struct RemoteDashboardMetricOverview: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
                     .overlay {
                         RoundedRectangle(cornerRadius: 13)
@@ -5242,7 +5244,7 @@ private struct FlowChipLayout: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .background(
                         isSelected
                             ? Color.klmsSelectedBackground.opacity(0.96)
@@ -5256,6 +5258,7 @@ private struct FlowChipLayout: View {
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(KLMSCardButtonStyle())
+                .accessibilityLabel("\(entry.kind.title) \(entry.value)개 \(selectedKind == entry.kind ? "펼쳐짐" : "접힘")")
                 .accessibilityHint("변경된 항목 목록을 펼칩니다.")
             }
         }
