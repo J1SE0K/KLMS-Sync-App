@@ -1528,6 +1528,7 @@ private struct StateItemRowView: View {
                         Image(systemName: "safari")
                     }
                     .help("KLMS 열기")
+                    .accessibilityLabel("KLMS에서 항목 열기")
                     .buttonStyle(KLMSMacIconButtonStyle())
                 }
             }
@@ -2198,6 +2199,7 @@ private struct NoticeRowView: View {
                         Image(systemName: "safari")
                     }
                     .help("공지 열기")
+                    .accessibilityLabel("KLMS에서 공지 열기")
                     .buttonStyle(KLMSMacIconButtonStyle())
                 }
             }
@@ -2243,6 +2245,7 @@ private struct NoticeRowView: View {
                                     }
                                     .buttonStyle(KLMSMacIconButtonStyle())
                                     .help("Finder에서 보기")
+                                    .accessibilityLabel("첨부 파일 Finder에서 보기")
                                 }
                             }
                         }
@@ -3260,6 +3263,7 @@ private struct FileRowView: View {
                     }
                     .buttonStyle(KLMSMacIconButtonStyle())
                     .help("Finder에서 보기")
+                    .accessibilityLabel("파일 Finder에서 보기")
                 }
                 if !item.url.isEmpty {
                     Button {
@@ -3269,6 +3273,7 @@ private struct FileRowView: View {
                     }
                     .buttonStyle(KLMSMacIconButtonStyle())
                     .help("KLMS 열기")
+                    .accessibilityLabel("KLMS에서 파일 열기")
                 }
             }
             DeferredDashboardExpansion(isExpanded: isExpanded) {
