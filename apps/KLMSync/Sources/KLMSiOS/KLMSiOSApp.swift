@@ -3325,9 +3325,11 @@ private struct CompanionHistoryScreen: View {
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 16) {
                     historySummaryColumn
-                        .frame(minWidth: 320, idealWidth: 390, maxWidth: 460, alignment: .topLeading)
+                        .frame(minWidth: 280, idealWidth: 340, maxWidth: 390, alignment: .topLeading)
                     historyDetailColumn
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .frame(minWidth: 300, idealWidth: 360, maxWidth: 430, alignment: .topLeading)
+                    historyRequestColumn
+                        .frame(minWidth: 300, idealWidth: 360, maxWidth: .infinity, alignment: .topLeading)
                 }
             } else {
                 historySummaryColumn
@@ -3370,15 +3372,6 @@ private struct CompanionHistoryScreen: View {
                     systemImage: "sidebar.right"
                 )
             }
-            RecentServerRequestLogView(
-                entries: model.recentRequestLog,
-                clearAction: {
-                    Task {
-                        await model.clearRemoteLogs(scope: .requestLog)
-                    }
-                },
-                clearDisabled: !model.serverRelayConfigured || model.isSubmitting || !model.hasClearableRequestLogs
-            )
         }
     }
 

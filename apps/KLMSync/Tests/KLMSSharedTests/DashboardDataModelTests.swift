@@ -2759,12 +2759,22 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosHistoryScreen.contains("historySummaryColumn"))
         XCTAssertTrue(iosHistoryScreen.contains("historyDetailColumn"))
         XCTAssertTrue(iosHistoryScreen.contains("historyRequestColumn"))
+        XCTAssertTrue(iosHistoryScreen.contains(".frame(minWidth: 280, idealWidth: 340, maxWidth: 390"))
+        XCTAssertTrue(iosHistoryScreen.contains(".frame(minWidth: 300, idealWidth: 360, maxWidth: 430"))
+        XCTAssertTrue(iosHistoryScreen.contains(".frame(minWidth: 300, idealWidth: 360, maxWidth: .infinity"))
+        XCTAssertLessThan(
+            try XCTUnwrap(iosHistoryScreen.range(of: "historySummaryColumn")).lowerBound,
+            try XCTUnwrap(iosHistoryScreen.range(of: "historyDetailColumn")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(iosHistoryScreen.range(of: "historyDetailColumn")).lowerBound,
+            try XCTUnwrap(iosHistoryScreen.range(of: "historyRequestColumn")).lowerBound
+        )
         XCTAssertTrue(iosHistoryScreen.contains("@State private var selectedLogSummaryKind: RemoteLogSummaryKind? = .status"))
         XCTAssertTrue(iosHistoryScreen.contains("showsInlineDetail: horizontalSizeClass != .regular"))
         XCTAssertTrue(iosHistoryScreen.contains("selectedKind: horizontalSizeClass == .regular ? $selectedLogSummaryKind : nil"))
         XCTAssertTrue(iosHistoryScreen.contains("RemoteLogDetailPanel(kind: selectedLogSummaryKind, model: model)"))
         XCTAssertTrue(iosHistoryScreen.contains("CompanionEmptyDetailPanel("))
-        XCTAssertTrue(iosHistoryScreen.contains(".frame(minWidth: 320, idealWidth: 390, maxWidth: 460"))
         XCTAssertTrue(iosRemoteLogSummaryPanel.contains("var showsInlineDetail = true"))
         XCTAssertTrue(iosRemoteLogSummaryPanel.contains("var selectedKind: Binding<RemoteLogSummaryKind?>? = nil"))
         XCTAssertTrue(iosRemoteLogSummaryPanel.contains("@State private var localExpandedKind"))
