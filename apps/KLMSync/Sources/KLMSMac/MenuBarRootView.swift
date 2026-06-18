@@ -33,7 +33,7 @@ struct MenuBarRootView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
+            .accessibilityIdentifier("workspace-scroll-\(selectedSection.rawValue)")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
@@ -188,7 +188,13 @@ private struct MacWorkstationLayoutView: View {
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
+        .accessibilityIdentifier(workspaceContainerAccessibilityIdentifier)
+    }
+
+    private var workspaceContainerAccessibilityIdentifier: String {
+        selectedSection == .dashboard
+            ? "workspace-content-dashboard"
+            : "workspace-host-\(selectedSection.rawValue)"
     }
 
     private func cachedDashboardDetailPanel(kind: DashboardDetailKind) -> DashboardDetailPanelView {
@@ -360,7 +366,7 @@ private struct DashboardTopBarView: View {
         }
         .padding(.horizontal, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
+        .accessibilityIdentifier("workspace-title-\(selectedSection.rawValue)")
         .accessibilityLabel("\(selectedSection.title) 화면")
     }
 
