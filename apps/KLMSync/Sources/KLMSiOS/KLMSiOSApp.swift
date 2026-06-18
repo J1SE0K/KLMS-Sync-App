@@ -3132,16 +3132,25 @@ private struct CompanionImmediateSettingsPanel: View {
                     statusText: model.sharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐",
                     detail: "끄면 원격 동기화에서 Notes 공지 메모만 건너뜁니다."
                 ) {
-                    Toggle("원격 실행에서 공지 메모도 갱신", isOn: Binding(
-                        get: { model.sharedNoticeUpdateNotesEnabled },
-                        set: { enabled in
-                            Task {
-                                await model.updateSharedNoticeNotes(enabled)
-                            }
+                    Button {
+                        let enabled = !model.sharedNoticeUpdateNotesEnabled
+                        Task {
+                            await model.updateSharedNoticeNotes(enabled)
                         }
-                    ))
-                    .font(.subheadline.weight(.semibold))
-                    .toggleStyle(.switch)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Label(
+                                "원격 실행에서 공지 메모도 갱신",
+                                systemImage: model.sharedNoticeUpdateNotesEnabled ? "checkmark.circle.fill" : "circle"
+                            )
+                            Spacer(minLength: 8)
+                            Text(model.sharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.klmsSecondaryText)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(KLMSActionButtonStyle(tone: model.sharedNoticeUpdateNotesEnabled ? .success : .soft))
                     .disabled(model.isSubmitting)
                     .accessibilityLabel("공지 메모 갱신")
                     .accessibilityValue(model.sharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐")
