@@ -3033,26 +3033,38 @@ private struct CompanionSettingsScreen: View {
     var body: some View {
         CompanionScreenContainer(title: "설정", model: model) {
             if horizontalSizeClass == .regular {
-                HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                    settingsPrimaryColumn
-                        .frame(
-                            minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                            idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                            maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
-                            alignment: .topLeading
-                        )
-                    settingsSupportColumn
-                        .frame(
-                            minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                            idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                            maxWidth: .infinity,
-                            alignment: .topLeading
-                        )
-                }
+                settingsRegularWorkspace
             } else {
                 settingsPrimaryColumn
                 settingsSupportColumn
             }
+        }
+    }
+
+    private var settingsRegularWorkspace: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                settingsPrimaryColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+                settingsSupportColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                settingsPrimaryColumn
+                settingsSupportColumn
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
