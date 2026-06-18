@@ -1763,6 +1763,8 @@ private struct LogSummaryTile: View {
         }
         .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
         .help(isExpanded ? "관련 로그 접기" : "관련 로그 펼치기")
+        .accessibilityLabel("\(title) 로그 요약 \(isExpanded ? "접기" : "펼치기")")
+        .accessibilityHint(detail)
     }
 }
 
@@ -3142,7 +3144,14 @@ private struct ServerRequestLogActivityRow: View {
                     LogTextBlock(text: expandedLog)
                 }
             }
+            .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(statusColor.opacity(0.16), lineWidth: 1)
+            }
         }
         .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
         .accessibilityLabel("\(entry.action.nilIfBlank ?? entry.path.nilIfBlank ?? "서버 요청") 기록 \(isExpanded ? "접기" : "펼치기")")
@@ -3240,7 +3249,14 @@ private struct RemoteCommandActivityRow: View {
                     LogTextBlock(text: expandedLog)
                 }
             }
+            .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(statusColor.opacity(0.16), lineWidth: 1)
+            }
         }
         .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
         .accessibilityLabel("\(command.kind.displayName) 원격 실행 기록 \(isExpanded ? "접기" : "펼치기")")
