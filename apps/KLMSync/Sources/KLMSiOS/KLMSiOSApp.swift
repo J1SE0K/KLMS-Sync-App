@@ -2920,13 +2920,19 @@ private struct CompanionDashboardQuickAccessGrid: View {
         GridItem(.adaptive(minimum: 112), spacing: 7),
     ]
 
-    private let categories: [DashboardMetricCategory] = [
-        .files,
-        .assignments,
-        .exams,
-        .notices,
-        .calendar,
-    ]
+    private var quickAccessCategories: [DashboardMetricCategory] {
+        var categories: [DashboardMetricCategory] = [
+            .files,
+            .assignments,
+            .exams,
+            .notices,
+            .calendar,
+        ]
+        if DashboardMetricCategory.helpDesk.value(from: status) > 0 {
+            categories.append(.helpDesk)
+        }
+        return categories
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2935,7 +2941,7 @@ private struct CompanionDashboardQuickAccessGrid: View {
                 .foregroundStyle(Color.klmsSecondaryText)
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 7) {
-                ForEach(categories) { category in
+                ForEach(quickAccessCategories) { category in
                     quickAccessButton(category)
                 }
             }
