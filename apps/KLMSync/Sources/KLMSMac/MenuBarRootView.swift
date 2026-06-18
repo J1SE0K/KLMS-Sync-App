@@ -360,6 +360,8 @@ private struct DashboardTopBarView: View {
         }
         .padding(.horizontal, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
+        .accessibilityLabel("\(selectedSection.title) 화면")
     }
 
     private var statusText: String {

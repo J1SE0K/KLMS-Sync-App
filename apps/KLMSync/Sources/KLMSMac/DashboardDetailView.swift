@@ -214,6 +214,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     var snapshot: EngineSnapshot
     private var renderSignature: DashboardRenderSignature
     private var fileDataRenderSignature: DashboardFileRenderSignature?
+    private var filterOptions: DashboardFilterOptions
     private var hiddenCount: Int
     @State private var searchText = ""
     @State private var selectedCourse = DashboardCourseFilter.all
@@ -242,6 +243,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         self.fileDataRenderSignature = kind.requiresFileData
             ? (fileRenderSignature ?? DashboardFileRenderSignature(snapshot: resolvedSnapshot))
             : nil
+        self.filterOptions = DashboardFilterOptions(kind: kind, snapshot: resolvedSnapshot)
         self.hiddenCount = resolvedSnapshot.hiddenSummary.total
         _fileData = State(initialValue: nil)
         _fileDataSignature = State(initialValue: nil)
@@ -275,9 +277,9 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
                 showHidden: $showHidden,
                 newOnly: $newOnly,
                 recentOnly: $recentOnly,
-                courses: { DashboardCourseFilter.options(for: kind, snapshot: snapshot) },
-                years: { DashboardTermFilter.yearOptions(for: kind, snapshot: snapshot) },
-                semesters: { DashboardTermFilter.semesterOptions(for: kind, snapshot: snapshot) },
+                courses: filterOptions.courses,
+                years: filterOptions.years,
+                semesters: filterOptions.semesters,
                 supportsNewOnly: kind.supportsNewOnly,
                 supportsRecentOnly: kind.supportsRecentOnly,
                 supportsHiddenToggle: kind != .calendar && kind != .hidden && hiddenCount > 0
@@ -496,6 +498,18 @@ private enum DashboardLargeList {
     static let initialVisibleLimit = 5
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
+}
+
+private struct DashboardFilterOptions: Equatable, Sendable {
+    var courses: [String]
+    var years: [String]
+    var semesters: [String]
+
+    init(kind: DashboardDetailKind, snapshot: EngineSnapshot) {
+        courses = DashboardCourseFilter.options(for: kind, snapshot: snapshot)
+        years = DashboardTermFilter.yearOptions(for: kind, snapshot: snapshot)
+        semesters = DashboardTermFilter.semesterOptions(for: kind, snapshot: snapshot)
+    }
 }
 
 private struct DashboardFileData: Sendable {
@@ -959,9 +973,9 @@ private struct DashboardFilterBarView: View {
     @Binding var showHidden: Bool
     @Binding var newOnly: Bool
     @Binding var recentOnly: Bool
-    var courses: () -> [String]
-    var years: () -> [String]
-    var semesters: () -> [String]
+    var courses: [String]
+    var years: [String]
+    var semesters: [String]
     var supportsNewOnly: Bool
     var supportsRecentOnly: Bool
     var supportsHiddenToggle: Bool
@@ -1032,7 +1046,6 @@ private struct DashboardFilterBarView: View {
     }
 
     private var coursePickerField: some View {
-        let courses = self.courses()
         return DashboardRangeField(title: "과목", systemImage: "book.closed", minWidth: 150) {
             Picker("과목", selection: normalizedCourseBinding) {
                 ForEach(courses, id: \.self) { course in
@@ -1045,7 +1058,6 @@ private struct DashboardFilterBarView: View {
     }
 
     private var yearPickerField: some View {
-        let years = self.years()
         return DashboardRangeField(title: "년도", systemImage: "calendar", minWidth: 86, disabled: years.count <= 1) {
             Picker("년도", selection: normalizedYearBinding) {
                 ForEach(years, id: \.self) { year in
@@ -1059,7 +1071,6 @@ private struct DashboardFilterBarView: View {
     }
 
     private var semesterPickerField: some View {
-        let semesters = self.semesters()
         return DashboardRangeField(title: "학기", systemImage: "calendar.badge.clock", minWidth: 98, disabled: semesters.count <= 1) {
             Picker("학기", selection: normalizedTermBinding) {
                 ForEach(semesters, id: \.self) { semester in
@@ -1139,7 +1150,6 @@ private struct DashboardFilterBarView: View {
     private var normalizedCourseBinding: Binding<String> {
         Binding(
             get: {
-                let courses = self.courses()
                 return courses.contains(selectedCourse) ? selectedCourse : DashboardCourseFilter.all
             },
             set: { selectedCourse = $0 }
@@ -1149,7 +1159,6 @@ private struct DashboardFilterBarView: View {
     private var normalizedYearBinding: Binding<String> {
         Binding(
             get: {
-                let years = self.years()
                 return years.contains(selectedYear) ? selectedYear : DashboardTermFilter.allYears
             },
             set: { selectedYear = $0 }
@@ -1159,7 +1168,6 @@ private struct DashboardFilterBarView: View {
     private var normalizedTermBinding: Binding<String> {
         Binding(
             get: {
-                let semesters = self.semesters()
                 return semesters.contains(selectedSemester)
                     ? selectedSemester
                     : DashboardTermFilter.allSemesters
