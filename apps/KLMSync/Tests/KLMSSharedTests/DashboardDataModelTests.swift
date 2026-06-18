@@ -1646,7 +1646,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionSection.contains("return \"설정\""))
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection]"))
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection] {\n        [.status, .history, .settings]"))
-        XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .history, .settings]"))
+        XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .files, .notices, .tasks, .calendar, .history, .settings]"))
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
         XCTAssertLessThan(
             compactRoot.range(of: "CompanionSectionContent(section: selectedSection, model: model)")?.lowerBound ?? compactRoot.endIndex,
@@ -2670,9 +2670,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(iosSplitRoot.contains(".frame(width: 154)"))
         XCTAssertTrue(iosSplitRoot.contains("HStack(spacing: 0)"))
         XCTAssertTrue(iosSidebar.contains("CompanionAppSection.workstationSections"))
-        XCTAssertTrue(designSpec.contains("사이드바: 대시보드, 로그, 설정"))
-        XCTAssertTrue(designSpec.contains("파일, 과제/시험, 공지, 캘린더 상세는 대시보드 카드 아래의 상세 패널에서 연다."))
-        XCTAssertFalse(designSpec.contains("사이드바: 대시보드, 파일, 과제/시험, 공지, 캘린더, 로그, 설정"))
+        XCTAssertTrue(designSpec.contains("사이드바: 대시보드, 파일, 공지, 과제/시험, 캘린더, 로그, 설정"))
+        XCTAssertTrue(designSpec.contains("파일, 과제/시험, 공지, 캘린더는 iPad에서 1급 작업 공간으로 바로 열 수 있어야 한다."))
+        XCTAssertFalse(designSpec.contains("사이드바: 대시보드, 로그, 설정"))
         XCTAssertTrue(iosSidebar.contains("VStack(alignment: .leading, spacing: 8)"))
         XCTAssertTrue(iosSidebar.contains("Text(\"작업 공간\")"))
         XCTAssertTrue(iosSidebar.contains(".font(.title3.weight(.bold))"))
