@@ -7383,11 +7383,12 @@ private struct MailPasteAnalyzerPanel: View {
                 VStack(alignment: .leading, spacing: 10) {
                     MailPasteInputBox(mailText: $mailText)
 
-                    HStack(spacing: 8) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
                         Button {
                             pasteFromClipboard()
                         } label: {
                             Label("클립보드 붙여넣기", systemImage: "doc.on.clipboard")
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
 
@@ -7395,17 +7396,17 @@ private struct MailPasteAnalyzerPanel: View {
                             runAnalysis()
                         } label: {
                             Label("판독하기", systemImage: "wand.and.stars")
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                         .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                        Spacer(minLength: 0)
 
                         Button {
                             mailText = ""
                             analysis = .empty
                         } label: {
                             Label("입력 비우기", systemImage: "xmark.circle")
+                                .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                         .disabled(mailText.isEmpty)
