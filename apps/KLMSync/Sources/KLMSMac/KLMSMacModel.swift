@@ -3891,6 +3891,9 @@ final class KLMSMacModel: ObservableObject {
     private func applySnapshot(_ nextSnapshot: EngineSnapshot, showLoginTransition: Bool) {
         _ = showLoginTransition
         replaceSnapshot(nextSnapshot)
+        if runningCommand != nil {
+            return
+        }
         if nextSnapshot.loginStatus?.loggedIn == true || liveAuthDigits == nil {
             liveAuthDigits = nil
             authDigitsSuppressed = true

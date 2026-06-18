@@ -3467,6 +3467,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(addMailItem.contains("rebuildMailDashboardCaches()"))
         XCTAssertTrue(removeMailItem.contains("rebuildMailDashboardCaches()"))
         XCTAssertTrue(applySnapshot.contains("replaceSnapshot(nextSnapshot)"))
+        XCTAssertTrue(applySnapshot.contains("if runningCommand != nil"))
         XCTAssertTrue(model.contains("private struct SnapshotSourceSignature: Equatable"))
         XCTAssertTrue(model.contains("private var lastSnapshotSourceSignature"))
         XCTAssertTrue(model.contains("guard force || lastSnapshotSourceSignature != signature else"))
