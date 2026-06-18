@@ -2452,6 +2452,7 @@ private enum CompanionWorkstationMetrics {
     static let metricColumnMaxWidth: CGFloat = 460
 
     static let detailColumnMinWidth: CGFloat = 360
+    static let detailColumnIdealWidth: CGFloat = 540
 
     static let listColumnMinWidth: CGFloat = 410
     static let listColumnIdealWidth: CGFloat = 500
@@ -2758,6 +2759,7 @@ private struct CompanionStatusScreen: View {
                     statusDetailColumn
                         .frame(
                             minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                            idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
                             maxWidth: .infinity,
                             alignment: .topLeading
                         )
@@ -3007,7 +3009,12 @@ private struct CompanionSettingsScreen: View {
                             alignment: .topLeading
                         )
                     settingsSupportColumn
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .frame(
+                            minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                            idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                            maxWidth: .infinity,
+                            alignment: .topLeading
+                        )
                 }
             } else {
                 settingsPrimaryColumn
@@ -3291,6 +3298,7 @@ private struct CompanionHistoryScreen: View {
                     historyRequestColumn
                         .frame(
                             minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                            idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
                             maxWidth: .infinity,
                             alignment: .topLeading
                         )
@@ -6310,7 +6318,12 @@ private struct WorkstationDashboardCategoryWorkspace: View {
                 emptyMessage: "왼쪽 목록에서 항목을 선택해 주세요.",
                 model: model
             )
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(
+                minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                maxWidth: .infinity,
+                alignment: .topLeading
+            )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .onAppear {
@@ -6400,7 +6413,12 @@ private struct WorkstationTasksWorkspace: View {
                 emptyMessage: "왼쪽 목록에서 과제나 시험을 선택해 주세요.",
                 model: model
             )
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(
+                minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                maxWidth: .infinity,
+                alignment: .topLeading
+            )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .onAppear {
@@ -6489,7 +6507,12 @@ private struct WorkstationCalendarWorkspace: View {
                 )
 
             calendarDetailPanel
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                    maxWidth: .infinity,
+                    alignment: .topLeading
+                )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .onAppear {
