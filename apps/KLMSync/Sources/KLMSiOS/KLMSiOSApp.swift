@@ -2980,7 +2980,9 @@ private struct CompanionDashboardCategoryScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: title, model: model) {
-            if horizontalSizeClass == .regular && category.supportsWorkstationSelectionWorkspace {
+            if horizontalSizeClass == .regular && category == .calendar {
+                WorkstationCalendarWorkspace(model: model)
+            } else if horizontalSizeClass == .regular && category.supportsWorkstationSelectionWorkspace {
                 WorkstationDashboardCategoryWorkspace(category: category, model: model)
             } else {
                 DashboardCategoryInlineDetailPanel(category: category, model: model)
@@ -6425,6 +6427,287 @@ private struct WorkstationTasksWorkspace: View {
         selectedItemID = first.id
         displayedSelectedItemID = first.id
         displayedSelectedItem = first
+        externalDetailTask?.cancel()
+        externalDetailTask = nil
+    }
+}
+
+private struct WorkstationCalendarWorkspace: View {
+    let model: CompanionModel
+    @State private var selectedChangeID: String?
+    @State private var displayedSelectedChangeID: String?
+    @State private var displayedSelectedChange: CalendarChange?
+    @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+    @State private var externalDetailTask: Task<Void, Never>?
+
+    private var changes: [CalendarChange] {
+        model.visibleCalendarChanges()
+    }
+
+    private var activeSelectedChangeID: String? {
+        selectedChangeID
+    }
+
+    private var selectedChange: CalendarChange? {
+        guard selectedChangeID != nil,
+              let displayedSelectedChangeID,
+              let displayedSelectedChange,
+              displayedSelectedChange.id == displayedSelectedChangeID else {
+            return nil
+        }
+        return displayedSelectedChange
+    }
+
+    private var isPreparingExternalDetail: Bool {
+        guard let selectedChangeID else { return false }
+        return displayedSelectedChangeID != selectedChangeID
+    }
+
+    private var changesResetKey: String {
+        "\(changes.count):\(changes.first?.id ?? ""):\(changes.last?.id ?? "")"
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            calendarListPanel
+                .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
+
+            Group {
+                if isPreparingExternalDetail {
+                    WorkstationExternalDetailPreparingPanel(
+                        title: "캘린더 상세",
+                        subtitle: "선택한 일정 변경을 여는 중입니다."
+                    )
+                } else {
+                    calendarDetailPanel
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear {
+            refreshExternalSelection()
+        }
+        .onChange(of: changesResetKey) { _, _ in
+            calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+            refreshExternalSelection()
+        }
+        .onDisappear {
+            externalDetailTask?.cancel()
+            externalDetailTask = nil
+        }
+    }
+
+    private var calendarListPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: DashboardMetricCategory.calendar.systemImage)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(DashboardMetricCategory.calendar.tint)
+                    .frame(width: 32, height: 32)
+                    .background(DashboardMetricCategory.calendar.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("캘린더")
+                        .font(.headline)
+                        .foregroundStyle(Color.klmsPrimaryText)
+                    Text("변경된 일정 \(changes.count)개 · 왼쪽에서 고르고 오른쪽에서 처리합니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                DashboardCountPill(title: "생성", value: model.dashboardStatus.calendarCreated, tint: DashboardMetricCategory.calendar.tint)
+                DashboardCountPill(title: "수정", value: model.dashboardStatus.calendarUpdated, tint: DashboardMetricCategory.calendar.tint)
+                DashboardCountPill(title: "삭제", value: model.dashboardStatus.calendarDeleted, tint: DashboardMetricCategory.calendar.tint)
+            }
+
+            RemoteCalendarActionPanel()
+
+            if changes.isEmpty {
+                Text("최근 캘린더 변경 상세가 아직 서버에 올라오지 않았습니다.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(changes.prefix(calendarVisibleLimit)) { change in
+                        calendarChangeButton(change)
+                    }
+                }
+                if changes.count > calendarVisibleLimit {
+                    CompanionShowMoreRowsButton(remainingCount: changes.count - calendarVisibleLimit) {
+                        calendarVisibleLimit += CompanionLargeList.increment
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
+    }
+
+    private var calendarDetailPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("캘린더 상세")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text("선택한 일정 변경을 등록, 수정, 삭제하거나 Calendar에서 열 수 있습니다.")
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let selectedChange {
+                DashboardCalendarChangeDetailRow(
+                    change: selectedChange,
+                    activeAction: model.activeCalendarAction(for: selectedChange)
+                ) { action, edit in
+                    await model.createCalendarAction(action, change: selectedChange, edit: edit)
+                }
+            } else {
+                Text("왼쪽 목록에서 캘린더 변경 항목을 선택해 주세요.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
+    }
+
+    private func calendarChangeButton(_ change: CalendarChange) -> some View {
+        let isSelected = activeSelectedChangeID == change.id
+        return Button {
+            selectChange(change)
+        } label: {
+            HStack(alignment: .top, spacing: 9) {
+                Text(change.actionDisplayName)
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : calendarActionTint(change))
+                    .background(
+                        isSelected
+                            ? Color.klmsSelectedForeground.opacity(0.12)
+                            : calendarActionTint(change).opacity(0.13),
+                        in: Capsule()
+                    )
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(change.title.nilIfEmpty ?? "제목 없음")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                        .lineLimit(2)
+                    Text(calendarChangeSubtitle(change))
+                        .font(.caption)
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.76) : Color.klmsSecondaryText)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.76))
+                    .padding(.top, 2)
+            }
+            .padding(11)
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.74), lineWidth: isSelected ? 1.2 : 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+        .accessibilityLabel("\(change.title.nilIfBlank ?? "캘린더 변경") \(change.actionDisplayName)")
+        .accessibilityHint("오른쪽에 일정 상세와 처리 버튼을 표시합니다.")
+    }
+
+    private func calendarActionTint(_ change: CalendarChange) -> Color {
+        switch change.action {
+        case "created", "mail":
+            Color.klmsSuccessBorder
+        case "updated":
+            Color.klmsCommandAccent
+        case "deleted":
+            Color.klmsDangerBorder
+        default:
+            Color.klmsSecondaryText
+        }
+    }
+
+    private func calendarChangeSubtitle(_ change: CalendarChange) -> String {
+        let dateText = change.startAt.nilIfBlank ?? change.dueAt.nilIfBlank
+        return [change.course.nilIfBlank, change.calendar.nilIfBlank, dateText]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+    }
+
+    private func selectChange(_ change: CalendarChange) {
+        if activeSelectedChangeID == change.id {
+            return
+        }
+        companionPerformWithoutAnimation {
+            selectedChangeID = change.id
+            displayedSelectedChangeID = nil
+            displayedSelectedChange = nil
+        }
+        deferExternalDetail(change)
+    }
+
+    private func deferExternalDetail(_ change: CalendarChange?) {
+        externalDetailTask?.cancel()
+        guard let change else {
+            displayedSelectedChangeID = nil
+            displayedSelectedChange = nil
+            externalDetailTask = nil
+            return
+        }
+        externalDetailTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            displayedSelectedChangeID = change.id
+            displayedSelectedChange = change
+            externalDetailTask = nil
+        }
+    }
+
+    private func refreshExternalSelection() {
+        if let selectedChangeID,
+           let refreshed = changes.first(where: { $0.id == selectedChangeID }) {
+            displayedSelectedChangeID = refreshed.id
+            displayedSelectedChange = refreshed
+            return
+        }
+
+        guard let first = changes.first else {
+            selectedChangeID = nil
+            displayedSelectedChangeID = nil
+            displayedSelectedChange = nil
+            externalDetailTask?.cancel()
+            externalDetailTask = nil
+            return
+        }
+
+        selectedChangeID = first.id
+        displayedSelectedChangeID = first.id
+        displayedSelectedChange = first
         externalDetailTask?.cancel()
         externalDetailTask = nil
     }
