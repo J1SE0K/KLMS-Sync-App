@@ -1,0 +1,194 @@
+#!/usr/bin/env swift
+
+import AppKit
+import ApplicationServices
+import Foundation
+
+private enum ProbeFailure: Error, CustomStringConvertible {
+    case accessibilityPermissionMissing
+    case appNotRunning(bundleID: String, appName: String)
+    case dashboardOpenControlMissing
+    case dashboardOpenFailed(AXError)
+    case workspaceButtonMissing(String)
+    case workspaceContentMissing(String)
+    case pressFailed(identifier: String, AXError)
+
+    var description: String {
+        switch self {
+        case .accessibilityPermissionMissing:
+            return "Accessibility permission is not granted for Terminal/Codex. Enable it in System Settings > Privacy & Security > Accessibility."
+        case let .appNotRunning(bundleID, appName):
+            return "KLMS Mac app is not running. Expected bundle id '\(bundleID)' or app name '\(appName)'."
+        case .dashboardOpenControlMissing:
+            return "Could not find the menu item that opens the KLMS dashboard window."
+        case let .dashboardOpenFailed(error):
+            return "Could not open the KLMS dashboard window from the menu bar: \(error)."
+        case let .workspaceButtonMissing(identifier):
+            return "Could not find workspace button with accessibility identifier '\(identifier)'."
+        case let .workspaceContentMissing(identifier):
+            return "Could not find workspace content with accessibility identifier '\(identifier)'."
+        case let .pressFailed(identifier, error):
+            return "Could not press button '\(identifier)': \(error)."
+        }
+    }
+}
+
+private struct ProbeTarget {
+    var rawValue: String
+    var buttonIdentifier: String { "workspace-\(rawValue)" }
+    var contentIdentifier: String { "workspace-content-\(rawValue)" }
+}
+
+private let environment = ProcessInfo.processInfo.environment
+private let bundleID = environment["KLMS_MAC_BUNDLE_ID"] ?? "com.local.KLMSync"
+private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
+private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
+private let targets = [
+    ProbeTarget(rawValue: "dashboard"),
+    ProbeTarget(rawValue: "files"),
+    ProbeTarget(rawValue: "tasks"),
+    ProbeTarget(rawValue: "notices"),
+    ProbeTarget(rawValue: "calendar"),
+    ProbeTarget(rawValue: "activityLogs"),
+    ProbeTarget(rawValue: "diagnostics"),
+    ProbeTarget(rawValue: "settings"),
+]
+
+private let trustedOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
+guard AXIsProcessTrustedWithOptions(trustedOptions) else {
+    throw ProbeFailure.accessibilityPermissionMissing
+}
+
+private let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+private let runningByName = NSWorkspace.shared.runningApplications.filter { app in
+    app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
+}
+guard let app = (runningByBundleID + runningByName).first(where: { !$0.isTerminated }) else {
+    throw ProbeFailure.appNotRunning(bundleID: bundleID, appName: appName)
+}
+
+let appElement = AXUIElementCreateApplication(app.processIdentifier)
+try openDashboardWindowIfNeeded(appElement: appElement)
+
+var samples: [(String, Double)] = []
+for target in targets {
+    let elapsed = try measure(target: target, appElement: appElement)
+    samples.append((target.rawValue, elapsed))
+    print("\(target.rawValue)=\(Int(elapsed.rounded()))ms")
+}
+
+let average = samples.map(\.1).reduce(0, +) / Double(max(samples.count, 1))
+let slowest = samples.max { $0.1 < $1.1 }
+print("average=\(Int(average.rounded()))ms slowest=\(slowest?.0 ?? "-"):\(Int((slowest?.1 ?? 0).rounded()))ms")
+
+private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
+    if waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: 0.4) != nil {
+        return
+    }
+
+    requestDashboardWindowReopen()
+    if waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: timeout) != nil {
+        return
+    }
+
+    guard let openItem = waitForElement(withIdentifier: "openDashboardFromMenu", in: appElement, timeout: timeout) else {
+        throw ProbeFailure.dashboardOpenControlMissing
+    }
+    let error = AXUIElementPerformAction(openItem, kAXPressAction as CFString)
+    guard error == .success else {
+        throw ProbeFailure.dashboardOpenFailed(error)
+    }
+
+    guard waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: timeout) != nil else {
+        throw ProbeFailure.workspaceButtonMissing("workspace-dashboard")
+    }
+}
+
+private func requestDashboardWindowReopen() {
+    let escapedAppName = appName.replacingOccurrences(of: "\"", with: "\\\"")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    process.arguments = ["-e", "tell application \"\(escapedAppName)\" to reopen"]
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    try? process.run()
+    process.waitUntilExit()
+}
+
+private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Double {
+    guard let button = waitForElement(withIdentifier: target.buttonIdentifier, in: appElement, timeout: timeout) else {
+        throw ProbeFailure.workspaceButtonMissing(target.buttonIdentifier)
+    }
+
+    let start = DispatchTime.now()
+    let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
+    guard error == .success else {
+        throw ProbeFailure.pressFailed(identifier: target.buttonIdentifier, error)
+    }
+
+    guard waitForElement(withIdentifier: target.contentIdentifier, in: appElement, timeout: timeout) != nil else {
+        throw ProbeFailure.workspaceContentMissing(target.contentIdentifier)
+    }
+    let end = DispatchTime.now()
+    return Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+}
+
+private func waitForElement(
+    withIdentifier identifier: String,
+    in root: AXUIElement,
+    timeout: TimeInterval
+) -> AXUIElement? {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let element = findElement(in: root, maxDepth: 32, maxNodes: 35_000, predicate: {
+            identifierMatches(stringAttribute($0, "AXIdentifier" as CFString), expected: identifier)
+        }) {
+            return element
+        }
+        Thread.sleep(forTimeInterval: 0.02)
+    } while Date() < deadline
+    return nil
+}
+
+private func findElement(
+    in root: AXUIElement,
+    maxDepth: Int,
+    maxNodes: Int,
+    predicate: (AXUIElement) -> Bool
+) -> AXUIElement? {
+    var queue: [(AXUIElement, Int)] = [(root, 0)]
+    var visited = 0
+    while !queue.isEmpty && visited < maxNodes {
+        let (element, depth) = queue.removeFirst()
+        visited += 1
+        if predicate(element) {
+            return element
+        }
+        guard depth < maxDepth else { continue }
+        for child in arrayAttribute(element, "AXChildren" as CFString) {
+            queue.append((child, depth + 1))
+        }
+    }
+    return nil
+}
+
+private func arrayAttribute(_ element: AXUIElement, _ attribute: CFString) -> [AXUIElement] {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
+        return []
+    }
+    return value as? [AXUIElement] ?? []
+}
+
+private func stringAttribute(_ element: AXUIElement, _ attribute: CFString) -> String? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
+        return nil
+    }
+    return value as? String
+}
+
+private func identifierMatches(_ value: String?, expected: String) -> Bool {
+    guard let value else { return false }
+    return value == expected || value.contains(expected)
+}

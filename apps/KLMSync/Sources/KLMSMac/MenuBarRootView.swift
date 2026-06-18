@@ -141,16 +141,24 @@ private struct MacWorkstationLayoutView: View {
                 CommandPanelView(model: model)
                 DashboardSummaryView(model: model)
             case .files:
-                cachedDashboardDetailPanel(kind: .files)
-                    .equatable()
+                DeferredMacWorkspacePanel(id: "workspace-files", loadingText: "파일 목록을 준비하는 중입니다.") {
+                    cachedDashboardDetailPanel(kind: .files)
+                        .equatable()
+                }
             case .tasks:
-                TaskAndExamWorkspaceView(model: model)
+                DeferredMacWorkspacePanel(id: "workspace-tasks", loadingText: "과제와 시험 목록을 준비하는 중입니다.") {
+                    TaskAndExamWorkspaceView(model: model)
+                }
             case .notices:
-                cachedDashboardDetailPanel(kind: .notices)
-                    .equatable()
+                DeferredMacWorkspacePanel(id: "workspace-notices", loadingText: "공지 목록을 준비하는 중입니다.") {
+                    cachedDashboardDetailPanel(kind: .notices)
+                        .equatable()
+                }
             case .calendar:
-                cachedDashboardDetailPanel(kind: .calendar)
-                    .equatable()
+                DeferredMacWorkspacePanel(id: "workspace-calendar", loadingText: "캘린더 변경 사항을 준비하는 중입니다.") {
+                    cachedDashboardDetailPanel(kind: .calendar)
+                        .equatable()
+                }
             case .activityLogs:
                 LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                 DiagnosticStageDurationPanelView(model: model)
@@ -168,11 +176,14 @@ private struct MacWorkstationLayoutView: View {
                     LoginPanelView(model: model)
                 }
             case .settings:
-                SettingsView(model: model)
+                DeferredMacWorkspacePanel(id: "workspace-settings", loadingText: "설정 화면을 준비하는 중입니다.") {
+                    SettingsView(model: model)
+                }
             }
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
     }
 
     private func cachedDashboardDetailPanel(kind: DashboardDetailKind) -> DashboardDetailPanelView {
@@ -226,7 +237,11 @@ private struct WorkspaceNavigationView: View {
                 let isHovered = hoveredSection == section
                 Button {
                     guard selection != section else { return }
-                    selection = section
+                    var transaction = Transaction()
+                    transaction.animation = nil
+                    withTransaction(transaction) {
+                        selection = section
+                    }
                 } label: {
                     HStack(spacing: 10) {
                         ZStack {
