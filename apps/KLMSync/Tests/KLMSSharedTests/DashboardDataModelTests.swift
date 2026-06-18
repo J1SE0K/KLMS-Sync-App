@@ -1089,7 +1089,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSummaryContent.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertFalse(dashboardSummaryContent.contains("DashboardLogSummaryPanelView(model: model)"))
         XCTAssertFalse(dashboardSummaryContent.contains(".frame(width: 285, alignment: .topLeading)"))
-        XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(activeDetail: currentRenderedDetail, displayedDetail: displayedDetail)"))
+        XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(activeDetail: currentRenderedDetail)"))
+        XCTAssertFalse(dashboardSummaryContent.contains("@State private var displayedDetail"))
+        XCTAssertFalse(dashboardSummaryContent.contains("@State private var detailDisplayTask"))
+        XCTAssertFalse(dashboardSummaryContent.contains("private func deferDashboardDetail"))
+        XCTAssertFalse(dashboardSummaryContent.contains("await Task.yield()"))
         XCTAssertFalse(dashboardSummaryContent.contains("""
         if displayedDetail == detail {
             detailDisplayTask = nil
@@ -1106,7 +1110,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(metricGrid.contains("GridItem(.adaptive(minimum: 108)"))
         XCTAssertFalse(view.contains("private var dashboardDetailPlaceholder"))
         XCTAssertTrue(view.contains("private struct DashboardDetailHint"))
-        XCTAssertTrue(view.contains("private struct DashboardDetailPreparingHint"))
+        XCTAssertFalse(view.contains("private struct DashboardDetailPreparingHint"))
         XCTAssertTrue(view.contains("카드를 누르면 바로 아래에서 목록과 처리 버튼을 확인할 수 있습니다."))
         XCTAssertFalse(view.contains("private func preferredDetail(in metrics: [Metric]) -> DashboardDetailKind?"))
         XCTAssertFalse(view.contains("metrics.first(where: { $0.detail == .files })?.detail"))
@@ -1171,9 +1175,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(workstationLayout.contains("DeferredMacWorkspacePanel(id: \"workspace-settings\""))
         XCTAssertTrue(workstationLayout.contains("SettingsView(model: model)"))
         XCTAssertFalse(workstationLayout.contains("guard klmsMacInteractionDetailDelayNanoseconds > 0 else"))
-        XCTAssertTrue(dashboardSummaryContent.contains("await Task.yield()"))
-        XCTAssertTrue(dashboardSummaryContent.contains("detailDisplayTask?.cancel()"))
-        XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(activeDetail: currentRenderedDetail, displayedDetail: displayedDetail)"))
+        XCTAssertFalse(dashboardSummaryContent.contains("await Task.yield()"))
+        XCTAssertFalse(dashboardSummaryContent.contains("detailDisplayTask?.cancel()"))
+        XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(activeDetail: currentRenderedDetail)"))
         XCTAssertFalse(view.contains("@Environment(\\.openSettings)"))
         XCTAssertFalse(view.contains("openSettings()"))
         XCTAssertFalse(view.contains("KLMSDiagnosticWindowCoordinator.shared.showDiagnosticsWindow()"))
@@ -3493,8 +3497,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(calendarActionButton.contains("tint.opacity(0.10)"))
         XCTAssertFalse(calendarActionButton.contains("tint.opacity(0.24)"))
         XCTAssertFalse(dashboardSummary.contains("MacMailPasteAnalyzerPanel"))
-        XCTAssertTrue(dashboardSummary.contains("@State private var displayedDetail"))
-        XCTAssertTrue(dashboardSummary.contains("@State private var detailDisplayTask"))
+        XCTAssertFalse(dashboardSummary.contains("@State private var displayedDetail"))
+        XCTAssertFalse(dashboardSummary.contains("@State private var detailDisplayTask"))
         XCTAssertTrue(mac.contains("private struct DashboardSummaryContentView: View, @preconcurrency Equatable"))
         XCTAssertFalse(mac.contains("Metric(\"완료 기록\", summary.completedAssignmentCount, detail: .assignmentRecords)"))
         XCTAssertFalse(detail.contains("case assignmentRecords"))
@@ -3508,9 +3512,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSummary.contains("fileRenderSignature: model.dashboardFileRenderSignature"))
         XCTAssertFalse(dashboardSummary.contains(".frame(minWidth: 340, idealWidth: 420, maxWidth: 500"))
         XCTAssertTrue(dashboardSummary.contains("VStack(alignment: .leading, spacing: 12)"))
-        XCTAssertTrue(dashboardSummary.contains("await Task.yield()"))
+        XCTAssertFalse(dashboardSummary.contains("await Task.yield()"))
         XCTAssertTrue(dashboardSummary.contains("guard selectedDetail != detail else"))
-        XCTAssertTrue(dashboardSummary.contains("private func deferDashboardDetail"))
+        XCTAssertFalse(dashboardSummary.contains("private func deferDashboardDetail"))
         XCTAssertFalse(dashboardSummary.contains("""
         if displayedDetail == detail {
             detailDisplayTask = nil
@@ -3518,7 +3522,7 @@ final class DashboardDataModelTests: XCTestCase {
         }
         displayedDetail = nil
         """))
-        XCTAssertTrue(dashboardSummary.contains("DashboardDetailPreparingHint()"))
+        XCTAssertFalse(dashboardSummary.contains("DashboardDetailPreparingHint()"))
         XCTAssertTrue(commandPanel.contains("MacMailPasteAnalyzerPanel"))
         let macMailPanelIndex = try XCTUnwrap(commandPanel.range(of: "MacMailPasteAnalyzerPanel")?.lowerBound)
         let macFullSyncIndex = try XCTUnwrap(commandPanel.range(of: "primaryCommandActionCard(primaryCommand)")?.lowerBound)

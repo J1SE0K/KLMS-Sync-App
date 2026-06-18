@@ -2514,8 +2514,6 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     var renderSignature: DashboardRenderSignature
     private var presentation: DashboardSummaryPresentation
     @State private var selectedDetail: DashboardDetailKind?
-    @State private var displayedDetail: DashboardDetailKind?
-    @State private var detailDisplayTask: Task<Void, Never>?
     @State private var isArchiveMetricsExpanded = false
 
     init(
@@ -2553,22 +2551,12 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                    dashboardDetailContent(activeDetail: currentRenderedDetail, displayedDetail: displayedDetail)
+                    dashboardDetailContent(activeDetail: currentRenderedDetail)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onAppear {
-            deferDashboardDetail(currentRenderedDetail)
-        }
-        .onChange(of: currentRenderedDetail) { _, newValue in
-            deferDashboardDetail(newValue)
-        }
-        .onDisappear {
-            detailDisplayTask?.cancel()
-            detailDisplayTask = nil
-        }
     }
 
     private var currentActiveDetail: DashboardDetailKind? {
@@ -2591,25 +2579,6 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                 return
             }
             selectedDetail = detail
-        }
-    }
-
-    private func deferDashboardDetail(_ detail: DashboardDetailKind?) {
-        detailDisplayTask?.cancel()
-        guard let detail else {
-            displayedDetail = nil
-            detailDisplayTask = nil
-            return
-        }
-        if displayedDetail == detail {
-            detailDisplayTask = nil
-            return
-        }
-        detailDisplayTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            displayedDetail = detail
-            detailDisplayTask = nil
         }
     }
 
@@ -2666,39 +2635,11 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     }
 
     @ViewBuilder
-    private func dashboardDetailContent(activeDetail: DashboardDetailKind?, displayedDetail: DashboardDetailKind?) -> some View {
-        if let displayedDetail {
-            dashboardDetailColumn(kind: displayedDetail)
-        } else if activeDetail != nil {
-            DashboardDetailPreparingHint()
+    private func dashboardDetailContent(activeDetail: DashboardDetailKind?) -> some View {
+        if let activeDetail {
+            dashboardDetailColumn(kind: activeDetail)
         } else {
             DashboardDetailHint()
-        }
-    }
-}
-
-private struct DashboardDetailPreparingHint: View {
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("목록을 준비하는 중입니다.")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                Text("선택한 카드의 목록과 처리 버튼을 곧 표시합니다.")
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
 }
