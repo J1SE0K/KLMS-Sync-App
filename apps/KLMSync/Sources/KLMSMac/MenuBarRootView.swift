@@ -3002,38 +3002,41 @@ private struct SharedRunLogActivityRow: View {
     @State private var isExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(tint)
-                    .frame(width: 16)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(log.commandTitle.nilIfBlank ?? "동기화")
-                        .font(.caption.weight(.semibold))
-                    Text("\(log.status) · \(log.duration) · \(log.finishedAt.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                    CompactStageDurationRowsView(durations: stageDurations)
-                }
-                Spacer(minLength: 8)
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-            }
-            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
-                LogTextBlock(text: log.outputTail)
-            }
-        }
-        .padding(8)
-        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(tint.opacity(0.18), lineWidth: 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
+        Button {
             isExpanded.toggle()
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(tint)
+                        .frame(width: 16)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(log.commandTitle.nilIfBlank ?? "동기화")
+                            .font(.caption.weight(.semibold))
+                        Text("\(log.status) · \(log.duration) · \(log.finishedAt.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                        CompactStageDurationRowsView(durations: stageDurations)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                }
+                DeferredMacInteractionExpansion(isExpanded: isExpanded) {
+                    LogTextBlock(text: log.outputTail)
+                }
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(tint.opacity(0.18), lineWidth: 1)
+            )
         }
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+        .accessibilityLabel("\(log.commandTitle.nilIfBlank ?? "동기화") 실행 로그 \(isExpanded ? "접기" : "펼치기")")
     }
 
     private var systemImage: String {
@@ -3060,41 +3063,44 @@ private struct ServerRequestLogActivityRow: View {
     @State private var isExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: sourceIcon)
-                    .foregroundStyle(statusColor)
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(entry.action.nilIfBlank ?? entry.path.nilIfBlank ?? "서버 요청")
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(1)
-                        Text(entry.sourceDisplayName)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                        Spacer(minLength: 8)
-                        Text(entry.createdAt.formatted(date: .omitted, time: .shortened))
+        Button {
+            isExpanded.toggle()
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: sourceIcon)
+                        .foregroundStyle(statusColor)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(entry.action.nilIfBlank ?? entry.path.nilIfBlank ?? "서버 요청")
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                            Text(entry.sourceDisplayName)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                            Spacer(minLength: 8)
+                            Text(entry.createdAt.formatted(date: .omitted, time: .shortened))
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
+                        }
+                        Text(detail)
                             .font(.caption2)
                             .foregroundStyle(Color.klmsMacSecondaryText)
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(detail)
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                }
+                DeferredMacInteractionExpansion(isExpanded: isExpanded) {
+                    LogTextBlock(text: expandedLog)
                 }
             }
-            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
-                LogTextBlock(text: expandedLog)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            isExpanded.toggle()
-        }
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+        .accessibilityLabel("\(entry.action.nilIfBlank ?? entry.path.nilIfBlank ?? "서버 요청") 기록 \(isExpanded ? "접기" : "펼치기")")
     }
 
     private var detail: String {
@@ -3156,40 +3162,43 @@ private struct RemoteCommandActivityRow: View {
     @State private var isExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(statusColor)
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(command.kind.displayName)
-                            .font(.caption.weight(.semibold))
-                        Text(command.status.displayName)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(statusColor)
-                        Spacer(minLength: 8)
-                        Text(command.updatedAt.formatted(date: .omitted, time: .shortened))
+        Button {
+            isExpanded.toggle()
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(statusColor)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(command.kind.displayName)
+                                .font(.caption.weight(.semibold))
+                            Text(command.status.displayName)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(statusColor)
+                            Spacer(minLength: 8)
+                            Text(command.updatedAt.formatted(date: .omitted, time: .shortened))
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
+                        }
+                        Text(remoteCommandDetail)
                             .font(.caption2)
                             .foregroundStyle(Color.klmsMacSecondaryText)
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(remoteCommandDetail)
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+                }
+                DeferredMacInteractionExpansion(isExpanded: isExpanded) {
+                    LogTextBlock(text: expandedLog)
                 }
             }
-            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
-                LogTextBlock(text: expandedLog)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            isExpanded.toggle()
-        }
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+        .accessibilityLabel("\(command.kind.displayName) 원격 실행 기록 \(isExpanded ? "접기" : "펼치기")")
     }
 
     private var remoteCommandDetail: String {
@@ -3287,48 +3296,51 @@ private struct FileAccessActivityRow: View {
     @State private var isExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(statusColor)
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(request.itemTitle.nilIfBlank ?? "파일")
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(1)
-                        Text(request.status.displayName)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(statusColor)
-                        Spacer(minLength: 8)
-                        Text(request.updatedAt.formatted(date: .omitted, time: .shortened))
+        Button {
+            isExpanded.toggle()
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(statusColor)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(request.itemTitle.nilIfBlank ?? "파일")
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                            Text(request.status.displayName)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(statusColor)
+                            Spacer(minLength: 8)
+                            Text(request.updatedAt.formatted(date: .omitted, time: .shortened))
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
+                        }
+                        Text(detail)
                             .font(.caption2)
                             .foregroundStyle(Color.klmsMacSecondaryText)
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.58))
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(detail)
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                }
+                DeferredMacInteractionExpansion(isExpanded: isExpanded) {
+                    LogTextBlock(text: expandedLog)
                 }
             }
-            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
-                LogTextBlock(text: expandedLog)
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(statusColor.opacity(0.16), lineWidth: 1)
             }
         }
-        .padding(8)
-        .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(statusColor.opacity(0.16), lineWidth: 1)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            isExpanded.toggle()
-        }
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+        .accessibilityLabel("\(request.itemTitle.nilIfBlank ?? "파일") 파일 요청 기록 \(isExpanded ? "접기" : "펼치기")")
     }
 
     private var detail: String {

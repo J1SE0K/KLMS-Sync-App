@@ -1473,34 +1473,43 @@ private struct StateItemRowView: View {
         let hidden = isHidden
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(item.title.isEmpty ? "(제목 없음)" : item.title)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(2)
-                        if hidden {
-                            Label("숨김", systemImage: "eye.slash")
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(item.title.isEmpty ? "(제목 없음)" : item.title)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(2)
+                                if hidden {
+                                    Label("숨김", systemImage: "eye.slash")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.klmsMacSecondaryText)
+                                }
+                                if editor == .assignmentRecord, !item.recordDisplayStatus.isEmpty {
+                                    Text(item.recordDisplayStatus)
+                                        .font(.caption2)
+                                        .foregroundStyle(item.recordStatus == "completed" ? Color.klmsMacSuccessBorder : Color.klmsMacSecondaryText)
+                                }
+                            }
+                            Text([item.academicTerm?.displayName ?? "", item.course, item.due].filter { !$0.isEmpty }.joined(separator: " · "))
                                 .font(.caption2)
                                 .foregroundStyle(Color.klmsMacSecondaryText)
+                                .lineLimit(2)
+                            if !item.location.isEmpty || !item.coverageSummary.isEmpty {
+                                Text([item.location, item.coverageSummary].filter { !$0.isEmpty }.joined(separator: " · "))
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
+                                    .lineLimit(2)
+                            }
                         }
-                        if editor == .assignmentRecord, !item.recordDisplayStatus.isEmpty {
-                            Text(item.recordDisplayStatus)
-                                .font(.caption2)
-                                .foregroundStyle(item.recordStatus == "completed" ? Color.klmsMacSuccessBorder : Color.klmsMacSecondaryText)
-                        }
-                    }
-                    Text([item.academicTerm?.displayName ?? "", item.course, item.due].filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .lineLimit(2)
-                    if !item.location.isEmpty || !item.coverageSummary.isEmpty {
-                        Text([item.location, item.coverageSummary].filter { !$0.isEmpty }.joined(separator: " · "))
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .lineLimit(2)
+                        Spacer(minLength: 8)
+                        DashboardRowDisclosureButton(isExpanded: isExpanded)
                     }
                 }
-                Spacer(minLength: 8)
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("\(item.title.isEmpty ? "항목" : item.title) \(isExpanded ? "접기" : "작업 펼치기")")
                 if !item.url.isEmpty {
                     Button {
                         openExternalURL(item.url)
@@ -1510,11 +1519,6 @@ private struct StateItemRowView: View {
                     .help("KLMS 열기")
                     .buttonStyle(KLMSMacIconButtonStyle())
                 }
-                DashboardRowDisclosureButton(isExpanded: isExpanded)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                isExpanded.toggle()
             }
 
             DeferredDashboardExpansion(isExpanded: isExpanded) {
@@ -2146,27 +2150,36 @@ private struct NoticeRowView: View {
         let term = notice.academicTerm(generatedAt: snapshot.noticeDigest?.generatedAt ?? "")
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text((notice.title.isEmpty ? "(제목 없음)" : notice.title).klmsDisplayText)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(2)
-                        if fresh {
-                            Label("최근", systemImage: "sparkle")
-                                .font(.caption2)
-                                .foregroundStyle(Color.klmsMacCommandAccent)
-                        }
-                        if hidden {
-                            Label("숨김", systemImage: "eye.slash")
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text((notice.title.isEmpty ? "(제목 없음)" : notice.title).klmsDisplayText)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(2)
+                                if fresh {
+                                    Label("최근", systemImage: "sparkle")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.klmsMacCommandAccent)
+                                }
+                                if hidden {
+                                    Label("숨김", systemImage: "eye.slash")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.klmsMacSecondaryText)
+                                }
+                            }
+                            Text([term?.displayName ?? "", notice.course, notice.postedAt, notice.changeState].filter { !$0.isEmpty }.joined(separator: " · ").klmsDisplayText)
                                 .font(.caption2)
                                 .foregroundStyle(Color.klmsMacSecondaryText)
                         }
+                        Spacer(minLength: 8)
+                        DashboardRowDisclosureButton(isExpanded: isExpanded)
                     }
-                    Text([term?.displayName ?? "", notice.course, notice.postedAt, notice.changeState].filter { !$0.isEmpty }.joined(separator: " · ").klmsDisplayText)
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
-                Spacer(minLength: 8)
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("\(notice.title.isEmpty ? "공지" : notice.title.klmsDisplayText) \(isExpanded ? "접기" : "작업 펼치기")")
                 if !notice.url.isEmpty {
                     Button {
                         openExternalURL(notice.url)
@@ -2176,11 +2189,6 @@ private struct NoticeRowView: View {
                     .help("공지 열기")
                     .buttonStyle(KLMSMacIconButtonStyle())
                 }
-                DashboardRowDisclosureButton(isExpanded: isExpanded)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                isExpanded.toggle()
             }
 
             DeferredDashboardExpansion(isExpanded: isExpanded) {
@@ -3189,41 +3197,50 @@ private struct FileRowView: View {
         let pathExists = item.pathExists
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(item.title.isEmpty ? "(파일명 없음)" : item.title)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(2)
-                        Label(item.fileKindLabel, systemImage: item.fileKindIcon)
-                            .font(.caption2)
-                            .foregroundStyle(item.fileKindColor)
-                        if item.isRecent {
-                            Label("최근", systemImage: "sparkle")
-                                .font(.caption2)
-                                .foregroundStyle(Color.klmsMacCommandAccent)
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(item.title.isEmpty ? "(파일명 없음)" : item.title)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(2)
+                                Label(item.fileKindLabel, systemImage: item.fileKindIcon)
+                                    .font(.caption2)
+                                    .foregroundStyle(item.fileKindColor)
+                                if item.isRecent {
+                                    Label("최근", systemImage: "sparkle")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.klmsMacCommandAccent)
+                                }
+                                if hidden {
+                                    Label("숨김", systemImage: "eye.slash")
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.klmsMacSecondaryText)
+                                }
+                            }
+                            let metadata = [item.academicTerm?.displayName ?? "", item.course].filter { !$0.isEmpty }.joined(separator: " · ")
+                            if !metadata.isEmpty {
+                                Text(metadata)
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
+                                    .lineLimit(2)
+                            }
+                            if isExpanded, !item.path.isEmpty {
+                                Text(item.path)
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.klmsMacSecondaryText)
+                                    .lineLimit(2)
+                                    .textSelection(.enabled)
+                            }
                         }
-                        if hidden {
-                            Label("숨김", systemImage: "eye.slash")
-                                .font(.caption2)
-                                .foregroundStyle(Color.klmsMacSecondaryText)
-                        }
-                    }
-                    let metadata = [item.academicTerm?.displayName ?? "", item.course].filter { !$0.isEmpty }.joined(separator: " · ")
-                    if !metadata.isEmpty {
-                        Text(metadata)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .lineLimit(2)
-                    }
-                    if isExpanded, !item.path.isEmpty {
-                        Text(item.path)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .lineLimit(2)
-                            .textSelection(.enabled)
+                        Spacer(minLength: 8)
+                        DashboardRowDisclosureButton(isExpanded: isExpanded)
                     }
                 }
-                Spacer(minLength: 8)
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("\(item.title.isEmpty ? "파일" : item.title) \(isExpanded ? "접기" : "작업 펼치기")")
                 if pathExists {
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
@@ -3242,11 +3259,6 @@ private struct FileRowView: View {
                     .buttonStyle(KLMSMacIconButtonStyle())
                     .help("KLMS 열기")
                 }
-                DashboardRowDisclosureButton(isExpanded: isExpanded)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                isExpanded.toggle()
             }
             DeferredDashboardExpansion(isExpanded: isExpanded) {
                 actionBar(hidden: hidden, pathExists: pathExists)
