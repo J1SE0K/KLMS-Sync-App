@@ -2521,7 +2521,6 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     private var presentation: DashboardSummaryPresentation
     @State private var selectedDetail: DashboardDetailKind?
     @State private var renderedDetail: DashboardDetailKind?
-    @State private var detailRenderTask: Task<Void, Never>?
     @State private var isArchiveMetricsExpanded = false
 
     init(
@@ -2559,16 +2558,12 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                    dashboardDetailContent(activeDetail: currentActiveDetail, renderedDetail: currentRenderedDetail)
+                    dashboardDetailContent(renderedDetail: currentRenderedDetail)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onDisappear {
-            detailRenderTask?.cancel()
-            detailRenderTask = nil
-        }
     }
 
     private var currentActiveDetail: DashboardDetailKind? {
@@ -2590,29 +2585,16 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             guard selectedDetail != detail || renderedDetail != detail else {
                 return
             }
-            deferDashboardDetail(detail)
+            selectDashboardDetail(detail)
         }
     }
 
-    private func deferDashboardDetail(_ detail: DashboardDetailKind) {
-        detailRenderTask?.cancel()
+    private func selectDashboardDetail(_ detail: DashboardDetailKind) {
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
             selectedDetail = detail
-            renderedDetail = nil
-        }
-        detailRenderTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled, selectedDetail == detail else {
-                return
-            }
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                renderedDetail = detail
-            }
-            detailRenderTask = nil
+            renderedDetail = detail
         }
     }
 
@@ -2652,8 +2634,6 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                   archiveMetrics.contains(where: { $0.detail == selectedDetail }) else {
                 return
             }
-            detailRenderTask?.cancel()
-            detailRenderTask = nil
             self.selectedDetail = nil
             self.renderedDetail = nil
         }
@@ -2672,39 +2652,11 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     }
 
     @ViewBuilder
-    private func dashboardDetailContent(activeDetail: DashboardDetailKind?, renderedDetail: DashboardDetailKind?) -> some View {
+    private func dashboardDetailContent(renderedDetail: DashboardDetailKind?) -> some View {
         if let renderedDetail {
             dashboardDetailColumn(kind: renderedDetail)
-        } else if activeDetail != nil {
-            DashboardDetailPreparingHint()
         } else {
             DashboardDetailHint()
-        }
-    }
-}
-
-private struct DashboardDetailPreparingHint: View {
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("목록을 준비하고 있습니다.")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                Text("선택은 바로 반영했고, 큰 목록만 잠시 뒤에 불러옵니다.")
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
 }
