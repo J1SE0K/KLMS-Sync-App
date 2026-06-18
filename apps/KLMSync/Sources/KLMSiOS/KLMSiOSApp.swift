@@ -2436,6 +2436,28 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
+private enum CompanionWorkstationMetrics {
+    static let sidebarWidth: CGFloat = 236
+    static let horizontalPadding: CGFloat = 22
+    static let topPadding: CGFloat = 14
+    static let bottomPadding: CGFloat = 24
+    static let columnSpacing: CGFloat = 18
+
+    static let commandColumnMinWidth: CGFloat = 320
+    static let commandColumnIdealWidth: CGFloat = 360
+    static let commandColumnMaxWidth: CGFloat = 400
+
+    static let metricColumnMinWidth: CGFloat = 340
+    static let metricColumnIdealWidth: CGFloat = 405
+    static let metricColumnMaxWidth: CGFloat = 460
+
+    static let detailColumnMinWidth: CGFloat = 360
+
+    static let listColumnMinWidth: CGFloat = 410
+    static let listColumnIdealWidth: CGFloat = 500
+    static let listColumnMaxWidth: CGFloat = 590
+}
+
 struct CompanionRootView: View {
     @StateObject private var model = CompanionModel()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -2555,7 +2577,7 @@ private struct CompanionSplitRootView: View {
     var body: some View {
         HStack(spacing: 0) {
             WorkstationSidebar(selectedSection: $selectedSection)
-                .frame(width: 214)
+                .frame(width: CompanionWorkstationMetrics.sidebarWidth)
             Rectangle()
                 .fill(Color.klmsBorder)
                 .frame(width: 1)
@@ -2718,13 +2740,27 @@ private struct CompanionStatusScreen: View {
             model: model
         ) {
             if horizontalSizeClass == .regular {
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
                     statusCommandColumn
-                        .frame(minWidth: 280, idealWidth: 315, maxWidth: 350, alignment: .topLeading)
+                        .frame(
+                            minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
+                            idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
+                            maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
+                            alignment: .topLeading
+                        )
                     statusMetricColumn
-                        .frame(minWidth: 300, idealWidth: 350, maxWidth: 390, alignment: .topLeading)
+                        .frame(
+                            minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
+                            idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
+                            maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
+                            alignment: .topLeading
+                        )
                     statusDetailColumn
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .frame(
+                            minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                            maxWidth: .infinity,
+                            alignment: .topLeading
+                        )
                 }
             } else {
                 VStack(alignment: .leading, spacing: 14) {
@@ -2951,9 +2987,14 @@ private struct CompanionSettingsScreen: View {
     var body: some View {
         CompanionScreenContainer(title: "설정", model: model) {
             if horizontalSizeClass == .regular {
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
                     settingsPrimaryColumn
-                        .frame(minWidth: 320, idealWidth: 390, maxWidth: 450, alignment: .topLeading)
+                        .frame(
+                            minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                            idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                            maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                            alignment: .topLeading
+                        )
                     settingsSupportColumn
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -3221,13 +3262,27 @@ private struct CompanionHistoryScreen: View {
     var body: some View {
         CompanionScreenContainer(title: "로그", model: model) {
             if horizontalSizeClass == .regular {
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
                     historySummaryColumn
-                        .frame(minWidth: 280, idealWidth: 340, maxWidth: 390, alignment: .topLeading)
+                        .frame(
+                            minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
+                            idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
+                            maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
+                            alignment: .topLeading
+                        )
                     historyDetailColumn
-                        .frame(minWidth: 300, idealWidth: 360, maxWidth: 430, alignment: .topLeading)
+                        .frame(
+                            minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
+                            idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
+                            maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
+                            alignment: .topLeading
+                        )
                     historyRequestColumn
-                        .frame(minWidth: 300, idealWidth: 360, maxWidth: .infinity, alignment: .topLeading)
+                        .frame(
+                            minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                            maxWidth: .infinity,
+                            alignment: .topLeading
+                        )
                 }
             } else {
                 historySummaryColumn
@@ -3374,9 +3429,12 @@ private struct CompanionScreenContainer<Content: View>: View {
                     CompanionScreenHeader(title: title, model: model)
                     content()
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, horizontalSizeClass == .regular ? 10 : 2)
-                .padding(.bottom, 20)
+                .padding(
+                    .horizontal,
+                    horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16
+                )
+                .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
+                .padding(.bottom, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.bottomPadding : 20)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
@@ -6220,7 +6278,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
             DashboardCategoryInlineDetailPanel(
                 category: category,
                 model: model,
@@ -6228,7 +6286,12 @@ private struct WorkstationDashboardCategoryWorkspace: View {
                 externallySelectedItemID: activeSelectedItemID,
                 onSelectItem: selectItem
             )
-            .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
+            .frame(
+                minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                alignment: .topLeading
+            )
 
             WorkstationExternalDetailPanel(
                 title: "\(category.title) 상세",
@@ -6305,7 +6368,7 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
             VStack(alignment: .leading, spacing: 16) {
                 taskPanel(.assignments)
                 taskPanel(.exams)
@@ -6313,7 +6376,12 @@ private struct WorkstationTasksWorkspace: View {
                     taskPanel(.helpDesk)
                 }
             }
-            .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
+            .frame(
+                minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                alignment: .topLeading
+            )
 
             WorkstationExternalDetailPanel(
                 title: "선택한 일정",
@@ -6401,9 +6469,14 @@ private struct WorkstationCalendarWorkspace: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
             calendarListPanel
-                .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                    maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                    alignment: .topLeading
+                )
 
             calendarDetailPanel
             .frame(maxWidth: .infinity, alignment: .topLeading)
