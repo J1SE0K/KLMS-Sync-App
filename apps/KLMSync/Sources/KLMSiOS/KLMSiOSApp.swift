@@ -3314,6 +3314,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
 
 private struct CompanionHistoryScreen: View {
     @ObservedObject var model: CompanionModel
+    @State private var selectedLogSummaryKind: RemoteLogSummaryKind? = .status
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -3322,7 +3323,7 @@ private struct CompanionHistoryScreen: View {
                 HStack(alignment: .top, spacing: 16) {
                     historySummaryColumn
                         .frame(minWidth: 320, idealWidth: 390, maxWidth: 460, alignment: .topLeading)
-                    historyRequestColumn
+                    historyDetailColumn
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             } else {
@@ -3334,7 +3335,12 @@ private struct CompanionHistoryScreen: View {
 
     private var historySummaryColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
-            RemoteLogSummaryPanel(model: model, compact: false)
+            RemoteLogSummaryPanel(
+                model: model,
+                compact: false,
+                showsInlineDetail: horizontalSizeClass != .regular,
+                selectedKind: horizontalSizeClass == .regular ? $selectedLogSummaryKind : nil
+            )
             SharedRunLogsView(
                 logs: model.sharedRunLogs,
                 stageDurationsByID: model.sharedRunLogStageDurationsByID,
@@ -3344,6 +3350,31 @@ private struct CompanionHistoryScreen: View {
                     }
                 },
                 clearDisabled: !model.serverRelayConfigured || model.isSubmitting || model.sharedRunLogs.isEmpty
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var historyDetailColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let selectedLogSummaryKind {
+                RemoteLogDetailPanel(kind: selectedLogSummaryKind, model: model)
+                    .id(selectedLogSummaryKind)
+            } else {
+                CompanionEmptyDetailPanel(
+                    title: "기록 선택",
+                    detail: "왼쪽 로그 요약에서 상태, 실행 요청, 파일 요청 중 하나를 선택하면 상세가 여기에 표시됩니다.",
+                    systemImage: "sidebar.right"
+                )
+            }
+            RecentServerRequestLogView(
+                entries: model.recentRequestLog,
+                clearAction: {
+                    Task {
+                        await model.clearRemoteLogs(scope: .requestLog)
+                    }
+                },
+                clearDisabled: !model.serverRelayConfigured || model.isSubmitting || !model.hasClearableRequestLogs
             )
         }
     }
@@ -3383,6 +3414,38 @@ private struct CompanionHistoryScreen: View {
                     || model.isSubmitting
                     || !model.hasClearableCommandLogs
             )
+        }
+    }
+}
+
+private struct CompanionEmptyDetailPanel: View {
+    var title: String
+    var detail: String
+    var systemImage: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+                .frame(width: 38, height: 38)
+                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
 }
@@ -10957,7 +11020,13 @@ private extension ServerRelayLogClearScope {
 private struct RemoteLogSummaryPanel: View {
     @ObservedObject var model: CompanionModel
     var compact: Bool
-    @State private var expandedKind: RemoteLogSummaryKind?
+    var showsInlineDetail = true
+    var selectedKind: Binding<RemoteLogSummaryKind?>? = nil
+    @State private var localExpandedKind: RemoteLogSummaryKind?
+
+    private var expandedKind: RemoteLogSummaryKind? {
+        selectedKind?.wrappedValue ?? localExpandedKind
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -11017,7 +11086,14 @@ private struct RemoteLogSummaryPanel: View {
                 }
 
                 if let expandedKind {
-                    RemoteLogDetailPanel(kind: expandedKind, model: model)
+                    if showsInlineDetail {
+                        RemoteLogDetailPanel(kind: expandedKind, model: model)
+                    } else {
+                        Text("선택한 기록의 상세는 오른쪽 패널에서 확인합니다.")
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 } else {
                     Text("요약 행을 누르면 관련 기록을 바로 펼칩니다.")
                         .font(.caption2)
@@ -11158,7 +11234,11 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private func toggle(_ kind: RemoteLogSummaryKind) {
-        expandedKind = expandedKind == kind ? nil : kind
+        if let selectedKind {
+            selectedKind.wrappedValue = expandedKind == kind ? nil : kind
+        } else {
+            localExpandedKind = expandedKind == kind ? nil : kind
+        }
     }
 }
 
