@@ -3431,6 +3431,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSummary.contains("private func dashboardDetailColumn(kind: DashboardDetailKind)"))
         XCTAssertTrue(dashboardSummary.contains("DashboardDetailPanelView("))
         XCTAssertTrue(dashboardSummary.contains("renderSignature: renderSignature"))
+        XCTAssertTrue(dashboardSummary.contains("fileRenderSignature: model.dashboardFileRenderSignature"))
         XCTAssertFalse(dashboardSummary.contains(".frame(minWidth: 340, idealWidth: 420, maxWidth: 500"))
         XCTAssertTrue(dashboardSummary.contains("VStack(alignment: .leading, spacing: 12)"))
         XCTAssertTrue(dashboardSummary.contains("await Task.yield()"))

@@ -2647,7 +2647,8 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             kind: kind,
             model: model,
             snapshot: snapshot,
-            renderSignature: renderSignature
+            renderSignature: renderSignature,
+            fileRenderSignature: model.dashboardFileRenderSignature
         )
             .equatable()
             .frame(maxWidth: .infinity, alignment: .topLeading)
