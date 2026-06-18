@@ -2437,26 +2437,26 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
 }
 
 private enum CompanionWorkstationMetrics {
-    static let sidebarWidth: CGFloat = 236
-    static let horizontalPadding: CGFloat = 22
+    static let sidebarWidth: CGFloat = 224
+    static let horizontalPadding: CGFloat = 18
     static let topPadding: CGFloat = 14
     static let bottomPadding: CGFloat = 24
-    static let columnSpacing: CGFloat = 18
+    static let columnSpacing: CGFloat = 16
 
-    static let commandColumnMinWidth: CGFloat = 320
-    static let commandColumnIdealWidth: CGFloat = 360
-    static let commandColumnMaxWidth: CGFloat = 400
+    static let commandColumnMinWidth: CGFloat = 312
+    static let commandColumnIdealWidth: CGFloat = 352
+    static let commandColumnMaxWidth: CGFloat = 392
 
-    static let metricColumnMinWidth: CGFloat = 320
-    static let metricColumnIdealWidth: CGFloat = 390
-    static let metricColumnMaxWidth: CGFloat = 460
+    static let metricColumnMinWidth: CGFloat = 332
+    static let metricColumnIdealWidth: CGFloat = 420
+    static let metricColumnMaxWidth: CGFloat = 500
 
-    static let detailColumnMinWidth: CGFloat = 340
-    static let detailColumnIdealWidth: CGFloat = 540
+    static let detailColumnMinWidth: CGFloat = 380
+    static let detailColumnIdealWidth: CGFloat = 620
 
-    static let listColumnMinWidth: CGFloat = 360
-    static let listColumnIdealWidth: CGFloat = 470
-    static let listColumnMaxWidth: CGFloat = 560
+    static let listColumnMinWidth: CGFloat = 380
+    static let listColumnIdealWidth: CGFloat = 520
+    static let listColumnMaxWidth: CGFloat = 620
 }
 
 struct CompanionRootView: View {
@@ -3515,7 +3515,7 @@ private struct CompanionEmptyDetailPanel: View {
             }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
