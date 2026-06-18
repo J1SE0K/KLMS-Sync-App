@@ -11967,28 +11967,43 @@ private struct RemoteCommandRow: View {
 }
 
 private struct RemotePrivacyNote: View {
+    @State private var isExpanded = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: "lock")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 32, height: 32)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("개인정보와 서버 보관")
-                        .font(.subheadline.weight(.semibold))
-                    Text("서버에는 실행 요청과 요약 상태만 저장됩니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
+            Button {
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
                 }
-                Spacer(minLength: 0)
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "lock")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsCommandAccent)
+                        .frame(width: 32, height: 32)
+                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("개인정보와 서버 보관")
+                            .font(.subheadline.weight(.semibold))
+                        Text("서버에는 실행 요청과 요약 상태만 저장됩니다.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                    }
+                    Spacer(minLength: 0)
+                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(RoundedRectangle(cornerRadius: 12))
             }
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .accessibilityHint(isExpanded ? "개인정보 보관 설명 접기" : "개인정보 보관 설명 펼치기")
 
-            Text("파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
-                .font(.caption)
-                .foregroundStyle(Color.klmsSecondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            if isExpanded {
+                Text("파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
