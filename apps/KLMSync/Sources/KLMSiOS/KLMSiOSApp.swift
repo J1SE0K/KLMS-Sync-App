@@ -12158,9 +12158,16 @@ private struct RecentRemoteCommandsView: View {
                     .background(Color.klmsSubtleCardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
-                VStack(spacing: 8) {
-                    ForEach(commands) { command in
+                LazyVStack(spacing: 8) {
+                    ForEach(commands.prefix(30)) { command in
                         RemoteCommandRow(command: command, compact: compact)
+                    }
+                    if commands.count > 30 {
+                        Text("최근 30개만 표시합니다.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsSecondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 2)
                     }
                 }
             }

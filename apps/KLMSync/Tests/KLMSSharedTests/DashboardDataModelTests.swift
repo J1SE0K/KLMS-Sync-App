@@ -2647,15 +2647,16 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("selectedSection: $selectedSection"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains("@State private var loadedID"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains("var contentIdentifier: String?"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains("var loadsImmediately: Bool"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains("if loadsImmediately || loadedID == id"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains("guard !loadsImmediately else"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains("var loadsImmediately: Bool"))
+        XCTAssertTrue(deferredMacWorkspacePanel.contains("if loadedID == id"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains("guard !loadsImmediately else"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains(".accessibilityIdentifier(contentIdentifier ?? id)"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains(".task(id: id)"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains("await Task.yield()"))
         XCTAssertFalse(deferredMacWorkspacePanel.contains("renderDelayNanoseconds"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains("loadedID = id"))
-        XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-dashboard\", contentIdentifier: \"workspace-content-dashboard\", loadingText: \"대시보드를 준비하는 중입니다.\", loadsImmediately: true)"))
+        XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-dashboard\", contentIdentifier: \"workspace-content-dashboard\", loadingText: \"대시보드를 준비하는 중입니다.\")"))
+        XCTAssertFalse(macWorkstationLayoutView.contains("loadsImmediately: true"))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-files\", contentIdentifier: \"workspace-content-files\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-tasks\", contentIdentifier: \"workspace-content-tasks\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-notices\", contentIdentifier: \"workspace-content-notices\""))
@@ -3297,6 +3298,7 @@ final class DashboardDataModelTests: XCTestCase {
         let workstationCalendar = try sourceStructBody(named: "WorkstationCalendarWorkspace", in: ios)
         let compactSelectedRow = try sourceStructBody(named: "CompactDashboardSelectedRow", in: ios)
         let recentFileRequests = try sourceStructBody(named: "RecentFileAccessRequestsView", in: ios)
+        let recentRemoteCommands = try sourceStructBody(named: "RecentRemoteCommandsView", in: ios)
         let companionModel = try sourceBody(
             after: "final class CompanionModel: ObservableObject",
             in: ios,
@@ -3616,6 +3618,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(ios.contains("private struct WorkstationExternalDetailPreparingPanel"))
         XCTAssertTrue(recentFileRequests.contains("LazyVStack(spacing: 8)"))
         XCTAssertTrue(recentFileRequests.contains("ForEach(requests.prefix(30))"))
+        XCTAssertTrue(recentRemoteCommands.contains("LazyVStack(spacing: 8)"))
+        XCTAssertTrue(recentRemoteCommands.contains("ForEach(commands.prefix(30))"))
+        XCTAssertTrue(recentRemoteCommands.contains("최근 30개만 표시합니다."))
     }
 
     func testIOSCalendarDetailHasMailPasteAnalyzerAndSharedCalendarActionLabels() throws {
