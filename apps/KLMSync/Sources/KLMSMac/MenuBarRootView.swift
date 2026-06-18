@@ -176,17 +176,17 @@ private struct MacWorkstationLayoutView: View {
                         .equatable()
                 }
             case .activityLogs:
-                LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
-                DiagnosticStageDurationPanelView(model: model)
-                RemoteActivityPanelView(model: model)
-                DeferredMacWorkspacePanel(id: "activity-run-log-archive", contentIdentifier: "workspace-content-activityLogs", loadingText: "실행 기록을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-activityLogs", contentIdentifier: "workspace-content-activityLogs", loadingText: "로그 화면을 준비하는 중입니다.") {
+                    LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
+                    DiagnosticStageDurationPanelView(model: model)
+                    RemoteActivityPanelView(model: model)
                     RunLogArchivePanelView(model: model)
                 }
             case .diagnostics:
-                VerifyPanelView(snapshot: model.snapshot)
-                DiagnosticToolsPanelView(model: model)
-                DiagnosticStageDurationPanelView(model: model)
-                DeferredMacWorkspacePanel(id: "diagnostics-secondary-panels", contentIdentifier: "workspace-content-diagnostics", loadingText: "환경 진단 세부 정보를 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-diagnostics", contentIdentifier: "workspace-content-diagnostics", loadingText: "진단 화면을 준비하는 중입니다.") {
+                    VerifyPanelView(snapshot: model.snapshot)
+                    DiagnosticToolsPanelView(model: model)
+                    DiagnosticStageDurationPanelView(model: model)
                     DoctorPanelView(snapshot: model.snapshot)
                     AppDiagnosticsPanelView(model: model)
                     LoginPanelView(model: model)
