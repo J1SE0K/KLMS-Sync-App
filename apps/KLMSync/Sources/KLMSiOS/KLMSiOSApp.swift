@@ -2822,6 +2822,7 @@ private struct CompanionStatusScreen: View {
                 status: model.dashboardStatus,
                 hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
                 selectedCategory: $selectedDashboardPreview,
+                effectiveSelectedCategory: effectiveDashboardSelection,
                 onCategoryTap: { category in
                     selectDashboardCategory(category)
                 },
@@ -2856,6 +2857,7 @@ private struct CompanionStatusScreen: View {
             status: model.dashboardStatus,
             hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
             selectedCategory: $selectedDashboardPreview,
+            effectiveSelectedCategory: effectiveDashboardSelection,
             onCategoryTap: { category in
                 selectDashboardCategory(category)
             },
@@ -2907,6 +2909,16 @@ private struct CompanionStatusScreen: View {
 
     private var defaultWorkstationDetailCategory: DashboardMetricCategory {
         DashboardMetricCategory.defaultWorkstationDetail(for: model.dashboardStatus)
+    }
+
+    private var effectiveDashboardSelection: DashboardMetricCategory? {
+        if selectedChangeSummary != nil {
+            return selectedDashboardPreview
+        }
+        if let selectedDashboardPreview {
+            return selectedDashboardPreview
+        }
+        return horizontalSizeClass == .regular ? defaultWorkstationDetailCategory : nil
     }
 
 }
@@ -5002,6 +5014,7 @@ private struct RemoteDashboardMetricOverview: View {
     var status: SanitizedRemoteStatus
     var hasFileCleanupDetails: Bool
     @Binding var selectedCategory: DashboardMetricCategory?
+    var effectiveSelectedCategory: DashboardMetricCategory? = nil
     var onCategoryTap: (DashboardMetricCategory) -> Void
     var selectedChangeSummary: RemoteChangeSummaryKind?
     var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void
@@ -5054,7 +5067,7 @@ private struct RemoteDashboardMetricOverview: View {
                             WorkstationMetricCard(
                                 category: category,
                                 value: category.value(from: displayStatus),
-                                isSelected: selectedCategory == category
+                                isSelected: isSelected(category)
                             ) {
                                 selectCategory(category)
                             }
@@ -5067,7 +5080,7 @@ private struct RemoteDashboardMetricOverview: View {
                                 category.title,
                                 category.value(from: displayStatus),
                                 systemImage: category.systemImage,
-                                isSelected: selectedCategory == category
+                                isSelected: isSelected(category)
                             ) {
                                 selectCategory(category)
                             }
@@ -5121,6 +5134,10 @@ private struct RemoteDashboardMetricOverview: View {
             selectedCategory = category
             onCategoryTap(category)
         }
+    }
+
+    private func isSelected(_ category: DashboardMetricCategory) -> Bool {
+        (effectiveSelectedCategory ?? selectedCategory) == category
     }
 }
 
