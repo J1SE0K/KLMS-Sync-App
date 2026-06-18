@@ -141,10 +141,17 @@ private struct MacWorkstationLayoutView: View {
     @ViewBuilder
     private var workspace: some View {
         VStack(alignment: .leading, spacing: 16) {
+            workspaceContentMarker
             switch selectedSection {
             case .dashboard:
-                CommandPanelView(model: model)
-                DashboardSummaryView(model: model)
+                DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard", loadingText: "대시보드를 준비하는 중입니다.") {
+                    VStack(alignment: .leading, spacing: 16) {
+                        CommandPanelView(model: model)
+                        DashboardSummaryView(model: model)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .accessibilityIdentifier("workspace-content-dashboard")
+                }
             case .files:
                 DeferredMacWorkspacePanel(id: "workspace-files", contentIdentifier: "workspace-content-files", loadingText: "파일 목록을 준비하는 중입니다.") {
                     cachedDashboardDetailPanel(kind: .files)
@@ -188,13 +195,15 @@ private struct MacWorkstationLayoutView: View {
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .accessibilityIdentifier(workspaceContainerAccessibilityIdentifier)
     }
 
-    private var workspaceContainerAccessibilityIdentifier: String {
-        selectedSection == .dashboard
-            ? "workspace-content-dashboard"
-            : "workspace-host-\(selectedSection.rawValue)"
+    private var workspaceContentMarker: some View {
+        Text(selectedSection.title)
+            .font(.system(size: 1))
+            .foregroundStyle(.clear)
+            .frame(width: 1, height: 1)
+            .accessibilityLabel("\(selectedSection.title) 내용")
+            .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
     }
 
     private func cachedDashboardDetailPanel(kind: DashboardDetailKind) -> DashboardDetailPanelView {
