@@ -2823,13 +2823,11 @@ private struct CompanionStatusScreen: View {
                 hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
                 selectedCategory: $selectedDashboardPreview,
                 onCategoryTap: { category in
-                    selectedChangeSummary = nil
-                    selectedDashboardPreview = category
+                    selectDashboardCategory(category)
                 },
                 selectedChangeSummary: selectedChangeSummary,
                 onChangeSummaryTap: { kind in
-                    selectedDashboardPreview = nil
-                    selectedChangeSummary = kind
+                    selectChangeSummary(kind)
                 }
             )
         }
@@ -2859,13 +2857,11 @@ private struct CompanionStatusScreen: View {
             hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
             selectedCategory: $selectedDashboardPreview,
             onCategoryTap: { category in
-                selectedChangeSummary = nil
-                selectedDashboardPreview = category
+                selectDashboardCategory(category)
             },
             selectedChangeSummary: selectedChangeSummary,
             onChangeSummaryTap: { kind in
-                selectedDashboardPreview = nil
-                selectedChangeSummary = kind
+                selectChangeSummary(kind)
             }
         )
     }
@@ -2892,8 +2888,21 @@ private struct CompanionStatusScreen: View {
     }
 
     private func openDashboardCategoryFromOverview(_ category: DashboardMetricCategory) {
-        selectedChangeSummary = nil
-        selectedDashboardPreview = category
+        selectDashboardCategory(category)
+    }
+
+    private func selectDashboardCategory(_ category: DashboardMetricCategory) {
+        companionPerformWithoutAnimation {
+            selectedChangeSummary = nil
+            selectedDashboardPreview = category
+        }
+    }
+
+    private func selectChangeSummary(_ kind: RemoteChangeSummaryKind) {
+        companionPerformWithoutAnimation {
+            selectedDashboardPreview = nil
+            selectedChangeSummary = kind
+        }
     }
 
     private var defaultWorkstationDetailCategory: DashboardMetricCategory {
@@ -5041,8 +5050,7 @@ private struct RemoteDashboardMetricOverview: View {
                                 value: category.value(from: displayStatus),
                                 isSelected: selectedCategory == category
                             ) {
-                                selectedCategory = category
-                                onCategoryTap(category)
+                                selectCategory(category)
                             }
                         }
                     }
@@ -5055,8 +5063,7 @@ private struct RemoteDashboardMetricOverview: View {
                                 systemImage: category.systemImage,
                                 isSelected: selectedCategory == category
                             ) {
-                                selectedCategory = category
-                                onCategoryTap(category)
+                                selectCategory(category)
                             }
                         }
                     }
@@ -5100,6 +5107,13 @@ private struct RemoteDashboardMetricOverview: View {
         RemoteChangeSummaryKind.allCases.contains { kind in
             guard kind.value(from: displayStatus) > 0 else { return false }
             return kind != .fileCleanup || hasFileCleanupDetails
+        }
+    }
+
+    private func selectCategory(_ category: DashboardMetricCategory) {
+        companionPerformWithoutAnimation {
+            selectedCategory = category
+            onCategoryTap(category)
         }
     }
 }
