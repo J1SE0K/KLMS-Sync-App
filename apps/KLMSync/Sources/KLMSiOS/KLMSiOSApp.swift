@@ -3337,6 +3337,7 @@ private struct CompanionHistoryScreen: View {
                 historyRegularWorkspace
             } else {
                 historySummaryColumn
+                historyStageColumn
                 historyRequestColumn
             }
         }
@@ -3405,32 +3406,41 @@ private struct CompanionHistoryScreen: View {
                 showsInlineDetail: horizontalSizeClass != .regular,
                 selectedKind: horizontalSizeClass == .regular ? $selectedLogSummaryKind : nil
             )
-            SharedRunLogsView(
-                logs: model.sharedRunLogs,
-                stageDurationsByID: model.sharedRunLogStageDurationsByID,
-                clearAction: {
-                    Task {
-                        await model.clearSharedRunLogs()
-                    }
-                },
-                clearDisabled: !model.serverRelayConfigured || model.isSubmitting || model.sharedRunLogs.isEmpty
-            )
         }
+    }
+
+    private var historyStageColumn: some View {
+        SharedRunLogsView(
+            logs: model.sharedRunLogs,
+            stageDurationsByID: model.sharedRunLogStageDurationsByID,
+            clearAction: {
+                Task {
+                    await model.clearSharedRunLogs()
+                }
+            },
+            clearDisabled: !model.serverRelayConfigured || model.isSubmitting || model.sharedRunLogs.isEmpty
+        )
     }
 
     @ViewBuilder
     private var historyDetailColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let selectedLogSummaryKind {
-                RemoteLogDetailPanel(kind: selectedLogSummaryKind, model: model)
-                    .id(selectedLogSummaryKind)
-            } else {
-                CompanionEmptyDetailPanel(
-                    title: "기록 선택",
-                    detail: "왼쪽 로그 요약에서 상태, 실행 요청, 파일 요청 중 하나를 선택하면 상세가 여기에 표시됩니다.",
-                    systemImage: "sidebar.right"
-                )
-            }
+            selectedHistoryDetailPanel
+            historyStageColumn
+        }
+    }
+
+    @ViewBuilder
+    private var selectedHistoryDetailPanel: some View {
+        if let selectedLogSummaryKind {
+            RemoteLogDetailPanel(kind: selectedLogSummaryKind, model: model)
+                .id(selectedLogSummaryKind)
+        } else {
+            CompanionEmptyDetailPanel(
+                title: "기록 선택",
+                detail: "왼쪽 로그 요약에서 상태, 실행 요청, 파일 요청 중 하나를 선택하면 상세가 여기에 표시됩니다.",
+                systemImage: "sidebar.right"
+            )
         }
     }
 

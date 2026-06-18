@@ -2499,6 +2499,21 @@ final class DashboardDataModelTests: XCTestCase {
             in: iosHistoryScreen,
             description: "iPad log regular workspace"
         )
+        let iosHistorySummaryColumn = try sourceBody(
+            after: "private var historySummaryColumn",
+            in: iosHistoryScreen,
+            description: "iPad log summary column"
+        )
+        let iosHistoryStageColumn = try sourceBody(
+            after: "private var historyStageColumn",
+            in: iosHistoryScreen,
+            description: "iPad log stage column"
+        )
+        let iosHistoryDetailColumn = try sourceBody(
+            after: "private var historyDetailColumn",
+            in: iosHistoryScreen,
+            description: "iPad log detail column"
+        )
         let iosSplitRoot = try sourceStructBody(named: "CompanionSplitRootView", in: ios)
         let iosSidebar = try sourceStructBody(named: "WorkstationSidebar", in: ios)
         let iosSidebarButton = try sourceStructBody(named: "CompanionSidebarButton", in: ios)
@@ -2927,6 +2942,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosHistoryScreen.contains("VStack(alignment: .leading, spacing: 12)"))
         XCTAssertTrue(iosHistoryScreen.contains("HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing)"))
         XCTAssertTrue(iosHistoryScreen.contains("historySummaryColumn"))
+        XCTAssertTrue(iosHistoryScreen.contains("historyStageColumn"))
         XCTAssertTrue(iosHistoryScreen.contains("historyDetailColumn"))
         XCTAssertTrue(iosHistoryScreen.contains("historyRequestColumn"))
         XCTAssertTrue(iosHistoryScreen.contains("minWidth: CompanionWorkstationMetrics.commandColumnMinWidth"))
@@ -2948,6 +2964,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosHistoryScreen.contains("@State private var selectedLogSummaryKind: RemoteLogSummaryKind? = .status"))
         XCTAssertTrue(iosHistoryScreen.contains("showsInlineDetail: horizontalSizeClass != .regular"))
         XCTAssertTrue(iosHistoryScreen.contains("selectedKind: horizontalSizeClass == .regular ? $selectedLogSummaryKind : nil"))
+        XCTAssertFalse(iosHistorySummaryColumn.contains("SharedRunLogsView"))
+        XCTAssertTrue(iosHistoryStageColumn.contains("SharedRunLogsView"))
+        XCTAssertTrue(iosHistoryDetailColumn.contains("selectedHistoryDetailPanel"))
+        XCTAssertTrue(iosHistoryDetailColumn.contains("historyStageColumn"))
         XCTAssertTrue(iosHistoryScreen.contains("RemoteLogDetailPanel(kind: selectedLogSummaryKind, model: model)"))
         XCTAssertTrue(iosHistoryScreen.contains("CompanionEmptyDetailPanel("))
         XCTAssertTrue(remoteRunRequestHistoryPanel.contains("요청이 오면 최근 기록을 여기에 보여줍니다."))
