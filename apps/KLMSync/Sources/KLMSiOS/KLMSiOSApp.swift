@@ -6105,8 +6105,11 @@ private struct WorkstationDashboardCategoryWorkspace: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear {
+            refreshExternalSelection()
+        }
         .onChange(of: itemsResetKey) { _, _ in
-            clearStaleExternalSelectionIfNeeded()
+            refreshExternalSelection()
         }
         .onDisappear {
             externalDetailTask?.cancel()
@@ -6145,21 +6148,28 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         }
     }
 
-    private func clearStaleExternalSelectionIfNeeded() {
+    private func refreshExternalSelection() {
         if let selectedItemID,
-           !items.contains(where: { $0.id == selectedItemID }) {
-            self.selectedItemID = nil
-            displayedSelectedItemID = nil
+           let refreshed = items.first(where: { $0.id == selectedItemID }) {
+            displayedSelectedItemID = refreshed.id
+            displayedSelectedItem = refreshed
+            return
+        }
+
+        guard let first = items.first else {
+            selectedItemID = nil
+            self.displayedSelectedItemID = nil
             displayedSelectedItem = nil
             externalDetailTask?.cancel()
             externalDetailTask = nil
-        } else if let displayedSelectedItemID,
-                  let refreshed = items.first(where: { $0.id == displayedSelectedItemID }) {
-            displayedSelectedItem = refreshed
-        } else if displayedSelectedItemID != nil {
-            self.displayedSelectedItemID = nil
-            displayedSelectedItem = nil
+            return
         }
+
+        selectedItemID = first.id
+        displayedSelectedItemID = first.id
+        displayedSelectedItem = first
+        externalDetailTask?.cancel()
+        externalDetailTask = nil
     }
 }
 
@@ -6227,8 +6237,11 @@ private struct WorkstationTasksWorkspace: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear {
+            refreshExternalSelection()
+        }
         .onChange(of: itemsResetKey) { _, _ in
-            clearStaleExternalSelectionIfNeeded()
+            refreshExternalSelection()
         }
         .onDisappear {
             externalDetailTask?.cancel()
@@ -6277,21 +6290,28 @@ private struct WorkstationTasksWorkspace: View {
         }
     }
 
-    private func clearStaleExternalSelectionIfNeeded() {
+    private func refreshExternalSelection() {
         if let selectedItemID,
-           !combinedItems.contains(where: { $0.id == selectedItemID }) {
-            self.selectedItemID = nil
-            displayedSelectedItemID = nil
+           let refreshed = combinedItems.first(where: { $0.id == selectedItemID }) {
+            displayedSelectedItemID = refreshed.id
+            displayedSelectedItem = refreshed
+            return
+        }
+
+        guard let first = combinedItems.first else {
+            selectedItemID = nil
+            self.displayedSelectedItemID = nil
             displayedSelectedItem = nil
             externalDetailTask?.cancel()
             externalDetailTask = nil
-        } else if let displayedSelectedItemID,
-                  let refreshed = combinedItems.first(where: { $0.id == displayedSelectedItemID }) {
-            displayedSelectedItem = refreshed
-        } else if displayedSelectedItemID != nil {
-            self.displayedSelectedItemID = nil
-            displayedSelectedItem = nil
+            return
         }
+
+        selectedItemID = first.id
+        displayedSelectedItemID = first.id
+        displayedSelectedItem = first
+        externalDetailTask?.cancel()
+        externalDetailTask = nil
     }
 }
 
