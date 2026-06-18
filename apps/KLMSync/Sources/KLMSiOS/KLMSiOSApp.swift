@@ -6778,6 +6778,7 @@ private struct CompanionInlineItemRowsView: View {
                         .equatable()
                     }
                     .buttonStyle(KLMSCardButtonStyle())
+                    .accessibilityValue(isSelected ? "선택됨" : "")
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "오른쪽 상세 패널에 항목을 표시합니다.")
 
                     if presentation == .inlineDetail && selectedItemID == item.id {
@@ -6812,7 +6813,7 @@ private struct CompanionInlineItemRowsView: View {
         case .inlineDetail:
             return isSelected ? "chevron.up" : "chevron.down"
         case .externalDetail:
-            return "chevron.right"
+            return isSelected ? "checkmark.circle.fill" : "chevron.right"
         }
     }
 
@@ -6865,6 +6866,7 @@ private struct CompanionSelectableItemListRows: View {
                         .equatable()
                 }
                 .buttonStyle(KLMSCardButtonStyle())
+                .accessibilityValue(selectedItemID == item.id ? "선택됨" : "")
                 .accessibilityHint("항목 상세를 엽니다.")
             }
             if items.count > visibleItems.count {

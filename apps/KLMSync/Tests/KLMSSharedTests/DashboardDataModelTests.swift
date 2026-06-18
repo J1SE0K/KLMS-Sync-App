@@ -3147,6 +3147,9 @@ final class DashboardDataModelTests: XCTestCase {
         )
 
         XCTAssertTrue(ios.contains("private struct CompanionItemListData"))
+        XCTAssertTrue(inlineRows.contains("return isSelected ? \"checkmark.circle.fill\" : \"chevron.right\""))
+        XCTAssertTrue(inlineRows.contains(".accessibilityValue(isSelected ? \"선택됨\" : \"\")"))
+        XCTAssertTrue(selectableRows.contains(".accessibilityValue(selectedItemID == item.id ? \"선택됨\" : \"\")"))
         XCTAssertFalse(ios.contains("private let klmsInteractionDetailDelayNanoseconds"))
         XCTAssertTrue(ios.contains(".onChange(of: appearanceMode)"))
         XCTAssertTrue(ios.contains("Self.schedulePlatformAppearance(newValue)"))
