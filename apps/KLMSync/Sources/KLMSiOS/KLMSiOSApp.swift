@@ -2447,16 +2447,16 @@ private enum CompanionWorkstationMetrics {
     static let commandColumnIdealWidth: CGFloat = 360
     static let commandColumnMaxWidth: CGFloat = 400
 
-    static let metricColumnMinWidth: CGFloat = 340
-    static let metricColumnIdealWidth: CGFloat = 405
+    static let metricColumnMinWidth: CGFloat = 320
+    static let metricColumnIdealWidth: CGFloat = 390
     static let metricColumnMaxWidth: CGFloat = 460
 
-    static let detailColumnMinWidth: CGFloat = 360
+    static let detailColumnMinWidth: CGFloat = 340
     static let detailColumnIdealWidth: CGFloat = 540
 
-    static let listColumnMinWidth: CGFloat = 410
-    static let listColumnIdealWidth: CGFloat = 500
-    static let listColumnMaxWidth: CGFloat = 590
+    static let listColumnMinWidth: CGFloat = 360
+    static let listColumnIdealWidth: CGFloat = 470
+    static let listColumnMaxWidth: CGFloat = 560
 }
 
 struct CompanionRootView: View {
@@ -2741,35 +2741,68 @@ private struct CompanionStatusScreen: View {
             model: model
         ) {
             if horizontalSizeClass == .regular {
-                HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                    statusCommandColumn
-                        .frame(
-                            minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
-                            idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
-                            maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
-                            alignment: .topLeading
-                        )
-                    statusMetricColumn
-                        .frame(
-                            minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
-                            idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
-                            maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
-                            alignment: .topLeading
-                        )
-                    statusDetailColumn
-                        .frame(
-                            minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                            idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                            maxWidth: .infinity,
-                            alignment: .topLeading
-                        )
-                }
+                statusRegularWorkspace
             } else {
                 VStack(alignment: .leading, spacing: 14) {
                     statusSummaryColumn
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
+        }
+    }
+
+    private var statusRegularWorkspace: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                statusCommandColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+                statusMetricColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+                statusDetailColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+            }
+
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                statusCommandColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+                VStack(alignment: .leading, spacing: 12) {
+                    statusMetricColumn
+                    statusDetailColumn
+                }
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                    maxWidth: .infinity,
+                    alignment: .topLeading
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                statusCommandColumn
+                statusMetricColumn
+                statusDetailColumn
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
@@ -3280,33 +3313,66 @@ private struct CompanionHistoryScreen: View {
     var body: some View {
         CompanionScreenContainer(title: "로그", model: model) {
             if horizontalSizeClass == .regular {
-                HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                    historySummaryColumn
-                        .frame(
-                            minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
-                            idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
-                            maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
-                            alignment: .topLeading
-                        )
-                    historyDetailColumn
-                        .frame(
-                            minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
-                            idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
-                            maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
-                            alignment: .topLeading
-                        )
-                    historyRequestColumn
-                        .frame(
-                            minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                            idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                            maxWidth: .infinity,
-                            alignment: .topLeading
-                        )
-                }
+                historyRegularWorkspace
             } else {
                 historySummaryColumn
                 historyRequestColumn
             }
+        }
+    }
+
+    private var historyRegularWorkspace: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                historySummaryColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+                historyDetailColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+                historyRequestColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+            }
+
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                historySummaryColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+                VStack(alignment: .leading, spacing: 12) {
+                    historyDetailColumn
+                    historyRequestColumn
+                }
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                    maxWidth: .infinity,
+                    alignment: .topLeading
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                historySummaryColumn
+                historyDetailColumn
+                historyRequestColumn
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 

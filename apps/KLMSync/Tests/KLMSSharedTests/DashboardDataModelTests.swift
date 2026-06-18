@@ -1698,6 +1698,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS companion app section"
         )
+        let companionWorkstationMetrics = try sourceBody(
+            after: "private enum CompanionWorkstationMetrics",
+            in: ios,
+            description: "iPad workstation layout metrics"
+        )
 
         XCTAssertTrue(companionSection.contains("case status"))
         XCTAssertTrue(companionSection.contains("case files"))
@@ -1717,6 +1722,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection]"))
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection] {\n        [.status, .history, .settings]"))
         XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .files, .notices, .tasks, .calendar, .history, .settings]"))
+        XCTAssertTrue(companionWorkstationMetrics.contains("static let metricColumnMinWidth: CGFloat = 320"))
+        XCTAssertTrue(companionWorkstationMetrics.contains("static let detailColumnMinWidth: CGFloat = 340"))
+        XCTAssertTrue(companionWorkstationMetrics.contains("static let listColumnMinWidth: CGFloat = 360"))
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
         XCTAssertLessThan(
             compactRoot.range(of: "CompanionSectionContent(section: selectedSection, model: model)")?.lowerBound ?? compactRoot.endIndex,
@@ -1793,6 +1801,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(statusScreen.contains("displayedCategory: displayedDashboardPreview"))
         XCTAssertFalse(statusScreen.contains("displayedDashboardPreview = nil"))
         XCTAssertTrue(statusScreen.contains("statusDetailColumn"))
+        XCTAssertTrue(statusScreen.contains("statusRegularWorkspace"))
+        XCTAssertTrue(statusScreen.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(statusScreen.contains("VStack(alignment: .leading, spacing: 12)"))
         XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel(category: category, model: model)"))
         XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel(category: defaultWorkstationDetailCategory, model: model)"))
         XCTAssertTrue(statusScreen.contains("private var defaultWorkstationDetailCategory"))
@@ -2478,6 +2489,11 @@ final class DashboardDataModelTests: XCTestCase {
         let commandPanelView = try sourceStructBody(named: "CommandPanelView", in: mac)
         let macCommandOutputPanelView = try sourceStructBody(named: "CommandOutputPanelView", in: mac)
         let iosHistoryScreen = try sourceStructBody(named: "CompanionHistoryScreen", in: ios)
+        let iosHistoryRegularWorkspace = try sourceBody(
+            after: "private var historyRegularWorkspace",
+            in: iosHistoryScreen,
+            description: "iPad log regular workspace"
+        )
         let iosSplitRoot = try sourceStructBody(named: "CompanionSplitRootView", in: ios)
         let iosSidebar = try sourceStructBody(named: "WorkstationSidebar", in: ios)
         let iosSidebarButton = try sourceStructBody(named: "CompanionSidebarButton", in: ios)
@@ -2901,6 +2917,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosHistoryScreen.contains("RecentRemoteCommandsView"))
         XCTAssertTrue(iosHistoryScreen.contains("@Environment(\\.horizontalSizeClass)"))
         XCTAssertTrue(iosHistoryScreen.contains("if horizontalSizeClass == .regular"))
+        XCTAssertTrue(iosHistoryScreen.contains("historyRegularWorkspace"))
+        XCTAssertTrue(iosHistoryScreen.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(iosHistoryScreen.contains("VStack(alignment: .leading, spacing: 12)"))
         XCTAssertTrue(iosHistoryScreen.contains("HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing)"))
         XCTAssertTrue(iosHistoryScreen.contains("historySummaryColumn"))
         XCTAssertTrue(iosHistoryScreen.contains("historyDetailColumn"))
@@ -2914,12 +2933,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosHistoryScreen.contains("minWidth: CompanionWorkstationMetrics.detailColumnMinWidth"))
         XCTAssertTrue(iosHistoryScreen.contains("idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth"))
         XCTAssertLessThan(
-            try XCTUnwrap(iosHistoryScreen.range(of: "historySummaryColumn")).lowerBound,
-            try XCTUnwrap(iosHistoryScreen.range(of: "historyDetailColumn")).lowerBound
+            try XCTUnwrap(iosHistoryRegularWorkspace.range(of: "historySummaryColumn")).lowerBound,
+            try XCTUnwrap(iosHistoryRegularWorkspace.range(of: "historyDetailColumn")).lowerBound
         )
         XCTAssertLessThan(
-            try XCTUnwrap(iosHistoryScreen.range(of: "historyDetailColumn")).lowerBound,
-            try XCTUnwrap(iosHistoryScreen.range(of: "historyRequestColumn")).lowerBound
+            try XCTUnwrap(iosHistoryRegularWorkspace.range(of: "historyDetailColumn")).lowerBound,
+            try XCTUnwrap(iosHistoryRegularWorkspace.range(of: "historyRequestColumn")).lowerBound
         )
         XCTAssertTrue(iosHistoryScreen.contains("@State private var selectedLogSummaryKind: RemoteLogSummaryKind? = .status"))
         XCTAssertTrue(iosHistoryScreen.contains("showsInlineDetail: horizontalSizeClass != .regular"))
@@ -2975,9 +2994,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("static let sidebarWidth: CGFloat = 236"))
         XCTAssertTrue(ios.contains("static let horizontalPadding: CGFloat = 22"))
         XCTAssertTrue(ios.contains("static let commandColumnMinWidth: CGFloat = 320"))
-        XCTAssertTrue(ios.contains("static let metricColumnIdealWidth: CGFloat = 405"))
+        XCTAssertTrue(ios.contains("static let metricColumnIdealWidth: CGFloat = 390"))
         XCTAssertTrue(ios.contains("static let detailColumnIdealWidth: CGFloat = 540"))
-        XCTAssertTrue(ios.contains("static let listColumnIdealWidth: CGFloat = 500"))
+        XCTAssertTrue(ios.contains("static let listColumnIdealWidth: CGFloat = 470"))
         XCTAssertTrue(ios.contains("static var workstationSections"))
         XCTAssertTrue(iosSplitRoot.contains("WorkstationSidebar(selectedSection: $selectedSection)"))
         XCTAssertTrue(iosSplitRoot.contains(".frame(width: CompanionWorkstationMetrics.sidebarWidth)"))
@@ -3051,6 +3070,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosHeaderStatusPill.contains("private var headerStatusText"))
         XCTAssertFalse(iosHeader.contains("Text(model.statusLine)"))
         XCTAssertTrue(iosStatusScreen.contains("statusDetailColumn"))
+        XCTAssertTrue(iosStatusScreen.contains("statusRegularWorkspace"))
+        XCTAssertTrue(iosStatusScreen.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertTrue(iosStatusScreen.contains("VStack(alignment: .leading, spacing: 12)"))
         XCTAssertTrue(iosStatusScreen.contains("DashboardCategoryInlineDetailPanel(category: category, model: model)"))
         XCTAssertTrue(iosStatusScreen.contains("DashboardCategoryInlineDetailPanel(category: defaultWorkstationDetailCategory, model: model)"))
         XCTAssertTrue(iosStatusScreen.contains("private var defaultWorkstationDetailCategory"))
