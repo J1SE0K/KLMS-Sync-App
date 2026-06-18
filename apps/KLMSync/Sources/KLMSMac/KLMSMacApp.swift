@@ -345,10 +345,6 @@ private final class KLMSDashboardWindowCoordinator {
         )
         window.title = "KLMS Sync"
         window.identifier = NSUserInterfaceItemIdentifier(KLMSMacWindowID.dashboard)
-        window.setAccessibilityElement(true)
-        window.setAccessibilityRole(.window)
-        window.setAccessibilityTitle("KLMS Sync")
-        window.setAccessibilityIdentifier(KLMSMacWindowID.dashboard)
         window.minSize = NSSize(width: KLMSWindowMetrics.minWidth, height: KLMSWindowMetrics.minHeight)
         window.center()
         window.isRestorable = false

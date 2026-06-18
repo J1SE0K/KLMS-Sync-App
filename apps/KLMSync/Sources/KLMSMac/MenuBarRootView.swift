@@ -5,7 +5,6 @@ import SwiftUI
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
-    @State private var renderedSection = KLMSMacSection.dashboard
     @State private var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
@@ -26,7 +25,7 @@ struct MenuBarRootView: View {
                     )
                     MacWorkstationLayoutView(
                         model: model,
-                        selectedSection: $renderedSection,
+                        selectedSection: $selectedSection,
                         expandedLogSummaryKind: $expandedLogSummaryKind
                     )
                 }
@@ -39,16 +38,6 @@ struct MenuBarRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
-        .task(id: selectedSection) {
-            let target = selectedSection
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                renderedSection = target
-            }
-        }
     }
 }
 
