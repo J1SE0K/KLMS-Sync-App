@@ -3447,7 +3447,7 @@ private struct CompanionHistoryScreen: View {
         } else {
             CompanionEmptyDetailPanel(
                 title: "기록 선택",
-                detail: "왼쪽 로그 요약에서 상태, 실행 요청, 파일 요청 중 하나를 선택하면 상세가 여기에 표시됩니다.",
+                detail: "로그 요약에서 상태, 실행 요청, 파일 요청 중 하나를 선택하면 상세가 여기에 표시됩니다.",
                 systemImage: "sidebar.right"
             )
         }
@@ -5583,7 +5583,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                     Text("대시보드")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(Color.klmsPrimaryText)
-                    Text("최신 항목을 먼저 보고, 왼쪽 카드에서 바로 처리합니다.")
+                    Text("최신 항목을 먼저 보고, 목록 카드에서 바로 처리합니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -6460,7 +6460,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
             title: "\(category.title) 상세",
             subtitle: "\(items.count)개 항목 · 항목을 선택하면 바로 처리할 수 있습니다.",
             item: selectedItem,
-            emptyMessage: "왼쪽 목록에서 항목을 선택해 주세요.",
+            emptyMessage: "목록에서 항목을 선택해 주세요.",
             model: model
         )
     }
@@ -6581,7 +6581,7 @@ private struct WorkstationTasksWorkspace: View {
             title: "선택한 일정",
             subtitle: "과제, 시험, 헬프데스크를 선택한 뒤 바로 처리합니다.",
             item: selectedItem,
-            emptyMessage: "왼쪽 목록에서 과제나 시험을 선택해 주세요.",
+            emptyMessage: "목록에서 과제나 시험을 선택해 주세요.",
             model: model
         )
     }
@@ -6711,7 +6711,7 @@ private struct WorkstationCalendarWorkspace: View {
                     Text("캘린더")
                         .font(.headline)
                         .foregroundStyle(Color.klmsPrimaryText)
-                    Text("변경된 일정 \(changes.count)개 · 왼쪽에서 고르고 오른쪽에서 처리합니다.")
+                    Text("변경된 일정 \(changes.count)개 · 목록에서 고르고 상세 패널에서 처리합니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -6776,7 +6776,7 @@ private struct WorkstationCalendarWorkspace: View {
                     await model.createCalendarAction(action, change: selectedChange, edit: edit)
                 }
             } else {
-                Text("왼쪽 목록에서 캘린더 변경 항목을 선택해 주세요.")
+                Text("캘린더 변경 목록에서 항목을 선택해 주세요.")
                     .font(.subheadline)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .padding(12)
@@ -6837,7 +6837,7 @@ private struct WorkstationCalendarWorkspace: View {
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
         .accessibilityLabel("\(change.title.nilIfBlank ?? "캘린더 변경") \(change.actionDisplayName)")
-        .accessibilityHint("오른쪽에 일정 상세와 처리 버튼을 표시합니다.")
+        .accessibilityHint("상세 패널에 일정 상세와 처리 버튼을 표시합니다.")
     }
 
     private func calendarActionTint(_ change: CalendarChange) -> Color {
@@ -6983,7 +6983,7 @@ private struct CompanionInlineItemRowsView: View {
                     }
                     .buttonStyle(KLMSCardButtonStyle())
                     .accessibilityValue(isSelected ? "선택됨" : "")
-                    .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "오른쪽 상세 패널에 항목을 표시합니다.")
+                    .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "상세 패널에 항목을 표시합니다.")
 
                     if presentation == .inlineDetail && selectedItemID == item.id {
                         ServerSyncItemInlineDetailPanel(item: item, model: model)
