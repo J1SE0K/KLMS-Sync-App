@@ -3601,10 +3601,10 @@ private struct CalendarActionButton: View {
                     .foregroundStyle(disabled ? Color.klmsMacSecondaryText.opacity(0.62) : Color.klmsMacPrimaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
-            }
+                }
                 .font(.caption.weight(.semibold))
                 .frame(maxWidth: .infinity)
-                .frame(minHeight: 40)
+                .frame(minHeight: 44)
                 .padding(.horizontal, 9)
                 .background(
                     (disabled ? Color.klmsMacSubtleCardBackground.opacity(0.58) : Color.klmsMacCommandButtonBackground.opacity(0.92)),
@@ -3617,6 +3617,7 @@ private struct CalendarActionButton: View {
         }
         .buttonStyle(KLMSMacPressFeedbackButtonStyle(cornerRadius: 8))
         .disabled(disabled)
+        .accessibilityLabel(title)
     }
 }
 
