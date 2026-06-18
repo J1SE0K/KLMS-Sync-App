@@ -1867,6 +1867,8 @@ final class DashboardDataModelTests: XCTestCase {
             XCTAssertTrue(row.contains(".buttonStyle(KLMSCardButtonStyle"))
         }
         XCTAssertFalse(ios.contains(".frame(maxWidth: .infinity, minHeight: 38)"))
+        XCTAssertFalse(ios.contains(".frame(width: 38, height: 38)"))
+        XCTAssertTrue(ios.contains(".frame(width: 44, height: 44)"))
         XCTAssertFalse(ios.contains(".frame(maxWidth: .infinity, minHeight: 36)"))
         XCTAssertFalse(ios.contains(".frame(maxWidth: .infinity, minHeight: 34)"))
         XCTAssertFalse(ios.contains(".frame(minHeight: 32)"))

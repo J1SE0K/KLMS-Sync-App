@@ -3388,7 +3388,7 @@ private struct CompanionEmptyDetailPanel: View {
             Image(systemName: systemImage)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
-                .frame(width: 38, height: 38)
+                .frame(width: 44, height: 44)
                 .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
