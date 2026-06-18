@@ -6310,9 +6310,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     var category: DashboardMetricCategory
     let model: CompanionModel
     @State private var selectedItemID: String?
-    @State private var displayedSelectedItemID: String?
     @State private var displayedSelectedItem: ServerRelaySyncItem?
-    @State private var externalDetailTask: Task<Void, Never>?
 
     private var items: [ServerRelaySyncItem] {
         model.cachedVisibleDashboardItems(for: category.rawValue)
@@ -6324,17 +6322,11 @@ private struct WorkstationDashboardCategoryWorkspace: View {
 
     private var selectedItem: ServerRelaySyncItem? {
         guard selectedItemID != nil,
-              let displayedSelectedItemID,
               let displayedSelectedItem,
-              displayedSelectedItem.id == displayedSelectedItemID else {
+              displayedSelectedItem.id == selectedItemID else {
             return nil
         }
         return displayedSelectedItem
-    }
-
-    private var isPreparingExternalDetail: Bool {
-        guard let selectedItemID else { return false }
-        return displayedSelectedItemID != selectedItemID
     }
 
     private var itemsResetKey: String {
@@ -6352,22 +6344,13 @@ private struct WorkstationDashboardCategoryWorkspace: View {
             )
             .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
 
-            Group {
-                if isPreparingExternalDetail {
-                    WorkstationExternalDetailPreparingPanel(
-                        title: "\(category.title) 상세",
-                        subtitle: "선택한 항목을 여는 중입니다."
-                    )
-                } else {
-                    WorkstationExternalDetailPanel(
-                        title: "\(category.title) 상세",
-                        subtitle: "\(items.count)개 항목 · 항목을 선택하면 바로 처리할 수 있습니다.",
-                        item: selectedItem,
-                        emptyMessage: "왼쪽 목록에서 항목을 선택해 주세요.",
-                        model: model
-                    )
-                }
-            }
+            WorkstationExternalDetailPanel(
+                title: "\(category.title) 상세",
+                subtitle: "\(items.count)개 항목 · 항목을 선택하면 바로 처리할 수 있습니다.",
+                item: selectedItem,
+                emptyMessage: "왼쪽 목록에서 항목을 선택해 주세요.",
+                model: model
+            )
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -6376,10 +6359,6 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         }
         .onChange(of: itemsResetKey) { _, _ in
             refreshExternalSelection()
-        }
-        .onDisappear {
-            externalDetailTask?.cancel()
-            externalDetailTask = nil
         }
     }
 
@@ -6391,60 +6370,32 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         transaction.animation = nil
         withTransaction(transaction) {
             selectedItemID = item.id
-            displayedSelectedItemID = nil
-            displayedSelectedItem = nil
-        }
-        deferExternalDetail(item)
-    }
-
-    private func deferExternalDetail(_ item: ServerRelaySyncItem?) {
-        externalDetailTask?.cancel()
-        guard let item else {
-            displayedSelectedItemID = nil
-            displayedSelectedItem = nil
-            externalDetailTask = nil
-            return
-        }
-        externalDetailTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            displayedSelectedItemID = item.id
             displayedSelectedItem = item
-            externalDetailTask = nil
         }
     }
 
     private func refreshExternalSelection() {
         if let selectedItemID,
            let refreshed = items.first(where: { $0.id == selectedItemID }) {
-            displayedSelectedItemID = refreshed.id
             displayedSelectedItem = refreshed
             return
         }
 
         guard let first = items.first else {
             selectedItemID = nil
-            self.displayedSelectedItemID = nil
             displayedSelectedItem = nil
-            externalDetailTask?.cancel()
-            externalDetailTask = nil
             return
         }
 
         selectedItemID = first.id
-        displayedSelectedItemID = first.id
         displayedSelectedItem = first
-        externalDetailTask?.cancel()
-        externalDetailTask = nil
     }
 }
 
 private struct WorkstationTasksWorkspace: View {
     let model: CompanionModel
     @State private var selectedItemID: String?
-    @State private var displayedSelectedItemID: String?
     @State private var displayedSelectedItem: ServerRelaySyncItem?
-    @State private var externalDetailTask: Task<Void, Never>?
 
     private var combinedItems: [ServerRelaySyncItem] {
         model.cachedVisibleDashboardTaskItems()
@@ -6456,17 +6407,11 @@ private struct WorkstationTasksWorkspace: View {
 
     private var selectedItem: ServerRelaySyncItem? {
         guard selectedItemID != nil,
-              let displayedSelectedItemID,
               let displayedSelectedItem,
-              displayedSelectedItem.id == displayedSelectedItemID else {
+              displayedSelectedItem.id == selectedItemID else {
             return nil
         }
         return displayedSelectedItem
-    }
-
-    private var isPreparingExternalDetail: Bool {
-        guard let selectedItemID else { return false }
-        return displayedSelectedItemID != selectedItemID
     }
 
     private var itemsResetKey: String {
@@ -6484,22 +6429,13 @@ private struct WorkstationTasksWorkspace: View {
             }
             .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
 
-            Group {
-                if isPreparingExternalDetail {
-                    WorkstationExternalDetailPreparingPanel(
-                        title: "선택한 일정",
-                        subtitle: "선택한 항목을 여는 중입니다."
-                    )
-                } else {
-                    WorkstationExternalDetailPanel(
-                        title: "선택한 일정",
-                        subtitle: "과제, 시험, 헬프데스크를 선택한 뒤 바로 처리합니다.",
-                        item: selectedItem,
-                        emptyMessage: "왼쪽 목록에서 과제나 시험을 선택해 주세요.",
-                        model: model
-                    )
-                }
-            }
+            WorkstationExternalDetailPanel(
+                title: "선택한 일정",
+                subtitle: "과제, 시험, 헬프데스크를 선택한 뒤 바로 처리합니다.",
+                item: selectedItem,
+                emptyMessage: "왼쪽 목록에서 과제나 시험을 선택해 주세요.",
+                model: model
+            )
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -6508,10 +6444,6 @@ private struct WorkstationTasksWorkspace: View {
         }
         .onChange(of: itemsResetKey) { _, _ in
             refreshExternalSelection()
-        }
-        .onDisappear {
-            externalDetailTask?.cancel()
-            externalDetailTask = nil
         }
     }
 
@@ -6533,61 +6465,33 @@ private struct WorkstationTasksWorkspace: View {
         transaction.animation = nil
         withTransaction(transaction) {
             selectedItemID = item.id
-            displayedSelectedItemID = nil
-            displayedSelectedItem = nil
-        }
-        deferExternalDetail(item)
-    }
-
-    private func deferExternalDetail(_ item: ServerRelaySyncItem?) {
-        externalDetailTask?.cancel()
-        guard let item else {
-            displayedSelectedItemID = nil
-            displayedSelectedItem = nil
-            externalDetailTask = nil
-            return
-        }
-        externalDetailTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            displayedSelectedItemID = item.id
             displayedSelectedItem = item
-            externalDetailTask = nil
         }
     }
 
     private func refreshExternalSelection() {
         if let selectedItemID,
            let refreshed = combinedItems.first(where: { $0.id == selectedItemID }) {
-            displayedSelectedItemID = refreshed.id
             displayedSelectedItem = refreshed
             return
         }
 
         guard let first = combinedItems.first else {
             selectedItemID = nil
-            self.displayedSelectedItemID = nil
             displayedSelectedItem = nil
-            externalDetailTask?.cancel()
-            externalDetailTask = nil
             return
         }
 
         selectedItemID = first.id
-        displayedSelectedItemID = first.id
         displayedSelectedItem = first
-        externalDetailTask?.cancel()
-        externalDetailTask = nil
     }
 }
 
 private struct WorkstationCalendarWorkspace: View {
     let model: CompanionModel
     @State private var selectedChangeID: String?
-    @State private var displayedSelectedChangeID: String?
     @State private var displayedSelectedChange: CalendarChange?
     @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
-    @State private var externalDetailTask: Task<Void, Never>?
 
     private var changes: [CalendarChange] {
         model.visibleCalendarChanges()
@@ -6599,17 +6503,11 @@ private struct WorkstationCalendarWorkspace: View {
 
     private var selectedChange: CalendarChange? {
         guard selectedChangeID != nil,
-              let displayedSelectedChangeID,
               let displayedSelectedChange,
-              displayedSelectedChange.id == displayedSelectedChangeID else {
+              displayedSelectedChange.id == selectedChangeID else {
             return nil
         }
         return displayedSelectedChange
-    }
-
-    private var isPreparingExternalDetail: Bool {
-        guard let selectedChangeID else { return false }
-        return displayedSelectedChangeID != selectedChangeID
     }
 
     private var changesResetKey: String {
@@ -6621,16 +6519,7 @@ private struct WorkstationCalendarWorkspace: View {
             calendarListPanel
                 .frame(minWidth: 350, idealWidth: 440, maxWidth: 540, alignment: .topLeading)
 
-            Group {
-                if isPreparingExternalDetail {
-                    WorkstationExternalDetailPreparingPanel(
-                        title: "캘린더 상세",
-                        subtitle: "선택한 일정 변경을 여는 중입니다."
-                    )
-                } else {
-                    calendarDetailPanel
-                }
-            }
+            calendarDetailPanel
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -6640,10 +6529,6 @@ private struct WorkstationCalendarWorkspace: View {
         .onChange(of: changesResetKey) { _, _ in
             calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
             refreshExternalSelection()
-        }
-        .onDisappear {
-            externalDetailTask?.cancel()
-            externalDetailTask = nil
         }
     }
 
@@ -6814,79 +6699,25 @@ private struct WorkstationCalendarWorkspace: View {
         }
         companionPerformWithoutAnimation {
             selectedChangeID = change.id
-            displayedSelectedChangeID = nil
-            displayedSelectedChange = nil
-        }
-        deferExternalDetail(change)
-    }
-
-    private func deferExternalDetail(_ change: CalendarChange?) {
-        externalDetailTask?.cancel()
-        guard let change else {
-            displayedSelectedChangeID = nil
-            displayedSelectedChange = nil
-            externalDetailTask = nil
-            return
-        }
-        externalDetailTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            displayedSelectedChangeID = change.id
             displayedSelectedChange = change
-            externalDetailTask = nil
         }
     }
 
     private func refreshExternalSelection() {
         if let selectedChangeID,
            let refreshed = changes.first(where: { $0.id == selectedChangeID }) {
-            displayedSelectedChangeID = refreshed.id
             displayedSelectedChange = refreshed
             return
         }
 
         guard let first = changes.first else {
             selectedChangeID = nil
-            displayedSelectedChangeID = nil
             displayedSelectedChange = nil
-            externalDetailTask?.cancel()
-            externalDetailTask = nil
             return
         }
 
         selectedChangeID = first.id
-        displayedSelectedChangeID = first.id
         displayedSelectedChange = first
-        externalDetailTask?.cancel()
-        externalDetailTask = nil
-    }
-}
-
-private struct WorkstationExternalDetailPreparingPanel: View {
-    var title: String
-    var subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            CompanionInlineDetailPreparingView()
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        )
     }
 }
 
