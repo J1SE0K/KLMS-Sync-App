@@ -893,6 +893,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(probe.contains("ProbeTarget(rawValue: \"diagnostics\")"))
         XCTAssertTrue(probe.contains("waitForElement(withIdentifier: target.contentIdentifier"))
         XCTAssertTrue(probe.contains("findElement(in: root, maxDepth: 32, maxNodes: 35_000, predicate:"))
+        XCTAssertTrue(probe.contains("private func runProbe() throws"))
+        XCTAssertTrue(probe.contains("probe failed: \\(error)"))
+        XCTAssertTrue(probe.contains("FileHandle.standardError.write"))
+        XCTAssertTrue(probe.contains("var stack: [(AXUIElement, Int)]"))
+        XCTAssertTrue(probe.contains("var visited = Set<CFHashCode>()"))
+        XCTAssertTrue(probe.contains("childElements(of: element).reversed()"))
+        XCTAssertTrue(probe.contains("kAXWindowsAttribute as CFString"))
+        XCTAssertTrue(probe.contains("\"AXVisibleChildren\" as CFString"))
+        XCTAssertFalse(probe.contains("queue.removeFirst()"))
     }
 
     func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {

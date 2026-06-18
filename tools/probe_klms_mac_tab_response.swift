@@ -54,32 +54,42 @@ private let targets = [
     ProbeTarget(rawValue: "settings"),
 ]
 
-private let trustedOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
-guard AXIsProcessTrustedWithOptions(trustedOptions) else {
-    throw ProbeFailure.accessibilityPermissionMissing
+do {
+    try runProbe()
+} catch {
+    let message = "probe failed: \(error)\n"
+    FileHandle.standardError.write(Data(message.utf8))
+    exit(1)
 }
 
-private let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-private let runningByName = NSWorkspace.shared.runningApplications.filter { app in
-    app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
-}
-guard let app = (runningByBundleID + runningByName).first(where: { !$0.isTerminated }) else {
-    throw ProbeFailure.appNotRunning(bundleID: bundleID, appName: appName)
-}
+private func runProbe() throws {
+    let trustedOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
+    guard AXIsProcessTrustedWithOptions(trustedOptions) else {
+        throw ProbeFailure.accessibilityPermissionMissing
+    }
 
-let appElement = AXUIElementCreateApplication(app.processIdentifier)
-try openDashboardWindowIfNeeded(appElement: appElement)
+    let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+    let runningByName = NSWorkspace.shared.runningApplications.filter { app in
+        app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
+    }
+    guard let app = (runningByBundleID + runningByName).first(where: { !$0.isTerminated }) else {
+        throw ProbeFailure.appNotRunning(bundleID: bundleID, appName: appName)
+    }
 
-var samples: [(String, Double)] = []
-for target in targets {
-    let elapsed = try measure(target: target, appElement: appElement)
-    samples.append((target.rawValue, elapsed))
-    print("\(target.rawValue)=\(Int(elapsed.rounded()))ms")
+    let appElement = AXUIElementCreateApplication(app.processIdentifier)
+    try openDashboardWindowIfNeeded(appElement: appElement)
+
+    var samples: [(String, Double)] = []
+    for target in targets {
+        let elapsed = try measure(target: target, appElement: appElement)
+        samples.append((target.rawValue, elapsed))
+        print("\(target.rawValue)=\(Int(elapsed.rounded()))ms")
+    }
+
+    let average = samples.map(\.1).reduce(0, +) / Double(max(samples.count, 1))
+    let slowest = samples.max { $0.1 < $1.1 }
+    print("average=\(Int(average.rounded()))ms slowest=\(slowest?.0 ?? "-"):\(Int((slowest?.1 ?? 0).rounded()))ms")
 }
-
-let average = samples.map(\.1).reduce(0, +) / Double(max(samples.count, 1))
-let slowest = samples.max { $0.1 < $1.1 }
-print("average=\(Int(average.rounded()))ms slowest=\(slowest?.0 ?? "-"):\(Int((slowest?.1 ?? 0).rounded()))ms")
 
 private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
     if waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: 0.4) != nil {
@@ -156,28 +166,57 @@ private func findElement(
     maxNodes: Int,
     predicate: (AXUIElement) -> Bool
 ) -> AXUIElement? {
-    var queue: [(AXUIElement, Int)] = [(root, 0)]
-    var visited = 0
-    while !queue.isEmpty && visited < maxNodes {
-        let (element, depth) = queue.removeFirst()
-        visited += 1
+    var stack: [(AXUIElement, Int)] = [(root, 0)]
+    var visited = Set<CFHashCode>()
+    var visitedCount = 0
+
+    while let (element, depth) = stack.popLast() {
+        let elementHash = CFHash(element)
+        guard visited.insert(elementHash).inserted else {
+            continue
+        }
+
+        visitedCount += 1
+        guard visitedCount <= maxNodes else {
+            return nil
+        }
+
         if predicate(element) {
             return element
         }
-        guard depth < maxDepth else { continue }
-        for child in arrayAttribute(element, "AXChildren" as CFString) {
-            queue.append((child, depth + 1))
+
+        guard depth < maxDepth else {
+            continue
+        }
+
+        for child in childElements(of: element).reversed() {
+            stack.append((child, depth + 1))
         }
     }
     return nil
 }
 
-private func arrayAttribute(_ element: AXUIElement, _ attribute: CFString) -> [AXUIElement] {
-    var value: CFTypeRef?
-    guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
-        return []
+private func childElements(of element: AXUIElement) -> [AXUIElement] {
+    let attributes: [CFString] = [
+        kAXWindowsAttribute as CFString,
+        kAXChildrenAttribute as CFString,
+        "AXVisibleChildren" as CFString,
+    ]
+
+    var result: [AXUIElement] = []
+    for attribute in attributes {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
+            continue
+        }
+
+        if let children = value as? [AXUIElement] {
+            result.append(contentsOf: children)
+        } else if CFGetTypeID(value) == AXUIElementGetTypeID() {
+            result.append(value as! AXUIElement)
+        }
     }
-    return value as? [AXUIElement] ?? []
+    return result
 }
 
 private func stringAttribute(_ element: AXUIElement, _ attribute: CFString) -> String? {
