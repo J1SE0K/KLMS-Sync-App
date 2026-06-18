@@ -2722,8 +2722,10 @@ private struct CompanionStatusScreen: View {
         ) {
             if horizontalSizeClass == .regular {
                 HStack(alignment: .top, spacing: 16) {
-                    statusSummaryColumn
-                        .frame(minWidth: 320, idealWidth: 380, maxWidth: 430, alignment: .topLeading)
+                    statusCommandColumn
+                        .frame(minWidth: 280, idealWidth: 315, maxWidth: 350, alignment: .topLeading)
+                    statusMetricColumn
+                        .frame(minWidth: 300, idealWidth: 350, maxWidth: 390, alignment: .topLeading)
                     statusDetailColumn
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -2776,6 +2778,39 @@ private struct CompanionStatusScreen: View {
         }
     }
 
+    private var statusCommandColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RemoteDashboardSyncCard(model: model, compact: false)
+            WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)
+        }
+    }
+
+    private var statusMetricColumn: some View {
+        RemoteDashboardMetricOverview(
+            model: model,
+            status: model.dashboardStatus,
+            hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
+            selectedCategory: $selectedDashboardPreview,
+            displayedCategory: displayedDashboardPreview,
+            onCategoryTap: { category in
+                selectedChangeSummary = nil
+                displayedChangeSummary = nil
+                displayedDashboardPreview = nil
+                selectedDashboardPreview = category
+                deferDashboardPreview(category)
+            },
+            selectedChangeSummary: selectedChangeSummary,
+            displayedChangeSummary: displayedChangeSummary,
+            onChangeSummaryTap: { kind in
+                selectedDashboardPreview = nil
+                displayedDashboardPreview = nil
+                displayedChangeSummary = nil
+                selectedChangeSummary = kind
+                deferChangeSummary(kind)
+            }
+        )
+    }
+
     @ViewBuilder
     private var statusDetailColumn: some View {
         if let kind = displayedChangeSummary {
@@ -2806,6 +2841,7 @@ private struct CompanionStatusScreen: View {
         } else if horizontalSizeClass == .regular {
             WorkstationDashboardOverviewPanel(
                 data: WorkstationDashboardOverviewData(model: model),
+                showsMetrics: false,
                 onOpenCategory: openDashboardCategoryFromOverview
             )
                 .equatable()
@@ -5395,6 +5431,7 @@ private struct WorkstationDashboardOverviewData: Equatable {
 
 private struct WorkstationDashboardOverviewPanel: View, Equatable {
     var data: WorkstationDashboardOverviewData
+    var showsMetrics = true
     var onOpenCategory: (DashboardMetricCategory) -> Void = { _ in }
 
     private var status: SanitizedRemoteStatus {
@@ -5429,51 +5466,53 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                     )
             }
 
-            if overviewMetrics.isEmpty {
-                Text("표시할 대시보드 항목이 없습니다.")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 13)
-                            .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
-                    )
-            } else {
-                LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
-                    ForEach(overviewMetrics) { metric in
-                        Button {
-                            onOpenCategory(metric.category)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(alignment: .center, spacing: 8) {
-                                    Image(systemName: metric.systemImage)
-                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(metric.tint)
-                                        .frame(width: 26, height: 26)
-                                        .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                                    Spacer(minLength: 0)
-                                    Text("\(metric.value)")
-                                        .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                                        .foregroundStyle(Color.klmsPrimaryText)
+            if showsMetrics {
+                if overviewMetrics.isEmpty {
+                    Text("표시할 대시보드 항목이 없습니다.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 13)
+                                .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+                        )
+                } else {
+                    LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
+                        ForEach(overviewMetrics) { metric in
+                            Button {
+                                onOpenCategory(metric.category)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(alignment: .center, spacing: 8) {
+                                        Image(systemName: metric.systemImage)
+                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(metric.tint)
+                                            .frame(width: 26, height: 26)
+                                            .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                        Spacer(minLength: 0)
+                                        Text("\(metric.value)")
+                                            .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                                            .foregroundStyle(Color.klmsPrimaryText)
+                                    }
+                                    Text(metric.title)
+                                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                                        .foregroundStyle(Color.klmsSecondaryText)
+                                        .lineLimit(1)
                                 }
-                                Text(metric.title)
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundStyle(Color.klmsSecondaryText)
-                                    .lineLimit(1)
+                                .padding(11)
+                                .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+                                .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 13)
+                                        .stroke(Color.klmsBorder, lineWidth: 1)
+                                )
+                                .contentShape(RoundedRectangle(cornerRadius: 13))
                             }
-                            .padding(11)
-                            .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
-                            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 13)
-                                    .stroke(Color.klmsBorder, lineWidth: 1)
-                            )
-                            .contentShape(RoundedRectangle(cornerRadius: 13))
+                            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
+                            .accessibilityHint("\(metric.title) 상세를 엽니다.")
                         }
-                        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
-                        .accessibilityHint("\(metric.title) 상세를 엽니다.")
                     }
                 }
             }
@@ -5559,6 +5598,53 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
 
         var id: String {
             title
+        }
+    }
+}
+
+private struct WorkstationDashboardRunSummaryCard: View {
+    var status: SanitizedRemoteStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 24, height: 24)
+                    .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                Text("현재 흐름")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Spacer(minLength: 0)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                runSummaryLine("상태", status.phase.klmsRemotePhaseName)
+                runSummaryLine("파일", "\(status.fileTotal)개 · 새 파일 \(status.newFiles)개")
+                runSummaryLine("일정", "시험 \(status.exams)개 · 과제 \(status.assignments)개")
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.70), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+        )
+    }
+
+    private func runSummaryLine(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+                .frame(width: 58, alignment: .leading)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsPrimaryText)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
