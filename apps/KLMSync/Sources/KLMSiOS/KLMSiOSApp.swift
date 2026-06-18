@@ -3032,9 +3032,9 @@ private struct CompanionSettingsScreen: View {
 
     private var settingsSupportColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
+            ServerRelayConnectionPanel(model: model)
             RemoteDiagnosticPanel(model: model)
             RemotePrivacyNote()
-            ServerRelayConnectionPanel(model: model)
         }
     }
 }
@@ -3053,7 +3053,7 @@ private struct CompanionImmediateSettingsPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("바로 반영되는 설정")
                         .font(.headline)
-                    Text("서버에 바로 저장되어 Mac, iPhone, iPad, Windows가 같은 값을 씁니다.")
+                    Text("저장하면 모든 기기에 바로 적용됩니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -3085,7 +3085,7 @@ private struct CompanionImmediateSettingsPanel: View {
                 CompanionImmediateSettingRow(
                     title: "공지 메모",
                     statusText: model.sharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐",
-                    detail: "끄면 iPhone/iPad/Windows에서 실행한 동기화는 Notes 공지 메모 쓰기만 건너뜁니다. 과제, 시험, 파일 수집은 그대로 진행됩니다."
+                    detail: "끄면 원격 동기화에서 Notes 공지 메모만 건너뜁니다."
                 ) {
                     Toggle("원격 실행에서 공지 메모도 갱신", isOn: Binding(
                         get: { model.sharedNoticeUpdateNotesEnabled },
@@ -3687,7 +3687,7 @@ private struct ServerRelayConnectionPanel: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("서버 릴레이")
                             .font(.headline)
-                        Text(model.serverRelayConfigured ? "서버 연결 정보가 저장되어 있습니다." : "Cloudflare 릴레이 연결 정보를 붙여넣어 주세요.")
+                        Text(model.serverRelayConfigured ? "연결 정보가 저장되어 있습니다." : "연결 정보를 붙여넣어 주세요.")
                             .font(.caption)
                             .foregroundStyle(Color.klmsSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
@@ -3719,7 +3719,7 @@ private struct ServerRelayConnectionPanel: View {
 
                     CompanionSettingsSubsectionCard(
                         title: "서버 연결 정보",
-                        detail: "서버 URL과 클라이언트 토큰을 한곳에서 관리합니다.",
+                        detail: "서버 URL과 클라이언트 토큰을 관리합니다.",
                         systemImage: "link",
                         statusText: model.serverRelayConfigured ? "저장됨" : "미설정",
                         statusTint: model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText,
@@ -3727,21 +3727,21 @@ private struct ServerRelayConnectionPanel: View {
                     ) {
                         CompanionConnectionInput(
                             title: "서버 URL",
-                            detail: "Cloudflare Worker 같은 공개 HTTPS 주소만 넣습니다. 집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.",
+                            detail: "공개 HTTPS 주소만 넣습니다. 로컬 주소는 저장하지 않습니다.",
                             text: $model.serverURL
                         )
                         CompanionConnectionInput(
                             title: "클라이언트 토큰",
-                            detail: "iPhone/iPad/Windows용 토큰입니다. 상태 조회와 실행 요청만 할 수 있으며, Mac 전용 토큰은 여기에 넣지 않습니다.",
+                            detail: "이 기기용 토큰입니다. Mac 전용 토큰은 넣지 않습니다.",
                             text: $model.serverToken,
                             secure: true
                         )
-                        CompanionSettingHelpText("Mac 앱에는 같은 서버 URL과 별도의 Mac 전용 토큰이 저장되어 있어야 합니다. 실제 KLMS 동기화는 Mac 앱이 처리합니다.")
+                        CompanionSettingHelpText("실제 KLMS 수집은 Mac 앱이 처리합니다.")
                     }
 
                     CompanionSettingsSubsectionCard(
                         title: "연결 확인",
-                        detail: "붙여넣기, 서버 응답 검사, 요약 갱신을 처리합니다.",
+                        detail: "붙여넣기, 응답 검사, 요약 갱신을 처리합니다.",
                         systemImage: "checkmark.shield",
                         defaultExpanded: true
                     ) {
@@ -3758,7 +3758,7 @@ private struct ServerRelayConnectionPanel: View {
                             }
                             .disabled(!model.serverRelayConfigured || model.isSubmitting || model.hasInFlightRequest)
                         }
-                        CompanionSettingHelpText("붙여넣기는 복사한 연결 정보를 한 번에 입력합니다. 연결 확인은 URL과 토큰으로 서버 응답만 검사합니다.")
+                        CompanionSettingHelpText("연결 확인은 동기화 없이 서버 응답만 검사합니다.")
                     }
 
                     CompanionSettingsSubsectionCard(
@@ -10549,7 +10549,7 @@ private struct RemoteSettingsPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Mac 동기화 설정")
                         .font(.headline)
-                    Text("실행 엔진이 쓰는 값을 Mac 설정 파일에 반영합니다.")
+                    Text("Mac에서 실행할 동기화 방식을 정합니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -10564,7 +10564,7 @@ private struct RemoteSettingsPanel: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                CompanionSettingHelpText("Mac 앱이 받아 config.env에 저장합니다. 화면 모드와 공지 메모 갱신은 위 카드에서 바로 바뀝니다.")
+                CompanionSettingHelpText("변경한 값은 서버에 저장되고 Mac 앱이 받아 적용합니다.")
                 if model.remoteSettings.isEmpty {
                     Text("Mac 앱이 설정 목록을 올리면 여기에서 바꿀 수 있습니다.")
                         .font(.caption)
@@ -10616,19 +10616,19 @@ private struct RemoteSettingGroup: Identifiable {
             (
                 "실행",
                 "arrow.triangle.2.circlepath",
-                "동기화 범위와 Calendar 반영 방식을 정합니다.",
+                "동기화 범위와 캘린더 반영 방식을 정합니다.",
                 ["SYNC_MODE", "CALENDAR_SKIP_UNCHANGED_DESIRED"]
             ),
             (
                 "파일",
                 "folder",
-                "파일 탐색, 다운로드 건너뛰기, 폴더 정리 방식을 정합니다.",
+                "파일 확인과 폴더 정리 방식을 정합니다.",
                 ["FILE_REFRESH_MODE", "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY", "FILE_WEEKLY_FOLDERS_ENABLED", "FILE_KEEP_FRESH_DOWNLOADS", "FILE_PRESERVE_DOWNLOAD_ARCHIVE"]
             ),
             (
                 "공지 메모",
                 "checklist",
-                "Notes 메모에 숨긴 공지를 쓸지, 변경 없는 메모를 다시 쓸지 정합니다.",
+                "숨긴 공지와 변경 없는 메모 처리 방식을 정합니다.",
                 ["NOTICE_HIDE_HIDDEN_ITEMS", "NOTICE_NATIVE_STABLE_NOOP_SKIP"]
             ),
             (
