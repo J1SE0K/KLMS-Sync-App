@@ -2179,7 +2179,7 @@ private struct LogTextBlock: View {
     var text: String
     var detailed = false
     private let displayText: String
-    private let highlights: [KLMSLogHighlight]
+    @State private var highlights: [KLMSLogHighlight]
     @State private var isRawExpanded: Bool
 
     init(text: String, detailed: Bool = false, rawExpandedByDefault: Bool = true) {
@@ -2187,7 +2187,7 @@ private struct LogTextBlock: View {
         self.detailed = detailed
         let boundedText = Self.boundedText(text, detailed: detailed)
         self.displayText = boundedText
-        self.highlights = KLMSReadableLogParser.highlights(from: boundedText)
+        self._highlights = State(initialValue: [])
         self._isRawExpanded = State(initialValue: rawExpandedByDefault)
     }
 
@@ -2208,6 +2208,9 @@ private struct LogTextBlock: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .task(id: displayText) {
+            await rebuildHighlights()
+        }
     }
 
     private var rawLogText: some View {
@@ -2232,6 +2235,20 @@ private struct LogTextBlock: View {
         }
         let prefix = "... 화면 표시용으로 이전 로그 일부를 접었습니다 ...\n"
         return prefix + String(text.suffix(maxCharacters - prefix.count))
+    }
+
+    @MainActor
+    private func rebuildHighlights() async {
+        if !highlights.isEmpty {
+            highlights = []
+        }
+        let text = displayText
+        let nextHighlights = await Task.detached(priority: .utility) {
+            KLMSReadableLogParser.highlights(from: text)
+        }.value
+        if highlights != nextHighlights {
+            highlights = nextHighlights
+        }
     }
 }
 

@@ -1126,9 +1126,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("private struct DiagnosticChecksDisclosure"))
         XCTAssertTrue(view.contains("LogTextBlock(text: record.outputTail)"))
         XCTAssertTrue(view.contains("Label(\"원본 로그 보기\", systemImage: \"doc.text.magnifyingglass\")"))
-        XCTAssertTrue(logTextBlock.contains("private let highlights: [KLMSLogHighlight]"))
+        XCTAssertTrue(logTextBlock.contains("@State private var highlights: [KLMSLogHighlight]"))
         XCTAssertTrue(logTextBlock.contains("let boundedText = Self.boundedText(text, detailed: detailed)"))
-        XCTAssertTrue(logTextBlock.contains("self.highlights = KLMSReadableLogParser.highlights(from: boundedText)"))
+        XCTAssertTrue(logTextBlock.contains("self._highlights = State(initialValue: [])"))
+        XCTAssertTrue(logTextBlock.contains(".task(id: displayText)"))
+        XCTAssertTrue(logTextBlock.contains("Task.detached(priority: .utility)"))
+        XCTAssertFalse(logTextBlock.contains("self.highlights = KLMSReadableLogParser.highlights(from: boundedText)"))
         XCTAssertTrue(logTextBlock.contains("ReadableLogHighlightsView(highlights: highlights, detailed: detailed)"))
         XCTAssertFalse(logTextBlock.contains("ReadableLogHighlightsView(highlights: KLMSReadableLogParser.highlights"))
         XCTAssertTrue(app.contains(".onChange(of: appearanceMode)"))
@@ -1379,12 +1382,14 @@ final class DashboardDataModelTests: XCTestCase {
         let macDetailRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/DashboardDetailView.swift")
         let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
         let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let mac = try String(contentsOf: macRoot, encoding: .utf8)
         let sources = try [
-            String(contentsOf: macRoot, encoding: .utf8),
+            mac,
             String(contentsOf: macDetailRoot, encoding: .utf8),
             String(contentsOf: macModelRoot, encoding: .utf8),
             String(contentsOf: iosRoot, encoding: .utf8),
         ].joined(separator: "\n")
+        let logTextBlock = try sourceStructBody(named: "LogTextBlock", in: mac)
 
         XCTAssertFalse(sources.contains("duration: 0.04"))
         XCTAssertFalse(sources.contains("withAnimation(.easeInOut(duration: 0.08))"))
@@ -1408,6 +1413,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(sources.contains("private var cachedCurrentPhaseText: String?"))
         XCTAssertTrue(sources.contains("private static func extractLiveProgressLine(from text: String) -> String?"))
         XCTAssertTrue(sources.contains("private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 3_000_000_000"))
+        XCTAssertTrue(logTextBlock.contains("@State private var highlights: [KLMSLogHighlight]"))
+        XCTAssertTrue(logTextBlock.contains(".task(id: displayText)"))
+        XCTAssertTrue(logTextBlock.contains("Task.detached(priority: .utility)"))
+        XCTAssertFalse(logTextBlock.contains("self.highlights = KLMSReadableLogParser.highlights(from: boundedText)"))
         XCTAssertTrue(sources.contains("private struct DeferredDashboardExpansion"))
         XCTAssertFalse(sources.contains("dashboardDetailExpansionDelayNanoseconds"))
         XCTAssertFalse(sources.contains("delayNanoseconds"))
