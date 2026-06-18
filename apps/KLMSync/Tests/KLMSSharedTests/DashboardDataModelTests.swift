@@ -1912,6 +1912,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSyncCard.contains("secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled)"))
         XCTAssertTrue(dashboardSyncCard.contains("return \"lock.fill\""))
         XCTAssertTrue(dashboardSyncCard.contains(".buttonStyle(KLMSCardButtonStyle(disabledOpacity: 1.0))"))
+        XCTAssertTrue(dashboardSyncCard.contains(".frame(maxWidth: .infinity, minHeight: compact ? 44 : 46, alignment: .center)"))
+        XCTAssertFalse(dashboardSyncCard.contains("minHeight: compact ? 42"))
         XCTAssertFalse(dashboardSyncCard.contains(".opacity(commandDisabled(for: kind) ? 0.62"))
         XCTAssertFalse(dashboardSyncCard.contains("if compact {\n                LazyVGrid(columns: secondaryColumns"))
         XCTAssertTrue(designSpec.contains("바로 아래에 `파일`, `과제/시험`, `공지` 개별 실행 버튼을 3열로 둔다."))

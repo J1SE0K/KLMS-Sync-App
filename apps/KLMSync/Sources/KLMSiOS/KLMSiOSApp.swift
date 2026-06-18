@@ -4796,7 +4796,7 @@ private struct RemoteDashboardSyncCard: View {
                     .minimumScaleFactor(0.72)
             }
             .foregroundStyle(secondaryCommandForeground(isDisabled: isDisabled))
-            .frame(maxWidth: .infinity, minHeight: compact ? 42 : 46, alignment: .center)
+            .frame(maxWidth: .infinity, minHeight: compact ? 44 : 46, alignment: .center)
             .padding(.horizontal, 5)
             .padding(.vertical, 9)
             .background(
