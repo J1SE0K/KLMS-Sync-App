@@ -10099,7 +10099,7 @@ private struct RemoteRunRequestHistoryPanel: View {
             }
 
             if totalCount == 0 {
-                Text("iPhone/iPad나 Windows에서 실행, 파일 열기, 상태 갱신을 요청하면 여기에 최근 기록이 표시됩니다.")
+                Text("요청이 오면 최근 기록을 여기에 보여줍니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -10859,13 +10859,13 @@ private struct RemoteLogSummaryPanel: View {
                     if showsInlineDetail {
                         RemoteLogDetailPanel(kind: expandedKind, model: model)
                     } else {
-                        Text("선택한 기록의 상세는 오른쪽 패널에서 확인합니다.")
+                        Text("상세는 오른쪽에 표시됩니다.")
                             .font(.caption2)
                             .foregroundStyle(Color.klmsSecondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 } else {
-                    Text("요약 행을 누르면 관련 기록을 바로 펼칩니다.")
+                    Text("행을 누르면 펼쳐집니다.")
                         .font(.caption2)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -10923,8 +10923,8 @@ private struct RemoteLogSummaryPanel: View {
     private var recentCommandDetail: String {
         guard let command = currentCommand else {
             return model.latestCommand == nil
-                ? "실행 버튼을 누르면 Mac 앱에 요청이 올라갑니다."
-                : "지난 완료/실패 기록은 이 행을 펼쳐서 확인할 수 있습니다."
+                ? "실행하면 Mac에 요청이 올라갑니다."
+                : "지난 기록은 펼쳐서 봅니다."
         }
         var parts = [
             "과제 \(command.summary.assignments)",
@@ -10967,8 +10967,8 @@ private struct RemoteLogSummaryPanel: View {
     private var fileRequestDetail: String {
         guard let latestFileRequest = model.latestRemoteLogFileRequest else {
             return model.recentFileAccessRequests.isEmpty
-                ? "파일 항목에서 링크 요청을 누르면 Mac 앱이 임시 링크를 준비합니다."
-                : "지난 완료/실패 기록은 이 행을 펼쳐서 확인할 수 있습니다."
+                ? "파일에서 링크 요청을 누르면 임시 링크를 준비합니다."
+                : "지난 기록은 펼쳐서 봅니다."
         }
         let title = latestFileRequest.itemTitle.nilIfEmpty ?? "파일"
         let message = latestFileRequest.message.nilIfEmpty ?? latestFileRequest.updatedAt.formatted(date: .omitted, time: .shortened)
@@ -11176,7 +11176,7 @@ private struct SharedRunLogsView: View {
                     .disabled(clearDisabled)
                 }
             }
-            Text("Mac 앱에서 실행한 단계별 소요 시간과 마지막 로그입니다. 지우면 다른 기기에서도 사라집니다.")
+            Text("단계별 시간과 마지막 로그입니다. 지우면 모든 기기에서 사라집니다.")
                 .font(.caption2)
                 .foregroundStyle(Color.klmsSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -12110,7 +12110,7 @@ private struct RemotePrivacyNote: View {
             .accessibilityHint(isExpanded ? "개인정보 보관 설명 접기" : "개인정보 보관 설명 펼치기")
 
             if isExpanded {
-                Text("파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고, 링크가 만료되면 서버 기록과 임시 파일을 정리합니다.")
+                Text("파일 열기를 요청할 때만 Mac이 임시 링크를 만들고, 만료되면 정리합니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
