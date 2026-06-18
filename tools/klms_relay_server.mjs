@@ -34,7 +34,9 @@ const DEFAULT_TEXT_FILE_PREVIEW_MAX_BYTES = 512 * 1024;
 const STALE_PENDING_COMMAND_MS = 60 * 60 * 1000;
 const STALE_RUNNING_COMMAND_MS = 2 * 60 * 1000;
 const STALE_PENDING_ITEM_ACTION_MS = 60 * 60 * 1000;
+const STALE_RUNNING_ITEM_ACTION_MS = 10 * 60 * 1000;
 const STALE_PENDING_SETTING_ACTION_MS = 60 * 60 * 1000;
+const STALE_RUNNING_SETTING_ACTION_MS = 10 * 60 * 1000;
 const STALE_PENDING_FILE_ACCESS_MS = 10 * 60 * 1000;
 const STALE_RUNNING_FILE_ACCESS_MS = 6 * 60 * 60 * 1000;
 const CANCEL_REQUEST_TTL_MS = 10 * 60 * 1000;
@@ -1473,10 +1475,15 @@ function expireStalePendingItemActions() {
   const now = Date.now();
   let changed = false;
   for (const action of state.itemActions) {
-    if (action.status === "pending" && ageMs(action.createdAt, now) > STALE_PENDING_ITEM_ACTION_MS) {
+    const status = String(action.status || "").toLowerCase();
+    const pendingStale = status === "pending" && ageMs(action.createdAt, now) > STALE_PENDING_ITEM_ACTION_MS;
+    const runningStale = status === "running" && ageMs(action.updatedAt || action.createdAt, now) > STALE_RUNNING_ITEM_ACTION_MS;
+    if (pendingStale || runningStale) {
       action.status = "macUnavailable";
       action.updatedAt = new Date().toISOString();
-      action.message = "Mac 앱이 제한 시간 안에 처리하지 않았습니다.";
+      action.message = runningStale
+        ? "Mac 앱이 처리 중 멈춘 것 같습니다. 다시 요청해 주세요."
+        : "Mac 앱이 제한 시간 안에 처리하지 않았습니다.";
       changed = true;
     }
   }
@@ -1493,10 +1500,15 @@ function expireStalePendingSettingActions() {
   const now = Date.now();
   let changed = false;
   for (const action of state.settingActions || []) {
-    if (action.status === "pending" && ageMs(action.createdAt, now) > STALE_PENDING_SETTING_ACTION_MS) {
+    const status = String(action.status || "").toLowerCase();
+    const pendingStale = status === "pending" && ageMs(action.createdAt, now) > STALE_PENDING_SETTING_ACTION_MS;
+    const runningStale = status === "running" && ageMs(action.updatedAt || action.createdAt, now) > STALE_RUNNING_SETTING_ACTION_MS;
+    if (pendingStale || runningStale) {
       action.status = "macUnavailable";
       action.updatedAt = new Date().toISOString();
-      action.message = "Mac 앱이 제한 시간 안에 처리하지 않았습니다.";
+      action.message = runningStale
+        ? "Mac 앱이 설정 반영 중 멈춘 것 같습니다. 다시 요청해 주세요."
+        : "Mac 앱이 제한 시간 안에 처리하지 않았습니다.";
       changed = true;
     }
   }
@@ -2340,6 +2352,22 @@ function sendFileAccessPreviewPage(response, url, {
   const expiresText = fileRequest?.expiresAt || "";
   const downloadCount = Number.isFinite(Number(fileRequest?.downloadCount)) ? Number(fileRequest.downloadCount) : 0;
   const viewerMarkup = filePreviewViewerMarkup(preview, rawURL);
+  const isPDFPreview = preview?.kind === "pdf";
+  const pageControlsMarkup = isPDFPreview ? "" : `
+        <div class="tool-group">
+          <button type="button" data-action="prev">이전</button>
+          <button type="button" data-action="next">다음</button>
+        </div>`;
+  const zoomControlsMarkup = isPDFPreview ? "" : `
+        <div class="tool-group">
+          <button type="button" data-action="zoom-out">축소</button>
+          <button type="button" data-action="fit">맞춤</button>
+          <button type="button" data-action="zoom-in">확대</button>
+        </div>`;
+  const previewStatusText = isPDFPreview ? "PDF 미리보기" : "1 / 1 · 100%";
+  const previewNote = isPDFPreview
+    ? "PDF 쪽 이동과 확대/축소는 파일 안쪽의 PDF 뷰어 도구막대를 사용하세요. 앱은 실제 쪽수와 배율을 추정해서 표시하지 않습니다."
+    : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다.";
   const html = `<!doctype html>
 <html lang="ko">
 <head>
@@ -2391,20 +2419,13 @@ function sendFileAccessPreviewPage(response, url, {
       </div>
       <div class="toolbar">
         <a class="button" href="${escapeHTML(backURL)}">뒤로</a>
-        <div class="tool-group">
-          <button type="button" data-action="prev">이전</button>
-          <button type="button" data-action="next">다음</button>
-        </div>
-        <div class="tool-group">
-          <button type="button" data-action="zoom-out">축소</button>
-          <button type="button" data-action="fit">맞춤</button>
-          <button type="button" data-action="zoom-in">확대</button>
-        </div>
+${pageControlsMarkup}
+${zoomControlsMarkup}
         <a class="button primary" href="${escapeHTML(downloadURL)}">다운로드</a>
-        <div class="status" data-status>1 / 1 · 100%</div>
+        <div class="status" data-status>${escapeHTML(previewStatusText)}</div>
       </div>
       <div class="viewer">${viewerMarkup}</div>
-      <div class="note">${preview?.kind === "pdf" ? "PDF는 위 도구막대로 쪽 이동과 확대/축소를 바로 조절할 수 있습니다. 파일 자체의 전체 쪽수 표시는 브라우저 PDF 뷰어 안쪽 표시를 함께 확인하세요." : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다."}</div>
+      <div class="note">${escapeHTML(previewNote)}</div>
     </section>
   </main>
   <script>
@@ -2428,14 +2449,13 @@ function sendFileAccessPreviewPage(response, url, {
     const setStatus = () => {
       if (!status) return;
       if (kind === "pdf") {
-        status.textContent = "PDF " + page + "쪽 · " + Math.round(zoom * 100) + "%";
+        status.textContent = "PDF 미리보기";
         return;
       }
       const max = Math.max(1, pages.length);
       status.textContent = page + " / " + max + " · " + Math.round(zoom * 100) + "%";
     };
-    const boundedPage = (value) => kind === "pdf" ? Math.max(1, value) : Math.min(Math.max(1, value), Math.max(1, pages.length));
-    const pdfURL = () => rawURL + "#page=" + page + "&zoom=" + Math.round(zoom * 100);
+    const boundedPage = (value) => Math.min(Math.max(1, value), Math.max(1, pages.length));
     const render = () => {
       page = boundedPage(page);
       if (kind === "text") {
@@ -2448,8 +2468,7 @@ function sendFileAccessPreviewPage(response, url, {
         const img = document.querySelector("[data-image-preview]");
         if (img) img.style.transform = "scale(" + zoom + ")";
       } else if (kind === "pdf") {
-        const frame = document.querySelector("[data-pdf-preview]");
-        if (frame) frame.src = pdfURL();
+        // PDF 페이지/배율 상태는 브라우저 내장 뷰어가 관리한다.
       }
       setStatus();
     };
@@ -2534,7 +2553,7 @@ function filePreviewViewerMarkup(preview, rawURL) {
     return `<div class="media-stage"><video controls src="${url}"></video></div>`;
   }
   if (preview.kind === "pdf") {
-    return `<iframe class="pdf-frame" data-pdf-preview title="파일 미리보기" src="${url}#page=1&zoom=100"></iframe>`;
+    return `<iframe class="pdf-frame" data-pdf-preview title="파일 미리보기" src="${url}"></iframe>`;
   }
   return `<div class="empty">이 파일은 웹 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.</div>`;
 }

@@ -467,6 +467,53 @@ async function runSmoke() {
     message: "saved",
   }, { method: "PUT", role: "worker" });
 
+  const staleRunningAt = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+  const staleItemAction = await expectJSON("/v1/item-actions", {
+    action: "noticeImportant",
+    itemID: "notice-1",
+    itemKind: "notice",
+    itemTitle: "공지",
+  }, { method: "POST", status: 201 });
+  await expectJSON(`/v1/item-actions/${staleItemAction.id}`, {
+    ...staleItemAction,
+    status: "running",
+    updatedAt: staleRunningAt,
+    message: "processing",
+  }, { method: "PUT", role: "worker" });
+  {
+    const pending = await expectJSON("/v1/item-actions/pending", undefined, { role: "worker" });
+    assert.equal(pending.actions.some((item) => item.id === staleItemAction.id), false);
+    const recent = await expectJSON("/v1/item-actions/recent");
+    const expired = recent.actions.find((item) => item.id === staleItemAction.id);
+    assert.equal(expired?.status, "macUnavailable");
+    assert.match(expired?.message || "", /처리 중 멈춘/);
+  }
+
+  const staleSettingAction = await expectJSON("/v1/setting-actions", {
+    key: "KLMS_UPDATE_NOTICE_NOTES",
+    title: "공지 메모 업데이트",
+    value: "0",
+  }, { method: "POST", status: 201 });
+  await expectJSON(`/v1/setting-actions/${staleSettingAction.id}`, {
+    ...staleSettingAction,
+    status: "running",
+    updatedAt: new Date().toISOString(),
+    message: "processing",
+  }, { method: "PUT", role: "worker" });
+  const storedSettingActions = JSON.parse(env.RELAY_DB.meta.get("settingActions") || "[]");
+  const storedStaleSettingAction = storedSettingActions.find((item) => item.id === staleSettingAction.id);
+  assert.ok(storedStaleSettingAction);
+  storedStaleSettingAction.updatedAt = staleRunningAt;
+  env.RELAY_DB.meta.set("settingActions", JSON.stringify(storedSettingActions));
+  {
+    const pending = await expectJSON("/v1/setting-actions/pending", undefined, { role: "worker" });
+    assert.equal(pending.actions.some((item) => item.id === staleSettingAction.id), false);
+    const recent = await expectJSON("/v1/setting-actions/recent");
+    const expired = recent.actions.find((item) => item.id === staleSettingAction.id);
+    assert.equal(expired?.status, "macUnavailable");
+    assert.match(expired?.message || "", /설정 반영 중 멈춘/);
+  }
+
   const fileRequest = await expectJSON("/v1/file-access", {
     itemID: "file-1",
     itemKind: "file",
@@ -656,9 +703,10 @@ async function runSmoke() {
     const previewPageResponse = await worker.fetch(new Request(previewPageURL.toString()), env);
     assert.equal(previewPageResponse.status, 200);
     const previewPageHTML = await previewPageResponse.text();
-    assert.match(previewPageHTML, /PDF는 위 도구막대로 쪽 이동과 확대\/축소를 바로 조절/);
-    assert.match(previewPageHTML, /data-action="zoom-in"/);
-    assert.match(previewPageHTML, /data-action="next"/);
+    assert.match(previewPageHTML, /PDF 쪽 이동과 확대\/축소는 파일 안쪽의 PDF 뷰어 도구막대/);
+    assert.doesNotMatch(previewPageHTML, /data-action="zoom-in"/);
+    assert.doesNotMatch(previewPageHTML, /data-action="next"/);
+    assert.doesNotMatch(previewPageHTML, /#page=1&amp;zoom=100/);
     assert.match(previewPageHTML, /data-status/);
 
     const previewURL = new URL(pdf.downloadURL);
