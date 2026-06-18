@@ -10082,6 +10082,22 @@ private struct ServerSyncDataRow: View, Equatable {
     var isSelected = false
     var accessorySystemImage: String?
 
+    nonisolated static func == (lhs: ServerSyncDataRow, rhs: ServerSyncDataRow) -> Bool {
+        lhs.isSelected == rhs.isSelected
+            && lhs.accessorySystemImage == rhs.accessorySystemImage
+            && lhs.item.id == rhs.item.id
+            && lhs.item.kind == rhs.item.kind
+            && lhs.item.course == rhs.item.course
+            && lhs.item.academicTerm == rhs.item.academicTerm
+            && lhs.item.title == rhs.item.title
+            && lhs.item.timestamp == rhs.item.timestamp
+            && lhs.item.status == rhs.item.status
+            && lhs.item.attachmentCount == rhs.item.attachmentCount
+            && lhs.item.isRead == rhs.item.isRead
+            && lhs.item.isImportant == rhs.item.isImportant
+            && lhs.item.isHidden == rhs.item.isHidden
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: systemImage)
