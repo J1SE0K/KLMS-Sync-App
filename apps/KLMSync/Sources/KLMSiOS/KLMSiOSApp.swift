@@ -4033,7 +4033,7 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable, Sendab
     var id: String { rawValue }
 
     static func defaultWorkstationDetail(for status: SanitizedRemoteStatus) -> DashboardMetricCategory {
-        [.files, .assignments, .exams, .notices, .calendar, .helpDesk]
+        [.files, .assignments, .exams, .notices, .calendar, .quarantine, .helpDesk]
             .first { $0.value(from: status) > 0 } ?? .files
     }
 
