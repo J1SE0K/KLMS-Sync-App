@@ -6774,8 +6774,6 @@ private struct CompanionInlineItemRowsView: View {
     var externalSelectedItemID: String?
     var onSelectItem: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
-    @State private var displayedInlineItemID: String?
-    @State private var inlineDetailTask: Task<Void, Never>?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
@@ -6813,10 +6811,8 @@ private struct CompanionInlineItemRowsView: View {
                     .buttonStyle(KLMSCardButtonStyle())
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "오른쪽 상세 패널에 항목을 표시합니다.")
 
-                    if presentation == .inlineDetail && displayedInlineItemID == item.id {
+                    if presentation == .inlineDetail && selectedItemID == item.id {
                         ServerSyncItemInlineDetailPanel(item: item, model: model)
-                    } else if presentation == .inlineDetail && selectedItemID == item.id {
-                        CompanionInlineDetailPreparingView()
                     }
                 }
             }
@@ -6831,10 +6827,6 @@ private struct CompanionInlineItemRowsView: View {
         .onChange(of: visibleItemsResetKey) { _, _ in
             visibleLimit = CompanionLargeList.initialVisibleLimit
             clearStaleInlineSelectionIfNeeded()
-        }
-        .onDisappear {
-            inlineDetailTask?.cancel()
-            inlineDetailTask = nil
         }
     }
 
@@ -6867,27 +6859,6 @@ private struct CompanionInlineItemRowsView: View {
         withTransaction(transaction) {
             selectedItemID = nextID
         }
-        deferInlineDetail(nextID)
-    }
-
-    private func deferInlineDetail(_ itemID: String?) {
-        inlineDetailTask?.cancel()
-        guard let itemID else {
-            displayedInlineItemID = nil
-            inlineDetailTask = nil
-            return
-        }
-        if displayedInlineItemID == itemID {
-            inlineDetailTask = nil
-            return
-        }
-        displayedInlineItemID = nil
-        inlineDetailTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            displayedInlineItemID = itemID
-            inlineDetailTask = nil
-        }
     }
 
     private func clearStaleInlineSelectionIfNeeded() {
@@ -6896,31 +6867,8 @@ private struct CompanionInlineItemRowsView: View {
             return
         }
         self.selectedItemID = nil
-        displayedInlineItemID = nil
-        inlineDetailTask?.cancel()
-        inlineDetailTask = nil
     }
 
-}
-
-private struct CompanionInlineDetailPreparingView: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-            Text("상세 내용을 준비하는 중입니다.")
-                .font(.caption)
-                .foregroundStyle(Color.klmsSecondaryText)
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
-        }
-    }
 }
 
 private struct CompanionSelectableItemListRows: View {
