@@ -41,11 +41,11 @@ tools/build_klms_mac_app.sh
 
 빌드 결과는 기본적으로 `~/Applications/KLMS Sync.app`에 생성된다. 이 번들은 현재 레포의 엔진 코드를 앱 리소스 `EnginePayload`로 포함하고, 실행 시 설치본의 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`, `kaikey_state.json`은 덮어쓰지 않는다. `Documents`/iCloud-backed 폴더 안에서는 macOS File Provider 메타데이터 때문에 ad-hoc codesign이 실패할 수 있어 앱 번들은 사용자 Applications 폴더에 둔다. 다른 위치가 필요하면 `DIST_DIR=/path/to/output tools/build_klms_mac_app.sh`처럼 지정한다.
 
-iPhone/iPad companion 타깃은 같은 package의 `KLMSiOS`에 있다. 이 타깃은 universal 앱으로 빌드되며 iPhone은 compact tab layout, iPad는 adaptive split layout을 쓴다. 무료 Apple ID에서는 CloudKit 대신 같은 Wi-Fi의 Mac 앱에 직접 연결하는 로컬 원격 제어를 쓴다. Mac 앱에서 `로컬 iPhone 원격 제어`를 켜고 표시되는 `주소`, `포트`, `토큰`을 iPhone/iPad 앱에 입력하면 전체/과제/공지/파일 동기화 실행 요청과 상태 확인을 보낼 수 있다. 실제 KLMS scraping과 macOS 앱 연동은 항상 Mac 앱이 담당하고, iPhone/iPad에는 KLMS URL, 원본 로그, `config.env`, 파일 경로를 저장하지 않는다.
+iPhone/iPad companion 타깃은 같은 package의 `KLMSiOS`에 있다. 이 타깃은 universal 앱으로 빌드되며 iPhone은 compact tab layout, iPad는 adaptive split layout을 쓴다. 기본 원격 구조는 Cloudflare Workers + D1 + R2 서버 릴레이다. iPhone/iPad는 서버 DB의 sanitized 상태, 항목 목록, 요청 기록을 읽고 실행/중단/항목 수정/파일 열기 요청을 서버에 남긴다. Mac 앱은 같은 서버를 보고 KLMS scraping, Notes, Calendar, Reminders, 로컬 파일 업로드처럼 macOS가 필요한 작업만 처리한다. 그래서 같은 Wi-Fi가 아니어도 앱을 열 수 있고, Mac이 꺼져 있으면 최근 서버 데이터는 보되 새 동기화와 파일 준비 요청은 Mac이 다시 켜질 때 처리된다.
 
-집 밖에서도 쓰려면 HTTPS 서버 릴레이를 사용할 수 있다. 서버는 SQLite DB에 실행 요청, sanitized 요약 상태, 과제/시험/공지/파일 목록을 저장하고, Mac 앱이 서버를 polling해서 실제 동기화를 실행한다. 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로는 올리지 않는다. 자세한 설정은 [docs/server-relay.md](./docs/server-relay.md)를 참고한다.
+서버 릴레이에는 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로를 올리지 않는다. 파일 원본은 사용자가 파일 열기를 요청했을 때 Mac 앱이 R2에 임시 업로드하고, 만료 시간이 지나면 삭제한다. 같은 Wi-Fi의 Mac 앱에 직접 붙는 로컬 원격 제어는 개발/비상용 fallback으로만 남겨 둔다. 자세한 설정은 [docs/server-relay.md](./docs/server-relay.md)를 참고한다.
 
-Windows companion 앱은 [apps/KLMSyncWindows](./apps/KLMSyncWindows)에 있다. Windows 앱은 서버 릴레이를 통해 상태와 항목 목록을 읽고, 공지 읽음/중요 토글이나 원격 실행 요청을 보낸다. KLMS scraping과 macOS Notes/Calendar/Reminders 반영은 계속 Mac 앱이 담당한다. 같은 네트워크 밖에서 쓰려면 [deploy/relay](./deploy/relay)의 HTTPS 릴레이를 VPS나 터널 앞단에 띄운다. Windows 쪽 UI/UX와 기능 parity 작업 지시는 [windows-implementation-guide.md](./docs/windows-implementation-guide.md)에 둔다.
+Windows companion 앱은 [apps/KLMSyncWindows](./apps/KLMSyncWindows)에 있다. Windows 앱도 iPhone/iPad와 같은 서버 릴레이를 사용한다. 상태와 항목 목록을 읽고, 공지 읽음/중요 토글, 원격 실행 요청, 파일 열기 요청을 서버에 남긴다. KLMS scraping과 macOS Notes/Calendar/Reminders 반영은 계속 Mac 앱이 담당한다. Windows 쪽 UI/UX와 기능 parity 작업 지시는 [windows-implementation-guide.md](./docs/windows-implementation-guide.md)에 둔다.
 
 Mac에서 릴레이 서버를 백그라운드 서비스로 켜려면:
 
@@ -53,7 +53,7 @@ Mac에서 릴레이 서버를 백그라운드 서비스로 켜려면:
 tools/install_klms_relay_agent.sh install
 ```
 
-iPhone용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodeproj`에 생성되어 있고, `tools/build_klms_ios_sim.sh`로 simulator SDK 컴파일을 확인한다. 첫 연결 때 iPhone의 로컬 네트워크 권한과 macOS 방화벽의 수신 연결 허용이 필요할 수 있다. 유료 Apple Developer 팀과 iCloud container/provisioning이 있으면 CloudKit 원격 요청도 선택적으로 사용할 수 있지만, 기본 경로는 로컬 원격 제어다.
+iPhone용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodeproj`에 생성되어 있고, `tools/build_klms_ios_sim.sh`로 simulator SDK 컴파일을 확인한다. 기본 설정은 서버 릴레이 URL, 클라이언트 토큰, 필요 시 Mac worker 토큰을 앱 설정에 넣는 흐름이다. 로컬 원격 제어를 따로 켜는 경우에만 iPhone의 로컬 네트워크 권한과 macOS 방화벽의 수신 연결 허용이 필요하다.
 
 ## 실행 파일
 

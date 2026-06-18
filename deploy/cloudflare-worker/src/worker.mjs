@@ -20,6 +20,7 @@ const STALE_RUNNING_COMMAND_MS = 2 * 60 * 1000;
 const STALE_PENDING_ITEM_ACTION_MS = 60 * 60 * 1000;
 const STALE_PENDING_SETTING_ACTION_MS = 60 * 60 * 1000;
 const STALE_PENDING_FILE_ACCESS_MS = 10 * 60 * 1000;
+const STALE_RUNNING_FILE_ACCESS_MS = 6 * 60 * 60 * 1000;
 const CANCEL_REQUEST_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_FILE_ACCESS_TTL_MS = 5 * 60 * 1000;
 const WORKER_INBOX_LONG_POLL_MAX_MS = 25 * 1000;
@@ -457,7 +458,8 @@ async function route(request, env) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const limit = boundedInt(url.searchParams.get("limit"), 20, 1, 50);
-    return sendJSON(200, itemActionListResponse(state.itemActions
+    const clearTimes = await displayLogClearTimes(db);
+    return sendJSON(200, itemActionListResponse(filterDisplayItemActions(state.itemActions, clearTimes.itemActions)
       .slice()
       .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
       .slice(0, limit)));
@@ -486,15 +488,20 @@ async function route(request, env) {
     if (!action.key) {
       return sendJSON(400, { error: "missing setting key" });
     }
+    const syncPatch = await applySettingActionToStoredSyncData(db, action);
     await upsertSettingAction(db, action);
     await appendRequestLog(db, request, {
       action: `${action.title || action.key} 설정 변경`,
-      status: "queued",
-      message: "설정 변경 요청을 서버에 기록했습니다.",
+      status: syncPatch.changed ? "updated" : "queued",
+      message: syncPatch.changed
+        ? "서버 설정 목록에는 바로 반영했고 Mac 로컬 설정 반영을 기다리고 있습니다."
+        : "설정 변경 요청을 서버에 기록했습니다.",
     });
-    state.message = `${action.title || action.key} 설정 변경 요청 대기 중`;
+    state.message = syncPatch.changed
+      ? `${action.title || action.key} 서버 반영 완료 · Mac 반영 대기 중`
+      : `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "setting-actions:pending");
+    await saveMetaState(db, state, env, syncPatch.changed ? "setting-actions:server-state" : "setting-actions:pending");
     return sendJSON(201, action);
   }
 
@@ -512,7 +519,8 @@ async function route(request, env) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const limit = boundedInt(url.searchParams.get("limit"), 20, 1, 50);
-    return sendJSON(200, settingActionListResponse(state.settingActions
+    const clearTimes = await displayLogClearTimes(db);
+    return sendJSON(200, settingActionListResponse(filterDisplaySettingActions(state.settingActions, clearTimes.settingActions)
       .slice()
       .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
       .slice(0, limit)));
@@ -1173,6 +1181,8 @@ async function displayLogClearTimes(db) {
     command: await getMeta(db, "displayCommandLogClearedAt"),
     requestLog: await getMeta(db, "displayRequestLogClearedAt"),
     fileAccess: await getMeta(db, "displayFileAccessLogClearedAt"),
+    itemActions: await getMeta(db, "displayItemActionLogClearedAt"),
+    settingActions: await getMeta(db, "displaySettingActionLogClearedAt"),
   };
 }
 
@@ -1205,6 +1215,30 @@ function filterDisplayFileAccess(requests, clearedAt) {
     request.status === "pending"
     || request.status === "running"
     || (Date.parse(request.updatedAt) || 0) > clearTime
+  ));
+}
+
+function filterDisplayItemActions(actions, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return actions;
+  }
+  return actions.filter((action) => (
+    action.status === "pending"
+    || action.status === "running"
+    || (Date.parse(action.updatedAt) || 0) > clearTime
+  ));
+}
+
+function filterDisplaySettingActions(actions, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return actions;
+  }
+  return actions.filter((action) => (
+    action.status === "pending"
+    || action.status === "running"
+    || (Date.parse(action.updatedAt) || 0) > clearTime
   ));
 }
 
@@ -1262,8 +1296,12 @@ async function clearDisplayLogs(db, env, state, scope = "all") {
     commands: shouldClearCommands
       ? filterDisplayCommands(state.commands, "").filter((command) => command.status !== "pending" && command.status !== "running").length
       : 0,
-    itemActions: 0,
-    settingActions: 0,
+    itemActions: shouldClearAll
+      ? filterDisplayItemActions(state.itemActions, "").filter((action) => action.status !== "pending" && action.status !== "running").length
+      : 0,
+    settingActions: shouldClearAll
+      ? filterDisplaySettingActions(state.settingActions, "").filter((action) => action.status !== "pending" && action.status !== "running").length
+      : 0,
     fileAccessRequests: shouldClearFileAccess
       ? fileAccessRows.filter((request) => request.status !== "pending" && request.status !== "running").length
       : 0,
@@ -1278,6 +1316,12 @@ async function clearDisplayLogs(db, env, state, scope = "all") {
   }
   if (shouldClearFileAccess) {
     statements.push(setMetaStatement(db, "displayFileAccessLogClearedAt", clearedAt));
+  }
+  if (shouldClearAll) {
+    statements.push(
+      setMetaStatement(db, "displayItemActionLogClearedAt", clearedAt),
+      setMetaStatement(db, "displaySettingActionLogClearedAt", clearedAt)
+    );
   }
   if (statements.length > 0) {
     await db.batch(statements);
@@ -1552,7 +1596,11 @@ async function expireStaleFileAccessRequests(db) {
     limit: MAX_FILE_ACCESS_REQUESTS,
   });
   for (const fileRequest of rows) {
-    if (ageMs(fileRequest.createdAt, now) <= STALE_PENDING_FILE_ACCESS_MS) {
+    const status = String(fileRequest.status || "").toLowerCase();
+    if (status === "pending" && ageMs(fileRequest.createdAt, now) <= STALE_PENDING_FILE_ACCESS_MS) {
+      continue;
+    }
+    if (status === "running" && ageMs(fileRequest.updatedAt || fileRequest.createdAt, now) <= STALE_RUNNING_FILE_ACCESS_MS) {
       continue;
     }
     await upsertFileAccessRequest(db, {
@@ -2131,7 +2179,6 @@ function fileAccessPreviewPage({
   const expiresText = fileRequest?.expiresAt || "";
   const downloadCount = Number.isFinite(Number(fileRequest?.downloadCount)) ? Number(fileRequest.downloadCount) : 0;
   const viewerMarkup = filePreviewViewerMarkup(preview, rawURL);
-  const isPDFPreview = preview?.kind === "pdf";
   const html = `<!doctype html>
 <html lang="ko">
 <head>
@@ -2183,7 +2230,7 @@ function fileAccessPreviewPage({
       </div>
       <div class="toolbar">
         <a class="button" href="${escapeHTML(backURL)}">뒤로</a>
-        ${isPDFPreview ? "" : `<div class="tool-group">
+        <div class="tool-group">
           <button type="button" data-action="prev">이전</button>
           <button type="button" data-action="next">다음</button>
         </div>
@@ -2191,12 +2238,12 @@ function fileAccessPreviewPage({
           <button type="button" data-action="zoom-out">축소</button>
           <button type="button" data-action="fit">맞춤</button>
           <button type="button" data-action="zoom-in">확대</button>
-        </div>`}
+        </div>
         <a class="button primary" href="${escapeHTML(downloadURL)}">다운로드</a>
-        ${isPDFPreview ? `<div class="status">PDF 쪽수/배율은 아래 뷰어 안쪽 표시가 실제 상태입니다.</div>` : `<div class="status" data-status>1 / 1 · 100%</div>`}
+        <div class="status" data-status>1 / 1 · 100%</div>
       </div>
       <div class="viewer">${viewerMarkup}</div>
-      <div class="note">${isPDFPreview ? "PDF는 브라우저 내장 뷰어가 현재 쪽수와 배율을 실시간으로 표시합니다. 바깥 화면은 다운로드와 파일 정보만 담당합니다." : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다."}</div>
+      <div class="note">${preview?.kind === "pdf" ? "PDF는 위 도구막대로 쪽 이동과 확대/축소를 바로 조절할 수 있습니다. 파일 자체의 전체 쪽수 표시는 브라우저 PDF 뷰어 안쪽 표시를 함께 확인하세요." : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다."}</div>
     </section>
   </main>
   <script>
@@ -2584,16 +2631,101 @@ async function replaceSyncItems(db, items, generatedAt, extras = {}) {
   const now = new Date().toISOString();
   const runLogsClearedAt = await getMeta(db, "syncDataRunLogsClearedAt");
   const runLogs = normalizeRunLogs(extras.runLogs, runLogsClearedAt);
+  const itemOverlay = applyItemActionsToSyncDataSnapshot(
+    items,
+    extras.calendarChanges || [],
+    await loadItemActions(db),
+    now
+  );
+  const settings = applySettingActionsToSettings(
+    extras.settings || [],
+    await loadSettingActions(db),
+    now
+  );
   await db.batch([
-    setMetaStatement(db, "syncDataItems", JSON.stringify(items.slice(0, MAX_SYNC_ITEMS))),
+    setMetaStatement(db, "syncDataItems", JSON.stringify(itemOverlay.items.slice(0, MAX_SYNC_ITEMS))),
     setMetaStatement(db, "syncDataDryRunReports", JSON.stringify(extras.dryRunReports || [])),
-    setMetaStatement(db, "syncDataCalendarChanges", JSON.stringify(extras.calendarChanges || [])),
-    setMetaStatement(db, "syncDataSettings", JSON.stringify(extras.settings || [])),
+    setMetaStatement(db, "syncDataCalendarChanges", JSON.stringify(itemOverlay.calendarChanges)),
+    setMetaStatement(db, "syncDataSettings", JSON.stringify(settings)),
     setMetaStatement(db, "syncDataRunLogs", JSON.stringify(runLogs)),
     setMetaStatement(db, "syncDataVerifySummary", JSON.stringify(extras.verifySummary || null)),
     setMetaStatement(db, "syncDataGeneratedAt", String(generatedAt || now)),
     setMetaStatement(db, "syncDataUpdatedAt", now),
   ]);
+}
+
+function applyItemActionsToSyncDataSnapshot(inputItems, inputCalendarChanges, actions, now) {
+  let items = inputItems.map(normalizeSyncItem).filter(Boolean).slice(0, MAX_SYNC_ITEMS);
+  let calendarChanges = normalizeCalendarChanges(inputCalendarChanges || []);
+  for (const action of replayableServerActions(actions)) {
+    const updatedAt = action.updatedAt || now;
+    const itemPatch = mutateSyncItemsForItemAction(items, action, updatedAt);
+    items = itemPatch.items;
+    const calendarPatch = mutateCalendarChangesForItemAction(calendarChanges, action);
+    calendarChanges = calendarPatch.calendarChanges;
+  }
+  return { items: items.sort(compareSyncItems), calendarChanges };
+}
+
+function replayableServerActions(actions) {
+  return (Array.isArray(actions) ? actions : [])
+    .filter((action) => {
+      const status = String(action?.status || "").toLowerCase();
+      return ["pending", "running", "completed"].includes(status);
+    })
+    .slice()
+    .sort((lhs, rhs) => {
+      const createdDelta = Date.parse(lhs.createdAt || "") - Date.parse(rhs.createdAt || "");
+      if (Number.isFinite(createdDelta) && createdDelta !== 0) {
+        return createdDelta;
+      }
+      return String(lhs.id || "").localeCompare(String(rhs.id || ""));
+    });
+}
+
+async function applySettingActionToStoredSyncData(db, action) {
+  const settings = normalizeSettings(parseJSON(await getMeta(db, "syncDataSettings"), []));
+  const next = applySettingActionsToSettings(settings, [action], action.updatedAt || new Date().toISOString());
+  if (JSON.stringify(settings) === JSON.stringify(next)) {
+    return { changed: false };
+  }
+  await db.batch([
+    setMetaStatement(db, "syncDataSettings", JSON.stringify(next)),
+    setMetaStatement(db, "syncDataUpdatedAt", action.updatedAt || new Date().toISOString()),
+  ]);
+  return { changed: true };
+}
+
+function applySettingActionsToSettings(inputSettings, actions, now) {
+  let settings = normalizeSettings(inputSettings);
+  for (const action of replayableServerActions(actions)) {
+    if (!action.key) {
+      continue;
+    }
+    const index = settings.findIndex((setting) => setting.key === action.key);
+    const previous = index >= 0 ? settings[index] : {};
+    const next = normalizeSettings([{
+      ...previous,
+      key: action.key,
+      title: action.title || previous.title || action.key,
+      value: action.value,
+      valueKind: previous.valueKind || "text",
+      options: previous.options || [],
+      editable: previous.editable ?? true,
+      updatedAt: action.updatedAt || now,
+    }])[0];
+    if (!next) {
+      continue;
+    }
+    if (index >= 0) {
+      settings[index] = next;
+    } else {
+      settings.push(next);
+    }
+  }
+  return settings
+    .slice()
+    .sort((lhs, rhs) => String(lhs.key || "").localeCompare(String(rhs.key || "")));
 }
 
 async function applyItemActionToStoredSyncData(db, state, action) {

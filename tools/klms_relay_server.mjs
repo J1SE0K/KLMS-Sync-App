@@ -36,6 +36,7 @@ const STALE_RUNNING_COMMAND_MS = 2 * 60 * 1000;
 const STALE_PENDING_ITEM_ACTION_MS = 60 * 60 * 1000;
 const STALE_PENDING_SETTING_ACTION_MS = 60 * 60 * 1000;
 const STALE_PENDING_FILE_ACCESS_MS = 10 * 60 * 1000;
+const STALE_RUNNING_FILE_ACCESS_MS = 6 * 60 * 60 * 1000;
 const CANCEL_REQUEST_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_FILE_ACCESS_TTL_MS = 5 * 60 * 1000;
 const WORKER_INBOX_LONG_POLL_MAX_MS = 25 * 1000;
@@ -459,8 +460,9 @@ async function route(request, response) {
     expireStaleCommands();
     expireStalePendingItemActions();
     const limit = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get("limit") || "20", 10) || 20));
+    const clearTimes = displayLogClearTimes();
     sendJSON(response, 200, itemActionListResponse(
-      state.itemActions
+      filterDisplayItemActions(state.itemActions, clearTimes.itemActions)
         .slice()
         .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
         .slice(0, limit)
@@ -500,15 +502,20 @@ async function route(request, response) {
       sendJSON(response, 400, { error: "missing setting key" });
       return;
     }
+    const syncPatch = applySettingActionToStoredSyncData(action);
     upsertSettingAction(action);
     appendRequestLog(request, {
       action: `${action.title || action.key} 설정 변경`,
-      status: "queued",
-      message: "설정 변경 요청을 서버에 기록했습니다.",
+      status: syncPatch.changed ? "updated" : "queued",
+      message: syncPatch.changed
+        ? "서버 설정 목록에는 바로 반영했고 Mac 로컬 설정 반영을 기다리고 있습니다."
+        : "설정 변경 요청을 서버에 기록했습니다.",
     });
-    state.message = `${action.title || action.key} 설정 변경 요청 대기 중`;
+    state.message = syncPatch.changed
+      ? `${action.title || action.key} 서버 반영 완료 · Mac 반영 대기 중`
+      : `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveState("setting-actions:pending");
+    await saveState(syncPatch.changed ? "setting-actions:server-state" : "setting-actions:pending");
     sendJSON(response, 201, action);
     return;
   }
@@ -538,8 +545,9 @@ async function route(request, response) {
     expireStalePendingItemActions();
     expireStalePendingSettingActions();
     const limit = Math.max(1, Math.min(50, Number.parseInt(url.searchParams.get("limit") || "20", 10) || 20));
+    const clearTimes = displayLogClearTimes();
     sendJSON(response, 200, settingActionListResponse(
-      state.settingActions
+      filterDisplaySettingActions(state.settingActions, clearTimes.settingActions)
         .slice()
         .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
         .slice(0, limit)
@@ -1032,6 +1040,8 @@ function displayLogClearTimes() {
     command: getMeta("displayCommandLogClearedAt"),
     requestLog: getMeta("displayRequestLogClearedAt"),
     fileAccess: getMeta("displayFileAccessLogClearedAt"),
+    itemActions: getMeta("displayItemActionLogClearedAt"),
+    settingActions: getMeta("displaySettingActionLogClearedAt"),
   };
 }
 
@@ -1064,6 +1074,30 @@ function filterDisplayFileAccess(requests, clearedAt) {
     request.status === "pending"
     || request.status === "running"
     || (Date.parse(request.updatedAt) || 0) > clearTime
+  ));
+}
+
+function filterDisplayItemActions(actions, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return actions;
+  }
+  return actions.filter((action) => (
+    action.status === "pending"
+    || action.status === "running"
+    || (Date.parse(action.updatedAt) || 0) > clearTime
+  ));
+}
+
+function filterDisplaySettingActions(actions, clearedAt) {
+  const clearTime = Date.parse(clearedAt || "") || 0;
+  if (clearTime <= 0) {
+    return actions;
+  }
+  return actions.filter((action) => (
+    action.status === "pending"
+    || action.status === "running"
+    || (Date.parse(action.updatedAt) || 0) > clearTime
   ));
 }
 
@@ -1120,8 +1154,12 @@ function clearDisplayLogs(scope = "all") {
     commands: shouldClearCommands
       ? state.commands.filter((command) => command.status !== "pending" && command.status !== "running").length
       : 0,
-    itemActions: 0,
-    settingActions: 0,
+    itemActions: shouldClearAll
+      ? filterDisplayItemActions(state.itemActions, "").filter((action) => action.status !== "pending" && action.status !== "running").length
+      : 0,
+    settingActions: shouldClearAll
+      ? filterDisplaySettingActions(state.settingActions || [], "").filter((action) => action.status !== "pending" && action.status !== "running").length
+      : 0,
     fileAccessRequests: shouldClearFileAccess
       ? fileAccessRows.filter((request) => request.status !== "pending" && request.status !== "running").length
       : 0,
@@ -1135,6 +1173,10 @@ function clearDisplayLogs(scope = "all") {
   }
   if (shouldClearFileAccess) {
     setMeta("displayFileAccessLogClearedAt", clearedAt);
+  }
+  if (shouldClearAll) {
+    setMeta("displayItemActionLogClearedAt", clearedAt);
+    setMeta("displaySettingActionLogClearedAt", clearedAt);
   }
   touchRelayEvent(`logs-display:${scope}`, clearedAt);
   return result;
@@ -1887,7 +1929,11 @@ function expireStaleFileAccessRequests() {
     limit: MAX_FILE_ACCESS_REQUESTS,
   });
   for (const fileRequest of rows) {
-    if (ageMs(fileRequest.createdAt, now) <= STALE_PENDING_FILE_ACCESS_MS) {
+    const status = String(fileRequest.status || "").toLowerCase();
+    if (status === "pending" && ageMs(fileRequest.createdAt, now) <= STALE_PENDING_FILE_ACCESS_MS) {
+      continue;
+    }
+    if (status === "running" && ageMs(fileRequest.updatedAt || fileRequest.createdAt, now) <= STALE_RUNNING_FILE_ACCESS_MS) {
       continue;
     }
     upsertFileAccessRequest({
@@ -2294,7 +2340,6 @@ function sendFileAccessPreviewPage(response, url, {
   const expiresText = fileRequest?.expiresAt || "";
   const downloadCount = Number.isFinite(Number(fileRequest?.downloadCount)) ? Number(fileRequest.downloadCount) : 0;
   const viewerMarkup = filePreviewViewerMarkup(preview, rawURL);
-  const isPDFPreview = preview?.kind === "pdf";
   const html = `<!doctype html>
 <html lang="ko">
 <head>
@@ -2346,7 +2391,7 @@ function sendFileAccessPreviewPage(response, url, {
       </div>
       <div class="toolbar">
         <a class="button" href="${escapeHTML(backURL)}">뒤로</a>
-        ${isPDFPreview ? "" : `<div class="tool-group">
+        <div class="tool-group">
           <button type="button" data-action="prev">이전</button>
           <button type="button" data-action="next">다음</button>
         </div>
@@ -2354,12 +2399,12 @@ function sendFileAccessPreviewPage(response, url, {
           <button type="button" data-action="zoom-out">축소</button>
           <button type="button" data-action="fit">맞춤</button>
           <button type="button" data-action="zoom-in">확대</button>
-        </div>`}
+        </div>
         <a class="button primary" href="${escapeHTML(downloadURL)}">다운로드</a>
-        ${isPDFPreview ? `<div class="status">PDF 쪽수/배율은 아래 뷰어 안쪽 표시가 실제 상태입니다.</div>` : `<div class="status" data-status>1 / 1 · 100%</div>`}
+        <div class="status" data-status>1 / 1 · 100%</div>
       </div>
       <div class="viewer">${viewerMarkup}</div>
-      <div class="note">${isPDFPreview ? "PDF는 브라우저 내장 뷰어가 현재 쪽수와 배율을 실시간으로 표시합니다. 바깥 화면은 다운로드와 파일 정보만 담당합니다." : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다."}</div>
+      <div class="note">${preview?.kind === "pdf" ? "PDF는 위 도구막대로 쪽 이동과 확대/축소를 바로 조절할 수 있습니다. 파일 자체의 전체 쪽수 표시는 브라우저 PDF 뷰어 안쪽 표시를 함께 확인하세요." : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다."}</div>
     </section>
   </main>
   <script>
@@ -2540,6 +2585,17 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
   const now = new Date().toISOString();
   const runLogsClearedAt = getMeta("syncDataRunLogsClearedAt");
   const runLogs = normalizeRunLogs(extras.runLogs, runLogsClearedAt);
+  const itemOverlay = applyItemActionsToSyncDataSnapshot(
+    items,
+    extras.calendarChanges || [],
+    state.itemActions || [],
+    now
+  );
+  const settings = applySettingActionsToSettings(
+    extras.settings || [],
+    state.settingActions || [],
+    now
+  );
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("DELETE FROM sync_items").run();
@@ -2548,7 +2604,7 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
         id, kind, course, title, timestamp, status, detail, attachment_count, updated_at, payload_json
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    for (const item of items.slice(0, MAX_SYNC_ITEMS)) {
+    for (const item of itemOverlay.items.slice(0, MAX_SYNC_ITEMS)) {
       const normalized = {
         ...item,
         updatedAt: item.updatedAt || now,
@@ -2567,8 +2623,8 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
       );
     }
     setMeta("syncDataDryRunReports", JSON.stringify(extras.dryRunReports || []));
-    setMeta("syncDataCalendarChanges", JSON.stringify(extras.calendarChanges || []));
-    setMeta("syncDataSettings", JSON.stringify(extras.settings || []));
+    setMeta("syncDataCalendarChanges", JSON.stringify(itemOverlay.calendarChanges));
+    setMeta("syncDataSettings", JSON.stringify(settings));
     setMeta("syncDataRunLogs", JSON.stringify(runLogs));
     setMeta("syncDataVerifySummary", JSON.stringify(extras.verifySummary || null));
     setMeta("syncDataGeneratedAt", String(generatedAt || now));
@@ -2578,6 +2634,78 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+function applyItemActionsToSyncDataSnapshot(inputItems, inputCalendarChanges, actions, now) {
+  let items = inputItems.map(normalizeSyncItem).filter(Boolean).slice(0, MAX_SYNC_ITEMS);
+  let calendarChanges = normalizeCalendarChanges(inputCalendarChanges || []);
+  for (const action of replayableServerActions(actions)) {
+    const updatedAt = action.updatedAt || now;
+    const itemPatch = mutateSyncItemsForItemAction(items, action, updatedAt);
+    items = itemPatch.items;
+    const calendarPatch = mutateCalendarChangesForItemAction(calendarChanges, action);
+    calendarChanges = calendarPatch.calendarChanges;
+  }
+  return { items: items.sort(compareSyncItems), calendarChanges };
+}
+
+function replayableServerActions(actions) {
+  return (Array.isArray(actions) ? actions : [])
+    .filter((action) => {
+      const status = String(action?.status || "").toLowerCase();
+      return ["pending", "running", "completed"].includes(status);
+    })
+    .slice()
+    .sort((lhs, rhs) => {
+      const createdDelta = Date.parse(lhs.createdAt || "") - Date.parse(rhs.createdAt || "");
+      if (Number.isFinite(createdDelta) && createdDelta !== 0) {
+        return createdDelta;
+      }
+      return String(lhs.id || "").localeCompare(String(rhs.id || ""));
+    });
+}
+
+function applySettingActionToStoredSyncData(action) {
+  const settings = normalizeSettings(parseJSON(getMeta("syncDataSettings"), []));
+  const next = applySettingActionsToSettings(settings, [action], action.updatedAt || new Date().toISOString());
+  if (JSON.stringify(settings) === JSON.stringify(next)) {
+    return { changed: false };
+  }
+  setMeta("syncDataSettings", JSON.stringify(next));
+  setMeta("syncDataUpdatedAt", action.updatedAt || new Date().toISOString());
+  return { changed: true };
+}
+
+function applySettingActionsToSettings(inputSettings, actions, now) {
+  let settings = normalizeSettings(inputSettings);
+  for (const action of replayableServerActions(actions)) {
+    if (!action.key) {
+      continue;
+    }
+    const index = settings.findIndex((setting) => setting.key === action.key);
+    const previous = index >= 0 ? settings[index] : {};
+    const next = normalizeSettings([{
+      ...previous,
+      key: action.key,
+      title: action.title || previous.title || action.key,
+      value: action.value,
+      valueKind: previous.valueKind || "text",
+      options: previous.options || [],
+      editable: previous.editable ?? true,
+      updatedAt: action.updatedAt || now,
+    }])[0];
+    if (!next) {
+      continue;
+    }
+    if (index >= 0) {
+      settings[index] = next;
+    } else {
+      settings.push(next);
+    }
+  }
+  return settings
+    .slice()
+    .sort((lhs, rhs) => String(lhs.key || "").localeCompare(String(rhs.key || "")));
 }
 
 function applyItemActionToStoredSyncData(action) {

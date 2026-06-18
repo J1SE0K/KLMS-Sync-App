@@ -350,7 +350,7 @@ final class CompanionModel: ObservableObject {
 
         static let settingActions = RelayRefreshScope(
             fetchesCommands: false,
-            fetchesSyncData: false,
+            fetchesSyncData: true,
             fetchesFileRequests: false,
             fetchesItemActions: false,
             fetchesRequestLog: true,
@@ -939,7 +939,7 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "설정 요청 완료", message: "Mac 앱이 요청을 확인하면 설정에 반영합니다.")
-            await refreshRecent(includeSyncData: false, showsActivity: false)
+            await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
@@ -1617,7 +1617,7 @@ final class CompanionModel: ObservableObject {
         errorMessage = remoteClearError ?? ""
         userAlert = UserAlert(
             title: remoteClearError == nil ? "\(scope.clearTitle) 완료" : "일부 로그 지우기 실패",
-            message: remoteClearError ?? (scope == .all ? "이 기기의 화면 기록을 정리했고, 공유 실행 로그는 모든 기기에서 비워집니다." : "이 기록은 다른 기기 화면에서도 함께 숨겨집니다.")
+            message: remoteClearError ?? (scope == .all ? "실행, 서버 요청, 파일 요청, 항목 변경, 설정 변경, 공유 실행 로그를 정리했습니다. 진행 중인 요청은 유지됩니다." : "이 기록은 다른 기기 화면에서도 함께 숨겨집니다.")
         )
     }
 
@@ -2375,7 +2375,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     }
 
     static var workstationSections: [CompanionAppSection] {
-        [.status, .files, .tasks, .notices, .calendar, .history, .settings]
+        [.status, .history, .settings]
     }
 
     var title: String {
@@ -9728,80 +9728,6 @@ private struct RemoteStageDurationSummaryView: View {
     }
 }
 
-private struct RemoteCancelControl: View {
-    @ObservedObject var model: CompanionModel
-    var compact: Bool
-    @State private var localCancelSubmitting = false
-
-    private var cancelAlreadyRequested: Bool {
-        model.isCancelRequestedForLatestCommand
-    }
-
-    private var title: String {
-        cancelAlreadyRequested ? "중단 요청 전송됨" : "동기화 중단 가능"
-    }
-
-    private var message: String {
-        if cancelAlreadyRequested {
-            return "Mac 앱이 중단 요청을 처리하는 중입니다."
-        }
-        return "Mac 앱에 \(model.activeRequestLabel) 실행을 중단하라고 요청합니다."
-    }
-
-    private var buttonTitle: String {
-        if cancelAlreadyRequested {
-            return "중단 요청됨"
-        }
-        return localCancelSubmitting || model.isSubmitting ? "중단 요청 중" : "지금 중단"
-    }
-
-    var body: some View {
-        if model.shouldShowCancelControl {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "stop.circle")
-                        .font(.title2)
-                        .foregroundStyle(Color.klmsDangerBorder)
-                        .frame(width: 30, height: 30)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(compact ? .subheadline.weight(.semibold) : .headline)
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                    }
-                    Spacer(minLength: 0)
-                }
-                Button(role: .destructive) {
-                    guard model.canCancelRunningCommand, !localCancelSubmitting else {
-                        return
-                    }
-                    localCancelSubmitting = true
-                    Task {
-                        await model.cancelRunningCommand()
-                        await MainActor.run {
-                            localCancelSubmitting = false
-                        }
-                    }
-                } label: {
-                    Label(buttonTitle, systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity, minHeight: compact ? 38 : 44)
-                }
-                .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                .disabled(!model.canCancelRunningCommand || localCancelSubmitting || model.isSubmitting)
-                .accessibilityHint("Mac 앱에 현재 실행 중인 KLMS 동기화를 중단하라고 요청합니다.")
-            }
-            .padding(14)
-            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.klmsDangerBorder.opacity(0.42), lineWidth: 1)
-            )
-        }
-    }
-}
-
 private struct RemoteRunRequestHistoryPanel: View {
     @ObservedObject var model: CompanionModel
 
@@ -10484,7 +10410,7 @@ private extension ServerRelayLogClearScope {
     var clearTitle: String {
         switch self {
         case .all:
-            "로그 지우기"
+            "전체 기록 지우기"
         case .command:
             "최근 실행 요청 지우기"
         case .requestLog:
@@ -10497,7 +10423,7 @@ private extension ServerRelayLogClearScope {
     func clearMessage(_ result: ServerRelayLogClearResponse) -> String {
         switch self {
         case .all:
-            return "실행 \(result.commands)개, 서버 요청 \(result.requestLogEntries)개, 파일 요청 \(result.fileAccessRequests)개 기록을 지웠습니다."
+            return "실행 \(result.commands)개, 서버 요청 \(result.requestLogEntries)개, 파일 요청 \(result.fileAccessRequests)개, 항목 변경 \(result.itemActions)개, 설정 변경 \(result.settingActions)개 기록을 지웠습니다."
         case .command:
             return "최근 실행 요청 \(result.commands)개를 지웠습니다."
         case .requestLog:
@@ -10510,7 +10436,7 @@ private extension ServerRelayLogClearScope {
     var localClearMessage: String {
         switch self {
         case .all:
-            "이 기기 화면의 완료된 실행, 서버 요청, 파일 요청 기록을 숨겼습니다. 진행 중인 요청은 유지됩니다."
+            "이 기기 화면의 완료된 실행, 서버 요청, 파일 요청, 항목 변경, 설정 변경 기록을 숨겼습니다. 진행 중인 요청은 유지됩니다."
         case .command:
             "이 기기 화면의 완료된 실행 요청 기록을 숨겼습니다. 진행 중인 요청은 유지됩니다."
         case .requestLog:
@@ -10546,7 +10472,7 @@ private struct RemoteLogSummaryPanel: View {
                 }
                 .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                 .disabled(!model.serverRelayConfigured || model.isSubmitting || !model.hasClearableRemoteLogs)
-                .accessibilityLabel("로그 지우기")
+                .accessibilityLabel("전체 기록 지우기")
             }
 
             VStack(spacing: 8) {

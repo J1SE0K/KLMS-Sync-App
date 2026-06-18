@@ -865,7 +865,7 @@ final class KLMSMacModel: ObservableObject {
     ) -> String {
         switch scope {
         case .all:
-            return "로그를 지웠습니다. 실행 \(result.commands)개, 서버 요청 \(result.requestLogEntries)개, 파일 요청 \(result.fileAccessRequests)개"
+            return "전체 기록을 지웠습니다. 실행 \(result.commands)개, 서버 요청 \(result.requestLogEntries)개, 파일 요청 \(result.fileAccessRequests)개, 항목 변경 \(result.itemActions)개, 설정 변경 \(result.settingActions)개"
         case .command:
             return "최근 실행 요청 \(result.commands)개를 지웠습니다."
         case .requestLog:
@@ -1016,8 +1016,8 @@ final class KLMSMacModel: ObservableObject {
             return true
         }
         if reason == "commands:pending"
-            || reason == "item-actions:pending"
-            || reason == "setting-actions:pending"
+            || reason.hasPrefix("item-actions:")
+            || reason.hasPrefix("setting-actions:")
             || reason == "file-access:pending" {
             return true
         }

@@ -1264,8 +1264,8 @@ private struct LogSummaryPanelView: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
-                .help("화면의 실행 로그와 완료된 서버 요청, 파일 요청 기록을 지웁니다. 진행 중인 요청은 유지됩니다.")
-                .accessibilityLabel("로그 지우기")
+                .help("화면의 실행 로그, 서버 요청, 파일 요청, 항목 변경, 설정 변경, 공유 실행 로그를 지웁니다. 진행 중인 요청은 유지됩니다.")
+                .accessibilityLabel("전체 기록 지우기")
                 .disabled(model.runningCommand != nil || !model.hasClearableVisibleLogs)
             }
 

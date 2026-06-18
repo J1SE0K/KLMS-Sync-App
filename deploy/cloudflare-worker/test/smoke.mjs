@@ -403,6 +403,56 @@ async function runSmoke() {
     value: "quick",
   }, { method: "POST", status: 201 });
   assert.equal(settingAction.status, "pending");
+  {
+    const payload = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(payload.settings.find((setting) => setting.key === "FILE_REFRESH_MODE")?.value, "quick");
+  }
+
+  await expectJSON("/v1/sync-data", {
+    generatedAt: "2026-05-31T00:01:00Z",
+    items: [
+      {
+        id: "exam-1",
+        kind: "exam",
+        course: "영미 단편소설",
+        title: "기말고사",
+        timestamp: "2026-06-12 10:00",
+        status: "예정",
+        detail: "범위: 전체",
+        attachmentCount: 0,
+        updatedAt: "2026-05-31T00:01:00Z",
+      },
+      {
+        id: "notice-1",
+        kind: "notice",
+        course: "데이터베이스",
+        title: "공지",
+        timestamp: "2026-05-31 09:00",
+        status: "새 공지",
+        detail: "내용",
+        attachmentCount: 1,
+        updatedAt: "2026-05-31T00:01:00Z",
+        isRead: false,
+        isImportant: false,
+        isHidden: false,
+      },
+    ],
+    settings: [
+      {
+        key: "FILE_REFRESH_MODE",
+        title: "파일 탐색 모드",
+        value: "auto",
+        valueKind: "choice",
+        options: ["auto", "quick"],
+        editable: true,
+      },
+    ],
+  }, { method: "POST", role: "worker" });
+  {
+    const payload = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(payload.items.find((item) => item.id === "notice-1")?.isRead, true);
+    assert.equal(payload.settings.find((setting) => setting.key === "FILE_REFRESH_MODE")?.value, "quick");
+  }
 
   {
     const payload = await expectJSON("/v1/setting-actions/pending", undefined, { role: "worker" });
@@ -423,6 +473,35 @@ async function runSmoke() {
     itemTitle: "기말 정리.txt",
   }, { method: "POST", status: 201 });
   assert.equal(fileRequest.status, "pending");
+
+  {
+    const stalePending = await expectJSON("/v1/file-access", {
+      itemID: "file-stale-pending",
+      itemKind: "file",
+      itemTitle: "오래된 대기 요청.txt",
+    }, { method: "POST", status: 201 });
+    const stalePendingRow = env.RELAY_DB.fileAccessRequests.get(stalePending.id);
+    const elevenMinutesAgo = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    stalePendingRow.created_at = elevenMinutesAgo;
+    stalePendingRow.updated_at = elevenMinutesAgo;
+    await expectJSON("/v1/status");
+    const stalePendingAfterExpire = env.RELAY_DB.fileAccessRequests.get(stalePending.id);
+    assert.equal(stalePendingAfterExpire.status, "macUnavailable");
+    env.RELAY_DB.fileAccessRequests.delete(stalePending.id);
+
+    const activeRunning = await expectJSON("/v1/file-access", {
+      itemID: "file-active-running",
+      itemKind: "file",
+      itemTitle: "업로드 중인 요청.txt",
+    }, { method: "POST", status: 201 });
+    const activeRunningRow = env.RELAY_DB.fileAccessRequests.get(activeRunning.id);
+    activeRunningRow.status = "running";
+    activeRunningRow.created_at = elevenMinutesAgo;
+    activeRunningRow.updated_at = new Date().toISOString();
+    await expectJSON("/v1/status");
+    assert.equal(env.RELAY_DB.fileAccessRequests.get(activeRunning.id).status, "running");
+    env.RELAY_DB.fileAccessRequests.delete(activeRunning.id);
+  }
 
   {
     const payload = await expectJSON("/v1/file-access/pending", undefined, { role: "worker" });
@@ -577,10 +656,10 @@ async function runSmoke() {
     const previewPageResponse = await worker.fetch(new Request(previewPageURL.toString()), env);
     assert.equal(previewPageResponse.status, 200);
     const previewPageHTML = await previewPageResponse.text();
-    assert.match(previewPageHTML, /PDF 쪽수\/배율은 아래 뷰어 안쪽 표시가 실제 상태입니다/);
-    assert.match(previewPageHTML, /브라우저 내장 뷰어가 현재 쪽수와 배율을 실시간으로 표시/);
-    assert.doesNotMatch(previewPageHTML, /data-action="zoom-in"/);
-    assert.doesNotMatch(previewPageHTML, /data-action="next"/);
+    assert.match(previewPageHTML, /PDF는 위 도구막대로 쪽 이동과 확대\/축소를 바로 조절/);
+    assert.match(previewPageHTML, /data-action="zoom-in"/);
+    assert.match(previewPageHTML, /data-action="next"/);
+    assert.match(previewPageHTML, /data-status/);
 
     const previewURL = new URL(pdf.downloadURL);
     previewURL.searchParams.set("preview", "1");
@@ -679,19 +758,52 @@ async function runSmoke() {
       updatedAt: new Date().toISOString(),
       summary: { assignments: 1, phase: "completed" },
     }, { method: "PUT", role: "worker" });
+    const displayItemAction = await expectJSON("/v1/item-actions", {
+      action: "hide",
+      itemID: "exam-1",
+      itemKind: "exam",
+      itemTitle: "기말고사",
+    }, { method: "POST", status: 201 });
+    await expectJSON(`/v1/item-actions/${displayItemAction.id}`, {
+      ...displayItemAction,
+      status: "completed",
+      updatedAt: new Date().toISOString(),
+      message: "hidden",
+    }, { method: "PUT", role: "worker" });
+    const displaySettingAction = await expectJSON("/v1/setting-actions", {
+      key: "FILE_REFRESH_MODE",
+      title: "파일 탐색 모드",
+      value: "auto",
+    }, { method: "POST", status: 201 });
+    await expectJSON(`/v1/setting-actions/${displaySettingAction.id}`, {
+      ...displaySettingAction,
+      status: "completed",
+      updatedAt: new Date().toISOString(),
+      message: "saved",
+    }, { method: "PUT", role: "worker" });
     const beforeDisplayClearCommands = await expectJSON("/v1/commands/recent");
     assert.equal(beforeDisplayClearCommands.commands.length, 1);
     const beforeDisplayClearRequests = await expectJSON("/v1/request-log/recent");
     assert.ok(beforeDisplayClearRequests.entries.length > 0);
+    const beforeDisplayClearItemActions = await expectJSON("/v1/item-actions/recent");
+    assert.equal(beforeDisplayClearItemActions.actions.length, 1);
+    const beforeDisplayClearSettingActions = await expectJSON("/v1/setting-actions/recent");
+    assert.equal(beforeDisplayClearSettingActions.actions.length, 1);
 
     const displayClear = await expectJSON("/v1/logs/display", undefined, { method: "DELETE" });
     assert.equal(displayClear.commands, 1);
+    assert.equal(displayClear.itemActions, 1);
+    assert.equal(displayClear.settingActions, 1);
     assert.ok(displayClear.requestLogEntries > 0);
     const afterDisplayClearCommands = await expectJSON("/v1/commands/recent");
     assert.equal(afterDisplayClearCommands.commands.length, 0);
     assert.equal(afterDisplayClearCommands.latestCommand, null);
     const afterDisplayClearRequests = await expectJSON("/v1/request-log/recent");
     assert.equal(afterDisplayClearRequests.entries.length, 0);
+    const afterDisplayClearItemActions = await expectJSON("/v1/item-actions/recent");
+    assert.equal(afterDisplayClearItemActions.actions.length, 0);
+    const afterDisplayClearSettingActions = await expectJSON("/v1/setting-actions/recent");
+    assert.equal(afterDisplayClearSettingActions.actions.length, 0);
   }
 
   console.log("cloudflare worker smoke ok");
