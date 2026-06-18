@@ -3369,10 +3369,12 @@ final class KLMSMacModel: ObservableObject {
         let calendarName = event.calendar.title
         let eventUID = event.calendarItemExternalIdentifier.nilIfBlank ?? event.eventIdentifier.nilIfBlank ?? ""
         let eventTitle = event.title ?? change.title
+        let targetStartScript = appleScriptDateAssignment(variableName: "targetStart", date: event.startDate)
         if let dateURL = URL(string: "calshow:\(event.startDate.timeIntervalSinceReferenceDate)") {
             NSWorkspace.shared.open(dateURL)
         }
         let script = """
+        \(targetStartScript)
         tell application id "com.apple.iCal"
           activate
           set targetEvent to missing value
@@ -3387,7 +3389,15 @@ final class KLMSMacModel: ObservableObject {
               set targetEvent to item 1 of uidMatches
             else
               set titleMatches to every event whose summary is "\(appleScriptString(eventTitle))"
-              if (count of titleMatches) > 0 then set targetEvent to item 1 of titleMatches
+              repeat with candidateEvent in titleMatches
+                try
+                  if (abs ((start date of candidateEvent) - targetStart)) <= 600 then
+                    set targetEvent to candidateEvent
+                    exit repeat
+                  end if
+                end try
+              end repeat
+              if targetEvent is missing value and (count of titleMatches) > 0 then set targetEvent to item 1 of titleMatches
             end if
           end tell
           if targetEvent is missing value then error "Calendar 앱에서 해당 일정을 찾지 못했습니다."
@@ -3508,6 +3518,20 @@ final class KLMSMacModel: ObservableObject {
         text
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private func appleScriptDateAssignment(variableName: String, date: Date) -> String {
+        let calendar = Calendar(identifier: .gregorian)
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        return """
+        set \(variableName) to current date
+        set year of \(variableName) to \(components.year ?? 2001)
+        set month of \(variableName) to \(components.month ?? 1)
+        set day of \(variableName) to \(components.day ?? 1)
+        set hours of \(variableName) to \(components.hour ?? 0)
+        set minutes of \(variableName) to \(components.minute ?? 0)
+        set seconds of \(variableName) to \(components.second ?? 0)
+        """
     }
 
     private func openSystemCalendarApp() {
