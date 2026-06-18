@@ -6480,18 +6480,24 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     private func refreshExternalSelection() {
         if let selectedItemID,
            let refreshed = items.first(where: { $0.id == selectedItemID }) {
-            displayedSelectedItem = refreshed
+            companionPerformWithoutAnimation {
+                displayedSelectedItem = refreshed
+            }
             return
         }
 
         guard let first = items.first else {
-            selectedItemID = nil
-            displayedSelectedItem = nil
+            companionPerformWithoutAnimation {
+                selectedItemID = nil
+                displayedSelectedItem = nil
+            }
             return
         }
 
-        selectedItemID = first.id
-        displayedSelectedItem = first
+        companionPerformWithoutAnimation {
+            selectedItemID = first.id
+            displayedSelectedItem = first
+        }
     }
 }
 
@@ -6605,18 +6611,24 @@ private struct WorkstationTasksWorkspace: View {
     private func refreshExternalSelection() {
         if let selectedItemID,
            let refreshed = combinedItems.first(where: { $0.id == selectedItemID }) {
-            displayedSelectedItem = refreshed
+            companionPerformWithoutAnimation {
+                displayedSelectedItem = refreshed
+            }
             return
         }
 
         guard let first = combinedItems.first else {
-            selectedItemID = nil
-            displayedSelectedItem = nil
+            companionPerformWithoutAnimation {
+                selectedItemID = nil
+                displayedSelectedItem = nil
+            }
             return
         }
 
-        selectedItemID = first.id
-        displayedSelectedItem = first
+        companionPerformWithoutAnimation {
+            selectedItemID = first.id
+            displayedSelectedItem = first
+        }
     }
 }
 
@@ -6861,18 +6873,24 @@ private struct WorkstationCalendarWorkspace: View {
     private func refreshExternalSelection() {
         if let selectedChangeID,
            let refreshed = changes.first(where: { $0.id == selectedChangeID }) {
-            displayedSelectedChange = refreshed
+            companionPerformWithoutAnimation {
+                displayedSelectedChange = refreshed
+            }
             return
         }
 
         guard let first = changes.first else {
-            selectedChangeID = nil
-            displayedSelectedChange = nil
+            companionPerformWithoutAnimation {
+                selectedChangeID = nil
+                displayedSelectedChange = nil
+            }
             return
         }
 
-        selectedChangeID = first.id
-        displayedSelectedChange = first
+        companionPerformWithoutAnimation {
+            selectedChangeID = first.id
+            displayedSelectedChange = first
+        }
     }
 }
 
