@@ -178,6 +178,7 @@ final class KLMSMacModel: ObservableObject {
         snapshot: EngineSnapshot(),
         summary: KLMSMacDashboardSummaryCache()
     )
+    private(set) var dashboardFileRenderSignature = DashboardFileRenderSignature(snapshot: EngineSnapshot())
 
     private let runner = KLMSCommandRunner()
     private let installer = EngineInstaller()
@@ -1624,6 +1625,7 @@ final class KLMSMacModel: ObservableObject {
             mailExamCount: cachedMailDashboardItemsByKind["exam"]?.count ?? 0
         )
         dashboardRenderSignature = DashboardRenderSignature(snapshot: snapshot, summary: dashboardSummaryCache)
+        dashboardFileRenderSignature = DashboardFileRenderSignature(snapshot: snapshot)
     }
 
     private static func sortedMailDashboardItems(_ items: [ServerRelaySyncItem]) -> [ServerRelaySyncItem] {

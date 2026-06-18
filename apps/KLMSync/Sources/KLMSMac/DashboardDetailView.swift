@@ -157,12 +157,63 @@ struct DashboardRenderSignature: Equatable {
     }
 }
 
+struct DashboardFileRenderSignature: Equatable, Sendable {
+    private var value: Int
+
+    init(snapshot: EngineSnapshot) {
+        var hasher = Hasher()
+        for entry in snapshot.courseFileManifest {
+            hasher.combine(entry.id)
+            hasher.combine(entry.absolutePath)
+            hasher.combine(entry.localDownloadedAt)
+            hasher.combine(entry.klmsTimestampEpoch ?? -1)
+            hasher.combine(entry.bucket)
+        }
+        for item in snapshot.downloadResult?.results ?? [] {
+            hasher.combine(item.id)
+            hasher.combine(item.copiedToNewFilesInbox)
+            hasher.combine(item.skippedExisting)
+            hasher.combine(item.restoredFromArchive)
+            hasher.combine(item.reusedLoggedFile)
+            hasher.combine(item.failed)
+            hasher.combine(item.quarantined)
+        }
+        for path in snapshot.verifyResult?.files?.missingFiles ?? [] {
+            hasher.combine(path)
+        }
+        for record in snapshot.quarantineReport?.records ?? [] {
+            hasher.combine(record.id)
+            hasher.combine(record.url)
+            hasher.combine(record.bytes)
+        }
+        for (key, item) in (snapshot.appUserState?.files ?? [:]).sorted(by: { $0.key < $1.key }) {
+            Self.combineInteractionState(key: key, item: item, into: &hasher)
+        }
+        for (key, item) in (snapshot.appUserState?.quarantine ?? [:]).sorted(by: { $0.key < $1.key }) {
+            Self.combineInteractionState(key: key, item: item, into: &hasher)
+        }
+        value = hasher.finalize()
+    }
+
+    private static func combineInteractionState(key: String, item: FileInteractionState, into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(item.title)
+        hasher.combine(item.course)
+        hasher.combine(item.path)
+        hasher.combine(item.url)
+        hasher.combine(item.hidden)
+        hasher.combine(item.ignored)
+        hasher.combine(item.trashedAt ?? "")
+        hasher.combine(item.updatedAt)
+    }
+}
+
 struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     var kind: DashboardDetailKind
     var model: KLMSMacModel
     var snapshot: EngineSnapshot
     private var renderSignature: DashboardRenderSignature
-    private var fileDataRenderSignature: DashboardFileData.Signature?
+    private var fileDataRenderSignature: DashboardFileRenderSignature?
     private var hiddenCount: Int
     @State private var searchText = ""
     @State private var selectedCourse = DashboardCourseFilter.all
@@ -172,14 +223,15 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     @State private var newOnly = false
     @State private var recentOnly = false
     @State private var fileData: DashboardFileData?
-    @State private var fileDataSignature: DashboardFileData.Signature?
+    @State private var fileDataSignature: DashboardFileRenderSignature?
     @State private var fileDataTask: Task<Void, Never>?
 
     init(
         kind: DashboardDetailKind,
         model: KLMSMacModel,
         snapshot: EngineSnapshot? = nil,
-        renderSignature: DashboardRenderSignature? = nil
+        renderSignature: DashboardRenderSignature? = nil,
+        fileRenderSignature: DashboardFileRenderSignature? = nil
     ) {
         let resolvedSnapshot = snapshot ?? model.snapshot
         self.kind = kind
@@ -187,7 +239,9 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         self.snapshot = resolvedSnapshot
         self.renderSignature = renderSignature
             ?? DashboardRenderSignature(snapshot: resolvedSnapshot, summary: model.dashboardSummaryCache)
-        self.fileDataRenderSignature = kind.requiresFileData ? DashboardFileData.Signature(snapshot: resolvedSnapshot) : nil
+        self.fileDataRenderSignature = kind.requiresFileData
+            ? (fileRenderSignature ?? DashboardFileRenderSignature(snapshot: resolvedSnapshot))
+            : nil
         self.hiddenCount = resolvedSnapshot.hiddenSummary.total
         _fileData = State(initialValue: nil)
         _fileDataSignature = State(initialValue: nil)
@@ -349,7 +403,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         )
     }
 
-    private func rebuildFileDataIfNeeded(_ signature: DashboardFileData.Signature?) {
+    private func rebuildFileDataIfNeeded(_ signature: DashboardFileRenderSignature?) {
         guard let signature else {
             fileDataTask?.cancel()
             fileData = nil
@@ -445,7 +499,7 @@ private enum DashboardLargeList {
 }
 
 private struct DashboardFileData: Sendable {
-    var signature: Signature
+    var signature: DashboardFileRenderSignature
     var manifestFiles: [DashboardFileItem]
     var newFiles: [DashboardFileItem]
     var missingFiles: [DashboardFileItem]
@@ -453,8 +507,8 @@ private struct DashboardFileData: Sendable {
     var hiddenFiles: [DashboardFileItem]
     var hiddenQuarantineFiles: [DashboardFileItem]
 
-    init(snapshot: EngineSnapshot, signature: Signature? = nil) {
-        let resolvedSignature = signature ?? Signature(snapshot: snapshot)
+    init(snapshot: EngineSnapshot, signature: DashboardFileRenderSignature? = nil) {
+        let resolvedSignature = signature ?? DashboardFileRenderSignature(snapshot: snapshot)
         let missingPaths = dashboardMissingPathSet(from: snapshot)
         let appFileState = snapshot.appUserState?.files ?? [:]
         let appQuarantineState = snapshot.appUserState?.quarantine ?? [:]
@@ -580,46 +634,6 @@ private struct DashboardFileData: Sendable {
             )
         }
     }
-
-    struct Signature: Equatable, Sendable {
-        private var value: Int
-
-        init(snapshot: EngineSnapshot) {
-            var hasher = Hasher()
-            for entry in snapshot.courseFileManifest {
-                hasher.combine(entry.id)
-                hasher.combine(entry.absolutePath)
-                hasher.combine(entry.localDownloadedAt)
-                hasher.combine(entry.klmsTimestampEpoch ?? -1)
-                hasher.combine(entry.bucket)
-            }
-            for item in snapshot.downloadResult?.results ?? [] {
-                hasher.combine(item.id)
-                hasher.combine(item.copiedToNewFilesInbox)
-                hasher.combine(item.skippedExisting)
-                hasher.combine(item.restoredFromArchive)
-                hasher.combine(item.reusedLoggedFile)
-                hasher.combine(item.failed)
-                hasher.combine(item.quarantined)
-            }
-            for path in snapshot.verifyResult?.files?.missingFiles ?? [] {
-                hasher.combine(path)
-            }
-            for record in snapshot.quarantineReport?.records ?? [] {
-                hasher.combine(record.id)
-                hasher.combine(record.url)
-                hasher.combine(record.bytes)
-            }
-            for (key, item) in (snapshot.appUserState?.files ?? [:]).sorted(by: { $0.key < $1.key }) {
-                DashboardFileData.combineInteractionState(key: key, item: item, into: &hasher)
-            }
-            for (key, item) in (snapshot.appUserState?.quarantine ?? [:]).sorted(by: { $0.key < $1.key }) {
-                DashboardFileData.combineInteractionState(key: key, item: item, into: &hasher)
-            }
-            value = hasher.finalize()
-        }
-    }
-
     private static func manifestLookup(_ manifest: [CourseFileManifestEntry]) -> (
         byURL: [String: CourseFileManifestEntry],
         byRelativePath: [String: CourseFileManifestEntry]
@@ -667,17 +681,6 @@ private struct DashboardFileData: Sendable {
         return path
     }
 
-    private static func combineInteractionState(key: String, item: FileInteractionState, into hasher: inout Hasher) {
-        hasher.combine(key)
-        hasher.combine(item.title)
-        hasher.combine(item.course)
-        hasher.combine(item.path)
-        hasher.combine(item.url)
-        hasher.combine(item.hidden)
-        hasher.combine(item.ignored)
-        hasher.combine(item.trashedAt ?? "")
-        hasher.combine(item.updatedAt)
-    }
 }
 
 private struct DashboardShowMoreButton: View {

@@ -33,6 +33,7 @@ struct MenuBarRootView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
@@ -77,16 +78,19 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
 
 private struct DeferredMacWorkspacePanel<Content: View>: View {
     var id: String
+    var contentIdentifier: String?
     var loadingText: String
     private let content: () -> Content
     @State private var loadedID: String?
 
     init(
         id: String,
+        contentIdentifier: String? = nil,
         loadingText: String,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.id = id
+        self.contentIdentifier = contentIdentifier
         self.loadingText = loadingText
         self.content = content
     }
@@ -113,6 +117,7 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
                 }
             }
         }
+        .accessibilityIdentifier(contentIdentifier ?? id)
         .task(id: id) {
             loadedID = nil
             await Task.yield()
@@ -141,21 +146,21 @@ private struct MacWorkstationLayoutView: View {
                 CommandPanelView(model: model)
                 DashboardSummaryView(model: model)
             case .files:
-                DeferredMacWorkspacePanel(id: "workspace-files", loadingText: "파일 목록을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-files", contentIdentifier: "workspace-content-files", loadingText: "파일 목록을 준비하는 중입니다.") {
                     cachedDashboardDetailPanel(kind: .files)
                         .equatable()
                 }
             case .tasks:
-                DeferredMacWorkspacePanel(id: "workspace-tasks", loadingText: "과제와 시험 목록을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-tasks", contentIdentifier: "workspace-content-tasks", loadingText: "과제와 시험 목록을 준비하는 중입니다.") {
                     TaskAndExamWorkspaceView(model: model)
                 }
             case .notices:
-                DeferredMacWorkspacePanel(id: "workspace-notices", loadingText: "공지 목록을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-notices", contentIdentifier: "workspace-content-notices", loadingText: "공지 목록을 준비하는 중입니다.") {
                     cachedDashboardDetailPanel(kind: .notices)
                         .equatable()
                 }
             case .calendar:
-                DeferredMacWorkspacePanel(id: "workspace-calendar", loadingText: "캘린더 변경 사항을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-calendar", contentIdentifier: "workspace-content-calendar", loadingText: "캘린더 변경 사항을 준비하는 중입니다.") {
                     cachedDashboardDetailPanel(kind: .calendar)
                         .equatable()
                 }
@@ -163,20 +168,20 @@ private struct MacWorkstationLayoutView: View {
                 LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                 DiagnosticStageDurationPanelView(model: model)
                 RemoteActivityPanelView(model: model)
-                DeferredMacWorkspacePanel(id: "activity-run-log-archive", loadingText: "실행 기록을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "activity-run-log-archive", contentIdentifier: "workspace-content-activityLogs", loadingText: "실행 기록을 준비하는 중입니다.") {
                     RunLogArchivePanelView(model: model)
                 }
             case .diagnostics:
                 VerifyPanelView(snapshot: model.snapshot)
                 DiagnosticToolsPanelView(model: model)
                 DiagnosticStageDurationPanelView(model: model)
-                DeferredMacWorkspacePanel(id: "diagnostics-secondary-panels", loadingText: "환경 진단 세부 정보를 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "diagnostics-secondary-panels", contentIdentifier: "workspace-content-diagnostics", loadingText: "환경 진단 세부 정보를 준비하는 중입니다.") {
                     DoctorPanelView(snapshot: model.snapshot)
                     AppDiagnosticsPanelView(model: model)
                     LoginPanelView(model: model)
                 }
             case .settings:
-                DeferredMacWorkspacePanel(id: "workspace-settings", loadingText: "설정 화면을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-settings", contentIdentifier: "workspace-content-settings", loadingText: "설정 화면을 준비하는 중입니다.") {
                     SettingsView(model: model)
                 }
             }
@@ -191,7 +196,8 @@ private struct MacWorkstationLayoutView: View {
             kind: kind,
             model: model,
             snapshot: model.snapshot,
-            renderSignature: model.dashboardRenderSignature
+            renderSignature: model.dashboardRenderSignature,
+            fileRenderSignature: model.dashboardFileRenderSignature
         )
     }
 }
@@ -730,7 +736,8 @@ private struct TaskAndExamWorkspaceView: View {
             kind: kind,
             model: model,
             snapshot: model.snapshot,
-            renderSignature: model.dashboardRenderSignature
+            renderSignature: model.dashboardRenderSignature,
+            fileRenderSignature: model.dashboardFileRenderSignature
         )
     }
 }
