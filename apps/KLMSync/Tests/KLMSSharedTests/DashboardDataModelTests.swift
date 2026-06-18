@@ -920,6 +920,7 @@ final class DashboardDataModelTests: XCTestCase {
             description: "Mac top bar chip background"
         )
         let commandPanel = try sourceStructBody(named: "CommandPanelView", in: view)
+        let dashboardStageDurationStrip = try sourceStructBody(named: "DashboardStageDurationStripView", in: view)
         let metricGrid = try sourceBody(
             after: "struct MetricGrid: View",
             in: view,
@@ -1111,6 +1112,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("return nil"))
         XCTAssertTrue(view.contains("DashboardSummaryView(model: model)"))
         XCTAssertTrue(view.contains("CommandStageDurationSummaryView(durations: stageDurations)"))
+        XCTAssertTrue(commandPanel.contains("DashboardStageDurationStripView(durations: stageDurations)"))
+        XCTAssertFalse(commandPanel.contains("CommandStageDurationSummaryView(durations: stageDurations)"))
+        XCTAssertTrue(dashboardStageDurationStrip.contains("Text(\"자세히는 로그\")"))
+        XCTAssertTrue(dashboardStageDurationStrip.contains("durations.prefix(4)"))
+        XCTAssertTrue(dashboardStageDurationStrip.contains(".accessibilityLabel(\"최근 단계별 소요 시간 \\(summaryText). 자세한 기록은 로그 화면에서 확인합니다.\")"))
         XCTAssertTrue(view.contains("model.commandHistory.records.first(where: { !$0.visibleStageDurations.isEmpty })"))
         XCTAssertTrue(view.contains("private static func boundedStageDurationSource(_ output: String) -> String"))
         XCTAssertFalse(view.contains("? (model.lastCommandResult?.combinedOutput ?? \"\")"))
@@ -1223,6 +1229,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(commandPanel.contains(".padding(.vertical, 15)"))
         XCTAssertTrue(commandPanel.contains(".font(.system(size: 11, weight: .heavy, design: .rounded))"))
         XCTAssertTrue(commandPanel.contains(".padding(.horizontal, 8)"))
+        XCTAssertTrue(commandPanel.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .center)"))
+        XCTAssertFalse(commandPanel.contains(".frame(maxWidth: .infinity, minHeight: 42, alignment: .center)"))
         XCTAssertTrue(commandPanel.contains(".buttonStyle(MacPressFeedbackButtonStyle())"))
         XCTAssertTrue(commandPanel.contains(".buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12, disabledOpacity: 1.0))"))
         XCTAssertTrue(commandPanel.contains(".buttonStyle(MacPressFeedbackButtonStyle(disabledOpacity: 1.0))"))
