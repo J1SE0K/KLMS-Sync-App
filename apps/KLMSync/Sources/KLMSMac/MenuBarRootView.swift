@@ -3548,8 +3548,6 @@ private struct CommandPanelView: View {
                         commandActionCard(command)
                     }
                 }
-
-                DashboardStageDurationStripView(durations: stageDurations)
             }
 
             if let command = model.runningCommand {
@@ -3813,66 +3811,6 @@ private struct CommandPanelView: View {
         return .klmsMacSecondaryText
     }
 
-    private var stageDurations: [KLMSStageDuration] {
-        if !model.liveCommandOutput.isEmpty {
-            return KLMSStageDurationParser.parse(from: Self.boundedStageDurationSource(model.liveCommandOutput))
-        }
-        if let record = model.commandHistory.records.first(where: { !$0.visibleStageDurations.isEmpty }) {
-            return record.visibleStageDurations
-        }
-        guard let result = model.lastCommandResult else {
-            return []
-        }
-        return KLMSStageDurationParser.parse(from: Self.boundedStageDurationSource(result.combinedOutput))
-    }
-
-    private static func boundedStageDurationSource(_ output: String) -> String {
-        guard output.count > 8_000 else {
-            return output
-        }
-        return String(output.suffix(8_000))
-    }
-}
-
-private struct DashboardStageDurationStripView: View {
-    var durations: [KLMSStageDuration]
-
-    var body: some View {
-        if !durations.isEmpty {
-            HStack(alignment: .center, spacing: 8) {
-                Label("최근 소요", systemImage: "timer")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .lineLimit(1)
-                Text(summaryText)
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                Spacer(minLength: 0)
-                Text("자세히는 로그")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsMacSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 9))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9)
-                    .stroke(Color.klmsMacBorder.opacity(0.72), lineWidth: 1)
-            }
-            .accessibilityLabel("최근 단계별 소요 시간 \(summaryText). 자세한 기록은 로그 화면에서 확인합니다.")
-        }
-    }
-
-    private var summaryText: String {
-        let visible = durations.prefix(4).map { "\($0.displayName) \($0.secondsText)" }
-        let hiddenCount = max(0, durations.count - visible.count)
-        let suffix = hiddenCount > 0 ? " · +\(hiddenCount)" : ""
-        return visible.joined(separator: " · ") + suffix
-    }
 }
 
 private struct CommandStageDurationSummaryView: View {

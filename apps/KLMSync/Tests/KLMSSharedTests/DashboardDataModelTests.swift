@@ -920,7 +920,6 @@ final class DashboardDataModelTests: XCTestCase {
             description: "Mac top bar chip background"
         )
         let commandPanel = try sourceStructBody(named: "CommandPanelView", in: view)
-        let dashboardStageDurationStrip = try sourceStructBody(named: "DashboardStageDurationStripView", in: view)
         let metricGrid = try sourceBody(
             after: "struct MetricGrid: View",
             in: view,
@@ -1130,14 +1129,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("return nil"))
         XCTAssertTrue(view.contains("DashboardSummaryView(model: model)"))
         XCTAssertTrue(view.contains("CommandStageDurationSummaryView(durations: stageDurations)"))
-        XCTAssertTrue(commandPanel.contains("DashboardStageDurationStripView(durations: stageDurations)"))
+        XCTAssertFalse(commandPanel.contains("DashboardStageDurationStripView(durations: stageDurations)"))
         XCTAssertFalse(commandPanel.contains("CommandStageDurationSummaryView(durations: stageDurations)"))
-        XCTAssertTrue(dashboardStageDurationStrip.contains("Text(\"자세히는 로그\")"))
-        XCTAssertTrue(dashboardStageDurationStrip.contains("durations.prefix(4)"))
-        XCTAssertTrue(dashboardStageDurationStrip.contains(".accessibilityLabel(\"최근 단계별 소요 시간 \\(summaryText). 자세한 기록은 로그 화면에서 확인합니다.\")"))
-        XCTAssertTrue(view.contains("model.commandHistory.records.first(where: { !$0.visibleStageDurations.isEmpty })"))
-        XCTAssertTrue(view.contains("private static func boundedStageDurationSource(_ output: String) -> String"))
-        XCTAssertTrue(commandPanel.contains("KLMSStageDurationParser.parse(from: Self.boundedStageDurationSource(model.liveCommandOutput))"))
+        XCTAssertFalse(view.contains("private struct DashboardStageDurationStripView"))
+        XCTAssertFalse(commandPanel.contains("KLMSStageDurationParser.parse"))
+        XCTAssertFalse(commandPanel.contains("private static func boundedStageDurationSource(_ output: String) -> String"))
+        XCTAssertTrue(view.contains("DiagnosticStageDurationPanelView(model: model)"))
+        XCTAssertTrue(view.contains("CompactStageDurationRowsView(durations: record.visibleStageDurations)"))
         XCTAssertFalse(commandPanel.contains("KLMSStageDurationParser.parse(from: model.liveCommandOutput)"))
         XCTAssertFalse(view.contains("? (model.lastCommandResult?.combinedOutput ?? \"\")"))
         XCTAssertTrue(view.contains("private struct MacAlertBannerView"))
