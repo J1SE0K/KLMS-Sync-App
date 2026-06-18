@@ -11039,13 +11039,8 @@ private struct RemoteLogSummaryPanel: View {
                 if let expandedKind {
                     if showsInlineDetail {
                         RemoteLogDetailPanel(kind: expandedKind, model: model)
-                    } else {
-                        Text("상세는 옆 패널에 표시됩니다.")
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                } else {
+                } else if showsInlineDetail || compact {
                     Text("행을 누르면 펼쳐집니다.")
                         .font(.caption2)
                         .foregroundStyle(Color.klmsSecondaryText)
@@ -11357,7 +11352,7 @@ private struct SharedRunLogsView: View {
                     .disabled(clearDisabled)
                 }
             }
-            Text("단계별 시간과 마지막 로그입니다. 지우면 모든 기기에서 사라집니다.")
+            Text("단계별 시간과 마지막 로그를 보여줍니다.")
                 .font(.caption2)
                 .foregroundStyle(Color.klmsSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
