@@ -3183,9 +3183,26 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
 
 private struct CompanionHistoryScreen: View {
     @ObservedObject var model: CompanionModel
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         CompanionScreenContainer(title: "로그", model: model) {
+            if horizontalSizeClass == .regular {
+                HStack(alignment: .top, spacing: 16) {
+                    historySummaryColumn
+                        .frame(minWidth: 320, idealWidth: 390, maxWidth: 460, alignment: .topLeading)
+                    historyRequestColumn
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            } else {
+                historySummaryColumn
+                historyRequestColumn
+            }
+        }
+    }
+
+    private var historySummaryColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
             RemoteLogSummaryPanel(model: model, compact: false)
             SharedRunLogsView(
                 logs: model.sharedRunLogs,
@@ -3197,6 +3214,11 @@ private struct CompanionHistoryScreen: View {
                 },
                 clearDisabled: !model.serverRelayConfigured || model.isSubmitting || model.sharedRunLogs.isEmpty
             )
+        }
+    }
+
+    private var historyRequestColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
             RecentServerRequestLogView(
                 entries: model.recentRequestLog,
                 clearAction: {
