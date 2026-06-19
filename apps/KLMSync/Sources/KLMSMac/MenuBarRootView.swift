@@ -5,6 +5,8 @@ import SwiftUI
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
+    @State private var renderedSection = KLMSMacSection.dashboard
+    @State private var workspaceRenderTask: Task<Void, Never>?
     @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
 
@@ -20,7 +22,7 @@ struct MenuBarRootView: View {
             Rectangle()
                 .fill(Color.klmsMacBorder.opacity(0.76))
                 .frame(width: 1)
-            WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: selectedSection, nonce: scrollResetNonce)) {
+            WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: renderedSection, nonce: scrollResetNonce)) {
                 VStack(alignment: .leading, spacing: 14) {
                     DashboardTopBarView(model: model, selectedSection: $selectedSection)
                     MacAlertBannerView(
@@ -30,7 +32,7 @@ struct MenuBarRootView: View {
                     )
                     MacWorkstationLayoutView(
                         model: model,
-                        selectedSection: selectedSection,
+                        selectedSection: renderedSection,
                         expandedLogSummaryKind: $expandedLogSummaryKind
                     )
                 }
@@ -38,10 +40,16 @@ struct MenuBarRootView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .accessibilityIdentifier("workspace-scroll-\(selectedSection.rawValue)")
+            .accessibilityIdentifier("workspace-scroll-\(renderedSection.rawValue)")
         }
         .overlay(alignment: .topLeading) {
             MacWorkspaceSelectionAccessibilityMarker(section: selectedSection)
+        }
+        .onChange(of: selectedSection) { _, nextSection in
+            queueRenderedSection(nextSection)
+        }
+        .onDisappear {
+            workspaceRenderTask?.cancel()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
@@ -50,6 +58,20 @@ struct MenuBarRootView: View {
 
     private func resetCurrentSectionScroll() {
         scrollResetNonce &+= 1
+    }
+
+    private func queueRenderedSection(_ section: KLMSMacSection) {
+        guard renderedSection != section else { return }
+        workspaceRenderTask?.cancel()
+        workspaceRenderTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                renderedSection = section
+            }
+        }
     }
 }
 
@@ -264,24 +286,24 @@ private struct MacWorkspaceSidebarView: View {
 private struct WorkspaceNavigationView: View {
     @Binding var selection: KLMSMacSection
     var resetCurrentSectionScroll: () -> Void
+    @State private var displayedSelection = KLMSMacSection.dashboard
+    @State private var selectionCommitTask: Task<Void, Never>?
     @State private var hoveredSection: KLMSMacSection?
 
     var body: some View {
         VStack(spacing: 7) {
-            WorkspaceNavigationSelectionMarker(section: selection)
+            WorkspaceNavigationSelectionMarker(section: displayedSelection)
             ForEach(KLMSMacSection.allCases) { section in
-                let isSelected = selection == section
+                let isSelected = displayedSelection == section
                 let isHovered = hoveredSection == section
                 Button {
-                    guard selection != section else {
-                        resetCurrentSectionScroll()
+                    guard displayedSelection != section else {
+                        if selection == section {
+                            resetCurrentSectionScroll()
+                        }
                         return
                     }
-                    var transaction = Transaction()
-                    transaction.animation = nil
-                    withTransaction(transaction) {
-                        selection = section
-                    }
+                    select(section)
                 } label: {
                     HStack(spacing: 10) {
                         ZStack {
@@ -328,6 +350,38 @@ private struct WorkspaceNavigationView: View {
                 .accessibilityIdentifier("workspace-\(section.rawValue)")
                 .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
             }
+        }
+        .onAppear {
+            displayedSelection = selection
+        }
+        .onChange(of: selection) { _, nextSelection in
+            syncDisplayedSelection(nextSelection)
+        }
+        .onDisappear {
+            selectionCommitTask?.cancel()
+        }
+    }
+
+    private func select(_ section: KLMSMacSection) {
+        syncDisplayedSelection(section)
+        selectionCommitTask?.cancel()
+        selectionCommitTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                selection = section
+            }
+        }
+    }
+
+    private func syncDisplayedSelection(_ section: KLMSMacSection) {
+        guard displayedSelection != section else { return }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            displayedSelection = section
         }
     }
 
