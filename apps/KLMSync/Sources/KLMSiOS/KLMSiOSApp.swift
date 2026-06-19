@@ -2753,7 +2753,7 @@ private struct CompanionDeferredSectionContent: View {
     let model: CompanionModel
     @State private var renderedSection: CompanionAppSection
     @State private var renderTask: Task<Void, Never>?
-    private let sectionRenderDelayNanoseconds: UInt64 = 16_000_000
+    private let sectionRenderDelayNanoseconds: UInt64 = 8_000_000
 
     init(section: CompanionAppSection, model: CompanionModel) {
         self.section = section
@@ -4448,7 +4448,7 @@ private enum CompanionLargeList {
     static let logVisibleLimit = 10
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
-    static let detailRenderDelayNanoseconds: UInt64 = 16_000_000
+    static let detailRenderDelayNanoseconds: UInt64 = 8_000_000
     static let prewarmDelayNanoseconds: UInt64 = 120_000_000
 
     static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
