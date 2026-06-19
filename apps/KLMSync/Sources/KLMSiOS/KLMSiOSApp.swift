@@ -2880,14 +2880,6 @@ private struct CompanionStatusScreen: View {
     private var statusSummaryColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
             RemoteDashboardSyncCard(model: model, compact: horizontalSizeClass != .regular)
-            if horizontalSizeClass != .regular {
-                CompanionDashboardQuickAccessGrid(
-                    status: model.dashboardStatus,
-                    selectedCategory: selectedDashboardPreview,
-                    onSelect: openDashboardCategoryFromOverview
-                )
-                compactDashboardDetail
-            }
             RemoteDashboardMetricOverview(
                 model: model,
                 status: model.dashboardStatus,
@@ -2902,6 +2894,7 @@ private struct CompanionStatusScreen: View {
                     selectChangeSummary(kind)
                 }
             )
+            compactDashboardDetail
         }
     }
 
@@ -2960,10 +2953,6 @@ private struct CompanionStatusScreen: View {
         }
     }
 
-    private func openDashboardCategoryFromOverview(_ category: DashboardMetricCategory) {
-        selectDashboardCategory(category)
-    }
-
     private func selectDashboardCategory(_ category: DashboardMetricCategory) {
         companionPerformWithoutAnimation {
             selectedChangeSummary = nil
@@ -2993,100 +2982,6 @@ private struct CompanionStatusScreen: View {
     }
 
 }
-
-private struct CompanionDashboardQuickAccessGrid: View {
-    var status: SanitizedRemoteStatus
-    var selectedCategory: DashboardMetricCategory?
-    var onSelect: (DashboardMetricCategory) -> Void
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 112), spacing: 7),
-    ]
-
-    private var quickAccessCategories: [DashboardMetricCategory] {
-        var categories: [DashboardMetricCategory] = [
-            .files,
-            .assignments,
-            .exams,
-            .notices,
-            .calendar,
-        ]
-        if DashboardMetricCategory.helpDesk.value(from: status) > 0 {
-            categories.append(.helpDesk)
-        }
-        return categories
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("바로 보기", systemImage: "square.grid.2x2")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.klmsSecondaryText)
-
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 7) {
-                ForEach(quickAccessCategories) { category in
-                    quickAccessButton(category)
-                }
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 13))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13)
-                .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
-        }
-    }
-
-    private func quickAccessButton(_ category: DashboardMetricCategory) -> some View {
-        let isSelected = selectedCategory == category
-        return Button {
-            onSelect(category)
-        } label: {
-            HStack(spacing: 7) {
-                Image(systemName: category.systemImage)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
-                    .frame(width: 24, height: 24)
-                    .background(
-                        isSelected
-                            ? Color.klmsSelectedForeground.opacity(0.14)
-                            : category.tint.opacity(0.11),
-                        in: RoundedRectangle(cornerRadius: 7)
-                    )
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(category.title)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                        .lineLimit(1)
-                    Text("\(category.value(from: status))개")
-                        .font(.caption2.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.82) : Color.klmsSecondaryText)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(
-                isSelected
-                    ? Color.klmsSelectedBackground.opacity(0.96)
-                    : Color.klmsCardBackground.opacity(0.86),
-                in: RoundedRectangle(cornerRadius: 10)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.62), lineWidth: isSelected ? 1.2 : 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
-        .accessibilityLabel("\(category.title) \(category.value(from: status))개 바로 보기")
-        .accessibilityValue(isSelected ? "선택됨" : "")
-        .accessibilityHint("대시보드 아래에 \(category.title) 상세를 엽니다.")
-    }
-}
-
 private struct CompanionDashboardCategoryScreen: View {
     var title: String
     var category: DashboardMetricCategory
