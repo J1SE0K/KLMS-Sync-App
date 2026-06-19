@@ -2801,18 +2801,11 @@ private struct CompanionStatusScreen: View {
 
     private var statusRegularWorkspace: some View {
         HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-            statusCommandColumn
+            statusMainColumn
                 .frame(
-                    minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
-                    maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
-                    alignment: .topLeading
-                )
-            statusMetricColumn
-                .frame(
-                    minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
-                    maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
+                    minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                    maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
                     alignment: .topLeading
                 )
             statusDetailColumn
@@ -2824,6 +2817,13 @@ private struct CompanionStatusScreen: View {
                 )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var statusMainColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            statusCommandColumn
+            statusMetricColumn
+        }
     }
 
     private var statusSummaryColumn: some View {
