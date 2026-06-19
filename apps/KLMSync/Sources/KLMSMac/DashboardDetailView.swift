@@ -133,27 +133,33 @@ struct DashboardRenderSignature: Equatable {
 
     private static func combineNoticeInteractions(_ states: [String: NoticeInteractionState], into hasher: inout Hasher) {
         hasher.combine(states.count)
-        for key in states.keys.sorted().prefix(80) {
-            guard let state = states[key] else { continue }
-            hasher.combine(key)
-            hasher.combine(state.readFingerprint ?? "")
-            hasher.combine(state.readAt ?? "")
-            hasher.combine(state.important)
-            hasher.combine(state.hidden)
-            hasher.combine(state.updatedAt)
+        var stateFingerprint = 0
+        for (key, state) in states {
+            var itemHasher = Hasher()
+            itemHasher.combine(key)
+            itemHasher.combine(state.readFingerprint ?? "")
+            itemHasher.combine(state.readAt ?? "")
+            itemHasher.combine(state.important)
+            itemHasher.combine(state.hidden)
+            itemHasher.combine(state.updatedAt)
+            stateFingerprint ^= itemHasher.finalize()
         }
+        hasher.combine(stateFingerprint)
     }
 
     private static func combineFileInteractions(_ states: [String: FileInteractionState], into hasher: inout Hasher) {
         hasher.combine(states.count)
-        for key in states.keys.sorted().prefix(80) {
-            guard let state = states[key] else { continue }
-            hasher.combine(key)
-            hasher.combine(state.hidden)
-            hasher.combine(state.ignored)
-            hasher.combine(state.trashedAt ?? "")
-            hasher.combine(state.updatedAt)
+        var stateFingerprint = 0
+        for (key, state) in states {
+            var itemHasher = Hasher()
+            itemHasher.combine(key)
+            itemHasher.combine(state.hidden)
+            itemHasher.combine(state.ignored)
+            itemHasher.combine(state.trashedAt ?? "")
+            itemHasher.combine(state.updatedAt)
+            stateFingerprint ^= itemHasher.finalize()
         }
+        hasher.combine(stateFingerprint)
     }
 }
 
@@ -186,25 +192,28 @@ struct DashboardFileRenderSignature: Equatable, Sendable {
             hasher.combine(record.url)
             hasher.combine(record.bytes)
         }
-        for (key, item) in (snapshot.appUserState?.files ?? [:]).sorted(by: { $0.key < $1.key }) {
-            Self.combineInteractionState(key: key, item: item, into: &hasher)
-        }
-        for (key, item) in (snapshot.appUserState?.quarantine ?? [:]).sorted(by: { $0.key < $1.key }) {
-            Self.combineInteractionState(key: key, item: item, into: &hasher)
-        }
+        Self.combineInteractionStates(snapshot.appUserState?.files ?? [:], into: &hasher)
+        Self.combineInteractionStates(snapshot.appUserState?.quarantine ?? [:], into: &hasher)
         value = hasher.finalize()
     }
 
-    private static func combineInteractionState(key: String, item: FileInteractionState, into hasher: inout Hasher) {
-        hasher.combine(key)
-        hasher.combine(item.title)
-        hasher.combine(item.course)
-        hasher.combine(item.path)
-        hasher.combine(item.url)
-        hasher.combine(item.hidden)
-        hasher.combine(item.ignored)
-        hasher.combine(item.trashedAt ?? "")
-        hasher.combine(item.updatedAt)
+    private static func combineInteractionStates(_ states: [String: FileInteractionState], into hasher: inout Hasher) {
+        hasher.combine(states.count)
+        var stateFingerprint = 0
+        for (key, item) in states {
+            var itemHasher = Hasher()
+            itemHasher.combine(key)
+            itemHasher.combine(item.title)
+            itemHasher.combine(item.course)
+            itemHasher.combine(item.path)
+            itemHasher.combine(item.url)
+            itemHasher.combine(item.hidden)
+            itemHasher.combine(item.ignored)
+            itemHasher.combine(item.trashedAt ?? "")
+            itemHasher.combine(item.updatedAt)
+            stateFingerprint ^= itemHasher.finalize()
+        }
+        hasher.combine(stateFingerprint)
     }
 }
 

@@ -1512,6 +1512,16 @@ final class DashboardDataModelTests: XCTestCase {
         let fileListContentView = try sourceStructBody(named: "DashboardFileListContentView", in: detail)
         let prunedListView = try sourceStructBody(named: "PrunedListView", in: detail)
         let stateItemListView = try sourceStructBody(named: "StateItemListView", in: detail)
+        let dashboardRenderSignature = try sourceBody(
+            after: "struct DashboardRenderSignature: Equatable",
+            in: detail,
+            description: "DashboardRenderSignature"
+        )
+        let dashboardFileRenderSignature = try sourceBody(
+            after: "struct DashboardFileRenderSignature: Equatable, Sendable",
+            in: detail,
+            description: "DashboardFileRenderSignature"
+        )
         let fileItem = try sourceBody(
             after: "private struct DashboardFileItem",
             in: detail,
@@ -1554,6 +1564,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(detail.contains("let sortedFiles = filteredFiles.sorted(by: sortOption)"))
         XCTAssertFalse(detail.contains("let records = files.filter { $0.matches(filters: filters) }"))
         XCTAssertFalse(detail.contains("let sortedRecords = records.sorted(by: sortOption)"))
+        XCTAssertTrue(dashboardRenderSignature.contains("private static func combineNoticeInteractions"))
+        XCTAssertTrue(dashboardRenderSignature.contains("private static func combineFileInteractions"))
+        XCTAssertTrue(dashboardRenderSignature.contains("stateFingerprint ^= itemHasher.finalize()"))
+        XCTAssertFalse(dashboardRenderSignature.contains("states.keys.sorted()"))
+        XCTAssertTrue(dashboardFileRenderSignature.contains("private static func combineInteractionStates"))
+        XCTAssertTrue(dashboardFileRenderSignature.contains("Self.combineInteractionStates(snapshot.appUserState?.files ?? [:], into: &hasher)"))
+        XCTAssertTrue(dashboardFileRenderSignature.contains("Self.combineInteractionStates(snapshot.appUserState?.quarantine ?? [:], into: &hasher)"))
+        XCTAssertTrue(dashboardFileRenderSignature.contains("stateFingerprint ^= itemHasher.finalize()"))
+        XCTAssertFalse(dashboardFileRenderSignature.contains(".sorted(by: { $0.key < $1.key })"))
         XCTAssertTrue(detail.contains("private struct DashboardPrunedListBaseInputSignature: Equatable"))
         XCTAssertTrue(detail.contains("private struct DashboardPrunedListInputSignature: Equatable"))
         XCTAssertTrue(detail.contains("private struct DashboardPrunedListPresentation: Sendable"))
