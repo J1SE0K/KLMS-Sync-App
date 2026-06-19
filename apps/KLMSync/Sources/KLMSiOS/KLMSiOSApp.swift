@@ -2803,78 +2803,30 @@ private struct CompanionStatusScreen: View {
     }
 
     private var statusRegularWorkspace: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                statusCommandColumn
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-                statusMetricColumn
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-                statusDetailColumn
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                        maxWidth: .infinity,
-                        alignment: .topLeading
-                    )
-            }
-
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                statusCommandColumn
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-                VStack(alignment: .leading, spacing: 12) {
-                    statusMetricColumn
-                    statusDetailColumn
-                }
+        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+            statusCommandColumn
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
+                    maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
+                    alignment: .topLeading
+                )
+            statusMetricColumn
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
+                    maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
+                    alignment: .topLeading
+                )
+            statusDetailColumn
                 .frame(
                     minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
                     idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
                     maxWidth: .infinity,
                     alignment: .topLeading
                 )
-            }
-
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                statusCommandColumn
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.compactCommandColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.compactCommandColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.compactCommandColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-                VStack(alignment: .leading, spacing: 12) {
-                    statusMetricColumn
-                    statusDetailColumn
-                }
-                .frame(
-                    minWidth: CompanionWorkstationMetrics.compactDetailColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.compactDetailColumnIdealWidth,
-                    maxWidth: .infinity,
-                    alignment: .topLeading
-                )
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                statusCommandColumn
-                statusMetricColumn
-                statusDetailColumn
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var statusSummaryColumn: some View {
