@@ -5854,6 +5854,7 @@ private struct WorkstationDashboardPreviewSection: View {
                             .equatable()
                     }
                     .buttonStyle(KLMSCardButtonStyle())
+                    .accessibilityLabel("\(title) \(item.title.nilIfEmpty ?? "항목") 상세 열기")
                     .accessibilityHint("\(title) 상세를 엽니다.")
                 }
             }

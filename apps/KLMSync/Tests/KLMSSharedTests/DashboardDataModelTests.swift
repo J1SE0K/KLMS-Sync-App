@@ -3612,6 +3612,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(workstationPreviewSection.contains("var onOpenCategory: (DashboardMetricCategory) -> Void"))
         XCTAssertTrue(workstationPreviewSection.contains("Button {\n                        onOpenCategory(category)"))
         XCTAssertTrue(workstationPreviewSection.contains(".buttonStyle(KLMSCardButtonStyle())"))
+        XCTAssertTrue(workstationPreviewSection.contains(".accessibilityLabel(\"\\(title) \\(item.title.nilIfEmpty ?? \"항목\") 상세 열기\")"))
         XCTAssertTrue(workstationChangeSummary.contains("var status: SanitizedRemoteStatus"))
         XCTAssertFalse(workstationChangeSummary.contains("@ObservedObject var model"))
         XCTAssertFalse(workstationChangeSummary.contains("let model: CompanionModel"))
