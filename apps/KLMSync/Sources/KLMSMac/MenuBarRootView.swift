@@ -99,7 +99,6 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
         Group {
             if loadedID == id {
                 content()
-                    .accessibilityIdentifier(contentIdentifier ?? id)
             } else {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -119,12 +118,22 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
                 .accessibilityIdentifier("workspace-loading-\(contentIdentifier ?? id)")
             }
         }
+        .overlay(alignment: .topLeading) {
+            workspaceContentAccessibilityMarker
+        }
         .task(id: id) {
             loadedID = nil
             await Task.yield()
             guard !Task.isCancelled else { return }
             loadedID = id
         }
+    }
+
+    private var workspaceContentAccessibilityMarker: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityLabel(loadedID == id ? "작업공간 내용" : loadingText)
+            .accessibilityIdentifier(contentIdentifier ?? id)
     }
 }
 
@@ -152,7 +161,6 @@ private struct MacWorkstationLayoutView: View {
                         DashboardFileDataPrewarmView(snapshot: model.snapshot, signature: model.dashboardFileRenderSignature)
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .accessibilityIdentifier("workspace-content-dashboard")
                 }
             case .files:
                 DeferredMacWorkspacePanel(id: "workspace-files", contentIdentifier: "workspace-content-files", loadingText: "파일 목록을 준비하는 중입니다.") {
