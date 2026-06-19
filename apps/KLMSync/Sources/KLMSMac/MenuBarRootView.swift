@@ -2315,7 +2315,7 @@ private struct DiagnosticToolsPanelView: View {
     private var dryRunReportSummary: some View {
         if !model.snapshot.dryRunReports.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(model.snapshot.dryRunReports.keys).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { scope in
+                ForEach(model.snapshot.dryRunReports.keys.sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { scope in
                     if let report = model.snapshot.dryRunReports[scope] {
                         Text("\(scope.displayName): 생성 \(report.wouldCreate) · 수정 \(report.wouldUpdate) · 삭제 \(report.wouldDelete) · 다운로드 \(report.wouldDownload) · 정리 예정 \(report.wouldPrune)")
                             .font(.caption)

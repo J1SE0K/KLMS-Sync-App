@@ -8091,7 +8091,7 @@ private struct MailPasteAnalysisResultView: View {
                         Text("관련 KLMS 항목")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.klmsSecondaryText)
-                        ForEach(Array(analysis.matchedItems.prefix(5))) { item in
+                        ForEach(analysis.matchedItems.prefix(5)) { item in
                             VStack(alignment: .leading, spacing: 8) {
                                 Button {
                                     companionPerformWithoutAnimation {
