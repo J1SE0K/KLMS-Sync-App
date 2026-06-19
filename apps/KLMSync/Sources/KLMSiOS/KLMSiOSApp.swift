@@ -4355,10 +4355,15 @@ private extension CompanionItemListInputKey {
 
 private enum CompanionLargeList {
     static let initialVisibleLimit = 4
+    static let regularInitialVisibleLimit = 8
     static let previewVisibleLimit = 5
     static let calendarVisibleLimit = 6
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
+
+    static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
+        horizontalSizeClass == .regular ? regularInitialVisibleLimit : initialVisibleLimit
+    }
 }
 
 private struct CompanionItemFilterOptions: Equatable, Sendable {
@@ -7091,6 +7096,7 @@ private enum CompanionInlineItemRowsPresentation {
 }
 
 private struct CompanionInlineItemRowsView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var category: DashboardMetricCategory
     var items: [ServerRelaySyncItem]
     let model: CompanionModel
@@ -7150,13 +7156,23 @@ private struct CompanionInlineItemRowsView: View {
             }
         }
         .onChange(of: visibleItemsResetKey) { _, _ in
-            visibleLimit = CompanionLargeList.initialVisibleLimit
+            visibleLimit = currentInitialVisibleLimit
             clearStaleInlineSelectionIfNeeded()
+        }
+        .onChange(of: horizontalSizeClass) { _, _ in
+            visibleLimit = currentInitialVisibleLimit
+        }
+        .onAppear {
+            visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
         }
     }
 
     private var activeSelectedItemID: String? {
         presentation == .externalDetail ? externalSelectedItemID : selectedItemID
+    }
+
+    private var currentInitialVisibleLimit: Int {
+        CompanionLargeList.initialVisibleLimit(horizontalSizeClass: horizontalSizeClass)
     }
 
     private var visibleItemsResetKey: String {
@@ -7197,6 +7213,7 @@ private struct CompanionInlineItemRowsView: View {
 }
 
 private struct CompanionSelectableItemListRows: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var items: [ServerRelaySyncItem]
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
@@ -7233,8 +7250,18 @@ private struct CompanionSelectableItemListRows: View {
             }
         }
         .onChange(of: visibleItemsResetKey) { _, _ in
-            visibleLimit = CompanionLargeList.initialVisibleLimit
+            visibleLimit = currentInitialVisibleLimit
         }
+        .onChange(of: horizontalSizeClass) { _, _ in
+            visibleLimit = currentInitialVisibleLimit
+        }
+        .onAppear {
+            visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
+        }
+    }
+
+    private var currentInitialVisibleLimit: Int {
+        CompanionLargeList.initialVisibleLimit(horizontalSizeClass: horizontalSizeClass)
     }
 
     private var visibleItemsResetKey: String {
