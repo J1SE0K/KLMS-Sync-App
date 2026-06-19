@@ -4409,7 +4409,6 @@ private enum CompanionLargeList {
     static let logVisibleLimit = 10
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 8_000_000
-    static let prewarmDelayNanoseconds: UInt64 = 120_000_000
 
     static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
         horizontalSizeClass == .regular ? regularInitialVisibleLimit : initialVisibleLimit
@@ -4516,7 +4515,6 @@ private struct CompanionItemListPrewarmView: View {
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
             .task(id: prewarmKey) {
-                try? await Task.sleep(nanoseconds: CompanionLargeList.prewarmDelayNanoseconds)
                 guard !Task.isCancelled else { return }
                 await CompanionItemListPreloadStore.prewarm(model: model, categories: categories)
             }
@@ -6492,7 +6490,6 @@ private struct DashboardCategoryInlineDetailPanel: View {
             cachedListInputKey = inputKey
             return
         }
-        await Task.yield()
         guard !Task.isCancelled else { return }
         let items = model.cachedDashboardItems(for: category.rawValue)
         let category = category
@@ -9745,7 +9742,6 @@ private struct ServerSyncDataPanel: View {
     }
 
     private func rebuildCachedListData(for inputKey: CompanionItemListInputKey) async {
-        await Task.yield()
         guard !Task.isCancelled else { return }
         let items = items
         let query = query
