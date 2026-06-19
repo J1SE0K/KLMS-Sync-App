@@ -4826,6 +4826,68 @@ private struct CompanionItemListControlsPlaceholder: View {
     }
 }
 
+private struct DeferredCompanionItemListControls: View {
+    var listData: CompanionItemListData
+    @Binding var sortOption: CompanionItemSortOption
+    @Binding var visibilityFilter: CompanionItemVisibilityFilter
+    @Binding var statusFilter: CompanionItemStatusFilter
+    @Binding var selectedCourse: String
+    @Binding var selectedYear: String
+    @Binding var selectedSemester: String
+    @Binding var newOnly: Bool
+    @Binding var recentOnly: Bool
+    var supportsNewOnly: Bool
+    var supportsRecentOnly: Bool
+    var defaultStatusFilter: CompanionItemStatusFilter
+    @State private var displayedOptionsKey: String?
+
+    var body: some View {
+        Group {
+            if displayedOptionsKey == optionsKey {
+                CompanionItemListControls(
+                    sortOption: $sortOption,
+                    visibilityFilter: $visibilityFilter,
+                    statusFilter: $statusFilter,
+                    selectedCourse: $selectedCourse,
+                    selectedYear: $selectedYear,
+                    selectedSemester: $selectedSemester,
+                    newOnly: $newOnly,
+                    recentOnly: $recentOnly,
+                    availableStatusFilters: listData.availableStatusFilters,
+                    courseOptions: listData.courseOptions,
+                    yearOptions: listData.yearOptions,
+                    semesterOptions: listData.semesterOptions,
+                    supportsNewOnly: supportsNewOnly,
+                    supportsRecentOnly: supportsRecentOnly,
+                    defaultStatusFilter: defaultStatusFilter,
+                    totalCount: listData.baseItems.count,
+                    filteredCount: listData.filteredItems.count
+                )
+            } else {
+                CompanionItemListControlsPlaceholder()
+            }
+        }
+        .task(id: optionsKey) {
+            displayedOptionsKey = nil
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            displayedOptionsKey = optionsKey
+        }
+    }
+
+    private var optionsKey: String {
+        [
+            "\(listData.baseItems.count)",
+            "\(listData.courseOptions.count)",
+            listData.courseOptions.first ?? "",
+            listData.courseOptions.last ?? "",
+            listData.yearOptions.joined(separator: "|"),
+            listData.semesterOptions.joined(separator: "|"),
+            listData.availableStatusFilters.map(\.rawValue).joined(separator: "|"),
+        ].joined(separator: "::")
+    }
+}
+
 private struct CompanionSearchFilterPanel<Controls: View>: View {
     var title: String
     var fieldPrompt: String
@@ -6341,7 +6403,8 @@ private struct DashboardCategoryInlineDetailPanel: View {
             LazyVStack(alignment: .leading, spacing: 8) {
                 CompanionSearchFilterPanel(title: "검색과 필터", fieldPrompt: "\(category.title) 검색", query: $query) {
                     if let listData = cachedListData {
-                        CompanionItemListControls(
+                        DeferredCompanionItemListControls(
+                            listData: listData,
                             sortOption: $sortOption,
                             visibilityFilter: $visibilityFilter,
                             statusFilter: $statusFilter,
@@ -6350,15 +6413,9 @@ private struct DashboardCategoryInlineDetailPanel: View {
                             selectedSemester: $selectedSemester,
                             newOnly: $newOnly,
                             recentOnly: $recentOnly,
-                            availableStatusFilters: listData.availableStatusFilters,
-                            courseOptions: listData.courseOptions,
-                            yearOptions: listData.yearOptions,
-                            semesterOptions: listData.semesterOptions,
                             supportsNewOnly: category.supportsNewOnly,
                             supportsRecentOnly: category.supportsRecentOnly,
-                            defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
-                            totalCount: listData.baseItems.count,
-                            filteredCount: listData.filteredItems.count
+                            defaultStatusFilter: CompanionItemStatusFilter.defaultFilter(for: category)
                         )
                     } else {
                         CompanionItemListControlsPlaceholder()
@@ -9619,7 +9676,8 @@ private struct ServerSyncDataPanel: View {
 
                 CompanionSearchFilterPanel(title: "검색과 필터", fieldPrompt: "동기화 데이터 검색", query: $query) {
                     if let listData = cachedListData {
-                        CompanionItemListControls(
+                        DeferredCompanionItemListControls(
+                            listData: listData,
                             sortOption: $sortOption,
                             visibilityFilter: $visibilityFilter,
                             statusFilter: $statusFilter,
@@ -9628,15 +9686,9 @@ private struct ServerSyncDataPanel: View {
                             selectedSemester: $selectedSemester,
                             newOnly: $newOnly,
                             recentOnly: $recentOnly,
-                            availableStatusFilters: listData.availableStatusFilters,
-                            courseOptions: listData.courseOptions,
-                            yearOptions: listData.yearOptions,
-                            semesterOptions: listData.semesterOptions,
                             supportsNewOnly: true,
                             supportsRecentOnly: true,
-                            defaultStatusFilter: .all,
-                            totalCount: listData.baseItems.count,
-                            filteredCount: listData.filteredItems.count
+                            defaultStatusFilter: .all
                         )
                     } else {
                         CompanionItemListControlsPlaceholder()
