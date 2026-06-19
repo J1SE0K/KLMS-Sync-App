@@ -6433,7 +6433,10 @@ private struct DashboardCategoryInlineDetailPanel: View {
                         }
                     }
                     if calendarChanges.count > visibleChanges.count {
-                        CompanionShowMoreRowsButton(remainingCount: calendarChanges.count - visibleChanges.count) {
+                        CompanionShowMoreRowsButton(
+                            remainingCount: calendarChanges.count - visibleChanges.count,
+                            context: "캘린더 변경"
+                        ) {
                             calendarVisibleLimit += CompanionLargeList.increment
                         }
                     }
@@ -7080,7 +7083,10 @@ private struct WorkstationCalendarWorkspace: View {
                     }
                 }
                 if changes.count > calendarVisibleLimit {
-                    CompanionShowMoreRowsButton(remainingCount: changes.count - calendarVisibleLimit) {
+                    CompanionShowMoreRowsButton(
+                        remainingCount: changes.count - calendarVisibleLimit,
+                        context: "캘린더 변경"
+                    ) {
                         calendarVisibleLimit += CompanionLargeList.increment
                     }
                 }
@@ -7341,7 +7347,8 @@ private struct CompanionInlineItemRowsView: View {
             }
             if items.count > visibleItems.count {
                 CompanionShowMoreRowsButton(
-                    remainingCount: items.count - visibleItems.count
+                    remainingCount: items.count - visibleItems.count,
+                    context: category.title
                 ) {
                     visibleLimit += CompanionLargeList.increment
                 }
@@ -7466,7 +7473,8 @@ private struct CompanionSelectableItemListRows: View {
             }
             if items.count > visibleItems.count {
                 CompanionShowMoreRowsButton(
-                    remainingCount: items.count - visibleItems.count
+                    remainingCount: items.count - visibleItems.count,
+                    context: "목록 항목"
                 ) {
                     visibleLimit += CompanionLargeList.increment
                 }
@@ -7513,6 +7521,7 @@ private struct CompanionSelectableItemListRows: View {
 
 private struct CompanionShowMoreRowsButton: View {
     var remainingCount: Int
+    var context: String = "항목"
     var action: () -> Void
 
     var body: some View {
@@ -7538,7 +7547,7 @@ private struct CompanionShowMoreRowsButton: View {
             }
         }
         .buttonStyle(KLMSCardButtonStyle())
-        .accessibilityLabel("항목 더 보기")
+        .accessibilityLabel("\(context) 더 보기")
         .accessibilityValue("\(remainingCount)개 남음")
     }
 }
@@ -7645,7 +7654,10 @@ private struct RemoteChangeSummaryDetailPanel: View {
                         }
                     }
                     if changedCalendarItems.count > visibleCalendarItems.count {
-                        CompanionShowMoreRowsButton(remainingCount: changedCalendarItems.count - visibleCalendarItems.count) {
+                        CompanionShowMoreRowsButton(
+                            remainingCount: changedCalendarItems.count - visibleCalendarItems.count,
+                            context: "캘린더 변경"
+                        ) {
                             calendarVisibleLimit += CompanionLargeList.increment
                         }
                     }
@@ -7680,7 +7692,10 @@ private struct RemoteChangeSummaryDetailPanel: View {
                     }
                 }
                 if changedItems.count > visibleChangedItems.count {
-                    CompanionShowMoreRowsButton(remainingCount: changedItems.count - visibleChangedItems.count) {
+                    CompanionShowMoreRowsButton(
+                        remainingCount: changedItems.count - visibleChangedItems.count,
+                        context: "\(kind.title) 항목"
+                    ) {
                         visibleItemLimit += CompanionLargeList.increment
                     }
                 }
@@ -7712,7 +7727,10 @@ private struct RemoteChangeSummaryDetailPanel: View {
                         RemoteDryRunReportRow(report: report)
                     }
                     if fileCleanupReports.count > visibleReports.count {
-                        CompanionShowMoreRowsButton(remainingCount: fileCleanupReports.count - visibleReports.count) {
+                        CompanionShowMoreRowsButton(
+                            remainingCount: fileCleanupReports.count - visibleReports.count,
+                            context: "파일 정리 기록"
+                        ) {
                             cleanupVisibleLimit += CompanionLargeList.increment
                         }
                     }
@@ -11979,7 +11997,10 @@ private struct SharedRunLogsView: View {
                     }
                 }
                 if logs.count > visibleLogs.count {
-                    CompanionShowMoreRowsButton(remainingCount: logs.count - visibleLogs.count) {
+                    CompanionShowMoreRowsButton(
+                        remainingCount: logs.count - visibleLogs.count,
+                        context: "동기화 단계 기록"
+                    ) {
                         visibleLimit += CompanionLargeList.increment
                     }
                 }
@@ -12136,7 +12157,10 @@ private struct RecentFileAccessRequestsView: View {
                     }
                 }
                 if requests.count > visibleRequests.count {
-                    CompanionShowMoreRowsButton(remainingCount: requests.count - visibleRequests.count) {
+                    CompanionShowMoreRowsButton(
+                        remainingCount: requests.count - visibleRequests.count,
+                        context: "파일 요청 기록"
+                    ) {
                         visibleLimit += CompanionLargeList.increment
                     }
                 }
@@ -12195,7 +12219,10 @@ private struct RecentServerRequestLogView: View {
                     }
                 }
                 if entries.count > visibleEntries.count {
-                    CompanionShowMoreRowsButton(remainingCount: entries.count - visibleEntries.count) {
+                    CompanionShowMoreRowsButton(
+                        remainingCount: entries.count - visibleEntries.count,
+                        context: "서버 요청 기록"
+                    ) {
                         visibleLimit += CompanionLargeList.increment
                     }
                 }
@@ -12757,7 +12784,10 @@ private struct RecentRemoteCommandsView: View {
                     }
                 }
                 if commands.count > visibleCommands.count {
-                    CompanionShowMoreRowsButton(remainingCount: commands.count - visibleCommands.count) {
+                    CompanionShowMoreRowsButton(
+                        remainingCount: commands.count - visibleCommands.count,
+                        context: "최근 요청 기록"
+                    ) {
                         visibleLimit += CompanionLargeList.increment
                     }
                 }
