@@ -2016,7 +2016,8 @@ private struct NoticeDashboardBaseInputSignature: Equatable {
         hasher.combine(snapshot.noticeDigest?.generatedAt ?? "")
         let notices = snapshot.noticeDigest?.notices ?? []
         hasher.combine(notices.count)
-        for notice in notices {
+        for (index, notice) in notices.enumerated() {
+            hasher.combine(index)
             hasher.combine(notice.id)
             hasher.combine(notice.title)
             hasher.combine(notice.course)
@@ -2025,14 +2026,20 @@ private struct NoticeDashboardBaseInputSignature: Equatable {
             hasher.combine(notice.changeState)
             hasher.combine(notice.noticeIdentifier)
         }
-        for (key, state) in (snapshot.noticeUserState?.notices ?? [:]).sorted(by: { $0.key < $1.key }) {
-            hasher.combine(key)
-            hasher.combine(state.readFingerprint ?? "")
-            hasher.combine(state.readAt ?? "")
-            hasher.combine(state.important)
-            hasher.combine(state.hidden)
-            hasher.combine(state.updatedAt)
+        let noticeStates = snapshot.noticeUserState?.notices ?? [:]
+        hasher.combine(noticeStates.count)
+        var stateFingerprint = 0
+        for (key, state) in noticeStates {
+            var itemHasher = Hasher()
+            itemHasher.combine(key)
+            itemHasher.combine(state.readFingerprint ?? "")
+            itemHasher.combine(state.readAt ?? "")
+            itemHasher.combine(state.important)
+            itemHasher.combine(state.hidden)
+            itemHasher.combine(state.updatedAt)
+            stateFingerprint ^= itemHasher.finalize()
         }
+        hasher.combine(stateFingerprint)
         value = hasher.finalize()
     }
 }

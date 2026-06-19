@@ -964,6 +964,11 @@ final class DashboardDataModelTests: XCTestCase {
         let logTextBlock = try sourceStructBody(named: "LogTextBlock", in: view)
         let dashboardFilterBar = try sourceStructBody(named: "DashboardFilterBarView", in: detail)
         let noticeListView = try sourceStructBody(named: "NoticeListView", in: detail)
+        let noticeBaseSignature = try sourceBody(
+            after: "private struct NoticeDashboardBaseInputSignature: Equatable",
+            in: detail,
+            description: "notice dashboard base signature"
+        )
         let noticeCategoryPickerView = try sourceStructBody(named: "NoticeCategoryPickerView", in: detail)
         let yearFieldIndex = try XCTUnwrap(dashboardFilterBar.range(of: "yearPickerField")?.lowerBound)
         let semesterFieldIndex = try XCTUnwrap(dashboardFilterBar.range(of: "semesterPickerField")?.lowerBound)
@@ -1005,6 +1010,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("private struct NoticeDashboardBaseInputSignature: Equatable"))
         XCTAssertTrue(detail.contains("private struct NoticeDashboardInputSignature: Equatable"))
         XCTAssertTrue(detail.contains("private struct NoticeDashboardPresentation: Sendable"))
+        XCTAssertTrue(noticeBaseSignature.contains("for (index, notice) in notices.enumerated()"))
+        XCTAssertTrue(noticeBaseSignature.contains("var stateFingerprint = 0"))
+        XCTAssertTrue(noticeBaseSignature.contains("stateFingerprint ^= itemHasher.finalize()"))
+        XCTAssertFalse(noticeBaseSignature.contains(".sorted(by:"))
         XCTAssertTrue(detail.contains("init(category: NoticeListCategory, filters: DashboardDetailFilters, snapshot: EngineSnapshot)"))
         XCTAssertTrue(noticeListView.contains("let nextPresentation = await Task.detached(priority: .userInitiated)"))
         XCTAssertTrue(noticeListView.contains("presentation = nextPresentation"))
