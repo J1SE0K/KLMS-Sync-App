@@ -6512,11 +6512,20 @@ private struct WorkstationDashboardCategoryWorkspace: View {
 
 private struct WorkstationTasksWorkspace: View {
     let model: CompanionModel
+    @State private var selectedTaskCategory = DashboardMetricCategory.assignments
     @State private var selectedItemID: String?
     @State private var displayedSelectedItem: ServerRelaySyncItem?
 
-    private var combinedItems: [ServerRelaySyncItem] {
-        model.cachedVisibleDashboardTaskItems()
+    private var taskCategories: [DashboardMetricCategory] {
+        var categories: [DashboardMetricCategory] = [.assignments, .exams]
+        if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
+            categories.append(.helpDesk)
+        }
+        return categories
+    }
+
+    private var selectedCategoryItems: [ServerRelaySyncItem] {
+        model.cachedVisibleDashboardItems(for: selectedTaskCategory.rawValue)
     }
 
     private var activeSelectedItemID: String? {
@@ -6533,13 +6542,30 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var itemsResetKey: String {
-        "\(combinedItems.count):\(combinedItems.first?.id ?? ""):\(combinedItems.last?.id ?? "")"
+        [
+            selectedTaskCategory.rawValue,
+            "\(selectedCategoryItems.count)",
+            selectedCategoryItems.first?.id ?? "",
+            selectedCategoryItems.last?.id ?? "",
+        ].joined(separator: ":")
+    }
+
+    private var categoryAvailabilityKey: String {
+        taskCategories.map(\.rawValue).joined(separator: ":")
     }
 
     var body: some View {
         tasksRegularWorkspace
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .onAppear {
+                normalizeSelectedTaskCategory()
+                refreshExternalSelection()
+            }
+            .onChange(of: categoryAvailabilityKey) { _, _ in
+                normalizeSelectedTaskCategory()
+                refreshExternalSelection()
+            }
+            .onChange(of: selectedTaskCategory) { _, _ in
                 refreshExternalSelection()
             }
             .onChange(of: itemsResetKey) { _, _ in
@@ -6594,12 +6620,14 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var tasksListPanel: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            taskPanel(.assignments)
-            taskPanel(.exams)
-            if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
-                taskPanel(.helpDesk)
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            WorkstationTaskCategorySelector(
+                categories: taskCategories,
+                status: model.dashboardStatus,
+                selectedCategory: $selectedTaskCategory
+            )
+            taskPanel(selectedTaskCategory)
+                .id(selectedTaskCategory.rawValue)
         }
     }
 
@@ -6637,14 +6665,14 @@ private struct WorkstationTasksWorkspace: View {
 
     private func refreshExternalSelection() {
         if let selectedItemID,
-           let refreshed = combinedItems.first(where: { $0.id == selectedItemID }) {
+           let refreshed = selectedCategoryItems.first(where: { $0.id == selectedItemID }) {
             companionPerformWithoutAnimation {
                 displayedSelectedItem = refreshed
             }
             return
         }
 
-        guard let first = combinedItems.first else {
+        guard let first = selectedCategoryItems.first else {
             companionPerformWithoutAnimation {
                 selectedItemID = nil
                 displayedSelectedItem = nil
@@ -6656,6 +6684,95 @@ private struct WorkstationTasksWorkspace: View {
             selectedItemID = first.id
             displayedSelectedItem = first
         }
+    }
+
+    private func normalizeSelectedTaskCategory() {
+        guard !taskCategories.contains(selectedTaskCategory),
+              let first = taskCategories.first else {
+            return
+        }
+        companionPerformWithoutAnimation {
+            selectedTaskCategory = first
+        }
+    }
+}
+
+private struct WorkstationTaskCategorySelector: View {
+    var categories: [DashboardMetricCategory]
+    var status: SanitizedRemoteStatus
+    @Binding var selectedCategory: DashboardMetricCategory
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 132), spacing: 8),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("작업 종류", systemImage: "square.grid.2x2")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(categories) { category in
+                    categoryButton(category)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+        }
+    }
+
+    private func categoryButton(_ category: DashboardMetricCategory) -> some View {
+        let isSelected = selectedCategory == category
+        let value = category.value(from: status)
+        return Button {
+            guard selectedCategory != category else { return }
+            companionPerformWithoutAnimation {
+                selectedCategory = category
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: category.systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        isSelected ? Color.klmsSelectedForeground.opacity(0.13) : category.tint.opacity(0.11),
+                        in: RoundedRectangle(cornerRadius: 8)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(category.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                        .lineLimit(1)
+                    Text("\(value)개")
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.78) : Color.klmsSecondaryText)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(
+                isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground.opacity(0.82),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.62), lineWidth: isSelected ? 1.2 : 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+        .accessibilityLabel("\(category.title) \(value)개")
+        .accessibilityValue(isSelected ? "선택됨" : "")
+        .accessibilityHint("\(category.title) 목록을 가운데 작업 영역에 표시합니다.")
     }
 }
 
