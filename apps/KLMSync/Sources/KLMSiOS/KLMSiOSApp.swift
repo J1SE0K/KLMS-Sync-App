@@ -223,6 +223,7 @@ final class CompanionModel: ObservableObject {
     private var dashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
     private var visibleDashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
     private var dashboardFilterOptionsByCategoryID: [String: CompanionItemFilterOptions] = [:]
+    private var defaultDashboardListDataByCategoryID: [String: CompanionItemListData] = [:]
     private var visibleDashboardTaskItems: [ServerRelaySyncItem] = []
 
     private static let terminalLogSummaryDisplayInterval: TimeInterval = 5 * 60
@@ -444,17 +445,37 @@ final class CompanionModel: ObservableObject {
         var next: [String: [ServerRelaySyncItem]] = [:]
         var nextVisible: [String: [ServerRelaySyncItem]] = [:]
         var nextFilterOptions: [String: CompanionItemFilterOptions] = [:]
+        var nextDefaultListData: [String: CompanionItemListData] = [:]
         for category in DashboardMetricCategory.allCases {
             let categoryItems = dashboardSyncItems
                 .filter { category.includes($0) }
                 .companionSorted(by: .recent)
+            let filterOptions = CompanionItemFilterOptions(items: categoryItems, category: category)
             next[category.rawValue] = categoryItems
             nextVisible[category.rawValue] = categoryItems.filter { !$0.isHidden }
-            nextFilterOptions[category.rawValue] = CompanionItemFilterOptions(items: categoryItems, category: category)
+            nextFilterOptions[category.rawValue] = filterOptions
+            if category.supportsWorkstationSelectionWorkspace {
+                nextDefaultListData[category.rawValue] = CompanionItemListData(
+                    items: categoryItems,
+                    category: category,
+                    isCategoryPrefiltered: true,
+                    query: "",
+                    sortOption: CompanionItemSortOption.defaultSort(for: category),
+                    visibilityFilter: .visible,
+                    statusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
+                    selectedCourse: CompanionItemListFilter.allCourses,
+                    selectedYear: CompanionItemListFilter.allYears,
+                    selectedSemester: CompanionItemListFilter.allSemesters,
+                    newOnly: false,
+                    recentOnly: false,
+                    filterOptions: filterOptions
+                )
+            }
         }
         dashboardItemsByCategoryID = next
         visibleDashboardItemsByCategoryID = nextVisible
         dashboardFilterOptionsByCategoryID = nextFilterOptions
+        defaultDashboardListDataByCategoryID = nextDefaultListData
         visibleDashboardTaskItems = [
             nextVisible[DashboardMetricCategory.assignments.rawValue] ?? [],
             nextVisible[DashboardMetricCategory.exams.rawValue] ?? [],
@@ -1229,6 +1250,10 @@ final class CompanionModel: ObservableObject {
 
     fileprivate func cachedDashboardFilterOptions(for categoryID: String) -> CompanionItemFilterOptions? {
         dashboardFilterOptionsByCategoryID[categoryID]
+    }
+
+    fileprivate func cachedDefaultDashboardListData(for categoryID: String) -> CompanionItemListData? {
+        defaultDashboardListDataByCategoryID[categoryID]
     }
 
     func cachedVisibleDashboardTaskItems() -> [ServerRelaySyncItem] {
@@ -6292,6 +6317,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
         }
         .onAppear {
             calendarVisibleLimit = max(calendarVisibleLimit, currentCalendarVisibleLimit)
+            seedDefaultListDataIfAvailable()
         }
     }
 
@@ -6420,6 +6446,22 @@ private struct DashboardCategoryInlineDetailPanel: View {
         )
     }
 
+    private var defaultListInputKey: CompanionItemListInputKey {
+        CompanionItemListInputKey(
+            itemsRevision: model.dashboardSyncItemsRevision,
+            category: category.rawValue,
+            query: "",
+            sortOption: CompanionItemSortOption.defaultSort(for: category).rawValue,
+            visibilityFilter: CompanionItemVisibilityFilter.visible.rawValue,
+            statusFilter: CompanionItemStatusFilter.defaultFilter(for: category).rawValue,
+            selectedCourse: CompanionItemListFilter.allCourses,
+            selectedYear: CompanionItemListFilter.allYears,
+            selectedSemester: CompanionItemListFilter.allSemesters,
+            newOnly: false,
+            recentOnly: false
+        )
+    }
+
     private var calendarChangesResetKey: String {
         "\(calendarChanges.count):\(calendarChanges.first?.id ?? ""):\(calendarChanges.last?.id ?? "")"
     }
@@ -6427,6 +6469,9 @@ private struct DashboardCategoryInlineDetailPanel: View {
     private func rebuildCachedListDataAfterInputSettles() async {
         let currentKey = listInputKey
         if cachedListInputKey == currentKey, cachedListData != nil {
+            return
+        }
+        if seedDefaultListDataIfAvailable(for: currentKey) {
             return
         }
         if let preloadedData = CompanionItemListPreloadStore.cachedData(for: currentKey) {
@@ -6481,6 +6526,19 @@ private struct DashboardCategoryInlineDetailPanel: View {
         CompanionItemListPreloadStore.store(listData, for: inputKey)
         cachedListData = listData
         cachedListInputKey = inputKey
+    }
+
+    @discardableResult
+    private func seedDefaultListDataIfAvailable(for currentKey: CompanionItemListInputKey? = nil) -> Bool {
+        let key = currentKey ?? listInputKey
+        guard key == defaultListInputKey,
+              let defaultData = model.cachedDefaultDashboardListData(for: category.rawValue) else {
+            return false
+        }
+        cachedListData = defaultData
+        cachedListInputKey = key
+        CompanionItemListPreloadStore.store(defaultData, for: key)
+        return true
     }
 
     private var summaryText: String {
@@ -9664,6 +9722,11 @@ private struct ServerSyncDataPanel: View {
         if cachedListInputKey == currentKey, cachedListData != nil {
             return
         }
+        if let preloadedData = CompanionItemListPreloadStore.cachedData(for: currentKey) {
+            cachedListData = preloadedData
+            cachedListInputKey = currentKey
+            return
+        }
         if cachedListData != nil, currentKey.shouldDebounceComparedTo(cachedListInputKey) {
             try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
             guard !Task.isCancelled, currentKey == listInputKey else { return }
@@ -9699,6 +9762,7 @@ private struct ServerSyncDataPanel: View {
             )
         }.value
         guard !Task.isCancelled, inputKey == listInputKey else { return }
+        CompanionItemListPreloadStore.store(listData, for: inputKey)
         cachedListData = listData
         cachedListInputKey = inputKey
     }
