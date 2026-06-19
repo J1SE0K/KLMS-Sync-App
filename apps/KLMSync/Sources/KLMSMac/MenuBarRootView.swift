@@ -4614,8 +4614,8 @@ private enum RunLogArchiveFilter: String, CaseIterable, Identifiable {
 private struct RunLogArchivePanelView: View {
     let model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
-    @State private var isHistoryExpanded = true
-    @State private var showingSystemLogs = true
+    @State private var isHistoryExpanded = false
+    @State private var showingSystemLogs = false
     @State private var visibleLimit = 30
 
     private var records: [CommandRunRecord] {
@@ -4627,7 +4627,6 @@ private struct RunLogArchivePanelView: View {
     }
 
     var body: some View {
-        let summary = RunLogArchiveSummary(records: records)
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
@@ -4641,7 +4640,7 @@ private struct RunLogArchivePanelView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacPrimaryText)
                             if !isHistoryExpanded {
-                                Text("\(summary.total)개")
+                                Text("\(records.count)개")
                                     .font(.caption2.monospacedDigit().weight(.semibold))
                                     .foregroundStyle(Color.klmsMacSecondaryText)
                                     .padding(.horizontal, 7)
@@ -4672,6 +4671,7 @@ private struct RunLogArchivePanelView: View {
                 }
 
                 if isHistoryExpanded {
+                    let summary = RunLogArchiveSummary(records: records)
                     VStack(alignment: .leading, spacing: 10) {
                         Text("각 실행 기록을 펼치면 마지막 로그를 볼 수 있습니다.")
                             .font(.caption)
