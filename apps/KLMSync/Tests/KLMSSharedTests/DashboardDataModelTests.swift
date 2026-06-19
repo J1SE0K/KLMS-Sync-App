@@ -1800,6 +1800,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(quickAccessGrid.contains("LazyVGrid(columns: columns, alignment: .leading, spacing: 7)"))
         XCTAssertTrue(quickAccessGrid.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertTrue(quickAccessGrid.contains(".accessibilityLabel(\"\\(category.title) \\(category.value(from: status))개 바로 보기\")"))
+        XCTAssertTrue(quickAccessGrid.contains(".accessibilityValue(isSelected ? \"선택됨\" : \"\")"))
         XCTAssertTrue(quickAccessGrid.contains(".accessibilityHint(\"대시보드 아래에 \\(category.title) 상세를 엽니다.\")"))
         XCTAssertFalse(dashboardSyncCard.contains("RemoteAttentionStack(model: model)"))
         XCTAssertTrue(ios.contains("private var hasAttention: Bool"))

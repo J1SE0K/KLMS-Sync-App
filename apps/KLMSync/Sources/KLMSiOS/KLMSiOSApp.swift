@@ -3078,6 +3078,7 @@ private struct CompanionDashboardQuickAccessGrid: View {
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
         .accessibilityLabel("\(category.title) \(category.value(from: status))개 바로 보기")
+        .accessibilityValue(isSelected ? "선택됨" : "")
         .accessibilityHint("대시보드 아래에 \(category.title) 상세를 엽니다.")
     }
 }
