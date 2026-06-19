@@ -4438,9 +4438,11 @@ private extension CompanionItemListInputKey {
 
 private enum CompanionLargeList {
     static let initialVisibleLimit = 4
-    static let regularInitialVisibleLimit = 8
+    static let regularInitialVisibleLimit = 12
     static let previewVisibleLimit = 5
+    static let regularPreviewVisibleLimit = 8
     static let calendarVisibleLimit = 6
+    static let regularCalendarVisibleLimit = 10
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
     static let detailRenderDelayNanoseconds: UInt64 = 35_000_000
@@ -4448,6 +4450,14 @@ private enum CompanionLargeList {
 
     static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
         horizontalSizeClass == .regular ? regularInitialVisibleLimit : initialVisibleLimit
+    }
+
+    static func previewVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
+        horizontalSizeClass == .regular ? regularPreviewVisibleLimit : previewVisibleLimit
+    }
+
+    static func calendarVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
+        horizontalSizeClass == .regular ? regularCalendarVisibleLimit : calendarVisibleLimit
     }
 }
 
@@ -6313,6 +6323,7 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
 }
 
 private struct DashboardCategoryInlineDetailPanel: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var category: DashboardMetricCategory
     let model: CompanionModel
     var itemPresentation: CompanionInlineItemRowsPresentation
@@ -6372,8 +6383,18 @@ private struct DashboardCategoryInlineDetailPanel: View {
             await rebuildCachedListDataAfterInputSettles()
         }
         .onChange(of: calendarChangesResetKey) { _, _ in
-            calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+            calendarVisibleLimit = currentCalendarVisibleLimit
         }
+        .onChange(of: horizontalSizeClass) { _, _ in
+            calendarVisibleLimit = currentCalendarVisibleLimit
+        }
+        .onAppear {
+            calendarVisibleLimit = max(calendarVisibleLimit, currentCalendarVisibleLimit)
+        }
+    }
+
+    private var currentCalendarVisibleLimit: Int {
+        CompanionLargeList.calendarVisibleLimit(horizontalSizeClass: horizontalSizeClass)
     }
 
     private var summaryHeader: some View {
@@ -6972,7 +6993,7 @@ private struct WorkstationCalendarWorkspace: View {
     @State private var selectedChangeID: String?
     @State private var displayedSelectedChange: CalendarChange?
     @State private var deferredDetailSelectionTask: Task<Void, Never>?
-    @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+    @State private var calendarVisibleLimit = CompanionLargeList.regularCalendarVisibleLimit
 
     private var changes: [CalendarChange] {
         model.visibleCalendarChanges()
@@ -7002,7 +7023,7 @@ private struct WorkstationCalendarWorkspace: View {
                 refreshExternalSelection()
             }
             .onChange(of: changesResetKey) { _, _ in
-                calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
+                calendarVisibleLimit = CompanionLargeList.regularCalendarVisibleLimit
                 refreshExternalSelection()
             }
             .onDisappear {
@@ -7537,6 +7558,7 @@ private struct CompanionShowMoreRowsButton: View {
 }
 
 private struct RemoteChangeSummaryDetailPanel: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var kind: RemoteChangeSummaryKind
     var status: SanitizedRemoteStatus
     var changedItems: [ServerRelaySyncItem]
@@ -7562,11 +7584,35 @@ private struct RemoteChangeSummaryDetailPanel: View {
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .onChange(of: visibleContentResetKey) { _, _ in
-            selectedItemID = nil
-            visibleItemLimit = CompanionLargeList.initialVisibleLimit
-            calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
-            cleanupVisibleLimit = CompanionLargeList.previewVisibleLimit
+            resetVisibleLimits()
         }
+        .onChange(of: horizontalSizeClass) { _, _ in
+            resetVisibleLimits()
+        }
+        .onAppear {
+            visibleItemLimit = max(visibleItemLimit, currentInitialVisibleLimit)
+            calendarVisibleLimit = max(calendarVisibleLimit, currentCalendarVisibleLimit)
+            cleanupVisibleLimit = max(cleanupVisibleLimit, currentPreviewVisibleLimit)
+        }
+    }
+
+    private var currentInitialVisibleLimit: Int {
+        CompanionLargeList.initialVisibleLimit(horizontalSizeClass: horizontalSizeClass)
+    }
+
+    private var currentCalendarVisibleLimit: Int {
+        CompanionLargeList.calendarVisibleLimit(horizontalSizeClass: horizontalSizeClass)
+    }
+
+    private var currentPreviewVisibleLimit: Int {
+        CompanionLargeList.previewVisibleLimit(horizontalSizeClass: horizontalSizeClass)
+    }
+
+    private func resetVisibleLimits() {
+        selectedItemID = nil
+        visibleItemLimit = currentInitialVisibleLimit
+        calendarVisibleLimit = currentCalendarVisibleLimit
+        cleanupVisibleLimit = currentPreviewVisibleLimit
     }
 
     private var header: some View {
