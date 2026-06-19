@@ -1154,7 +1154,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(view.contains("@State private var isArchiveMetricsExpanded = false"))
         XCTAssertTrue(view.contains("private struct DashboardArchiveMetricSection"))
         XCTAssertTrue(view.contains("archiveExpanded ? archiveMetrics : []"))
-        XCTAssertTrue(view.contains("@State private var isHistoryExpanded = false"))
+        XCTAssertTrue(view.contains("@State private var isHistoryExpanded = true"))
         XCTAssertTrue(view.contains("if !isHistoryExpanded"))
         XCTAssertTrue(view.contains("Text(\"\\(summary.total)개\")"))
         XCTAssertTrue(view.contains("@State private var showingSystemLogs = true"))
@@ -2961,7 +2961,7 @@ final class DashboardDataModelTests: XCTestCase {
             try XCTUnwrap(diagnosticsBody.range(of: "DiagnosticToolsPanelView")).lowerBound
         )
         XCTAssertTrue(diagnosticsBody.contains("DiagnosticToolsPanelView"))
-        XCTAssertTrue(diagnosticsBody.contains("DiagnosticStageDurationPanelView"))
+        XCTAssertFalse(diagnosticsBody.contains("DiagnosticStageDurationPanelView"))
         XCTAssertTrue(diagnosticsBody.contains("DoctorPanelView(snapshot: model.snapshot)"))
         XCTAssertTrue(diagnosticsBody.contains("AppDiagnosticsPanelView(model: model)"))
         XCTAssertTrue(diagnosticsBody.contains("LoginPanelView(model: model)"))

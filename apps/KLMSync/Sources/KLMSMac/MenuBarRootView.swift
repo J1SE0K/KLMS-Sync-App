@@ -182,7 +182,6 @@ private struct MacWorkstationLayoutView: View {
                 DeferredMacWorkspacePanel(id: "workspace-diagnostics", contentIdentifier: "workspace-content-diagnostics", loadingText: "진단 화면을 준비하는 중입니다.") {
                     VerifyPanelView(snapshot: model.snapshot)
                     DiagnosticToolsPanelView(model: model)
-                    DiagnosticStageDurationPanelView(model: model)
                     DoctorPanelView(snapshot: model.snapshot)
                     AppDiagnosticsPanelView(model: model)
                     LoginPanelView(model: model)
@@ -195,6 +194,7 @@ private struct MacWorkstationLayoutView: View {
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
     }
 
     private var workspaceContentMarker: some View {
@@ -4512,7 +4512,7 @@ private enum RunLogArchiveFilter: String, CaseIterable, Identifiable {
 private struct RunLogArchivePanelView: View {
     let model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
-    @State private var isHistoryExpanded = false
+    @State private var isHistoryExpanded = true
     @State private var showingSystemLogs = true
     @State private var visibleLimit = 30
 
@@ -4941,86 +4941,6 @@ private struct RunLogArchiveRowView: View {
             return .klmsMacSecondaryText
         }
         return record.succeeded ? .klmsMacSuccessBorder : .klmsMacWarningBorder
-    }
-}
-
-private struct LogPanelView: View {
-    var snapshot: EngineSnapshot
-    var history: CommandRunHistory
-
-    var body: some View {
-        if !history.records.isEmpty {
-            SectionBox(title: "실행 기록") {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(history.records.prefix(10)) { record in
-                        CommandHistoryRowView(record: record)
-                    }
-                }
-            }
-        }
-
-        if !snapshot.relayLogTail.isEmpty {
-            SectionBox(title: "서버 릴레이 로그") {
-                LogTextBlock(text: snapshot.relayLogTail.klmsDisplayText)
-            }
-        } else if history.records.isEmpty {
-            SectionBox(title: "저장된 로그") {
-                Text("저장된 실행 기록이나 서버 로그가 아직 없습니다.")
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-            }
-        }
-    }
-}
-
-private struct CommandHistoryRowView: View {
-    var record: CommandRunRecord
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(record.command.displayName)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                if record.dryRun {
-                    Text("변경량 계산")
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacCommandAccent)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                Text(record.statusText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(statusColor)
-                    .lineLimit(1)
-            }
-            Text("\(record.startedAt.formatted(date: .numeric, time: .standard)) · \(record.elapsedSecondsText)")
-                .font(.caption2)
-                .foregroundStyle(Color.klmsMacSecondaryText)
-            CompactStageDurationRowsView(durations: record.visibleStageDurations)
-            if !record.outputTail.isEmpty {
-                DisclosureGroup {
-                    CommandStageDurationSummaryView(durations: record.visibleStageDurations)
-                    Text(record.outputTail)
-                        .font(.system(.caption2, design: .monospaced))
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                } label: {
-                    Text("마지막 로그 보기")
-                        .font(.caption2)
-                }
-            }
-        }
-        .padding(8)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private var statusColor: Color {
-        if record.wasCancelled {
-            return .klmsMacSecondaryText
-        }
-        return record.succeeded ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder
     }
 }
 
