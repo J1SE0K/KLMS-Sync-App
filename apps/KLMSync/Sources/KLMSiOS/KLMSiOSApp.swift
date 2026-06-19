@@ -2577,7 +2577,7 @@ private struct CompanionSplitRootView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            WorkstationSidebar(selectedSection: $selectedSection)
+            WorkstationSidebar(model: model, selectedSection: $selectedSection)
                 .frame(width: CompanionWorkstationMetrics.sidebarWidth)
             Rectangle()
                 .fill(Color.klmsBorder)
@@ -2595,6 +2595,7 @@ private struct CompanionSplitRootView: View {
 }
 
 private struct WorkstationSidebar: View {
+    @ObservedObject var model: CompanionModel
     @Binding var selectedSection: CompanionAppSection?
 
     var body: some View {
@@ -2615,7 +2616,8 @@ private struct WorkstationSidebar: View {
                         isSelected: selectedSection == section,
                         showsIcon: true,
                         showsArrow: true,
-                        isCompact: false
+                        isCompact: false,
+                        badgeText: badgeText(for: section)
                     ) {
                         guard selectedSection != section else { return }
                         var transaction = Transaction()
@@ -2635,6 +2637,24 @@ private struct WorkstationSidebar: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.klmsCardBackground.opacity(0.72))
     }
+
+    private func badgeText(for section: CompanionAppSection) -> String? {
+        let status = model.dashboardStatus
+        let value: Int
+        switch section {
+        case .files:
+            value = status.fileTotal
+        case .notices:
+            value = status.notices
+        case .tasks:
+            value = status.assignments + status.exams
+        case .calendar:
+            value = status.calendarChangeTotal
+        case .status, .history, .settings:
+            return nil
+        }
+        return value > 0 ? "\(value)" : nil
+    }
 }
 
 private struct CompanionSidebarButton: View {
@@ -2643,6 +2663,7 @@ private struct CompanionSidebarButton: View {
     var showsIcon = true
     var showsArrow = true
     var isCompact = false
+    var badgeText: String?
     var action: () -> Void
 
     var body: some View {
@@ -2666,6 +2687,19 @@ private struct CompanionSidebarButton: View {
                     .font(.system(size: isCompact ? 12 : 13, weight: isSelected ? .bold : .semibold, design: .rounded))
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 Spacer(minLength: 0)
+                if let badgeText {
+                    Text(badgeText)
+                        .font(.caption2.weight(.bold).monospacedDigit())
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(isSelected ? Color.klmsSelectedForeground.opacity(0.14) : Color.klmsSubtleCardBackground, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.36) : Color.klmsBorder.opacity(0.72), lineWidth: 1)
+                        )
+                        .accessibilityHidden(true)
+                }
                 if showsArrow {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
@@ -2696,7 +2730,13 @@ private struct CompanionSidebarButton: View {
         }
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel(section.title)
-        .accessibilityValue(isSelected ? "선택됨" : "")
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var accessibilityValue: String {
+        [isSelected ? "선택됨" : nil, badgeText.map { "\($0)개" }]
+            .compactMap { $0 }
+            .joined(separator: ", ")
     }
 }
 
