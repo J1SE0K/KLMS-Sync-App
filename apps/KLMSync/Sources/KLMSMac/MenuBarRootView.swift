@@ -6,54 +6,49 @@ struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
     @State private var renderedSection = KLMSMacSection.dashboard
-    @State private var workspaceRenderTask: Task<Void, Never>?
     @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            MacWorkspaceSidebarView(
-                model: model,
-                selectedSection: $selectedSection,
-                resetCurrentSectionScroll: resetCurrentSectionScroll
-            )
-                .frame(width: 264, alignment: .topLeading)
-                .frame(maxHeight: .infinity, alignment: .top)
-            Rectangle()
-                .fill(Color.klmsMacBorder.opacity(0.76))
-                .frame(width: 1)
-            WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: renderedSection, nonce: scrollResetNonce)) {
-                VStack(alignment: .leading, spacing: 14) {
-                    DashboardTopBarView(model: model, selectedSection: $selectedSection)
-                    MacAlertBannerView(
-                        model: model,
-                        selectedSection: $selectedSection,
-                        expandedLogSummaryKind: $expandedLogSummaryKind
-                    )
-                    MacWorkstationLayoutView(
-                        model: model,
-                        selectedSection: renderedSection,
-                        expandedLogSummaryKind: $expandedLogSummaryKind
-                    )
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("workspace-scroll-\(renderedSection.rawValue)")
-        }
-        .overlay(alignment: .topLeading) {
+        ZStack(alignment: .topLeading) {
             MacWorkspaceSelectionAccessibilityMarker(section: selectedSection)
-        }
-        .overlay(alignment: .topLeading) {
             MacWorkspaceRenderedAccessibilityMarker(section: renderedSection)
+
+            HStack(alignment: .top, spacing: 0) {
+                MacWorkspaceSidebarView(
+                    model: model,
+                    selectedSection: $selectedSection,
+                    resetCurrentSectionScroll: resetCurrentSectionScroll
+                )
+                    .frame(width: 264, alignment: .topLeading)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                Rectangle()
+                    .fill(Color.klmsMacBorder.opacity(0.76))
+                    .frame(width: 1)
+                WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: renderedSection, nonce: scrollResetNonce)) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        DashboardTopBarView(model: model, selectedSection: $selectedSection)
+                        MacAlertBannerView(
+                            model: model,
+                            selectedSection: $selectedSection,
+                            expandedLogSummaryKind: $expandedLogSummaryKind
+                        )
+                        MacWorkstationLayoutView(
+                            model: model,
+                            selectedSection: renderedSection,
+                            expandedLogSummaryKind: $expandedLogSummaryKind
+                        )
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("workspace-scroll-\(renderedSection.rawValue)")
+            }
         }
         .onChange(of: selectedSection) { _, nextSection in
             queueRenderedSection(nextSection)
-        }
-        .onDisappear {
-            workspaceRenderTask?.cancel()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
@@ -66,14 +61,10 @@ struct MenuBarRootView: View {
 
     private func queueRenderedSection(_ section: KLMSMacSection) {
         guard renderedSection != section else { return }
-        workspaceRenderTask?.cancel()
-        workspaceRenderTask = Task { @MainActor in
-            guard !Task.isCancelled else { return }
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                renderedSection = section
-            }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            renderedSection = section
         }
     }
 }
@@ -148,22 +139,40 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
 private struct DeferredMacWorkspacePanel<Content: View>: View {
     var id: String
     var contentIdentifier: String?
+    var deferContent: Bool
     private let content: () -> Content
+    @State private var isContentReady = false
+    @State private var contentTask: Task<Void, Never>?
 
     init(
         id: String,
         contentIdentifier: String? = nil,
+        deferContent: Bool = true,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.id = id
         self.contentIdentifier = contentIdentifier
+        self.deferContent = deferContent
         self.content = content
     }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             workspaceContentAccessibilityMarker
-            content()
+            if deferContent, !isContentReady {
+                MacWorkspacePanelPreparingView()
+            } else {
+                content()
+            }
+        }
+        .onAppear {
+            prepareContentIfNeeded()
+        }
+        .onDisappear {
+            contentTask?.cancel()
+            if deferContent {
+                isContentReady = false
+            }
         }
     }
 
@@ -177,6 +186,44 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("작업공간 내용")
             .accessibilityIdentifier("workspace-panel-\(id)")
+    }
+
+    private func prepareContentIfNeeded() {
+        guard deferContent else {
+            isContentReady = true
+            return
+        }
+        guard !isContentReady else { return }
+        contentTask?.cancel()
+        contentTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                isContentReady = true
+            }
+        }
+    }
+}
+
+private struct MacWorkspacePanelPreparingView: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+            Text("화면을 준비하는 중입니다.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsMacSecondaryText)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
+        .accessibilityLabel("화면을 준비하는 중입니다.")
     }
 }
 
@@ -197,7 +244,7 @@ private struct MacWorkstationLayoutView: View {
             workspaceContentMarker
             switch selectedSection {
             case .dashboard:
-                DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard") {
+                DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard", deferContent: false) {
                     VStack(alignment: .leading, spacing: 16) {
                         CommandPanelView(model: model)
                         DeferredDashboardSummaryView(model: model)
