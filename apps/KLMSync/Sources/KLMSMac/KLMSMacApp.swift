@@ -314,7 +314,7 @@ private final class KLMSDashboardWindowCoordinator {
         NSApp.setActivationPolicy(.regular)
         guard let model else {
             pendingDashboardWindowOpen = true
-            NSApp.activate(ignoringOtherApps: true)
+            activateDashboardApplication()
             return
         }
 
@@ -323,7 +323,7 @@ private final class KLMSDashboardWindowCoordinator {
             restoreDashboardFrameIfNeeded(window, size: initialSize)
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
-            NSApp.activate(ignoringOtherApps: true)
+            activateDashboardApplication()
             return
         }
 
@@ -345,6 +345,7 @@ private final class KLMSDashboardWindowCoordinator {
         )
         window.title = "KLMS Sync"
         window.identifier = NSUserInterfaceItemIdentifier(KLMSMacWindowID.dashboard)
+        window.setAccessibilityIdentifier(KLMSMacWindowID.dashboard)
         window.minSize = NSSize(width: KLMSWindowMetrics.minWidth, height: KLMSWindowMetrics.minHeight)
         window.center()
         window.isRestorable = false
@@ -359,8 +360,14 @@ private final class KLMSDashboardWindowCoordinator {
 
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
+        activateDashboardApplication()
         scheduleBootstrapIfNeeded(delay: 2.5)
+    }
+
+    private func activateDashboardApplication() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.unhide(nil)
+        NSRunningApplication.current.activate(options: [.activateAllWindows])
     }
 
     private func restoreDashboardFrameIfNeeded(_ window: NSWindow, size: NSSize) {
