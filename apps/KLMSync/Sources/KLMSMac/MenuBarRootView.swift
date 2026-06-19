@@ -9,7 +9,7 @@ struct MenuBarRootView: View {
     @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
     @State private var renderSectionTask: Task<Void, Never>?
-    private let workspaceRenderDelayNanoseconds: UInt64 = 35_000_000
+    private let workspaceRenderDelayNanoseconds: UInt64 = 16_000_000
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -3169,7 +3169,10 @@ private struct RemoteActivityPanelView: View {
                                 .foregroundStyle(Color.klmsMacSecondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                             ForEach(sharedRunLogs.prefix(8)) { log in
-                                SharedRunLogActivityRow(log: log)
+                                SharedRunLogActivityRow(
+                                    log: log,
+                                    stageDurations: model.sharedRunLogStageDurationsByID[log.id] ?? []
+                                )
                             }
                         }
                     }
@@ -3205,6 +3208,7 @@ private struct RemoteActivityPanelView: View {
 
 private struct SharedRunLogActivityRow: View {
     var log: ServerRelayRunLog
+    var stageDurations: [KLMSStageDuration]
     @State private var isExpanded = false
 
     var body: some View {
@@ -3257,10 +3261,6 @@ private struct SharedRunLogActivityRow: View {
             return .klmsMacSecondaryText
         }
         return log.needsAttention ? Color.klmsMacWarningBorder : Color.klmsMacSuccessBorder
-    }
-
-    private var stageDurations: [KLMSStageDuration] {
-        KLMSStageDurationParser.parse(from: log.outputTail)
     }
 }
 

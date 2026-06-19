@@ -152,6 +152,7 @@ final class KLMSMacModel: ObservableObject {
     @Published var serverRelayRecentRequestLog: [ServerRelayRequestLogEntry] = []
     @Published var serverRelayRecentFileAccessRequests: [ServerRelayFileAccessRequest] = []
     @Published var serverRelaySharedRunLogs: [ServerRelayRunLog] = []
+    @Published private(set) var sharedRunLogStageDurationsByID: [String: [KLMSStageDuration]] = [:]
     @Published var serverRelaySharedSettings: [ServerRelaySetting] = []
     @Published var mailDashboardItems: [ServerRelaySyncItem] = []
     @Published var remoteProcessingStatusMessage: String?
@@ -725,6 +726,7 @@ final class KLMSMacModel: ObservableObject {
             let store = try makeServerRelayStore()
             let result = try await store.clearSharedRunLogs()
             serverRelaySharedRunLogs = []
+            sharedRunLogStageDurationsByID = [:]
             serverRelayStatusMessage = "공유 실행 로그 \(result.runLogs)개를 지웠습니다."
             remoteProcessingStatusMessage = nil
             errorMessage = nil
@@ -850,6 +852,7 @@ final class KLMSMacModel: ObservableObject {
             serverRelayRecentRequestLog = []
             serverRelayRecentFileAccessRequests = serverRelayRecentFileAccessRequests.filter { $0.status.isInFlight }
             serverRelaySharedRunLogs = []
+            sharedRunLogStageDurationsByID = [:]
         case .command:
             if lastRemoteCommand?.status.isInFlight != true {
                 lastRemoteCommand = nil
@@ -1129,9 +1132,20 @@ final class KLMSMacModel: ObservableObject {
     private func applyServerRelaySyncData(_ syncData: ServerRelaySyncData) {
         if serverRelaySharedRunLogs != syncData.runLogs {
             serverRelaySharedRunLogs = syncData.runLogs
+            rebuildSharedRunLogStageDurationCache()
         }
         _ = applyServerRelaySharedSettings(syncData.sharedSettings)
         serverRelayLastSyncDataFetchAt = Date()
+    }
+
+    private func rebuildSharedRunLogStageDurationCache() {
+        var nextByID: [String: [KLMSStageDuration]] = [:]
+        for log in serverRelaySharedRunLogs where !log.outputTail.isEmpty {
+            nextByID[log.id] = KLMSStageDurationParser.parse(from: log.outputTail)
+        }
+        if sharedRunLogStageDurationsByID != nextByID {
+            sharedRunLogStageDurationsByID = nextByID
+        }
     }
 
     private func serverRelayPublicStatusMessage(
