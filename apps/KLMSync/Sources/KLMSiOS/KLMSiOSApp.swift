@@ -2843,6 +2843,7 @@ private struct CompanionStatusScreen: View {
                     selectChangeSummary(kind)
                 }
             )
+            CompanionItemListPrewarmView(model: model, categories: dashboardPrewarmCategories)
             compactDashboardDetail
         }
     }
@@ -2865,20 +2866,23 @@ private struct CompanionStatusScreen: View {
     }
 
     private var statusMetricColumn: some View {
-        RemoteDashboardMetricOverview(
-            model: model,
-            status: model.dashboardStatus,
-            hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
-            selectedCategory: $selectedDashboardPreview,
-            effectiveSelectedCategory: effectiveDashboardSelection,
-            onCategoryTap: { category in
-                selectDashboardCategory(category)
-            },
-            selectedChangeSummary: selectedChangeSummary,
-            onChangeSummaryTap: { kind in
-                selectChangeSummary(kind)
-            }
-        )
+        VStack(alignment: .leading, spacing: 0) {
+            RemoteDashboardMetricOverview(
+                model: model,
+                status: model.dashboardStatus,
+                hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
+                selectedCategory: $selectedDashboardPreview,
+                effectiveSelectedCategory: effectiveDashboardSelection,
+                onCategoryTap: { category in
+                    selectDashboardCategory(category)
+                },
+                selectedChangeSummary: selectedChangeSummary,
+                onChangeSummaryTap: { kind in
+                    selectChangeSummary(kind)
+                }
+            )
+            CompanionItemListPrewarmView(model: model, categories: dashboardPrewarmCategories)
+        }
     }
 
     @ViewBuilder
@@ -2928,6 +2932,11 @@ private struct CompanionStatusScreen: View {
             return selectedDashboardPreview
         }
         return horizontalSizeClass == .regular ? defaultWorkstationDetailCategory : nil
+    }
+
+    private var dashboardPrewarmCategories: [DashboardMetricCategory] {
+        [.files, .assignments, .notices, .exams, .helpDesk]
+            .filter { $0.value(from: model.dashboardStatus) > 0 }
     }
 
 }
@@ -4326,6 +4335,24 @@ private struct CompanionItemListInputKey: Hashable {
     }
 }
 
+private extension CompanionItemListInputKey {
+    static func defaultCategoryKey(itemsRevision: Int, category: DashboardMetricCategory) -> CompanionItemListInputKey {
+        CompanionItemListInputKey(
+            itemsRevision: itemsRevision,
+            category: category.rawValue,
+            query: "",
+            sortOption: CompanionItemSortOption.defaultSort(for: category).rawValue,
+            visibilityFilter: CompanionItemVisibilityFilter.visible.rawValue,
+            statusFilter: CompanionItemStatusFilter.defaultFilter(for: category).rawValue,
+            selectedCourse: CompanionItemListFilter.allCourses,
+            selectedYear: CompanionItemListFilter.allYears,
+            selectedSemester: CompanionItemListFilter.allSemesters,
+            newOnly: false,
+            recentOnly: false
+        )
+    }
+}
+
 private enum CompanionLargeList {
     static let initialVisibleLimit = 4
     static let previewVisibleLimit = 5
@@ -4414,6 +4441,86 @@ private struct CompanionItemListData: Sendable {
         self.availableStatusFilters = statusFilters
         self.effectiveStatusFilter = effectiveStatus
         self.filteredItems = sortedFiltered
+    }
+}
+
+private struct CompanionItemListPrewarmView: View {
+    let model: CompanionModel
+    var categories: [DashboardMetricCategory]
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .task(id: prewarmKey) {
+                await CompanionItemListPreloadStore.prewarm(model: model, categories: categories)
+            }
+    }
+
+    private var prewarmKey: String {
+        "\(model.dashboardSyncItemsRevision):\(categories.map(\.rawValue).joined(separator: ","))"
+    }
+}
+
+@MainActor
+private enum CompanionItemListPreloadStore {
+    private static var cachedDataByKey: [CompanionItemListInputKey: CompanionItemListData] = [:]
+    private static var inFlightKeys = Set<CompanionItemListInputKey>()
+    private static let maxCachedLists = 8
+
+    static func cachedData(for key: CompanionItemListInputKey) -> CompanionItemListData? {
+        cachedDataByKey[key]
+    }
+
+    static func store(_ data: CompanionItemListData, for key: CompanionItemListInputKey) {
+        cachedDataByKey[key] = data
+        inFlightKeys.remove(key)
+        trimCache(keeping: key)
+    }
+
+    static func prewarm(model: CompanionModel, categories: [DashboardMetricCategory]) async {
+        let revision = model.dashboardSyncItemsRevision
+        for category in categories where category.supportsWorkstationSelectionWorkspace {
+            let key = CompanionItemListInputKey.defaultCategoryKey(itemsRevision: revision, category: category)
+            guard cachedDataByKey[key] == nil, !inFlightKeys.contains(key) else {
+                continue
+            }
+            let items = model.cachedDashboardItems(for: category.rawValue)
+            guard !items.isEmpty else { continue }
+            let filterOptions = model.cachedDashboardFilterOptions(for: category.rawValue)
+            inFlightKeys.insert(key)
+            Task { @MainActor in
+                let data = await Task.detached(priority: .utility) {
+                    CompanionItemListData(
+                        items: items,
+                        category: category,
+                        isCategoryPrefiltered: true,
+                        query: "",
+                        sortOption: CompanionItemSortOption.defaultSort(for: category),
+                        visibilityFilter: .visible,
+                        statusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
+                        selectedCourse: CompanionItemListFilter.allCourses,
+                        selectedYear: CompanionItemListFilter.allYears,
+                        selectedSemester: CompanionItemListFilter.allSemesters,
+                        newOnly: false,
+                        recentOnly: false,
+                        filterOptions: filterOptions
+                    )
+                }.value
+                guard inFlightKeys.contains(key) else { return }
+                store(data, for: key)
+            }
+        }
+    }
+
+    private static func trimCache(keeping protectedKey: CompanionItemListInputKey) {
+        guard cachedDataByKey.count > maxCachedLists else { return }
+        let keysToRemove = cachedDataByKey.keys
+            .filter { $0 != protectedKey }
+            .prefix(cachedDataByKey.count - maxCachedLists)
+        for key in keysToRemove {
+            cachedDataByKey.removeValue(forKey: key)
+        }
     }
 }
 
@@ -6241,6 +6348,11 @@ private struct DashboardCategoryInlineDetailPanel: View {
         if cachedListInputKey == currentKey, cachedListData != nil {
             return
         }
+        if let preloadedData = CompanionItemListPreloadStore.cachedData(for: currentKey) {
+            cachedListData = preloadedData
+            cachedListInputKey = currentKey
+            return
+        }
         if cachedListData != nil, currentKey.shouldDebounceComparedTo(cachedListInputKey) {
             try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
             guard !Task.isCancelled, currentKey == listInputKey else { return }
@@ -6286,6 +6398,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
             )
         }.value
         guard !Task.isCancelled, inputKey == listInputKey else { return }
+        CompanionItemListPreloadStore.store(listData, for: inputKey)
         cachedListData = listData
         cachedListInputKey = inputKey
     }
