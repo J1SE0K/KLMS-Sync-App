@@ -5661,6 +5661,8 @@ private struct RemoteMetricTile: View {
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 14))
         .accessibilityLabel("\(label) \(value)개")
+        .accessibilityValue(isSelected ? "선택됨" : "")
+        .accessibilityHint("\(label) 상세를 아래에 엽니다.")
     }
 }
 
@@ -5751,6 +5753,8 @@ private struct WorkstationMetricCard: View {
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
         .accessibilityLabel("\(category.title) \(value)개")
+        .accessibilityValue(isSelected ? "선택됨" : "")
+        .accessibilityHint("\(category.title) 상세와 처리 버튼을 오른쪽 패널에 표시합니다.")
     }
 }
 
@@ -6126,6 +6130,9 @@ private struct CompactDashboardSelectedRow: View {
                 .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 14))
             }
             .buttonStyle(KLMSCardButtonStyle())
+            .accessibilityLabel("\(rowBadge) \(item.title.nilIfEmpty ?? "제목 없음")")
+            .accessibilityValue(expanded ? "펼쳐짐" : "접힘")
+            .accessibilityHint("항목 상세와 처리 버튼을 \(expanded ? "접습니다" : "펼칩니다").")
 
             if expanded {
                 DeferredServerSyncItemDetailPanel(item: item, model: model)

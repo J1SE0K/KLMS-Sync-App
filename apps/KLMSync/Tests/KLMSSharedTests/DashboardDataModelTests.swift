@@ -2001,6 +2001,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(ios.contains(".transition(.opacity)"))
         XCTAssertTrue(compactSelectedRow.contains("companionPerformWithoutAnimation"))
         XCTAssertFalse(compactSelectedRow.contains(".transition(.opacity)"))
+        XCTAssertTrue(compactSelectedRow.contains(".accessibilityLabel(\"\\(rowBadge) \\(item.title.nilIfEmpty ?? \"제목 없음\")\")"))
+        XCTAssertTrue(compactSelectedRow.contains(".accessibilityValue(expanded ? \"펼쳐짐\" : \"접힘\")"))
+        XCTAssertTrue(compactSelectedRow.contains(".accessibilityHint(\"항목 상세와 처리 버튼을 \\(expanded ? \"접습니다\" : \"펼칩니다\").\")"))
         XCTAssertTrue(mailAnalysisResult.contains("companionPerformWithoutAnimation"))
         XCTAssertFalse(mailAnalysisResult.contains(".transition(.opacity)"))
         XCTAssertTrue(remoteChangeSummaryDetail.contains("companionPerformWithoutAnimation"))
@@ -3392,6 +3395,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosMetricTile.contains("Color.klmsSelectedBorder.opacity(0.92)"))
         XCTAssertFalse(iosMetricTile.contains(".shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear"))
         XCTAssertTrue(iosMetricTile.contains(".buttonStyle(KLMSCardButtonStyle(cornerRadius: 14))"))
+        XCTAssertTrue(iosMetricTile.contains(".accessibilityValue(isSelected ? \"선택됨\" : \"\")"))
+        XCTAssertTrue(iosMetricTile.contains(".accessibilityHint(\"\\(label) 상세를 아래에 엽니다.\")"))
         XCTAssertTrue(iosWorkstationMetricCard.contains(".padding(11)"))
         XCTAssertTrue(iosWorkstationMetricCard.contains("Image(systemName: category.systemImage)"))
         XCTAssertTrue(iosWorkstationMetricCard.contains(".frame(width: 26, height: 26)"))
@@ -3404,6 +3409,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosWorkstationMetricCard.contains("Color.klmsSelectedBackground.opacity(0.96)"))
         XCTAssertTrue(iosWorkstationMetricCard.contains("Color.klmsSelectedBorder.opacity(0.92)"))
         XCTAssertTrue(iosWorkstationMetricCard.contains(".buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))"))
+        XCTAssertTrue(iosWorkstationMetricCard.contains(".accessibilityValue(isSelected ? \"선택됨\" : \"\")"))
+        XCTAssertTrue(iosWorkstationMetricCard.contains(".accessibilityHint(\"\\(category.title) 상세와 처리 버튼을 오른쪽 패널에 표시합니다.\")"))
         XCTAssertTrue(ios.contains("private struct WorkstationDashboardOverviewPanel"))
         let iosWorkstationOverviewPanel = try sourceBody(
             after: "private struct WorkstationDashboardOverviewPanel: View, Equatable",
