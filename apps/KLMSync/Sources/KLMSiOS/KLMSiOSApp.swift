@@ -3405,7 +3405,6 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
         statusText: String? = nil,
         statusTint: Color = .klmsSecondaryText,
         collapsible: Bool = false,
-        defaultExpanded: Bool = false,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.title = title
@@ -3414,7 +3413,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
         self.statusText = statusText
         self.statusTint = statusTint
         self.collapsible = collapsible
-        _isExpanded = State(initialValue: defaultExpanded)
+        _isExpanded = State(initialValue: false)
         self.content = content
     }
 
@@ -4060,8 +4059,7 @@ private struct ServerRelayConnectionPanel: View {
                         detail: "서버 URL과 클라이언트 토큰을 관리합니다.",
                         systemImage: "link",
                         statusText: model.serverRelayConfigured ? "저장됨" : "미설정",
-                        statusTint: model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText,
-                        defaultExpanded: !model.serverRelayConfigured
+                        statusTint: model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText
                     ) {
                         CompanionConnectionInput(
                             title: "서버 URL",
@@ -4080,8 +4078,7 @@ private struct ServerRelayConnectionPanel: View {
                     CompanionSettingsSubsectionCard(
                         title: "연결 확인",
                         detail: "붙여넣기, 응답 검사, 요약 갱신을 처리합니다.",
-                        systemImage: "checkmark.shield",
-                        defaultExpanded: true
+                        systemImage: "checkmark.shield"
                     ) {
                         LazyVGrid(columns: actionColumns, spacing: 8) {
                             connectionButton("붙여넣기", systemImage: "doc.on.clipboard") {
@@ -13012,31 +13009,6 @@ private struct CompanionExpansionBadge: View {
                     isExpanded ? Color.klmsSelectedBorder.opacity(0.64) : Color.klmsBorder.opacity(0.72),
                     lineWidth: 1
                 )
-        }
-    }
-}
-
-private struct CompanionDetailDisclosureBadge: View {
-    var isExpanded: Bool
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: 9, weight: .bold))
-            Text(isExpanded ? "설명 접기" : "설명 보기")
-                .font(.caption2.weight(.semibold))
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(isExpanded ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(
-            isExpanded ? Color.klmsSelectedBackground.opacity(0.20) : Color.klmsSubtleCardBackground.opacity(0.54),
-            in: RoundedRectangle(cornerRadius: 9)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.44) : Color.klmsBorder.opacity(0.62), lineWidth: 1)
         }
     }
 }
