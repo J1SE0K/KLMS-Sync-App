@@ -2819,7 +2819,6 @@ private struct CompanionStatusScreen: View {
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
     @State private var displayedDashboardPreview: DashboardMetricCategory?
     @State private var displayedChangeSummary: RemoteChangeSummaryKind?
-    @State private var deferredStatusDetailTask: Task<Void, Never>?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -2835,9 +2834,6 @@ private struct CompanionStatusScreen: View {
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
-        }
-        .onDisappear {
-            deferredStatusDetailTask?.cancel()
         }
     }
 
@@ -2996,19 +2992,9 @@ private struct CompanionStatusScreen: View {
     }
 
     private func deferStatusDetailUpdate(category: DashboardMetricCategory?, changeSummary: RemoteChangeSummaryKind?) {
-        deferredStatusDetailTask?.cancel()
-        deferredStatusDetailTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
-            guard !Task.isCancelled,
-                  selectedDashboardPreview == category,
-                  selectedChangeSummary == changeSummary else {
-                return
-            }
-            companionPerformWithoutAnimation {
-                displayedDashboardPreview = category
-                displayedChangeSummary = changeSummary
-            }
+        companionPerformWithoutAnimation {
+            displayedDashboardPreview = category
+            displayedChangeSummary = changeSummary
         }
     }
 
@@ -4450,7 +4436,6 @@ private enum CompanionLargeList {
     static let logVisibleLimit = 10
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 8_000_000
-    static let detailRenderDelayNanoseconds: UInt64 = 4_000_000
     static let prewarmDelayNanoseconds: UInt64 = 120_000_000
 
     static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
@@ -6607,7 +6592,6 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     let model: CompanionModel
     @State private var selectedItemID: String?
     @State private var displayedSelectedItem: ServerRelaySyncItem?
-    @State private var deferredDetailSelectionTask: Task<Void, Never>?
 
     private var items: [ServerRelaySyncItem] {
         model.cachedVisibleDashboardItems(for: category.rawValue)
@@ -6638,9 +6622,6 @@ private struct WorkstationDashboardCategoryWorkspace: View {
             }
             .onChange(of: itemsResetKey) { _, _ in
                 refreshExternalSelection()
-            }
-            .onDisappear {
-                deferredDetailSelectionTask?.cancel()
             }
     }
 
@@ -6693,18 +6674,11 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         transaction.animation = nil
         withTransaction(transaction) {
             selectedItemID = item.id
-        }
-        deferredDetailSelectionTask?.cancel()
-        deferredDetailSelectionTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
-            guard !Task.isCancelled, selectedItemID == item.id else { return }
             displayedSelectedItem = item
         }
     }
 
     private func refreshExternalSelection() {
-        deferredDetailSelectionTask?.cancel()
         if let selectedItemID,
            let refreshed = items.first(where: { $0.id == selectedItemID }) {
             companionPerformWithoutAnimation {
@@ -6733,7 +6707,6 @@ private struct WorkstationTasksWorkspace: View {
     @State private var selectedTaskCategory = DashboardMetricCategory.assignments
     @State private var selectedItemID: String?
     @State private var displayedSelectedItem: ServerRelaySyncItem?
-    @State private var deferredDetailSelectionTask: Task<Void, Never>?
 
     private var taskCategories: [DashboardMetricCategory] {
         var categories: [DashboardMetricCategory] = [.assignments, .exams]
@@ -6789,9 +6762,6 @@ private struct WorkstationTasksWorkspace: View {
             }
             .onChange(of: itemsResetKey) { _, _ in
                 refreshExternalSelection()
-            }
-            .onDisappear {
-                deferredDetailSelectionTask?.cancel()
             }
     }
 
@@ -6856,18 +6826,11 @@ private struct WorkstationTasksWorkspace: View {
         transaction.animation = nil
         withTransaction(transaction) {
             selectedItemID = item.id
-        }
-        deferredDetailSelectionTask?.cancel()
-        deferredDetailSelectionTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
-            guard !Task.isCancelled, selectedItemID == item.id else { return }
             displayedSelectedItem = item
         }
     }
 
     private func refreshExternalSelection() {
-        deferredDetailSelectionTask?.cancel()
         if let selectedItemID,
            let refreshed = selectedCategoryItems.first(where: { $0.id == selectedItemID }) {
             companionPerformWithoutAnimation {
@@ -6984,7 +6947,6 @@ private struct WorkstationCalendarWorkspace: View {
     let model: CompanionModel
     @State private var selectedChangeID: String?
     @State private var displayedSelectedChange: CalendarChange?
-    @State private var deferredDetailSelectionTask: Task<Void, Never>?
     @State private var calendarVisibleLimit = CompanionLargeList.regularCalendarVisibleLimit
 
     private var changes: [CalendarChange] {
@@ -7017,9 +6979,6 @@ private struct WorkstationCalendarWorkspace: View {
             .onChange(of: changesResetKey) { _, _ in
                 calendarVisibleLimit = CompanionLargeList.regularCalendarVisibleLimit
                 refreshExternalSelection()
-            }
-            .onDisappear {
-                deferredDetailSelectionTask?.cancel()
             }
     }
 
@@ -7214,18 +7173,11 @@ private struct WorkstationCalendarWorkspace: View {
         }
         companionPerformWithoutAnimation {
             selectedChangeID = change.id
-        }
-        deferredDetailSelectionTask?.cancel()
-        deferredDetailSelectionTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
-            guard !Task.isCancelled, selectedChangeID == change.id else { return }
             displayedSelectedChange = change
         }
     }
 
     private func refreshExternalSelection() {
-        deferredDetailSelectionTask?.cancel()
         if let selectedChangeID,
            let refreshed = changes.first(where: { $0.id == selectedChangeID }) {
             companionPerformWithoutAnimation {
@@ -7305,7 +7257,6 @@ private struct CompanionInlineItemRowsView: View {
     @State private var selectedItemID: String?
     @State private var optimisticExternalSelectedItemID: String?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
-    @State private var deferredExternalSelectionTask: Task<Void, Never>?
 
     init(
         category: DashboardMetricCategory,
@@ -7372,9 +7323,6 @@ private struct CompanionInlineItemRowsView: View {
         .onAppear {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
         }
-        .onDisappear {
-            deferredExternalSelectionTask?.cancel()
-        }
     }
 
     private var activeSelectedItemID: String? {
@@ -7401,19 +7349,10 @@ private struct CompanionInlineItemRowsView: View {
     private func select(_ item: ServerRelaySyncItem) {
         if presentation == .externalDetail {
             let itemID = item.id
-            deferredExternalSelectionTask?.cancel()
             companionPerformWithoutAnimation {
                 optimisticExternalSelectedItemID = itemID
             }
-            deferredExternalSelectionTask = Task { @MainActor in
-                await Task.yield()
-                try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
-                guard !Task.isCancelled,
-                      (optimisticExternalSelectedItemID ?? externalSelectedItemID) == itemID else {
-                    return
-                }
-                onSelectItem(item)
-            }
+            onSelectItem(item)
             return
         }
 
@@ -7450,7 +7389,6 @@ private struct CompanionSelectableItemListRows: View {
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
-    @State private var deferredSelectionTask: Task<Void, Never>?
 
     init(
         items: [ServerRelaySyncItem],
@@ -7485,16 +7423,12 @@ private struct CompanionSelectableItemListRows: View {
         }
         .onChange(of: visibleItemsResetKey) { _, _ in
             visibleLimit = currentInitialVisibleLimit
-            deferredSelectionTask?.cancel()
         }
         .onChange(of: horizontalSizeClass) { _, _ in
             visibleLimit = currentInitialVisibleLimit
         }
         .onAppear {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
-        }
-        .onDisappear {
-            deferredSelectionTask?.cancel()
         }
     }
 
@@ -7508,16 +7442,11 @@ private struct CompanionSelectableItemListRows: View {
 
     private func select(_ item: ServerRelaySyncItem) {
         let itemID = item.id
-        deferredSelectionTask?.cancel()
         companionPerformWithoutAnimation {
             selectedItemID = item.id
         }
-        deferredSelectionTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
-            guard !Task.isCancelled, selectedItemID == itemID else { return }
-            onSelect(item)
-        }
+        guard selectedItemID == itemID else { return }
+        onSelect(item)
     }
 
 }
