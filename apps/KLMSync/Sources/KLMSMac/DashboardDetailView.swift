@@ -536,7 +536,7 @@ private struct DashboardDetailFilters: Equatable, Sendable {
 private enum DashboardLargeList {
     static let initialVisibleLimit = 5
     static let increment = 10
-    static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
+    static let filterRebuildDelayNanoseconds: UInt64 = 8_000_000
 }
 
 struct DashboardFilterOptions: Equatable, Sendable {

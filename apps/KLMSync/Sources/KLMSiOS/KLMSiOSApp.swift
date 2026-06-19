@@ -4447,7 +4447,7 @@ private enum CompanionLargeList {
     static let regularCalendarVisibleLimit = 10
     static let logVisibleLimit = 10
     static let increment = 10
-    static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
+    static let filterRebuildDelayNanoseconds: UInt64 = 8_000_000
     static let detailRenderDelayNanoseconds: UInt64 = 4_000_000
     static let prewarmDelayNanoseconds: UInt64 = 120_000_000
 
