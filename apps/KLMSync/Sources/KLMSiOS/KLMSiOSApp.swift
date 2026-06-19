@@ -12024,8 +12024,28 @@ private struct RemoteLogSummaryRow: View {
             )
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-        .accessibilityLabel("\(title) \(value). \(detail). \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityLabel(accessibilitySummary)
         .accessibilityHint(isExpanded ? "관련 기록 접기" : "관련 기록 펼치기")
+    }
+
+    private var accessibilitySummary: String {
+        [
+            accessibilitySentence(title),
+            accessibilitySentence(value),
+            accessibilitySentence(detail),
+            isExpanded ? "펼쳐짐" : "접힘",
+        ]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    private func accessibilitySentence(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if let last = trimmed.last, ".!?。！？".contains(last) {
+            return trimmed
+        }
+        return "\(trimmed)."
     }
 }
 
