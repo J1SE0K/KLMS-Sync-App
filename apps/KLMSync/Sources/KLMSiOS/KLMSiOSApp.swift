@@ -5234,7 +5234,7 @@ private struct RemoteDashboardMetricOverview: View {
     }
 
     private var attentionMetricCategories: [DashboardMetricCategory] {
-        let categories: [DashboardMetricCategory] = horizontalSizeClass == .regular ? [.quarantine, .calendar] : [.quarantine]
+        let categories: [DashboardMetricCategory] = [.quarantine, .calendar]
         return categories.filter { $0.value(from: displayStatus) > 0 }
     }
 
