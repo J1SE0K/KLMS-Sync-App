@@ -4193,7 +4193,6 @@ struct MacMailPasteAnalyzerPanel: View {
                         MacInlinePendingActionView(message: createStatusText)
                     }
                 }
-                .transition(.opacity)
             }
         }
         .onChange(of: mailText) { _, _ in

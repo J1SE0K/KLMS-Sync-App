@@ -1479,6 +1479,7 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertFalse(sources.contains("duration: 0.04"))
         XCTAssertFalse(sources.contains("withAnimation(.easeInOut(duration: 0.08))"))
+        XCTAssertFalse(sources.contains(".transition(.opacity)"))
         XCTAssertFalse(sources.contains(".transition(.opacity.combined(with: .move(edge: .top)))"))
         XCTAssertFalse(sources.contains("withAnimation(.linear(duration:"))
         XCTAssertFalse(sources.contains(".scaleEffect(configuration.isPressed"))

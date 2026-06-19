@@ -988,7 +988,6 @@ private struct ExternalIntegrationStatusView: View {
                         IntegrationStatusTile(status: status)
                     }
                 }
-                .transition(.opacity)
             }
         }
         .padding(.horizontal, 10)
@@ -1491,7 +1490,6 @@ private struct LogSummaryPanelView: View {
 
             if let expandedKind {
                 LogSummaryDetailView(kind: expandedKind, model: model)
-                    .transition(.opacity)
             } else {
                 Text("요약 타일을 누르면 관련 로그와 요청 기록을 바로 펼칩니다.")
                     .font(.caption2)
@@ -2927,7 +2925,6 @@ private struct DashboardRuntimePanelView: View {
                         MacRailStatusLine(text: slowestSummaryText)
                     }
                 }
-                .transition(.opacity)
             }
         }
         .padding(12)
@@ -5504,7 +5501,6 @@ struct CollapsibleSectionBox<Content: View>: View {
 
             if isExpanded {
                 content
-                    .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
