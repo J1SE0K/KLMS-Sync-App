@@ -7104,7 +7104,9 @@ private struct CompanionInlineItemRowsView: View {
     var externalSelectedItemID: String?
     var onSelectItem: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
+    @State private var optimisticExternalSelectedItemID: String?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
+    @State private var deferredExternalSelectionTask: Task<Void, Never>?
 
     init(
         category: DashboardMetricCategory,
@@ -7158,17 +7160,25 @@ private struct CompanionInlineItemRowsView: View {
         .onChange(of: visibleItemsResetKey) { _, _ in
             visibleLimit = currentInitialVisibleLimit
             clearStaleInlineSelectionIfNeeded()
+            clearStaleExternalSelectionIfNeeded()
         }
         .onChange(of: horizontalSizeClass) { _, _ in
             visibleLimit = currentInitialVisibleLimit
         }
+        .onChange(of: externalSelectedItemID) { _, newValue in
+            guard presentation == .externalDetail else { return }
+            optimisticExternalSelectedItemID = newValue
+        }
         .onAppear {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
+        }
+        .onDisappear {
+            deferredExternalSelectionTask?.cancel()
         }
     }
 
     private var activeSelectedItemID: String? {
-        presentation == .externalDetail ? externalSelectedItemID : selectedItemID
+        presentation == .externalDetail ? (optimisticExternalSelectedItemID ?? externalSelectedItemID) : selectedItemID
     }
 
     private var currentInitialVisibleLimit: Int {
@@ -7190,7 +7200,19 @@ private struct CompanionInlineItemRowsView: View {
 
     private func select(_ item: ServerRelaySyncItem) {
         if presentation == .externalDetail {
-            onSelectItem(item)
+            let itemID = item.id
+            deferredExternalSelectionTask?.cancel()
+            companionPerformWithoutAnimation {
+                optimisticExternalSelectedItemID = itemID
+            }
+            deferredExternalSelectionTask = Task { @MainActor in
+                await Task.yield()
+                guard !Task.isCancelled,
+                      (optimisticExternalSelectedItemID ?? externalSelectedItemID) == itemID else {
+                    return
+                }
+                onSelectItem(item)
+            }
             return
         }
 
@@ -7208,6 +7230,15 @@ private struct CompanionInlineItemRowsView: View {
             return
         }
         self.selectedItemID = nil
+    }
+
+    private func clearStaleExternalSelectionIfNeeded() {
+        guard presentation == .externalDetail,
+              let optimisticExternalSelectedItemID,
+              !items.contains(where: { $0.id == optimisticExternalSelectedItemID }) else {
+            return
+        }
+        self.optimisticExternalSelectedItemID = externalSelectedItemID
     }
 
 }
