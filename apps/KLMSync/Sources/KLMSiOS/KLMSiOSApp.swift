@@ -5840,7 +5840,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                             }
                             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
                             .accessibilityLabel("\(metric.title) \(metric.value)개")
-                            .accessibilityHint("\(metric.title) 상세를 엽니다.")
+                            .accessibilityHint("\(metric.title) 목록을 가운데 작업 영역에 표시합니다.")
                         }
                     }
                 }

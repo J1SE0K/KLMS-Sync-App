@@ -3492,7 +3492,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosWorkstationOverviewPanel.contains(".frame(width: 26, height: 26)"))
         XCTAssertTrue(iosWorkstationOverviewPanel.contains(".background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))"))
         XCTAssertTrue(iosWorkstationOverviewPanel.contains(".accessibilityLabel(\"\\(metric.title) \\(metric.value)개\")"))
-        XCTAssertTrue(iosWorkstationOverviewPanel.contains(".accessibilityHint(\"\\(metric.title) 상세를 엽니다.\")"))
+        XCTAssertTrue(iosWorkstationOverviewPanel.contains(".accessibilityHint(\"\\(metric.title) 목록을 가운데 작업 영역에 표시합니다.\")"))
         XCTAssertTrue(iosWorkstationOverviewPanel.contains("MetricSummary(category: .files, title: \"파일\", value: status.fileTotal, systemImage: \"folder\", tint: Color.klmsCommandAccent)"))
         XCTAssertTrue(iosWorkstationOverviewPanel.contains("MetricSummary(category: .notices, title: \"공지\", value: status.notices, systemImage: \"note.text\", tint: Color.klmsCommandAccent)"))
         XCTAssertTrue(iosWorkstationOverviewPanel.contains("MetricSummary(category: .exams, title: \"시험\", value: status.exams, systemImage: \"calendar.badge.clock\", tint: Color.klmsWarningBorder)"))
