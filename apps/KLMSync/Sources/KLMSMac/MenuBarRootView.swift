@@ -5,14 +5,13 @@ import SwiftUI
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
-    @State private var renderedSection = KLMSMacSection.dashboard
     @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             MacWorkspaceSelectionAccessibilityMarker(section: selectedSection)
-            MacWorkspaceRenderedAccessibilityMarker(section: renderedSection)
+            MacWorkspaceRenderedAccessibilityMarker(section: selectedSection)
 
             HStack(alignment: .top, spacing: 0) {
                 MacWorkspaceSidebarView(
@@ -25,7 +24,7 @@ struct MenuBarRootView: View {
                 Rectangle()
                     .fill(Color.klmsMacBorder.opacity(0.76))
                     .frame(width: 1)
-                WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: renderedSection, nonce: scrollResetNonce)) {
+                WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: selectedSection, nonce: scrollResetNonce)) {
                     VStack(alignment: .leading, spacing: 14) {
                         DashboardTopBarView(model: model, selectedSection: $selectedSection)
                         MacAlertBannerView(
@@ -35,7 +34,7 @@ struct MenuBarRootView: View {
                         )
                         MacWorkstationLayoutView(
                             model: model,
-                            selectedSection: renderedSection,
+                            selectedSection: selectedSection,
                             expandedLogSummaryKind: $expandedLogSummaryKind
                         )
                     }
@@ -44,11 +43,8 @@ struct MenuBarRootView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("workspace-scroll-\(renderedSection.rawValue)")
+                .accessibilityIdentifier("workspace-scroll-\(selectedSection.rawValue)")
             }
-        }
-        .onChange(of: selectedSection) { _, nextSection in
-            queueRenderedSection(nextSection)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
@@ -57,15 +53,6 @@ struct MenuBarRootView: View {
 
     private func resetCurrentSectionScroll() {
         scrollResetNonce &+= 1
-    }
-
-    private func queueRenderedSection(_ section: KLMSMacSection) {
-        guard renderedSection != section else { return }
-        var transaction = Transaction()
-        transaction.animation = nil
-        withTransaction(transaction) {
-            renderedSection = section
-        }
     }
 }
 
@@ -354,20 +341,17 @@ private struct MacWorkspaceSidebarView: View {
 private struct WorkspaceNavigationView: View {
     @Binding var selection: KLMSMacSection
     var resetCurrentSectionScroll: () -> Void
-    @State private var displayedSelection = KLMSMacSection.dashboard
     @State private var hoveredSection: KLMSMacSection?
 
     var body: some View {
         VStack(spacing: 7) {
-            WorkspaceNavigationSelectionMarker(section: displayedSelection)
+            WorkspaceNavigationSelectionMarker(section: selection)
             ForEach(KLMSMacSection.allCases) { section in
-                let isSelected = displayedSelection == section
+                let isSelected = selection == section
                 let isHovered = hoveredSection == section
                 Button {
-                    guard displayedSelection != section else {
-                        if selection == section {
-                            resetCurrentSectionScroll()
-                        }
+                    guard selection != section else {
+                        resetCurrentSectionScroll()
                         return
                     }
                     select(section)
@@ -418,29 +402,13 @@ private struct WorkspaceNavigationView: View {
                 .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
             }
         }
-        .onAppear {
-            displayedSelection = selection
-        }
-        .onChange(of: selection) { _, nextSelection in
-            syncDisplayedSelection(nextSelection)
-        }
     }
 
     private func select(_ section: KLMSMacSection) {
-        syncDisplayedSelection(section)
         var transaction = Transaction()
         transaction.animation = nil
         withTransaction(transaction) {
             selection = section
-        }
-    }
-
-    private func syncDisplayedSelection(_ section: KLMSMacSection) {
-        guard displayedSelection != section else { return }
-        var transaction = Transaction()
-        transaction.animation = nil
-        withTransaction(transaction) {
-            displayedSelection = section
         }
     }
 

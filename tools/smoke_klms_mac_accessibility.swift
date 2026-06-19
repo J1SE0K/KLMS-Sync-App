@@ -54,6 +54,7 @@ private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ??
 private struct WorkspaceSmokeTarget {
     var rawValue: String
     var title: String
+    var expectedTexts: [String] = []
     var buttonIdentifier: String { "workspace-\(rawValue)" }
     var contentIdentifier: String { "workspace-scroll-\(rawValue)" }
 }
@@ -65,13 +66,13 @@ private struct SettingsSmokeTarget {
 }
 
 private let workspaceTargets = [
-    WorkspaceSmokeTarget(rawValue: "dashboard", title: "대시보드"),
+    WorkspaceSmokeTarget(rawValue: "dashboard", title: "대시보드", expectedTexts: ["전체 동기화"]),
     WorkspaceSmokeTarget(rawValue: "files", title: "파일"),
     WorkspaceSmokeTarget(rawValue: "tasks", title: "과제/시험"),
     WorkspaceSmokeTarget(rawValue: "notices", title: "공지"),
     WorkspaceSmokeTarget(rawValue: "calendar", title: "캘린더"),
-    WorkspaceSmokeTarget(rawValue: "activityLogs", title: "로그"),
-    WorkspaceSmokeTarget(rawValue: "diagnostics", title: "진단"),
+    WorkspaceSmokeTarget(rawValue: "activityLogs", title: "로그", expectedTexts: ["실행 로그 지우기", "서버 로그 지우기"]),
+    WorkspaceSmokeTarget(rawValue: "diagnostics", title: "진단", expectedTexts: ["상태 검사", "권한/환경 진단"]),
     WorkspaceSmokeTarget(rawValue: "settings", title: "설정"),
 ]
 
@@ -220,6 +221,12 @@ private func verifyWorkspaceNavigation(
 
     guard waitForElement(withIdentifier: target.contentIdentifier, in: appElement, timeout: timeout) != nil else {
         throw SmokeFailure.workspaceContentMissing(target.contentIdentifier)
+    }
+
+    for expectedText in target.expectedTexts {
+        guard waitForText(expectedText, in: appElement, timeout: timeout) else {
+            throw SmokeFailure.expectedTextMissing(expectedText)
+        }
     }
 
     print("ok: \(target.buttonIdentifier) -> \(target.title)")
