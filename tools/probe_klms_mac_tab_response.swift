@@ -14,6 +14,7 @@ private enum ProbeFailure: Error, CustomStringConvertible {
     case workspaceSelectionMissing(String)
     case workspaceContentMissing(String)
     case pressFailed(identifier: String, AXError)
+    case performanceLimitExceeded(String)
 
     var description: String {
         switch self {
@@ -35,6 +36,8 @@ private enum ProbeFailure: Error, CustomStringConvertible {
             return "Workspace content marker '\(identifier)' did not appear after selection."
         case let .pressFailed(identifier, error):
             return "Could not press button '\(identifier)': \(error)."
+        case let .performanceLimitExceeded(message):
+            return message
         }
     }
 }
@@ -50,6 +53,9 @@ private let environment = ProcessInfo.processInfo.environment
 private let bundleID = environment["KLMS_MAC_BUNDLE_ID"] ?? "com.local.KLMSync"
 private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
+private let runCount = max(1, Int(environment["KLMS_MAC_TAB_PROBE_RUNS"] ?? "1") ?? 1)
+private let averageLimit = Double(environment["KLMS_MAC_TAB_AVERAGE_LIMIT_MS"] ?? "") ?? 0
+private let slowestLimit = Double(environment["KLMS_MAC_TAB_SLOWEST_LIMIT_MS"] ?? "") ?? 0
 private let targets = [
     ProbeTarget(rawValue: "dashboard"),
     ProbeTarget(rawValue: "files"),
@@ -86,6 +92,50 @@ private func runProbe() throws {
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
     try openDashboardWindowIfNeeded(appElement: appElement)
 
+    var results: [ProbeRunResult] = []
+    for runIndex in 1...runCount {
+        if runCount > 1 {
+            print("== probe \(runIndex)/\(runCount) ==")
+        }
+        results.append(try runSingleProbe(appElement: appElement))
+    }
+
+    if runCount > 1 {
+        let seriesAverage = results.map(\.average).reduce(0, +) / Double(results.count)
+        let worstAverage = results.map(\.average).max() ?? 0
+        let slowest = results.compactMap(\.slowest).max { $0.1 < $1.1 }
+        print("series_average=\(Int(seriesAverage.rounded()))ms worst_run_average=\(Int(worstAverage.rounded()))ms series_slowest=\(slowest?.0 ?? "-"):\(Int((slowest?.1 ?? 0).rounded()))ms")
+    }
+
+    if averageLimit > 0,
+       let overLimit = results.enumerated().first(where: { $0.element.average > averageLimit }) {
+        throw ProbeFailure.performanceLimitExceeded(
+            "Probe \(overLimit.offset + 1) average \(Int(overLimit.element.average.rounded()))ms exceeded \(Int(averageLimit.rounded()))ms."
+        )
+    }
+    if slowestLimit > 0,
+       let slowest = results.compactMap(\.slowest).max(by: { $0.1 < $1.1 }),
+       slowest.1 > slowestLimit {
+        throw ProbeFailure.performanceLimitExceeded(
+            "Slowest tab \(slowest.0) \(Int(slowest.1.rounded()))ms exceeded \(Int(slowestLimit.rounded()))ms."
+        )
+    }
+}
+
+private struct ProbeRunResult {
+    var samples: [(String, Double)]
+
+    var average: Double {
+        samples.map(\.1).reduce(0, +) / Double(max(samples.count, 1))
+    }
+
+    var slowest: (String, Double)? {
+        samples.max { $0.1 < $1.1 }
+    }
+}
+
+@discardableResult
+private func runSingleProbe(appElement: AXUIElement) throws -> ProbeRunResult {
     var samples: [(String, Double)] = []
     for target in targets {
         let elapsed = try measure(target: target, appElement: appElement)
@@ -93,9 +143,11 @@ private func runProbe() throws {
         print("\(target.rawValue)=\(Int(elapsed.rounded()))ms")
     }
 
-    let average = samples.map(\.1).reduce(0, +) / Double(max(samples.count, 1))
-    let slowest = samples.max { $0.1 < $1.1 }
+    let result = ProbeRunResult(samples: samples)
+    let average = result.average
+    let slowest = result.slowest
     print("average=\(Int(average.rounded()))ms slowest=\(slowest?.0 ?? "-"):\(Int((slowest?.1 ?? 0).rounded()))ms")
+    return result
 }
 
 private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
@@ -192,17 +244,6 @@ private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Dou
     }
     let end = DispatchTime.now()
     return Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
-}
-
-private func waitForSelectedValue(on element: AXUIElement, timeout: TimeInterval) -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
-    repeat {
-        if textAttributes(of: element).contains(where: { $0.localizedCaseInsensitiveContains("선택됨") }) {
-            return true
-        }
-        Thread.sleep(forTimeInterval: 0.01)
-    } while Date() < deadline
-    return false
 }
 
 private func waitForElement(
