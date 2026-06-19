@@ -1723,6 +1723,7 @@ final class DashboardDataModelTests: XCTestCase {
         let remoteChangeSummary = try sourceStructBody(named: "RemoteDashboardChangeSummary", in: ios)
         let flowChipLayout = try sourceStructBody(named: "FlowChipLayout", in: ios)
         let remoteChangeSummaryDetail = try sourceStructBody(named: "RemoteChangeSummaryDetailPanel", in: ios)
+        let deferredInlineItemDetail = try sourceStructBody(named: "DeferredServerSyncItemDetailPanel", in: ios)
         let inlineItemDetail = try sourceStructBody(named: "ServerSyncItemInlineDetailPanel", in: ios)
         let serverSyncDataRow = try sourceStructBody(named: "ServerSyncDataRow", in: ios)
         let mailAnalysisResult = try sourceStructBody(named: "MailPasteAnalysisResultView", in: ios)
@@ -1951,6 +1952,21 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(mailAnalysisResult.contains(".transition(.opacity)"))
         XCTAssertTrue(remoteChangeSummaryDetail.contains("companionPerformWithoutAnimation"))
         XCTAssertFalse(remoteChangeSummaryDetail.contains("ServerSyncItemInlineDetailPanel(item: item, model: model)\n                                .transition(.opacity)"))
+        XCTAssertTrue(deferredInlineItemDetail.contains("@State private var loadedItemID: String?"))
+        XCTAssertTrue(deferredInlineItemDetail.contains("ServerSyncItemInlineDetailPanel(item: item, model: model)"))
+        XCTAssertTrue(deferredInlineItemDetail.contains("await Task.yield()"))
+        XCTAssertTrue(deferredInlineItemDetail.contains("transaction.animation = nil"))
+        XCTAssertTrue(deferredInlineItemDetail.contains("Text(\"상세를 여는 중\")"))
+        XCTAssertEqual(
+            ios.components(separatedBy: "ServerSyncItemInlineDetailPanel(item: item, model: model)").count - 1,
+            1,
+            "Heavy item detail rendering should only be mounted by DeferredServerSyncItemDetailPanel."
+        )
+        XCTAssertGreaterThanOrEqual(
+            ios.components(separatedBy: "DeferredServerSyncItemDetailPanel(item: item, model: model)").count - 1,
+            5,
+            "Companion item selections should defer expensive detail rendering across dashboard, changes, and mail analysis lists."
+        )
         XCTAssertTrue(sharedRunLogRow.contains("companionPerformWithoutAnimation"))
         XCTAssertTrue(serverRequestLogRow.contains("companionPerformWithoutAnimation"))
         XCTAssertTrue(remoteFileAccessRequestRow.contains("companionPerformWithoutAnimation"))
