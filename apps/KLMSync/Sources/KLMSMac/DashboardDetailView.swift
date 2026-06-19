@@ -3149,65 +3149,159 @@ private struct QuarantineListView: View {
 private struct PrunedListView: View {
     var filters: DashboardDetailFilters
     var snapshot: EngineSnapshot
+    private var inputBaseSignature: DashboardPrunedListBaseInputSignature
     @State private var sortOption = DashboardFileSortOption.recent
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
+    @State private var presentation: DashboardPrunedListPresentation
+    @State private var presentationSignature: DashboardPrunedListInputSignature?
+    @State private var renderedFilters: DashboardDetailFilters?
+    @State private var presentationTask: Task<Void, Never>?
+    @State private var isPreparingPresentation = true
+
+    init(filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
+        self.filters = filters
+        self.snapshot = snapshot
+        let baseSignature = DashboardPrunedListBaseInputSignature(snapshot: snapshot, filters: filters)
+        self.inputBaseSignature = baseSignature
+        _presentation = State(initialValue: DashboardPrunedListPresentation())
+        _presentationSignature = State(initialValue: nil)
+    }
 
     var body: some View {
-        let deleted = filteredItems
-        let sortedDeleted = deleted.sorted(by: sortOption)
-        let visibleDeleted = sortedDeleted.prefix(visibleLimit)
-        if deleted.isEmpty {
-            EmptyDetailText(text: "정리된 파일 기록이 없습니다.")
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                FileSortPickerView(selection: $sortOption)
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(visibleDeleted) { item in
-                        FileRowView(
-                            item: item,
-                            kind: .pruned,
-                            model: nil
-                        )
-                    }
-                    if sortedDeleted.count > visibleDeleted.count {
-                        DashboardShowMoreButton(remainingCount: sortedDeleted.count - visibleDeleted.count) {
-                            visibleLimit += DashboardLargeList.increment
+        let signature = DashboardPrunedListInputSignature(baseSignature: inputBaseSignature, sortOption: sortOption)
+        let visibleDeleted = presentation.items.prefix(visibleLimit)
+        Group {
+            if isPreparingPresentation {
+                DashboardListPreparingView(text: "정리 기록을 준비하는 중입니다.")
+            } else if presentation.items.isEmpty {
+                EmptyDetailText(text: filters.hasActiveFilter ? "검색/필터 조건에 맞는 정리 기록이 없습니다. 필터 초기화를 눌러 전체 목록을 보세요." : "정리된 파일 기록이 없습니다.")
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    FileSortPickerView(selection: $sortOption)
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(visibleDeleted) { item in
+                            FileRowView(
+                                item: item,
+                                kind: .pruned,
+                                model: nil
+                            )
+                        }
+                        if presentation.items.count > visibleDeleted.count {
+                            DashboardShowMoreButton(remainingCount: presentation.items.count - visibleDeleted.count) {
+                                visibleLimit += DashboardLargeList.increment
+                            }
                         }
                     }
+                    .id(sortOption.rawValue)
                 }
-                .id(sortOption.rawValue)
             }
+        }
+        .onAppear {
+            rebuildPresentationIfNeeded(signature)
+        }
+        .onChange(of: signature) { _, next in
+            rebuildPresentationIfNeeded(next)
+        }
+        .onDisappear {
+            presentationTask?.cancel()
         }
     }
 
-    private var filteredItems: [DashboardFileItem] {
-        (snapshot.cleanupResult?.actions.filter { $0.action == "deleted" } ?? []).compactMap { action in
-            let term = AcademicTerm.infer(title: action.path, dateTexts: [action.path])
-            guard DashboardTermFilter.matches(
-                term,
-                selectedYear: filters.selectedYear,
-                selectedSemester: filters.selectedSemester
-            ) else {
-                return nil
-            }
-            let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard query.isEmpty || [term?.displayName ?? "", action.path].joined(separator: " ").localizedCaseInsensitiveContains(query) else {
-                return nil
-            }
-            return DashboardFileItem(
-                key: action.path,
-                title: action.path,
-                course: action.action,
-                academicTerm: term,
-                path: action.path,
-                sortPath: fileSortPath(from: action.path),
-                bucket: fileBucket(from: action.path),
-                url: "",
-                isRecent: false,
-                recencyText: "",
-                interaction: nil
-            )
+    private func rebuildPresentationIfNeeded(_ signature: DashboardPrunedListInputSignature) {
+        guard presentationSignature != signature || isPreparingPresentation else {
+            return
         }
+        let shouldDelay = !isPreparingPresentation && filters.shouldDebounceComparedTo(renderedFilters)
+        presentationTask?.cancel()
+        presentationSignature = signature
+        visibleLimit = DashboardLargeList.initialVisibleLimit
+        if !shouldDelay {
+            presentation = DashboardPrunedListPresentation()
+            isPreparingPresentation = true
+        }
+        let snapshot = snapshot
+        let filters = filters
+        let sortOption = sortOption
+        presentationTask = Task { @MainActor in
+            if shouldDelay {
+                try? await Task.sleep(nanoseconds: DashboardLargeList.filterRebuildDelayNanoseconds)
+            }
+            guard !Task.isCancelled else { return }
+            let nextPresentation = await Task.detached(priority: .userInitiated) {
+                DashboardPrunedListPresentation(snapshot: snapshot, filters: filters, sortOption: sortOption)
+            }.value
+            guard !Task.isCancelled else { return }
+            presentation = nextPresentation
+            renderedFilters = filters
+            isPreparingPresentation = false
+        }
+    }
+}
+
+private struct DashboardPrunedListBaseInputSignature: Equatable {
+    private var value: Int
+
+    init(snapshot: EngineSnapshot, filters: DashboardDetailFilters) {
+        var hasher = Hasher()
+        hasher.combine(filters.searchText)
+        hasher.combine(filters.selectedCourse)
+        hasher.combine(filters.selectedYear)
+        hasher.combine(filters.selectedSemester)
+        hasher.combine(filters.showHidden)
+        hasher.combine(filters.hiddenOnly)
+        hasher.combine(filters.newOnly)
+        hasher.combine(filters.recentOnly)
+        let actions = snapshot.cleanupResult?.actions ?? []
+        hasher.combine(actions.count)
+        for action in actions {
+            hasher.combine(action.action)
+            hasher.combine(action.path)
+        }
+        value = hasher.finalize()
+    }
+}
+
+private struct DashboardPrunedListInputSignature: Equatable {
+    var baseSignature: DashboardPrunedListBaseInputSignature
+    var sortOption: DashboardFileSortOption
+}
+
+private struct DashboardPrunedListPresentation: Sendable {
+    var items: [DashboardFileItem] = []
+
+    init() {}
+
+    init(snapshot: EngineSnapshot, filters: DashboardDetailFilters, sortOption: DashboardFileSortOption) {
+        items = (snapshot.cleanupResult?.actions ?? [])
+            .compactMap { action -> DashboardFileItem? in
+                guard action.action == "deleted" else { return nil }
+                let term = AcademicTerm.infer(title: action.path, dateTexts: [action.path])
+                guard DashboardTermFilter.matches(
+                    term,
+                    selectedYear: filters.selectedYear,
+                    selectedSemester: filters.selectedSemester
+                ) else {
+                    return nil
+                }
+                let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard query.isEmpty || [term?.displayName ?? "", action.path].joined(separator: " ").localizedCaseInsensitiveContains(query) else {
+                    return nil
+                }
+                return DashboardFileItem(
+                    key: action.path,
+                    title: action.path,
+                    course: action.action,
+                    academicTerm: term,
+                    path: action.path,
+                    sortPath: fileSortPath(from: action.path),
+                    bucket: fileBucket(from: action.path),
+                    url: "",
+                    isRecent: false,
+                    recencyText: "",
+                    interaction: nil
+                )
+            }
+            .sorted(by: sortOption)
     }
 }
 
