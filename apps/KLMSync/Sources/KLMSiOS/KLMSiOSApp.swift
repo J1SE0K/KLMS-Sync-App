@@ -2751,36 +2751,9 @@ private struct CompanionSidebarButton: View {
 private struct CompanionDeferredSectionContent: View {
     var section: CompanionAppSection
     let model: CompanionModel
-    @State private var renderedSection: CompanionAppSection
-    @State private var renderTask: Task<Void, Never>?
-    private let sectionRenderDelayNanoseconds: UInt64 = 4_000_000
-
-    init(section: CompanionAppSection, model: CompanionModel) {
-        self.section = section
-        self.model = model
-        _renderedSection = State(initialValue: section)
-    }
 
     var body: some View {
-        CompanionSectionContent(section: renderedSection, model: model)
-            .onChange(of: section) { _, nextSection in
-                scheduleRenderedSection(nextSection)
-            }
-            .onDisappear {
-                renderTask?.cancel()
-            }
-    }
-
-    private func scheduleRenderedSection(_ nextSection: CompanionAppSection) {
-        renderTask?.cancel()
-        renderTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: sectionRenderDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            companionPerformWithoutAnimation {
-                renderedSection = nextSection
-            }
-        }
+        CompanionSectionContent(section: section, model: model)
     }
 }
 

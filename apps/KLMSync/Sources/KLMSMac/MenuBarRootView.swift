@@ -5,11 +5,8 @@ import SwiftUI
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
-    @State private var renderedSection = KLMSMacSection.dashboard
     @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
-    @State private var renderSectionTask: Task<Void, Never>?
-    private let workspaceRenderDelayNanoseconds: UInt64 = 8_000_000
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -23,7 +20,7 @@ struct MenuBarRootView: View {
             Rectangle()
                 .fill(Color.klmsMacBorder.opacity(0.76))
                 .frame(width: 1)
-            WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: renderedSection, nonce: scrollResetNonce)) {
+            WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: selectedSection, nonce: scrollResetNonce)) {
                 VStack(alignment: .leading, spacing: 14) {
                     DashboardTopBarView(model: model, selectedSection: $selectedSection)
                     MacAlertBannerView(
@@ -33,7 +30,7 @@ struct MenuBarRootView: View {
                     )
                     MacWorkstationLayoutView(
                         model: model,
-                        selectedSection: renderedSection,
+                        selectedSection: selectedSection,
                         expandedLogSummaryKind: $expandedLogSummaryKind
                     )
                 }
@@ -49,27 +46,10 @@ struct MenuBarRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
-        .onChange(of: selectedSection) { _, nextSection in
-            scheduleRenderedSection(nextSection)
-        }
     }
 
     private func resetCurrentSectionScroll() {
         scrollResetNonce &+= 1
-    }
-
-    private func scheduleRenderedSection(_ section: KLMSMacSection) {
-        renderSectionTask?.cancel()
-        renderSectionTask = Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: workspaceRenderDelayNanoseconds)
-            guard !Task.isCancelled else { return }
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                renderedSection = section
-            }
-        }
     }
 }
 
