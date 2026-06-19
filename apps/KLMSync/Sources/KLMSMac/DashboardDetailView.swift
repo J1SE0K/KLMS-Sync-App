@@ -2848,7 +2848,7 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.caption.weight(.semibold))
             .foregroundStyle(foreground)
-            .frame(minWidth: 36, minHeight: 36)
+            .frame(minWidth: 40, minHeight: 40)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 10))
