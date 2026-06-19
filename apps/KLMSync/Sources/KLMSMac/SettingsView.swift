@@ -165,7 +165,6 @@ struct SettingsView: View {
 
             selectedSettingsContent
                 .id(selectedTab.rawValue)
-                .accessibilityIdentifier("settings-content-\(selectedTab.rawValue)")
         }
         .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
@@ -194,12 +193,7 @@ struct SettingsView: View {
         let isSelected = selectedTab == tab
         let isHovered = hoveredTab == tab
         return Button {
-            guard selectedTab != tab else { return }
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                selectedTab = tab
-            }
+            selectSettingsTab(tab)
         } label: {
             HStack(spacing: 7) {
                 ZStack {
@@ -250,9 +244,22 @@ struct SettingsView: View {
         .onHover { hovering in
             hoveredTab = hovering ? tab : (hoveredTab == tab ? nil : hoveredTab)
         }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            selectSettingsTab(tab)
+        }
         .accessibilityLabel(tab.title)
         .accessibilityIdentifier("settings-\(tab.rawValue)")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+    }
+
+    private func selectSettingsTab(_ tab: SettingsTab) {
+        guard selectedTab != tab else { return }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            selectedTab = tab
+        }
     }
 
     private var loginSettings: some View {

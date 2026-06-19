@@ -107,65 +107,34 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
 private struct DeferredMacWorkspacePanel<Content: View>: View {
     var id: String
     var contentIdentifier: String?
-    var loadingText: String
     private let content: () -> Content
-    @State private var loadedID: String?
 
     init(
         id: String,
         contentIdentifier: String? = nil,
-        loadingText: String,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.id = id
         self.contentIdentifier = contentIdentifier
-        self.loadingText = loadingText
         self.content = content
     }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             workspaceContentAccessibilityMarker
-            Group {
-                if loadedID == id {
-                    content()
-                } else {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text(loadingText)
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.klmsMacBorder, lineWidth: 1)
-                    }
-                    .accessibilityIdentifier("workspace-loading-\(id)")
-                }
-            }
-        }
-        .task(id: id) {
-            loadedID = nil
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            loadedID = id
+            content()
         }
     }
 
     private var workspaceContentAccessibilityMarker: some View {
-        Text(loadedID == id ? "작업공간 내용" : loadingText)
+        Text("작업공간 내용")
             .font(.system(size: 1))
             .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
             .lineLimit(1)
             .frame(width: 1, height: 1)
             .clipped()
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(loadedID == id ? "작업공간 내용" : loadingText)
+            .accessibilityLabel("작업공간 내용")
             .accessibilityIdentifier("workspace-panel-\(id)")
     }
 }
@@ -188,7 +157,7 @@ private struct MacWorkstationLayoutView: View {
             DashboardFileDataPrewarmView(snapshot: model.snapshot, signature: model.dashboardFileRenderSignature)
             switch selectedSection {
             case .dashboard:
-                DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard", loadingText: "대시보드를 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard") {
                     VStack(alignment: .leading, spacing: 16) {
                         CommandPanelView(model: model)
                         DeferredDashboardSummaryView(model: model)
@@ -196,33 +165,33 @@ private struct MacWorkstationLayoutView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             case .files:
-                DeferredMacWorkspacePanel(id: "workspace-files", contentIdentifier: "workspace-content-files", loadingText: "파일 목록을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-files", contentIdentifier: "workspace-content-files") {
                     cachedDashboardDetailPanel(kind: .files)
                         .equatable()
                 }
             case .tasks:
-                DeferredMacWorkspacePanel(id: "workspace-tasks", contentIdentifier: "workspace-content-tasks", loadingText: "과제와 시험 목록을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-tasks", contentIdentifier: "workspace-content-tasks") {
                     TaskAndExamWorkspaceView(model: model)
                 }
             case .notices:
-                DeferredMacWorkspacePanel(id: "workspace-notices", contentIdentifier: "workspace-content-notices", loadingText: "공지 목록을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-notices", contentIdentifier: "workspace-content-notices") {
                     cachedDashboardDetailPanel(kind: .notices)
                         .equatable()
                 }
             case .calendar:
-                DeferredMacWorkspacePanel(id: "workspace-calendar", contentIdentifier: "workspace-content-calendar", loadingText: "캘린더 변경 사항을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-calendar", contentIdentifier: "workspace-content-calendar") {
                     cachedDashboardDetailPanel(kind: .calendar)
                         .equatable()
                 }
             case .activityLogs:
-                DeferredMacWorkspacePanel(id: "workspace-activityLogs", contentIdentifier: "workspace-content-activityLogs", loadingText: "로그 화면을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-activityLogs", contentIdentifier: "workspace-content-activityLogs") {
                     LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                     DiagnosticStageDurationPanelView(model: model)
                     RemoteActivityPanelView(model: model)
                     RunLogArchivePanelView(model: model)
                 }
             case .diagnostics:
-                DeferredMacWorkspacePanel(id: "workspace-diagnostics", contentIdentifier: "workspace-content-diagnostics", loadingText: "진단 화면을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-diagnostics", contentIdentifier: "workspace-content-diagnostics") {
                     VerifyPanelView(snapshot: model.snapshot)
                     DiagnosticToolsPanelView(model: model)
                     DoctorPanelView(snapshot: model.snapshot)
@@ -230,7 +199,7 @@ private struct MacWorkstationLayoutView: View {
                     LoginPanelView(model: model)
                 }
             case .settings:
-                DeferredMacWorkspacePanel(id: "workspace-settings", contentIdentifier: "workspace-content-settings", loadingText: "설정 화면을 준비하는 중입니다.") {
+                DeferredMacWorkspacePanel(id: "workspace-settings", contentIdentifier: "workspace-content-settings") {
                     SettingsView(model: model)
                 }
             }

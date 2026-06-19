@@ -151,19 +151,28 @@ private func verifySettingsTabNavigation(
         throw SmokeFailure.settingsTabMissing(identifier)
     }
 
-    let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
-    guard error == .success else {
-        throw SmokeFailure.pressFailed(identifier: identifier, error)
+    var lastError: AXError = .success
+    var didSelect = waitForSelectedValue(identifier: identifier, in: appElement, timeout: 0.15)
+    for _ in 0..<3 where !didSelect {
+        _ = AXUIElementPerformAction(button, "AXScrollToVisible" as CFString)
+        let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
+        lastError = error
+        guard error == .success else {
+            break
+        }
+        didSelect = waitForSelectedValue(identifier: identifier, in: appElement, timeout: 0.7)
+    }
+    guard didSelect else {
+        if lastError != .success {
+            throw SmokeFailure.pressFailed(identifier: identifier, lastError)
+        }
+        throw SmokeFailure.selectedValueMissing(identifier)
     }
 
     Thread.sleep(forTimeInterval: navigationDelay)
 
     guard waitForText(expectedText, in: appElement, timeout: timeout) else {
         throw SmokeFailure.expectedTextMissing(expectedText)
-    }
-
-    guard waitForSelectedValue(identifier: identifier, in: appElement, timeout: timeout) else {
-        throw SmokeFailure.selectedValueMissing(identifier)
     }
 
     print("ok: \(identifier) -> \(expectedText)")

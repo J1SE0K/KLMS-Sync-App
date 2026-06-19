@@ -2031,20 +2031,22 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteChangeSummaryDetail.contains(".accessibilityValue(selectedItemID == item.id ? \"펼쳐짐\" : \"접힘\")"))
         XCTAssertTrue(remoteChangeSummaryDetail.contains(".accessibilityHint(selectedItemID == item.id ? \"변경 항목 상세와 처리 버튼을 접습니다.\" : \"변경 항목 상세와 처리 버튼을 펼칩니다.\")"))
         XCTAssertFalse(remoteChangeSummaryDetail.contains("ServerSyncItemInlineDetailPanel(item: item, model: model)\n                                .transition(.opacity)"))
-        XCTAssertTrue(deferredInlineItemDetail.contains("@State private var loadedItemID: String?"))
         XCTAssertTrue(deferredInlineItemDetail.contains("ServerSyncItemInlineDetailPanel(item: item, model: model)"))
-        XCTAssertTrue(deferredInlineItemDetail.contains("await Task.yield()"))
         XCTAssertTrue(deferredInlineItemDetail.contains("transaction.animation = nil"))
-        XCTAssertTrue(deferredInlineItemDetail.contains("Text(\"상세를 여는 중\")"))
+        XCTAssertFalse(deferredInlineItemDetail.contains("@State private var loadedItemID"))
+        XCTAssertFalse(deferredInlineItemDetail.contains("await Task.yield()"))
+        XCTAssertFalse(deferredInlineItemDetail.contains("Text(\"상세를 여는 중\")"))
+        XCTAssertFalse(deferredInlineItemDetail.contains("ProgressView()"))
+        XCTAssertFalse(deferredInlineItemDetail.contains(".task(id: item.id)"))
         XCTAssertEqual(
             ios.components(separatedBy: "ServerSyncItemInlineDetailPanel(item: item, model: model)").count - 1,
             1,
-            "Heavy item detail rendering should only be mounted by DeferredServerSyncItemDetailPanel."
+            "Item detail rendering should be mounted once through the shared wrapper."
         )
         XCTAssertGreaterThanOrEqual(
             ios.components(separatedBy: "DeferredServerSyncItemDetailPanel(item: item, model: model)").count - 1,
             5,
-            "Companion item selections should defer expensive detail rendering across dashboard, changes, and mail analysis lists."
+            "Companion item selections should reuse the same immediate detail wrapper across dashboard, changes, and mail analysis lists."
         )
         XCTAssertTrue(sharedRunLogRow.contains("companionPerformWithoutAnimation"))
         XCTAssertTrue(serverRequestLogRow.contains("companionPerformWithoutAnimation"))
@@ -2495,7 +2497,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("settingsContentPanel"))
         XCTAssertTrue(macSettings.contains("selectedSettingsContent"))
         XCTAssertTrue(macSettings.contains(".id(selectedTab.rawValue)"))
-        XCTAssertTrue(macSettings.contains(".accessibilityIdentifier(\"settings-content-\\(selectedTab.rawValue)\")"))
+        XCTAssertTrue(macSettings.contains(".accessibilityAction"))
+        XCTAssertTrue(macSettings.contains("selectSettingsTab(tab)"))
         XCTAssertTrue(macSettings.contains("var primarySectionTitle: String"))
         XCTAssertTrue(macSettings.contains("Text(selectedTab.primarySectionTitle)"))
         XCTAssertTrue(macSettings.contains("private let settingsTabColumns"))
@@ -2843,28 +2846,32 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(mac.contains(".task(id: selectedSection)"))
         XCTAssertFalse(mac.contains("let target = selectedSection"))
         XCTAssertTrue(mac.contains("selectedSection: $selectedSection"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains("@State private var loadedID"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains("@State private var loadedID"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains("var contentIdentifier: String?"))
         XCTAssertFalse(deferredMacWorkspacePanel.contains("var loadsImmediately: Bool"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains("if loadedID == id"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains(".accessibilityIdentifier(\"workspace-loading-\\(id)\")"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains("if loadedID == id"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains(".accessibilityIdentifier(\"workspace-loading-\\(id)\")"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains("ProgressView()"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains("loadingText"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains("ZStack(alignment: .topLeading)"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains("workspaceContentAccessibilityMarker"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains("Text(loadedID == id ? \"작업공간 내용\" : loadingText)"))
+        XCTAssertTrue(deferredMacWorkspacePanel.contains("Text(\"작업공간 내용\")"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains(".accessibilityElement(children: .ignore)"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains(".accessibilityLabel(loadedID == id ? \"작업공간 내용\" : loadingText)"))
+        XCTAssertTrue(deferredMacWorkspacePanel.contains(".accessibilityLabel(\"작업공간 내용\")"))
         XCTAssertFalse(deferredMacWorkspacePanel.contains("guard !loadsImmediately else"))
         XCTAssertTrue(deferredMacWorkspacePanel.contains(".accessibilityIdentifier(\"workspace-panel-\\(id)\")"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains(".task(id: id)"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains("await Task.yield()"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains(".task(id: id)"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains("await Task.yield()"))
         XCTAssertFalse(deferredMacWorkspacePanel.contains("renderDelayNanoseconds"))
-        XCTAssertTrue(deferredMacWorkspacePanel.contains("loadedID = id"))
-        XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-dashboard\", contentIdentifier: \"workspace-content-dashboard\", loadingText: \"대시보드를 준비하는 중입니다.\")"))
+        XCTAssertFalse(deferredMacWorkspacePanel.contains("loadedID = id"))
+        XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-dashboard\", contentIdentifier: \"workspace-content-dashboard\")"))
         XCTAssertFalse(macWorkstationLayoutView.contains("loadsImmediately: true"))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-files\", contentIdentifier: \"workspace-content-files\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-tasks\", contentIdentifier: \"workspace-content-tasks\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-notices\", contentIdentifier: \"workspace-content-notices\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-calendar\", contentIdentifier: \"workspace-content-calendar\""))
+        XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-activityLogs\", contentIdentifier: \"workspace-content-activityLogs\""))
+        XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-diagnostics\", contentIdentifier: \"workspace-content-diagnostics\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-settings\", contentIdentifier: \"workspace-content-settings\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("cachedDashboardDetailPanel(kind: .files)"))
         XCTAssertTrue(macWorkstationLayoutView.contains("cachedDashboardDetailPanel(kind: .notices)"))
@@ -3081,7 +3088,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSummaryContent.contains("let archiveMetrics = ["))
         let logsBody = try sectionBody(in: workstationBody, from: "case .activityLogs:", to: "case .diagnostics:")
         XCTAssertTrue(logsBody.contains("DeferredMacWorkspacePanel(id: \"workspace-activityLogs\""))
-        XCTAssertTrue(logsBody.contains("loadingText: \"로그 화면을 준비하는 중입니다.\""))
+        XCTAssertFalse(logsBody.contains("loadingText:"))
         XCTAssertTrue(logsBody.contains("LogSummaryPanelView(model: model"))
         XCTAssertTrue(logsBody.contains("DiagnosticStageDurationPanelView(model: model)"))
         XCTAssertTrue(logsBody.contains("RemoteActivityPanelView(model: model)"))
@@ -3175,7 +3182,7 @@ final class DashboardDataModelTests: XCTestCase {
 
         let diagnosticsBody = try sectionBody(in: workstationBody, from: "case .diagnostics:", to: ".padding(.vertical, 4)")
         XCTAssertTrue(diagnosticsBody.contains("DeferredMacWorkspacePanel(id: \"workspace-diagnostics\""))
-        XCTAssertTrue(diagnosticsBody.contains("loadingText: \"진단 화면을 준비하는 중입니다.\""))
+        XCTAssertFalse(diagnosticsBody.contains("loadingText:"))
         XCTAssertLessThan(
             try XCTUnwrap(diagnosticsBody.range(of: "DeferredMacWorkspacePanel(id: \"workspace-diagnostics\"")).lowerBound,
             try XCTUnwrap(diagnosticsBody.range(of: "VerifyPanelView")).lowerBound

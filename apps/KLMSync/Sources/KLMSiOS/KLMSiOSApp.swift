@@ -9781,47 +9781,11 @@ private struct ServerSyncDataPanel: View {
 private struct DeferredServerSyncItemDetailPanel: View {
     var item: ServerRelaySyncItem
     let model: CompanionModel
-    @State private var loadedItemID: String?
 
     var body: some View {
-        Group {
-            if loadedItemID == item.id {
-                ServerSyncItemInlineDetailPanel(item: item, model: model)
-            } else {
-                HStack(spacing: 10) {
-                    ProgressView()
-                        .controlSize(.small)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("상세를 여는 중")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.klmsPrimaryText)
-                        Text(item.title.isEmpty ? "선택한 항목을 준비하고 있습니다." : item.title)
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.klmsBorder, lineWidth: 1)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("상세를 여는 중")
-                .accessibilityValue(item.title.isEmpty ? "선택한 항목" : item.title)
-            }
-        }
+        ServerSyncItemInlineDetailPanel(item: item, model: model)
         .transaction { transaction in
             transaction.animation = nil
-        }
-        .task(id: item.id) {
-            loadedItemID = nil
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            loadedItemID = item.id
         }
     }
 }
