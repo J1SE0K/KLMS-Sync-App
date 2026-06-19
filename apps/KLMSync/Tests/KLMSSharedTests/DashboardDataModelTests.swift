@@ -2262,6 +2262,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteChangeSummaryDetail.contains("let visibleCalendarItems = changedCalendarItems.prefix(calendarVisibleLimit)"))
         XCTAssertTrue(remoteChangeSummaryDetail.contains("ForEach(visibleCalendarItems)"))
         XCTAssertTrue(remoteChangeSummaryDetail.contains("let visibleReports = fileCleanupReports.prefix(cleanupVisibleLimit)"))
+        XCTAssertTrue(remoteChangeSummaryDetail.contains("ForEach(visibleReports, id: \\.scope)"))
+        XCTAssertFalse(remoteChangeSummaryDetail.contains("ForEach(Array(visibleReports.enumerated()), id: \\.offset)"))
         XCTAssertTrue(remoteChangeSummaryDetail.contains("CompanionShowMoreRowsButton"))
         XCTAssertFalse(remoteChangeSummaryDetail.contains("ForEach(changedItems)"))
         XCTAssertFalse(remoteChangeSummaryDetail.contains("ForEach(changedCalendarItems)"))

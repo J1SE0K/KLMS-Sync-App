@@ -7311,7 +7311,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
                         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
                 } else {
                     let visibleReports = fileCleanupReports.prefix(cleanupVisibleLimit)
-                    ForEach(Array(visibleReports.enumerated()), id: \.offset) { _, report in
+                    ForEach(visibleReports, id: \.scope) { report in
                         RemoteDryRunReportRow(report: report)
                     }
                     if fileCleanupReports.count > visibleReports.count {
