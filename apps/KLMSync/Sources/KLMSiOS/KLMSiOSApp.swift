@@ -6518,7 +6518,6 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     var category: DashboardMetricCategory
     let model: CompanionModel
     @State private var selectedItemID: String?
-    @State private var displayedSelectedItem: ServerRelaySyncItem?
 
     private var items: [ServerRelaySyncItem] {
         model.cachedVisibleDashboardItems(for: category.rawValue)
@@ -6529,12 +6528,10 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     private var selectedItem: ServerRelaySyncItem? {
-        guard selectedItemID != nil,
-              let displayedSelectedItem,
-              displayedSelectedItem.id == selectedItemID else {
+        guard let selectedItemID else {
             return nil
         }
-        return displayedSelectedItem
+        return items.first { $0.id == selectedItemID }
     }
 
     private var itemsResetKey: String {
@@ -6601,30 +6598,24 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         transaction.animation = nil
         withTransaction(transaction) {
             selectedItemID = item.id
-            displayedSelectedItem = item
         }
     }
 
     private func refreshExternalSelection() {
         if let selectedItemID,
-           let refreshed = items.first(where: { $0.id == selectedItemID }) {
-            companionPerformWithoutAnimation {
-                displayedSelectedItem = refreshed
-            }
+           items.contains(where: { $0.id == selectedItemID }) {
             return
         }
 
         guard let first = items.first else {
             companionPerformWithoutAnimation {
                 selectedItemID = nil
-                displayedSelectedItem = nil
             }
             return
         }
 
         companionPerformWithoutAnimation {
             selectedItemID = first.id
-            displayedSelectedItem = first
         }
     }
 }
@@ -6633,7 +6624,6 @@ private struct WorkstationTasksWorkspace: View {
     let model: CompanionModel
     @State private var selectedTaskCategory = DashboardMetricCategory.assignments
     @State private var selectedItemID: String?
-    @State private var displayedSelectedItem: ServerRelaySyncItem?
 
     private var taskCategories: [DashboardMetricCategory] {
         var categories: [DashboardMetricCategory] = [.assignments, .exams]
@@ -6652,12 +6642,10 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var selectedItem: ServerRelaySyncItem? {
-        guard selectedItemID != nil,
-              let displayedSelectedItem,
-              displayedSelectedItem.id == selectedItemID else {
+        guard let selectedItemID else {
             return nil
         }
-        return displayedSelectedItem
+        return selectedCategoryItems.first { $0.id == selectedItemID }
     }
 
     private var itemsResetKey: String {
@@ -6753,30 +6741,24 @@ private struct WorkstationTasksWorkspace: View {
         transaction.animation = nil
         withTransaction(transaction) {
             selectedItemID = item.id
-            displayedSelectedItem = item
         }
     }
 
     private func refreshExternalSelection() {
         if let selectedItemID,
-           let refreshed = selectedCategoryItems.first(where: { $0.id == selectedItemID }) {
-            companionPerformWithoutAnimation {
-                displayedSelectedItem = refreshed
-            }
+           selectedCategoryItems.contains(where: { $0.id == selectedItemID }) {
             return
         }
 
         guard let first = selectedCategoryItems.first else {
             companionPerformWithoutAnimation {
                 selectedItemID = nil
-                displayedSelectedItem = nil
             }
             return
         }
 
         companionPerformWithoutAnimation {
             selectedItemID = first.id
-            displayedSelectedItem = first
         }
     }
 
@@ -6873,7 +6855,6 @@ private struct WorkstationTaskCategorySelector: View {
 private struct WorkstationCalendarWorkspace: View {
     let model: CompanionModel
     @State private var selectedChangeID: String?
-    @State private var displayedSelectedChange: CalendarChange?
     @State private var calendarVisibleLimit = CompanionLargeList.regularCalendarVisibleLimit
 
     private var changes: [CalendarChange] {
@@ -6885,12 +6866,10 @@ private struct WorkstationCalendarWorkspace: View {
     }
 
     private var selectedChange: CalendarChange? {
-        guard selectedChangeID != nil,
-              let displayedSelectedChange,
-              displayedSelectedChange.id == selectedChangeID else {
+        guard let selectedChangeID else {
             return nil
         }
-        return displayedSelectedChange
+        return changes.first { $0.id == selectedChangeID }
     }
 
     private var changesResetKey: String {
@@ -7100,30 +7079,24 @@ private struct WorkstationCalendarWorkspace: View {
         }
         companionPerformWithoutAnimation {
             selectedChangeID = change.id
-            displayedSelectedChange = change
         }
     }
 
     private func refreshExternalSelection() {
         if let selectedChangeID,
-           let refreshed = changes.first(where: { $0.id == selectedChangeID }) {
-            companionPerformWithoutAnimation {
-                displayedSelectedChange = refreshed
-            }
+           changes.contains(where: { $0.id == selectedChangeID }) {
             return
         }
 
         guard let first = changes.first else {
             companionPerformWithoutAnimation {
                 selectedChangeID = nil
-                displayedSelectedChange = nil
             }
             return
         }
 
         companionPerformWithoutAnimation {
             selectedChangeID = first.id
-            displayedSelectedChange = first
         }
     }
 }
