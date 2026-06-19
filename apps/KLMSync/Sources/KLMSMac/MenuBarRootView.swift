@@ -1132,6 +1132,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.caption.weight(.semibold))
             .foregroundStyle(foreground)
+            .frame(minWidth: 32, minHeight: 32)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background {

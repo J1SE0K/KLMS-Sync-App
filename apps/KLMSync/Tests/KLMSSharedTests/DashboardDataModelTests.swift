@@ -1103,6 +1103,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(view.contains("MacDesignWorkspace"))
         XCTAssertFalse(view.contains("MacDesignMetricKind"))
         XCTAssertFalse(view.contains("private struct SectionPickerView"))
+        XCTAssertTrue(rootActionButtonStyle.contains(".frame(minWidth: 32, minHeight: 32)"))
+        XCTAssertTrue(actionButtonStyle.contains(".frame(minWidth: 32, minHeight: 32)"))
+        XCTAssertTrue(iconButtonStyle.contains(".frame(width: 32, height: 32)"))
 
         XCTAssertFalse(view.contains("DashboardLogSummaryPanelView"))
         XCTAssertFalse(dashboardSummaryContent.contains("ViewThatFits(in: .horizontal)"))
@@ -1319,7 +1322,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(actionButtonStyle.contains("Color.klmsMacPrimaryCommandButtonPressedBackground"))
         XCTAssertTrue(iconButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
         XCTAssertTrue(iconButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46)"))
-        XCTAssertTrue(iconButtonStyle.contains(".frame(width: 26, height: 26)"))
+        XCTAssertTrue(iconButtonStyle.contains(".frame(width: 32, height: 32)"))
         XCTAssertTrue(commandPanel.contains("Color.klmsMacCommandButtonBackground.opacity(0.90)"))
         XCTAssertTrue(commandPanel.contains("return Color.klmsMacCommandButtonBorder.opacity(isRunning ? 1.0 : 0.88)"))
         XCTAssertFalse(commandPanel.contains("isRunning ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.58)"))
