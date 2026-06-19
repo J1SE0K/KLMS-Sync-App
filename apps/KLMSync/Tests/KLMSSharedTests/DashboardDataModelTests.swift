@@ -3166,6 +3166,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosScreenContainer.contains("var showsAttentionStack = true"))
         XCTAssertTrue(iosScreenContainer.contains("if showsAttentionStack"))
         XCTAssertTrue(iosScreenContainer.contains("RemoteAttentionStack(model: model)"))
+        XCTAssertLessThan(
+            try XCTUnwrap(iosScreenContainer.range(of: "RemoteAttentionStack(model: model)")).lowerBound,
+            try XCTUnwrap(iosScreenContainer.range(of: "WholeScreenVerticalScrollView")).lowerBound
+        )
         XCTAssertFalse(iosScreenContainer.contains("@ObservedObject var model"))
         XCTAssertTrue(iosHeader.contains("@Environment(\\.horizontalSizeClass)"))
         XCTAssertTrue(iosHeader.contains("compactHeader"))
