@@ -1984,11 +1984,12 @@ final class CompanionModel: ObservableObject {
     @discardableResult
     private func apply(_ response: LocalRemoteResponse) -> Bool {
         var didChange = false
+        let previousStatus = status
         if status != response.status {
             status = response.status
             didChange = true
         }
-        if shouldNotifyAuthSuccess(for: response.status),
+        if shouldNotifyAuthSuccess(from: previousStatus, to: response.status),
            let authStatusMessage = response.status.authStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines) {
             if shouldPresentAuthSuccessAlert(message: authStatusMessage) {
                 userAlert = UserAlert(title: "인증 완료", message: authStatusMessage)
@@ -2018,9 +2019,10 @@ final class CompanionModel: ObservableObject {
         return didChange
     }
 
-    private func shouldNotifyAuthSuccess(for status: SanitizedRemoteStatus) -> Bool {
+    private func shouldNotifyAuthSuccess(from previousStatus: SanitizedRemoteStatus, to status: SanitizedRemoteStatus) -> Bool {
         guard let message = status.authStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
               !message.isEmpty,
+              previousStatus.authDigits != nil,
               status.authDigits == nil,
               !status.loginRequired,
               status.phase == "running" else {
@@ -2626,12 +2628,20 @@ private struct CompanionSplitRootView: View {
     var body: some View {
         HStack(spacing: 0) {
             WorkstationSidebar(model: model, selectedSection: $selectedSection)
-                .frame(width: CompanionWorkstationMetrics.sidebarWidth)
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.sidebarWidth,
+                    idealWidth: CompanionWorkstationMetrics.sidebarWidth,
+                    maxWidth: CompanionWorkstationMetrics.sidebarWidth,
+                    alignment: .topLeading
+                )
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(2)
             Rectangle()
                 .fill(Color.klmsBorder)
                 .frame(width: 1)
             CompanionDeferredSectionContent(section: currentSection, model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .layoutPriority(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.klmsScreenBackground.ignoresSafeArea())
@@ -2878,6 +2888,13 @@ private struct CompanionStatusScreen: View {
     private var statusSummaryColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
             RemoteDashboardSyncCard(model: model, compact: horizontalSizeClass != .regular)
+            CompanionDashboardQuickAccessGrid(
+                status: model.dashboardStatus,
+                selectedCategory: effectiveDashboardSelection,
+                onCategoryTap: { category in
+                    selectDashboardCategory(category)
+                }
+            )
             RemoteDashboardMetricOverview(
                 model: model,
                 status: model.dashboardStatus,
@@ -2920,7 +2937,6 @@ private struct CompanionStatusScreen: View {
     private var statusCommandColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
             RemoteDashboardSyncCard(model: model, compact: false)
-            WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)
         }
     }
 
@@ -2960,11 +2976,14 @@ private struct CompanionStatusScreen: View {
             DashboardCategoryInlineDetailPanel(category: category, model: model)
                 .id(category)
         } else if horizontalSizeClass == .regular {
-            CompanionEmptyDetailPanel(
-                title: "항목 선택",
-                detail: "왼쪽 대시보드에서 파일, 과제, 공지, 시험, 캘린더 중 하나를 선택하면 상세와 처리 버튼이 여기에 표시됩니다.",
-                systemImage: "rectangle.stack.badge.cursorarrow"
-            )
+            VStack(alignment: .leading, spacing: 12) {
+                WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)
+                CompanionEmptyDetailPanel(
+                    title: "항목 선택",
+                    detail: "왼쪽 대시보드에서 파일, 과제, 공지, 시험, 캘린더 중 하나를 선택하면 상세와 처리 버튼이 여기에 표시됩니다.",
+                    systemImage: "rectangle.stack.badge.cursorarrow"
+                )
+            }
         }
     }
 
@@ -2993,6 +3012,84 @@ private struct CompanionStatusScreen: View {
     }
 
 }
+
+private struct CompanionDashboardQuickAccessGrid: View, Equatable {
+    var status: SanitizedRemoteStatus
+    var selectedCategory: DashboardMetricCategory?
+    var onCategoryTap: (DashboardMetricCategory) -> Void
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 104), spacing: 8),
+    ]
+
+    nonisolated static func == (lhs: CompanionDashboardQuickAccessGrid, rhs: CompanionDashboardQuickAccessGrid) -> Bool {
+        lhs.status == rhs.status
+            && lhs.selectedCategory == rhs.selectedCategory
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("바로 보기")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+                .padding(.horizontal, 2)
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(quickCategories) { category in
+                    quickButton(for: category)
+                }
+            }
+        }
+    }
+
+    private var quickCategories: [DashboardMetricCategory] {
+        [.files, .assignments, .exams, .notices, .calendar]
+    }
+
+    private func quickButton(for category: DashboardMetricCategory) -> some View {
+        let isSelected = selectedCategory == category
+        let value = category.value(from: status)
+        return Button {
+            companionPerformWithoutAnimation {
+                onCategoryTap(category)
+            }
+        } label: {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: category.systemImage)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        (isSelected ? Color.klmsSelectedForeground.opacity(0.16) : category.tint.opacity(0.12)),
+                        in: RoundedRectangle(cornerRadius: 8)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(category.title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                        .lineLimit(1)
+                    Text("\(value)개")
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.84) : Color.klmsSecondaryText)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+            .overlay(
+                RoundedRectangle(cornerRadius: 13)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.86), lineWidth: isSelected ? 1.2 : 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
+        .accessibilityLabel("\(category.title) \(value)개 바로 보기")
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+        .accessibilityHint("\(category.title) 상세를 바로 아래에 표시합니다.")
+    }
+}
+
 private struct CompanionDashboardCategoryScreen: View {
     var title: String
     var category: DashboardMetricCategory
@@ -3081,6 +3178,14 @@ private struct CompanionSettingsScreen: View {
     }
 
     private var settingsRegularWorkspace: some View {
+        ViewThatFits(in: .horizontal) {
+            settingsWideColumns
+            settingsStackedColumns
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var settingsWideColumns: some View {
         HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
             settingsPrimaryColumn
                 .frame(
@@ -3096,6 +3201,14 @@ private struct CompanionSettingsScreen: View {
                     maxWidth: .infinity,
                     alignment: .topLeading
                 )
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var settingsStackedColumns: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            settingsPrimaryColumn
+            settingsSupportColumn
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -3125,8 +3238,8 @@ private struct CompanionImmediateSettingsPanel: View {
                 Image(systemName: "slider.horizontal.3")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 32, height: 32)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    .frame(width: 44, height: 44)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("바로 반영되는 설정")
                         .font(.headline)
@@ -3157,6 +3270,9 @@ private struct CompanionImmediateSettingsPanel: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityLabel("화면 모드")
+                    .accessibilityValue(KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue)?.title ?? "시스템")
+                    .accessibilityHint("KLMS Sync 화면을 시스템 설정, 라이트 모드, 다크 모드 중 하나로 바꿉니다.")
                 }
 
                 CompanionImmediateSettingRow(
@@ -3377,6 +3493,15 @@ private struct CompanionHistoryScreen: View {
     }
 
     private var historyRegularWorkspace: some View {
+        ViewThatFits(in: .horizontal) {
+            historyWideColumns
+            historyTwoColumnFallback
+            historyStackFallback
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var historyWideColumns: some View {
         HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
             historySummaryColumn
                 .frame(
@@ -3399,6 +3524,35 @@ private struct CompanionHistoryScreen: View {
                     maxWidth: .infinity,
                     alignment: .topLeading
                 )
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var historyTwoColumnFallback: some View {
+        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+            historySummaryColumn
+                .frame(
+                    minWidth: 280,
+                    idealWidth: 304,
+                    maxWidth: 340,
+                    alignment: .topLeading
+                )
+            VStack(alignment: .leading, spacing: 12) {
+                selectedHistoryDetailPanel
+                historyStageColumn
+                historyRequestColumn
+            }
+            .frame(minWidth: 340, maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var historyStackFallback: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            historySummaryColumn
+            selectedHistoryDetailPanel
+            historyStageColumn
+            historyRequestColumn
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -3541,7 +3695,7 @@ private struct CompanionScreenContainer<Content: View>: View {
 
     private var screenContent: some View {
         ZStack {
-            Color.klmsScreenBackground.ignoresSafeArea()
+            Color.klmsScreenBackground
             VStack(spacing: 0) {
                 if showsAttentionStack {
                     RemoteAttentionStack(model: model)
@@ -3646,7 +3800,7 @@ private struct CompanionHeaderStatusSnapshot: Equatable {
         if let lastRefreshAt {
             return lastRefreshAt.formatted(date: .omitted, time: .shortened)
         }
-        return "방금 갱신"
+        return "갱신 전"
     }
 }
 
@@ -3856,8 +4010,8 @@ private struct ServerRelayConnectionPanel: View {
                     Image(systemName: model.serverRelayConfigured ? "checkmark.circle.fill" : "server.rack")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
-                        .frame(width: 32, height: 32)
-                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+                        .frame(width: 44, height: 44)
+                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("서버 릴레이")
                             .font(.headline)
@@ -6384,7 +6538,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
             Image(systemName: category.systemImage)
                 .font(.title2)
                 .foregroundStyle(category.tint)
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 4) {
                 Text(category.title)
                     .font(.headline)
@@ -7027,8 +7181,8 @@ private struct WorkstationCalendarWorkspace: View {
                 Image(systemName: DashboardMetricCategory.calendar.systemImage)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(DashboardMetricCategory.calendar.tint)
-                    .frame(width: 32, height: 32)
-                    .background(DashboardMetricCategory.calendar.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    .frame(width: 44, height: 44)
+                    .background(DashboardMetricCategory.calendar.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("캘린더")
                         .font(.headline)
@@ -7559,8 +7713,8 @@ private struct RemoteChangeSummaryDetailPanel: View {
             Image(systemName: kind.systemImage)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(kind.tint)
-                .frame(width: 32, height: 32)
-                .background(kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .frame(width: 44, height: 44)
+                .background(kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 3) {
                 Text(kind.detailTitle)
                     .font(.headline)
@@ -11029,8 +11183,8 @@ private struct RemoteDiagnosticPanel: View {
                     Image(systemName: "wrench.and.screwdriver")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 32, height: 32)
-                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                        .frame(width: 44, height: 44)
+                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("진단")
                             .font(.headline)
@@ -11213,8 +11367,8 @@ private struct RemoteSettingsPanel: View {
                 Image(systemName: "macbook.and.iphone")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 32, height: 32)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                    .frame(width: 44, height: 44)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Mac 동기화 설정")
                         .font(.headline)
@@ -11358,7 +11512,6 @@ private struct RemoteSettingGroupSection: View {
     var group: RemoteSettingGroup
     @ObservedObject var model: CompanionModel
     @State private var isExpanded: Bool
-    @State private var showsDetail = false
 
     init(group: RemoteSettingGroup, model: CompanionModel) {
         self.group = group
@@ -11381,17 +11534,8 @@ private struct RemoteSettingGroupSection: View {
                 .accessibilityLabel("\(group.title) 설정 \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "\(group.title) 설정 접기" : "\(group.title) 설정 펼치기")
             } else {
-                Button {
-                    companionPerformWithoutAnimation {
-                        showsDetail.toggle()
-                    }
-                } label: {
-                    groupHeader
-                        .contentShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
-                .accessibilityLabel("\(group.title) 설명 \(showsDetail ? "펼쳐짐" : "접힘")")
-                .accessibilityHint(showsDetail ? "\(group.title) 설명 접기" : "\(group.title) 설명 보기")
+                groupHeader
+                    .accessibilityElement(children: .combine)
             }
 
             if shouldShowExpandedDetail {
@@ -11425,7 +11569,7 @@ private struct RemoteSettingGroupSection: View {
     }
 
     private var shouldShowExpandedDetail: Bool {
-        group.hasExpandedDetail && (showsDetail || (group.isCollapsible && isExpanded))
+        group.hasExpandedDetail && group.isCollapsible && isExpanded
     }
 
     private var groupHeader: some View {
@@ -11453,8 +11597,6 @@ private struct RemoteSettingGroupSection: View {
                     .background(Color.klmsCardBackground, in: Capsule())
                 if group.isCollapsible {
                     CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
-                } else if group.hasExpandedDetail {
-                    CompanionInlineDetailBadge(isExpanded: showsDetail)
                 }
             }
         }
@@ -12875,8 +13017,8 @@ private struct RemotePrivacyNote: View {
                     Image(systemName: "lock")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 32, height: 32)
-                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                        .frame(width: 44, height: 44)
+                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("개인정보와 서버 보관")
                             .font(.subheadline.weight(.semibold))
@@ -12960,33 +13102,6 @@ private struct CompanionDetailDisclosureBadge: View {
         .overlay {
             RoundedRectangle(cornerRadius: 9)
                 .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.44) : Color.klmsBorder.opacity(0.62), lineWidth: 1)
-        }
-    }
-}
-
-private struct CompanionInlineDetailBadge: View {
-    var isExpanded: Bool
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: isExpanded ? "chevron.up" : "info.circle")
-                .font(.system(size: 9, weight: .bold))
-            Text(isExpanded ? "접기" : "설명")
-                .font(.caption2.weight(.semibold))
-        }
-        .foregroundStyle(isExpanded ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(
-            isExpanded ? Color.klmsSelectedBackground.opacity(0.88) : Color.klmsSubtleCardBackground.opacity(0.76),
-            in: Capsule()
-        )
-        .overlay {
-            Capsule()
-                .stroke(
-                    isExpanded ? Color.klmsSelectedBorder.opacity(0.62) : Color.klmsBorder.opacity(0.62),
-                    lineWidth: 1
-                )
         }
     }
 }

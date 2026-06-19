@@ -197,14 +197,14 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
   <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
-  <key>NSPrincipalClass</key>
-  <string>KLMSApplication</string>
   <key>CFBundleShortVersionString</key>
   <string>0.1.0</string>
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
+  <key>NSQuitAlwaysKeepsWindows</key>
+  <false/>
   <key>NSAppleEventsUsageDescription</key>
   <string>KLMS Sync가 Safari, Notes, System Events, Calendar, Reminders를 사용해 개인 KLMS 동기화를 실행합니다.</string>
   <key>NSAccessibilityUsageDescription</key>

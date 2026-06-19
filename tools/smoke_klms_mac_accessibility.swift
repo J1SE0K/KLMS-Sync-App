@@ -7,6 +7,7 @@ import Foundation
 private enum SmokeFailure: Error, CustomStringConvertible {
     case accessibilityPermissionMissing
     case appNotRunning(bundleID: String, appName: String)
+    case accessibilityTreeUnavailable(frontmostApp: String?)
     case dashboardOpenControlMissing
     case dashboardOpenFailed(AXError)
     case workspaceButtonMissing(String)
@@ -21,6 +22,8 @@ private enum SmokeFailure: Error, CustomStringConvertible {
             return "Accessibility permission is not granted for Terminal/Codex. Enable it in System Settings > Privacy & Security > Accessibility."
         case let .appNotRunning(bundleID, appName):
             return "KLMS Mac app is not running. Expected bundle id '\(bundleID)' or app name '\(appName)'."
+        case let .accessibilityTreeUnavailable(frontmostApp):
+            return "KLMS Mac window is visible, but macOS Accessibility is not exposing the app window tree. Frontmost app: \(frontmostApp ?? "unknown"). Unlock the active Mac session, bring KLMS Sync to the front, then rerun the smoke test."
         case .dashboardOpenControlMissing:
             return "Could not find the menu item that opens the KLMS dashboard window."
         case let .dashboardOpenFailed(error):
@@ -45,45 +48,55 @@ private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
 private let navigationDelay = TimeInterval(environment["KLMS_MAC_AX_NAVIGATION_DELAY_SECONDS"] ?? "0.60") ?? 0.60
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
 
-private let trustedOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
-guard AXIsProcessTrustedWithOptions(trustedOptions) else {
-    throw SmokeFailure.accessibilityPermissionMissing
+do {
+    try runSmoke()
+} catch {
+    FileHandle.standardError.write(Data("smoke failed: \(error)\n".utf8))
+    FileHandle.standardError.write(Data(visibleWindowDiagnostics().utf8))
+    exit(1)
 }
 
-private let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-private let runningByName = NSWorkspace.shared.runningApplications.filter { app in
-    app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
+private func runSmoke() throws {
+    let trustedOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
+    guard AXIsProcessTrustedWithOptions(trustedOptions) else {
+        throw SmokeFailure.accessibilityPermissionMissing
+    }
+
+    let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+    let runningByName = NSWorkspace.shared.runningApplications.filter { app in
+        app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
+    }
+    guard let app = (runningByBundleID + runningByName).first(where: { !$0.isTerminated }) else {
+        throw SmokeFailure.appNotRunning(bundleID: bundleID, appName: appName)
+    }
+
+    let appElement = AXUIElementCreateApplication(app.processIdentifier)
+
+    try openDashboardWindowIfNeeded(appElement: appElement)
+
+    try verifyWorkspaceNavigation(
+        appElement: appElement,
+        identifier: "workspace-settings",
+        expectedText: "화면/앱"
+    )
+    try verifySettingsTabNavigation(
+        appElement: appElement,
+        identifier: "settings-files",
+        expectedText: "파일 확인"
+    )
+    try verifySettingsTabNavigation(
+        appElement: appElement,
+        identifier: "settings-app",
+        expectedText: "바로 반영되는 설정"
+    )
+    try verifyWorkspaceNavigation(
+        appElement: appElement,
+        identifier: "workspace-dashboard",
+        expectedText: "대시보드"
+    )
+
+    print("ok: KLMS Mac workspace accessibility navigation is responsive")
 }
-guard let app = (runningByBundleID + runningByName).first(where: { !$0.isTerminated }) else {
-    throw SmokeFailure.appNotRunning(bundleID: bundleID, appName: appName)
-}
-
-let appElement = AXUIElementCreateApplication(app.processIdentifier)
-
-try openDashboardWindowIfNeeded(appElement: appElement)
-
-try verifyWorkspaceNavigation(
-    appElement: appElement,
-    identifier: "workspace-settings",
-    expectedText: "화면/앱"
-)
-try verifySettingsTabNavigation(
-    appElement: appElement,
-    identifier: "settings-files",
-    expectedText: "파일 확인"
-)
-try verifySettingsTabNavigation(
-    appElement: appElement,
-    identifier: "settings-app",
-    expectedText: "바로 반영되는 설정"
-)
-try verifyWorkspaceNavigation(
-    appElement: appElement,
-    identifier: "workspace-dashboard",
-    expectedText: "대시보드"
-)
-
-print("ok: KLMS Mac workspace accessibility navigation is responsive")
 
 private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
     if waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: 0.4) != nil {
@@ -93,6 +106,12 @@ private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
     requestDashboardWindowReopen()
     if waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: timeout) != nil {
         return
+    }
+
+    if hasVisibleDashboardWindow(), !hasUsableAccessibilityWindow(in: appElement) {
+        throw SmokeFailure.accessibilityTreeUnavailable(
+            frontmostApp: NSWorkspace.shared.frontmostApplication?.localizedName
+        )
     }
 
     guard let openItem = waitForElement(withIdentifier: "openDashboardFromMenu", in: appElement, timeout: timeout) else {
@@ -117,6 +136,41 @@ private func requestDashboardWindowReopen() {
     process.standardError = Pipe()
     try? process.run()
     process.waitUntilExit()
+}
+
+private func hasVisibleDashboardWindow() -> Bool {
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    return windows.contains { info in
+        let owner = info[kCGWindowOwnerName as String] as? String ?? ""
+        return owner == appName || owner == "KLMS Sync" || owner == "KLMSMac"
+    }
+}
+
+private func hasUsableAccessibilityWindow(in appElement: AXUIElement) -> Bool {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
+          let windows = value as? [AXUIElement] else {
+        return false
+    }
+    return windows.contains { stringAttribute($0, kAXRoleAttribute as CFString) == kAXWindowRole }
+}
+
+private func visibleWindowDiagnostics() -> String {
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    let matching = windows.compactMap { info -> String? in
+        let owner = info[kCGWindowOwnerName as String] as? String ?? ""
+        guard owner == appName || owner == "KLMS Sync" || owner == "KLMSMac" else { return nil }
+        let title = info[kCGWindowName as String] as? String ?? "-"
+        let layer = info[kCGWindowLayer as String] as? Int ?? -1
+        let bounds = info[kCGWindowBounds as String] as? [String: Any] ?? [:]
+        let width = bounds["Width"] ?? "-"
+        let height = bounds["Height"] ?? "-"
+        return "visible-window owner=\(owner) title=\(title) layer=\(layer) size=\(width)x\(height)"
+    }
+    if matching.isEmpty {
+        return "visible-window none for \(appName)\n"
+    }
+    return matching.joined(separator: "\n") + "\n"
 }
 
 private func verifyWorkspaceNavigation(

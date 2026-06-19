@@ -7,6 +7,7 @@ import Foundation
 private enum ProbeFailure: Error, CustomStringConvertible {
     case accessibilityPermissionMissing
     case appNotRunning(bundleID: String, appName: String)
+    case accessibilityTreeUnavailable(frontmostApp: String?)
     case dashboardOpenControlMissing
     case dashboardOpenFailed(AXError)
     case workspaceButtonMissing(String)
@@ -19,6 +20,8 @@ private enum ProbeFailure: Error, CustomStringConvertible {
             return "Accessibility permission is not granted for Terminal/Codex. Enable it in System Settings > Privacy & Security > Accessibility."
         case let .appNotRunning(bundleID, appName):
             return "KLMS Mac app is not running. Expected bundle id '\(bundleID)' or app name '\(appName)'."
+        case let .accessibilityTreeUnavailable(frontmostApp):
+            return "KLMS Mac window is visible, but macOS Accessibility is not exposing the app window tree. Frontmost app: \(frontmostApp ?? "unknown"). Unlock the active Mac session, bring KLMS Sync to the front, then rerun the probe."
         case .dashboardOpenControlMissing:
             return "Could not find the menu item that opens the KLMS dashboard window."
         case let .dashboardOpenFailed(error):
@@ -56,7 +59,7 @@ private let targets = [
 do {
     try runProbe()
 } catch {
-    let message = "probe failed: \(error)\n"
+    let message = "probe failed: \(error)\n\(visibleWindowDiagnostics())"
     FileHandle.standardError.write(Data(message.utf8))
     exit(1)
 }
@@ -100,6 +103,12 @@ private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
         return
     }
 
+    if hasVisibleDashboardWindow(), !hasUsableAccessibilityWindow(in: appElement) {
+        throw ProbeFailure.accessibilityTreeUnavailable(
+            frontmostApp: NSWorkspace.shared.frontmostApplication?.localizedName
+        )
+    }
+
     guard let openItem = waitForElement(withIdentifier: "openDashboardFromMenu", in: appElement, timeout: timeout) else {
         throw ProbeFailure.dashboardOpenControlMissing
     }
@@ -122,6 +131,41 @@ private func requestDashboardWindowReopen() {
     process.standardError = Pipe()
     try? process.run()
     process.waitUntilExit()
+}
+
+private func hasVisibleDashboardWindow() -> Bool {
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    return windows.contains { info in
+        let owner = info[kCGWindowOwnerName as String] as? String ?? ""
+        return owner == appName || owner == "KLMS Sync" || owner == "KLMSMac"
+    }
+}
+
+private func hasUsableAccessibilityWindow(in appElement: AXUIElement) -> Bool {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
+          let windows = value as? [AXUIElement] else {
+        return false
+    }
+    return windows.contains { stringAttribute($0, kAXRoleAttribute as CFString) == kAXWindowRole }
+}
+
+private func visibleWindowDiagnostics() -> String {
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    let matching = windows.compactMap { info -> String? in
+        let owner = info[kCGWindowOwnerName as String] as? String ?? ""
+        guard owner == appName || owner == "KLMS Sync" || owner == "KLMSMac" else { return nil }
+        let title = info[kCGWindowName as String] as? String ?? "-"
+        let layer = info[kCGWindowLayer as String] as? Int ?? -1
+        let bounds = info[kCGWindowBounds as String] as? [String: Any] ?? [:]
+        let width = bounds["Width"] ?? "-"
+        let height = bounds["Height"] ?? "-"
+        return "visible-window owner=\(owner) title=\(title) layer=\(layer) size=\(width)x\(height)"
+    }
+    if matching.isEmpty {
+        return "visible-window none for \(appName)\n"
+    }
+    return matching.joined(separator: "\n") + "\n"
 }
 
 private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Double {

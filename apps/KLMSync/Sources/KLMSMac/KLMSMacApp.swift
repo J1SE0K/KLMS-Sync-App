@@ -2,29 +2,12 @@ import KLMSShared
 import AppKit
 import SwiftUI
 
-@objc(KLMSApplication)
-final class KLMSApplication: NSApplication {
-    override func sendEvent(_ event: NSEvent) {
-        if Self.isQuitShortcut(event) {
-            terminate(nil)
-            return
-        }
-        super.sendEvent(event)
-    }
-
-    private static func isQuitShortcut(_ event: NSEvent) -> Bool {
-        guard event.type == .keyDown else { return false }
-        let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let isQKey = event.charactersIgnoringModifiers?.lowercased() == "q"
-            || event.keyCode == 12
-        return modifierFlags.contains(.command)
-            && isQKey
-    }
-}
-
 @main
 enum KLMSMacMain {
+    @MainActor
     static func main() {
+        KLMSLaunchState.clearSavedApplicationState()
+        UserDefaults.standard.set(false, forKey: "NSQuitAlwaysKeepsWindows")
         let app = NSApplication.shared
         let delegate = KLMSAppDelegate()
         app.delegate = delegate
@@ -68,6 +51,16 @@ enum KLMSAppearanceMode: String, CaseIterable, Identifiable {
 
 enum KLMSMacWindowID {
     static let dashboard = "klms-dashboard"
+}
+
+private enum KLMSLaunchState {
+    static func clearSavedApplicationState() {
+        guard let identifier = Bundle.main.bundleIdentifier else { return }
+        let savedStateURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Saved Application State")
+            .appendingPathComponent("\(identifier).savedState")
+        try? FileManager.default.removeItem(at: savedStateURL)
+    }
 }
 
 private struct KLMSMacWorkspaceRootContainerView: View {
@@ -166,7 +159,6 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     private var terminationCleanupStarted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Self.clearSavedApplicationState()
         let model = KLMSMacModel()
         self.model = model
         KLMSDashboardWindowCoordinator.shared.setModel(model)
@@ -174,17 +166,8 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         configureApplicationMenu()
         configureQuitKeyMonitor()
         configureStatusItem(for: model)
-        DispatchQueue.main.async {
-            KLMSDashboardWindowCoordinator.shared.showIfNoVisibleDashboardWindow()
-        }
-    }
-
-    private static func clearSavedApplicationState() {
-        guard let identifier = Bundle.main.bundleIdentifier else { return }
-        let savedStateURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Saved Application State")
-            .appendingPathComponent("\(identifier).savedState")
-        try? FileManager.default.removeItem(at: savedStateURL)
+        KLMSLaunchState.clearSavedApplicationState()
+        KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
     }
 
     private func configureStatusItem(for model: KLMSMacModel) {
@@ -261,11 +244,8 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !KLMSDashboardWindowCoordinator.shared.hasVisibleDashboardWindow {
-            KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
-            return false
-        }
-        return true
+        KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+        return false
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

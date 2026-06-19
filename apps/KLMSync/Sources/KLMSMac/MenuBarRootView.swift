@@ -176,7 +176,6 @@ private struct MacWorkstationLayoutView: View {
     private var workspace: some View {
         VStack(alignment: .leading, spacing: 16) {
             workspaceContentMarker
-            DashboardFileDataPrewarmView(snapshot: model.snapshot, signature: model.dashboardFileRenderSignature)
             switch selectedSection {
             case .dashboard:
                 DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard") {
@@ -429,36 +428,8 @@ private struct DashboardTopBarView: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(selectedSection.title)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                Text(statusText)
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 12)
-
-            if let runningPhaseLabel {
-                Label(runningPhaseLabel, systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Color.klmsMacCommandAccent)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.klmsMacCommandAccent.opacity(0.12), in: Capsule())
-            }
-
-            Text(statusBadgeText)
-                .font(.caption2.weight(.semibold))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 6)
-                .foregroundStyle(statusColor)
-                .background(statusColor.opacity(0.12), in: Capsule())
+            DashboardTopBarStatusContent(snapshot: snapshot)
+                .equatable()
 
             TopUtilityActionsView(model: model)
         }
@@ -468,50 +439,111 @@ private struct DashboardTopBarView: View {
         .accessibilityLabel("\(selectedSection.title) 화면")
     }
 
-    private var statusText: String {
+    private var snapshot: DashboardTopBarSnapshot {
         if let command = model.runningCommand {
             if let phase = model.currentPhaseText {
-                return "\(command.displayName) 실행 중 · \(phase)"
+                return DashboardTopBarSnapshot(
+                    title: selectedSection.title,
+                    statusText: "\(command.displayName) 실행 중 · \(phase)",
+                    runningPhaseLabel: phase,
+                    statusBadgeText: "진행 중",
+                    tone: .running
+                )
             }
-            return "\(command.displayName) 실행 중"
+            return DashboardTopBarSnapshot(
+                title: selectedSection.title,
+                statusText: "\(command.displayName) 실행 중",
+                runningPhaseLabel: "진행 중",
+                statusBadgeText: "진행 중",
+                tone: .running
+            )
         }
         if model.needsAttention {
-            return "확인이 필요합니다 · \(model.attentionSummary)"
+            return DashboardTopBarSnapshot(
+                title: selectedSection.title,
+                statusText: "확인이 필요합니다 · \(model.attentionSummary)",
+                runningPhaseLabel: nil,
+                statusBadgeText: "확인 필요",
+                tone: .attention
+            )
         }
         if let report = model.snapshot.syncReport {
-            return "준비됨 · 최근 상태 \(report.status.klmsLocalizedStatus)"
+            return DashboardTopBarSnapshot(
+                title: selectedSection.title,
+                statusText: "준비됨 · 최근 상태 \(report.status.klmsLocalizedStatus)",
+                runningPhaseLabel: nil,
+                statusBadgeText: "준비됨",
+                tone: .ready
+            )
         }
-        return "첫 실행 전 · 전체 동기화나 진단을 실행하세요."
+        return DashboardTopBarSnapshot(
+            title: selectedSection.title,
+            statusText: "첫 실행 전 · 전체 동기화나 진단을 실행하세요.",
+            runningPhaseLabel: nil,
+            statusBadgeText: "준비 필요",
+            tone: .ready
+        )
     }
+}
 
-    private var statusBadgeText: String {
-        if model.runningCommand != nil {
-            return "진행 중"
-        }
-        if model.needsAttention {
-            return "확인 필요"
-        }
-        if model.snapshot.syncReport != nil {
-            return "준비됨"
-        }
-        return "준비 필요"
-    }
+private struct DashboardTopBarSnapshot: Equatable {
+    var title: String
+    var statusText: String
+    var runningPhaseLabel: String?
+    var statusBadgeText: String
+    var tone: DashboardTopBarTone
+}
 
-    private var runningPhaseLabel: String? {
-        guard model.runningCommand != nil else {
-            return nil
-        }
-        return model.currentPhaseText ?? "진행 중"
-    }
+private enum DashboardTopBarTone: Equatable {
+    case running
+    case attention
+    case ready
 
-    private var statusColor: Color {
-        if model.runningCommand != nil {
+    var color: Color {
+        switch self {
+        case .running:
             return .klmsMacCommandAccent
-        }
-        if model.needsAttention {
+        case .attention:
             return .klmsMacWarningBorder
+        case .ready:
+            return .klmsMacSecondaryText
         }
-        return .klmsMacSecondaryText
+    }
+}
+
+private struct DashboardTopBarStatusContent: View, Equatable {
+    var snapshot: DashboardTopBarSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(snapshot.title)
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.klmsMacPrimaryText)
+            Text(snapshot.statusText)
+                .font(.caption)
+                .foregroundStyle(Color.klmsMacSecondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        Spacer(minLength: 12)
+
+        if let runningPhaseLabel = snapshot.runningPhaseLabel {
+            Label(runningPhaseLabel, systemImage: "arrow.triangle.2.circlepath")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Color.klmsMacCommandAccent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color.klmsMacCommandAccent.opacity(0.12), in: Capsule())
+        }
+
+        Text(snapshot.statusBadgeText)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .foregroundStyle(snapshot.tone.color)
+            .background(snapshot.tone.color.opacity(0.12), in: Capsule())
     }
 }
 
@@ -521,184 +553,24 @@ private struct MacAlertBannerView: View {
     @Binding var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
-        if shouldShow {
-            Button {
-                performAction()
-            } label: {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacPrimaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.86)
-                        Text(detail)
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 10)
-                    Text(chipText)
-                        .font(chipFont)
-                        .monospacedDigit()
-                        .foregroundStyle(chipForeground)
-                        .padding(.horizontal, chipHorizontalPadding)
-                        .padding(.vertical, 8)
-                        .background(chipBackground, in: Capsule())
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(bannerBackground, in: RoundedRectangle(cornerRadius: 14))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14)
-                        .stroke(bannerBorder, lineWidth: 1)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
-            .accessibilityLabel(title)
-            .accessibilityHint(detail)
+        MacAlertBannerContent(snapshot: snapshot) {
+            performAction()
         }
+        .equatable()
     }
 
-    private var shouldShow: Bool {
-        if model.currentAuthDigits != nil {
-            return true
-        }
-        if model.authStatusMessage?.nilIfBlank != nil {
-            return true
-        }
-        if model.needsAttention {
-            return true
-        }
-        return selectedSection == .dashboard
-    }
-
-    private var title: String {
-        if model.currentAuthDigits != nil {
-            return "KAIST 인증 번호"
-        }
-        if let message = model.authStatusMessage?.nilIfBlank {
-            return message
-        }
-        if let command = model.runningCommand {
-            if let phase = model.currentPhaseText {
-                return "\(command.displayName) · \(phase)"
-            }
-            return "\(command.displayName) 실행 중"
-        }
-        if model.needsAttention {
-            return "상태 검사 실패"
-        }
-        if model.snapshot.syncReport == nil {
-            return "처음 실행 준비"
-        }
-        return model.snapshot.loginStatus?.loggedIn == true ? "이미 로그인됨" : "준비됨"
-    }
-
-    private var detail: String {
-        if model.currentAuthDigits != nil {
-            return "휴대폰 인증 화면에서 같은 번호를 선택하면 동기화를 계속 진행합니다."
-        }
-        if model.authStatusMessage?.nilIfBlank != nil {
-            return "인증 상태가 확인됐습니다. 필요한 경우 다음 단계가 바로 이어집니다."
-        }
-        if model.runningCommand != nil {
-            return model.currentPhaseText.map { "현재 단계: \($0)" }
-                ?? model.liveProgressLine
-                ?? "실시간 로그에서 진행 상황을 확인할 수 있습니다."
-        }
-        if model.needsAttention {
-            return "진단 보기에서 실패 원인과 다음 조치를 확인할 수 있습니다."
-        }
-        if model.snapshot.syncReport == nil {
-            return "환경 진단을 실행하면 권한, 엔진, 메모/캘린더/미리 알림 상태를 확인합니다."
-        }
-        return "동기화를 바로 실행할 수 있습니다. 인증번호가 필요하면 여기에 크게 고정됩니다."
-    }
-
-    private var chipText: String {
-        if let digits = model.currentAuthDigits {
-            return digits
-        }
-        if model.runningCommand != nil {
-            return model.currentPhaseText ?? "LOG"
-        }
-        if model.needsAttention {
-            return "진단"
-        }
-        if model.snapshot.syncReport == nil {
-            return "검사"
-        }
-        return "확인"
-    }
-
-    private var chipFont: Font {
-        model.currentAuthDigits == nil ? .caption.weight(.bold) : .title3.weight(.heavy)
-    }
-
-    private var chipHorizontalPadding: CGFloat {
-        if model.currentAuthDigits != nil {
-            return 16
-        }
-        if model.runningCommand != nil, model.currentPhaseText != nil {
-            return 10
-        }
-        return 12
-    }
-
-    private var bannerTint: Color {
-        if model.currentAuthDigits != nil {
-            return .klmsMacWarningBorder
-        }
-        if model.authStatusMessage?.nilIfBlank != nil {
-            return .klmsMacSuccessBorder
-        }
-        if model.runningCommand != nil {
-            return .klmsMacCommandAccent
-        }
-        if model.needsAttention || model.snapshot.syncReport == nil {
-            return .klmsMacWarningBorder
-        }
-        return .klmsMacCommandAccent
-    }
-
-    private var bannerBackground: Color {
-        Color.klmsMacAdaptiveColor(
-            light: NSColor(red: 0.914, green: 0.902, blue: 0.858, alpha: 1.0),
-            dark: NSColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
+    private var snapshot: MacAlertBannerSnapshot {
+        MacAlertBannerSnapshot(
+            selectedSection: selectedSection,
+            authDigits: model.currentAuthDigits,
+            authStatusMessage: model.authStatusMessage?.nilIfBlank,
+            runningCommandDisplayName: model.runningCommand?.displayName,
+            currentPhaseText: model.currentPhaseText,
+            liveProgressLine: model.liveProgressLine,
+            needsAttention: model.needsAttention,
+            hasSyncReport: model.snapshot.syncReport != nil,
+            loggedIn: model.snapshot.loginStatus?.loggedIn == true
         )
-    }
-
-    private var bannerBorder: Color {
-        bannerTint.opacity(0.28)
-    }
-
-    private var chipForeground: Color {
-        if model.currentAuthDigits != nil {
-            return Color.klmsMacPrimaryText
-        }
-        if model.runningCommand != nil {
-            return Color.klmsMacSecondaryCommandButtonForeground
-        }
-        if model.needsAttention || model.snapshot.syncReport == nil {
-            return Color.klmsMacWarningBorder
-        }
-        return Color.klmsMacPrimaryText
-    }
-
-    private var chipBackground: Color {
-        if model.currentAuthDigits != nil {
-            return Color.klmsMacWarningBackground
-        }
-        if model.runningCommand != nil {
-            return Color.klmsMacCommandButtonPressedBackground
-        }
-        if model.needsAttention || model.snapshot.syncReport == nil {
-            return Color.klmsMacWarningBackground
-        }
-        return Color.klmsMacSubtleCardBackground
     }
 
     private func performAction() {
@@ -722,6 +594,228 @@ private struct MacAlertBannerView: View {
             }
             return
         }
+    }
+}
+
+private struct MacAlertBannerSnapshot: Equatable {
+    var selectedSection: KLMSMacSection
+    var authDigits: String?
+    var authStatusMessage: String?
+    var runningCommandDisplayName: String?
+    var currentPhaseText: String?
+    var liveProgressLine: String?
+    var needsAttention: Bool
+    var hasSyncReport: Bool
+    var loggedIn: Bool
+
+    var shouldShow: Bool {
+        authDigits != nil
+            || authStatusMessage != nil
+            || runningCommandDisplayName != nil
+            || needsAttention
+            || selectedSection == .dashboard
+    }
+
+    var title: String {
+        if authDigits != nil {
+            return "KAIST 인증 번호"
+        }
+        if let authStatusMessage {
+            return authStatusMessage
+        }
+        if let runningCommandDisplayName {
+            if let currentPhaseText {
+                return "\(runningCommandDisplayName) · \(currentPhaseText)"
+            }
+            return "\(runningCommandDisplayName) 실행 중"
+        }
+        if needsAttention {
+            return "상태 검사 실패"
+        }
+        if !hasSyncReport {
+            return "처음 실행 준비"
+        }
+        return loggedIn ? "이미 로그인됨" : "준비됨"
+    }
+
+    var detail: String {
+        if authDigits != nil {
+            return "휴대폰 인증 화면에서 같은 번호를 선택하면 동기화를 계속 진행합니다."
+        }
+        if authStatusMessage != nil {
+            return "인증 상태가 확인됐습니다. 필요한 경우 다음 단계가 바로 이어집니다."
+        }
+        if runningCommandDisplayName != nil {
+            return currentPhaseText.map { "현재 단계: \($0)" }
+                ?? liveProgressLine
+                ?? "실시간 로그에서 진행 상황을 확인할 수 있습니다."
+        }
+        if needsAttention {
+            return "진단 보기에서 실패 원인과 다음 조치를 확인할 수 있습니다."
+        }
+        if !hasSyncReport {
+            return "환경 진단을 실행하면 권한, 엔진, 메모/캘린더/미리 알림 상태를 확인합니다."
+        }
+        return "동기화를 바로 실행할 수 있습니다. 인증번호가 필요하면 여기에 크게 고정됩니다."
+    }
+
+    var chipText: String {
+        if let authDigits {
+            return authDigits
+        }
+        if runningCommandDisplayName != nil {
+            return currentPhaseText ?? "LOG"
+        }
+        if needsAttention {
+            return "진단"
+        }
+        if !hasSyncReport {
+            return "검사"
+        }
+        return "확인"
+    }
+
+    var chipHorizontalPadding: CGFloat {
+        if authDigits != nil {
+            return 16
+        }
+        if runningCommandDisplayName != nil, currentPhaseText != nil {
+            return 10
+        }
+        return 12
+    }
+
+    var tone: MacAlertBannerTone {
+        if authDigits != nil {
+            return .authDigits
+        }
+        if authStatusMessage != nil {
+            return .success
+        }
+        if runningCommandDisplayName != nil {
+            return .running
+        }
+        if needsAttention || !hasSyncReport {
+            return .warning
+        }
+        return .ready
+    }
+}
+
+private enum MacAlertBannerTone: Equatable {
+    case authDigits
+    case success
+    case running
+    case warning
+    case ready
+
+    var tint: Color {
+        switch self {
+        case .authDigits, .warning:
+            return .klmsMacWarningBorder
+        case .success:
+            return .klmsMacSuccessBorder
+        case .running, .ready:
+            return .klmsMacCommandAccent
+        }
+    }
+
+    var chipForeground: Color {
+        switch self {
+        case .authDigits, .ready:
+            return Color.klmsMacPrimaryText
+        case .running:
+            return Color.klmsMacSecondaryCommandButtonForeground
+        case .warning:
+            return Color.klmsMacWarningBorder
+        case .success:
+            return Color.klmsMacPrimaryText
+        }
+    }
+
+    var chipBackground: Color {
+        switch self {
+        case .authDigits, .warning:
+            return Color.klmsMacWarningBackground
+        case .running:
+            return Color.klmsMacCommandButtonPressedBackground
+        case .success, .ready:
+            return Color.klmsMacSubtleCardBackground
+        }
+    }
+}
+
+private struct MacAlertBannerContent: View, Equatable {
+    var snapshot: MacAlertBannerSnapshot
+    var performAction: () -> Void
+
+    nonisolated static func == (lhs: MacAlertBannerContent, rhs: MacAlertBannerContent) -> Bool {
+        lhs.snapshot == rhs.snapshot
+    }
+
+    var body: some View {
+        if snapshot.shouldShow {
+            Button {
+                performAction()
+            } label: {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(snapshot.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.86)
+                        Text(snapshot.detail)
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 10)
+                    Text(snapshot.chipText)
+                        .font(chipFont)
+                        .monospacedDigit()
+                        .foregroundStyle(chipForeground)
+                        .padding(.horizontal, snapshot.chipHorizontalPadding)
+                        .padding(.vertical, 8)
+                        .background(chipBackground, in: Capsule())
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(bannerBackground, in: RoundedRectangle(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(bannerBorder, lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
+            .accessibilityLabel(snapshot.title)
+            .accessibilityHint(snapshot.detail)
+        }
+    }
+
+    private var chipFont: Font {
+        snapshot.authDigits == nil ? .caption.weight(.bold) : .title3.weight(.heavy)
+    }
+
+    private var bannerBackground: Color {
+        Color.klmsMacAdaptiveColor(
+            light: NSColor(red: 0.914, green: 0.902, blue: 0.858, alpha: 1.0),
+            dark: NSColor(red: 0.176, green: 0.169, blue: 0.153, alpha: 1.0)
+        )
+    }
+
+    private var bannerBorder: Color {
+        snapshot.tone.tint.opacity(0.28)
+    }
+
+    private var chipForeground: Color {
+        snapshot.tone.chipForeground
+    }
+
+    private var chipBackground: Color {
+        snapshot.tone.chipBackground
     }
 }
 
@@ -1227,7 +1321,7 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.caption.weight(.semibold))
             .foregroundStyle(foreground)
-            .frame(minWidth: 32, minHeight: 32)
+            .frame(minWidth: 36, minHeight: 36)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background {
@@ -2125,101 +2219,6 @@ private struct HeaderView: View {
             return "준비됨"
         }
         return "준비 필요"
-    }
-}
-
-private struct CommandOutputPanelView: View {
-    let model: KLMSMacModel
-    @State private var showingFullOutput = false
-    private static let maxRenderedOutputCharacters = 32_000
-    private static let trimmedOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
-
-    var body: some View {
-        let output = commandOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !output.isEmpty {
-            SectionBox(title: model.runningCommand == nil ? "실행 결과" : "실시간 로그") {
-                Text(commandStatusText)
-                    .font(.caption)
-                    .foregroundStyle(commandStatusColor)
-                Text(visibleOutput(from: output))
-                    .font(.system(.caption2, design: .monospaced))
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                if outputLineCount(output) > 40 {
-                    DisclosureGroup(isExpanded: $showingFullOutput) {
-                        Text(output)
-                            .font(.system(.caption2, design: .monospaced))
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } label: {
-                        Text("최근 원본 로그")
-                            .font(.caption)
-                    }
-                }
-            }
-        }
-    }
-
-    private var commandOutput: String {
-        if !model.liveCommandOutput.isEmpty {
-            return Self.boundedOutput(model.liveCommandOutput.klmsDisplayText)
-        }
-        guard let result = model.lastCommandResult else {
-            return ""
-        }
-        let output = result.wasCancelled
-            ? result.combinedOutput.klmsDisplayText.klmsRedactingAuthDigitsForDisplay
-            : result.combinedOutput.klmsDisplayText
-        return Self.boundedOutput(output)
-    }
-
-    private var commandStatusText: String {
-        if let command = model.runningCommand {
-            if let phase = model.currentPhaseText {
-                return "\(command.displayName) · \(phase) 진행 중"
-            }
-            return "\(command.displayName) 실행 중"
-        }
-        if let result = model.lastCommandResult {
-            if result.wasCancelled {
-                return "\(result.invocation.command.displayName) · 중단됨"
-            }
-            return "\(result.invocation.command.displayName) · 종료 코드 \(result.exitCode)"
-        }
-        return "대기 중"
-    }
-
-    private var commandStatusColor: Color {
-        if model.runningCommand != nil {
-            return .klmsMacCommandAccent
-        }
-        if let result = model.lastCommandResult {
-            if result.wasCancelled {
-                return .klmsMacSecondaryText
-            }
-            return result.succeeded ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder
-        }
-        return .klmsMacSecondaryText
-    }
-
-    private func visibleOutput(from output: String) -> String {
-        let lines = output.split(whereSeparator: \.isNewline).map(String.init)
-        guard lines.count > 40 else {
-            return output
-        }
-        return lines.suffix(40).joined(separator: "\n")
-    }
-
-    private func outputLineCount(_ output: String) -> Int {
-        output.split(whereSeparator: \.isNewline).count
-    }
-
-    private static func boundedOutput(_ text: String) -> String {
-        guard text.count > maxRenderedOutputCharacters else {
-            return text
-        }
-        let suffixLength = max(0, maxRenderedOutputCharacters - trimmedOutputPrefix.count)
-        return trimmedOutputPrefix + String(text.suffix(suffixLength))
     }
 }
 
@@ -5070,10 +5069,7 @@ private struct CompactStageDurationRowsView: View {
 
 private extension CommandRunRecord {
     var visibleStageDurations: [KLMSStageDuration] {
-        if !stageDurations.isEmpty {
-            return stageDurations
-        }
-        return KLMSStageDurationParser.parse(from: outputTail)
+        stageDurations
     }
 }
 

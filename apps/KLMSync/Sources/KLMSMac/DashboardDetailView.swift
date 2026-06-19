@@ -217,20 +217,6 @@ struct DashboardFileRenderSignature: Equatable, Sendable {
     }
 }
 
-struct DashboardFileDataPrewarmView: View {
-    var snapshot: EngineSnapshot
-    var signature: DashboardFileRenderSignature
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
-            .task(id: signature) {
-                DashboardFileDataPreloadStore.prewarm(snapshot: snapshot, signature: signature)
-            }
-    }
-}
-
 struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     var kind: DashboardDetailKind
     var model: KLMSMacModel
@@ -554,7 +540,6 @@ struct DashboardFilterOptions: Equatable, Sendable {
 @MainActor
 private enum DashboardFileDataPreloadStore {
     private static var cachedData: DashboardFileData?
-    private static var inFlightSignature: DashboardFileRenderSignature?
 
     static func cachedData(for signature: DashboardFileRenderSignature) -> DashboardFileData? {
         guard cachedData?.signature == signature else { return nil }
@@ -563,23 +548,6 @@ private enum DashboardFileDataPreloadStore {
 
     static func store(_ data: DashboardFileData) {
         cachedData = data
-        if inFlightSignature == data.signature {
-            inFlightSignature = nil
-        }
-    }
-
-    static func prewarm(snapshot: EngineSnapshot, signature: DashboardFileRenderSignature) {
-        guard cachedData(for: signature) == nil, inFlightSignature != signature else {
-            return
-        }
-        inFlightSignature = signature
-        Task { @MainActor in
-            let data = await Task.detached(priority: .utility) {
-                DashboardFileData(snapshot: snapshot, signature: signature)
-            }.value
-            guard inFlightSignature == signature else { return }
-            store(data)
-        }
     }
 }
 
@@ -1589,6 +1557,7 @@ private struct StateItemRowView: View {
                         Spacer(minLength: 8)
                         DashboardRowDisclosureButton(isExpanded: isExpanded)
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
                 .accessibilityLabel("\(item.title.isEmpty ? "항목" : item.title) \(isExpanded ? "접기" : "작업 펼치기")")
@@ -2267,6 +2236,7 @@ private struct NoticeRowView: View {
                         Spacer(minLength: 8)
                         DashboardRowDisclosureButton(isExpanded: isExpanded)
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
                 .accessibilityLabel("\(notice.title.isEmpty ? "공지" : notice.title.klmsDisplayText) \(isExpanded ? "접기" : "작업 펼치기")")
@@ -2862,7 +2832,7 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.caption.weight(.semibold))
             .foregroundStyle(foreground)
-            .frame(minWidth: 32, minHeight: 32)
+            .frame(minWidth: 36, minHeight: 36)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 10))
@@ -2941,15 +2911,15 @@ private struct KLMSMacIconButtonStyle: ButtonStyle {
         configuration.label
             .font(.caption.weight(.semibold))
             .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground)
-            .frame(width: 32, height: 32)
+            .frame(width: 44, height: 44)
             .background(
                 configuration.isPressed
                     ? Color.klmsMacCommandButtonPressedBackground
                     : Color.klmsMacCommandButtonBackground.opacity(0.88),
-                in: RoundedRectangle(cornerRadius: 8)
+                in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .stroke(
                         configuration.isPressed
                             ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46)
@@ -3425,6 +3395,7 @@ private struct FileRowView: View {
                         Spacer(minLength: 8)
                         DashboardRowDisclosureButton(isExpanded: isExpanded)
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
                 .accessibilityLabel("\(item.title.isEmpty ? "파일" : item.title) \(isExpanded ? "접기" : "작업 펼치기")")
