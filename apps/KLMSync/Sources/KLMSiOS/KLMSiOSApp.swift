@@ -2454,6 +2454,13 @@ private enum CompanionWorkstationMetrics {
     static let detailColumnMinWidth: CGFloat = 380
     static let detailColumnIdealWidth: CGFloat = 620
 
+    static let compactCommandColumnMinWidth: CGFloat = 276
+    static let compactCommandColumnIdealWidth: CGFloat = 304
+    static let compactCommandColumnMaxWidth: CGFloat = 332
+
+    static let compactDetailColumnMinWidth: CGFloat = 300
+    static let compactDetailColumnIdealWidth: CGFloat = 430
+
     static let listColumnMinWidth: CGFloat = 380
     static let listColumnIdealWidth: CGFloat = 520
     static let listColumnMaxWidth: CGFloat = 620
@@ -2832,6 +2839,26 @@ private struct CompanionStatusScreen: View {
                 .frame(
                     minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
                     idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                    maxWidth: .infinity,
+                    alignment: .topLeading
+                )
+            }
+
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                statusCommandColumn
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.compactCommandColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.compactCommandColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.compactCommandColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+                VStack(alignment: .leading, spacing: 12) {
+                    statusMetricColumn
+                    statusDetailColumn
+                }
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.compactDetailColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.compactDetailColumnIdealWidth,
                     maxWidth: .infinity,
                     alignment: .topLeading
                 )

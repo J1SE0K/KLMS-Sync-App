@@ -42,7 +42,7 @@ private enum SmokeFailure: Error, CustomStringConvertible {
 private let environment = ProcessInfo.processInfo.environment
 private let bundleID = environment["KLMS_MAC_BUNDLE_ID"] ?? "com.local.KLMSync"
 private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
-private let navigationDelay = TimeInterval(environment["KLMS_MAC_AX_NAVIGATION_DELAY_SECONDS"] ?? "0.35") ?? 0.35
+private let navigationDelay = TimeInterval(environment["KLMS_MAC_AX_NAVIGATION_DELAY_SECONDS"] ?? "0.60") ?? 0.60
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
 
 private let trustedOptions = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false] as CFDictionary
