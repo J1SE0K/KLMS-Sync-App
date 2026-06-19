@@ -4812,7 +4812,8 @@ private struct CompanionItemListControls: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 999))
-        .accessibilityLabel("\(title) \(isSelected ? "선택됨" : "해제됨")")
+        .accessibilityLabel(title)
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
     }
 
     private func companionPickerField<Content: View>(
