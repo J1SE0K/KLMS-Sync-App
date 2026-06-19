@@ -7687,6 +7687,8 @@ private struct RemoteChangeSummaryDetailPanel: View {
                             .equatable()
                         }
                         .buttonStyle(KLMSCardButtonStyle())
+                        .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
+                        .accessibilityHint(selectedItemID == item.id ? "변경 항목 상세와 처리 버튼을 접습니다." : "변경 항목 상세와 처리 버튼을 펼칩니다.")
 
                         if selectedItemID == item.id {
                             DeferredServerSyncItemDetailPanel(item: item, model: model)
@@ -8104,6 +8106,8 @@ private struct MailPasteAnalysisResultView: View {
                                     .equatable()
                                 }
                                 .buttonStyle(KLMSCardButtonStyle())
+                                .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
+                                .accessibilityHint(selectedItemID == item.id ? "관련 KLMS 항목 상세와 처리 버튼을 접습니다." : "관련 KLMS 항목 상세와 처리 버튼을 펼칩니다.")
 
                                 if selectedItemID == item.id {
                                     DeferredServerSyncItemDetailPanel(item: item, model: model)
