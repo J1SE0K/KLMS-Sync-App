@@ -13035,46 +13035,30 @@ private struct RemoteCommandRow: View {
 }
 
 private struct RemotePrivacyNote: View {
-    @State private var isExpanded = false
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button {
-                companionPerformWithoutAnimation {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "lock")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 44, height: 44)
-                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("개인정보와 서버 보관")
-                            .font(.subheadline.weight(.semibold))
-                        Text("서버에는 실행 요청과 요약 상태만 저장됩니다.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                    }
-                    Spacer(minLength: 0)
-                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
-                }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-            .accessibilityLabel("개인정보와 서버 보관 \(isExpanded ? "펼쳐짐" : "접힘")")
-            .accessibilityHint(isExpanded ? "개인정보 보관 설명 접기" : "개인정보 보관 설명 펼치기")
-
-            if isExpanded {
-                Text("파일 열기를 요청할 때만 Mac이 임시 링크를 만들고, 만료되면 정리합니다.")
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "lock")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.klmsCommandAccent)
+                .frame(width: 44, height: 44)
+                .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("개인정보와 서버 보관")
+                    .font(.subheadline.weight(.semibold))
+                Text("서버에는 실행 요청과 요약 상태만 저장됩니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                Text("파일 열기를 요청할 때만 Mac이 임시 링크를 만들고, 만료되면 정리합니다.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 0)
         }
         .padding(12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("개인정보와 서버 보관. 서버에는 실행 요청과 요약 상태만 저장됩니다. 파일 열기 요청 때만 Mac이 임시 링크를 만듭니다.")
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {

@@ -206,34 +206,40 @@ private func verifySettingsTabNavigation(
     }
 
     var lastError: AXError = .success
-    var didSelect = waitForSelectedValue(identifier: identifier, in: appElement, timeout: 0.15)
-    for _ in 0..<3 where !didSelect {
+    var didSelect = false
+    for _ in 0..<5 {
         guard let button = waitForElement(withIdentifier: identifier, in: appElement, timeout: timeout) else {
             throw SmokeFailure.settingsTabMissing(identifier)
         }
-        _ = AXUIElementPerformAction(button, "AXScrollToVisible" as CFString)
-        let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
-        lastError = error
-        if error != .success {
-            Thread.sleep(forTimeInterval: 0.25)
-            continue
+        let alreadySelected = textAttributes(of: button).contains { $0.localizedCaseInsensitiveContains("선택됨") }
+        if !alreadySelected {
+            _ = AXUIElementPerformAction(button, "AXScrollToVisible" as CFString)
+            let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
+            lastError = error
+            if error != .success {
+                Thread.sleep(forTimeInterval: 0.25)
+                continue
+            }
         }
+
+        Thread.sleep(forTimeInterval: navigationDelay)
         didSelect = waitForSelectedValue(identifier: identifier, in: appElement, timeout: 0.7)
-    }
-    guard didSelect else {
-        if lastError != .success {
-            throw SmokeFailure.pressFailed(identifier: identifier, lastError)
+        if didSelect, waitForText(expectedText, in: appElement, timeout: timeout) {
+            print("ok: \(identifier) -> \(expectedText)")
+            return
         }
+        Thread.sleep(forTimeInterval: 0.25)
+    }
+
+    if lastError != .success {
+        throw SmokeFailure.pressFailed(identifier: identifier, lastError)
+    }
+    if !didSelect {
         throw SmokeFailure.selectedValueMissing(identifier)
     }
-
-    Thread.sleep(forTimeInterval: navigationDelay)
-
-    guard waitForText(expectedText, in: appElement, timeout: timeout) else {
+    if !waitForText(expectedText, in: appElement, timeout: timeout) {
         throw SmokeFailure.expectedTextMissing(expectedText)
     }
-
-    print("ok: \(identifier) -> \(expectedText)")
 }
 
 private func waitForElement(
