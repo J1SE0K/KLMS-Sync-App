@@ -2717,6 +2717,7 @@ final class DashboardDataModelTests: XCTestCase {
         let iosSplitRoot = try sourceStructBody(named: "CompanionSplitRootView", in: ios)
         let iosSidebar = try sourceStructBody(named: "WorkstationSidebar", in: ios)
         let iosSidebarButton = try sourceStructBody(named: "CompanionSidebarButton", in: ios)
+        let compactTabBar = try sourceStructBody(named: "CompanionCompactTabBar", in: ios)
         let iosScreenContainer = try sourceBody(
             after: "private struct CompanionScreenContainer<Content: View>: View",
             in: ios,
@@ -3314,6 +3315,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosSidebarButton.contains("if let badgeText"))
         XCTAssertTrue(iosSidebarButton.contains(".accessibilityHidden(true)"))
         XCTAssertTrue(iosSidebarButton.contains(".accessibilityValue(accessibilityValue)"))
+        XCTAssertTrue(compactTabBar.contains(".accessibilityValue(selectedSection == section ? \"선택됨\" : \"선택 안 됨\")"))
+        XCTAssertTrue(iosSidebarButton.contains("[isSelected ? \"선택됨\" : \"선택 안 됨\", badgeText.map { \"\\($0)개\" }]"))
         XCTAssertTrue(iosSidebarButton.contains("badgeText.map { \"\\($0)개\" }"))
         XCTAssertTrue(iosSidebarButton.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertTrue(iosSidebarButton.contains("ZStack"))

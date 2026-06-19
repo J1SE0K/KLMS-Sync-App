@@ -2575,7 +2575,7 @@ private struct CompanionCompactTabBar: View {
         }
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel(section.compactTitle)
-        .accessibilityValue(selectedSection == section ? "선택됨" : "")
+        .accessibilityValue(selectedSection == section ? "선택됨" : "선택 안 됨")
     }
 }
 
@@ -2742,7 +2742,7 @@ private struct CompanionSidebarButton: View {
     }
 
     private var accessibilityValue: String {
-        [isSelected ? "선택됨" : nil, badgeText.map { "\($0)개" }]
+        [isSelected ? "선택됨" : "선택 안 됨", badgeText.map { "\($0)개" }]
             .compactMap { $0 }
             .joined(separator: ", ")
     }
