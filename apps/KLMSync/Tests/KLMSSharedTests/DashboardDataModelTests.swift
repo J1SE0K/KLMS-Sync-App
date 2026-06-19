@@ -2125,6 +2125,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteSettingGroupSection.contains("Text(group.detail)"))
         XCTAssertTrue(remoteSettingGroupSection.contains(".lineLimit(1)"))
         XCTAssertTrue(remoteSettingGroupSection.contains("CompanionInlineDetailBadge(isExpanded: showsDetail)"))
+        XCTAssertTrue(remoteSettingGroupSection.contains(".accessibilityLabel(\"\\(group.title) 설정 \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(remoteSettingGroupSection.contains(".accessibilityLabel(\"\\(group.title) 설명 \\(showsDetail ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(ios.contains("var isCollapsible: Bool"))
         XCTAssertTrue(remoteSettingGroupSection.contains("if group.isCollapsible"))
         XCTAssertTrue(remoteSettingGroupSection.contains("if !group.isCollapsible || isExpanded"))
@@ -2132,6 +2134,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteDiagnosticPanel.contains("상태 검사와 권한 점검은 필요할 때만 펼치세요."))
         XCTAssertTrue(remoteDiagnosticPanel.contains("CompanionExpansionBadge(isExpanded: isPanelExpanded)"))
         XCTAssertTrue(remoteDiagnosticPanel.contains("RoundedRectangle(cornerRadius: 14)"))
+        XCTAssertTrue(remoteDiagnosticPanel.contains(".accessibilityLabel(\"진단 \\(isPanelExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(remoteDiagnosticPanel.contains("CompanionSettingsSubsectionCard("))
         XCTAssertTrue(remoteDiagnosticPanel.contains("title: \"고급 도구\""))
         XCTAssertTrue(remoteDiagnosticPanel.contains("collapsible: true"))
@@ -2139,6 +2142,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(relayConnectionPanel.contains("withAnimation(.easeInOut(duration: 0.08))"))
         XCTAssertFalse(relayConnectionPanel.contains(".transition(.opacity)"))
         XCTAssertTrue(relayConnectionPanel.contains(".buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))"))
+        XCTAssertTrue(relayConnectionPanel.contains(".accessibilityLabel(\"서버 릴레이 \\(model.serverRelayConfigured ? \"저장됨\" : \"미설정\") \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(relayConnectionPanel.contains("CompanionSettingsSubsectionCard("))
         XCTAssertTrue(relayConnectionPanel.contains("title: \"서버 연결 정보\""))
         XCTAssertTrue(relayConnectionPanel.contains("title: \"연결 확인\""))
@@ -2165,6 +2169,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remotePrivacyNote.contains("CompanionExpansionBadge(isExpanded: isExpanded, compact: true)"))
         XCTAssertTrue(remotePrivacyNote.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertTrue(remotePrivacyNote.contains("if isExpanded"))
+        XCTAssertTrue(remotePrivacyNote.contains(".accessibilityLabel(\"개인정보와 서버 보관 \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(remotePrivacyNote.contains(".accessibilityHint(isExpanded ? \"개인정보 보관 설명 접기\" : \"개인정보 보관 설명 펼치기\")"))
         XCTAssertTrue(remotePrivacyNote.contains("서버에는 실행 요청과 요약 상태만 저장됩니다."))
         XCTAssertTrue(remotePrivacyNote.contains("파일 열기를 요청할 때만 Mac이 임시 링크를 만들고, 만료되면 정리합니다."))
@@ -2256,6 +2261,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteSettingRow.contains("Button(\"저장\")"))
         XCTAssertTrue(remoteSettingRow.contains(".frame(minHeight: 44)"))
         XCTAssertTrue(remoteSettingRow.contains(".buttonStyle(KLMSActionButtonStyle())"))
+        XCTAssertTrue(remoteSettingRow.contains(".accessibilityLabel(\"\\(setting.title) \\(settingValueSummary) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(remoteRunningStatusBanner.contains("\"stop.fill\""))
         XCTAssertTrue(remoteRunningStatusBanner.contains(".background(Color.klmsSubtleCardBackground"))
         XCTAssertTrue(remoteRunningStatusBanner.contains(".buttonStyle(KLMSActionButtonStyle(tone: .destructive))"))
@@ -2596,6 +2602,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("CompanionImmediateSettingRow("))
         XCTAssertTrue(ios.contains("private struct CompanionSettingsControlContainer"))
         XCTAssertTrue(ios.contains("private struct CompanionSettingsSubsectionCard"))
+        let companionSettingsSubsectionCard = try sourceBody(
+            after: "private struct CompanionSettingsSubsectionCard<Content: View>: View",
+            in: ios,
+            description: "iOS companion settings subsection card"
+        )
         XCTAssertFalse(ios.contains("@State private var isExpanded = true"))
         XCTAssertTrue(ios.contains("@State private var isExpanded = false"))
         XCTAssertTrue(ios.contains("var isDefaultExpanded: Bool"))
@@ -2608,6 +2619,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("group.countText"))
         XCTAssertTrue(ios.contains("CompanionSettingsSubsectionCard("))
         XCTAssertTrue(ios.contains("collapsible: true"))
+        XCTAssertTrue(companionSettingsSubsectionCard.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(ios.contains("settingValueSummary"))
         XCTAssertTrue(ios.contains("private func compactSettingValueSummary(_ value: String) -> String"))
         XCTAssertTrue(ios.contains("trimmed.contains(\"/\") || trimmed.contains(\"\\\\\") || trimmed.count > 18"))
@@ -3098,6 +3110,11 @@ final class DashboardDataModelTests: XCTestCase {
         let verifyPanelView = try sourceStructBody(named: "VerifyPanelView", in: mac)
         let verifyCheckRowView = try sourceStructBody(named: "VerifyCheckExplanationRowView", in: mac)
         let doctorPanelView = try sourceStructBody(named: "DoctorPanelView", in: mac)
+        let diagnosticChecksDisclosure = try sourceBody(
+            after: "private struct DiagnosticChecksDisclosure<Content: View>: View",
+            in: mac,
+            description: "Mac diagnostic checks disclosure"
+        )
         XCTAssertTrue(mac.contains("private struct DiagnosticChecksDisclosure"))
         XCTAssertTrue(verifyPanelView.contains("SectionBox(title: \"상태 검사\")"))
         XCTAssertTrue(verifyPanelView.contains("상태 검사에서 설명이 필요한 실패 항목이 없습니다."))
@@ -3115,6 +3132,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(doctorPanelView.contains("return \"상태: \\(doctor.status.klmsLocalizedStatus) · 확인 필요 \\(issueCount)개 · 정상 \\(okCount)개\""))
         XCTAssertTrue(doctorPanelView.contains("@State private var isAllChecksExpanded = false"))
         XCTAssertTrue(doctorPanelView.contains("DiagnosticChecksDisclosure("))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityHint(isExpanded ? \"\\(title) 접기\" : \"\\(title) 펼치기\")"))
         let doctorCheckRowView = try sourceStructBody(named: "DoctorCheckRowView", in: mac)
         XCTAssertTrue(doctorCheckRowView.contains(".lineLimit(compact ? 2 : 1)"))
         XCTAssertTrue(appDiagnosticsPanel.contains("private let permissionActionColumns = [GridItem(.adaptive(minimum: 136), spacing: 8)]"))
@@ -4030,6 +4049,7 @@ final class DashboardDataModelTests: XCTestCase {
         )
         let remoteCalendarPanel = try sourceStructBody(named: "RemoteCalendarActionPanel", in: ios)
 
+        XCTAssertTrue(mailPastePanel.contains(".accessibilityLabel(\"메일·캘린더 분석 \\(analysis.isEmpty ? \"입력 대기\" : analysis.kind.title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(statusScreen.contains("selectedChangeSummary"))
         XCTAssertTrue(statusScreen.contains("@State private var displayedDashboardPreview"))
         XCTAssertTrue(statusScreen.contains("@State private var displayedChangeSummary"))

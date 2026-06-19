@@ -3306,6 +3306,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
             } else {
                 subsectionHeader
@@ -3814,6 +3815,7 @@ private struct ServerRelayConnectionPanel: View {
                 .contentShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .accessibilityLabel("서버 릴레이 \(model.serverRelayConfigured ? "저장됨" : "미설정") \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "서버 릴레이 설정 접기" : "서버 릴레이 설정 펼치기")
 
             if isExpanded {
@@ -7824,6 +7826,7 @@ private struct MailPasteAnalyzerPanel: View {
                 .contentShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(KLMSCardButtonStyle())
+            .accessibilityLabel("메일·캘린더 분석 \(analysis.isEmpty ? "입력 대기" : analysis.kind.title) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "메일 판독 입력 접기" : "메일 판독 입력 펼치기")
 
             if isExpanded {
@@ -11127,6 +11130,7 @@ private struct RemoteDiagnosticPanel: View {
                 .contentShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .accessibilityLabel("진단 \(isPanelExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isPanelExpanded ? "진단 도구 접기" : "진단 도구 펼치기")
 
             if isPanelExpanded {
@@ -11459,6 +11463,7 @@ private struct RemoteSettingGroupSection: View {
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                .accessibilityLabel("\(group.title) 설정 \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "\(group.title) 설정 접기" : "\(group.title) 설정 펼치기")
             } else {
                 Button {
@@ -11470,6 +11475,7 @@ private struct RemoteSettingGroupSection: View {
                         .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                .accessibilityLabel("\(group.title) 설명 \(showsDetail ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(showsDetail ? "\(group.title) 설명 접기" : "\(group.title) 설명 보기")
             }
 
@@ -12615,6 +12621,7 @@ private struct RemoteSettingRow: View {
                 .contentShape(RoundedRectangle(cornerRadius: 9))
             }
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 9))
+            .accessibilityLabel("\(setting.title) \(settingValueSummary) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "\(setting.title) 설정 접기" : "\(setting.title) 설정 펼치기")
 
             if isExpanded {
@@ -12969,6 +12976,7 @@ private struct RemotePrivacyNote: View {
                 .contentShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .accessibilityLabel("개인정보와 서버 보관 \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "개인정보 보관 설명 접기" : "개인정보 보관 설명 펼치기")
 
             if isExpanded {

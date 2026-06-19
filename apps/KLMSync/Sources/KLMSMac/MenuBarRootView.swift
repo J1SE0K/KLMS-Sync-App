@@ -4329,6 +4329,8 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
                 .contentShape(RoundedRectangle(cornerRadius: 7))
             }
             .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 7))
+            .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: compact ? 5 : 6) {
