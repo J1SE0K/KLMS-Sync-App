@@ -208,6 +208,20 @@ struct DashboardFileRenderSignature: Equatable, Sendable {
     }
 }
 
+struct DashboardFileDataPrewarmView: View {
+    var snapshot: EngineSnapshot
+    var signature: DashboardFileRenderSignature
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .task(id: signature) {
+                DashboardFileDataPreloadStore.prewarm(snapshot: snapshot, signature: signature)
+            }
+    }
+}
+
 struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     var kind: DashboardDetailKind
     var model: KLMSMacModel
@@ -420,6 +434,11 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         }
         let snapshot = snapshot
         fileDataTask?.cancel()
+        if let cachedData = DashboardFileDataPreloadStore.cachedData(for: signature) {
+            fileData = cachedData
+            fileDataSignature = signature
+            return
+        }
         fileDataSignature = signature
         fileDataTask = Task { @MainActor in
             await Task.yield()
@@ -428,6 +447,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
                 DashboardFileData(snapshot: snapshot, signature: signature)
             }.value
             guard !Task.isCancelled else { return }
+            DashboardFileDataPreloadStore.store(data)
             fileData = data
         }
     }
@@ -519,6 +539,38 @@ struct DashboardFilterOptions: Equatable, Sendable {
         courses = DashboardCourseFilter.options(for: kind, snapshot: snapshot)
         years = DashboardTermFilter.yearOptions(for: kind, snapshot: snapshot)
         semesters = DashboardTermFilter.semesterOptions(for: kind, snapshot: snapshot)
+    }
+}
+
+@MainActor
+private enum DashboardFileDataPreloadStore {
+    private static var cachedData: DashboardFileData?
+    private static var inFlightSignature: DashboardFileRenderSignature?
+
+    static func cachedData(for signature: DashboardFileRenderSignature) -> DashboardFileData? {
+        guard cachedData?.signature == signature else { return nil }
+        return cachedData
+    }
+
+    static func store(_ data: DashboardFileData) {
+        cachedData = data
+        if inFlightSignature == data.signature {
+            inFlightSignature = nil
+        }
+    }
+
+    static func prewarm(snapshot: EngineSnapshot, signature: DashboardFileRenderSignature) {
+        guard cachedData(for: signature) == nil, inFlightSignature != signature else {
+            return
+        }
+        inFlightSignature = signature
+        Task { @MainActor in
+            let data = await Task.detached(priority: .utility) {
+                DashboardFileData(snapshot: snapshot, signature: signature)
+            }.value
+            guard inFlightSignature == signature else { return }
+            store(data)
+        }
     }
 }
 

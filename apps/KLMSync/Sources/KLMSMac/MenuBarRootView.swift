@@ -149,6 +149,7 @@ private struct MacWorkstationLayoutView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         CommandPanelView(model: model)
                         DeferredDashboardSummaryView(model: model)
+                        DashboardFileDataPrewarmView(snapshot: model.snapshot, signature: model.dashboardFileRenderSignature)
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .accessibilityIdentifier("workspace-content-dashboard")
