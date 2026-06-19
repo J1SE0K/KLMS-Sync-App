@@ -779,7 +779,7 @@ final class CompanionModel: ObservableObject {
         }
         switch latestDisplayStatus {
         case .pending:
-            return "Mac 앱이 \(latestCommand.kind.displayName) 요청을 확인하고 있습니다."
+            return "\(latestCommand.kind.displayName) 요청을 서버에 올렸습니다. Mac 확인을 기다리는 중입니다."
         case .running:
             if let detail = runningPhaseDetail {
                 return "Mac에서 \(latestCommand.kind.displayName) · \(detail) 진행 중"
@@ -792,7 +792,7 @@ final class CompanionModel: ObservableObject {
         case .cancelled:
             return "\(latestCommand.kind.displayName) 요청을 취소했습니다."
         case .macUnavailable:
-            return "Mac 앱이 아직 요청을 확인하지 않았습니다. 켜져 있으면 곧 시작됩니다."
+            return "Mac이 아직 요청을 받지 못했습니다. Mac 앱이 켜져 있으면 곧 시작됩니다."
         }
     }
 
@@ -895,11 +895,11 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             if cancelResponse.requested {
-                connectionMessage = "Mac에 실행 중단 요청을 보냈습니다."
-                userAlert = UserAlert(title: "중단 요청 전송", message: "Mac 앱에 현재 실행 중단을 요청했습니다.")
+                connectionMessage = "서버에 실행 중단 요청을 올렸습니다. Mac이 곧 확인합니다."
+                userAlert = UserAlert(title: "중단 요청 전송", message: "서버에 실행 중단 요청을 올렸습니다. Mac이 곧 확인합니다.")
                 startCancelFollowUp(commandID: commandID)
             } else {
-                connectionMessage = cancelResponse.message.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Mac 앱이 확인하기 전에 요청을 취소했습니다."
+                connectionMessage = cancelResponse.message.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Mac이 확인하기 전에 요청을 취소했습니다."
                 pendingCancelCommandID = nil
                 pendingCancelRequestedAt = nil
                 cancelFollowUpTask?.cancel()
@@ -942,7 +942,7 @@ final class CompanionModel: ObservableObject {
             connectionMessage = "\(setting.title) 설정 변경 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
-            userAlert = UserAlert(title: "설정 요청 완료", message: "Mac 앱이 요청을 확인하면 설정에 반영합니다.")
+            userAlert = UserAlert(title: "설정 요청 완료", message: "서버에 저장했습니다. Mac이 확인하면 로컬 설정에도 반영합니다.")
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
@@ -1168,7 +1168,7 @@ final class CompanionModel: ObservableObject {
             )
             let created = try await serverRelayStore.createFileAccessRequest(request)
             recentFileAccessRequests.insert(created, at: 0)
-            connectionMessage = "Mac에 파일 링크를 요청했습니다."
+            connectionMessage = "서버에 파일 링크 준비를 요청했습니다."
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "파일 요청 완료", message: "Mac 앱이 파일 링크를 준비하면 열기 버튼이 표시됩니다.")
@@ -5036,7 +5036,7 @@ private struct RemoteDashboardSyncCard: View {
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12, disabledOpacity: 0.78))
         .disabled(isDisabled)
         .accessibilityLabel(isRunning ? "전체 동기화 중단" : "전체 동기화 실행")
-        .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 전체 동기화를 중단합니다." : "Mac 앱에 전체 동기화 실행 요청을 보냅니다.")
+        .accessibilityHint(isRunning ? "서버에 전체 동기화 중단 요청을 보냅니다." : "서버에 전체 동기화 실행 요청을 올립니다.")
     }
 
     private func dashboardSecondaryButton(_ kind: RemoteCommandKind) -> some View {
@@ -5074,7 +5074,7 @@ private struct RemoteDashboardSyncCard: View {
         .buttonStyle(KLMSCardButtonStyle(disabledOpacity: 1.0))
         .disabled(isDisabled)
         .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
-        .accessibilityHint(isRunning ? "Mac 앱에서 진행 중인 \(kind.displayName)을 중단합니다." : "Mac 앱에 \(kind.displayName) 실행 요청을 보냅니다.")
+        .accessibilityHint(isRunning ? "서버에 \(kind.displayName) 중단 요청을 보냅니다." : "서버에 \(kind.displayName) 실행 요청을 올립니다.")
     }
 
     private func commandDisabled(for kind: RemoteCommandKind) -> Bool {
@@ -11194,7 +11194,7 @@ private struct RemoteDiagnosticPanel: View {
         .buttonStyle(KLMSActionButtonStyle())
         .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest || !kind.engineCommand.supportsDryRun)
         .accessibilityLabel("\(kind.displayName) 변경량 계산")
-        .accessibilityHint("Mac 앱에 \(kind.displayName) 변경량 계산 요청을 보냅니다.")
+        .accessibilityHint("서버에 \(kind.displayName) 변경량 계산 요청을 올립니다.")
     }
 }
 
@@ -11701,7 +11701,7 @@ private struct RemoteLogSummaryPanel: View {
     private var recentCommandDetail: String {
         guard let command = currentCommand else {
             return model.latestCommand == nil
-                ? "실행하면 Mac에 요청이 올라갑니다."
+                ? "실행하면 서버에 요청이 올라갑니다."
                 : "지난 기록은 펼쳐서 봅니다."
         }
         var parts = [
