@@ -1179,6 +1179,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(view.contains("private let klmsMacInteractionDetailDelayNanoseconds"))
         XCTAssertTrue(view.contains("@State private var isArchiveMetricsExpanded = false"))
         XCTAssertTrue(view.contains("private struct DashboardArchiveMetricSection"))
+        XCTAssertTrue(view.contains(".accessibilityLabel(\"기록과 보관 \\(totalCount)개 \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(view.contains(".accessibilityHint(isExpanded ? \"기록과 보관 접기\" : \"기록과 보관 펼치기\")"))
         XCTAssertTrue(view.contains("archiveExpanded ? archiveMetrics : []"))
         XCTAssertTrue(view.contains("@State private var isHistoryExpanded = true"))
         XCTAssertTrue(view.contains("if !isHistoryExpanded"))
@@ -3102,6 +3104,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(issueSummaryView.contains("if isRemainingIssuesExpanded"))
         XCTAssertTrue(issueSummaryView.contains("ForEach(remainingIssues.prefix(remainingVisibleLimit))"))
         XCTAssertTrue(issueSummaryView.contains("Text(compactTitle)"))
+        XCTAssertTrue(issueSummaryView.contains(".accessibilityLabel(\"\\(compactTitle) \\(issues.count)개 \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(issueSummaryView.contains(".accessibilityHint(isExpanded ? \"확인 항목 접기\" : \"확인 항목 펼치기\")"))
+        XCTAssertTrue(issueSummaryView.contains(".accessibilityLabel(\"나머지 확인 항목 \\(remainingIssues.count)개 \\(isRemainingIssuesExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(issueSummaryView.contains("return \"상태 검사 실패\""))
         XCTAssertTrue(issueSummaryView.contains("return \"권한 확인 필요\""))
         XCTAssertTrue(issueRowView.contains(".lineLimit(2)"))
@@ -3134,6 +3139,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(doctorPanelView.contains("DiagnosticChecksDisclosure("))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityHint(isExpanded ? \"\\(title) 접기\" : \"\\(title) 펼치기\")"))
+        let collapsibleSectionBox = try sourceBody(
+            after: "struct CollapsibleSectionBox<Content: View>: View",
+            in: mac,
+            description: "Mac collapsible section box"
+        )
+        XCTAssertTrue(collapsibleSectionBox.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(collapsibleSectionBox.contains(".accessibilityHint(isExpanded ? \"\\(title) 접기\" : \"\\(title) 펼치기\")"))
         let doctorCheckRowView = try sourceStructBody(named: "DoctorCheckRowView", in: mac)
         XCTAssertTrue(doctorCheckRowView.contains(".lineLimit(compact ? 2 : 1)"))
         XCTAssertTrue(appDiagnosticsPanel.contains("private let permissionActionColumns = [GridItem(.adaptive(minimum: 136), spacing: 8)]"))

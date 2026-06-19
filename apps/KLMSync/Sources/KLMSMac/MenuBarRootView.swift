@@ -4026,6 +4026,8 @@ private struct DashboardArchiveMetricSection: View {
                 .contentShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(MacPressFeedbackButtonStyle())
+            .accessibilityLabel("기록과 보관 \(totalCount)개 \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityHint(isExpanded ? "기록과 보관 접기" : "기록과 보관 펼치기")
 
             if isExpanded {
                 MetricGrid(metrics: metrics, selectedMetricID: selectedMetricID, onSelect: onSelect)
@@ -5124,6 +5126,8 @@ private struct IssueSummaryView: View {
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(MacPressFeedbackButtonStyle())
+                .accessibilityLabel("\(compactTitle) \(issues.count)개 \(isExpanded ? "펼쳐짐" : "접힘")")
+                .accessibilityHint(isExpanded ? "확인 항목 접기" : "확인 항목 펼치기")
 
                 if isExpanded {
                     VStack(alignment: .leading, spacing: 8) {
@@ -5149,6 +5153,8 @@ private struct IssueSummaryView: View {
                                 .contentShape(RoundedRectangle(cornerRadius: 8))
                             }
                             .buttonStyle(MacPressFeedbackButtonStyle())
+                            .accessibilityLabel("나머지 확인 항목 \(remainingIssues.count)개 \(isRemainingIssuesExpanded ? "펼쳐짐" : "접힘")")
+                            .accessibilityHint(isRemainingIssuesExpanded ? "나머지 확인 항목 접기" : "나머지 확인 항목 펼치기")
 
                             if isRemainingIssuesExpanded {
                                 VStack(alignment: .leading, spacing: 6) {
@@ -5490,6 +5496,8 @@ struct CollapsibleSectionBox<Content: View>: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(MacPressFeedbackButtonStyle())
+            .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
             .contentShape(Rectangle())
