@@ -83,7 +83,7 @@ private struct MacWorkspaceSelectionAccessibilityMarker: View {
             .clipped()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(section.title) 내용")
-            .accessibilityIdentifier("workspace-selection-\(section.rawValue)")
+            .accessibilityIdentifier("workspace-content-\(section.rawValue)")
     }
 }
 
@@ -414,7 +414,7 @@ private struct WorkspaceNavigationSelectionMarker: View {
             .clipped()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(section.title) 내용")
-            .accessibilityIdentifier("workspace-content-\(section.rawValue)")
+            .accessibilityIdentifier("workspace-navigation-selection-\(section.rawValue)")
     }
 }
 
