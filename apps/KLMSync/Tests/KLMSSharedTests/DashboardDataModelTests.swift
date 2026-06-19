@@ -3781,6 +3781,16 @@ final class DashboardDataModelTests: XCTestCase {
         let mailPastePanel = try sourceStructBody(named: "MailPasteAnalyzerPanel", in: ios)
         let mailPasteResult = try sourceStructBody(named: "MailPasteAnalysisResultView", in: ios)
         let mailAnalysisProcess = try sourceStructBody(named: "MailAnalysisProcessView", in: ios)
+        let mailPasteAnalyzer = try sourceBody(
+            after: "private enum MailPasteAnalyzer",
+            in: ios,
+            description: "iOS mail paste analyzer"
+        )
+        let companionDateParsingCache = try sourceBody(
+            after: "private enum CompanionDateParsingCache",
+            in: ios,
+            description: "iOS companion date parsing cache"
+        )
         let remoteCalendarPanel = try sourceStructBody(named: "RemoteCalendarActionPanel", in: ios)
 
         XCTAssertTrue(statusScreen.contains("selectedChangeSummary"))
@@ -3814,6 +3824,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("onChangeSummaryTap"))
         XCTAssertTrue(ios.contains("UIPasteboard.general.string"))
         XCTAssertTrue(ios.contains("MailPasteAnalyzer.analyze"))
+        XCTAssertTrue(ios.contains("private enum CompanionDateParsingCache"))
+        XCTAssertTrue(mailPasteAnalyzer.contains("CompanionDateParsingCache.mailCalendarInputFormatter()"))
+        XCTAssertTrue(mailPasteAnalyzer.contains("CompanionDateParsingCache.mailParseFormatter()"))
+        XCTAssertFalse(mailPasteAnalyzer.contains("let formatter = DateFormatter()"))
+        XCTAssertTrue(ios.contains("CompanionDateParsingCache.isoFormatter(fractionalSeconds: true)"))
+        XCTAssertTrue(companionDateParsingCache.contains("Thread.current.threadDictionary"))
         XCTAssertTrue(mailPastePanel.contains("@State private var deferredAnalysisTask"))
         XCTAssertTrue(mailPastePanel.contains("scheduleAnalysis()"))
         XCTAssertTrue(mailPastePanel.contains(".buttonStyle(KLMSCardButtonStyle())"))
@@ -3924,6 +3940,16 @@ final class DashboardDataModelTests: XCTestCase {
             in: detail,
             description: "Mac mail paste analyzer panel"
         )
+        let macMailAnalyzer = try sourceBody(
+            after: "private enum MacMailPasteAnalyzer",
+            in: detail,
+            description: "Mac mail paste analyzer"
+        )
+        let macDateParsingCache = try sourceBody(
+            after: "private enum KLMSMacDateParsingCache",
+            in: detail,
+            description: "Mac date parsing cache"
+        )
         let macMailHeader = try sourceStructBody(named: "MacMailPasteHeaderButtonContent", in: detail)
         let macMailAnalysisProcess = try sourceStructBody(named: "MacMailAnalysisProcessView", in: detail)
 
@@ -4022,6 +4048,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("Label(\"제거\", systemImage: \"minus.circle\")"))
         XCTAssertTrue(detail.contains("NSPasteboard.general.string"))
         XCTAssertTrue(detail.contains("MacMailPasteAnalyzer.analyze"))
+        XCTAssertTrue(detail.contains("private enum KLMSMacDateParsingCache"))
+        XCTAssertTrue(macMailAnalyzer.contains("KLMSMacDateParsingCache.mailCalendarInputFormatter()"))
+        XCTAssertTrue(macMailAnalyzer.contains("KLMSMacDateParsingCache.mailParseFormatter()"))
+        XCTAssertFalse(macMailAnalyzer.contains("let formatter = DateFormatter()"))
+        XCTAssertTrue(detail.contains("KLMSMacDateParsingCache.calendarDisplayFormatter()"))
+        XCTAssertTrue(detail.contains("KLMSMacDateParsingCache.isoFormatter(fractionalSeconds: true)"))
+        XCTAssertTrue(macDateParsingCache.contains("Thread.current.threadDictionary"))
         XCTAssertTrue(model.contains("func createManualCalendarEvent"))
         XCTAssertTrue(model.contains("EKEvent(eventStore: store)"))
         XCTAssertTrue(model.contains("applyServerRelayCalendarCreateAction"))

@@ -5538,10 +5538,7 @@ private enum MacMailPasteAnalyzer {
         guard let date = parseMailDate(dueText) else {
             return ("", "")
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let formatter = KLMSMacDateParsingCache.mailCalendarInputFormatter()
         return (formatter.string(from: date), formatter.string(from: date.addingTimeInterval(60 * 60)))
     }
 
@@ -5562,8 +5559,7 @@ private enum MacMailPasteAnalyzer {
             text,
             "\(currentYear) \(text)",
         ]
-        let formatter = DateFormatter()
-        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        let formatter = KLMSMacDateParsingCache.mailParseFormatter()
         let formats = [
             ("ko_KR", "yyyy년 M월 d일 a h:mm"),
             ("ko_KR", "yyyy년 M월 d일 H:mm"),
@@ -5780,22 +5776,67 @@ private func displayCalendarDate(_ text: String) -> String {
     guard !text.isEmpty else { return "" }
     let date = parseCalendarDetailDate(text)
     guard let date else { return text }
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "ko_KR")
-    formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
-    formatter.dateFormat = "M/d HH:mm"
+    let formatter = KLMSMacDateParsingCache.calendarDisplayFormatter()
     return formatter.string(from: date)
 }
 
 private func parseCalendarDetailDate(_ text: String) -> Date? {
-    let fractionalFormatter = ISO8601DateFormatter()
-    fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let fractionalFormatter = KLMSMacDateParsingCache.isoFormatter(fractionalSeconds: true)
     if let date = fractionalFormatter.date(from: text) {
         return date
     }
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
+    let formatter = KLMSMacDateParsingCache.isoFormatter(fractionalSeconds: false)
     return formatter.date(from: text)
+}
+
+private enum KLMSMacDateParsingCache {
+    static func mailCalendarInputFormatter() -> DateFormatter {
+        cachedDateFormatter(key: "KLMSSync.mac.mailCalendarInputFormatter") { formatter in
+            formatter.locale = Locale(identifier: "ko_KR")
+            formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+            formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        }
+    }
+
+    static func mailParseFormatter() -> DateFormatter {
+        cachedDateFormatter(key: "KLMSSync.mac.mailParseFormatter") { formatter in
+            formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        }
+    }
+
+    static func calendarDisplayFormatter() -> DateFormatter {
+        cachedDateFormatter(key: "KLMSSync.mac.calendarDisplayFormatter") { formatter in
+            formatter.locale = Locale(identifier: "ko_KR")
+            formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+            formatter.dateFormat = "M/d HH:mm"
+        }
+    }
+
+    static func isoFormatter(fractionalSeconds: Bool) -> ISO8601DateFormatter {
+        let key = fractionalSeconds
+            ? "KLMSSync.mac.iso8601FractionalFormatter"
+            : "KLMSSync.mac.iso8601Formatter"
+        if let formatter = Thread.current.threadDictionary[key] as? ISO8601DateFormatter {
+            return formatter
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = fractionalSeconds ? [.withInternetDateTime, .withFractionalSeconds] : [.withInternetDateTime]
+        Thread.current.threadDictionary[key] = formatter
+        return formatter
+    }
+
+    private static func cachedDateFormatter(
+        key: String,
+        configure: (DateFormatter) -> Void
+    ) -> DateFormatter {
+        if let formatter = Thread.current.threadDictionary[key] as? DateFormatter {
+            return formatter
+        }
+        let formatter = DateFormatter()
+        configure(formatter)
+        Thread.current.threadDictionary[key] = formatter
+        return formatter
+    }
 }
 
 private extension String {

@@ -8733,10 +8733,7 @@ private enum MailPasteAnalyzer {
         guard let date = parseMailDate(dueText) else {
             return ("", "")
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let formatter = CompanionDateParsingCache.mailCalendarInputFormatter()
         return (formatter.string(from: date), formatter.string(from: date.addingTimeInterval(60 * 60)))
     }
 
@@ -8754,8 +8751,7 @@ private enum MailPasteAnalyzer {
         text = text.replacingOccurrences(of: #"(\d{1,2})\s*시"#, with: "$1:00", options: .regularExpression)
         let currentYear = Calendar(identifier: .gregorian).component(.year, from: Date())
         let candidates = [text, "\(currentYear) \(text)"]
-        let formatter = DateFormatter()
-        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        let formatter = CompanionDateParsingCache.mailParseFormatter()
         let formats = [
             ("ko_KR", "yyyy년 M월 d일 a h:mm"),
             ("ko_KR", "yyyy년 M월 d일 H:mm"),
@@ -9123,14 +9119,54 @@ private struct CalendarEventEditForm: View {
 private func parseCalendarEditInputDate(_ text: String) -> Date? {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
-    let fractionalFormatter = ISO8601DateFormatter()
-    fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let fractionalFormatter = CompanionDateParsingCache.isoFormatter(fractionalSeconds: true)
     if let date = fractionalFormatter.date(from: trimmed) {
         return date
     }
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
+    let formatter = CompanionDateParsingCache.isoFormatter(fractionalSeconds: false)
     return formatter.date(from: trimmed)
+}
+
+private enum CompanionDateParsingCache {
+    static func mailCalendarInputFormatter() -> DateFormatter {
+        cachedDateFormatter(key: "KLMSSync.iOS.mailCalendarInputFormatter") { formatter in
+            formatter.locale = Locale(identifier: "ko_KR")
+            formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+            formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        }
+    }
+
+    static func mailParseFormatter() -> DateFormatter {
+        cachedDateFormatter(key: "KLMSSync.iOS.mailParseFormatter") { formatter in
+            formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        }
+    }
+
+    static func isoFormatter(fractionalSeconds: Bool) -> ISO8601DateFormatter {
+        let key = fractionalSeconds
+            ? "KLMSSync.iOS.iso8601FractionalFormatter"
+            : "KLMSSync.iOS.iso8601Formatter"
+        if let formatter = Thread.current.threadDictionary[key] as? ISO8601DateFormatter {
+            return formatter
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = fractionalSeconds ? [.withInternetDateTime, .withFractionalSeconds] : [.withInternetDateTime]
+        Thread.current.threadDictionary[key] = formatter
+        return formatter
+    }
+
+    private static func cachedDateFormatter(
+        key: String,
+        configure: (DateFormatter) -> Void
+    ) -> DateFormatter {
+        if let formatter = Thread.current.threadDictionary[key] as? DateFormatter {
+            return formatter
+        }
+        let formatter = DateFormatter()
+        configure(formatter)
+        Thread.current.threadDictionary[key] = formatter
+        return formatter
+    }
 }
 
 private struct CalendarChangeExplanationPanel: View {
