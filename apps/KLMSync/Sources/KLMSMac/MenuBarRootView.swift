@@ -863,6 +863,7 @@ private struct MacWorkspaceScrollResetKey: Equatable {
 private struct WholeScreenVerticalScrollView<ResetID: Equatable, Content: View>: View {
     var resetID: ResetID
     @ViewBuilder var content: Content
+    @State private var scrollResetTask: Task<Void, Never>?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -877,11 +878,23 @@ private struct WholeScreenVerticalScrollView<ResetID: Equatable, Content: View>:
             .scrollIndicators(.visible)
             .clipped()
             .onChange(of: resetID) { _, _ in
-                var transaction = Transaction()
-                transaction.animation = nil
-                withTransaction(transaction) {
-                    proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)
-                }
+                scheduleScrollReset(proxy: proxy)
+            }
+            .onDisappear {
+                scrollResetTask?.cancel()
+            }
+        }
+    }
+
+    private func scheduleScrollReset(proxy: ScrollViewProxy) {
+        scrollResetTask?.cancel()
+        scrollResetTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)
             }
         }
     }

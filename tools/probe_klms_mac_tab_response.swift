@@ -236,14 +236,30 @@ private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Dou
         throw ProbeFailure.pressFailed(identifier: target.buttonIdentifier, error)
     }
 
-    guard waitForElement(withIdentifier: target.selectionIdentifier, in: appElement, timeout: timeout) != nil else {
-        throw ProbeFailure.workspaceSelectionMissing(target.buttonIdentifier)
-    }
-    guard waitForElement(withIdentifier: target.contentIdentifier, in: appElement, timeout: timeout) != nil else {
+    let requiredIdentifiers = [target.selectionIdentifier, target.contentIdentifier]
+    guard waitForElements(withIdentifiers: requiredIdentifiers, in: appElement, timeout: timeout) else {
+        if waitForElement(withIdentifier: target.selectionIdentifier, in: appElement, timeout: 0.1) == nil {
+            throw ProbeFailure.workspaceSelectionMissing(target.buttonIdentifier)
+        }
         throw ProbeFailure.workspaceContentMissing(target.contentIdentifier)
     }
     let end = DispatchTime.now()
     return Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+}
+
+private func waitForElements(
+    withIdentifiers identifiers: [String],
+    in root: AXUIElement,
+    timeout: TimeInterval
+) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if findIdentifiers(Set(identifiers), in: root, maxDepth: 32, maxNodes: 35_000).isSuperset(of: identifiers) {
+            return true
+        }
+        Thread.sleep(forTimeInterval: 0.02)
+    } while Date() < deadline
+    return false
 }
 
 private func waitForElement(
@@ -297,6 +313,49 @@ private func findElement(
         }
     }
     return nil
+}
+
+private func findIdentifiers(
+    _ identifiers: Set<String>,
+    in root: AXUIElement,
+    maxDepth: Int,
+    maxNodes: Int
+) -> Set<String> {
+    var remaining = identifiers
+    var found = Set<String>()
+    var stack: [(AXUIElement, Int)] = [(root, 0)]
+    var visited = Set<CFHashCode>()
+    var visitedCount = 0
+
+    while let (element, depth) = stack.popLast() {
+        let elementHash = CFHash(element)
+        guard visited.insert(elementHash).inserted else {
+            continue
+        }
+
+        visitedCount += 1
+        guard visitedCount <= maxNodes else {
+            return found
+        }
+
+        if let identifier = stringAttribute(element, "AXIdentifier" as CFString),
+           let match = remaining.first(where: { identifierMatches(identifier, expected: $0) }) {
+            found.insert(match)
+            remaining.remove(match)
+            if remaining.isEmpty {
+                return found
+            }
+        }
+
+        guard depth < maxDepth else {
+            continue
+        }
+
+        for child in childElements(of: element).reversed() {
+            stack.append((child, depth + 1))
+        }
+    }
+    return found
 }
 
 private func childElements(of element: AXUIElement) -> [AXUIElement] {
