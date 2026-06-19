@@ -123,6 +123,10 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
     }
 }
 
+private enum MacWorkspacePanelTiming {
+    static let deferredContentDelayNanoseconds: UInt64 = 90_000_000
+}
+
 private struct DeferredMacWorkspacePanel<Content: View>: View {
     var id: String
     var contentIdentifier: String?
@@ -186,6 +190,7 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
         contentTask?.cancel()
         contentTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: MacWorkspacePanelTiming.deferredContentDelayNanoseconds)
             guard !Task.isCancelled else { return }
             var transaction = Transaction()
             transaction.animation = nil
