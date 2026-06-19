@@ -5,17 +5,24 @@ import SwiftUI
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedSection = KLMSMacSection.dashboard
+    @State private var renderedSection = KLMSMacSection.dashboard
+    @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
+    @State private var renderSectionTask: Task<Void, Never>?
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            MacWorkspaceSidebarView(model: model, selectedSection: $selectedSection)
+            MacWorkspaceSidebarView(
+                model: model,
+                selectedSection: $selectedSection,
+                resetCurrentSectionScroll: resetCurrentSectionScroll
+            )
                 .frame(width: 264, alignment: .topLeading)
                 .frame(maxHeight: .infinity, alignment: .top)
             Rectangle()
                 .fill(Color.klmsMacBorder.opacity(0.76))
                 .frame(width: 1)
-            WholeScreenVerticalScrollView(resetID: selectedSection) {
+            WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: renderedSection, nonce: scrollResetNonce)) {
                 VStack(alignment: .leading, spacing: 14) {
                     DashboardTopBarView(model: model, selectedSection: $selectedSection)
                     MacAlertBannerView(
@@ -25,7 +32,7 @@ struct MenuBarRootView: View {
                     )
                     MacWorkstationLayoutView(
                         model: model,
-                        selectedSection: $selectedSection,
+                        selectedSection: renderedSection,
                         expandedLogSummaryKind: $expandedLogSummaryKind
                     )
                 }
@@ -41,6 +48,26 @@ struct MenuBarRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
+        .onChange(of: selectedSection) { _, nextSection in
+            scheduleRenderedSection(nextSection)
+        }
+    }
+
+    private func resetCurrentSectionScroll() {
+        scrollResetNonce &+= 1
+    }
+
+    private func scheduleRenderedSection(_ section: KLMSMacSection) {
+        renderSectionTask?.cancel()
+        renderSectionTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                renderedSection = section
+            }
+        }
     }
 }
 
@@ -56,7 +83,7 @@ private struct MacWorkspaceSelectionAccessibilityMarker: View {
             .clipped()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(section.title) 내용")
-            .accessibilityIdentifier("workspace-content-\(section.rawValue)")
+            .accessibilityIdentifier("workspace-selection-\(section.rawValue)")
     }
 }
 
@@ -136,7 +163,7 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.klmsMacBorder, lineWidth: 1)
                     }
-                    .accessibilityIdentifier("workspace-loading-\(contentIdentifier ?? id)")
+                    .accessibilityIdentifier("workspace-loading-\(id)")
                 }
             }
         }
@@ -157,13 +184,13 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
             .clipped()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(loadedID == id ? "작업공간 내용" : loadingText)
-            .accessibilityIdentifier(contentIdentifier ?? id)
+            .accessibilityIdentifier("workspace-panel-\(id)")
     }
 }
 
 private struct MacWorkstationLayoutView: View {
     let model: KLMSMacModel
-    @Binding var selectedSection: KLMSMacSection
+    let selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
 
     var body: some View {
@@ -237,7 +264,7 @@ private struct MacWorkstationLayoutView: View {
             .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
             .frame(width: 1, height: 1)
             .accessibilityLabel("\(selectedSection.title) 내용")
-            .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
+            .accessibilityIdentifier("workspace-rendered-content-\(selectedSection.rawValue)")
     }
 
     private func cachedDashboardDetailPanel(kind: DashboardDetailKind) -> DashboardDetailPanelView {
@@ -255,6 +282,7 @@ private struct MacWorkstationLayoutView: View {
 private struct MacWorkspaceSidebarView: View {
     let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
+    var resetCurrentSectionScroll: () -> Void
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
@@ -269,7 +297,7 @@ private struct MacWorkspaceSidebarView: View {
                 }
                 .padding(.horizontal, 6)
 
-                WorkspaceNavigationView(selection: $selectedSection)
+                WorkspaceNavigationView(selection: $selectedSection, resetCurrentSectionScroll: resetCurrentSectionScroll)
 
                 DashboardRuntimePanelView(model: model)
             }
@@ -284,15 +312,20 @@ private struct MacWorkspaceSidebarView: View {
 
 private struct WorkspaceNavigationView: View {
     @Binding var selection: KLMSMacSection
+    var resetCurrentSectionScroll: () -> Void
     @State private var hoveredSection: KLMSMacSection?
 
     var body: some View {
         VStack(spacing: 7) {
+            WorkspaceNavigationSelectionMarker(section: selection)
             ForEach(KLMSMacSection.allCases) { section in
                 let isSelected = selection == section
                 let isHovered = hoveredSection == section
                 Button {
-                    guard selection != section else { return }
+                    guard selection != section else {
+                        resetCurrentSectionScroll()
+                        return
+                    }
                     var transaction = Transaction()
                     transaction.animation = nil
                     withTransaction(transaction) {
@@ -366,6 +399,22 @@ private struct WorkspaceNavigationView: View {
             return Color.klmsMacSelectedBorder.opacity(0.24)
         }
         return isHovered ? Color.klmsMacCommandButtonPressedOverlay.opacity(0.46) : Color.klmsMacSubtleCardBackground.opacity(0.72)
+    }
+}
+
+private struct WorkspaceNavigationSelectionMarker: View {
+    var section: KLMSMacSection
+
+    var body: some View {
+        Text("\(section.title) 내용")
+            .font(.system(size: 1))
+            .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
+            .lineLimit(1)
+            .frame(width: 1, height: 1)
+            .clipped()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(section.title) 내용")
+            .accessibilityIdentifier("workspace-content-\(section.rawValue)")
     }
 }
 
@@ -675,6 +724,11 @@ private enum KLMSMacScrollAnchor: Hashable {
     case top
 }
 
+private struct MacWorkspaceScrollResetKey: Equatable {
+    var section: KLMSMacSection
+    var nonce: Int
+}
+
 private struct WholeScreenVerticalScrollView<ResetID: Equatable, Content: View>: View {
     var resetID: ResetID
     @ViewBuilder var content: Content
@@ -692,7 +746,11 @@ private struct WholeScreenVerticalScrollView<ResetID: Equatable, Content: View>:
             .scrollIndicators(.visible)
             .clipped()
             .onChange(of: resetID) { _, _ in
-                proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)
+                var transaction = Transaction()
+                transaction.animation = nil
+                withTransaction(transaction) {
+                    proxy.scrollTo(KLMSMacScrollAnchor.top, anchor: .top)
+                }
             }
         }
     }

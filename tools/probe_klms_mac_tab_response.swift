@@ -228,6 +228,5 @@ private func stringAttribute(_ element: AXUIElement, _ attribute: CFString) -> S
 }
 
 private func identifierMatches(_ value: String?, expected: String) -> Bool {
-    guard let value else { return false }
-    return value == expected || value.contains(expected)
+    value == expected || value == "\(expected):"
 }
