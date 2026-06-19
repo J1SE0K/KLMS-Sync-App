@@ -680,7 +680,7 @@ final class KLMSMacModel: ObservableObject {
             }
             serverRelayStatusMessage = enableOnSuccess || serverRelayEnabled
                 ? "서버 릴레이 연결 완료 · 요청 처리 켜짐"
-                : "서버 릴레이 연결 완료 · 사용을 켜면 iPhone/Windows 요청을 처리합니다."
+                : "서버 릴레이 연결 완료 · 사용을 켜면 iPhone/iPad/Windows 요청을 처리합니다."
             errorMessage = nil
         } catch {
             serverRelayStatusMessage = "서버 연결 실패: \(error.localizedDescription)"
@@ -2930,7 +2930,7 @@ final class KLMSMacModel: ObservableObject {
                     await notifyServerRelayFileAccess(
                         uploaded,
                         title: "파일 링크 준비 완료",
-                        body: "\(uploaded.itemTitle.nilIfBlank ?? "요청한 파일")을 iPhone/Windows에서 열 수 있습니다.",
+                        body: "\(uploaded.itemTitle.nilIfBlank ?? "요청한 파일")을 iPhone/iPad/Windows에서 열 수 있습니다.",
                         sound: true
                     )
                     try await store.publishStatus(

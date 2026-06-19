@@ -1522,7 +1522,7 @@ private struct LogSummaryPanelView: View {
         if let message = model.remoteProcessingStatusMessage?.nilIfBlank ?? model.serverRelayStatusMessage?.nilIfBlank {
             return message
         }
-        return model.serverRelayEnabled ? "iPhone/Windows 요청을 기다리고 있습니다." : "설정에서 서버 릴레이를 켜면 원격 요청을 처리합니다."
+        return model.serverRelayEnabled ? "iPhone/iPad/Windows 요청을 기다리고 있습니다." : "설정에서 서버 릴레이를 켜면 원격 요청을 처리합니다."
     }
 
     private var remoteSystemImage: String {
@@ -1558,7 +1558,7 @@ private struct LogSummaryPanelView: View {
     private var fileRequestDetail: String {
         guard let latestFileRequest else {
             return model.serverRelayRecentFileAccessRequests.isEmpty
-                ? "iPhone/Windows에서 파일 열기를 요청하면 진행 상태가 표시됩니다."
+                ? "iPhone/iPad/Windows에서 파일 열기를 요청하면 진행 상태가 표시됩니다."
                 : "지난 완료/실패 기록은 파일 요청 타일을 펼쳐서 확인할 수 있습니다."
         }
         let title = latestFileRequest.itemTitle.nilIfBlank ?? "파일"

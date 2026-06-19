@@ -4286,7 +4286,7 @@ private enum CompanionItemStatusFilter: String, CaseIterable, Identifiable, Send
 
 private enum CompanionItemListFilter {
     static let allCourses = "전체 과목"
-    static let allYears = "전체 년도"
+    static let allYears = "전체 연도"
     static let allSemesters = "전체 학기"
 
     static func courseOptions(for items: [ServerRelaySyncItem]) -> [String] {
@@ -4579,8 +4579,8 @@ private struct CompanionItemListControls: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         if yearOptions.count > 1 {
-                            companionPickerField(title: "년도", systemImage: "calendar") {
-                                Picker("년도", selection: $selectedYear) {
+                            companionPickerField(title: "연도", systemImage: "calendar") {
+                                Picker("연도", selection: $selectedYear) {
                                     ForEach(yearOptions, id: \.self) { year in
                                         Text(year).tag(year)
                                     }
@@ -4744,7 +4744,7 @@ private struct CompanionItemListControls: View {
 private struct CompanionItemListControlsPlaceholder: View {
     private let controls = [
         ("정렬", "arrow.up.arrow.down", "최신순으로 준비 중"),
-        ("범위", "line.3.horizontal.decrease.circle", "년도 · 학기 · 과목"),
+        ("범위", "line.3.horizontal.decrease.circle", "연도 · 학기 · 과목"),
         ("상태", "checklist", "전체 상태"),
         ("표시", "slider.horizontal.3", "새 항목 · 최근 변경"),
     ]

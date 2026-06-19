@@ -869,7 +869,7 @@ private enum DashboardCourseFilter {
 }
 
 private enum DashboardTermFilter {
-    static let allYears = "전체 년도"
+    static let allYears = "전체 연도"
     static let allSemesters = "전체 학기"
     static let unknown = "학기 미확인"
 
@@ -1062,7 +1062,7 @@ private struct DashboardFilterBarView: View {
                 Text("필터와 검색")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
-                Text(hasActiveFilter ? activeFilterSummary : "검색, 년도, 학기, 과목, 표시 조건을 바로 조정합니다.")
+                Text(hasActiveFilter ? activeFilterSummary : "검색, 연도, 학기, 과목, 표시 조건을 바로 조정합니다.")
                     .font(.caption2)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .lineLimit(2)
@@ -1120,8 +1120,8 @@ private struct DashboardFilterBarView: View {
     }
 
     private var yearPickerField: some View {
-        return DashboardRangeField(title: "년도", systemImage: "calendar", minWidth: 86, disabled: years.count <= 1) {
-            Picker("년도", selection: normalizedYearBinding) {
+        return DashboardRangeField(title: "연도", systemImage: "calendar", minWidth: 86, disabled: years.count <= 1) {
+            Picker("연도", selection: normalizedYearBinding) {
                 ForEach(years, id: \.self) { year in
                     Text(year).tag(year)
                 }
