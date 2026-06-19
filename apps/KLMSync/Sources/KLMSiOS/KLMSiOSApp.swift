@@ -3009,18 +3009,52 @@ private struct CompanionDashboardCategoryScreen: View {
 private struct CompanionTasksScreen: View {
     let model: CompanionModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var selectedCompactTaskCategory = DashboardMetricCategory.assignments
+
+    private var taskCategories: [DashboardMetricCategory] {
+        var categories: [DashboardMetricCategory] = [.assignments, .exams]
+        if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
+            categories.append(.helpDesk)
+        }
+        return categories
+    }
 
     var body: some View {
         CompanionScreenContainer(title: "과제/시험", model: model) {
             if horizontalSizeClass == .regular {
                 WorkstationTasksWorkspace(model: model)
             } else {
-                DashboardCategoryInlineDetailPanel(category: .assignments, model: model)
-                DashboardCategoryInlineDetailPanel(category: .exams, model: model)
-                if DashboardMetricCategory.helpDesk.value(from: model.dashboardStatus) > 0 {
-                    DashboardCategoryInlineDetailPanel(category: .helpDesk, model: model)
-                }
+                compactTasksWorkspace
             }
+        }
+        .onAppear {
+            normalizeCompactTaskCategory()
+        }
+        .onChange(of: taskCategories.map(\.rawValue).joined(separator: ":")) { _, _ in
+            normalizeCompactTaskCategory()
+        }
+    }
+
+    private var compactTasksWorkspace: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            WorkstationTaskCategorySelector(
+                categories: taskCategories,
+                status: model.dashboardStatus,
+                selectedCategory: $selectedCompactTaskCategory
+            )
+            DashboardCategoryInlineDetailPanel(category: selectedCompactTaskCategory, model: model)
+                .id(selectedCompactTaskCategory.rawValue)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func normalizeCompactTaskCategory() {
+        guard !taskCategories.contains(selectedCompactTaskCategory),
+              let first = taskCategories.first else {
+            return
+        }
+        companionPerformWithoutAnimation {
+            selectedCompactTaskCategory = first
         }
     }
 }
@@ -6909,7 +6943,7 @@ private struct WorkstationTaskCategorySelector: View {
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
         .accessibilityLabel("\(category.title) \(value)개")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
-        .accessibilityHint("\(category.title) 목록을 가운데 작업 영역에 표시합니다.")
+        .accessibilityHint("\(category.title) 목록을 작업 영역에 표시합니다.")
     }
 }
 

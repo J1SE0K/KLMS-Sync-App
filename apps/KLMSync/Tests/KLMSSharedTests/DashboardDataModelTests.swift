@@ -3589,6 +3589,7 @@ final class DashboardDataModelTests: XCTestCase {
             in: workstationTasks,
             description: "tasks regular workspace"
         )
+        let workstationTaskCategorySelector = try sourceStructBody(named: "WorkstationTaskCategorySelector", in: ios)
         let workstationCalendarRegularWorkspace = try sourceBody(
             after: "private var calendarRegularWorkspace: some View",
             in: workstationCalendar,
@@ -3674,6 +3675,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(companionModel.contains(".filter { $0.itemID == item.id }"))
         XCTAssertFalse(workstationTasks.contains("].flatMap { $0 }"))
         XCTAssertFalse(workstationTasks.contains("model.cachedVisibleDashboardTaskItems()"))
+        XCTAssertTrue(tasksScreen.contains("@State private var selectedCompactTaskCategory = DashboardMetricCategory.assignments"))
+        XCTAssertTrue(tasksScreen.contains("private var compactTasksWorkspace: some View"))
+        XCTAssertTrue(tasksScreen.contains("WorkstationTaskCategorySelector("))
+        XCTAssertTrue(tasksScreen.contains("DashboardCategoryInlineDetailPanel(category: selectedCompactTaskCategory, model: model)"))
+        XCTAssertTrue(tasksScreen.contains(".id(selectedCompactTaskCategory.rawValue)"))
+        XCTAssertFalse(tasksScreen.contains("DashboardCategoryInlineDetailPanel(category: .assignments, model: model)\n                DashboardCategoryInlineDetailPanel(category: .exams, model: model)"))
+        XCTAssertFalse(workstationTaskCategorySelector.contains("가운데 작업 영역"))
         XCTAssertTrue(workstationTasks.contains("@State private var selectedTaskCategory = DashboardMetricCategory.assignments"))
         XCTAssertTrue(workstationTasks.contains("private var taskCategories: [DashboardMetricCategory]"))
         XCTAssertTrue(workstationTasks.contains("var categories: [DashboardMetricCategory] = [.assignments, .exams]"))
