@@ -2815,8 +2815,6 @@ private struct CompanionStatusScreen: View {
     let model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
-    @State private var displayedDashboardPreview: DashboardMetricCategory?
-    @State private var displayedChangeSummary: RemoteChangeSummaryKind?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -2887,7 +2885,7 @@ private struct CompanionStatusScreen: View {
     @ViewBuilder
     private var compactDashboardDetail: some View {
         if horizontalSizeClass != .regular {
-            if let kind = displayedChangeSummary {
+            if let kind = selectedChangeSummary {
                 RemoteChangeSummaryDetailPanel(
                     kind: kind,
                     status: model.dashboardStatus,
@@ -2897,15 +2895,9 @@ private struct CompanionStatusScreen: View {
                     model: model
                 )
                 .id(kind)
-            } else if let category = displayedDashboardPreview {
+            } else if let category = selectedDashboardPreview {
                 DashboardCategoryInlineDetailPanel(category: category, model: model)
                     .id(category)
-            } else if selectedDashboardPreview != nil || selectedChangeSummary != nil {
-                CompanionEmptyDetailPanel(
-                    title: "상세 준비 중",
-                    detail: "선택한 항목을 불러오고 있습니다.",
-                    systemImage: "sidebar.right"
-                )
             }
         }
     }
@@ -2939,7 +2931,7 @@ private struct CompanionStatusScreen: View {
 
     @ViewBuilder
     private var statusDetailColumn: some View {
-        if let kind = displayedChangeSummary {
+        if let kind = selectedChangeSummary {
             RemoteChangeSummaryDetailPanel(
                 kind: kind,
                 status: model.dashboardStatus,
@@ -2949,15 +2941,9 @@ private struct CompanionStatusScreen: View {
                 model: model
             )
                 .id(kind)
-        } else if let category = displayedDashboardPreview {
+        } else if let category = selectedDashboardPreview {
             DashboardCategoryInlineDetailPanel(category: category, model: model)
                 .id(category)
-        } else if selectedDashboardPreview != nil || selectedChangeSummary != nil {
-            CompanionEmptyDetailPanel(
-                title: "상세 준비 중",
-                detail: "선택한 항목을 불러오고 있습니다.",
-                systemImage: "sidebar.right"
-            )
         } else if horizontalSizeClass == .regular {
             CompanionEmptyDetailPanel(
                 title: "항목 선택",
@@ -2971,26 +2957,13 @@ private struct CompanionStatusScreen: View {
         companionPerformWithoutAnimation {
             selectedChangeSummary = nil
             selectedDashboardPreview = category
-            displayedChangeSummary = nil
-            displayedDashboardPreview = nil
         }
-        deferStatusDetailUpdate(category: category, changeSummary: nil)
     }
 
     private func selectChangeSummary(_ kind: RemoteChangeSummaryKind) {
         companionPerformWithoutAnimation {
             selectedDashboardPreview = nil
             selectedChangeSummary = kind
-            displayedDashboardPreview = nil
-            displayedChangeSummary = nil
-        }
-        deferStatusDetailUpdate(category: nil, changeSummary: kind)
-    }
-
-    private func deferStatusDetailUpdate(category: DashboardMetricCategory?, changeSummary: RemoteChangeSummaryKind?) {
-        companionPerformWithoutAnimation {
-            displayedDashboardPreview = category
-            displayedChangeSummary = changeSummary
         }
     }
 
