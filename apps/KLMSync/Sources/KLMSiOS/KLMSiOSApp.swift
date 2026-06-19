@@ -7218,6 +7218,7 @@ private struct CompanionSelectableItemListRows: View {
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
+    @State private var deferredSelectionTask: Task<Void, Never>?
 
     init(
         items: [ServerRelaySyncItem],
@@ -7251,12 +7252,16 @@ private struct CompanionSelectableItemListRows: View {
         }
         .onChange(of: visibleItemsResetKey) { _, _ in
             visibleLimit = currentInitialVisibleLimit
+            deferredSelectionTask?.cancel()
         }
         .onChange(of: horizontalSizeClass) { _, _ in
             visibleLimit = currentInitialVisibleLimit
         }
         .onAppear {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
+        }
+        .onDisappear {
+            deferredSelectionTask?.cancel()
         }
     }
 
@@ -7269,12 +7274,16 @@ private struct CompanionSelectableItemListRows: View {
     }
 
     private func select(_ item: ServerRelaySyncItem) {
-        var transaction = Transaction()
-        transaction.animation = nil
-        withTransaction(transaction) {
+        let itemID = item.id
+        deferredSelectionTask?.cancel()
+        companionPerformWithoutAnimation {
             selectedItemID = item.id
         }
-        onSelect(item)
+        deferredSelectionTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled, selectedItemID == itemID else { return }
+            onSelect(item)
+        }
     }
 
 }
