@@ -217,7 +217,7 @@ private func verifyWorkspaceNavigation(
 
     Thread.sleep(forTimeInterval: navigationDelay)
 
-    guard waitForSelectedValue(on: button, timeout: timeout) else {
+    guard waitForSelectedValue(identifier: target.buttonIdentifier, in: appElement, timeout: timeout) else {
         throw SmokeFailure.selectedValueMissing(target.buttonIdentifier)
     }
 
@@ -332,17 +332,6 @@ private func waitForSelectedValue(
             return true
         }
         Thread.sleep(forTimeInterval: 0.1)
-    } while Date() < deadline
-    return false
-}
-
-private func waitForSelectedValue(on element: AXUIElement, timeout: TimeInterval) -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
-    repeat {
-        if textAttributes(of: element).contains(where: { $0.localizedCaseInsensitiveContains("선택됨") }) {
-            return true
-        }
-        Thread.sleep(forTimeInterval: 0.05)
     } while Date() < deadline
     return false
 }
