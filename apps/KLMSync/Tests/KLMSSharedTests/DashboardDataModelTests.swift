@@ -3210,6 +3210,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosSharedRunLogsView.contains(".accessibilityLabel(\"동기화 단계 기록 지우기\")"))
         XCTAssertTrue(iosSharedRunLogsView.contains("var stageDurationsByID: [String: [KLMSStageDuration]] = [:]"))
         XCTAssertTrue(iosSharedRunLogsView.contains("stageDurations: stageDurationsByID[log.id] ?? []"))
+        XCTAssertTrue(iosSharedRunLogsView.contains("@State private var visibleLimit = CompanionLargeList.logVisibleLimit"))
+        XCTAssertTrue(iosSharedRunLogsView.contains("ForEach(visibleLogs)"))
+        XCTAssertTrue(iosSharedRunLogsView.contains("CompanionShowMoreRowsButton(remainingCount: logs.count - visibleLogs.count)"))
         XCTAssertFalse(iosSharedRunLogsView.contains("Text(\"공유 실행 로그\")"))
         XCTAssertTrue(ios.contains("@Published private(set) var sharedRunLogStageDurationsByID"))
         XCTAssertTrue(ios.contains("@Published private(set) var latestSharedRunLogStageDurations"))
@@ -3522,6 +3525,7 @@ final class DashboardDataModelTests: XCTestCase {
         )
         let compactSelectedRow = try sourceStructBody(named: "CompactDashboardSelectedRow", in: ios)
         let recentFileRequests = try sourceStructBody(named: "RecentFileAccessRequestsView", in: ios)
+        let recentServerRequests = try sourceStructBody(named: "RecentServerRequestLogView", in: ios)
         let recentRemoteCommands = try sourceStructBody(named: "RecentRemoteCommandsView", in: ios)
         let companionModel = try sourceBody(
             after: "final class CompanionModel: ObservableObject",
@@ -3964,11 +3968,19 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(workstationChangeSummary.contains("@ObservedObject var model"))
         XCTAssertFalse(workstationChangeSummary.contains("let model: CompanionModel"))
         XCTAssertFalse(ios.contains("private struct WorkstationExternalDetailPreparingPanel"))
+        XCTAssertTrue(ios.contains("static let logVisibleLimit = 10"))
         XCTAssertTrue(recentFileRequests.contains("LazyVStack(spacing: 8)"))
-        XCTAssertTrue(recentFileRequests.contains("ForEach(requests.prefix(30))"))
+        XCTAssertTrue(recentFileRequests.contains("ForEach(visibleRequests)"))
+        XCTAssertTrue(recentFileRequests.contains("CompanionShowMoreRowsButton(remainingCount: requests.count - visibleRequests.count)"))
+        XCTAssertTrue(recentFileRequests.contains("visibleLimit = CompanionLargeList.logVisibleLimit"))
+        XCTAssertFalse(recentFileRequests.contains("ForEach(requests.prefix(30))"))
+        XCTAssertTrue(recentServerRequests.contains("ForEach(visibleEntries)"))
+        XCTAssertTrue(recentServerRequests.contains("CompanionShowMoreRowsButton(remainingCount: entries.count - visibleEntries.count)"))
         XCTAssertTrue(recentRemoteCommands.contains("LazyVStack(spacing: 8)"))
-        XCTAssertTrue(recentRemoteCommands.contains("ForEach(commands.prefix(30))"))
-        XCTAssertTrue(recentRemoteCommands.contains("최근 30개만 표시합니다."))
+        XCTAssertTrue(recentRemoteCommands.contains("ForEach(visibleCommands)"))
+        XCTAssertTrue(recentRemoteCommands.contains("CompanionShowMoreRowsButton(remainingCount: commands.count - visibleCommands.count)"))
+        XCTAssertFalse(recentRemoteCommands.contains("ForEach(commands.prefix(30))"))
+        XCTAssertFalse(recentRemoteCommands.contains("최근 30개만 표시합니다."))
     }
 
     func testIOSCalendarDetailHasMailPasteAnalyzerAndSharedCalendarActionLabels() throws {

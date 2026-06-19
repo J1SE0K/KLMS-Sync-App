@@ -4443,6 +4443,7 @@ private enum CompanionLargeList {
     static let regularPreviewVisibleLimit = 8
     static let calendarVisibleLimit = 6
     static let regularCalendarVisibleLimit = 10
+    static let logVisibleLimit = 10
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
     static let detailRenderDelayNanoseconds: UInt64 = 35_000_000
@@ -11953,6 +11954,7 @@ private struct SharedRunLogsView: View {
     var stageDurationsByID: [String: [KLMSStageDuration]] = [:]
     var clearAction: (() -> Void)?
     var clearDisabled = false
+    @State private var visibleLimit = CompanionLargeList.logVisibleLimit
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -11987,16 +11989,29 @@ private struct SharedRunLogsView: View {
                     .background(Color.klmsSubtleCardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
+                let visibleLogs = logs.prefix(visibleLimit)
                 LazyVStack(spacing: 8) {
-                    ForEach(logs.prefix(30)) { log in
+                    ForEach(visibleLogs) { log in
                         SharedRunLogRow(
                             log: log,
                             stageDurations: stageDurationsByID[log.id] ?? []
                         )
                     }
                 }
+                if logs.count > visibleLogs.count {
+                    CompanionShowMoreRowsButton(remainingCount: logs.count - visibleLogs.count) {
+                        visibleLimit += CompanionLargeList.increment
+                    }
+                }
             }
         }
+        .onChange(of: resetKey) { _, _ in
+            visibleLimit = CompanionLargeList.logVisibleLimit
+        }
+    }
+
+    private var resetKey: String {
+        "\(logs.count):\(logs.first?.id ?? ""):\(logs.last?.id ?? "")"
     }
 }
 
@@ -12102,6 +12117,7 @@ private struct RecentFileAccessRequestsView: View {
     var requests: [ServerRelayFileAccessRequest]
     var clearAction: (() -> Void)?
     var clearDisabled = false
+    @State private var visibleLimit = CompanionLargeList.logVisibleLimit
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -12132,20 +12148,26 @@ private struct RecentFileAccessRequestsView: View {
                     .background(Color.klmsSubtleCardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
+                let visibleRequests = requests.prefix(visibleLimit)
                 LazyVStack(spacing: 8) {
-                    ForEach(requests.prefix(30)) { request in
+                    ForEach(visibleRequests) { request in
                         RemoteFileAccessRequestRow(request: request)
                     }
-                    if requests.count > 30 {
-                        Text("최근 30개만 표시합니다.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 2)
+                }
+                if requests.count > visibleRequests.count {
+                    CompanionShowMoreRowsButton(remainingCount: requests.count - visibleRequests.count) {
+                        visibleLimit += CompanionLargeList.increment
                     }
                 }
             }
         }
+        .onChange(of: resetKey) { _, _ in
+            visibleLimit = CompanionLargeList.logVisibleLimit
+        }
+    }
+
+    private var resetKey: String {
+        "\(requests.count):\(requests.first?.id.uuidString ?? ""):\(requests.last?.id.uuidString ?? "")"
     }
 }
 
@@ -12153,6 +12175,7 @@ private struct RecentServerRequestLogView: View {
     var entries: [ServerRelayRequestLogEntry]
     var clearAction: (() -> Void)?
     var clearDisabled = false
+    @State private var visibleLimit = CompanionLargeList.logVisibleLimit
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -12183,13 +12206,26 @@ private struct RecentServerRequestLogView: View {
                     .background(Color.klmsSubtleCardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
+                let visibleEntries = entries.prefix(visibleLimit)
                 LazyVStack(spacing: 8) {
-                    ForEach(entries.prefix(30)) { entry in
+                    ForEach(visibleEntries) { entry in
                         ServerRequestLogRow(entry: entry)
+                    }
+                }
+                if entries.count > visibleEntries.count {
+                    CompanionShowMoreRowsButton(remainingCount: entries.count - visibleEntries.count) {
+                        visibleLimit += CompanionLargeList.increment
                     }
                 }
             }
         }
+        .onChange(of: resetKey) { _, _ in
+            visibleLimit = CompanionLargeList.logVisibleLimit
+        }
+    }
+
+    private var resetKey: String {
+        "\(entries.count):\(entries.first?.id.uuidString ?? ""):\(entries.last?.id.uuidString ?? "")"
     }
 }
 
@@ -12700,6 +12736,7 @@ private struct RecentRemoteCommandsView: View {
     var compact: Bool
     var clearAction: (() -> Void)? = nil
     var clearDisabled = false
+    @State private var visibleLimit = CompanionLargeList.logVisibleLimit
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -12730,20 +12767,26 @@ private struct RecentRemoteCommandsView: View {
                     .background(Color.klmsSubtleCardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
+                let visibleCommands = commands.prefix(visibleLimit)
                 LazyVStack(spacing: 8) {
-                    ForEach(commands.prefix(30)) { command in
+                    ForEach(visibleCommands) { command in
                         RemoteCommandRow(command: command, compact: compact)
                     }
-                    if commands.count > 30 {
-                        Text("최근 30개만 표시합니다.")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 2)
+                }
+                if commands.count > visibleCommands.count {
+                    CompanionShowMoreRowsButton(remainingCount: commands.count - visibleCommands.count) {
+                        visibleLimit += CompanionLargeList.increment
                     }
                 }
             }
         }
+        .onChange(of: resetKey) { _, _ in
+            visibleLimit = CompanionLargeList.logVisibleLimit
+        }
+    }
+
+    private var resetKey: String {
+        "\(commands.count):\(commands.first?.id.uuidString ?? ""):\(commands.last?.id.uuidString ?? "")"
     }
 }
 
