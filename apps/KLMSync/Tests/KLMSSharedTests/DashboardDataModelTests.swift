@@ -4400,7 +4400,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct CompanionSplitRootView"))
         XCTAssertTrue(ios.contains("private struct WorkstationSidebar"))
         XCTAssertTrue(ios.contains("private struct CompanionDeferredSectionContent"))
-        XCTAssertTrue(ios.contains("private let sectionRenderDelayNanoseconds: UInt64 = 35_000_000"))
+        XCTAssertTrue(ios.contains("private let sectionRenderDelayNanoseconds: UInt64 = 16_000_000"))
         XCTAssertTrue(ios.contains("try? await Task.sleep(nanoseconds: sectionRenderDelayNanoseconds)"))
         XCTAssertTrue(ios.contains("guard selectedSection != section else { return }"))
         XCTAssertFalse(ios.contains("guard displayedSection != section else"))

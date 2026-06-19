@@ -2753,7 +2753,7 @@ private struct CompanionDeferredSectionContent: View {
     let model: CompanionModel
     @State private var renderedSection: CompanionAppSection
     @State private var renderTask: Task<Void, Never>?
-    private let sectionRenderDelayNanoseconds: UInt64 = 35_000_000
+    private let sectionRenderDelayNanoseconds: UInt64 = 16_000_000
 
     init(section: CompanionAppSection, model: CompanionModel) {
         self.section = section
