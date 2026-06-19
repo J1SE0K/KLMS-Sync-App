@@ -2855,7 +2855,6 @@ private struct CompanionStatusScreen: View {
                     selectChangeSummary(kind)
                 }
             )
-            CompanionItemListPrewarmView(model: model, categories: dashboardPrewarmCategories)
             compactDashboardDetail
         }
     }
@@ -2910,7 +2909,6 @@ private struct CompanionStatusScreen: View {
                     selectChangeSummary(kind)
                 }
             )
-            CompanionItemListPrewarmView(model: model, categories: dashboardPrewarmCategories)
         }
     }
 
@@ -2979,11 +2977,6 @@ private struct CompanionStatusScreen: View {
             return selectedDashboardPreview
         }
         return nil
-    }
-
-    private var dashboardPrewarmCategories: [DashboardMetricCategory] {
-        [.files, .assignments, .notices, .exams, .helpDesk]
-            .filter { $0.value(from: model.dashboardStatus) > 0 }
     }
 
 }
@@ -4415,24 +4408,6 @@ private struct CompanionItemListInputKey: Hashable {
     }
 }
 
-private extension CompanionItemListInputKey {
-    static func defaultCategoryKey(itemsRevision: Int, category: DashboardMetricCategory) -> CompanionItemListInputKey {
-        CompanionItemListInputKey(
-            itemsRevision: itemsRevision,
-            category: category.rawValue,
-            query: "",
-            sortOption: CompanionItemSortOption.defaultSort(for: category).rawValue,
-            visibilityFilter: CompanionItemVisibilityFilter.visible.rawValue,
-            statusFilter: CompanionItemStatusFilter.defaultFilter(for: category).rawValue,
-            selectedCourse: CompanionItemListFilter.allCourses,
-            selectedYear: CompanionItemListFilter.allYears,
-            selectedSemester: CompanionItemListFilter.allSemesters,
-            newOnly: false,
-            recentOnly: false
-        )
-    }
-}
-
 private enum CompanionLargeList {
     static let initialVisibleLimit = 4
     static let regularInitialVisibleLimit = 12
@@ -4540,29 +4515,9 @@ private struct CompanionItemListData: Sendable {
     }
 }
 
-private struct CompanionItemListPrewarmView: View {
-    let model: CompanionModel
-    var categories: [DashboardMetricCategory]
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
-            .task(id: prewarmKey) {
-                guard !Task.isCancelled else { return }
-                await CompanionItemListPreloadStore.prewarm(model: model, categories: categories)
-            }
-    }
-
-    private var prewarmKey: String {
-        "\(model.dashboardSyncItemsRevision):\(categories.map(\.rawValue).joined(separator: ","))"
-    }
-}
-
 @MainActor
 private enum CompanionItemListPreloadStore {
     private static var cachedDataByKey: [CompanionItemListInputKey: CompanionItemListData] = [:]
-    private static var inFlightKeys = Set<CompanionItemListInputKey>()
     private static let maxCachedLists = 8
 
     static func cachedData(for key: CompanionItemListInputKey) -> CompanionItemListData? {
@@ -4571,43 +4526,7 @@ private enum CompanionItemListPreloadStore {
 
     static func store(_ data: CompanionItemListData, for key: CompanionItemListInputKey) {
         cachedDataByKey[key] = data
-        inFlightKeys.remove(key)
         trimCache(keeping: key)
-    }
-
-    static func prewarm(model: CompanionModel, categories: [DashboardMetricCategory]) async {
-        let revision = model.dashboardSyncItemsRevision
-        for category in categories where category.supportsWorkstationSelectionWorkspace {
-            let key = CompanionItemListInputKey.defaultCategoryKey(itemsRevision: revision, category: category)
-            guard cachedDataByKey[key] == nil, !inFlightKeys.contains(key) else {
-                continue
-            }
-            let items = model.cachedDashboardItems(for: category.rawValue)
-            guard !items.isEmpty else { continue }
-            let filterOptions = model.cachedDashboardFilterOptions(for: category.rawValue)
-            inFlightKeys.insert(key)
-            Task { @MainActor in
-                let data = await Task.detached(priority: .utility) {
-                    CompanionItemListData(
-                        items: items,
-                        category: category,
-                        isCategoryPrefiltered: true,
-                        query: "",
-                        sortOption: CompanionItemSortOption.defaultSort(for: category),
-                        visibilityFilter: .visible,
-                        statusFilter: CompanionItemStatusFilter.defaultFilter(for: category),
-                        selectedCourse: CompanionItemListFilter.allCourses,
-                        selectedYear: CompanionItemListFilter.allYears,
-                        selectedSemester: CompanionItemListFilter.allSemesters,
-                        newOnly: false,
-                        recentOnly: false,
-                        filterOptions: filterOptions
-                    )
-                }.value
-                guard inFlightKeys.contains(key) else { return }
-                store(data, for: key)
-            }
-        }
     }
 
     private static func trimCache(keeping protectedKey: CompanionItemListInputKey) {
@@ -5215,6 +5134,10 @@ private struct RemoteDashboardMetricOverview: View {
     private func metricSection(_ title: String, categories: [DashboardMetricCategory]) -> some View {
         if !categories.isEmpty {
             VStack(alignment: .leading, spacing: 7) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .padding(.horizontal, 2)
                 if horizontalSizeClass == .regular {
                     LazyVGrid(columns: workstationColumns, alignment: .leading, spacing: 8) {
                         ForEach(categories) { category in
