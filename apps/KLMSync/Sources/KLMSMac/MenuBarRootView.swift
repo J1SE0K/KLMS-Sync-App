@@ -205,13 +205,13 @@ private struct MacWorkstationLayoutView: View {
     private var workspace: some View {
         VStack(alignment: .leading, spacing: 16) {
             workspaceContentMarker
+            DashboardFileDataPrewarmView(snapshot: model.snapshot, signature: model.dashboardFileRenderSignature)
             switch selectedSection {
             case .dashboard:
                 DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard", loadingText: "대시보드를 준비하는 중입니다.") {
                     VStack(alignment: .leading, spacing: 16) {
                         CommandPanelView(model: model)
                         DeferredDashboardSummaryView(model: model)
-                        DashboardFileDataPrewarmView(snapshot: model.snapshot, signature: model.dashboardFileRenderSignature)
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
