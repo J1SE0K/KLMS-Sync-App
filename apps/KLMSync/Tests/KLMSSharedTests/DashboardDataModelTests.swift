@@ -2970,7 +2970,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosHistoryScreen.contains("@Environment(\\.horizontalSizeClass)"))
         XCTAssertTrue(iosHistoryScreen.contains("if horizontalSizeClass == .regular"))
         XCTAssertTrue(iosHistoryScreen.contains("historyRegularWorkspace"))
-        XCTAssertTrue(iosHistoryScreen.contains("ViewThatFits(in: .horizontal)"))
+        XCTAssertFalse(iosHistoryScreen.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(iosHistoryScreen.contains("VStack(alignment: .leading, spacing: 12)"))
         XCTAssertTrue(iosHistoryScreen.contains("HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing)"))
         XCTAssertTrue(iosHistoryScreen.contains("historySummaryColumn"))

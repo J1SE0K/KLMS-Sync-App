@@ -3338,58 +3338,30 @@ private struct CompanionHistoryScreen: View {
     }
 
     private var historyRegularWorkspace: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                historySummaryColumn
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-                historyDetailColumn
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-                historyRequestColumn
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                        maxWidth: .infinity,
-                        alignment: .topLeading
-                    )
-            }
-
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                historySummaryColumn
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-                VStack(alignment: .leading, spacing: 12) {
-                    historyDetailColumn
-                    historyRequestColumn
-                }
+        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+            historySummaryColumn
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.commandColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.commandColumnIdealWidth,
+                    maxWidth: CompanionWorkstationMetrics.commandColumnMaxWidth,
+                    alignment: .topLeading
+                )
+            historyDetailColumn
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.metricColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.metricColumnIdealWidth,
+                    maxWidth: CompanionWorkstationMetrics.metricColumnMaxWidth,
+                    alignment: .topLeading
+                )
+            historyRequestColumn
                 .frame(
                     minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
                     idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
                     maxWidth: .infinity,
                     alignment: .topLeading
                 )
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                historySummaryColumn
-                historyDetailColumn
-                historyRequestColumn
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var historySummaryColumn: some View {
