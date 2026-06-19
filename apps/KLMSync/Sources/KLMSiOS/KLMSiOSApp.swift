@@ -2454,17 +2454,6 @@ private enum CompanionWorkstationMetrics {
     static let detailColumnMinWidth: CGFloat = 380
     static let detailColumnIdealWidth: CGFloat = 620
 
-    static let compactCommandColumnMinWidth: CGFloat = 276
-    static let compactCommandColumnIdealWidth: CGFloat = 304
-    static let compactCommandColumnMaxWidth: CGFloat = 332
-
-    static let compactDetailColumnMinWidth: CGFloat = 300
-    static let compactDetailColumnIdealWidth: CGFloat = 430
-
-    static let compactListColumnMinWidth: CGFloat = 276
-    static let compactListColumnIdealWidth: CGFloat = 320
-    static let compactListColumnMaxWidth: CGFloat = 360
-
     static let listColumnMinWidth: CGFloat = 380
     static let listColumnIdealWidth: CGFloat = 520
     static let listColumnMaxWidth: CGFloat = 620
@@ -6326,49 +6315,24 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     private var categoryRegularWorkspace: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                categoryListPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
-                        alignment: .topLeading
-                    )
+        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+            categoryListPanel
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                    maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                    alignment: .topLeading
+                )
 
-                categoryDetailPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                        maxWidth: .infinity,
-                        alignment: .topLeading
-                    )
-            }
-
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                categoryListPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.compactListColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.compactListColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.compactListColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-
-                categoryDetailPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.compactDetailColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.compactDetailColumnIdealWidth,
-                        maxWidth: .infinity,
-                        alignment: .topLeading
-                    )
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                categoryListPanel
-                categoryDetailPanel
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            categoryDetailPanel
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                    maxWidth: .infinity,
+                    alignment: .topLeading
+                )
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var categoryListPanel: some View {
@@ -6491,49 +6455,24 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var tasksRegularWorkspace: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                tasksListPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
-                        alignment: .topLeading
-                    )
+        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+            tasksListPanel
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                    maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                    alignment: .topLeading
+                )
 
-                tasksDetailPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                        maxWidth: .infinity,
-                        alignment: .topLeading
-                    )
-            }
-
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                tasksListPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.compactListColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.compactListColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.compactListColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-
-                tasksDetailPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.compactDetailColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.compactDetailColumnIdealWidth,
-                        maxWidth: .infinity,
-                        alignment: .topLeading
-                    )
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                tasksListPanel
-                tasksDetailPanel
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            tasksDetailPanel
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                    maxWidth: .infinity,
+                    alignment: .topLeading
+                )
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var tasksListPanel: some View {
@@ -6733,49 +6672,24 @@ private struct WorkstationCalendarWorkspace: View {
     }
 
     private var calendarRegularWorkspace: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                calendarListPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
-                        alignment: .topLeading
-                    )
+        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+            calendarListPanel
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
+                    maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                    alignment: .topLeading
+                )
 
-                calendarDetailPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
-                        maxWidth: .infinity,
-                        alignment: .topLeading
-                    )
-            }
-
-            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
-                calendarListPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.compactListColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.compactListColumnIdealWidth,
-                        maxWidth: CompanionWorkstationMetrics.compactListColumnMaxWidth,
-                        alignment: .topLeading
-                    )
-
-                calendarDetailPanel
-                    .frame(
-                        minWidth: CompanionWorkstationMetrics.compactDetailColumnMinWidth,
-                        idealWidth: CompanionWorkstationMetrics.compactDetailColumnIdealWidth,
-                        maxWidth: .infinity,
-                        alignment: .topLeading
-                    )
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                calendarListPanel
-                calendarDetailPanel
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            calendarDetailPanel
+                .frame(
+                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
+                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                    maxWidth: .infinity,
+                    alignment: .topLeading
+                )
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var calendarListPanel: some View {
