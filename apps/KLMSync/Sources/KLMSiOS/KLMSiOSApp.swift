@@ -10749,13 +10749,14 @@ private struct ServerSyncDataRow: View, Equatable {
     }
 
     var body: some View {
+        let summary = rowSummary
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: systemImage)
+            Image(systemName: summary.systemImage)
                 .foregroundStyle(primaryForeground)
-                .frame(width: 20)
+                .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(kindName)
+                    Text(summary.kindName)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(primaryForeground)
                     if !item.status.isEmpty {
@@ -10773,7 +10774,7 @@ private struct ServerSyncDataRow: View, Equatable {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                     .lineLimit(2)
-                Text(metadata)
+                Text(summary.metadata)
                     .font(.caption)
                     .foregroundStyle(secondaryForeground)
                     .lineLimit(2)
@@ -10787,15 +10788,22 @@ private struct ServerSyncDataRow: View, Equatable {
             }
         }
         .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
         .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isSelected ? Color.klmsSelectedBorder : tint.opacity(0.30))
+                .frame(width: 3)
+                .padding(.vertical, 9)
+        }
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityLabel(summary.accessibilityLabel)
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
     }
 
@@ -10805,6 +10813,19 @@ private struct ServerSyncDataRow: View, Equatable {
 
     private var secondaryForeground: Color {
         Color.klmsSecondaryText
+    }
+
+    private var rowSummary: ServerSyncRowSummary {
+        let kindName = kindName
+        let metadata = metadata
+        return ServerSyncRowSummary(
+            kindName: kindName,
+            systemImage: systemImage,
+            metadata: metadata,
+            accessibilityLabel: [kindName, item.title.isEmpty ? "제목 없음" : item.title, metadata]
+                .filter { !$0.isEmpty }
+                .joined(separator: ", ")
+        )
     }
 
     private var metadata: String {
@@ -10828,16 +10849,6 @@ private struct ServerSyncDataRow: View, Equatable {
             }
         }
         return parts.isEmpty ? "세부 정보 없음" : parts.joined(separator: " · ")
-    }
-
-    private var accessibilityLabelText: String {
-        [
-            kindName,
-            item.title.isEmpty ? "제목 없음" : item.title,
-            metadata,
-        ]
-        .filter { !$0.isEmpty }
-        .joined(separator: ", ")
     }
 
     private var kindName: String {
@@ -10883,6 +10894,13 @@ private struct ServerSyncDataRow: View, Equatable {
     private var tint: Color {
         companionItemKindTint(item.kind)
     }
+}
+
+private struct ServerSyncRowSummary: Equatable {
+    var kindName: String
+    var systemImage: String
+    var metadata: String
+    var accessibilityLabel: String
 }
 
 private struct RemoteStageDurationSummaryView: View {
