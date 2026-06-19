@@ -2999,6 +2999,7 @@ private struct CompanionStatusScreen: View {
         deferredStatusDetailTask?.cancel()
         deferredStatusDetailTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
             guard !Task.isCancelled,
                   selectedDashboardPreview == category,
                   selectedChangeSummary == changeSummary else {
@@ -4442,6 +4443,7 @@ private enum CompanionLargeList {
     static let calendarVisibleLimit = 6
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
+    static let detailRenderDelayNanoseconds: UInt64 = 35_000_000
     static let prewarmDelayNanoseconds: UInt64 = 120_000_000
 
     static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
@@ -6682,6 +6684,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         deferredDetailSelectionTask?.cancel()
         deferredDetailSelectionTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
             guard !Task.isCancelled, selectedItemID == item.id else { return }
             displayedSelectedItem = item
         }
@@ -6844,6 +6847,7 @@ private struct WorkstationTasksWorkspace: View {
         deferredDetailSelectionTask?.cancel()
         deferredDetailSelectionTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
             guard !Task.isCancelled, selectedItemID == item.id else { return }
             displayedSelectedItem = item
         }
@@ -7198,6 +7202,7 @@ private struct WorkstationCalendarWorkspace: View {
         deferredDetailSelectionTask?.cancel()
         deferredDetailSelectionTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
             guard !Task.isCancelled, selectedChangeID == change.id else { return }
             displayedSelectedChange = change
         }
