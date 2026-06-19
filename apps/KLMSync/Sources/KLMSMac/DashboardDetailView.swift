@@ -300,7 +300,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             switch kind {
             case .assignments:
                 StateItemListView(
-                    items: ((snapshot.legacyState?.content.assignments ?? []) + model.mailDashboardStateItems(kind: "assignment")).dedupedDashboardItems(),
+                    items: model.dashboardStateItems(for: .assignments),
                     emptyText: "과제가 없습니다.",
                     editor: .assignment,
                     filters: filters,
@@ -318,7 +318,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
                 )
             case .exams:
                 StateItemListView(
-                    items: ((snapshot.legacyState?.content.examItems ?? []) + model.mailDashboardStateItems(kind: "exam")).dedupedDashboardItems(),
+                    items: model.dashboardStateItems(for: .exams),
                     emptyText: "시험 항목이 없습니다.",
                     editor: .exam,
                     filters: filters,

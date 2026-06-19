@@ -213,6 +213,7 @@ final class KLMSMacModel: ObservableObject {
     private var serverRelayLastInboxUpdatedAt: String?
     private var cachedMailDashboardItemsByKind: [String: [ServerRelaySyncItem]] = [:]
     private var cachedMailDashboardStateItemsByKind: [String: [StateItem]] = [:]
+    private var cachedDashboardStateItemsByKind: [DashboardDetailKind: [StateItem]] = [:]
     private var cachedMailCalendarChanges: [CalendarChange] = []
     private var serverRelaySharedSettingsSignature: Int?
     private var lastPassiveAuxiliaryRefreshAt: Date?
@@ -1588,6 +1589,10 @@ final class KLMSMacModel: ObservableObject {
         cachedMailDashboardStateItemsByKind[kind] ?? []
     }
 
+    func dashboardStateItems(for kind: DashboardDetailKind) -> [StateItem] {
+        cachedDashboardStateItemsByKind[kind] ?? []
+    }
+
     func mailCalendarChanges() -> [CalendarChange] {
         cachedMailCalendarChanges
     }
@@ -1625,6 +1630,12 @@ final class KLMSMacModel: ObservableObject {
 
     private func rebuildDashboardSummaryCache() {
         let content = snapshot.legacyState?.content
+        cachedDashboardStateItemsByKind[.assignments] = Self.dedupedStateItems(
+            (content?.assignments ?? []) + (cachedMailDashboardStateItemsByKind["assignment"] ?? [])
+        )
+        cachedDashboardStateItemsByKind[.exams] = Self.dedupedStateItems(
+            (content?.examItems ?? []) + (cachedMailDashboardStateItemsByKind["exam"] ?? [])
+        )
         let calendarAttentionCount = (
             (snapshot.calendarSyncResult?.changes ?? []) + cachedMailCalendarChanges
         )
@@ -1662,6 +1673,17 @@ final class KLMSMacModel: ObservableObject {
             }
             return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
         }
+    }
+
+    private static func dedupedStateItems(_ items: [StateItem]) -> [StateItem] {
+        var seen = Set<String>()
+        seen.reserveCapacity(items.count)
+        var result: [StateItem] = []
+        result.reserveCapacity(items.count)
+        for item in items where seen.insert(item.id).inserted {
+            result.append(item)
+        }
+        return result
     }
 
     private static func isMailDashboardItem(_ item: ServerRelaySyncItem) -> Bool {
