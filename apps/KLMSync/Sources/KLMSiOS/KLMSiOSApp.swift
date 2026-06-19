@@ -11619,6 +11619,7 @@ private struct RemoteLogSummaryPanel: View {
                     }
                 } label: {
                     Image(systemName: "trash")
+                        .frame(width: 44, height: 44)
                 }
                 .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                 .disabled(!model.serverRelayConfigured || model.isSubmitting || !model.hasClearableRemoteLogs)
@@ -11970,6 +11971,7 @@ private struct SharedRunLogsView: View {
                 if let clearAction {
                     Button(action: clearAction) {
                         Image(systemName: "trash")
+                            .frame(width: 44, height: 44)
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
@@ -12133,6 +12135,7 @@ private struct RecentFileAccessRequestsView: View {
                 if let clearAction {
                     Button(action: clearAction) {
                         Image(systemName: "trash")
+                            .frame(width: 44, height: 44)
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
@@ -12191,6 +12194,7 @@ private struct RecentServerRequestLogView: View {
                 if let clearAction {
                     Button(action: clearAction) {
                         Image(systemName: "trash")
+                            .frame(width: 44, height: 44)
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
@@ -12752,6 +12756,7 @@ private struct RecentRemoteCommandsView: View {
                 if let clearAction {
                     Button(action: clearAction) {
                         Image(systemName: "trash")
+                            .frame(width: 44, height: 44)
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
