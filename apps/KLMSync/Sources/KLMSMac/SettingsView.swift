@@ -67,6 +67,21 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
             "app.badge"
         }
     }
+
+    var primarySectionTitle: String {
+        switch self {
+        case .login:
+            "로그인"
+        case .sync:
+            "실행 방식"
+        case .notice:
+            "메모 이름"
+        case .files:
+            "파일 확인"
+        case .app:
+            "바로 반영되는 설정"
+        }
+    }
 }
 
 struct SettingsView: View {
@@ -132,6 +147,12 @@ struct SettingsView: View {
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 Spacer()
+                Text(selectedTab.primarySectionTitle)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.klmsMacSubtleCardBackground, in: Capsule())
                 Text(selectedTab.scopeLabel)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
@@ -174,7 +195,11 @@ struct SettingsView: View {
         let isHovered = hoveredTab == tab
         return Button {
             guard selectedTab != tab else { return }
-            selectedTab = tab
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                selectedTab = tab
+            }
         } label: {
             HStack(spacing: 7) {
                 ZStack {
