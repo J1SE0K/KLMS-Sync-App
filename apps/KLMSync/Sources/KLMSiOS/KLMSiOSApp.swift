@@ -10359,6 +10359,9 @@ private struct ServerSyncDataRow: View, Equatable {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabelText)
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
     }
 
     private var primaryForeground: Color {
@@ -10390,6 +10393,16 @@ private struct ServerSyncDataRow: View, Equatable {
             }
         }
         return parts.isEmpty ? "세부 정보 없음" : parts.joined(separator: " · ")
+    }
+
+    private var accessibilityLabelText: String {
+        [
+            kindName,
+            item.title.isEmpty ? "제목 없음" : item.title,
+            metadata,
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: ", ")
     }
 
     private var kindName: String {
