@@ -3966,9 +3966,11 @@ private struct CompanionConnectionInput: View {
             if secure {
                 SecureField("입력", text: $text)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .frame(minHeight: 44)
             } else {
                 TextField("입력", text: $text)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .frame(minHeight: 44)
             }
         }
         .padding(10)
@@ -4821,7 +4823,7 @@ private struct CompanionItemListControls: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
             content()
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -4885,52 +4887,27 @@ private struct DeferredCompanionItemListControls: View {
     var supportsNewOnly: Bool
     var supportsRecentOnly: Bool
     var defaultStatusFilter: CompanionItemStatusFilter
-    @State private var displayedOptionsKey: String?
 
     var body: some View {
-        Group {
-            if displayedOptionsKey == optionsKey {
-                CompanionItemListControls(
-                    sortOption: $sortOption,
-                    visibilityFilter: $visibilityFilter,
-                    statusFilter: $statusFilter,
-                    selectedCourse: $selectedCourse,
-                    selectedYear: $selectedYear,
-                    selectedSemester: $selectedSemester,
-                    newOnly: $newOnly,
-                    recentOnly: $recentOnly,
-                    availableStatusFilters: listData.availableStatusFilters,
-                    courseOptions: listData.courseOptions,
-                    yearOptions: listData.yearOptions,
-                    semesterOptions: listData.semesterOptions,
-                    supportsNewOnly: supportsNewOnly,
-                    supportsRecentOnly: supportsRecentOnly,
-                    defaultStatusFilter: defaultStatusFilter,
-                    totalCount: listData.baseItems.count,
-                    filteredCount: listData.filteredItems.count
-                )
-            } else {
-                CompanionItemListControlsPlaceholder()
-            }
-        }
-        .task(id: optionsKey) {
-            displayedOptionsKey = nil
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            displayedOptionsKey = optionsKey
-        }
-    }
-
-    private var optionsKey: String {
-        [
-            "\(listData.baseItems.count)",
-            "\(listData.courseOptions.count)",
-            listData.courseOptions.first ?? "",
-            listData.courseOptions.last ?? "",
-            listData.yearOptions.joined(separator: "|"),
-            listData.semesterOptions.joined(separator: "|"),
-            listData.availableStatusFilters.map(\.rawValue).joined(separator: "|"),
-        ].joined(separator: "::")
+        CompanionItemListControls(
+            sortOption: $sortOption,
+            visibilityFilter: $visibilityFilter,
+            statusFilter: $statusFilter,
+            selectedCourse: $selectedCourse,
+            selectedYear: $selectedYear,
+            selectedSemester: $selectedSemester,
+            newOnly: $newOnly,
+            recentOnly: $recentOnly,
+            availableStatusFilters: listData.availableStatusFilters,
+            courseOptions: listData.courseOptions,
+            yearOptions: listData.yearOptions,
+            semesterOptions: listData.semesterOptions,
+            supportsNewOnly: supportsNewOnly,
+            supportsRecentOnly: supportsRecentOnly,
+            defaultStatusFilter: defaultStatusFilter,
+            totalCount: listData.baseItems.count,
+            filteredCount: listData.filteredItems.count
+        )
     }
 }
 
@@ -4948,6 +4925,7 @@ private struct CompanionSearchFilterPanel<Controls: View>: View {
 
             TextField(fieldPrompt, text: $query)
                 .textFieldStyle(.roundedBorder)
+                .frame(minHeight: 44)
 
             controls
         }
