@@ -11373,6 +11373,7 @@ private struct RemoteLogSummaryRow: View {
             )
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+        .accessibilityLabel("\(title) \(value). \(detail). \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "관련 기록 접기" : "관련 기록 펼치기")
     }
 }

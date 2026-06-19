@@ -3027,6 +3027,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosCompanionEmptyDetailPanel.contains("Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(iosRemoteLogSummaryRow.contains("isExpanded ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.62)"))
         XCTAssertTrue(iosRemoteLogSummaryRow.contains("KLMSCardButtonStyle(cornerRadius: 12)"))
+        XCTAssertTrue(iosRemoteLogSummaryRow.contains(".accessibilityLabel(\"\\(title) \\(value). \\(detail). \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertFalse(iosRemoteLogSummaryRow.contains("KLMSCardButtonStyle(cornerRadius: 8)"))
         XCTAssertTrue(iosSharedRunLogsView.contains("Text(\"동기화 단계\")"))
         XCTAssertTrue(iosSharedRunLogsView.contains("단계별 시간과 마지막 로그를 보여줍니다."))
