@@ -9,7 +9,7 @@ struct MenuBarRootView: View {
     @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
     @State private var renderSectionTask: Task<Void, Never>?
-    private let workspaceRenderDelayNanoseconds: UInt64 = 16_000_000
+    private let workspaceRenderDelayNanoseconds: UInt64 = 8_000_000
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {

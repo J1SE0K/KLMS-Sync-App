@@ -2799,7 +2799,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macWorkstationLayoutView.contains("let model: KLMSMacModel"))
         XCTAssertTrue(mac.contains("@State private var renderedSection = KLMSMacSection.dashboard"))
         XCTAssertTrue(mac.contains("@State private var renderSectionTask: Task<Void, Never>?"))
-        XCTAssertTrue(mac.contains("private let workspaceRenderDelayNanoseconds: UInt64 = 16_000_000"))
+        XCTAssertTrue(mac.contains("private let workspaceRenderDelayNanoseconds: UInt64 = 8_000_000"))
         XCTAssertTrue(mac.contains("scheduleRenderedSection(nextSection)"))
         XCTAssertTrue(mac.contains("await Task.yield()"))
         XCTAssertTrue(mac.contains("try? await Task.sleep(nanoseconds: workspaceRenderDelayNanoseconds)"))
