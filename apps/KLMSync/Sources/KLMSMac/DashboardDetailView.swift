@@ -1994,16 +1994,7 @@ private struct NoticeDashboardBaseInputSignature: Equatable {
         hasher.combine(snapshot.noticeDigest?.generatedAt ?? "")
         let notices = snapshot.noticeDigest?.notices ?? []
         hasher.combine(notices.count)
-        for (index, notice) in notices.enumerated() {
-            hasher.combine(index)
-            hasher.combine(notice.id)
-            hasher.combine(notice.title)
-            hasher.combine(notice.course)
-            hasher.combine(notice.postedAt)
-            hasher.combine(notice.fingerprint)
-            hasher.combine(notice.changeState)
-            hasher.combine(notice.noticeIdentifier)
-        }
+        Self.combineNoticeSignatureSamples(notices, into: &hasher)
         let noticeStates = snapshot.noticeUserState?.notices ?? [:]
         hasher.combine(noticeStates.count)
         var stateFingerprint = 0
@@ -2019,6 +2010,31 @@ private struct NoticeDashboardBaseInputSignature: Equatable {
         }
         hasher.combine(stateFingerprint)
         value = hasher.finalize()
+    }
+
+    private static func combineNoticeSignatureSamples(_ notices: [NoticeDigestEntry], into hasher: inout Hasher) {
+        var seen = Set<Int>()
+        seen.reserveCapacity(8)
+
+        func combine(index: Int) {
+            guard seen.insert(index).inserted else { return }
+            let notice = notices[index]
+            hasher.combine(index)
+            hasher.combine(notice.id)
+            hasher.combine(notice.title)
+            hasher.combine(notice.course)
+            hasher.combine(notice.postedAt)
+            hasher.combine(notice.fingerprint)
+            hasher.combine(notice.changeState)
+            hasher.combine(notice.noticeIdentifier)
+        }
+
+        for index in notices.indices.prefix(4) {
+            combine(index: index)
+        }
+        for index in notices.indices.suffix(4) {
+            combine(index: index)
+        }
     }
 }
 
