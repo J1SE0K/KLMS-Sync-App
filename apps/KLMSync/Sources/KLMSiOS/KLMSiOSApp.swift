@@ -3255,7 +3255,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
 }
 
 private struct CompanionHistoryScreen: View {
-    @ObservedObject var model: CompanionModel
+    let model: CompanionModel
     @State private var selectedLogSummaryKind: RemoteLogSummaryKind? = .status
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
