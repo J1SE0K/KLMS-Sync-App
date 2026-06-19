@@ -232,7 +232,8 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         model: KLMSMacModel,
         snapshot: EngineSnapshot? = nil,
         renderSignature: DashboardRenderSignature? = nil,
-        fileRenderSignature: DashboardFileRenderSignature? = nil
+        fileRenderSignature: DashboardFileRenderSignature? = nil,
+        filterOptions: DashboardFilterOptions? = nil
     ) {
         let resolvedSnapshot = snapshot ?? model.snapshot
         self.kind = kind
@@ -243,7 +244,9 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         self.fileDataRenderSignature = kind.requiresFileData
             ? (fileRenderSignature ?? DashboardFileRenderSignature(snapshot: resolvedSnapshot))
             : nil
-        self.filterOptions = DashboardFilterOptions(kind: kind, snapshot: resolvedSnapshot)
+        self.filterOptions = filterOptions
+            ?? model.dashboardFilterOptions(for: kind)
+            ?? DashboardFilterOptions(kind: kind, snapshot: resolvedSnapshot)
         self.hiddenCount = resolvedSnapshot.hiddenSummary.total
         _fileData = State(initialValue: nil)
         _fileDataSignature = State(initialValue: nil)
@@ -492,6 +495,13 @@ private struct DashboardDetailFilters: Equatable, Sendable {
             || newOnly
             || recentOnly
     }
+
+    func shouldDebounceComparedTo(_ previous: DashboardDetailFilters?) -> Bool {
+        guard var previous else { return false }
+        guard previous != self else { return false }
+        previous.searchText = searchText
+        return previous == self
+    }
 }
 
 private enum DashboardLargeList {
@@ -500,7 +510,7 @@ private enum DashboardLargeList {
     static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
 }
 
-private struct DashboardFilterOptions: Equatable, Sendable {
+struct DashboardFilterOptions: Equatable, Sendable {
     var courses: [String]
     var years: [String]
     var semesters: [String]
@@ -1251,6 +1261,7 @@ private struct StateItemListView: View {
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
     @State private var presentation: DashboardStateItemListPresentation
     @State private var presentationSignature: DashboardStateItemListInputSignature?
+    @State private var renderedFilters: DashboardDetailFilters?
     @State private var presentationTask: Task<Void, Never>?
     @State private var isPreparingPresentation = true
 
@@ -1310,7 +1321,7 @@ private struct StateItemListView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
-        let shouldDelay = presentationSignature != nil && !isPreparingPresentation
+        let shouldDelay = !isPreparingPresentation && filters.shouldDebounceComparedTo(renderedFilters)
         presentationTask?.cancel()
         presentationSignature = signature
         visibleLimit = DashboardLargeList.initialVisibleLimit
@@ -1332,6 +1343,7 @@ private struct StateItemListView: View {
             }.value
             guard !Task.isCancelled else { return }
             presentation = nextPresentation
+            renderedFilters = filters
             isPreparingPresentation = false
         }
     }
@@ -1844,6 +1856,7 @@ private struct NoticeListView: View {
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
     @State private var presentation: NoticeDashboardPresentation
     @State private var presentationSignature: NoticeDashboardInputSignature?
+    @State private var renderedFilters: DashboardDetailFilters?
     @State private var presentationTask: Task<Void, Never>?
     @State private var isPreparingPresentation = true
 
@@ -1908,7 +1921,7 @@ private struct NoticeListView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
-        let shouldDelay = presentationSignature != nil && !isPreparingPresentation
+        let shouldDelay = !isPreparingPresentation && filters.shouldDebounceComparedTo(renderedFilters)
         presentationTask?.cancel()
         presentationSignature = signature
         visibleLimit = DashboardLargeList.initialVisibleLimit
@@ -1929,6 +1942,7 @@ private struct NoticeListView: View {
             }.value
             guard !Task.isCancelled else { return }
             presentation = nextPresentation
+            renderedFilters = filters
             isPreparingPresentation = false
         }
     }
@@ -2483,6 +2497,7 @@ private struct DashboardFileListContentView: View {
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
     @State private var presentation: DashboardFileListPresentation
     @State private var presentationSignature: DashboardFileListInputSignature?
+    @State private var renderedFilters: DashboardDetailFilters?
     @State private var presentationTask: Task<Void, Never>?
     @State private var isPreparingPresentation = true
 
@@ -2554,7 +2569,7 @@ private struct DashboardFileListContentView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
-        let shouldDelay = presentationSignature != nil && !isPreparingPresentation
+        let shouldDelay = !isPreparingPresentation && filters.shouldDebounceComparedTo(renderedFilters)
         presentationTask?.cancel()
         presentationSignature = signature
         visibleLimit = DashboardLargeList.initialVisibleLimit
@@ -2575,6 +2590,7 @@ private struct DashboardFileListContentView: View {
             }.value
             guard !Task.isCancelled else { return }
             presentation = nextPresentation
+            renderedFilters = filters
             isPreparingPresentation = false
         }
     }

@@ -213,7 +213,8 @@ private struct MacWorkstationLayoutView: View {
             model: model,
             snapshot: model.snapshot,
             renderSignature: model.dashboardRenderSignature,
-            fileRenderSignature: model.dashboardFileRenderSignature
+            fileRenderSignature: model.dashboardFileRenderSignature,
+            filterOptions: model.dashboardFilterOptions(for: kind)
         )
     }
 }
@@ -755,7 +756,8 @@ private struct TaskAndExamWorkspaceView: View {
             model: model,
             snapshot: model.snapshot,
             renderSignature: model.dashboardRenderSignature,
-            fileRenderSignature: model.dashboardFileRenderSignature
+            fileRenderSignature: model.dashboardFileRenderSignature,
+            filterOptions: model.dashboardFilterOptions(for: kind)
         )
     }
 }
@@ -2692,7 +2694,8 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             model: model,
             snapshot: snapshot,
             renderSignature: renderSignature,
-            fileRenderSignature: model.dashboardFileRenderSignature
+            fileRenderSignature: model.dashboardFileRenderSignature,
+            filterOptions: model.dashboardFilterOptions(for: kind)
         )
             .equatable()
             .frame(maxWidth: .infinity, alignment: .topLeading)

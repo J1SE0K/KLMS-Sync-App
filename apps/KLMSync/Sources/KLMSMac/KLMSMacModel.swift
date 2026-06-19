@@ -173,6 +173,7 @@ final class KLMSMacModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var payload: EnginePayload?
     @Published private(set) var cachedIssues: [EngineIssue] = []
+    @Published private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]
     private(set) var dashboardSummaryCache = KLMSMacDashboardSummaryCache()
     private(set) var dashboardRenderSignature = DashboardRenderSignature(
         snapshot: EngineSnapshot(),
@@ -1577,6 +1578,10 @@ final class KLMSMacModel: ObservableObject {
         cachedMailCalendarChanges
     }
 
+    func dashboardFilterOptions(for kind: DashboardDetailKind) -> DashboardFilterOptions? {
+        dashboardFilterOptionsByKind[kind]
+    }
+
     private func currentServerRelayBaseSyncItems() -> [ServerRelaySyncItem] {
         let generatedAt = serverRelayGeneratedAt(from: snapshot)
         return serverRelayBaseSyncItems(
@@ -1623,6 +1628,11 @@ final class KLMSMacModel: ObservableObject {
             calendarAttentionCount: calendarAttentionCount,
             mailAssignmentCount: cachedMailDashboardItemsByKind["assignment"]?.count ?? 0,
             mailExamCount: cachedMailDashboardItemsByKind["exam"]?.count ?? 0
+        )
+        dashboardFilterOptionsByKind = Dictionary(
+            uniqueKeysWithValues: DashboardDetailKind.allCases.map { kind in
+                (kind, DashboardFilterOptions(kind: kind, snapshot: snapshot))
+            }
         )
         dashboardRenderSignature = DashboardRenderSignature(snapshot: snapshot, summary: dashboardSummaryCache)
         dashboardFileRenderSignature = DashboardFileRenderSignature(snapshot: snapshot)
