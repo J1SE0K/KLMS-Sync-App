@@ -2931,8 +2931,11 @@ private struct CompanionStatusScreen: View {
                 systemImage: "sidebar.right"
             )
         } else if horizontalSizeClass == .regular {
-            DashboardCategoryInlineDetailPanel(category: defaultWorkstationDetailCategory, model: model)
-                .id(defaultWorkstationDetailCategory)
+            CompanionEmptyDetailPanel(
+                title: "항목 선택",
+                detail: "왼쪽 대시보드에서 파일, 과제, 공지, 시험, 캘린더 중 하나를 선택하면 상세와 처리 버튼이 여기에 표시됩니다.",
+                systemImage: "rectangle.stack.badge.cursorarrow"
+            )
         }
     }
 
@@ -2972,10 +2975,6 @@ private struct CompanionStatusScreen: View {
         }
     }
 
-    private var defaultWorkstationDetailCategory: DashboardMetricCategory {
-        DashboardMetricCategory.defaultWorkstationDetail(for: model.dashboardStatus)
-    }
-
     private var effectiveDashboardSelection: DashboardMetricCategory? {
         if selectedChangeSummary != nil {
             return selectedDashboardPreview
@@ -2983,7 +2982,7 @@ private struct CompanionStatusScreen: View {
         if let selectedDashboardPreview {
             return selectedDashboardPreview
         }
-        return horizontalSizeClass == .regular ? defaultWorkstationDetailCategory : nil
+        return nil
     }
 
     private var dashboardPrewarmCategories: [DashboardMetricCategory] {
@@ -3997,11 +3996,6 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable, Sendab
     case helpDesk
 
     var id: String { rawValue }
-
-    static func defaultWorkstationDetail(for status: SanitizedRemoteStatus) -> DashboardMetricCategory {
-        [.files, .assignments, .exams, .notices, .calendar, .quarantine, .helpDesk]
-            .first { $0.value(from: status) > 0 } ?? .files
-    }
 
     var title: String {
         switch self {

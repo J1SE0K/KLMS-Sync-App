@@ -35,9 +35,28 @@ struct MenuBarRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .accessibilityIdentifier("workspace-scroll-\(selectedSection.rawValue)")
         }
+        .overlay(alignment: .topLeading) {
+            MacWorkspaceSelectionAccessibilityMarker(section: selectedSection)
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
+    }
+}
+
+private struct MacWorkspaceSelectionAccessibilityMarker: View {
+    var section: KLMSMacSection
+
+    var body: some View {
+        Text("\(section.title) 선택됨")
+            .font(.system(size: 1))
+            .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
+            .lineLimit(1)
+            .frame(width: 1, height: 1)
+            .clipped()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(section.title) 내용")
+            .accessibilityIdentifier("workspace-content-\(section.rawValue)")
     }
 }
 
