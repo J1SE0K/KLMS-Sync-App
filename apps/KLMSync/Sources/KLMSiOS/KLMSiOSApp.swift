@@ -5075,7 +5075,7 @@ private struct RemoteDashboardMetricOverview: View {
     }
 
     private var shouldShowPrimaryMetricSection: Bool {
-        horizontalSizeClass == .regular && !primaryMetricCategories.isEmpty
+        !primaryMetricCategories.isEmpty
     }
 
     private var shouldShowAttentionMetricSection: Bool {

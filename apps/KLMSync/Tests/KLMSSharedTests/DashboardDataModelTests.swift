@@ -3186,6 +3186,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosMetricOverview.contains("LazyVGrid(columns: workstationColumns, alignment: .leading, spacing: 8)"))
         XCTAssertTrue(iosMetricOverview.contains("LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 8)"))
         XCTAssertFalse(iosMetricOverview.contains("if horizontalSizeClass == .regular {\n                    VStack(spacing: 8)"))
+        XCTAssertFalse(iosMetricOverview.contains("horizontalSizeClass == .regular && !primaryMetricCategories.isEmpty"))
         XCTAssertTrue(iosMetricOverview.contains("WorkstationMetricCard"))
         XCTAssertTrue(iosMetricOverview.contains("if shouldShowPrimaryMetricSection {"))
         XCTAssertTrue(iosMetricOverview.contains("if shouldShowAttentionMetricSection {"))
