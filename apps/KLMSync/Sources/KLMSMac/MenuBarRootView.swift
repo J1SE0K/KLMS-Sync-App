@@ -5270,11 +5270,16 @@ struct MetricGrid: View {
                     }
                     .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 13))
                     .disabled(!isInteractive)
+                    .accessibilityLabel("\(metric.label) \(metric.value)개")
+                    .accessibilityValue(isSelected ? "선택됨" : "")
+                    .accessibilityHint(isInteractive ? "\(metric.label) 상세를 엽니다." : "현재 상태만 표시합니다.")
                     .onHover { hovering in
                         hoveredMetricID = hovering && isInteractive ? metric.id : (hoveredMetricID == metric.id ? nil : hoveredMetricID)
                     }
                 } else {
                     MetricTile(metric: metric, isSelected: false, isHovered: false)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("\(metric.label) \(metric.value)개")
                 }
             }
         }

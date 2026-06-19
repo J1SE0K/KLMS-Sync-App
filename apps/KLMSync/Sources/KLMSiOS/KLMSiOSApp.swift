@@ -5689,6 +5689,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                                 .contentShape(RoundedRectangle(cornerRadius: 13))
                             }
                             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
+                            .accessibilityLabel("\(metric.title) \(metric.value)개")
                             .accessibilityHint("\(metric.title) 상세를 엽니다.")
                         }
                     }
