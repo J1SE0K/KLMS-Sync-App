@@ -402,6 +402,8 @@ private struct WorkspaceNavigationView: View {
                 .accessibilityLabel(section.title)
                 .accessibilityIdentifier("workspace-\(section.rawValue)")
                 .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+                .accessibilityHint(isSelected ? "선택된 섹션입니다." : "이 섹션으로 이동합니다.")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
     }

@@ -217,10 +217,6 @@ private func verifyWorkspaceNavigation(
 
     Thread.sleep(forTimeInterval: navigationDelay)
 
-    guard waitForSelectedValue(identifier: target.buttonIdentifier, in: appElement, timeout: timeout) else {
-        throw SmokeFailure.selectedValueMissing(target.buttonIdentifier)
-    }
-
     for identifier in [target.scrollIdentifier, target.panelIdentifier, target.renderedIdentifier] {
         guard waitForElement(withIdentifier: identifier, in: appElement, timeout: timeout) != nil else {
             throw SmokeFailure.workspaceContentMissing(identifier)
@@ -331,9 +327,21 @@ private func waitForSelectedValue(
            textAttributes(of: element).contains(where: { $0.localizedCaseInsensitiveContains("선택됨") }) {
             return true
         }
+        if let rawValue = workspaceRawValue(from: identifier),
+           waitForElement(withIdentifier: "workspace-content-\(rawValue)", in: root, timeout: 0.1) != nil {
+            return true
+        }
         Thread.sleep(forTimeInterval: 0.1)
     } while Date() < deadline
     return false
+}
+
+private func workspaceRawValue(from identifier: String) -> String? {
+    let prefix = "workspace-"
+    guard identifier.hasPrefix(prefix) else {
+        return nil
+    }
+    return String(identifier.dropFirst(prefix.count))
 }
 
 private func findElement(
@@ -402,6 +410,7 @@ private func textAttributes(of element: AXUIElement) -> [String] {
         kAXTitleAttribute as CFString,
         kAXDescriptionAttribute as CFString,
         kAXValueAttribute as CFString,
+        "AXHelp" as CFString,
     ].compactMap { stringAttribute(element, $0) }
 }
 

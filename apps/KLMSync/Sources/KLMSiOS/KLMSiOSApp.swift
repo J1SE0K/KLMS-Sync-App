@@ -9985,12 +9985,70 @@ private struct ServerSyncDataPanel: View {
 private struct DeferredServerSyncItemDetailPanel: View {
     var item: ServerRelaySyncItem
     let model: CompanionModel
+    @State private var isReady = false
+    @State private var detailTask: Task<Void, Never>?
 
     var body: some View {
-        ServerSyncItemInlineDetailPanel(item: item, model: model)
+        Group {
+            if isReady {
+                ServerSyncItemInlineDetailPanel(item: item, model: model)
+            } else {
+                CompanionInlineDetailPreparingView()
+            }
+        }
+        .onAppear {
+            prepareDetail()
+        }
+        .onChange(of: item.id) { _, _ in
+            resetDetail()
+            prepareDetail()
+        }
+        .onDisappear {
+            detailTask?.cancel()
+            detailTask = nil
+        }
         .transaction { transaction in
             transaction.animation = nil
         }
+    }
+
+    private func resetDetail() {
+        detailTask?.cancel()
+        detailTask = nil
+        isReady = false
+    }
+
+    private func prepareDetail() {
+        guard !isReady else { return }
+        detailTask?.cancel()
+        detailTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            companionPerformWithoutAnimation {
+                isReady = true
+            }
+        }
+    }
+}
+
+private struct CompanionInlineDetailPreparingView: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(Color.klmsCommandAccent)
+            Text("상세를 준비하고 있습니다.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder.opacity(0.76), lineWidth: 1)
+        )
+        .accessibilityLabel("상세 준비 중")
     }
 }
 
