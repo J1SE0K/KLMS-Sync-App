@@ -2519,7 +2519,7 @@ private struct CompanionCompactTabBar: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            ForEach(Array(compactRows.enumerated()), id: \.offset) { _, row in
+            ForEach(compactRows, id: \.self) { row in
                 HStack(spacing: 6) {
                     ForEach(row) { section in
                         compactTabButton(section)
