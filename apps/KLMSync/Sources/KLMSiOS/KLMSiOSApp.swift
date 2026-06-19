@@ -3623,6 +3623,37 @@ private struct CompanionHeaderStatusPill: View {
     @ObservedObject var model: CompanionModel
 
     var body: some View {
+        CompanionHeaderStatusPillContent(snapshot: snapshot)
+            .equatable()
+    }
+
+    private var snapshot: CompanionHeaderStatusSnapshot {
+        CompanionHeaderStatusSnapshot(
+            isRefreshing: model.isRefreshing,
+            lastRefreshAt: model.lastRefreshAt
+        )
+    }
+}
+
+private struct CompanionHeaderStatusSnapshot: Equatable {
+    var isRefreshing: Bool
+    var lastRefreshAt: Date?
+
+    var headerStatusText: String {
+        if isRefreshing {
+            return "갱신 중"
+        }
+        if let lastRefreshAt {
+            return lastRefreshAt.formatted(date: .omitted, time: .shortened)
+        }
+        return "방금 갱신"
+    }
+}
+
+private struct CompanionHeaderStatusPillContent: View, Equatable {
+    var snapshot: CompanionHeaderStatusSnapshot
+
+    var body: some View {
         Text(headerStatusText)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(Color.klmsSecondaryText)
@@ -3638,13 +3669,7 @@ private struct CompanionHeaderStatusPill: View {
     }
 
     private var headerStatusText: String {
-        if model.isRefreshing {
-            return "갱신 중"
-        }
-        if let lastRefreshAt = model.lastRefreshAt {
-            return lastRefreshAt.formatted(date: .omitted, time: .shortened)
-        }
-        return "방금 갱신"
+        snapshot.headerStatusText
     }
 }
 
@@ -3667,42 +3692,83 @@ private struct RemoteAttentionStack: View {
     @ObservedObject var model: CompanionModel
 
     var body: some View {
-        if hasAttention {
+        RemoteAttentionStackContent(snapshot: snapshot) {
+            await model.cancelRunningCommand()
+        }
+        .equatable()
+    }
+
+    private var snapshot: RemoteAttentionSnapshot {
+        RemoteAttentionSnapshot(
+            authDigits: model.status.authDigits,
+            shouldShowRunningStatus: model.hasInFlightRequest || model.status.phase == "running",
+            statusMessage: model.statusLine,
+            loginAttentionMessage: model.loginAttentionMessage,
+            authSuccessMessage: model.authSuccessMessage,
+            errorMessage: model.errorMessage,
+            shouldShowCancelControl: model.shouldShowCancelControl,
+            canCancelRunningCommand: model.canCancelRunningCommand,
+            cancelAlreadyRequested: model.isCancelRequestedForLatestCommand,
+            isSubmitting: model.isSubmitting
+        )
+    }
+}
+
+private struct RemoteAttentionSnapshot: Equatable {
+    var authDigits: String?
+    var shouldShowRunningStatus: Bool
+    var statusMessage: String
+    var loginAttentionMessage: String?
+    var authSuccessMessage: String?
+    var errorMessage: String
+    var shouldShowCancelControl: Bool
+    var canCancelRunningCommand: Bool
+    var cancelAlreadyRequested: Bool
+    var isSubmitting: Bool
+
+    var hasAttention: Bool {
+        authDigits != nil
+            || shouldShowRunningStatus
+            || loginAttentionMessage != nil
+            || authSuccessMessage != nil
+            || !errorMessage.isEmpty
+    }
+}
+
+private struct RemoteAttentionStackContent: View, Equatable {
+    var snapshot: RemoteAttentionSnapshot
+    var onCancel: () async -> Void
+
+    nonisolated static func == (lhs: RemoteAttentionStackContent, rhs: RemoteAttentionStackContent) -> Bool {
+        lhs.snapshot == rhs.snapshot
+    }
+
+    var body: some View {
+        if snapshot.hasAttention {
             VStack(alignment: .leading, spacing: 10) {
-                if let authDigits = model.status.authDigits {
+                if let authDigits = snapshot.authDigits {
                     AuthCodeHero(digits: authDigits)
                 }
-                if shouldShowRunningStatus {
-                    RemoteRunningStatusBanner(model: model)
+                if snapshot.shouldShowRunningStatus {
+                    RemoteRunningStatusBanner(snapshot: snapshot, onCancel: onCancel)
                 }
-                if let message = model.loginAttentionMessage {
+                if let message = snapshot.loginAttentionMessage {
                     LoginAttentionBanner(message: message)
                 }
-                if let message = model.authSuccessMessage {
+                if let message = snapshot.authSuccessMessage {
                     AuthSuccessBanner(message: message)
                 }
-                if !model.errorMessage.isEmpty {
-                    ErrorBanner(message: model.errorMessage)
+                if !snapshot.errorMessage.isEmpty {
+                    ErrorBanner(message: snapshot.errorMessage)
                 }
             }
         }
     }
-
-    private var hasAttention: Bool {
-        model.status.authDigits != nil
-            || shouldShowRunningStatus
-            || model.loginAttentionMessage != nil
-            || model.authSuccessMessage != nil
-            || !model.errorMessage.isEmpty
-    }
-
-    private var shouldShowRunningStatus: Bool {
-        model.hasInFlightRequest || model.status.phase == "running"
-    }
 }
 
 private struct RemoteRunningStatusBanner: View {
-    @ObservedObject var model: CompanionModel
+    var snapshot: RemoteAttentionSnapshot
+    var onCancel: () async -> Void
     @State private var localCancelSubmitting = false
 
     var body: some View {
@@ -3722,14 +3788,14 @@ private struct RemoteRunningStatusBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            if model.shouldShowCancelControl {
+            if snapshot.shouldShowCancelControl {
                 Button(role: .destructive) {
-                    guard model.canCancelRunningCommand, !localCancelSubmitting else {
+                    guard snapshot.canCancelRunningCommand, !localCancelSubmitting else {
                         return
                     }
                     localCancelSubmitting = true
                     Task {
-                        await model.cancelRunningCommand()
+                        await onCancel()
                         await MainActor.run {
                             localCancelSubmitting = false
                         }
@@ -3740,7 +3806,7 @@ private struct RemoteRunningStatusBanner: View {
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                .disabled(!model.canCancelRunningCommand || localCancelSubmitting)
+                .disabled(!snapshot.canCancelRunningCommand || localCancelSubmitting)
                 .accessibilityLabel(cancelButtonTitle)
             }
         }
@@ -3754,18 +3820,18 @@ private struct RemoteRunningStatusBanner: View {
     }
 
     private var statusMessage: String {
-        model.statusLine
+        snapshot.statusMessage
     }
 
     private var cancelAlreadyRequested: Bool {
-        model.isCancelRequestedForLatestCommand
+        snapshot.cancelAlreadyRequested
     }
 
     private var cancelButtonTitle: String {
         if cancelAlreadyRequested {
             return "중단 요청됨"
         }
-        if localCancelSubmitting || model.isSubmitting {
+        if localCancelSubmitting || snapshot.isSubmitting {
             return "요청 중"
         }
         return "중단"
