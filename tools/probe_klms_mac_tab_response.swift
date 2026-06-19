@@ -10,7 +10,7 @@ private enum ProbeFailure: Error, CustomStringConvertible {
     case dashboardOpenControlMissing
     case dashboardOpenFailed(AXError)
     case workspaceButtonMissing(String)
-    case workspaceContentMissing(String)
+    case workspaceSelectionMissing(String)
     case pressFailed(identifier: String, AXError)
 
     var description: String {
@@ -25,8 +25,8 @@ private enum ProbeFailure: Error, CustomStringConvertible {
             return "Could not open the KLMS dashboard window from the menu bar: \(error)."
         case let .workspaceButtonMissing(identifier):
             return "Could not find workspace button with accessibility identifier '\(identifier)'."
-        case let .workspaceContentMissing(identifier):
-            return "Could not find workspace content with accessibility identifier '\(identifier)'."
+        case let .workspaceSelectionMissing(identifier):
+            return "Workspace button '\(identifier)' did not report the selected state."
         case let .pressFailed(identifier, error):
             return "Could not press button '\(identifier)': \(error)."
         }
@@ -36,7 +36,6 @@ private enum ProbeFailure: Error, CustomStringConvertible {
 private struct ProbeTarget {
     var rawValue: String
     var buttonIdentifier: String { "workspace-\(rawValue)" }
-    var contentIdentifier: String { "workspace-content-\(rawValue)" }
 }
 
 private let environment = ProcessInfo.processInfo.environment
@@ -136,11 +135,22 @@ private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Dou
         throw ProbeFailure.pressFailed(identifier: target.buttonIdentifier, error)
     }
 
-    guard waitForElement(withIdentifier: target.contentIdentifier, in: appElement, timeout: timeout) != nil else {
-        throw ProbeFailure.workspaceContentMissing(target.contentIdentifier)
+    guard waitForSelectedValue(on: button, timeout: timeout) else {
+        throw ProbeFailure.workspaceSelectionMissing(target.buttonIdentifier)
     }
     let end = DispatchTime.now()
     return Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+}
+
+private func waitForSelectedValue(on element: AXUIElement, timeout: TimeInterval) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if textAttributes(of: element).contains(where: { $0.localizedCaseInsensitiveContains("선택됨") }) {
+            return true
+        }
+        Thread.sleep(forTimeInterval: 0.01)
+    } while Date() < deadline
+    return false
 }
 
 private func waitForElement(
@@ -225,6 +235,15 @@ private func stringAttribute(_ element: AXUIElement, _ attribute: CFString) -> S
         return nil
     }
     return value as? String
+}
+
+private func textAttributes(of element: AXUIElement) -> [String] {
+    [
+        stringAttribute(element, kAXTitleAttribute as CFString),
+        stringAttribute(element, kAXDescriptionAttribute as CFString),
+        stringAttribute(element, kAXValueAttribute as CFString),
+        stringAttribute(element, "AXHelp" as CFString),
+    ].compactMap { $0 }
 }
 
 private func identifierMatches(_ value: String?, expected: String) -> Bool {
