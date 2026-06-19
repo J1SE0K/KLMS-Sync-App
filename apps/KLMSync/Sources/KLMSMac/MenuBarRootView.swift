@@ -9,6 +9,7 @@ struct MenuBarRootView: View {
     @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
     @State private var renderSectionTask: Task<Void, Never>?
+    private let workspaceRenderDelayNanoseconds: UInt64 = 35_000_000
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -61,6 +62,7 @@ struct MenuBarRootView: View {
         renderSectionTask?.cancel()
         renderSectionTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: workspaceRenderDelayNanoseconds)
             guard !Task.isCancelled else { return }
             var transaction = Transaction()
             transaction.animation = nil
