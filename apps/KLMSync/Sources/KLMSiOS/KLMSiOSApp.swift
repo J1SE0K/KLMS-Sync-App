@@ -3257,22 +3257,7 @@ private struct CompanionImmediateSettingsPanel: View {
                     statusText: KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue)?.title ?? "시스템",
                     detail: "기기 설정을 따르거나, KLMS Sync에서만 라이트/다크 모드를 고정합니다."
                 ) {
-                    Picker("화면 모드", selection: Binding(
-                        get: { model.sharedAppearanceModeValue },
-                        set: { newValue in
-                            Task {
-                                await model.updateSharedAppearanceMode(newValue)
-                            }
-                        }
-                    )) {
-                        ForEach(KLMSAppearanceMode.allCases) { mode in
-                            Text(mode.title).tag(mode.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .accessibilityLabel("화면 모드")
-                    .accessibilityValue(KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue)?.title ?? "시스템")
-                    .accessibilityHint("KLMS Sync 화면을 시스템 설정, 라이트 모드, 다크 모드 중 하나로 바꿉니다.")
+                    CompanionAppearanceModeSelector(model: model)
                 }
 
                 CompanionImmediateSettingRow(
@@ -3313,6 +3298,64 @@ private struct CompanionImmediateSettingsPanel: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
+    }
+}
+
+private struct CompanionAppearanceModeSelector: View {
+    @ObservedObject var model: CompanionModel
+
+    private var selectedMode: KLMSAppearanceMode {
+        KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue) ?? .system
+    }
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(KLMSAppearanceMode.allCases) { mode in
+                Button {
+                    guard selectedMode != mode else { return }
+                    Task {
+                        await model.updateSharedAppearanceMode(mode.rawValue)
+                    }
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: iconName(for: mode))
+                            .font(.caption.weight(.bold))
+                        Text(mode.title)
+                            .font(.caption.weight(.bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                    .foregroundStyle(selectedMode == mode ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(
+                        selectedMode == mode ? Color.klmsSelectedBackground : Color.klmsSubtleCardBackground.opacity(0.72),
+                        in: RoundedRectangle(cornerRadius: 12)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(selectedMode == mode ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.72), lineWidth: selectedMode == mode ? 1.3 : 1)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+                .disabled(model.isSubmitting)
+                .accessibilityLabel("화면 모드 \(mode.title)")
+                .accessibilityValue(selectedMode == mode ? "선택됨" : "선택 안 됨")
+                .accessibilityHint("KLMS Sync 화면 모드를 \(mode.title)으로 바꿉니다.")
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func iconName(for mode: KLMSAppearanceMode) -> String {
+        switch mode {
+        case .system:
+            "circle.lefthalf.filled"
+        case .light:
+            "sun.max.fill"
+        case .dark:
+            "moon.fill"
+        }
     }
 }
 

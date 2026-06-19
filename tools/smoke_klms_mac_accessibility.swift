@@ -201,18 +201,22 @@ private func verifySettingsTabNavigation(
     identifier: String,
     expectedText: String
 ) throws {
-    guard let button = waitForElement(withIdentifier: identifier, in: appElement, timeout: timeout) else {
+    guard waitForElement(withIdentifier: identifier, in: appElement, timeout: timeout) != nil else {
         throw SmokeFailure.settingsTabMissing(identifier)
     }
 
     var lastError: AXError = .success
     var didSelect = waitForSelectedValue(identifier: identifier, in: appElement, timeout: 0.15)
     for _ in 0..<3 where !didSelect {
+        guard let button = waitForElement(withIdentifier: identifier, in: appElement, timeout: timeout) else {
+            throw SmokeFailure.settingsTabMissing(identifier)
+        }
         _ = AXUIElementPerformAction(button, "AXScrollToVisible" as CFString)
         let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
         lastError = error
-        guard error == .success else {
-            break
+        if error != .success {
+            Thread.sleep(forTimeInterval: 0.25)
+            continue
         }
         didSelect = waitForSelectedValue(identifier: identifier, in: appElement, timeout: 0.7)
     }
