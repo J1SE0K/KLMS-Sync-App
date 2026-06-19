@@ -4304,6 +4304,12 @@ private struct CompanionItemListInputKey: Hashable {
     var selectedSemester: String
     var newOnly: Bool
     var recentOnly: Bool
+
+    func shouldDebounceComparedTo(_ previous: CompanionItemListInputKey?) -> Bool {
+        guard var previous else { return false }
+        previous.query = query
+        return previous == self
+    }
 }
 
 private enum CompanionLargeList {
@@ -6025,6 +6031,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     @State private var newOnly = false
     @State private var recentOnly = false
     @State private var cachedListData: CompanionItemListData?
+    @State private var cachedListInputKey: CompanionItemListInputKey?
     @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
 
     init(
@@ -6200,16 +6207,21 @@ private struct DashboardCategoryInlineDetailPanel: View {
     }
 
     private func rebuildCachedListDataAfterInputSettles() async {
-        if cachedListData != nil {
-            try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
-            guard !Task.isCancelled else { return }
+        let currentKey = listInputKey
+        if cachedListInputKey == currentKey, cachedListData != nil {
+            return
         }
-        await rebuildCachedListData()
+        if cachedListData != nil, currentKey.shouldDebounceComparedTo(cachedListInputKey) {
+            try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
+            guard !Task.isCancelled, currentKey == listInputKey else { return }
+        }
+        await rebuildCachedListData(for: currentKey)
     }
 
-    private func rebuildCachedListData() async {
+    private func rebuildCachedListData(for inputKey: CompanionItemListInputKey) async {
         guard category != .calendar, category != .quarantine else {
             cachedListData = nil
+            cachedListInputKey = inputKey
             return
         }
         await Task.yield()
@@ -6241,8 +6253,9 @@ private struct DashboardCategoryInlineDetailPanel: View {
                 recentOnly: recentOnly
             )
         }.value
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, inputKey == listInputKey else { return }
         cachedListData = listData
+        cachedListInputKey = inputKey
     }
 
     private var summaryText: String {
@@ -9254,6 +9267,7 @@ private struct ServerSyncDataPanel: View {
     @State private var newOnly = false
     @State private var recentOnly = false
     @State private var cachedListData: CompanionItemListData?
+    @State private var cachedListInputKey: CompanionItemListInputKey?
 
     var body: some View {
         if !items.isEmpty {
@@ -9331,14 +9345,18 @@ private struct ServerSyncDataPanel: View {
     }
 
     private func rebuildCachedListDataAfterInputSettles() async {
-        if cachedListData != nil {
-            try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
-            guard !Task.isCancelled else { return }
+        let currentKey = listInputKey
+        if cachedListInputKey == currentKey, cachedListData != nil {
+            return
         }
-        await rebuildCachedListData()
+        if cachedListData != nil, currentKey.shouldDebounceComparedTo(cachedListInputKey) {
+            try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
+            guard !Task.isCancelled, currentKey == listInputKey else { return }
+        }
+        await rebuildCachedListData(for: currentKey)
     }
 
-    private func rebuildCachedListData() async {
+    private func rebuildCachedListData(for inputKey: CompanionItemListInputKey) async {
         await Task.yield()
         guard !Task.isCancelled else { return }
         let items = items
@@ -9366,8 +9384,9 @@ private struct ServerSyncDataPanel: View {
                 recentOnly: recentOnly
             )
         }.value
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, inputKey == listInputKey else { return }
         cachedListData = listData
+        cachedListInputKey = inputKey
     }
 }
 
