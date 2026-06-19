@@ -40,6 +40,7 @@ struct MenuBarRootView: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("workspace-scroll-\(renderedSection.rawValue)")
         }
         .overlay(alignment: .topLeading) {
@@ -64,7 +65,6 @@ struct MenuBarRootView: View {
         guard renderedSection != section else { return }
         workspaceRenderTask?.cancel()
         workspaceRenderTask = Task { @MainActor in
-            await Task.yield()
             guard !Task.isCancelled else { return }
             var transaction = Transaction()
             transaction.animation = nil
@@ -234,7 +234,10 @@ private struct MacWorkstationLayoutView: View {
         Text(selectedSection.title)
             .font(.system(size: 1))
             .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
+            .lineLimit(1)
             .frame(width: 1, height: 1)
+            .clipped()
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(selectedSection.title) 내용")
             .accessibilityIdentifier("workspace-rendered-content-\(selectedSection.rawValue)")
     }
@@ -286,7 +289,6 @@ private struct WorkspaceNavigationView: View {
     @Binding var selection: KLMSMacSection
     var resetCurrentSectionScroll: () -> Void
     @State private var displayedSelection = KLMSMacSection.dashboard
-    @State private var selectionCommitTask: Task<Void, Never>?
     @State private var hoveredSection: KLMSMacSection?
 
     var body: some View {
@@ -356,22 +358,14 @@ private struct WorkspaceNavigationView: View {
         .onChange(of: selection) { _, nextSelection in
             syncDisplayedSelection(nextSelection)
         }
-        .onDisappear {
-            selectionCommitTask?.cancel()
-        }
     }
 
     private func select(_ section: KLMSMacSection) {
         syncDisplayedSelection(section)
-        selectionCommitTask?.cancel()
-        selectionCommitTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                selection = section
-            }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            selection = section
         }
     }
 

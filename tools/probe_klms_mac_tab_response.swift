@@ -12,6 +12,7 @@ private enum ProbeFailure: Error, CustomStringConvertible {
     case dashboardOpenFailed(AXError)
     case workspaceButtonMissing(String)
     case workspaceSelectionMissing(String)
+    case workspaceContentMissing(String)
     case pressFailed(identifier: String, AXError)
 
     var description: String {
@@ -30,6 +31,8 @@ private enum ProbeFailure: Error, CustomStringConvertible {
             return "Could not find workspace button with accessibility identifier '\(identifier)'."
         case let .workspaceSelectionMissing(identifier):
             return "Workspace button '\(identifier)' did not report the selected state."
+        case let .workspaceContentMissing(identifier):
+            return "Workspace content marker '\(identifier)' did not appear after selection."
         case let .pressFailed(identifier, error):
             return "Could not press button '\(identifier)': \(error)."
         }
@@ -39,6 +42,7 @@ private enum ProbeFailure: Error, CustomStringConvertible {
 private struct ProbeTarget {
     var rawValue: String
     var buttonIdentifier: String { "workspace-\(rawValue)" }
+    var contentIdentifier: String { "workspace-scroll-\(rawValue)" }
 }
 
 private let environment = ProcessInfo.processInfo.environment
@@ -181,6 +185,9 @@ private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Dou
 
     guard waitForSelectedValue(on: button, timeout: timeout) else {
         throw ProbeFailure.workspaceSelectionMissing(target.buttonIdentifier)
+    }
+    guard waitForElement(withIdentifier: target.contentIdentifier, in: appElement, timeout: timeout) != nil else {
+        throw ProbeFailure.workspaceContentMissing(target.contentIdentifier)
     }
     let end = DispatchTime.now()
     return Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000

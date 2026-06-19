@@ -11,6 +11,7 @@ private enum SmokeFailure: Error, CustomStringConvertible {
     case dashboardOpenControlMissing
     case dashboardOpenFailed(AXError)
     case workspaceButtonMissing(String)
+    case workspaceContentMissing(String)
     case settingsTabMissing(String)
     case pressFailed(identifier: String, AXError)
     case selectedValueMissing(String)
@@ -30,6 +31,8 @@ private enum SmokeFailure: Error, CustomStringConvertible {
             return "Could not open the KLMS dashboard window from the menu bar: \(error)."
         case let .workspaceButtonMissing(identifier):
             return "Could not find workspace button with accessibility identifier '\(identifier)'."
+        case let .workspaceContentMissing(identifier):
+            return "Could not find rendered workspace content with accessibility identifier '\(identifier)'."
         case let .settingsTabMissing(identifier):
             return "Could not find settings tab with accessibility identifier '\(identifier)'."
         case let .pressFailed(identifier, error):
@@ -47,6 +50,24 @@ private let bundleID = environment["KLMS_MAC_BUNDLE_ID"] ?? "com.local.KLMSync"
 private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
 private let navigationDelay = TimeInterval(environment["KLMS_MAC_AX_NAVIGATION_DELAY_SECONDS"] ?? "0.60") ?? 0.60
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
+
+private struct WorkspaceSmokeTarget {
+    var rawValue: String
+    var title: String
+    var buttonIdentifier: String { "workspace-\(rawValue)" }
+    var contentIdentifier: String { "workspace-scroll-\(rawValue)" }
+}
+
+private let workspaceTargets = [
+    WorkspaceSmokeTarget(rawValue: "dashboard", title: "대시보드"),
+    WorkspaceSmokeTarget(rawValue: "files", title: "파일"),
+    WorkspaceSmokeTarget(rawValue: "tasks", title: "과제/시험"),
+    WorkspaceSmokeTarget(rawValue: "notices", title: "공지"),
+    WorkspaceSmokeTarget(rawValue: "calendar", title: "캘린더"),
+    WorkspaceSmokeTarget(rawValue: "activityLogs", title: "로그"),
+    WorkspaceSmokeTarget(rawValue: "diagnostics", title: "진단"),
+    WorkspaceSmokeTarget(rawValue: "settings", title: "설정"),
+]
 
 do {
     try runSmoke()
@@ -74,11 +95,9 @@ private func runSmoke() throws {
 
     try openDashboardWindowIfNeeded(appElement: appElement)
 
-    try verifyWorkspaceNavigation(
-        appElement: appElement,
-        identifier: "workspace-settings",
-        expectedText: "화면/앱"
-    )
+    for target in workspaceTargets {
+        try verifyWorkspaceNavigation(appElement: appElement, target: target)
+    }
     try verifySettingsTabNavigation(
         appElement: appElement,
         identifier: "settings-files",
@@ -89,11 +108,7 @@ private func runSmoke() throws {
         identifier: "settings-app",
         expectedText: "바로 반영되는 설정"
     )
-    try verifyWorkspaceNavigation(
-        appElement: appElement,
-        identifier: "workspace-dashboard",
-        expectedText: "대시보드"
-    )
+    try verifyWorkspaceNavigation(appElement: appElement, target: workspaceTargets[0])
 
     print("ok: KLMS Mac workspace accessibility navigation is responsive")
 }
@@ -175,25 +190,28 @@ private func visibleWindowDiagnostics() -> String {
 
 private func verifyWorkspaceNavigation(
     appElement: AXUIElement,
-    identifier: String,
-    expectedText: String
+    target: WorkspaceSmokeTarget
 ) throws {
-    guard let button = waitForElement(withIdentifier: identifier, in: appElement, timeout: timeout) else {
-        throw SmokeFailure.workspaceButtonMissing(identifier)
+    guard let button = waitForElement(withIdentifier: target.buttonIdentifier, in: appElement, timeout: timeout) else {
+        throw SmokeFailure.workspaceButtonMissing(target.buttonIdentifier)
     }
 
     let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
     guard error == .success else {
-        throw SmokeFailure.pressFailed(identifier: identifier, error)
+        throw SmokeFailure.pressFailed(identifier: target.buttonIdentifier, error)
     }
 
     Thread.sleep(forTimeInterval: navigationDelay)
 
-    guard waitForText(expectedText, in: appElement, timeout: timeout) else {
-        throw SmokeFailure.expectedTextMissing(expectedText)
+    guard waitForSelectedValue(on: button, timeout: timeout) else {
+        throw SmokeFailure.selectedValueMissing(target.buttonIdentifier)
     }
 
-    print("ok: \(identifier) -> \(expectedText)")
+    guard waitForElement(withIdentifier: target.contentIdentifier, in: appElement, timeout: timeout) != nil else {
+        throw SmokeFailure.workspaceContentMissing(target.contentIdentifier)
+    }
+
+    print("ok: \(target.buttonIdentifier) -> \(target.title)")
 }
 
 private func verifySettingsTabNavigation(
@@ -292,6 +310,17 @@ private func waitForSelectedValue(
             return true
         }
         Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    return false
+}
+
+private func waitForSelectedValue(on element: AXUIElement, timeout: TimeInterval) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if textAttributes(of: element).contains(where: { $0.localizedCaseInsensitiveContains("선택됨") }) {
+            return true
+        }
+        Thread.sleep(forTimeInterval: 0.05)
     } while Date() < deadline
     return false
 }
