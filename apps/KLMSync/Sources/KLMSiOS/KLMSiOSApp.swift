@@ -222,9 +222,11 @@ final class CompanionModel: ObservableObject {
     private var activeCalendarActionByID: [String: ServerRelayItemAction] = [:]
     private var dashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
     private var visibleDashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
+    private var visibleDashboardItemLookupByCategoryID: [String: [String: ServerRelaySyncItem]] = [:]
     private var dashboardFilterOptionsByCategoryID: [String: CompanionItemFilterOptions] = [:]
     private var defaultDashboardListDataByCategoryID: [String: CompanionItemListData] = [:]
     private var visibleDashboardTaskItems: [ServerRelaySyncItem] = []
+    private var visibleCalendarChangeByID: [String: CalendarChange] = [:]
 
     private static let terminalLogSummaryDisplayInterval: TimeInterval = 5 * 60
 
@@ -444,15 +446,18 @@ final class CompanionModel: ObservableObject {
     private func rebuildDashboardItemLookup() {
         var next: [String: [ServerRelaySyncItem]] = [:]
         var nextVisible: [String: [ServerRelaySyncItem]] = [:]
+        var nextVisibleLookup: [String: [String: ServerRelaySyncItem]] = [:]
         var nextFilterOptions: [String: CompanionItemFilterOptions] = [:]
         var nextDefaultListData: [String: CompanionItemListData] = [:]
         for category in DashboardMetricCategory.allCases {
             let categoryItems = dashboardSyncItems
                 .filter { category.includes($0) }
                 .companionSorted(by: .recent)
+            let visibleItems = categoryItems.filter { !$0.isHidden }
             let filterOptions = CompanionItemFilterOptions(items: categoryItems, category: category)
             next[category.rawValue] = categoryItems
-            nextVisible[category.rawValue] = categoryItems.filter { !$0.isHidden }
+            nextVisible[category.rawValue] = visibleItems
+            nextVisibleLookup[category.rawValue] = Dictionary(visibleItems.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             nextFilterOptions[category.rawValue] = filterOptions
             if category.supportsWorkstationSelectionWorkspace {
                 nextDefaultListData[category.rawValue] = CompanionItemListData(
@@ -474,6 +479,7 @@ final class CompanionModel: ObservableObject {
         }
         dashboardItemsByCategoryID = next
         visibleDashboardItemsByCategoryID = nextVisible
+        visibleDashboardItemLookupByCategoryID = nextVisibleLookup
         dashboardFilterOptionsByCategoryID = nextFilterOptions
         defaultDashboardListDataByCategoryID = nextDefaultListData
         visibleDashboardTaskItems = [
@@ -1240,12 +1246,20 @@ final class CompanionModel: ObservableObject {
         visibleCalendarChangesCache
     }
 
+    func visibleCalendarChange(for id: String) -> CalendarChange? {
+        visibleCalendarChangeByID[id]
+    }
+
     func cachedDashboardItems(for categoryID: String) -> [ServerRelaySyncItem] {
         dashboardItemsByCategoryID[categoryID] ?? []
     }
 
     func cachedVisibleDashboardItems(for categoryID: String) -> [ServerRelaySyncItem] {
         visibleDashboardItemsByCategoryID[categoryID] ?? []
+    }
+
+    func cachedVisibleDashboardItem(for itemID: String, categoryID: String) -> ServerRelaySyncItem? {
+        visibleDashboardItemLookupByCategoryID[categoryID]?[itemID]
     }
 
     fileprivate func cachedDashboardFilterOptions(for categoryID: String) -> CompanionItemFilterOptions? {
@@ -1401,6 +1415,7 @@ final class CompanionModel: ObservableObject {
         if visibleCalendarChangesCache != next {
             visibleCalendarChangesCache = next
         }
+        visibleCalendarChangeByID = Dictionary(next.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         rebuildChangeSummaryCalendarLookup(using: next)
     }
 
@@ -6562,7 +6577,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         guard let selectedItemID else {
             return nil
         }
-        return items.first { $0.id == selectedItemID }
+        return model.cachedVisibleDashboardItem(for: selectedItemID, categoryID: category.rawValue)
     }
 
     private var itemsResetKey: String {
@@ -6634,7 +6649,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
 
     private func refreshExternalSelection() {
         if let selectedItemID,
-           items.contains(where: { $0.id == selectedItemID }) {
+           model.cachedVisibleDashboardItem(for: selectedItemID, categoryID: category.rawValue) != nil {
             return
         }
 
@@ -6676,7 +6691,7 @@ private struct WorkstationTasksWorkspace: View {
         guard let selectedItemID else {
             return nil
         }
-        return selectedCategoryItems.first { $0.id == selectedItemID }
+        return model.cachedVisibleDashboardItem(for: selectedItemID, categoryID: selectedTaskCategory.rawValue)
     }
 
     private var itemsResetKey: String {
@@ -6777,7 +6792,7 @@ private struct WorkstationTasksWorkspace: View {
 
     private func refreshExternalSelection() {
         if let selectedItemID,
-           selectedCategoryItems.contains(where: { $0.id == selectedItemID }) {
+           model.cachedVisibleDashboardItem(for: selectedItemID, categoryID: selectedTaskCategory.rawValue) != nil {
             return
         }
 
@@ -6900,7 +6915,7 @@ private struct WorkstationCalendarWorkspace: View {
         guard let selectedChangeID else {
             return nil
         }
-        return changes.first { $0.id == selectedChangeID }
+        return model.visibleCalendarChange(for: selectedChangeID)
     }
 
     private var changesResetKey: String {
@@ -7115,7 +7130,7 @@ private struct WorkstationCalendarWorkspace: View {
 
     private func refreshExternalSelection() {
         if let selectedChangeID,
-           changes.contains(where: { $0.id == selectedChangeID }) {
+           model.visibleCalendarChange(for: selectedChangeID) != nil {
             return
         }
 
