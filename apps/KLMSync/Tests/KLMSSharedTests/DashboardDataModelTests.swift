@@ -1824,7 +1824,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionWorkstationMetrics.contains("static let listColumnMaxWidth: CGFloat = 700"))
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
         XCTAssertLessThan(
-            compactRoot.range(of: "CompanionSectionContent(section: selectedSection, model: model)")?.lowerBound ?? compactRoot.endIndex,
+            compactRoot.range(of: "CompanionDeferredSectionContent(section: selectedSection, model: model)")?.lowerBound ?? compactRoot.endIndex,
             compactRoot.range(of: "CompanionCompactTabBar(selectedSection: $selectedSection)")?.lowerBound ?? compactRoot.startIndex,
             "iPhone compact layout should keep content first and place the tab bar at the bottom, matching the design preview."
         )
@@ -3527,6 +3527,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("CompanionItemListPreloadStore.cachedData(for: currentKey)"))
         XCTAssertTrue(ios.contains("CompanionItemListPreloadStore.store(listData, for: inputKey)"))
         XCTAssertTrue(ios.contains("Task.detached(priority: .utility)"))
+        XCTAssertTrue(ios.contains("static let prewarmDelayNanoseconds: UInt64 = 120_000_000"))
+        XCTAssertTrue(ios.contains("try? await Task.sleep(nanoseconds: CompanionLargeList.prewarmDelayNanoseconds)"))
         XCTAssertTrue(inlineRows.contains("return isSelected ? \"checkmark.circle.fill\" : \"chevron.right\""))
         XCTAssertTrue(inlineRows.contains(".accessibilityValue(isSelected ? \"선택됨\" : \"\")"))
         XCTAssertTrue(selectableRows.contains(".accessibilityValue(selectedItemID == item.id ? \"선택됨\" : \"\")"))
@@ -3637,6 +3639,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("static let previewVisibleLimit = 5"))
         XCTAssertTrue(ios.contains("static let calendarVisibleLimit = 6"))
         XCTAssertTrue(ios.contains("static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000"))
+        XCTAssertTrue(ios.contains("static let prewarmDelayNanoseconds: UInt64 = 120_000_000"))
         XCTAssertTrue(ios.contains("func shouldDebounceComparedTo(_ previous: CompanionItemListInputKey?) -> Bool"))
         XCTAssertTrue(ios.contains("previous.query = query"))
         XCTAssertTrue(ios.contains("transaction.animation = nil"))
@@ -4368,6 +4371,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("@Environment(\\.horizontalSizeClass)"))
         XCTAssertTrue(ios.contains("private struct CompanionSplitRootView"))
         XCTAssertTrue(ios.contains("private struct WorkstationSidebar"))
+        XCTAssertTrue(ios.contains("private struct CompanionDeferredSectionContent"))
+        XCTAssertTrue(ios.contains("private let sectionRenderDelayNanoseconds: UInt64 = 35_000_000"))
+        XCTAssertTrue(ios.contains("try? await Task.sleep(nanoseconds: sectionRenderDelayNanoseconds)"))
         XCTAssertTrue(ios.contains("guard selectedSection != section else { return }"))
         XCTAssertFalse(ios.contains("guard displayedSection != section else"))
         XCTAssertFalse(ios.contains("guard displayedDashboardPreview != category || displayedChangeSummary != nil else"))
@@ -4379,6 +4385,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct CompanionSectionContent"))
         XCTAssertTrue(ios.contains("CompanionSplitRootView(model: model, selectedSection: $selectedSection)"))
         XCTAssertTrue(ios.contains("CompanionTabRootView(model: model)"))
+        XCTAssertTrue(ios.contains("CompanionDeferredSectionContent(section: selectedSection, model: model)"))
+        XCTAssertTrue(ios.contains("CompanionDeferredSectionContent(section: currentSection, model: model)"))
         XCTAssertTrue(ios.contains("private struct WorkstationDashboardCategoryWorkspace"))
         XCTAssertTrue(ios.contains("private struct WorkstationTasksWorkspace"))
         XCTAssertTrue(ios.contains("private struct WorkstationCalendarWorkspace"))

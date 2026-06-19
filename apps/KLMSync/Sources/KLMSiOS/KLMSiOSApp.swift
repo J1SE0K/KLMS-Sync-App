@@ -2501,7 +2501,7 @@ private struct CompanionTabRootView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CompanionSectionContent(section: selectedSection, model: model)
+            CompanionDeferredSectionContent(section: selectedSection, model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
             CompanionCompactTabBar(selectedSection: $selectedSection)
@@ -2590,7 +2590,7 @@ private struct CompanionSplitRootView: View {
             Rectangle()
                 .fill(Color.klmsBorder)
                 .frame(width: 1)
-            CompanionSectionContent(section: currentSection, model: model)
+            CompanionDeferredSectionContent(section: currentSection, model: model)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -2745,6 +2745,42 @@ private struct CompanionSidebarButton: View {
         [isSelected ? "선택됨" : nil, badgeText.map { "\($0)개" }]
             .compactMap { $0 }
             .joined(separator: ", ")
+    }
+}
+
+private struct CompanionDeferredSectionContent: View {
+    var section: CompanionAppSection
+    let model: CompanionModel
+    @State private var renderedSection: CompanionAppSection
+    @State private var renderTask: Task<Void, Never>?
+    private let sectionRenderDelayNanoseconds: UInt64 = 35_000_000
+
+    init(section: CompanionAppSection, model: CompanionModel) {
+        self.section = section
+        self.model = model
+        _renderedSection = State(initialValue: section)
+    }
+
+    var body: some View {
+        CompanionSectionContent(section: renderedSection, model: model)
+            .onChange(of: section) { _, nextSection in
+                scheduleRenderedSection(nextSection)
+            }
+            .onDisappear {
+                renderTask?.cancel()
+            }
+    }
+
+    private func scheduleRenderedSection(_ nextSection: CompanionAppSection) {
+        renderTask?.cancel()
+        renderTask = Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: sectionRenderDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+            companionPerformWithoutAnimation {
+                renderedSection = nextSection
+            }
+        }
     }
 }
 
@@ -4406,6 +4442,7 @@ private enum CompanionLargeList {
     static let calendarVisibleLimit = 6
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
+    static let prewarmDelayNanoseconds: UInt64 = 120_000_000
 
     static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
         horizontalSizeClass == .regular ? regularInitialVisibleLimit : initialVisibleLimit
@@ -4504,6 +4541,8 @@ private struct CompanionItemListPrewarmView: View {
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
             .task(id: prewarmKey) {
+                try? await Task.sleep(nanoseconds: CompanionLargeList.prewarmDelayNanoseconds)
+                guard !Task.isCancelled else { return }
                 await CompanionItemListPreloadStore.prewarm(model: model, categories: categories)
             }
     }
