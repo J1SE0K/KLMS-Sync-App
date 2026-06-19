@@ -58,6 +58,12 @@ private struct WorkspaceSmokeTarget {
     var contentIdentifier: String { "workspace-scroll-\(rawValue)" }
 }
 
+private struct SettingsSmokeTarget {
+    var rawValue: String
+    var expectedText: String
+    var identifier: String { "settings-\(rawValue)" }
+}
+
 private let workspaceTargets = [
     WorkspaceSmokeTarget(rawValue: "dashboard", title: "대시보드"),
     WorkspaceSmokeTarget(rawValue: "files", title: "파일"),
@@ -67,6 +73,14 @@ private let workspaceTargets = [
     WorkspaceSmokeTarget(rawValue: "activityLogs", title: "로그"),
     WorkspaceSmokeTarget(rawValue: "diagnostics", title: "진단"),
     WorkspaceSmokeTarget(rawValue: "settings", title: "설정"),
+]
+
+private let settingsTargets = [
+    SettingsSmokeTarget(rawValue: "app", expectedText: "바로 반영되는 설정"),
+    SettingsSmokeTarget(rawValue: "login", expectedText: "KAIST 아이디"),
+    SettingsSmokeTarget(rawValue: "sync", expectedText: "Safari 자동화"),
+    SettingsSmokeTarget(rawValue: "files", expectedText: "파일 확인"),
+    SettingsSmokeTarget(rawValue: "notice", expectedText: "메모 이름"),
 ]
 
 do {
@@ -98,16 +112,13 @@ private func runSmoke() throws {
     for target in workspaceTargets {
         try verifyWorkspaceNavigation(appElement: appElement, target: target)
     }
-    try verifySettingsTabNavigation(
-        appElement: appElement,
-        identifier: "settings-files",
-        expectedText: "파일 확인"
-    )
-    try verifySettingsTabNavigation(
-        appElement: appElement,
-        identifier: "settings-app",
-        expectedText: "바로 반영되는 설정"
-    )
+    for target in settingsTargets {
+        try verifySettingsTabNavigation(
+            appElement: appElement,
+            identifier: target.identifier,
+            expectedText: target.expectedText
+        )
+    }
     try verifyWorkspaceNavigation(appElement: appElement, target: workspaceTargets[0])
 
     print("ok: KLMS Mac workspace accessibility navigation is responsive")
