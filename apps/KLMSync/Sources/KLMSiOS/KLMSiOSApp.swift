@@ -11470,71 +11470,56 @@ private struct RemoteSettingGroup: Identifiable {
     var title: String
     var systemImage: String
     var detail: String
-    var expandedDetail: String
     var settings: [ServerRelaySetting]
 
     var id: String { title }
     var countText: String { "\(settings.count)개" }
-    var hasExpandedDetail: Bool {
-        !expandedDetail.isEmpty && expandedDetail != detail
-    }
-    var isDefaultExpanded: Bool {
-        title != "Safari" && title != "고급"
-    }
-    var isCollapsible: Bool {
-        title == "Safari" || title == "고급"
-    }
 
     static func grouped(settings: [ServerRelaySetting]) -> [RemoteSettingGroup] {
         let byKey = Dictionary(settings.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
         var used = Set<String>()
-        let specs: [(String, String, String, String, [String])] = [
+        let specs: [(String, String, String, [String])] = [
             (
                 "로그인",
                 "person.badge.key",
-                "로그인 확인과 인증번호 표시 방식을 정합니다.",
-                "인증번호 감지와 로그인 보조 방식을 정합니다. 동기화 중 필요한 알림은 어떤 탭에 있어도 상단에 바로 표시됩니다.",
+                "인증번호 감지와 로그인 보조 방식을 정합니다.",
                 ["KLMS_LOGIN_ASSIST_ENABLED", "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE"]
             ),
             (
                 "실행",
                 "arrow.triangle.2.circlepath",
-                "동기화 범위와 캘린더 반영 방식을 정합니다.",
-                "동기화 범위, 변경 없는 캘린더 항목 처리 기준을 정합니다. 값은 서버에 저장되어 Mac, iPhone, iPad가 같은 기준을 봅니다.",
+                "동기화 범위와 캘린더 반영 기준을 정합니다.",
                 ["SYNC_MODE", "CALENDAR_SKIP_UNCHANGED_DESIRED"]
             ),
             (
                 "파일",
                 "folder",
-                "파일 확인과 폴더 정리 방식을 정합니다.",
-                "파일 탐색 방식, 주차별 폴더 정리, 로컬 파일 보존 기준을 정합니다. 로컬 파일과 KLMS 등록 시각이 같으면 다시 받지 않습니다.",
+                "파일 탐색, 주차별 폴더, 보존 방식을 정합니다.",
                 ["FILE_REFRESH_MODE", "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY", "FILE_WEEKLY_FOLDERS_ENABLED", "FILE_KEEP_FRESH_DOWNLOADS", "FILE_PRESERVE_DOWNLOAD_ARCHIVE"]
             ),
             (
                 "공지 메모",
                 "checklist",
                 "숨긴 공지와 변경 없는 메모 처리 방식을 정합니다.",
-                "숨긴 공지를 Notes에 쓸지, 내용이 같은 공지를 다시 렌더링할지 정합니다. 메모 업데이트를 끄면 공지 수집은 유지하고 Notes 쓰기만 건너뜁니다.",
                 ["NOTICE_HIDE_HIDDEN_ITEMS", "NOTICE_NATIVE_STABLE_NOOP_SKIP"]
             ),
             (
                 "Safari",
                 "safari",
                 "KLMS를 읽을 때 쓰는 전용 Safari 창의 동작을 정합니다.",
-                "앱이 사용자 화면을 덜 방해하도록 전용 Safari 창을 관리합니다. 기존 Safari 창 재사용 여부도 여기에서 정합니다.",
                 ["KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "KLMS_SAFARI_BACKGROUND_WINDOW_MODE", "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED"]
             ),
         ]
 
         var groups: [RemoteSettingGroup] = specs.compactMap { spec in
-            let (title, systemImage, detail, expandedDetail, keys) = spec
+            let (title, systemImage, detail, keys) = spec
             let groupSettings = keys.compactMap { key -> ServerRelaySetting? in
                 guard let setting = byKey[key] else { return nil }
                 used.insert(key)
                 return setting
             }
             guard !groupSettings.isEmpty else { return nil }
-            return RemoteSettingGroup(title: title, systemImage: systemImage, detail: detail, expandedDetail: expandedDetail, settings: groupSettings)
+            return RemoteSettingGroup(title: title, systemImage: systemImage, detail: detail, settings: groupSettings)
         }
 
         let extras = settings.filter { !used.contains($0.key) }
@@ -11544,7 +11529,6 @@ private struct RemoteSettingGroup: Identifiable {
                     title: "고급",
                     systemImage: "slider.horizontal.3",
                     detail: "기본 화면에 분류되지 않은 설정입니다.",
-                    expandedDetail: "평소에는 바꾸지 않아도 됩니다. 정확히 의미를 아는 값만 수정하는 것이 안전합니다.",
                     settings: extras
                 )
             )
@@ -11556,65 +11540,24 @@ private struct RemoteSettingGroup: Identifiable {
 private struct RemoteSettingGroupSection: View {
     var group: RemoteSettingGroup
     @ObservedObject var model: CompanionModel
-    @State private var isExpanded: Bool
-
-    init(group: RemoteSettingGroup, model: CompanionModel) {
-        self.group = group
-        self.model = model
-        _isExpanded = State(initialValue: group.isDefaultExpanded)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if group.isCollapsible {
-                Button {
-                    companionPerformWithoutAnimation {
-                        isExpanded.toggle()
-                    }
-                } label: {
-                    groupHeader
-                        .contentShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
-                .accessibilityLabel("\(group.title) 설정 \(isExpanded ? "펼쳐짐" : "접힘")")
-                .accessibilityHint(isExpanded ? "\(group.title) 설정 접기" : "\(group.title) 설정 펼치기")
-            } else {
-                groupHeader
-                    .accessibilityElement(children: .combine)
-            }
+            groupHeader
+                .accessibilityElement(children: .combine)
 
-            if shouldShowExpandedDetail {
-                CompanionSettingHelpText(group.expandedDetail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(Color.klmsCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.klmsBorder.opacity(0.50), lineWidth: 1)
-                    )
-            }
-
-            if !group.isCollapsible || isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(group.settings) { setting in
-                        RemoteSettingRow(setting: setting, model: model)
-                    }
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(group.settings) { setting in
+                    RemoteSettingRow(setting: setting, model: model)
                 }
             }
         }
         .padding(11)
-        .background(
-            (!group.isCollapsible || isExpanded) ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
-            in: RoundedRectangle(cornerRadius: 12)
-        )
+        .background(Color.klmsSubtleCardBackground.opacity(0.86), in: RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke((!group.isCollapsible || isExpanded) ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
+                .stroke(Color.klmsSelectedBorder.opacity(0.48), lineWidth: 1)
         )
-    }
-
-    private var shouldShowExpandedDetail: Bool {
-        group.hasExpandedDetail && group.isCollapsible && isExpanded
     }
 
     private var groupHeader: some View {
@@ -11630,20 +11573,15 @@ private struct RemoteSettingGroupSection: View {
                 Text(group.detail)
                     .font(.caption2)
                     .foregroundStyle(Color.klmsSecondaryText)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
             Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 5) {
-                Text(group.countText)
-                    .font(.caption2.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(Color.klmsCardBackground, in: Capsule())
-                if group.isCollapsible {
-                    CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
-                }
-            }
+            Text(group.countText)
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(Color.klmsSecondaryText)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(Color.klmsCardBackground, in: Capsule())
         }
     }
 }
