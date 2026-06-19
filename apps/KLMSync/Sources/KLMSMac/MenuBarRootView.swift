@@ -46,6 +46,9 @@ struct MenuBarRootView: View {
         .overlay(alignment: .topLeading) {
             MacWorkspaceSelectionAccessibilityMarker(section: selectedSection)
         }
+        .overlay(alignment: .topLeading) {
+            MacWorkspaceRenderedAccessibilityMarker(section: renderedSection)
+        }
         .onChange(of: selectedSection) { _, nextSection in
             queueRenderedSection(nextSection)
         }
@@ -88,6 +91,22 @@ private struct MacWorkspaceSelectionAccessibilityMarker: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(section.title) 내용")
             .accessibilityIdentifier("workspace-content-\(section.rawValue)")
+    }
+}
+
+private struct MacWorkspaceRenderedAccessibilityMarker: View {
+    var section: KLMSMacSection
+
+    var body: some View {
+        Text("\(section.title) 렌더링됨")
+            .font(.system(size: 1))
+            .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
+            .lineLimit(1)
+            .frame(width: 1, height: 1)
+            .clipped()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(section.title) 렌더링됨")
+            .accessibilityIdentifier("workspace-rendered-section-\(section.rawValue)")
     }
 }
 

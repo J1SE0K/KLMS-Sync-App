@@ -42,7 +42,7 @@ private enum ProbeFailure: Error, CustomStringConvertible {
 private struct ProbeTarget {
     var rawValue: String
     var buttonIdentifier: String { "workspace-\(rawValue)" }
-    var contentIdentifier: String { "workspace-scroll-\(rawValue)" }
+    var contentIdentifier: String { "workspace-rendered-section-\(rawValue)" }
 }
 
 private let environment = ProcessInfo.processInfo.environment
