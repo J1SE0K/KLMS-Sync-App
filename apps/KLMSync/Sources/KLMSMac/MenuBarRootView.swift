@@ -152,6 +152,8 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
                 content()
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("workspace-panel-\(id)")
         .onAppear {
             prepareContentIfNeeded()
         }

@@ -56,7 +56,9 @@ private struct WorkspaceSmokeTarget {
     var title: String
     var expectedTexts: [String] = []
     var buttonIdentifier: String { "workspace-\(rawValue)" }
-    var contentIdentifier: String { "workspace-scroll-\(rawValue)" }
+    var scrollIdentifier: String { "workspace-scroll-\(rawValue)" }
+    var panelIdentifier: String { "workspace-panel-workspace-\(rawValue)" }
+    var renderedIdentifier: String { "workspace-rendered-section-\(rawValue)" }
 }
 
 private struct SettingsSmokeTarget {
@@ -67,13 +69,13 @@ private struct SettingsSmokeTarget {
 
 private let workspaceTargets = [
     WorkspaceSmokeTarget(rawValue: "dashboard", title: "대시보드", expectedTexts: ["전체 동기화"]),
-    WorkspaceSmokeTarget(rawValue: "files", title: "파일"),
-    WorkspaceSmokeTarget(rawValue: "tasks", title: "과제/시험"),
-    WorkspaceSmokeTarget(rawValue: "notices", title: "공지"),
-    WorkspaceSmokeTarget(rawValue: "calendar", title: "캘린더"),
+    WorkspaceSmokeTarget(rawValue: "files", title: "파일", expectedTexts: ["파일 목록", "필터와 검색"]),
+    WorkspaceSmokeTarget(rawValue: "tasks", title: "과제/시험", expectedTexts: ["과제", "시험", "필터와 검색"]),
+    WorkspaceSmokeTarget(rawValue: "notices", title: "공지", expectedTexts: ["공지 분류"]),
+    WorkspaceSmokeTarget(rawValue: "calendar", title: "캘린더", expectedTexts: ["캘린더 일정", "KLMS 기준 반영"]),
     WorkspaceSmokeTarget(rawValue: "activityLogs", title: "로그", expectedTexts: ["실행 로그 지우기", "서버 로그 지우기"]),
     WorkspaceSmokeTarget(rawValue: "diagnostics", title: "진단", expectedTexts: ["상태 검사", "권한/환경 진단"]),
-    WorkspaceSmokeTarget(rawValue: "settings", title: "설정"),
+    WorkspaceSmokeTarget(rawValue: "settings", title: "설정", expectedTexts: ["바로 반영되는 설정"]),
 ]
 
 private let settingsTargets = [
@@ -219,8 +221,10 @@ private func verifyWorkspaceNavigation(
         throw SmokeFailure.selectedValueMissing(target.buttonIdentifier)
     }
 
-    guard waitForElement(withIdentifier: target.contentIdentifier, in: appElement, timeout: timeout) != nil else {
-        throw SmokeFailure.workspaceContentMissing(target.contentIdentifier)
+    for identifier in [target.scrollIdentifier, target.panelIdentifier, target.renderedIdentifier] {
+        guard waitForElement(withIdentifier: identifier, in: appElement, timeout: timeout) != nil else {
+            throw SmokeFailure.workspaceContentMissing(identifier)
+        }
     }
 
     for expectedText in target.expectedTexts {
