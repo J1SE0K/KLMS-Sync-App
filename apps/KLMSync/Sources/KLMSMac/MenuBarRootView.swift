@@ -912,31 +912,115 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
 
 private struct TaskAndExamWorkspaceView: View {
     let model: KLMSMacModel
-    private let columns = [
-        GridItem(.flexible(minimum: 280), spacing: 12, alignment: .top),
-        GridItem(.flexible(minimum: 280), spacing: 12, alignment: .top),
-    ]
+    @State private var selectedKind: DashboardDetailKind = .assignments
 
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-            taskPanels
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    @ViewBuilder
-    private var taskPanels: some View {
-        cachedDashboardDetailPanel(kind: .assignments)
-            .equatable()
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        cachedDashboardDetailPanel(kind: .exams)
-            .equatable()
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-        if (model.snapshot.visibleCounts.helpDesk) > 0 {
-            cachedDashboardDetailPanel(kind: .helpDesk)
+        VStack(alignment: .leading, spacing: 12) {
+            taskKindSelector
+            cachedDashboardDetailPanel(kind: activeKind)
                 .equatable()
                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                .gridCellColumns(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear {
+            normalizeSelection()
+        }
+        .onChange(of: availableKinds.map(\.rawValue).joined(separator: ":")) { _, _ in
+            normalizeSelection()
+        }
+    }
+
+    private var taskKindSelector: some View {
+        HStack(spacing: 8) {
+            ForEach(availableKinds) { kind in
+                taskKindButton(kind)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
+    }
+
+    private func taskKindButton(_ kind: DashboardDetailKind) -> some View {
+        let isSelected = activeKind == kind
+        return Button {
+            guard selectedKind != kind else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                selectedKind = kind
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: taskKindIcon(kind))
+                    .font(.caption.weight(.bold))
+                Text(kind.title)
+                    .font(.caption.weight(.bold))
+                Text("\(taskKindCount(kind))")
+                    .font(.caption.monospacedDigit().weight(.bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(isSelected ? Color.klmsMacSelectedForeground.opacity(0.16) : Color.klmsMacSubtleCardBackground, in: Capsule())
+            }
+            .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
+            .padding(.horizontal, 11)
+            .frame(minHeight: 44)
+            .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground.opacity(0.70), in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacBorder.opacity(0.70), lineWidth: isSelected ? 1.25 : 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 10))
+        .accessibilityLabel("\(kind.title) 목록")
+        .accessibilityValue(isSelected ? "선택됨, \(taskKindCount(kind))개" : "\(taskKindCount(kind))개")
+    }
+
+    private var availableKinds: [DashboardDetailKind] {
+        var kinds: [DashboardDetailKind] = [.assignments, .exams]
+        if model.snapshot.visibleCounts.helpDesk > 0 {
+            kinds.append(.helpDesk)
+        }
+        return kinds
+    }
+
+    private var activeKind: DashboardDetailKind {
+        availableKinds.contains(selectedKind) ? selectedKind : .assignments
+    }
+
+    private func normalizeSelection() {
+        guard !availableKinds.contains(selectedKind) else { return }
+        selectedKind = availableKinds.first ?? .assignments
+    }
+
+    private func taskKindCount(_ kind: DashboardDetailKind) -> Int {
+        switch kind {
+        case .assignments:
+            model.snapshot.visibleCounts.assignments
+        case .exams:
+            model.snapshot.visibleCounts.exams
+        case .helpDesk:
+            model.snapshot.visibleCounts.helpDesk
+        default:
+            0
+        }
+    }
+
+    private func taskKindIcon(_ kind: DashboardDetailKind) -> String {
+        switch kind {
+        case .assignments:
+            "checklist"
+        case .exams:
+            "calendar.badge.clock"
+        case .helpDesk:
+            "questionmark.circle"
+        default:
+            "circle"
         }
     }
 
