@@ -99,6 +99,7 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
         Group {
             if loadedID == id {
                 content()
+                    .accessibilityIdentifier(contentIdentifier ?? id)
             } else {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -115,9 +116,9 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.klmsMacBorder, lineWidth: 1)
                 }
+                .accessibilityIdentifier("workspace-loading-\(contentIdentifier ?? id)")
             }
         }
-        .accessibilityIdentifier(contentIdentifier ?? id)
         .task(id: id) {
             loadedID = nil
             await Task.yield()
@@ -194,7 +195,7 @@ private struct MacWorkstationLayoutView: View {
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
+        .accessibilityIdentifier("workspace-container-\(selectedSection.rawValue)")
     }
 
     private var workspaceContentMarker: some View {
@@ -203,7 +204,7 @@ private struct MacWorkstationLayoutView: View {
             .foregroundStyle(.clear)
             .frame(width: 1, height: 1)
             .accessibilityLabel("\(selectedSection.title) 내용")
-            .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
+            .accessibilityIdentifier("workspace-marker-\(selectedSection.rawValue)")
     }
 
     private func cachedDashboardDetailPanel(kind: DashboardDetailKind) -> DashboardDetailPanelView {
