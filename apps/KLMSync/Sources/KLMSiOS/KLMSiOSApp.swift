@@ -2461,6 +2461,10 @@ private enum CompanionWorkstationMetrics {
     static let compactDetailColumnMinWidth: CGFloat = 300
     static let compactDetailColumnIdealWidth: CGFloat = 430
 
+    static let compactListColumnMinWidth: CGFloat = 276
+    static let compactListColumnIdealWidth: CGFloat = 320
+    static let compactListColumnMaxWidth: CGFloat = 360
+
     static let listColumnMinWidth: CGFloat = 380
     static let listColumnIdealWidth: CGFloat = 520
     static let listColumnMaxWidth: CGFloat = 620
@@ -6529,6 +6533,24 @@ private struct WorkstationDashboardCategoryWorkspace: View {
                     )
             }
 
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                categoryListPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.compactListColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.compactListColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.compactListColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+
+                categoryDetailPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.compactDetailColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.compactDetailColumnIdealWidth,
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+            }
+
             VStack(alignment: .leading, spacing: 12) {
                 categoryListPanel
                 categoryDetailPanel
@@ -6645,6 +6667,24 @@ private struct WorkstationTasksWorkspace: View {
                     .frame(
                         minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
                         idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+            }
+
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                tasksListPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.compactListColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.compactListColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.compactListColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+
+                tasksDetailPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.compactDetailColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.compactDetailColumnIdealWidth,
                         maxWidth: .infinity,
                         alignment: .topLeading
                     )
@@ -6778,6 +6818,24 @@ private struct WorkstationCalendarWorkspace: View {
                     .frame(
                         minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
                         idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+            }
+
+            HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+                calendarListPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.compactListColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.compactListColumnIdealWidth,
+                        maxWidth: CompanionWorkstationMetrics.compactListColumnMaxWidth,
+                        alignment: .topLeading
+                    )
+
+                calendarDetailPanel
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.compactDetailColumnMinWidth,
+                        idealWidth: CompanionWorkstationMetrics.compactDetailColumnIdealWidth,
                         maxWidth: .infinity,
                         alignment: .topLeading
                     )
