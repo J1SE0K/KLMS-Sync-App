@@ -2446,25 +2446,25 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
 
 private enum CompanionWorkstationMetrics {
     static let sidebarWidth: CGFloat = 224
-    static let horizontalPadding: CGFloat = 18
+    static let horizontalPadding: CGFloat = 22
     static let topPadding: CGFloat = 14
     static let bottomPadding: CGFloat = 24
-    static let columnSpacing: CGFloat = 16
+    static let columnSpacing: CGFloat = 18
 
     static let commandColumnMinWidth: CGFloat = 312
     static let commandColumnIdealWidth: CGFloat = 352
     static let commandColumnMaxWidth: CGFloat = 392
 
     static let metricColumnMinWidth: CGFloat = 332
-    static let metricColumnIdealWidth: CGFloat = 420
-    static let metricColumnMaxWidth: CGFloat = 500
+    static let metricColumnIdealWidth: CGFloat = 448
+    static let metricColumnMaxWidth: CGFloat = 520
 
     static let detailColumnMinWidth: CGFloat = 380
-    static let detailColumnIdealWidth: CGFloat = 620
+    static let detailColumnIdealWidth: CGFloat = 700
 
     static let listColumnMinWidth: CGFloat = 380
-    static let listColumnIdealWidth: CGFloat = 520
-    static let listColumnMaxWidth: CGFloat = 620
+    static let listColumnIdealWidth: CGFloat = 560
+    static let listColumnMaxWidth: CGFloat = 700
 }
 
 struct CompanionRootView: View {

@@ -96,30 +96,30 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
     }
 
     var body: some View {
-        Group {
-            if loadedID == id {
-                content()
-            } else {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(loadingText)
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                    Spacer(minLength: 0)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.klmsMacBorder, lineWidth: 1)
-                }
-                .accessibilityIdentifier("workspace-loading-\(contentIdentifier ?? id)")
-            }
-        }
-        .overlay(alignment: .topLeading) {
+        ZStack(alignment: .topLeading) {
             workspaceContentAccessibilityMarker
+            Group {
+                if loadedID == id {
+                    content()
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(loadingText)
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.klmsMacBorder, lineWidth: 1)
+                    }
+                    .accessibilityIdentifier("workspace-loading-\(contentIdentifier ?? id)")
+                }
+            }
         }
         .task(id: id) {
             loadedID = nil
@@ -130,8 +130,13 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
     }
 
     private var workspaceContentAccessibilityMarker: some View {
-        Color.clear
+        Text(loadedID == id ? "작업공간 내용" : loadingText)
+            .font(.system(size: 1))
+            .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
+            .lineLimit(1)
             .frame(width: 1, height: 1)
+            .clipped()
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(loadedID == id ? "작업공간 내용" : loadingText)
             .accessibilityIdentifier(contentIdentifier ?? id)
     }
@@ -210,10 +215,10 @@ private struct MacWorkstationLayoutView: View {
     private var workspaceContentMarker: some View {
         Text(selectedSection.title)
             .font(.system(size: 1))
-            .foregroundStyle(.clear)
+            .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
             .frame(width: 1, height: 1)
             .accessibilityLabel("\(selectedSection.title) 내용")
-            .accessibilityIdentifier("workspace-marker-\(selectedSection.rawValue)")
+            .accessibilityIdentifier("workspace-content-\(selectedSection.rawValue)")
     }
 
     private func cachedDashboardDetailPanel(kind: DashboardDetailKind) -> DashboardDetailPanelView {
