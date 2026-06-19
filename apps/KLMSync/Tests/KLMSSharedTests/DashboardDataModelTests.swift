@@ -1467,12 +1467,14 @@ final class DashboardDataModelTests: XCTestCase {
         let macRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift")
         let macDetailRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/DashboardDetailView.swift")
         let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
+        let macSettingsRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/SettingsView.swift")
         let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
         let mac = try String(contentsOf: macRoot, encoding: .utf8)
         let sources = try [
             mac,
             String(contentsOf: macDetailRoot, encoding: .utf8),
             String(contentsOf: macModelRoot, encoding: .utf8),
+            String(contentsOf: macSettingsRoot, encoding: .utf8),
             String(contentsOf: iosRoot, encoding: .utf8),
         ].joined(separator: "\n")
         let logTextBlock = try sourceStructBody(named: "LogTextBlock", in: mac)
@@ -2530,7 +2532,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("KLMSMacSettingsDisclosureButtonStyle"))
         XCTAssertFalse(macSettings.contains("withAnimation(.easeInOut(duration: 0.08))"))
         XCTAssertFalse(macSettings.contains(".transition(.opacity.combined(with: .move(edge: .top)))"))
-        XCTAssertTrue(macSettings.contains(".transition(.opacity)"))
+        XCTAssertFalse(macSettings.contains(".transition(.opacity)"))
         XCTAssertTrue(macSettings.contains("SettingsExpansionBadge(isExpanded: isExpanded)"))
         XCTAssertTrue(macSettings.contains("private struct SettingsExpansionBadge"))
         XCTAssertTrue(macSettings.contains("Image(systemName: isExpanded ? \"chevron.up\" : \"chevron.down\")"))
