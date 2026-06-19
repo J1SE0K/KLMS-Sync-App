@@ -42,6 +42,7 @@ private enum ProbeFailure: Error, CustomStringConvertible {
 private struct ProbeTarget {
     var rawValue: String
     var buttonIdentifier: String { "workspace-\(rawValue)" }
+    var selectionIdentifier: String { "workspace-content-\(rawValue)" }
     var contentIdentifier: String { "workspace-rendered-section-\(rawValue)" }
 }
 
@@ -183,7 +184,7 @@ private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Dou
         throw ProbeFailure.pressFailed(identifier: target.buttonIdentifier, error)
     }
 
-    guard waitForSelectedValue(on: button, timeout: timeout) else {
+    guard waitForElement(withIdentifier: target.selectionIdentifier, in: appElement, timeout: timeout) != nil else {
         throw ProbeFailure.workspaceSelectionMissing(target.buttonIdentifier)
     }
     guard waitForElement(withIdentifier: target.contentIdentifier, in: appElement, timeout: timeout) != nil else {
