@@ -7390,6 +7390,7 @@ private struct CompanionInlineItemRowsView: View {
             }
             deferredExternalSelectionTask = Task { @MainActor in
                 await Task.yield()
+                try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
                 guard !Task.isCancelled,
                       (optimisticExternalSelectedItemID ?? externalSelectedItemID) == itemID else {
                     return
@@ -7495,6 +7496,7 @@ private struct CompanionSelectableItemListRows: View {
         }
         deferredSelectionTask = Task { @MainActor in
             await Task.yield()
+            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
             guard !Task.isCancelled, selectedItemID == itemID else { return }
             onSelect(item)
         }
