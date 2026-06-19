@@ -3664,7 +3664,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("static func previewVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int"))
         XCTAssertTrue(ios.contains("static func calendarVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int"))
         XCTAssertTrue(ios.contains("static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000"))
-        XCTAssertTrue(ios.contains("static let detailRenderDelayNanoseconds: UInt64 = 35_000_000"))
+        XCTAssertTrue(ios.contains("static let detailRenderDelayNanoseconds: UInt64 = 16_000_000"))
         XCTAssertTrue(ios.contains("static let prewarmDelayNanoseconds: UInt64 = 120_000_000"))
         XCTAssertTrue(ios.contains("func shouldDebounceComparedTo(_ previous: CompanionItemListInputKey?) -> Bool"))
         XCTAssertTrue(ios.contains("previous.query = query"))
