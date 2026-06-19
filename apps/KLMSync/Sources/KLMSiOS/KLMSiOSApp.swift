@@ -222,6 +222,7 @@ final class CompanionModel: ObservableObject {
     private var activeCalendarActionByID: [String: ServerRelayItemAction] = [:]
     private var dashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
     private var visibleDashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
+    private var dashboardFilterOptionsByCategoryID: [String: CompanionItemFilterOptions] = [:]
     private var visibleDashboardTaskItems: [ServerRelaySyncItem] = []
 
     private static let terminalLogSummaryDisplayInterval: TimeInterval = 5 * 60
@@ -442,15 +443,18 @@ final class CompanionModel: ObservableObject {
     private func rebuildDashboardItemLookup() {
         var next: [String: [ServerRelaySyncItem]] = [:]
         var nextVisible: [String: [ServerRelaySyncItem]] = [:]
+        var nextFilterOptions: [String: CompanionItemFilterOptions] = [:]
         for category in DashboardMetricCategory.allCases {
             let categoryItems = dashboardSyncItems
                 .filter { category.includes($0) }
                 .companionSorted(by: .recent)
             next[category.rawValue] = categoryItems
             nextVisible[category.rawValue] = categoryItems.filter { !$0.isHidden }
+            nextFilterOptions[category.rawValue] = CompanionItemFilterOptions(items: categoryItems, category: category)
         }
         dashboardItemsByCategoryID = next
         visibleDashboardItemsByCategoryID = nextVisible
+        dashboardFilterOptionsByCategoryID = nextFilterOptions
         visibleDashboardTaskItems = [
             nextVisible[DashboardMetricCategory.assignments.rawValue] ?? [],
             nextVisible[DashboardMetricCategory.exams.rawValue] ?? [],
@@ -1221,6 +1225,10 @@ final class CompanionModel: ObservableObject {
 
     func cachedVisibleDashboardItems(for categoryID: String) -> [ServerRelaySyncItem] {
         visibleDashboardItemsByCategoryID[categoryID] ?? []
+    }
+
+    fileprivate func cachedDashboardFilterOptions(for categoryID: String) -> CompanionItemFilterOptions? {
+        dashboardFilterOptionsByCategoryID[categoryID]
     }
 
     func cachedVisibleDashboardTaskItems() -> [ServerRelaySyncItem] {
@@ -4320,6 +4328,20 @@ private enum CompanionLargeList {
     static let filterRebuildDelayNanoseconds: UInt64 = 16_000_000
 }
 
+private struct CompanionItemFilterOptions: Equatable, Sendable {
+    var courseOptions: [String]
+    var yearOptions: [String]
+    var semesterOptions: [String]
+    var availableStatusFilters: [CompanionItemStatusFilter]
+
+    init(items: [ServerRelaySyncItem], category: DashboardMetricCategory?) {
+        courseOptions = CompanionItemListFilter.courseOptions(for: items)
+        yearOptions = CompanionItemListFilter.yearOptions(for: items)
+        semesterOptions = CompanionItemListFilter.semesterOptions(for: items)
+        availableStatusFilters = CompanionItemStatusFilter.options(for: category, items: items)
+    }
+}
+
 private struct CompanionItemListData: Sendable {
     var baseItems: [ServerRelaySyncItem]
     var courseOptions: [String]
@@ -4341,15 +4363,17 @@ private struct CompanionItemListData: Sendable {
         selectedYear: String,
         selectedSemester: String,
         newOnly: Bool,
-        recentOnly: Bool
+        recentOnly: Bool,
+        filterOptions: CompanionItemFilterOptions? = nil
     ) {
         let base = category.map { metric in
             isCategoryPrefiltered ? items : items.filter { metric.includes($0) }
         } ?? items
-        let courses = CompanionItemListFilter.courseOptions(for: base)
-        let years = CompanionItemListFilter.yearOptions(for: base)
-        let semesters = CompanionItemListFilter.semesterOptions(for: base)
-        let statusFilters = CompanionItemStatusFilter.options(for: category, items: base)
+        let resolvedFilterOptions = filterOptions ?? CompanionItemFilterOptions(items: base, category: category)
+        let courses = resolvedFilterOptions.courseOptions
+        let years = resolvedFilterOptions.yearOptions
+        let semesters = resolvedFilterOptions.semesterOptions
+        let statusFilters = resolvedFilterOptions.availableStatusFilters
         let effectiveStatus = statusFilters.contains(statusFilter)
             ? statusFilter
             : CompanionItemStatusFilter.defaultFilter(for: category)
@@ -6237,6 +6261,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
         let selectedSemester = selectedSemester
         let newOnly = newOnly
         let recentOnly = recentOnly
+        let filterOptions = model.cachedDashboardFilterOptions(for: category.rawValue)
         let listData = await Task.detached(priority: .userInitiated) {
             CompanionItemListData(
                 items: items,
@@ -6250,7 +6275,8 @@ private struct DashboardCategoryInlineDetailPanel: View {
                 selectedYear: selectedYear,
                 selectedSemester: selectedSemester,
                 newOnly: newOnly,
-                recentOnly: recentOnly
+                recentOnly: recentOnly,
+                filterOptions: filterOptions
             )
         }.value
         guard !Task.isCancelled, inputKey == listInputKey else { return }
