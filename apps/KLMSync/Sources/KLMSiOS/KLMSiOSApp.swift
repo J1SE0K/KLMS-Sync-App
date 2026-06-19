@@ -5642,7 +5642,7 @@ private struct RemoteMetricTile: View {
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 14))
         .accessibilityLabel("\(label) \(value)개")
-        .accessibilityValue(isSelected ? "선택됨" : "")
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(label) 상세를 아래에 엽니다.")
     }
 }
@@ -5734,7 +5734,7 @@ private struct WorkstationMetricCard: View {
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
         .accessibilityLabel("\(category.title) \(value)개")
-        .accessibilityValue(isSelected ? "선택됨" : "")
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(category.title) 상세와 처리 버튼을 오른쪽 패널에 표시합니다.")
     }
 }
@@ -6974,7 +6974,7 @@ private struct WorkstationTaskCategorySelector: View {
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
         .accessibilityLabel("\(category.title) \(value)개")
-        .accessibilityValue(isSelected ? "선택됨" : "")
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(category.title) 목록을 가운데 작업 영역에 표시합니다.")
     }
 }
@@ -7339,7 +7339,7 @@ private struct CompanionInlineItemRowsView: View {
                         .equatable()
                     }
                     .buttonStyle(KLMSCardButtonStyle())
-                    .accessibilityValue(isSelected ? "선택됨" : "")
+                    .accessibilityValue(presentation == .inlineDetail ? (isSelected ? "펼쳐짐" : "접힘") : (isSelected ? "선택됨" : "선택 안 됨"))
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "상세 패널에 항목을 표시합니다.")
 
                     if presentation == .inlineDetail && selectedItemID == item.id {
@@ -7470,7 +7470,7 @@ private struct CompanionSelectableItemListRows: View {
                         .equatable()
                 }
                 .buttonStyle(KLMSCardButtonStyle())
-                .accessibilityValue(selectedItemID == item.id ? "선택됨" : "")
+                .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
                 .accessibilityHint("항목 상세를 엽니다.")
             }
             if items.count > visibleItems.count {

@@ -252,7 +252,7 @@ struct SettingsView: View {
         }
         .accessibilityLabel(tab.title)
         .accessibilityIdentifier("settings-\(tab.rawValue)")
-        .accessibilityValue(isSelected ? "선택됨" : "")
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
     }
 
     private var loginSettings: some View {
