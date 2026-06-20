@@ -3060,14 +3060,18 @@ private struct CompanionStatusScreen: View {
                 .id(category)
         } else if horizontalSizeClass == .regular {
             VStack(alignment: .leading, spacing: 12) {
-                WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)
-                WorkstationDashboardOverviewPanel(
-                    data: WorkstationDashboardOverviewData(model: model),
-                    showsMetrics: false,
-                    onOpenCategory: { category in
-                        selectDashboardCategory(category)
-                    }
-                )
+                if model.hasLoadedServerSyncData {
+                    WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)
+                    WorkstationDashboardOverviewPanel(
+                        data: WorkstationDashboardOverviewData(model: model),
+                        showsMetrics: false,
+                        onOpenCategory: { category in
+                            selectDashboardCategory(category)
+                        }
+                    )
+                } else {
+                    CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                }
             }
         }
     }
