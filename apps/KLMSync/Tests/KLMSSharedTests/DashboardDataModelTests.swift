@@ -2811,6 +2811,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("\"KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED\""))
         XCTAssertTrue(ios.contains("KLMS를 읽을 때 전용 Safari 창을 백그라운드처럼 다룹니다."))
         XCTAssertTrue(ios.contains("KLMS Sync가 만든 Safari 창을 재사용해 새 창이 계속 늘어나는 일을 줄입니다."))
+        XCTAssertTrue(ios.contains("groups.firstIndex(where: { $0.title == \"고급\" })"))
+        XCTAssertTrue(ios.contains("groups[advancedIndex].settings.append(contentsOf: extras)"))
         XCTAssertFalse(ios.contains("\"Safari\",\n                \"safari\""))
         XCTAssertTrue(ios.contains("private struct CompanionConnectionInput"))
         let companionConnectionInput = try sourceStructBody(named: "CompanionConnectionInput", in: ios)

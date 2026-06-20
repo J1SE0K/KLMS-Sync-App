@@ -11835,14 +11835,18 @@ private struct RemoteSettingGroup: Identifiable {
 
         let extras = settings.filter { !used.contains($0.key) }
         if !extras.isEmpty {
-            groups.append(
-                RemoteSettingGroup(
-                    title: "고급",
-                    systemImage: "slider.horizontal.3",
-                    detail: "Safari 창 동작처럼 자주 바꾸지 않는 설정입니다.",
-                    settings: extras
+            if let advancedIndex = groups.firstIndex(where: { $0.title == "고급" }) {
+                groups[advancedIndex].settings.append(contentsOf: extras)
+            } else {
+                groups.append(
+                    RemoteSettingGroup(
+                        title: "고급",
+                        systemImage: "slider.horizontal.3",
+                        detail: "Safari 창 동작처럼 자주 바꾸지 않는 설정입니다.",
+                        settings: extras
+                    )
                 )
-            )
+            }
         }
         return groups
     }
