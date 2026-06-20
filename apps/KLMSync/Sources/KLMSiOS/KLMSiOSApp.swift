@@ -13166,7 +13166,7 @@ private struct RemoteSettingRow: View {
         case .choice:
             Menu {
                 ForEach(setting.options, id: \.self) { option in
-                    Button(option) {
+                    Button(settingChoiceTitle(option)) {
                         Task {
                             await model.createSettingAction(setting: setting, value: option)
                         }
@@ -13174,7 +13174,7 @@ private struct RemoteSettingRow: View {
                 }
             } label: {
                 HStack {
-                    Text(setting.value.nilIfEmpty ?? "선택")
+                    Text(settingChoiceTitle(setting.value.nilIfEmpty ?? ""))
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.up.chevron.down")
@@ -13203,18 +13203,48 @@ private struct RemoteSettingRow: View {
 
     private var settingExplanation: String? {
         switch setting.key {
+        case "KLMS_LOGIN_ASSIST_ENABLED":
+            return "KLMS가 로그인을 요구하면 인증번호를 찾아 상단 알림으로 보여줍니다."
+        case "KLMS_LOGIN_ASSIST_MODE":
+            return "직접 선택은 인증번호만 보여주고, 자동 보조는 가능한 범위에서 로그인 흐름을 도와줍니다."
+        case "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE":
+            return "앱 창이 앞에 없어도 로그인 상태 확인과 인증번호 감지를 시도합니다."
         case "SYNC_MODE":
             return "자동은 캐시와 변경 여부를 보고 필요한 범위를 고릅니다. 빠른 모드는 기존 데이터를 우선 재사용하고, 전체는 가능한 데이터를 다시 읽습니다."
         case "FILE_REFRESH_MODE":
             return "자동은 변경 가능성이 있는 파일 페이지를 더 확인합니다. 빠른 모드는 기존 캐시 재사용을 우선합니다."
         case "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY":
             return "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다."
+        case "FILE_KEEP_FRESH_DOWNLOADS":
+            return "새로 받은 파일의 임시 다운로드본을 작업 폴더에 남깁니다. 평소에는 꺼두는 편이 깔끔합니다."
         case "FILE_WEEKLY_FOLDERS_ENABLED":
             return "파일을 과목, 주차, KLMS 출처 구조에 맞춰 정리합니다. 기본값은 켜짐입니다."
+        case "FILE_FORCE_DOWNLOAD":
+            return "로컬에 같은 파일이 있어도 다시 받습니다. 파일이 꼬였을 때만 잠깐 켜세요."
+        case "FILE_PRESERVE_DOWNLOAD_ARCHIVE":
+            return "정리 후에도 다운로드 작업 폴더의 보관본을 남깁니다. 저장 공간을 더 씁니다."
+        case "NOTICE_COLLAPSE_SECTIONS":
+            return "공지 메모의 큰 묶음을 접힌 상태로 시작합니다. 첫 화면을 짧게 보고 싶을 때만 켜세요."
+        case "NOTICE_COLLAPSE_COURSES":
+            return "공지 메모에서 과목별 묶음을 접습니다. 기본값은 켜짐입니다."
+        case "NOTICE_COLLAPSE_NOTICE_ITEMS":
+            return "공지 하나하나를 접힌 상태로 둡니다. 내용 확인이 느려질 수 있어 기본값은 꺼짐입니다."
+        case "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS":
+            return "공지 제목을 더 굵은 제목 스타일로 씁니다. 기존 양식과 다르게 보일 수 있습니다."
         case "NOTICE_HIDE_HIDDEN_ITEMS":
             return "숨긴 공지는 Notes 메모에 쓰지 않습니다. KLMS 원본 공지는 그대로 둡니다."
         case "NOTICE_NATIVE_STABLE_NOOP_SKIP":
             return "읽음/중요 표시는 유지하되, 공지 내용이 그대로면 Notes 메모를 다시 쓰지 않습니다."
+        case "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE":
+            return "공지 메모의 읽음/중요 체크 상태를 매번 확인합니다. 상태가 풀리는 일을 줄입니다."
+        case "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT":
+            return "내용이 바뀌지 않은 공지는 양식 검사를 건너뜁니다. 속도는 빨라지지만 양식 확인은 줄어듭니다."
+        case "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY":
+            return "공지 본문을 먼저 정리한 뒤 붙여넣습니다. Notes 양식 적용 문제를 확인할 때만 켜세요."
+        case "NOTICE_NATIVE_PLAIN_TEXT_PASTE":
+            return "공지 메모를 일반 텍스트로 붙여넣습니다. 체크리스트와 접기 양식은 줄어듭니다."
+        case "CALENDAR_SKIP_UNCHANGED_DESIRED":
+            return "제목, 시간, 장소가 이미 맞는 일정은 다시 쓰지 않습니다. 캘린더 반영 속도를 줄여줍니다."
         case "KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED":
             return "KLMS를 읽을 때 전용 Safari 창을 백그라운드처럼 다룹니다. 사용 중인 화면을 덜 방해합니다."
         case "KLMS_SAFARI_BACKGROUND_WINDOW_MODE":
@@ -13231,9 +13261,32 @@ private struct RemoteSettingRow: View {
         case .bool:
             return setting.boolValue ? "켜짐" : "꺼짐"
         case .choice:
-            return setting.value.nilIfEmpty ?? "선택"
+            return settingChoiceTitle(setting.value.nilIfEmpty ?? "")
         case .number, .text:
             return compactSettingValueSummary(setting.value)
+        }
+    }
+
+    private func settingChoiceTitle(_ value: String) -> String {
+        switch value {
+        case "auto":
+            return "자동"
+        case "quick":
+            return "빠른 모드"
+        case "full":
+            return "전체 다시 읽기"
+        case "manual-digits":
+            return "인증번호 직접 선택"
+        case "kaikey-auto":
+            return "Kaikey 자동 보조"
+        case "minimize":
+            return "창 최소화"
+        case "none":
+            return "그대로 두기"
+        case "":
+            return "선택"
+        default:
+            return compactSettingValueSummary(value)
         }
     }
 
