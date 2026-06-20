@@ -2648,14 +2648,36 @@ final class DashboardDataModelTests: XCTestCase {
         let macSettingsRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/SettingsView.swift")
         let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
         let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let envDocumentRoot = packageRoot.appendingPathComponent("Sources/KLMSShared/EnvDocument.swift")
         let macSettings = try String(contentsOf: macSettingsRoot, encoding: .utf8)
         let macModel = try String(contentsOf: macModelRoot, encoding: .utf8)
         let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let envDocument = try String(contentsOf: envDocumentRoot, encoding: .utf8)
         let settingsForm = try sourceBody(
             after: "private func settingsForm",
             in: macSettings,
             description: "Mac settings form"
         )
+        let remoteSettingGroup = try sourceBody(
+            after: "private struct RemoteSettingGroup: Identifiable",
+            in: ios,
+            description: "iPhone/iPad remote setting group"
+        )
+        let macRemoteSettingKeys = try macServerRelayEditableSettingKeys(
+            macModel: macModel,
+            envDocument: envDocument
+        )
+        let iosRemoteSettingKeys = try iosRemoteSettingKeys(
+            from: remoteSettingGroup,
+            knownKeys: macRemoteSettingKeys
+        )
+        let missingRemoteSettingKeys = macRemoteSettingKeys.subtracting(iosRemoteSettingKeys).sorted()
+
+        XCTAssertTrue(
+            missingRemoteSettingKeys.isEmpty,
+            "iPhone/iPad remote setting groups are missing Mac server settings: \(missingRemoteSettingKeys.joined(separator: ", "))"
+        )
+        XCTAssertFalse(iosRemoteSettingKeys.contains("KLMS_SSO_LOGIN_ID"))
 
         XCTAssertFalse(macSettings.contains("TabView(selection:"))
         XCTAssertFalse(macSettings.contains(".tabItem"))
@@ -5249,5 +5271,61 @@ final class DashboardDataModelTests: XCTestCase {
             ])
         }
         return String(source[startRange.upperBound..<endRange.lowerBound])
+    }
+
+    private func macServerRelayEditableSettingKeys(macModel: String, envDocument: String) throws -> Set<String> {
+        let envRawValuesByCase = try envKnownKeyRawValuesByCaseName(from: envDocument)
+        let settingsBlock = try sourceBody(
+            after: "private static let serverRelayEditableSettings: [ServerRelaySettingDefinition]",
+            in: macModel,
+            description: "Mac server relay editable settings"
+        )
+        let caseNames = try regexCaptureGroups(
+            pattern: #"ServerRelaySettingDefinition\(\.([A-Za-z0-9_]+)"#,
+            in: settingsBlock
+        ).compactMap(\.first)
+        let keys = try caseNames.map { caseName -> String in
+            guard let rawValue = envRawValuesByCase[caseName] else {
+                throw NSError(domain: "DashboardDataModelTests", code: 4, userInfo: [
+                    NSLocalizedDescriptionKey: "Missing EnvKnownKey raw value for \(caseName)",
+                ])
+            }
+            return rawValue
+        }
+        return Set(keys)
+    }
+
+    private func iosRemoteSettingKeys(from remoteSettingGroup: String, knownKeys: Set<String>) throws -> Set<String> {
+        let quotedValues = try regexCaptureGroups(
+            pattern: #""([A-Z0-9_]+)""#,
+            in: remoteSettingGroup
+        ).compactMap(\.first)
+        return Set(quotedValues.filter { knownKeys.contains($0) })
+    }
+
+    private func envKnownKeyRawValuesByCaseName(from envDocument: String) throws -> [String: String] {
+        let matches = try regexCaptureGroups(
+            pattern: #"case\s+([A-Za-z0-9_]+)\s*=\s*"([^"]+)""#,
+            in: envDocument
+        )
+        return Dictionary(uniqueKeysWithValues: matches.compactMap { captures in
+            guard captures.count == 2 else { return nil }
+            return (captures[0], captures[1])
+        })
+    }
+
+    private func regexCaptureGroups(pattern: String, in source: String) throws -> [[String]] {
+        let regex = try NSRegularExpression(pattern: pattern)
+        let nsSource = source as NSString
+        return regex.matches(
+            in: source,
+            range: NSRange(location: 0, length: nsSource.length)
+        ).map { match in
+            (1..<match.numberOfRanges).compactMap { index in
+                let range = match.range(at: index)
+                guard range.location != NSNotFound else { return nil }
+                return nsSource.substring(with: range)
+            }
+        }
     }
 }
