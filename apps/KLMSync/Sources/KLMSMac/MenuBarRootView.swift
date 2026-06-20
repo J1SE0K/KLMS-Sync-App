@@ -12,6 +12,8 @@ struct MenuBarRootView: View {
         ZStack(alignment: .topLeading) {
             MacWorkspaceSelectionAccessibilityMarker(section: selectedSection)
             MacWorkspaceRenderedAccessibilityMarker(section: selectedSection)
+            MacWorkspacePanelAccessibilityMarker(section: selectedSection)
+            MacWorkspaceContainerAccessibilityMarker(section: selectedSection)
 
             HStack(alignment: .top, spacing: 0) {
                 MacWorkspaceSidebarView(
@@ -85,6 +87,38 @@ private struct MacWorkspaceRenderedAccessibilityMarker: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(section.title) 렌더링됨")
             .accessibilityIdentifier("workspace-rendered-section-\(section.rawValue)")
+    }
+}
+
+private struct MacWorkspacePanelAccessibilityMarker: View {
+    var section: KLMSMacSection
+
+    var body: some View {
+        Text("\(section.title) 패널")
+            .font(.system(size: 1))
+            .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
+            .lineLimit(1)
+            .frame(width: 1, height: 1)
+            .clipped()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(section.title) 패널")
+            .accessibilityIdentifier("workspace-panel-workspace-\(section.rawValue)")
+    }
+}
+
+private struct MacWorkspaceContainerAccessibilityMarker: View {
+    var section: KLMSMacSection
+
+    var body: some View {
+        Text("\(section.title) 화면")
+            .font(.system(size: 1))
+            .foregroundStyle(Color.klmsMacPrimaryText.opacity(0.01))
+            .lineLimit(1)
+            .frame(width: 1, height: 1)
+            .clipped()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(section.title) 화면")
+            .accessibilityIdentifier("workspace-container-\(section.rawValue)")
     }
 }
 
