@@ -217,10 +217,12 @@ private func verifyWorkspaceNavigation(
 
     Thread.sleep(forTimeInterval: navigationDelay)
 
-    for identifier in [target.panelIdentifier, target.renderedIdentifier] {
-        guard waitForElement(withIdentifier: identifier, in: appElement, timeout: timeout) != nil else {
+    let requiredIdentifiers = [target.panelIdentifier, target.renderedIdentifier]
+    guard waitForElements(withIdentifiers: requiredIdentifiers, in: appElement, timeout: timeout) else {
+        for identifier in requiredIdentifiers where waitForElement(withIdentifier: identifier, in: appElement, timeout: 0.1) == nil {
             throw SmokeFailure.workspaceContentMissing(identifier)
         }
+        throw SmokeFailure.workspaceContentMissing(requiredIdentifiers.joined(separator: ", "))
     }
 
     for expectedText in target.expectedTexts {
@@ -293,6 +295,22 @@ private func waitForElement(
         Thread.sleep(forTimeInterval: 0.1)
     } while Date() < deadline
     return nil
+}
+
+private func waitForElements(
+    withIdentifiers identifiers: [String],
+    in root: AXUIElement,
+    timeout: TimeInterval
+) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    let expected = Set(identifiers)
+    repeat {
+        if findIdentifiers(expected, in: root, maxDepth: 32, maxNodes: 35_000).isSuperset(of: identifiers) {
+            return true
+        }
+        Thread.sleep(forTimeInterval: 0.02)
+    } while Date() < deadline
+    return false
 }
 
 private func identifierMatches(_ actual: String?, expected: String) -> Bool {
@@ -380,6 +398,49 @@ private func findElement(
     }
 
     return nil
+}
+
+private func findIdentifiers(
+    _ identifiers: Set<String>,
+    in root: AXUIElement,
+    maxDepth: Int,
+    maxNodes: Int
+) -> Set<String> {
+    var remaining = identifiers
+    var found = Set<String>()
+    var stack: [(AXUIElement, Int)] = [(root, 0)]
+    var visited = Set<CFHashCode>()
+    var visitedCount = 0
+
+    while let (element, depth) = stack.popLast() {
+        let elementHash = CFHash(element)
+        guard visited.insert(elementHash).inserted else {
+            continue
+        }
+
+        visitedCount += 1
+        guard visitedCount <= maxNodes else {
+            return found
+        }
+
+        if let identifier = stringAttribute(element, "AXIdentifier" as CFString),
+           let match = remaining.first(where: { identifierMatches(identifier, expected: $0) }) {
+            found.insert(match)
+            remaining.remove(match)
+            if remaining.isEmpty {
+                return found
+            }
+        }
+
+        guard depth < maxDepth else {
+            continue
+        }
+
+        for child in childElements(of: element).reversed() {
+            stack.append((child, depth + 1))
+        }
+    }
+    return found
 }
 
 private func childElements(of element: AXUIElement) -> [AXUIElement] {
