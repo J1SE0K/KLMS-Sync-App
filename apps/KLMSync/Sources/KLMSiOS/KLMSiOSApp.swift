@@ -3086,7 +3086,9 @@ private struct CompanionDashboardCategoryScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: title, model: model) {
-            if horizontalSizeClass == .regular && category == .calendar {
+            if !model.hasLoadedServerSyncData {
+                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+            } else if horizontalSizeClass == .regular && category == .calendar {
                 WorkstationCalendarWorkspace(model: model)
             } else if horizontalSizeClass == .regular && category.supportsWorkstationSelectionWorkspace {
                 WorkstationDashboardCategoryWorkspace(category: category, model: model)
@@ -3128,13 +3130,17 @@ private struct CompanionTasksScreen: View {
 
     private var compactTasksWorkspace: some View {
         VStack(alignment: .leading, spacing: 12) {
-            WorkstationTaskCategorySelector(
-                categories: taskCategories,
-                status: model.dashboardStatus,
-                selectedCategory: $selectedCompactTaskCategory
-            )
-            DashboardCategoryInlineDetailPanel(category: selectedCompactTaskCategory, model: model)
-                .id(selectedCompactTaskCategory.rawValue)
+            if model.hasLoadedServerSyncData {
+                WorkstationTaskCategorySelector(
+                    categories: taskCategories,
+                    status: model.dashboardStatus,
+                    selectedCategory: $selectedCompactTaskCategory
+                )
+                DashboardCategoryInlineDetailPanel(category: selectedCompactTaskCategory, model: model)
+                    .id(selectedCompactTaskCategory.rawValue)
+            } else {
+                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -6647,9 +6653,15 @@ private struct DashboardCategoryInlineDetailPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            summaryHeader
-            detailContent
+        Group {
+            if model.hasLoadedServerSyncData {
+                VStack(alignment: .leading, spacing: 14) {
+                    summaryHeader
+                    detailContent
+                }
+            } else {
+                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -7073,22 +7085,28 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     var body: some View {
-        tasksRegularWorkspace
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .onAppear {
-                normalizeSelectedTaskCategory()
-                refreshExternalSelection()
+        Group {
+            if model.hasLoadedServerSyncData {
+                tasksRegularWorkspace
+            } else {
+                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
             }
-            .onChange(of: categoryAvailabilityKey) { _, _ in
-                normalizeSelectedTaskCategory()
-                refreshExternalSelection()
-            }
-            .onChange(of: selectedTaskCategory) { _, _ in
-                refreshExternalSelection()
-            }
-            .onChange(of: itemsResetKey) { _, _ in
-                refreshExternalSelection()
-            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onAppear {
+            normalizeSelectedTaskCategory()
+            refreshExternalSelection()
+        }
+        .onChange(of: categoryAvailabilityKey) { _, _ in
+            normalizeSelectedTaskCategory()
+            refreshExternalSelection()
+        }
+        .onChange(of: selectedTaskCategory) { _, _ in
+            refreshExternalSelection()
+        }
+        .onChange(of: itemsResetKey) { _, _ in
+            refreshExternalSelection()
+        }
     }
 
     private var tasksRegularWorkspace: some View {
