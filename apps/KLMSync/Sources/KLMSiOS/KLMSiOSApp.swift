@@ -6045,6 +6045,10 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 )
             }
 
+            if shouldShowWorkstationEmptyGuide {
+                WorkstationDashboardEmptyGuidePanel()
+            }
+
             WorkstationChangeSummaryCard(status: data.status)
         }
         .padding(14)
@@ -6081,6 +6085,17 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
         data.previewTaskItems
     }
 
+    private var shouldShowWorkstationEmptyGuide: Bool {
+        overviewMetrics.isEmpty
+            && filePreviewItems.isEmpty
+            && previewTaskItems.isEmpty
+            && noticePreviewItems.isEmpty
+            && status.calendarChangeTotal == 0
+            && status.noticeNew == 0
+            && status.noticeUpdated == 0
+            && status.newFiles == 0
+    }
+
     private struct MetricSummary: Identifiable {
         var category: DashboardMetricCategory
         var title: String
@@ -6091,6 +6106,64 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
         var id: String {
             title
         }
+    }
+}
+
+private struct WorkstationDashboardEmptyGuidePanel: View {
+    private let guideLines = [
+        ("서버 연결", "서버 릴레이 정보를 넣고 연결 확인을 누르면 모든 기기가 같은 상태를 봅니다."),
+        ("요약 갱신", "Mac이 올린 최신 요약을 받아 파일, 과제, 공지, 캘린더 카드가 채워집니다."),
+        ("바로 처리", "항목을 누르면 이 자리에서 상세와 처리 버튼이 열립니다."),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.3.group")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsCommandAccent)
+                    .frame(width: 24, height: 24)
+                    .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 7))
+                Text("대시보드 준비 중")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Spacer(minLength: 0)
+            }
+
+            Text("서버 데이터가 아직 없어서 표시할 항목이 없습니다. 연결되면 이 영역에 최신 항목과 변경 요약이 바로 들어옵니다.")
+                .font(.subheadline)
+                .foregroundStyle(Color.klmsSecondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(guideLines, id: \.0) { line in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsCommandAccent)
+                            .frame(width: 18, height: 18)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(line.0)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(Color.klmsPrimaryText)
+                            Text(line.1)
+                                .font(.caption)
+                                .foregroundStyle(Color.klmsSecondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("대시보드 준비 중. 서버 데이터가 들어오면 최신 항목과 변경 요약이 표시됩니다.")
     }
 }
 
