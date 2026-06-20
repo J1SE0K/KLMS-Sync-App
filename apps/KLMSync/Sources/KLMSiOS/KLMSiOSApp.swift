@@ -7624,6 +7624,14 @@ private struct CompanionInlineItemRowsView: View {
             clearStaleInlineSelectionIfNeeded()
             clearStaleExternalSelectionIfNeeded()
         }
+        .onChange(of: inlineSelectionStillVisible) { _, isVisible in
+            guard !isVisible else { return }
+            clearStaleInlineSelectionIfNeeded()
+        }
+        .onChange(of: optimisticExternalSelectionStillVisible) { _, isVisible in
+            guard !isVisible else { return }
+            clearStaleExternalSelectionIfNeeded()
+        }
         .onChange(of: horizontalSizeClass) { _, _ in
             visibleLimit = currentInitialVisibleLimit
         }
@@ -7633,6 +7641,8 @@ private struct CompanionInlineItemRowsView: View {
         }
         .onAppear {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
+            clearStaleInlineSelectionIfNeeded()
+            clearStaleExternalSelectionIfNeeded()
         }
     }
 
@@ -7646,6 +7656,20 @@ private struct CompanionInlineItemRowsView: View {
 
     private var visibleItemsResetKey: String {
         "\(items.count):\(items.first?.id ?? ""):\(items.last?.id ?? "")"
+    }
+
+    private var inlineSelectionStillVisible: Bool {
+        guard let selectedItemID else {
+            return true
+        }
+        return items.contains(where: { $0.id == selectedItemID })
+    }
+
+    private var optimisticExternalSelectionStillVisible: Bool {
+        guard let optimisticExternalSelectedItemID else {
+            return true
+        }
+        return items.contains(where: { $0.id == optimisticExternalSelectedItemID })
     }
 
     private func accessorySystemImage(isSelected: Bool) -> String {
@@ -7734,12 +7758,18 @@ private struct CompanionSelectableItemListRows: View {
         }
         .onChange(of: visibleItemsResetKey) { _, _ in
             visibleLimit = currentInitialVisibleLimit
+            clearStaleSelectionIfNeeded()
+        }
+        .onChange(of: selectedItemStillVisible) { _, isVisible in
+            guard !isVisible else { return }
+            clearStaleSelectionIfNeeded()
         }
         .onChange(of: horizontalSizeClass) { _, _ in
             visibleLimit = currentInitialVisibleLimit
         }
         .onAppear {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
+            clearStaleSelectionIfNeeded()
         }
     }
 
@@ -7751,6 +7781,13 @@ private struct CompanionSelectableItemListRows: View {
         "\(items.count):\(items.first?.id ?? ""):\(items.last?.id ?? "")"
     }
 
+    private var selectedItemStillVisible: Bool {
+        guard let selectedItemID else {
+            return true
+        }
+        return items.contains(where: { $0.id == selectedItemID })
+    }
+
     private func select(_ item: ServerRelaySyncItem) {
         let itemID = item.id
         companionPerformWithoutAnimation {
@@ -7758,6 +7795,14 @@ private struct CompanionSelectableItemListRows: View {
         }
         guard selectedItemID == itemID else { return }
         onSelect(item)
+    }
+
+    private func clearStaleSelectionIfNeeded() {
+        guard let selectedItemID,
+              !items.contains(where: { $0.id == selectedItemID }) else {
+            return
+        }
+        self.selectedItemID = nil
     }
 
 }
@@ -7824,6 +7869,10 @@ private struct RemoteChangeSummaryDetailPanel: View {
         .onChange(of: visibleContentResetKey) { _, _ in
             resetVisibleLimits()
         }
+        .onChange(of: selectedChangedItemStillVisible) { _, isVisible in
+            guard !isVisible else { return }
+            clearStaleSelectedItemIfNeeded()
+        }
         .onChange(of: horizontalSizeClass) { _, _ in
             resetVisibleLimits()
         }
@@ -7831,6 +7880,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
             visibleItemLimit = max(visibleItemLimit, currentInitialVisibleLimit)
             calendarVisibleLimit = max(calendarVisibleLimit, currentCalendarVisibleLimit)
             cleanupVisibleLimit = max(cleanupVisibleLimit, currentPreviewVisibleLimit)
+            clearStaleSelectedItemIfNeeded()
         }
     }
 
@@ -7851,6 +7901,21 @@ private struct RemoteChangeSummaryDetailPanel: View {
         visibleItemLimit = currentInitialVisibleLimit
         calendarVisibleLimit = currentCalendarVisibleLimit
         cleanupVisibleLimit = currentPreviewVisibleLimit
+    }
+
+    private var selectedChangedItemStillVisible: Bool {
+        guard let selectedItemID else {
+            return true
+        }
+        return changedItems.contains(where: { $0.id == selectedItemID })
+    }
+
+    private func clearStaleSelectedItemIfNeeded() {
+        guard let selectedItemID,
+              !changedItems.contains(where: { $0.id == selectedItemID }) else {
+            return
+        }
+        self.selectedItemID = nil
     }
 
     private var header: some View {
@@ -8443,7 +8508,29 @@ private struct MailPasteAnalysisResultView: View {
                     }
                 }
             }
+            .onChange(of: matchedSelectionStillVisible) { _, isVisible in
+                guard !isVisible else { return }
+                clearStaleMatchedSelectionIfNeeded()
+            }
+            .onAppear {
+                clearStaleMatchedSelectionIfNeeded()
+            }
         }
+    }
+
+    private var matchedSelectionStillVisible: Bool {
+        guard let selectedItemID else {
+            return true
+        }
+        return analysis.matchedItems.contains(where: { $0.id == selectedItemID })
+    }
+
+    private func clearStaleMatchedSelectionIfNeeded() {
+        guard let selectedItemID,
+              !analysis.matchedItems.contains(where: { $0.id == selectedItemID }) else {
+            return
+        }
+        self.selectedItemID = nil
     }
 }
 
