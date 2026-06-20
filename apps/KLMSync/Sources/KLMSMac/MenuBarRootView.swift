@@ -275,7 +275,7 @@ private struct MacWorkstationLayoutView: View {
                 DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard", deferContent: false) {
                     VStack(alignment: .leading, spacing: 16) {
                         CommandPanelView(model: model)
-                        DeferredDashboardSummaryView(model: model)
+                        DashboardSummaryView(model: model)
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -2806,52 +2806,6 @@ private struct DashboardSummaryView: View {
             renderSignature: model.dashboardRenderSignature
         )
         .equatable()
-    }
-}
-
-private struct DeferredDashboardSummaryView: View {
-    let model: KLMSMacModel
-    @State private var isReady = false
-
-    var body: some View {
-        Group {
-            if isReady {
-                DashboardSummaryView(model: model)
-            } else {
-                DashboardSummaryLoadingPlaceholder()
-            }
-        }
-        .task {
-            isReady = false
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            isReady = true
-        }
-    }
-}
-
-private struct DashboardSummaryLoadingPlaceholder: View {
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("대시보드 항목을 준비하는 중입니다.")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                Text("동기화 버튼은 바로 사용할 수 있습니다.")
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsMacBorder, lineWidth: 1)
-        }
     }
 }
 
