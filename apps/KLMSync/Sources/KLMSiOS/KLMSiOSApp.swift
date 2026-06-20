@@ -11895,6 +11895,7 @@ private struct RemoteSettingGroup: Identifiable {
     var systemImage: String
     var detail: String
     var settings: [ServerRelaySetting]
+    var isCollapsible = false
 
     var id: String { title }
     var countText: String { "\(settings.count)개" }
@@ -11984,10 +11985,14 @@ private struct RemoteSettingGroup: Identifiable {
                         title: "고급",
                         systemImage: "slider.horizontal.3",
                         detail: "Safari 창 동작처럼 자주 바꾸지 않는 설정입니다.",
-                        settings: extras
+                        settings: extras,
+                        isCollapsible: true
                     )
                 )
             }
+        }
+        for index in groups.indices where groups[index].title == "고급" {
+            groups[index].isCollapsible = true
         }
         return groups
     }
@@ -11996,23 +12001,43 @@ private struct RemoteSettingGroup: Identifiable {
 private struct RemoteSettingGroupSection: View {
     var group: RemoteSettingGroup
     @ObservedObject var model: CompanionModel
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            groupHeader
-                .accessibilityElement(children: .combine)
+            if group.isCollapsible {
+                Button {
+                    companionPerformWithoutAnimation {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    groupHeader
+                        .contentShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                .accessibilityLabel("\(group.title) \(isExpanded ? "펼쳐짐" : "접힘")")
+                .accessibilityHint(isExpanded ? "\(group.title) 접기" : "\(group.title) 펼치기")
+            } else {
+                groupHeader
+                    .accessibilityElement(children: .combine)
+            }
 
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(group.settings) { setting in
-                    RemoteSettingRow(setting: setting, model: model)
+            if !group.isCollapsible || isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(group.settings) { setting in
+                        RemoteSettingRow(setting: setting, model: model)
+                    }
                 }
             }
         }
         .padding(11)
-        .background(Color.klmsSubtleCardBackground.opacity(0.86), in: RoundedRectangle(cornerRadius: 12))
+        .background(
+            (!group.isCollapsible || isExpanded) ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.klmsSelectedBorder.opacity(0.48), lineWidth: 1)
+                .stroke((!group.isCollapsible || isExpanded) ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
         )
     }
 
@@ -12038,6 +12063,9 @@ private struct RemoteSettingGroupSection: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
                 .background(Color.klmsCardBackground, in: Capsule())
+            if group.isCollapsible {
+                CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
+            }
         }
     }
 }
