@@ -209,7 +209,7 @@ final class CompanionModel: ObservableObject {
     private var pendingRefreshRequest: PendingRefreshRequest?
     private var lastSyncDataRefreshAt: Date?
     private var syncDataNeedsRefresh = true
-    private var hasLoadedServerSyncData = false
+    @Published private(set) var hasLoadedServerSyncData = false
     private var syncItemsSignature: Int?
     private var calendarChangesSignature: Int?
     private var remoteSettingsSignature: Int?
@@ -497,7 +497,7 @@ final class CompanionModel: ObservableObject {
     }
 
     private func rebuildDashboardStatus() {
-        var next = status
+        var next = hasLoadedServerSyncData ? status : status.withoutDashboardCounts()
         next.applyMailDashboardItems(dashboardMailItems, baseItems: syncItems)
         if dashboardStatus != next {
             dashboardStatus = next
@@ -2864,6 +2864,8 @@ private struct CompanionStatusScreen: View {
             RemoteDashboardSyncCard(model: model, compact: horizontalSizeClass != .regular)
             CompanionDashboardQuickAccessGrid(
                 status: model.dashboardStatus,
+                isDataLoaded: model.hasLoadedServerSyncData,
+                isServerConfigured: model.serverRelayConfigured,
                 selectedCategory: effectiveDashboardSelection,
                 onCategoryTap: { category in
                     selectDashboardCategory(category)
@@ -2872,6 +2874,7 @@ private struct CompanionStatusScreen: View {
             RemoteDashboardMetricOverview(
                 model: model,
                 status: model.dashboardStatus,
+                isDataLoaded: model.hasLoadedServerSyncData,
                 hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
                 selectedCategory: $selectedDashboardPreview,
                 effectiveSelectedCategory: effectiveDashboardSelection,
@@ -2919,6 +2922,7 @@ private struct CompanionStatusScreen: View {
             RemoteDashboardMetricOverview(
                 model: model,
                 status: model.dashboardStatus,
+                isDataLoaded: model.hasLoadedServerSyncData,
                 hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
                 selectedCategory: $selectedDashboardPreview,
                 effectiveSelectedCategory: effectiveDashboardSelection,
@@ -2991,6 +2995,8 @@ private struct CompanionStatusScreen: View {
 
 private struct CompanionDashboardQuickAccessGrid: View, Equatable {
     var status: SanitizedRemoteStatus
+    var isDataLoaded: Bool
+    var isServerConfigured: Bool
     var selectedCategory: DashboardMetricCategory?
     var onCategoryTap: (DashboardMetricCategory) -> Void
 
@@ -3000,6 +3006,8 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
 
     nonisolated static func == (lhs: CompanionDashboardQuickAccessGrid, rhs: CompanionDashboardQuickAccessGrid) -> Bool {
         lhs.status == rhs.status
+            && lhs.isDataLoaded == rhs.isDataLoaded
+            && lhs.isServerConfigured == rhs.isServerConfigured
             && lhs.selectedCategory == rhs.selectedCategory
     }
 
@@ -3009,10 +3017,14 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
                 .padding(.horizontal, 2)
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                ForEach(quickCategories) { category in
-                    quickButton(for: category)
+            if isDataLoaded {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    ForEach(quickCategories) { category in
+                        quickButton(for: category)
+                    }
                 }
+            } else {
+                CompanionDashboardDataLoadingCard(isServerConfigured: isServerConfigured)
             }
         }
     }
@@ -5333,6 +5345,7 @@ private struct RemoteDashboardSyncCard: View {
 private struct RemoteDashboardMetricOverview: View {
     let model: CompanionModel
     var status: SanitizedRemoteStatus
+    var isDataLoaded: Bool
     var hasFileCleanupDetails: Bool
     @Binding var selectedCategory: DashboardMetricCategory?
     var effectiveSelectedCategory: DashboardMetricCategory? = nil
@@ -5349,7 +5362,9 @@ private struct RemoteDashboardMetricOverview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if shouldShowPrimaryMetricSection {
+            if !isDataLoaded {
+                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+            } else if shouldShowPrimaryMetricSection {
                 metricSection("주요 항목", categories: primaryMetricCategories)
             }
             if shouldShowAttentionMetricSection {
@@ -5855,6 +5870,40 @@ private struct DeferredInteractionExpansion<Content: View>: View {
     }
 }
 
+private struct CompanionDashboardDataLoadingCard: View {
+    var isServerConfigured: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: isServerConfigured ? "arrow.down.circle" : "link.badge.plus")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(isServerConfigured ? Color.klmsCommandAccent : Color.klmsWarningBorder)
+                .frame(width: 28, height: 28)
+                .background(
+                    (isServerConfigured ? Color.klmsCommandAccent : Color.klmsWarningBorder).opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+            VStack(alignment: .leading, spacing: 3) {
+                Text(isServerConfigured ? "서버 요약을 불러오는 중" : "서버 연결 필요")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text(isServerConfigured ? "Mac이 올린 파일, 과제, 공지, 캘린더 요약을 받은 뒤 숫자를 표시합니다." : "설정에서 서버 URL과 클라이언트 토큰을 저장한 뒤 연결 확인을 눌러 주세요.")
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+        }
+    }
+}
+
 private struct WorkstationMetricCard: View {
     var category: DashboardMetricCategory
     var value: Int
@@ -5905,6 +5954,8 @@ private struct WorkstationMetricCard: View {
 
 private struct WorkstationDashboardOverviewData: Equatable {
     var status: SanitizedRemoteStatus
+    var hasLoadedServerSyncData: Bool
+    var isServerConfigured: Bool
     var filePreviewItems: [ServerRelaySyncItem]
     var noticePreviewItems: [ServerRelaySyncItem]
     var previewTaskItems: [ServerRelaySyncItem]
@@ -5912,6 +5963,8 @@ private struct WorkstationDashboardOverviewData: Equatable {
     @MainActor
     init(model: CompanionModel) {
         status = model.dashboardStatus
+        hasLoadedServerSyncData = model.hasLoadedServerSyncData
+        isServerConfigured = model.serverRelayConfigured
         filePreviewItems = Array(model.cachedVisibleDashboardItems(for: DashboardMetricCategory.files.rawValue).prefix(2))
         noticePreviewItems = Array(model.cachedVisibleDashboardItems(for: DashboardMetricCategory.notices.rawValue).prefix(2))
         previewTaskItems = Array(
@@ -5957,7 +6010,9 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                     )
             }
 
-            if showsMetrics {
+            if !data.hasLoadedServerSyncData {
+                CompanionDashboardDataLoadingCard(isServerConfigured: data.isServerConfigured)
+            } else if showsMetrics {
                 if overviewMetrics.isEmpty {
                     Text("표시할 대시보드 항목이 없습니다.")
                         .font(.subheadline.weight(.semibold))
@@ -6009,7 +6064,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 }
             }
 
-            if !filePreviewItems.isEmpty {
+            if data.hasLoadedServerSyncData, !filePreviewItems.isEmpty {
                 WorkstationDashboardPreviewSection(
                     title: "파일",
                     systemImage: "folder",
@@ -6021,7 +6076,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 )
             }
 
-            if !previewTaskItems.isEmpty {
+            if data.hasLoadedServerSyncData, !previewTaskItems.isEmpty {
                 WorkstationDashboardPreviewSection(
                     title: "과제/시험",
                     systemImage: "checklist",
@@ -6033,7 +6088,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 )
             }
 
-            if !noticePreviewItems.isEmpty {
+            if data.hasLoadedServerSyncData, !noticePreviewItems.isEmpty {
                 WorkstationDashboardPreviewSection(
                     title: "공지",
                     systemImage: "note.text",
@@ -6045,7 +6100,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 )
             }
 
-            if shouldShowWorkstationEmptyGuide {
+            if data.hasLoadedServerSyncData, shouldShowWorkstationEmptyGuide {
                 WorkstationDashboardEmptyGuidePanel()
             }
 
@@ -11609,10 +11664,10 @@ private struct RemoteSettingGroup: Identifiable {
                 ["KLMS_LOGIN_ASSIST_ENABLED", "KLMS_LOGIN_ASSIST_MODE", "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE"]
             ),
             (
-                "실행",
+                "동기화",
                 "arrow.triangle.2.circlepath",
-                "동기화 범위와 캘린더 반영 기준을 정합니다.",
-                ["SYNC_MODE", "CALENDAR_SKIP_UNCHANGED_DESIRED"]
+                "동기화 범위를 정합니다.",
+                ["SYNC_MODE"]
             ),
             (
                 "파일",
@@ -11645,10 +11700,10 @@ private struct RemoteSettingGroup: Identifiable {
                 ]
             ),
             (
-                "Safari",
-                "safari",
-                "KLMS를 읽을 때 쓰는 전용 Safari 창의 동작을 정합니다.",
-                ["KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED", "KLMS_SAFARI_BACKGROUND_WINDOW_MODE", "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED"]
+                "캘린더",
+                "calendar",
+                "같은 일정은 건너뛰고 변경이 있을 때만 반영합니다.",
+                ["CALENDAR_SKIP_UNCHANGED_DESIRED"]
             ),
         ]
 
@@ -11669,7 +11724,7 @@ private struct RemoteSettingGroup: Identifiable {
                 RemoteSettingGroup(
                     title: "고급",
                     systemImage: "slider.horizontal.3",
-                    detail: "기본 화면에 분류되지 않은 설정입니다.",
+                    detail: "Safari 창 동작처럼 자주 바꾸지 않는 설정입니다.",
                     settings: extras
                 )
             )
@@ -13821,6 +13876,16 @@ private extension Color {
 }
 
 private extension SanitizedRemoteStatus {
+    func withoutDashboardCounts() -> SanitizedRemoteStatus {
+        SanitizedRemoteStatus(
+            phase: phase,
+            phaseDetail: phaseDetail,
+            loginRequired: loginRequired,
+            authDigits: authDigits,
+            authStatusMessage: authStatusMessage
+        )
+    }
+
     var hasCompanionChangeSummary: Bool {
         noticeNew > 0
             || noticeUpdated > 0
