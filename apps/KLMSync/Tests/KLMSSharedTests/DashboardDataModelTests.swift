@@ -3898,6 +3898,11 @@ final class DashboardDataModelTests: XCTestCase {
         let deferredControls = try sourceStructBody(named: "DeferredCompanionItemListControls", in: ios)
         let selectableRows = try sourceStructBody(named: "CompanionSelectableItemListRows", in: ios)
         let inlineRows = try sourceStructBody(named: "CompanionInlineItemRowsView", in: ios)
+        let listData = try sourceBody(
+            after: "private struct CompanionItemListData: Sendable",
+            in: ios,
+            description: "CompanionItemListData"
+        )
         let deferredInlineItemDetail = try sourceStructBody(named: "DeferredServerSyncItemDetailPanel", in: ios)
         let inlineItemDetail = try sourceStructBody(named: "ServerSyncItemInlineDetailPanel", in: ios)
         let serverSyncDataRow = try sourceStructBody(named: "ServerSyncDataRow", in: ios)
@@ -3940,6 +3945,8 @@ final class DashboardDataModelTests: XCTestCase {
         )
 
         XCTAssertTrue(ios.contains("private struct CompanionItemListData"))
+        XCTAssertTrue(listData.contains("var filteredItemIDs: Set<String>"))
+        XCTAssertTrue(listData.contains("self.filteredItemIDs = Set(sortedFiltered.map(\\.id))"))
         XCTAssertTrue(ios.contains("private struct CompanionItemFilterOptions: Equatable, Sendable"))
         XCTAssertTrue(ios.contains("private struct DeferredCompanionItemListControls: View"))
         XCTAssertTrue(ios.contains("filterOptions: CompanionItemFilterOptions? = nil"))
@@ -4167,6 +4174,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(syncDataPanel.contains("Task.detached(priority: .userInitiated)"))
         XCTAssertFalse(syncDataPanel.contains("await Task.yield()"))
         XCTAssertTrue(syncDataPanel.contains("CompanionSelectableItemListRows("))
+        XCTAssertTrue(syncDataPanel.contains("itemIDs: listData.filteredItemIDs"))
         XCTAssertFalse(syncDataPanel.contains("@State private var selectedItemID"))
         XCTAssertFalse(syncDataPanel.contains("private var filteredItems"))
         XCTAssertTrue(inlineDetail.contains("let listData = await Task.detached(priority: .userInitiated)"))
@@ -4185,6 +4193,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(inlineDetail.contains("cachedListInputKey = inputKey"))
         XCTAssertFalse(inlineDetail.contains("await Task.yield()"))
         XCTAssertTrue(inlineDetail.contains("CompanionInlineItemRowsView("))
+        XCTAssertTrue(inlineDetail.contains("itemIDs: listData.filteredItemIDs"))
         XCTAssertTrue(inlineDetail.contains("DeferredCompanionItemListControls("))
         XCTAssertTrue(inlineDetail.contains("presentation: itemPresentation"))
         XCTAssertTrue(inlineDetail.contains("externalSelectedItemID: externallySelectedItemID"))
@@ -4208,6 +4217,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(inlineRows.contains("LazyVStack(alignment: .leading, spacing: 8)"))
         XCTAssertTrue(inlineRows.contains("ForEach(visibleItems)"))
         XCTAssertTrue(inlineRows.contains("CompanionShowMoreRowsButton("))
+        XCTAssertTrue(inlineRows.contains("var itemIDs: Set<String>? = nil"))
+        XCTAssertTrue(inlineRows.contains("private func containsItemID(_ itemID: String) -> Bool"))
+        XCTAssertTrue(inlineRows.contains("return itemIDs.contains(itemID)"))
+        XCTAssertFalse(inlineRows.contains("return items.contains(where: { $0.id == selectedItemID })"))
+        XCTAssertTrue(selectableRows.contains("var itemIDs: Set<String>? = nil"))
+        XCTAssertTrue(selectableRows.contains("private func containsItemID(_ itemID: String) -> Bool"))
         XCTAssertFalse(inlineRows.contains("Self.initialVisibleLimit(for: category)"))
         XCTAssertFalse(ios.contains("private struct DashboardMetricDetailPanel"))
         XCTAssertFalse(ios.contains("let filtered = filteredItems"))

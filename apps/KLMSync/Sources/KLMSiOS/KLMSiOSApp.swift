@@ -4833,6 +4833,7 @@ private struct CompanionItemListData: Sendable {
     var availableStatusFilters: [CompanionItemStatusFilter]
     var effectiveStatusFilter: CompanionItemStatusFilter
     var filteredItems: [ServerRelaySyncItem]
+    var filteredItemIDs: Set<String>
 
     init(
         items: [ServerRelaySyncItem],
@@ -4891,6 +4892,7 @@ private struct CompanionItemListData: Sendable {
         self.availableStatusFilters = statusFilters
         self.effectiveStatusFilter = effectiveStatus
         self.filteredItems = sortedFiltered
+        self.filteredItemIDs = Set(sortedFiltered.map(\.id))
     }
 }
 
@@ -6893,6 +6895,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
                         CompanionInlineItemRowsView(
                             category: category,
                             items: filtered,
+                            itemIDs: listData.filteredItemIDs,
                             model: model,
                             presentation: itemPresentation,
                             externalSelectedItemID: externallySelectedItemID,
@@ -7690,6 +7693,7 @@ private struct CompanionInlineItemRowsView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var category: DashboardMetricCategory
     var items: [ServerRelaySyncItem]
+    var itemIDs: Set<String>? = nil
     let model: CompanionModel
     var presentation: CompanionInlineItemRowsPresentation
     var externalSelectedItemID: String?
@@ -7701,6 +7705,7 @@ private struct CompanionInlineItemRowsView: View {
     init(
         category: DashboardMetricCategory,
         items: [ServerRelaySyncItem],
+        itemIDs: Set<String>? = nil,
         model: CompanionModel,
         presentation: CompanionInlineItemRowsPresentation = .inlineDetail,
         externalSelectedItemID: String? = nil,
@@ -7708,6 +7713,7 @@ private struct CompanionInlineItemRowsView: View {
     ) {
         self.category = category
         self.items = items
+        self.itemIDs = itemIDs
         self.model = model
         self.presentation = presentation
         self.externalSelectedItemID = externalSelectedItemID
@@ -7791,14 +7797,14 @@ private struct CompanionInlineItemRowsView: View {
         guard let selectedItemID else {
             return true
         }
-        return items.contains(where: { $0.id == selectedItemID })
+        return containsItemID(selectedItemID)
     }
 
     private var optimisticExternalSelectionStillVisible: Bool {
         guard let optimisticExternalSelectedItemID else {
             return true
         }
-        return items.contains(where: { $0.id == optimisticExternalSelectedItemID })
+        return containsItemID(optimisticExternalSelectedItemID)
     }
 
     private func accessorySystemImage(isSelected: Bool) -> String {
@@ -7830,7 +7836,7 @@ private struct CompanionInlineItemRowsView: View {
 
     private func clearStaleInlineSelectionIfNeeded() {
         guard let selectedItemID,
-              !items.contains(where: { $0.id == selectedItemID }) else {
+              !containsItemID(selectedItemID) else {
             return
         }
         self.selectedItemID = nil
@@ -7839,26 +7845,35 @@ private struct CompanionInlineItemRowsView: View {
     private func clearStaleExternalSelectionIfNeeded() {
         guard presentation == .externalDetail,
               let optimisticExternalSelectedItemID,
-              !items.contains(where: { $0.id == optimisticExternalSelectedItemID }) else {
+              !containsItemID(optimisticExternalSelectedItemID) else {
             return
         }
         self.optimisticExternalSelectedItemID = externalSelectedItemID
     }
 
+    private func containsItemID(_ itemID: String) -> Bool {
+        if let itemIDs {
+            return itemIDs.contains(itemID)
+        }
+        return items.contains { $0.id == itemID }
+    }
 }
 
 private struct CompanionSelectableItemListRows: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var items: [ServerRelaySyncItem]
+    var itemIDs: Set<String>? = nil
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
         items: [ServerRelaySyncItem],
+        itemIDs: Set<String>? = nil,
         onSelect: @escaping (ServerRelaySyncItem) -> Void
     ) {
         self.items = items
+        self.itemIDs = itemIDs
         self.onSelect = onSelect
     }
 
@@ -7914,7 +7929,7 @@ private struct CompanionSelectableItemListRows: View {
         guard let selectedItemID else {
             return true
         }
-        return items.contains(where: { $0.id == selectedItemID })
+        return containsItemID(selectedItemID)
     }
 
     private func select(_ item: ServerRelaySyncItem) {
@@ -7928,12 +7943,18 @@ private struct CompanionSelectableItemListRows: View {
 
     private func clearStaleSelectionIfNeeded() {
         guard let selectedItemID,
-              !items.contains(where: { $0.id == selectedItemID }) else {
+              !containsItemID(selectedItemID) else {
             return
         }
         self.selectedItemID = nil
     }
 
+    private func containsItemID(_ itemID: String) -> Bool {
+        if let itemIDs {
+            return itemIDs.contains(itemID)
+        }
+        return items.contains { $0.id == itemID }
+    }
 }
 
 private struct CompanionShowMoreRowsButton: View {
@@ -10253,6 +10274,7 @@ private struct ServerSyncDataPanel: View {
                     let filtered = listData.filteredItems
                     CompanionSelectableItemListRows(
                         items: filtered,
+                        itemIDs: listData.filteredItemIDs,
                         onSelect: onSelect
                     )
                 } else {
