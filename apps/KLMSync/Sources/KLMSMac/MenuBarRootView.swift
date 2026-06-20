@@ -69,7 +69,7 @@ private struct MacWorkspaceSelectionAccessibilityMarker: View {
             .frame(width: 1, height: 1)
             .clipped()
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(section.title) 내용")
+            .accessibilityLabel(section.accessibilitySummary)
             .accessibilityIdentifier("workspace-content-\(section.rawValue)")
     }
 }
@@ -117,7 +117,7 @@ private struct MacWorkspaceContainerAccessibilityMarker: View {
             .frame(width: 1, height: 1)
             .clipped()
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(section.title) 화면")
+            .accessibilityLabel(section.accessibilitySummary)
             .accessibilityIdentifier("workspace-container-\(section.rawValue)")
     }
 }
@@ -990,6 +990,27 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
             "wrench.and.screwdriver"
         case .settings:
             "gearshape"
+        }
+    }
+
+    var accessibilitySummary: String {
+        switch self {
+        case .dashboard:
+            "대시보드 화면 · 전체 동기화 · 변경 요약"
+        case .files:
+            "파일 화면 · 파일 목록 · 필터와 검색"
+        case .tasks:
+            "과제/시험 화면 · 과제 · 시험 · 필터와 검색"
+        case .notices:
+            "공지 화면 · 공지 분류 · 필터와 검색"
+        case .calendar:
+            "캘린더 화면 · 캘린더 일정 · KLMS 기준 반영"
+        case .activityLogs:
+            "로그 화면 · 실행 로그 지우기 · 서버 로그 지우기"
+        case .diagnostics:
+            "진단 화면 · 상태 검사 · 권한/환경 진단"
+        case .settings:
+            "설정 화면 · 바로 반영되는 설정"
         }
     }
 }
