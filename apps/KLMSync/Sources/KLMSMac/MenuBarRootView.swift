@@ -2557,6 +2557,7 @@ private struct LogTextBlock: View {
     var text: String
     var detailed = false
     private let displayText: String
+    private let highlightSourceText: String
     @State private var highlights: [KLMSLogHighlight]
     @State private var isRawExpanded: Bool
 
@@ -2565,6 +2566,7 @@ private struct LogTextBlock: View {
         self.detailed = detailed
         let boundedText = Self.boundedText(text, detailed: detailed)
         self.displayText = boundedText
+        self.highlightSourceText = Self.boundedHighlightSourceText(boundedText, detailed: detailed)
         self._highlights = State(initialValue: [])
         self._isRawExpanded = State(initialValue: rawExpandedByDefault)
     }
@@ -2586,7 +2588,7 @@ private struct LogTextBlock: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .task(id: displayText) {
+        .task(id: highlightSourceText) {
             await rebuildHighlights()
         }
     }
@@ -2615,12 +2617,20 @@ private struct LogTextBlock: View {
         return prefix + String(text.suffix(maxCharacters - prefix.count))
     }
 
+    private static func boundedHighlightSourceText(_ text: String, detailed: Bool) -> String {
+        let maxCharacters = detailed ? 6_000 : 3_000
+        guard text.count > maxCharacters else {
+            return text
+        }
+        return String(text.suffix(maxCharacters))
+    }
+
     @MainActor
     private func rebuildHighlights() async {
         if !highlights.isEmpty {
             highlights = []
         }
-        let text = displayText
+        let text = highlightSourceText
         let nextHighlights = await Task.detached(priority: .utility) {
             KLMSReadableLogParser.highlights(from: text)
         }.value
