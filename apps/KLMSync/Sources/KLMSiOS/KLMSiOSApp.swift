@@ -11810,6 +11810,16 @@ private struct RemoteSettingGroup: Identifiable {
                 "같은 일정은 건너뛰고 변경이 있을 때만 반영합니다.",
                 ["CALENDAR_SKIP_UNCHANGED_DESIRED"]
             ),
+            (
+                "고급",
+                "slider.horizontal.3",
+                "Safari 창 동작처럼 자주 바꾸지 않는 설정입니다.",
+                [
+                    "KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED",
+                    "KLMS_SAFARI_BACKGROUND_WINDOW_MODE",
+                    "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED",
+                ]
+            ),
         ]
 
         var groups: [RemoteSettingGroup] = specs.compactMap { spec in
@@ -13064,8 +13074,12 @@ private struct RemoteSettingRow: View {
             return "숨긴 공지는 Notes 메모에 쓰지 않습니다. KLMS 원본 공지는 그대로 둡니다."
         case "NOTICE_NATIVE_STABLE_NOOP_SKIP":
             return "읽음/중요 표시는 유지하되, 공지 내용이 그대로면 Notes 메모를 다시 쓰지 않습니다."
+        case "KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED":
+            return "KLMS를 읽을 때 전용 Safari 창을 백그라운드처럼 다룹니다. 사용 중인 화면을 덜 방해합니다."
         case "KLMS_SAFARI_BACKGROUND_WINDOW_MODE":
             return "KLMS 전용 Safari 창을 처리하는 방식입니다. 기본값은 최소화입니다."
+        case "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED":
+            return "KLMS Sync가 만든 Safari 창을 재사용해 새 창이 계속 늘어나는 일을 줄입니다."
         default:
             return nil
         }
