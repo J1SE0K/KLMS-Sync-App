@@ -1614,13 +1614,13 @@ final class CompanionModel: ObservableObject {
                     lastRefreshAt = Date()
                 }
                 if showsActivity {
-                    connectionMessage = "새로고침 완료"
+                    connectionMessage = "최신 상태를 불러왔습니다."
                     connectionSucceeded = true
                 }
                 errorMessage = ""
             } else {
                 if showsActivity {
-                    connectionMessage = "서버 연결 정보가 없어 새로 고칠 수 없습니다."
+                    connectionMessage = "설정에서 서버 URL과 클라이언트 토큰을 먼저 저장해 주세요."
                     connectionSucceeded = false
                 }
                 errorMessage = ""
@@ -1628,9 +1628,10 @@ final class CompanionModel: ObservableObject {
         } catch {
             guard !isCancellationError(error) else { return }
             if !silentErrors {
-                errorMessage = userFacingMessage(for: error)
+                let message = userFacingMessage(for: error)
+                errorMessage = message
                 if showsActivity {
-                    connectionMessage = "새로고침 실패"
+                    connectionMessage = refreshFailureMessage(reason: message)
                     connectionSucceeded = false
                 }
             }
@@ -2494,7 +2495,18 @@ final class CompanionModel: ObservableObject {
                 break
             }
         }
-        return error.localizedDescription
+        let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return message.isEmpty
+            ? "요청을 완료하지 못했습니다. 서버 연결 설정과 네트워크 상태를 확인해 주세요."
+            : message
+    }
+
+    private func refreshFailureMessage(reason: String) -> String {
+        let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedReason.isEmpty else {
+            return "새로고침에 실패했습니다. 설정과 네트워크 상태를 확인해 주세요."
+        }
+        return "새로고침 실패 · \(trimmedReason)"
     }
 
     private static func persistServerToken(_ token: String) {

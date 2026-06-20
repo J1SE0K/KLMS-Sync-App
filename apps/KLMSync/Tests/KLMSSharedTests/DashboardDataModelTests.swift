@@ -5037,7 +5037,13 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertTrue(queueRefresh.contains("connectionMessage = \"새로고침 중입니다. 끝나는 대로 바로 반영합니다.\""))
         XCTAssertTrue(queueRefresh.contains("isRefreshing = true"))
-        XCTAssertTrue(ios.contains("connectionMessage = \"새로고침 완료\""))
+        XCTAssertTrue(ios.contains("connectionMessage = \"최신 상태를 불러왔습니다.\""))
+        XCTAssertTrue(ios.contains("connectionMessage = refreshFailureMessage(reason: message)"))
+        XCTAssertTrue(ios.contains("private func refreshFailureMessage(reason: String) -> String"))
+        XCTAssertTrue(ios.contains("설정에서 서버 URL과 클라이언트 토큰을 먼저 저장해 주세요."))
+        XCTAssertTrue(ios.contains("요청을 완료하지 못했습니다. 서버 연결 설정과 네트워크 상태를 확인해 주세요."))
+        XCTAssertFalse(ios.contains("connectionMessage = \"새로고침 실패\""))
+        XCTAssertFalse(ios.contains("서버 연결 정보가 없어 새로 고칠 수 없습니다."))
     }
 
     func testIOSRelayRefreshFetchesRemotePanelsConcurrently() throws {
