@@ -123,6 +123,7 @@ final class CompanionModel: ObservableObject {
         didSet {
             rebuildItemActionLookups()
             rebuildVisibleCalendarChanges()
+            rebuildDashboardDerivedState()
             rebuildRemoteLogDerivedState()
         }
     }
@@ -454,11 +455,12 @@ final class CompanionModel: ObservableObject {
         var nextVisibleLookup: [String: [String: ServerRelaySyncItem]] = [:]
         var nextFilterOptions: [String: CompanionItemFilterOptions] = [:]
         var nextDefaultListData: [String: CompanionItemListData] = [:]
+        let hiddenByActionItemIDs = dashboardActionHiddenItemIDs()
         for category in DashboardMetricCategory.allCases {
             let categoryItems = dashboardSyncItems
                 .filter { category.includes($0) }
                 .companionSorted(by: .recent)
-            let visibleItems = categoryItems.filter { !$0.isHidden }
+            let visibleItems = categoryItems.filter { !$0.isHidden && !hiddenByActionItemIDs.contains($0.id) }
             let filterOptions = CompanionItemFilterOptions(items: categoryItems, category: category)
             next[category.rawValue] = categoryItems
             nextVisible[category.rawValue] = visibleItems
@@ -494,6 +496,19 @@ final class CompanionModel: ObservableObject {
         ]
         .flatMap { $0 }
         .companionSorted(by: .recent)
+    }
+
+    private func dashboardActionHiddenItemIDs() -> Set<String> {
+        Set(
+            recentItemActions.compactMap { action in
+                guard action.action.hidesDashboardItemAfterRequest,
+                      !action.status.isFailedLike,
+                      !action.itemID.isEmpty else {
+                    return nil
+                }
+                return action.itemID
+            }
+        )
     }
 
     private func rebuildDashboardStatus() {
@@ -11079,6 +11094,36 @@ private extension ServerRelayItemActionKind {
         case .calendarVerify:
             false
         default:
+            false
+        }
+    }
+
+    var hidesDashboardItemAfterRequest: Bool {
+        switch self {
+        case .assignmentComplete,
+             .assignmentHide,
+             .examIgnore,
+             .noticeHide,
+             .fileHide,
+             .fileTrash,
+             .mailDashboardRemove:
+            true
+        case .assignmentRestore,
+             .assignmentUnhide,
+             .examPromote,
+             .examRestore,
+             .noticeRead,
+             .noticeUnread,
+             .noticeImportant,
+             .noticeUnimportant,
+             .noticeUnhide,
+             .fileUnhide,
+             .calendarVerify,
+             .calendarApply,
+             .calendarCreate,
+             .calendarEdit,
+             .calendarDelete,
+             .mailDashboardAdd:
             false
         }
     }
