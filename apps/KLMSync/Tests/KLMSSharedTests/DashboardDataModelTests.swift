@@ -1610,6 +1610,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(logTextBlock.contains(".task(id: highlightSourceText)"))
         XCTAssertTrue(logTextBlock.contains("Self.boundedHighlightSourceText(boundedText, detailed: detailed)"))
         XCTAssertTrue(logTextBlock.contains("Task.detached(priority: .utility)"))
+        XCTAssertTrue(logTextBlock.contains("rawExpandedByDefault: Bool = false"))
+        XCTAssertTrue(logTextBlock.contains("Label(\"원본 로그 보기\", systemImage: \"doc.text.magnifyingglass\")"))
         XCTAssertFalse(logTextBlock.contains("self.highlights = KLMSReadableLogParser.highlights(from: boundedText)"))
         XCTAssertTrue(sources.contains("private struct DeferredDashboardExpansion"))
         XCTAssertFalse(sources.contains("dashboardDetailExpansionDelayNanoseconds"))

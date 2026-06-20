@@ -2561,7 +2561,7 @@ private struct LogTextBlock: View {
     @State private var highlights: [KLMSLogHighlight]
     @State private var isRawExpanded: Bool
 
-    init(text: String, detailed: Bool = false, rawExpandedByDefault: Bool = true) {
+    init(text: String, detailed: Bool = false, rawExpandedByDefault: Bool = false) {
         self.text = text
         self.detailed = detailed
         let boundedText = Self.boundedText(text, detailed: detailed)
