@@ -683,6 +683,20 @@ final class CompanionModel: ObservableObject {
             || recentSettingActions.contains { $0.status == .pending || $0.status == .running }
     }
 
+    var activeItemAction: ServerRelayItemAction? {
+        recentItemActions.first { $0.status == .pending || $0.status == .running }
+    }
+
+    var activeSettingAction: ServerRelaySettingAction? {
+        recentSettingActions.first { $0.status == .pending || $0.status == .running }
+    }
+
+    var hasActiveNonCommandWork: Bool {
+        activeRemoteLogFileRequest != nil
+            || activeItemAction != nil
+            || activeSettingAction != nil
+    }
+
     private func rebuildRemoteLogDerivedState() {
         let now = Date()
         let nextCurrentCommand = recentCommands.first.flatMap { command -> RemoteRunCommand? in
@@ -803,29 +817,58 @@ final class CompanionModel: ObservableObject {
         if shouldShowAuthCompletion, let authStatusMessage = status.authStatusMessage {
             return authStatusMessage
         }
-        guard let latestCommand, let latestDisplayStatus else {
-            return "아직 Mac에서 받은 상태가 없습니다."
-        }
-        if isCancelRequestedForLatestCommand {
-            return "Mac에서 \(latestCommand.kind.displayName) 실행을 중단하는 중"
-        }
-        switch latestDisplayStatus {
-        case .pending:
-            return "\(latestCommand.kind.displayName) 요청을 서버에 올렸습니다. Mac 확인을 기다리는 중입니다."
-        case .running:
-            if let detail = runningPhaseDetail {
-                return "Mac에서 \(latestCommand.kind.displayName) · \(detail) 진행 중"
+        if let latestCommand, let latestDisplayStatus, latestDisplayStatus.isInFlight || !hasActiveNonCommandWork {
+            if isCancelRequestedForLatestCommand {
+                return "Mac에서 \(latestCommand.kind.displayName) 실행을 중단하는 중입니다."
             }
-            return "Mac에서 \(latestCommand.kind.displayName) 처리 중"
-        case .completed:
-            return "\(latestCommand.kind.displayName) 요청이 끝났습니다."
-        case .failed:
-            return "\(latestCommand.kind.displayName) 요청이 실패했습니다."
-        case .cancelled:
-            return "\(latestCommand.kind.displayName) 요청을 취소했습니다."
-        case .macUnavailable:
-            return "Mac이 아직 요청을 받지 못했습니다. Mac 앱이 켜져 있으면 곧 시작됩니다."
+            switch latestDisplayStatus {
+            case .pending:
+                return "\(latestCommand.kind.displayName) 요청을 서버에 올렸습니다. Mac 확인을 기다리는 중입니다."
+            case .running:
+                if let detail = runningPhaseDetail {
+                    return "Mac에서 \(latestCommand.kind.displayName) · \(detail) 진행 중입니다."
+                }
+                return "Mac에서 \(latestCommand.kind.displayName)을 처리 중입니다."
+            case .completed:
+                return "\(latestCommand.kind.displayName) 요청이 끝났습니다."
+            case .failed:
+                return "\(latestCommand.kind.displayName) 요청이 실패했습니다."
+            case .cancelled:
+                return "\(latestCommand.kind.displayName) 요청을 취소했습니다."
+            case .macUnavailable:
+                return "Mac이 아직 요청을 받지 못했습니다. Mac 앱이 켜져 있으면 곧 시작됩니다."
+            }
         }
+        if let fileRequest = activeRemoteLogFileRequest {
+            let title = fileRequest.itemTitle.nilIfEmpty ?? "요청한 파일"
+            switch fileRequest.status {
+            case .pending:
+                return "\(title) 파일 열기 요청을 서버에 올렸습니다. Mac 확인을 기다리는 중입니다."
+            case .running:
+                return "Mac에서 \(title) 파일 링크를 준비 중입니다."
+            case .completed:
+                return "\(title) 파일 링크가 준비됐습니다."
+            case .failed:
+                return "\(title) 파일 요청이 실패했습니다."
+            case .macUnavailable:
+                return "Mac이 아직 파일 요청을 받지 못했습니다. Mac 앱이 켜져 있으면 곧 처리됩니다."
+            }
+        }
+        if let itemAction = activeItemAction {
+            let title = itemAction.itemTitle.nilIfEmpty ?? "선택한 항목"
+            return "\(title) · \(itemAction.action.displayName) 요청이 \(activeStatusText(itemAction.status))"
+        }
+        if let settingAction = activeSettingAction {
+            let title = settingAction.title.nilIfEmpty ?? settingAction.key
+            return "\(title) 설정 저장 요청이 \(activeStatusText(settingAction.status))"
+        }
+        if status.phase == "running" {
+            if let detail = runningPhaseDetail {
+                return "\(detail) 진행 중입니다."
+            }
+            return "Mac에서 요청을 처리 중입니다."
+        }
+        return "아직 Mac에서 받은 상태가 없습니다."
     }
 
     var activeRequestLabel: String {
@@ -844,7 +887,54 @@ final class CompanionModel: ObservableObject {
             }
             return "요청 처리 중"
         }
+        if let fileRequest = activeRemoteLogFileRequest {
+            return fileRequest.status == .pending ? "파일 요청 대기 중" : "파일 준비 중"
+        }
+        if let itemAction = activeItemAction {
+            return itemAction.action.displayName
+        }
+        if activeSettingAction != nil {
+            return "설정 저장 중"
+        }
         return "요청 처리 중"
+    }
+
+    var activeAttentionTitle: String {
+        if latestDisplayStatus?.isInFlight == true || status.phase == "running" {
+            return "동기화 진행 중"
+        }
+        if activeRemoteLogFileRequest != nil {
+            return "파일 준비 중"
+        }
+        if activeItemAction != nil {
+            return "항목 처리 중"
+        }
+        if activeSettingAction != nil {
+            return "설정 저장 중"
+        }
+        return "요청 처리 중"
+    }
+
+    private func activeStatusText(_ status: ServerRelayItemActionStatus) -> String {
+        switch status {
+        case .pending:
+            return "대기 중입니다."
+        case .running:
+            return "처리 중입니다."
+        case .completed, .failed, .macUnavailable:
+            return "\(status.displayName) 상태입니다."
+        }
+    }
+
+    private func activeStatusText(_ status: ServerRelaySettingActionStatus) -> String {
+        switch status {
+        case .pending:
+            return "대기 중입니다."
+        case .running:
+            return "처리 중입니다."
+        case .completed, .failed, .macUnavailable:
+            return "\(status.displayName) 상태입니다."
+        }
     }
 
     var runningPhaseDetail: String? {
@@ -3891,7 +3981,8 @@ private struct RemoteAttentionStack: View {
     private var snapshot: RemoteAttentionSnapshot {
         RemoteAttentionSnapshot(
             authDigits: model.status.authDigits,
-            shouldShowRunningStatus: model.hasInFlightRequest || model.status.phase == "running",
+            runningTitle: model.activeAttentionTitle,
+            shouldShowRunningStatus: model.hasActiveServerWork || model.status.phase == "running",
             statusMessage: model.statusLine,
             loginAttentionMessage: model.loginAttentionMessage,
             authSuccessMessage: model.authSuccessMessage,
@@ -3906,6 +3997,7 @@ private struct RemoteAttentionStack: View {
 
 private struct RemoteAttentionSnapshot: Equatable {
     var authDigits: String?
+    var runningTitle: String
     var shouldShowRunningStatus: Bool
     var statusMessage: String
     var loginAttentionMessage: String?
@@ -3969,7 +4061,7 @@ private struct RemoteRunningStatusBanner: View {
                 .frame(width: 28, height: 28)
                 .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 3) {
-                Text("동기화 진행 중")
+                Text(snapshot.runningTitle)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
                 Text(statusMessage)
