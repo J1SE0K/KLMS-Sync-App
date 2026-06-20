@@ -131,7 +131,7 @@ final class CompanionModel: ObservableObject {
         didSet { rebuildRemoteLogDerivedState() }
     }
     @Published var syncItems: [ServerRelaySyncItem] = [] {
-        didSet { rebuildDashboardDerivedState(); rebuildChangeSummaryItemLookup(); rebuildVisibleCalendarChanges() }
+        didSet { rebuildVisibleCalendarChanges(); rebuildDashboardDerivedState(); rebuildChangeSummaryItemLookup() }
     }
     @Published var dryRunReports: [DryRunReport] = [] {
         didSet { rebuildDashboardFileCleanupDetails(); rebuildFileCleanupReportCache() }
@@ -149,7 +149,7 @@ final class CompanionModel: ObservableObject {
     @Published var verifySummary: ServerRelayVerifySummary?
     @Published var sharedSettings: [ServerRelaySetting] = []
     @Published var mailDashboardItems: [ServerRelaySyncItem] = [] {
-        didSet { rebuildDashboardDerivedState(); rebuildVisibleCalendarChanges() }
+        didSet { rebuildVisibleCalendarChanges(); rebuildDashboardDerivedState() }
     }
     @Published private(set) var dashboardSyncItems: [ServerRelaySyncItem] = []
     @Published private(set) var dashboardSyncItemsRevision = 0
@@ -512,8 +512,10 @@ final class CompanionModel: ObservableObject {
     }
 
     private func rebuildDashboardStatus() {
-        var next = hasLoadedServerSyncData ? status : status.withoutDashboardCounts()
-        next.applyMailDashboardItems(dashboardMailItems, baseItems: syncItems)
+        let next = hasLoadedServerSyncData ? status.withAuthoritativeDashboardCounts(
+            itemsByCategoryID: visibleDashboardItemsByCategoryID,
+            calendarChanges: visibleCalendarChangesCache
+        ) : status.withoutDashboardCounts()
         if dashboardStatus != next {
             dashboardStatus = next
         }
@@ -14263,6 +14265,58 @@ private extension SanitizedRemoteStatus {
             authDigits: authDigits,
             authStatusMessage: authStatusMessage
         )
+    }
+
+    func withAuthoritativeDashboardCounts(
+        itemsByCategoryID: [String: [ServerRelaySyncItem]],
+        calendarChanges: [CalendarChange]
+    ) -> SanitizedRemoteStatus {
+        var next = self
+        next.assignments = Self.visibleCount(
+            in: itemsByCategoryID,
+            category: .assignments,
+            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .assignments)
+        )
+        next.exams = Self.visibleCount(
+            in: itemsByCategoryID,
+            category: .exams,
+            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .exams)
+        )
+        next.helpDesk = Self.visibleCount(
+            in: itemsByCategoryID,
+            category: .helpDesk,
+            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .helpDesk)
+        )
+        next.notices = Self.visibleCount(
+            in: itemsByCategoryID,
+            category: .notices,
+            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .notices)
+        )
+        next.fileTotal = Self.visibleCount(
+            in: itemsByCategoryID,
+            category: .files,
+            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .files)
+        )
+        next.calendarCreated = Self.calendarCount(in: calendarChanges, actions: ["created", "mail"])
+        next.calendarUpdated = Self.calendarCount(in: calendarChanges, actions: ["updated"])
+        next.calendarDeleted = Self.calendarCount(in: calendarChanges, actions: ["deleted"])
+        return next
+    }
+
+    private static func visibleCount(
+        in itemsByCategoryID: [String: [ServerRelaySyncItem]],
+        category: DashboardMetricCategory,
+        statusFilter: CompanionItemStatusFilter
+    ) -> Int {
+        (itemsByCategoryID[category.rawValue] ?? [])
+            .filter { statusFilter.includes($0) }
+            .count
+    }
+
+    private static func calendarCount(in changes: [CalendarChange], actions: Set<String>) -> Int {
+        changes.filter { change in
+            actions.contains(change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        }.count
     }
 
     var hasCompanionChangeSummary: Bool {

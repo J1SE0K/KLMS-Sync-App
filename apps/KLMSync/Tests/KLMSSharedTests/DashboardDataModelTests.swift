@@ -2046,6 +2046,20 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(statusScreen.contains("if model.hasLoadedServerSyncData"))
         XCTAssertTrue(statusScreen.contains("WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)"))
         XCTAssertTrue(statusScreen.contains("CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)"))
+        let rebuildDashboardStatus = try sourceBody(
+            after: "private func rebuildDashboardStatus()",
+            in: ios,
+            description: "iOS dashboard status rebuild"
+        )
+        XCTAssertTrue(rebuildDashboardStatus.contains("status.withAuthoritativeDashboardCounts("))
+        XCTAssertTrue(rebuildDashboardStatus.contains("itemsByCategoryID: visibleDashboardItemsByCategoryID"))
+        XCTAssertTrue(rebuildDashboardStatus.contains("calendarChanges: visibleCalendarChangesCache"))
+        XCTAssertFalse(rebuildDashboardStatus.contains("next.applyMailDashboardItems"))
+        XCTAssertTrue(ios.contains("func withAuthoritativeDashboardCounts("))
+        XCTAssertTrue(ios.contains("CompanionItemStatusFilter.defaultFilter(for: .assignments)"))
+        XCTAssertTrue(ios.contains("CompanionItemStatusFilter.defaultFilter(for: .files)"))
+        XCTAssertTrue(ios.contains("next.calendarCreated = Self.calendarCount(in: calendarChanges, actions: [\"created\", \"mail\"])"))
+        XCTAssertTrue(ios.contains("didSet { rebuildVisibleCalendarChanges(); rebuildDashboardDerivedState(); rebuildChangeSummaryItemLookup() }"))
         XCTAssertTrue(statusScreen.contains("WorkstationDashboardOverviewData(model: model)"))
         XCTAssertTrue(statusScreen.contains("showsMetrics: false"))
         XCTAssertTrue(statusScreen.contains("onOpenCategory: { category in"))
@@ -2824,7 +2838,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("@Published private(set) var hasLoadedServerSyncData = false"))
         XCTAssertTrue(ios.contains("private var dashboardMailItems: [ServerRelaySyncItem]"))
         XCTAssertTrue(ios.contains("hasLoadedServerSyncData ? mailDashboardItems : []"))
-        XCTAssertTrue(ios.contains("hasLoadedServerSyncData ? status : status.withoutDashboardCounts()"))
+        XCTAssertTrue(ios.contains("hasLoadedServerSyncData ? status.withAuthoritativeDashboardCounts("))
         XCTAssertTrue(ios.contains("(syncItems + dashboardMailItems).dedupedForServerRelay()"))
         XCTAssertFalse(ios.contains("(syncItems + mailDashboardItems).dedupedForServerRelay()"))
         XCTAssertTrue(ios.contains("rebuildDashboardDerivedState()"))
@@ -2835,7 +2849,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("var hidesDashboardItemAfterRequest: Bool"))
         XCTAssertTrue(ios.contains("case .assignmentComplete,"))
         XCTAssertTrue(ios.contains("case .assignmentRestore,"))
-        XCTAssertTrue(ios.contains("next.applyMailDashboardItems(dashboardMailItems, baseItems: syncItems)"))
+        XCTAssertFalse(ios.contains("next.applyMailDashboardItems(dashboardMailItems, baseItems: syncItems)"))
         XCTAssertTrue(ios.contains("+ dashboardMailItems"))
         XCTAssertTrue(ios.contains("if !hasLoadedServerSyncData"))
         let companionDashboardCategoryScreen = try sourceStructBody(named: "CompanionDashboardCategoryScreen", in: ios)
