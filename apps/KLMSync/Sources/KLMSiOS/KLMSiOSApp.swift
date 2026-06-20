@@ -209,6 +209,7 @@ final class CompanionModel: ObservableObject {
     private var pendingRefreshRequest: PendingRefreshRequest?
     private var lastSyncDataRefreshAt: Date?
     private var syncDataNeedsRefresh = true
+    private var hasLoadedServerSyncData = false
     private var syncItemsSignature: Int?
     private var calendarChangesSignature: Int?
     private var remoteSettingsSignature: Int?
@@ -433,8 +434,12 @@ final class CompanionModel: ObservableObject {
         return setting.boolValue
     }
 
+    private var dashboardMailItems: [ServerRelaySyncItem] {
+        hasLoadedServerSyncData ? mailDashboardItems : []
+    }
+
     private func rebuildDashboardDerivedState() {
-        let nextItems = (syncItems + mailDashboardItems).dedupedForServerRelay()
+        let nextItems = (syncItems + dashboardMailItems).dedupedForServerRelay()
         if dashboardSyncItems != nextItems {
             dashboardSyncItems = nextItems
             dashboardSyncItemsRevision &+= 1
@@ -493,7 +498,7 @@ final class CompanionModel: ObservableObject {
 
     private func rebuildDashboardStatus() {
         var next = status
-        next.applyMailDashboardItems(mailDashboardItems, baseItems: syncItems)
+        next.applyMailDashboardItems(dashboardMailItems, baseItems: syncItems)
         if dashboardStatus != next {
             dashboardStatus = next
         }
@@ -1401,7 +1406,7 @@ final class CompanionModel: ObservableObject {
     private func rebuildVisibleCalendarChanges() {
         let next = (
             calendarChanges
-                + mailDashboardItems
+                + dashboardMailItems
                 .unmatchedMailDashboardItems(comparedTo: syncItems)
                 .compactMap(\.mailCalendarChange)
         )
@@ -2105,6 +2110,12 @@ final class CompanionModel: ObservableObject {
             verifySummarySignature = nextVerifySummarySignature
             didChange = true
         }
+        if !hasLoadedServerSyncData {
+            hasLoadedServerSyncData = true
+            rebuildDashboardDerivedState()
+            rebuildVisibleCalendarChanges()
+            didChange = true
+        }
         lastSyncDataRefreshAt = Date()
         syncDataNeedsRefresh = false
         return didChange
@@ -2542,17 +2553,16 @@ private struct CompanionTabRootView: View {
     @State private var selectedSection: CompanionAppSection = .status
 
     var body: some View {
-        VStack(spacing: 0) {
-            CompanionDeferredSectionContent(section: selectedSection, model: model)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-            CompanionCompactTabBar(selectedSection: $selectedSection)
-                .padding(.horizontal, 16)
-                .padding(.top, 7)
-                .padding(.bottom, 10)
-                .background(Color.klmsScreenBackground)
-        }
-        .background(Color.klmsScreenBackground.ignoresSafeArea())
+        CompanionDeferredSectionContent(section: selectedSection, model: model)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                CompanionCompactTabBar(selectedSection: $selectedSection)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 7)
+                    .padding(.bottom, 8)
+                    .background(Color.klmsScreenBackground)
+            }
+            .background(Color.klmsScreenBackground.ignoresSafeArea())
     }
 }
 
@@ -4657,6 +4667,7 @@ private enum CompanionLargeList {
     static let logVisibleLimit = 10
     static let increment = 10
     static let filterRebuildDelayNanoseconds: UInt64 = 8_000_000
+    static let detailRenderDelayNanoseconds: UInt64 = 45_000_000
 
     static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
         horizontalSizeClass == .regular ? regularInitialVisibleLimit : initialVisibleLimit
@@ -10024,6 +10035,8 @@ private struct DeferredServerSyncItemDetailPanel: View {
         detailTask = Task { @MainActor in
             await Task.yield()
             guard !Task.isCancelled else { return }
+            try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)
+            guard !Task.isCancelled else { return }
             companionPerformWithoutAnimation {
                 isReady = true
             }
@@ -11520,7 +11533,7 @@ private struct RemoteSettingGroup: Identifiable {
                 "로그인",
                 "person.badge.key",
                 "인증번호 감지와 로그인 보조 방식을 정합니다.",
-                ["KLMS_LOGIN_ASSIST_ENABLED", "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE"]
+                ["KLMS_LOGIN_ASSIST_ENABLED", "KLMS_LOGIN_ASSIST_MODE", "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE"]
             ),
             (
                 "실행",
@@ -11532,13 +11545,31 @@ private struct RemoteSettingGroup: Identifiable {
                 "파일",
                 "folder",
                 "파일 탐색, 주차별 폴더, 보존 방식을 정합니다.",
-                ["FILE_REFRESH_MODE", "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY", "FILE_WEEKLY_FOLDERS_ENABLED", "FILE_KEEP_FRESH_DOWNLOADS", "FILE_PRESERVE_DOWNLOAD_ARCHIVE"]
+                [
+                    "FILE_REFRESH_MODE",
+                    "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY",
+                    "FILE_WEEKLY_FOLDERS_ENABLED",
+                    "FILE_FORCE_DOWNLOAD",
+                    "FILE_KEEP_FRESH_DOWNLOADS",
+                    "FILE_PRESERVE_DOWNLOAD_ARCHIVE",
+                ]
             ),
             (
                 "공지 메모",
                 "checklist",
-                "숨긴 공지와 변경 없는 메모 처리 방식을 정합니다.",
-                ["NOTICE_HIDE_HIDDEN_ITEMS", "NOTICE_NATIVE_STABLE_NOOP_SKIP"]
+                "공지 메모의 접기, 양식, 상태 반영 방식을 정합니다.",
+                [
+                    "NOTICE_COLLAPSE_SECTIONS",
+                    "NOTICE_COLLAPSE_COURSES",
+                    "NOTICE_COLLAPSE_NOTICE_ITEMS",
+                    "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS",
+                    "NOTICE_HIDE_HIDDEN_ITEMS",
+                    "NOTICE_NATIVE_STABLE_NOOP_SKIP",
+                    "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE",
+                    "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
+                    "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY",
+                    "NOTICE_NATIVE_PLAIN_TEXT_PASTE",
+                ]
             ),
             (
                 "Safari",

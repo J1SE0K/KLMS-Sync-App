@@ -125,6 +125,7 @@ final class KLMSMacModel: ObservableObject {
 
     private static let serverRelayEditableSettings: [ServerRelaySettingDefinition] = [
         ServerRelaySettingDefinition(.loginAssistEnabled, title: "로그인 보조", valueKind: .bool, defaultValue: "1"),
+        ServerRelaySettingDefinition(.loginAssistMode, title: "로그인 보조 방식", valueKind: .choice, defaultValue: "manual-digits", options: ["manual-digits", "kaikey-auto"]),
         ServerRelaySettingDefinition(.loginAssistAllowNoninteractive, title: "앱이 앞에 없어도 로그인 보조", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.safariBackgroundWindowEnabled, title: "Safari 백그라운드 창", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.safariBackgroundWindowMode, title: "Safari 백그라운드 방식", valueKind: .choice, defaultValue: "minimize", options: ["minimize", "none"]),
@@ -135,9 +136,18 @@ final class KLMSMacModel: ObservableObject {
         ServerRelaySettingDefinition(.fileSkipDownloadWhenPreviewEmpty, title: "파일 변경 없으면 다운로드 확인 건너뛰기", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.fileKeepFreshDownloads, title: "새 다운로드 임시 폴더 유지", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.fileWeeklyFoldersEnabled, title: "주차/출처 폴더 사용", valueKind: .bool, defaultValue: "1"),
+        ServerRelaySettingDefinition(.fileForceDownload, title: "파일 강제 다시 받기", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.filePreserveDownloadArchive, title: "임시 다운로드 보관", valueKind: .bool, defaultValue: "0"),
+        ServerRelaySettingDefinition(.noticeCollapseSections, title: "공지 큰 섹션 접기", valueKind: .bool, defaultValue: "0"),
+        ServerRelaySettingDefinition(.noticeCollapseCourses, title: "공지 과목명 접기", valueKind: .bool, defaultValue: "1"),
+        ServerRelaySettingDefinition(.noticeCollapseItems, title: "공지 항목 접기", valueKind: .bool, defaultValue: "0"),
+        ServerRelaySettingDefinition(.noticeStyleItemsAsHeadings, title: "공지 항목을 제목처럼 표시", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.noticeHideHiddenItems, title: "숨긴 공지는 메모에서 제외", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.noticeStableNoopSkip, title: "공지 내용이 같으면 메모 다시 쓰지 않기", valueKind: .bool, defaultValue: "1"),
+        ServerRelaySettingDefinition(.noticeAlwaysCaptureState, title: "공지 읽음/중요 상태 항상 확인", valueKind: .bool, defaultValue: "1"),
+        ServerRelaySettingDefinition(.noticeVerifyStableSkipFormat, title: "변경 없는 공지는 양식 검증 생략", valueKind: .bool, defaultValue: "0"),
+        ServerRelaySettingDefinition(.noticePreformattedPasteOnly, title: "공지 메모에 원문 양식으로 붙여넣기", valueKind: .bool, defaultValue: "0"),
+        ServerRelaySettingDefinition(.noticePlainTextPaste, title: "공지 메모를 일반 텍스트로 붙여넣기", valueKind: .bool, defaultValue: "0"),
     ]
 
     @Published var paths = KLMSPaths()
@@ -400,12 +410,12 @@ final class KLMSMacModel: ObservableObject {
             "NOTICE_NATIVE_VALIDATE_STYLE": "0",
             "NOTICE_NATIVE_SELECTION_SETTLE_SECONDS": "0.012",
             "NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US": "15000",
-            "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": "0",
+            "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": runtimeBoolConfigValue(.noticePreformattedPasteOnly, default: false),
             "NOTICE_NATIVE_PLAIN_TEXT_PASTE": runtimeBoolConfigValue(.noticePlainTextPaste, default: false),
             "NOTICE_NATIVE_STYLE_BUDGET_SECONDS": "60",
             "SYNC_MODE": runtimeConfigValue(.syncMode, default: "auto"),
             "FILE_REFRESH_MODE": runtimeConfigValue(.fileRefreshMode, default: "auto"),
-            "FILE_FORCE_DOWNLOAD": "0",
+            "FILE_FORCE_DOWNLOAD": runtimeBoolConfigValue(.fileForceDownload, default: false),
             "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": runtimeBoolConfigValue(.fileSkipDownloadWhenPreviewEmpty, default: true),
             "FILE_KEEP_FRESH_DOWNLOADS": runtimeBoolConfigValue(.fileKeepFreshDownloads, default: false),
             "FILE_WEEKLY_FOLDERS_ENABLED": runtimeBoolConfigValue(.fileWeeklyFoldersEnabled, default: true),
