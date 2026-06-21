@@ -3222,7 +3222,10 @@ private struct CompanionDashboardCategoryScreen: View {
     var body: some View {
         CompanionScreenContainer(title: title, model: model) {
             if !model.hasLoadedServerSyncData {
-                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                CompanionCategoryDataLoadingState(
+                    category: category,
+                    isServerConfigured: model.serverRelayConfigured
+                )
             } else if horizontalSizeClass == .regular && category == .calendar {
                 WorkstationCalendarWorkspace(model: model)
             } else if horizontalSizeClass == .regular && category.supportsWorkstationSelectionWorkspace {
@@ -3274,7 +3277,10 @@ private struct CompanionTasksScreen: View {
                 DashboardCategoryInlineDetailPanel(category: selectedCompactTaskCategory, model: model)
                     .id(selectedCompactTaskCategory.rawValue)
             } else {
-                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                CompanionCategoryDataLoadingState(
+                    category: selectedCompactTaskCategory,
+                    isServerConfigured: model.serverRelayConfigured
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -4832,6 +4838,84 @@ private enum CompanionLargeList {
 
     static func calendarVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
         horizontalSizeClass == .regular ? regularCalendarVisibleLimit : calendarVisibleLimit
+    }
+}
+
+private struct CompanionCategoryDataLoadingState: View {
+    var category: DashboardMetricCategory
+    var isServerConfigured: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            CompanionDashboardDataLoadingCard(isServerConfigured: isServerConfigured)
+            categoryGuide
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var categoryGuide: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 9) {
+                Image(systemName: category.systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(category.tint)
+                    .frame(width: 26, height: 26)
+                    .background(category.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(categoryLoadingTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.klmsPrimaryText)
+                    Text(categoryLoadingSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            Text(categoryLoadingDetail)
+                .font(.caption)
+                .foregroundStyle(Color.klmsSecondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(categoryLoadingTitle). \(categoryLoadingSubtitle)")
+    }
+
+    private var categoryLoadingTitle: String {
+        "\(category.title) 준비 중"
+    }
+
+    private var categoryLoadingSubtitle: String {
+        if isServerConfigured {
+            return "서버 요약을 불러오면 이 화면이 채워집니다."
+        }
+        return "서버 연결 정보를 저장하면 이 화면이 채워집니다."
+    }
+
+    private var categoryLoadingDetail: String {
+        switch category {
+        case .files:
+            return "파일명, 과목, 주차, 최신순 정렬과 미리보기 요청을 여기에서 바로 확인합니다."
+        case .assignments:
+            return "과제 목록, 마감일, 완료 상태와 숨김 처리를 한 자리에서 관리합니다."
+        case .exams:
+            return "시험 일정, 범위, 캘린더 반영 상태를 같은 기준으로 보여줍니다."
+        case .notices:
+            return "공지의 읽음, 중요, 숨김 상태와 과목별 필터가 여기에 정리됩니다."
+        case .calendar:
+            return "생성, 수정, 삭제가 필요한 일정과 처리 버튼을 이 화면에서 확인합니다."
+        case .helpDesk:
+            return "헬프데스크 일정과 캘린더 반영 상태를 따로 확인합니다."
+        case .quarantine:
+            return "확인이 필요한 격리 파일이 있을 때만 이 화면에 표시됩니다."
+        }
     }
 }
 
@@ -6818,7 +6902,10 @@ private struct DashboardCategoryInlineDetailPanel: View {
                     detailContent
                 }
             } else {
-                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                CompanionCategoryDataLoadingState(
+                    category: category,
+                    isServerConfigured: model.serverRelayConfigured
+                )
             }
         }
         .padding(14)
@@ -7248,7 +7335,10 @@ private struct WorkstationTasksWorkspace: View {
             if model.hasLoadedServerSyncData {
                 tasksRegularWorkspace
             } else {
-                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                CompanionCategoryDataLoadingState(
+                    category: selectedTaskCategory,
+                    isServerConfigured: model.serverRelayConfigured
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
