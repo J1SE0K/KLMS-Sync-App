@@ -2169,17 +2169,25 @@ final class CompanionModel: ObservableObject {
 
     private func shouldPresentAuthSuccessAlert(message: String, now: Date = Date()) -> Bool {
         let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let deduplicationKey = Self.authSuccessDeduplicationKey(normalized)
         defer {
-            lastAuthSuccessAlertMessage = normalized
+            lastAuthSuccessAlertMessage = deduplicationKey
             lastAuthSuccessAlertAt = now
         }
-        guard normalized != lastAuthSuccessAlertMessage else {
+        guard deduplicationKey != lastAuthSuccessAlertMessage else {
             guard let lastAuthSuccessAlertAt else {
                 return true
             }
             return now.timeIntervalSince(lastAuthSuccessAlertAt) > 90
         }
         return true
+    }
+
+    private static func authSuccessDeduplicationKey(_ message: String) -> String {
+        if isAlreadyLoggedInMessage(message) {
+            return "already-logged-in"
+        }
+        return "auth-completed"
     }
 
     private func shouldFetchSyncData(includeSyncData: Bool?) -> Bool {

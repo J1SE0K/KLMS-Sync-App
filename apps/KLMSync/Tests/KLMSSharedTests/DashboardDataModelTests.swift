@@ -4979,6 +4979,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("shouldNotifyAuthSuccess(from: previousStatus, to: response.status)"))
         XCTAssertTrue(ios.contains("previousStatus.authDigits != nil"))
         XCTAssertTrue(ios.contains("return !Self.isAlreadyLoggedInMessage(message)"))
+        XCTAssertTrue(ios.contains("private static func authSuccessDeduplicationKey(_ message: String) -> String"))
+        XCTAssertTrue(ios.contains("return \"already-logged-in\""))
+        XCTAssertTrue(ios.contains("return \"auth-completed\""))
+        XCTAssertTrue(ios.contains("let deduplicationKey = Self.authSuccessDeduplicationKey(normalized)"))
+        XCTAssertFalse(ios.contains("lastAuthSuccessAlertMessage = normalized"))
     }
 
     func testMacMailDashboardDerivedDataIsCachedOffRenderPath() throws {
