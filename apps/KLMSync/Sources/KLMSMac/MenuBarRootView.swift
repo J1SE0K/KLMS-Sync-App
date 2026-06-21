@@ -4485,6 +4485,14 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
                     Spacer(minLength: 0)
                 }
                 .foregroundStyle(Color.klmsMacSecondaryText)
+                .padding(.horizontal, compact ? 6 : 8)
+                .padding(.vertical, compact ? 4 : 6)
+                .frame(maxWidth: .infinity, minHeight: compact ? 28 : 36, alignment: .leading)
+                .background(Color.klmsMacSubtleCardBackground.opacity(compact ? 0.18 : 0.30), in: RoundedRectangle(cornerRadius: 7))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(Color.klmsMacBorder.opacity(compact ? 0.20 : 0.34), lineWidth: 1)
+                }
                 .contentShape(RoundedRectangle(cornerRadius: 7))
             }
             .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 7))
@@ -5644,14 +5652,20 @@ struct CollapsibleSectionBox<Content: View>: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 }
-                .contentShape(Rectangle())
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.klmsMacBorder.opacity(0.58), lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 10))
             }
-            .buttonStyle(MacPressFeedbackButtonStyle())
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 10))
             .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
+            .contentShape(RoundedRectangle(cornerRadius: 10))
 
             if isExpanded {
                 content

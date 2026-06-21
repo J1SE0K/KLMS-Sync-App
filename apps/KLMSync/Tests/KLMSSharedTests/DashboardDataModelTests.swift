@@ -3615,6 +3615,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(doctorPanelView.contains("DiagnosticChecksDisclosure("))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityHint(isExpanded ? \"\\(title) 접기\" : \"\\(title) 펼치기\")"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains(".frame(maxWidth: .infinity, minHeight: compact ? 28 : 36, alignment: .leading)"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains(".contentShape(RoundedRectangle(cornerRadius: 7))"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains("Color.klmsMacSubtleCardBackground.opacity(0.34)"))
         XCTAssertFalse(diagnosticChecksDisclosure.contains(".stroke(Color.klmsMacBorder.opacity(0.54)"))
         let collapsibleSectionBox = try sourceBody(
@@ -3624,6 +3626,8 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertTrue(collapsibleSectionBox.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(collapsibleSectionBox.contains(".accessibilityHint(isExpanded ? \"\\(title) 접기\" : \"\\(title) 펼치기\")"))
+        XCTAssertTrue(collapsibleSectionBox.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
+        XCTAssertTrue(collapsibleSectionBox.contains(".contentShape(RoundedRectangle(cornerRadius: 10))"))
         let doctorCheckRowView = try sourceStructBody(named: "DoctorCheckRowView", in: mac)
         XCTAssertTrue(doctorCheckRowView.contains(".lineLimit(compact ? 2 : 1)"))
         XCTAssertTrue(appDiagnosticsPanel.contains("private let permissionActionColumns = [GridItem(.adaptive(minimum: 136), spacing: 8)]"))
