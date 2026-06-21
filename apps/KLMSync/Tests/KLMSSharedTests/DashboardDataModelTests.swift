@@ -3847,6 +3847,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosScreenContainer.contains("let model: CompanionModel"))
         XCTAssertFalse(iosScreenContainer.contains("showsAttentionStack"))
         XCTAssertTrue(iosScreenContainer.contains("RemoteAttentionStack(model: model)"))
+        XCTAssertTrue(iosScreenContainer.contains(".accessibilitySortPriority(100)"))
+        XCTAssertTrue(iosScreenContainer.contains(".zIndex(1)"))
         XCTAssertLessThan(
             try XCTUnwrap(iosScreenContainer.range(of: "RemoteAttentionStack(model: model)")).lowerBound,
             try XCTUnwrap(iosScreenContainer.range(of: "WholeScreenVerticalScrollView")).lowerBound

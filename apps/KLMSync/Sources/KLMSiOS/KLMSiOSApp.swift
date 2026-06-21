@@ -3876,6 +3876,8 @@ private struct CompanionScreenContainer<Content: View>: View {
             Color.klmsScreenBackground
             VStack(spacing: 0) {
                 RemoteAttentionStack(model: model)
+                    .accessibilitySortPriority(100)
+                    .zIndex(1)
                     .padding(.horizontal, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16)
                     .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
                     .padding(.bottom, 10)
