@@ -226,6 +226,7 @@ final class CompanionModel: ObservableObject {
     private var dashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
     private var visibleDashboardItemsByCategoryID: [String: [ServerRelaySyncItem]] = [:]
     private var visibleDashboardItemLookupByCategoryID: [String: [String: ServerRelaySyncItem]] = [:]
+    private var dashboardVisibleCounts = CompanionDashboardVisibleCounts()
     private var dashboardFilterOptionsByCategoryID: [String: CompanionItemFilterOptions] = [:]
     private var defaultDashboardListDataByCategoryID: [String: CompanionItemListData] = [:]
     private var visibleDashboardTaskItems: [ServerRelaySyncItem] = []
@@ -454,6 +455,7 @@ final class CompanionModel: ObservableObject {
         var next: [String: [ServerRelaySyncItem]] = [:]
         var nextVisible: [String: [ServerRelaySyncItem]] = [:]
         var nextVisibleLookup: [String: [String: ServerRelaySyncItem]] = [:]
+        var nextVisibleCounts = CompanionDashboardVisibleCounts()
         var nextFilterOptions: [String: CompanionItemFilterOptions] = [:]
         var nextDefaultListData: [String: CompanionItemListData] = [:]
         let hiddenByActionItemIDs = dashboardActionHiddenItemIDs()
@@ -473,11 +475,21 @@ final class CompanionModel: ObservableObject {
         }
         for category in DashboardMetricCategory.allCases {
             let categoryItems = categoryItemsByID[category.rawValue] ?? []
-            let visibleItems = categoryItems.filter { !$0.isHidden && !hiddenByActionItemIDs.contains($0.id) }
+            let defaultStatusFilter = CompanionItemStatusFilter.defaultFilter(for: category)
+            var visibleItems: [ServerRelaySyncItem] = []
+            visibleItems.reserveCapacity(categoryItems.count)
+            var defaultVisibleCount = 0
+            for item in categoryItems where !item.isHidden && !hiddenByActionItemIDs.contains(item.id) {
+                visibleItems.append(item)
+                if defaultStatusFilter.includes(item) {
+                    defaultVisibleCount += 1
+                }
+            }
             let filterOptions = CompanionItemFilterOptions(items: categoryItems, category: category)
             next[category.rawValue] = categoryItems
             nextVisible[category.rawValue] = visibleItems
             nextVisibleLookup[category.rawValue] = Dictionary(visibleItems.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            nextVisibleCounts[category] = defaultVisibleCount
             nextFilterOptions[category.rawValue] = filterOptions
             if category.supportsWorkstationSelectionWorkspace {
                 nextDefaultListData[category.rawValue] = CompanionItemListData(
@@ -500,6 +512,7 @@ final class CompanionModel: ObservableObject {
         dashboardItemsByCategoryID = next
         visibleDashboardItemsByCategoryID = nextVisible
         visibleDashboardItemLookupByCategoryID = nextVisibleLookup
+        dashboardVisibleCounts = nextVisibleCounts
         dashboardFilterOptionsByCategoryID = nextFilterOptions
         defaultDashboardListDataByCategoryID = nextDefaultListData
         visibleDashboardTaskItems = nextVisibleTaskItems
@@ -520,7 +533,7 @@ final class CompanionModel: ObservableObject {
 
     private func rebuildDashboardStatus() {
         let next = hasLoadedServerSyncData ? status.withAuthoritativeDashboardCounts(
-            itemsByCategoryID: visibleDashboardItemsByCategoryID,
+            visibleCounts: dashboardVisibleCounts,
             calendarChanges: visibleCalendarChangesCache
         ) : status.withoutDashboardCounts()
         if dashboardStatus != next {
@@ -4995,6 +5008,49 @@ private struct CompanionItemFilterOptions: Equatable, Sendable {
         yearOptions = CompanionItemListFilter.yearOptions(for: items)
         semesterOptions = CompanionItemListFilter.semesterOptions(for: items)
         availableStatusFilters = CompanionItemStatusFilter.options(for: category, items: items)
+    }
+}
+
+private struct CompanionDashboardVisibleCounts: Equatable, Sendable {
+    var assignments = 0
+    var exams = 0
+    var helpDesk = 0
+    var notices = 0
+    var files = 0
+
+    subscript(category: DashboardMetricCategory) -> Int {
+        get {
+            switch category {
+            case .assignments:
+                return assignments
+            case .exams:
+                return exams
+            case .helpDesk:
+                return helpDesk
+            case .notices:
+                return notices
+            case .files:
+                return files
+            case .calendar, .quarantine:
+                return 0
+            }
+        }
+        set {
+            switch category {
+            case .assignments:
+                assignments = newValue
+            case .exams:
+                exams = newValue
+            case .helpDesk:
+                helpDesk = newValue
+            case .notices:
+                notices = newValue
+            case .files:
+                files = newValue
+            case .calendar, .quarantine:
+                break
+            }
+        }
     }
 }
 
@@ -14407,50 +14463,20 @@ private extension SanitizedRemoteStatus {
     }
 
     func withAuthoritativeDashboardCounts(
-        itemsByCategoryID: [String: [ServerRelaySyncItem]],
+        visibleCounts: CompanionDashboardVisibleCounts,
         calendarChanges: [CalendarChange]
     ) -> SanitizedRemoteStatus {
         var next = self
-        next.assignments = Self.visibleCount(
-            in: itemsByCategoryID,
-            category: .assignments,
-            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .assignments)
-        )
-        next.exams = Self.visibleCount(
-            in: itemsByCategoryID,
-            category: .exams,
-            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .exams)
-        )
-        next.helpDesk = Self.visibleCount(
-            in: itemsByCategoryID,
-            category: .helpDesk,
-            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .helpDesk)
-        )
-        next.notices = Self.visibleCount(
-            in: itemsByCategoryID,
-            category: .notices,
-            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .notices)
-        )
-        next.fileTotal = Self.visibleCount(
-            in: itemsByCategoryID,
-            category: .files,
-            statusFilter: CompanionItemStatusFilter.defaultFilter(for: .files)
-        )
+        next.assignments = visibleCounts.assignments
+        next.exams = visibleCounts.exams
+        next.helpDesk = visibleCounts.helpDesk
+        next.notices = visibleCounts.notices
+        next.fileTotal = visibleCounts.files
         let calendarCounts = Self.calendarCounts(in: calendarChanges)
         next.calendarCreated = calendarCounts.created
         next.calendarUpdated = calendarCounts.updated
         next.calendarDeleted = calendarCounts.deleted
         return next
-    }
-
-    private static func visibleCount(
-        in itemsByCategoryID: [String: [ServerRelaySyncItem]],
-        category: DashboardMetricCategory,
-        statusFilter: CompanionItemStatusFilter
-    ) -> Int {
-        (itemsByCategoryID[category.rawValue] ?? [])
-            .filter { statusFilter.includes($0) }
-            .count
     }
 
     private struct CalendarChangeCounts: Equatable {
