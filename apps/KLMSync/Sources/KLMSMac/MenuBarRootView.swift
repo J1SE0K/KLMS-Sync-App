@@ -2061,26 +2061,8 @@ private struct LogSummaryDetailView: View {
 
     private var fileRequestDetail: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("파일 요청 기록")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                Button {
-                    Task {
-                        await model.clearServerRelayLogs(scope: .fileAccess)
-                    }
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
-                .help("파일 요청 기록 지우기")
-                .accessibilityLabel("파일 요청 기록 지우기")
-                .disabled(
-                    !model.serverRelayConfigured
-                        || model.serverRelayRecentFileAccessRequests.isEmpty
-                        || model.serverRelayRecentFileAccessRequests.contains { $0.status.isInFlight }
-                )
-            }
+            Text("파일 요청 기록")
+                .font(.caption.weight(.semibold))
             if model.serverRelayRecentFileAccessRequests.isEmpty {
                 Text("최근 파일 요청이 없습니다.")
                     .font(.caption)
