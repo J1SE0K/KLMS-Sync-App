@@ -199,9 +199,9 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
 
         appMenu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "KLMS Sync 종료", action: #selector(quitFromMenu), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "KLMS Sync 종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quitItem.keyEquivalentModifierMask = [.command]
-        quitItem.target = self
+        quitItem.target = NSApp
         appMenu.addItem(quitItem)
 
         appMenuItem.submenu = appMenu
