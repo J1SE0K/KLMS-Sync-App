@@ -1580,14 +1580,27 @@ final class DashboardDataModelTests: XCTestCase {
         let macSettingsRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/SettingsView.swift")
         let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
         let mac = try String(contentsOf: macRoot, encoding: .utf8)
+        let macDetail = try String(contentsOf: macDetailRoot, encoding: .utf8)
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
         let sources = try [
             mac,
-            String(contentsOf: macDetailRoot, encoding: .utf8),
+            macDetail,
             String(contentsOf: macModelRoot, encoding: .utf8),
             String(contentsOf: macSettingsRoot, encoding: .utf8),
-            String(contentsOf: iosRoot, encoding: .utf8),
+            ios,
         ].joined(separator: "\n")
         let logTextBlock = try sourceStructBody(named: "LogTextBlock", in: mac)
+        let macDeferredExpansion = try sourceBody(
+            after: "private struct DeferredDashboardExpansion<Content: View>: View",
+            in: macDetail,
+            description: "Mac deferred dashboard expansion"
+        )
+        let iosDeferredInteractionExpansion = try sourceBody(
+            after: "private struct DeferredInteractionExpansion<Content: View>: View",
+            in: ios,
+            description: "iPhone/iPad deferred interaction expansion"
+        )
+        let iosDeferredItemDetailPanel = try sourceStructBody(named: "DeferredServerSyncItemDetailPanel", in: ios)
 
         XCTAssertFalse(sources.contains("duration: 0.04"))
         XCTAssertFalse(sources.contains("withAnimation(.easeInOut(duration: 0.08))"))
@@ -1627,6 +1640,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(logTextBlock.contains("Label(\"원본 로그 보기\", systemImage: \"doc.text.magnifyingglass\")"))
         XCTAssertFalse(logTextBlock.contains("self.highlights = KLMSReadableLogParser.highlights(from: boundedText)"))
         XCTAssertTrue(sources.contains("private struct DeferredDashboardExpansion"))
+        XCTAssertTrue(macDeferredExpansion.contains("@State private var shouldRender = false"))
+        XCTAssertTrue(macDeferredExpansion.contains(".task(id: isExpanded)"))
+        XCTAssertTrue(macDeferredExpansion.contains("await Task.yield()"))
+        XCTAssertTrue(iosDeferredInteractionExpansion.contains("@State private var shouldRender = false"))
+        XCTAssertTrue(iosDeferredInteractionExpansion.contains(".task(id: isExpanded)"))
+        XCTAssertTrue(iosDeferredInteractionExpansion.contains("await Task.yield()"))
+        XCTAssertTrue(iosDeferredItemDetailPanel.contains("@State private var shouldRender = false"))
+        XCTAssertTrue(iosDeferredItemDetailPanel.contains(".task(id: item.id)"))
+        XCTAssertTrue(iosDeferredItemDetailPanel.contains("await Task.yield()"))
         XCTAssertFalse(sources.contains("dashboardDetailExpansionDelayNanoseconds"))
         XCTAssertFalse(sources.contains("delayNanoseconds"))
         XCTAssertTrue(sources.contains("reloadManualOverrideState()"))
@@ -2208,11 +2230,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(deferredInlineItemDetail.contains("ServerSyncItemInlineDetailPanel(item: item, model: model)"))
         XCTAssertTrue(deferredInlineItemDetail.contains("transaction.animation = nil"))
         XCTAssertFalse(deferredInlineItemDetail.contains("@State private var loadedItemID"))
-        XCTAssertFalse(deferredInlineItemDetail.contains("await Task.yield()"))
+        XCTAssertTrue(deferredInlineItemDetail.contains("await Task.yield()"))
         XCTAssertFalse(deferredInlineItemDetail.contains("try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)"))
         XCTAssertFalse(deferredInlineItemDetail.contains("CompanionInlineDetailPreparingView()"))
         XCTAssertFalse(deferredInlineItemDetail.contains("Text(\"상세를 여는 중\")"))
-        XCTAssertFalse(deferredInlineItemDetail.contains(".task(id: item.id)"))
+        XCTAssertTrue(deferredInlineItemDetail.contains(".task(id: item.id)"))
         XCTAssertEqual(
             ios.components(separatedBy: "ServerSyncItemInlineDetailPanel(item: item, model: model)").count - 1,
             1,
@@ -4325,9 +4347,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(deferredInlineItemDetail.contains("@State private var detailTask: Task<Void, Never>?"))
         XCTAssertFalse(deferredInlineItemDetail.contains("CompanionInlineDetailPreparingView()"))
         XCTAssertTrue(deferredInlineItemDetail.contains("ServerSyncItemInlineDetailPanel(item: item, model: model)"))
-        XCTAssertFalse(deferredInlineItemDetail.contains("await Task.yield()"))
+        XCTAssertTrue(deferredInlineItemDetail.contains("await Task.yield()"))
         XCTAssertFalse(deferredInlineItemDetail.contains("try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)"))
-        XCTAssertFalse(deferredInlineItemDetail.contains("guard !Task.isCancelled else { return }"))
+        XCTAssertTrue(deferredInlineItemDetail.contains("guard !Task.isCancelled else { return }"))
         XCTAssertFalse(inlineRows.contains("deferInlineDetail"))
         XCTAssertTrue(inlineRows.contains("clearStaleInlineSelectionIfNeeded()"))
         XCTAssertTrue(inlineRows.contains("clearStaleExternalSelectionIfNeeded()"))

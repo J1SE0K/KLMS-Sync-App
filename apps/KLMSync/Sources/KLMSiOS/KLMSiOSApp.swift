@@ -5988,6 +5988,7 @@ private func companionPerformWithoutAnimation(_ updates: () -> Void) {
 private struct DeferredInteractionExpansion<Content: View>: View {
     var isExpanded: Bool
     private let content: () -> Content
+    @State private var shouldRender = false
 
     init(
         isExpanded: Bool,
@@ -5998,8 +5999,24 @@ private struct DeferredInteractionExpansion<Content: View>: View {
     }
 
     var body: some View {
-        if isExpanded {
-            content()
+        Group {
+            if isExpanded && shouldRender {
+                content()
+            }
+        }
+        .task(id: isExpanded) {
+            guard isExpanded else {
+                shouldRender = false
+                return
+            }
+            guard !shouldRender else { return }
+            await Task.yield()
+            guard !Task.isCancelled, isExpanded else { return }
+            shouldRender = true
+        }
+        .onChange(of: isExpanded) { _, expanded in
+            guard !expanded else { return }
+            shouldRender = false
         }
     }
 }
@@ -10377,9 +10394,20 @@ private struct ServerSyncDataPanel: View {
 private struct DeferredServerSyncItemDetailPanel: View {
     var item: ServerRelaySyncItem
     let model: CompanionModel
+    @State private var shouldRender = false
 
     var body: some View {
-        ServerSyncItemInlineDetailPanel(item: item, model: model)
+        Group {
+            if shouldRender {
+                ServerSyncItemInlineDetailPanel(item: item, model: model)
+            }
+        }
+        .task(id: item.id) {
+            shouldRender = false
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            shouldRender = true
+        }
         .transaction { transaction in
             transaction.animation = nil
         }

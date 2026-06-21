@@ -753,6 +753,7 @@ private struct DashboardShowMoreButton: View {
 private struct DeferredDashboardExpansion<Content: View>: View {
     var isExpanded: Bool
     private let content: () -> Content
+    @State private var shouldRender = false
 
     init(
         isExpanded: Bool,
@@ -763,8 +764,24 @@ private struct DeferredDashboardExpansion<Content: View>: View {
     }
 
     var body: some View {
-        if isExpanded {
-            content()
+        Group {
+            if isExpanded && shouldRender {
+                content()
+            }
+        }
+        .task(id: isExpanded) {
+            guard isExpanded else {
+                shouldRender = false
+                return
+            }
+            guard !shouldRender else { return }
+            await Task.yield()
+            guard !Task.isCancelled, isExpanded else { return }
+            shouldRender = true
+        }
+        .onChange(of: isExpanded) { _, expanded in
+            guard !expanded else { return }
+            shouldRender = false
         }
     }
 }
