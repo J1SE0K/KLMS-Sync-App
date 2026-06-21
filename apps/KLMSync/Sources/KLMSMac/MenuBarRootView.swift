@@ -26,26 +26,32 @@ struct MenuBarRootView: View {
                 Rectangle()
                     .fill(Color.klmsMacBorder.opacity(0.76))
                     .frame(width: 1)
-                WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: selectedSection, nonce: scrollResetNonce)) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        DashboardTopBarView(model: model, selectedSection: $selectedSection)
-                        MacAlertBannerView(
-                            model: model,
-                            selectedSection: $selectedSection,
-                            expandedLogSummaryKind: $expandedLogSummaryKind
-                        )
-                        MacWorkstationLayoutView(
-                            model: model,
-                            selectedSection: selectedSection,
-                            expandedLogSummaryKind: $expandedLogSummaryKind
-                        )
+                VStack(spacing: 0) {
+                    MacAlertBannerView(
+                        model: model,
+                        selectedSection: $selectedSection,
+                        expandedLogSummaryKind: $expandedLogSummaryKind
+                    )
+
+                    WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: selectedSection, nonce: scrollResetNonce)) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            DashboardTopBarView(model: model, selectedSection: $selectedSection)
+                            MacWorkstationLayoutView(
+                                model: model,
+                                selectedSection: selectedSection,
+                                expandedLogSummaryKind: $expandedLogSummaryKind
+                            )
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                        .padding(.bottom, 16)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("workspace-scroll-\(selectedSection.rawValue)")
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("workspace-scroll-\(selectedSection.rawValue)")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -869,6 +875,11 @@ private struct MacAlertBannerContent: View, Equatable {
             .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
             .accessibilityLabel(snapshot.title)
             .accessibilityHint(snapshot.detail)
+            .accessibilitySortPriority(100)
+            .zIndex(1)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
         }
     }
 
