@@ -3805,8 +3805,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(iosSplitRoot.contains("await Task.yield()"))
         XCTAssertFalse(iosSplitRoot.contains("CompanionInlineDetailPreparingView"))
         XCTAssertTrue(iosScreenContainer.contains("let model: CompanionModel"))
-        XCTAssertTrue(iosScreenContainer.contains("var showsAttentionStack = true"))
-        XCTAssertTrue(iosScreenContainer.contains("if showsAttentionStack"))
+        XCTAssertFalse(iosScreenContainer.contains("showsAttentionStack"))
         XCTAssertTrue(iosScreenContainer.contains("RemoteAttentionStack(model: model)"))
         XCTAssertLessThan(
             try XCTUnwrap(iosScreenContainer.range(of: "RemoteAttentionStack(model: model)")).lowerBound,

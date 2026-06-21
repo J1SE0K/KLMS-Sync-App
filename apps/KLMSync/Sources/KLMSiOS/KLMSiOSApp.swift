@@ -3846,7 +3846,6 @@ private struct CompanionEmptyDetailPanel: View {
 private struct CompanionScreenContainer<Content: View>: View {
     var title: String
     let model: CompanionModel
-    var showsAttentionStack = true
     @ViewBuilder var content: () -> Content
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -3866,13 +3865,11 @@ private struct CompanionScreenContainer<Content: View>: View {
         ZStack {
             Color.klmsScreenBackground
             VStack(spacing: 0) {
-                if showsAttentionStack {
-                    RemoteAttentionStack(model: model)
-                        .padding(.horizontal, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16)
-                        .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
-                        .padding(.bottom, 10)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
+                RemoteAttentionStack(model: model)
+                    .padding(.horizontal, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16)
+                    .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
+                    .padding(.bottom, 10)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 WholeScreenVerticalScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         CompanionScreenHeader(title: title, model: model)
