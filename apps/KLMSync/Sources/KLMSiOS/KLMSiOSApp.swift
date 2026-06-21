@@ -3013,6 +3013,9 @@ private struct CompanionStatusScreen: View {
                     selectChangeSummary(kind)
                 }
             )
+            if !model.hasLoadedServerSyncData {
+                WorkstationDashboardEmptyGuidePanel()
+            }
             compactDashboardDetail
         }
     }

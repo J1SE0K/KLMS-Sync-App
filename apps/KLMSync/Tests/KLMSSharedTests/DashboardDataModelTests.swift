@@ -1869,6 +1869,16 @@ final class DashboardDataModelTests: XCTestCase {
         let ios = try String(contentsOf: iosRoot, encoding: .utf8)
         let designSpec = try String(contentsOf: designSpecRoot, encoding: .utf8)
         let statusScreen = try sourceStructBody(named: "CompanionStatusScreen", in: ios)
+        let statusSummaryColumn = try sourceBody(
+            after: "private var statusSummaryColumn: some View",
+            in: statusScreen,
+            description: "iOS compact status summary column"
+        )
+        let statusDetailColumn = try sourceBody(
+            after: "private var statusDetailColumn: some View",
+            in: statusScreen,
+            description: "iPad status detail column"
+        )
         let settingsScreen = try sourceStructBody(named: "CompanionSettingsScreen", in: ios)
         let sectionContent = try sourceStructBody(named: "CompanionSectionContent", in: ios)
         let compactRoot = try sourceStructBody(named: "CompanionTabRootView", in: ios)
@@ -2076,11 +2086,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteRunningStatusBanner.contains("return \"중단\""))
         XCTAssertTrue(remoteRunningStatusBanner.contains("Label(cancelButtonTitle"))
         XCTAssertTrue(remoteRunningStatusBanner.contains(".frame(minHeight: 44)"))
-        XCTAssertTrue(statusScreen.contains("RemoteDashboardMetricOverview"))
-        XCTAssertTrue(statusScreen.contains("hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,\n                showsLoadingPlaceholder: false"))
+        XCTAssertTrue(statusSummaryColumn.contains("RemoteDashboardMetricOverview"))
+        XCTAssertTrue(statusSummaryColumn.contains("hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,\n                showsLoadingPlaceholder: false"))
         XCTAssertLessThan(
-            try XCTUnwrap(statusScreen.range(of: "RemoteDashboardMetricOverview(")).lowerBound,
-            try XCTUnwrap(statusScreen.range(of: "compactDashboardDetail")).lowerBound
+            try XCTUnwrap(statusSummaryColumn.range(of: "RemoteDashboardMetricOverview(")).lowerBound,
+            try XCTUnwrap(statusSummaryColumn.range(of: "compactDashboardDetail")).lowerBound
+        )
+        XCTAssertLessThan(
+            try XCTUnwrap(statusSummaryColumn.range(of: "RemoteDashboardMetricOverview(")).lowerBound,
+            try XCTUnwrap(statusSummaryColumn.range(of: "WorkstationDashboardEmptyGuidePanel()")).lowerBound
         )
         XCTAssertFalse(statusScreen.contains("@State private var displayedDashboardPreview: DashboardMetricCategory?"))
         XCTAssertFalse(statusScreen.contains("@State private var displayedChangeSummary: RemoteChangeSummaryKind?"))
@@ -2097,11 +2111,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel(category: category, model: model)"))
         XCTAssertTrue(statusScreen.contains("if model.hasLoadedServerSyncData"))
         XCTAssertTrue(statusScreen.contains("WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)"))
-        XCTAssertTrue(statusScreen.contains("CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)"))
-        XCTAssertTrue(statusScreen.contains("WorkstationDashboardEmptyGuidePanel()"))
+        XCTAssertTrue(statusDetailColumn.contains("CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)"))
+        XCTAssertTrue(statusDetailColumn.contains("WorkstationDashboardEmptyGuidePanel()"))
         XCTAssertLessThan(
-            try XCTUnwrap(statusScreen.range(of: "CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)")).lowerBound,
-            try XCTUnwrap(statusScreen.range(of: "WorkstationDashboardEmptyGuidePanel()")).lowerBound
+            try XCTUnwrap(statusDetailColumn.range(of: "CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)")).lowerBound,
+            try XCTUnwrap(statusDetailColumn.range(of: "WorkstationDashboardEmptyGuidePanel()")).lowerBound
         )
         XCTAssertTrue(metricOverview.contains("var showsLoadingPlaceholder = true"))
         XCTAssertTrue(metricOverview.contains("if showsLoadingPlaceholder {\n                    CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)\n                }"))
