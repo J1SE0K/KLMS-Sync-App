@@ -1054,6 +1054,7 @@ private struct SettingsGroupBox<Content: View>: View {
                 SettingsExpansionBadge(isExpanded: isExpanded)
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
@@ -1150,6 +1151,7 @@ private struct SettingsFieldRow<Content: View>: View {
                 SettingsExpansionBadge(isExpanded: isExpanded)
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .contentShape(RoundedRectangle(cornerRadius: 9))
     }
 }
@@ -1232,6 +1234,7 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
                     Spacer(minLength: 8)
                     SettingsExpansionBadge(isExpanded: isExpanded)
                 }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
@@ -1353,6 +1356,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
                 SettingsExpansionBadge(isExpanded: isExpanded)
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 }

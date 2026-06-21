@@ -2699,6 +2699,26 @@ final class DashboardDataModelTests: XCTestCase {
             in: macSettings,
             description: "Mac settings form"
         )
+        let settingsGroupBox = try sourceBody(
+            after: "private struct SettingsGroupBox<Content: View>: View",
+            in: macSettings,
+            description: "Mac settings group box"
+        )
+        let settingsFieldRow = try sourceBody(
+            after: "private struct SettingsFieldRow<Content: View>: View",
+            in: macSettings,
+            description: "Mac settings field row"
+        )
+        let settingsDisclosureCard = try sourceBody(
+            after: "private struct SettingsDisclosureCard<Content: View, Label: View>: View",
+            in: macSettings,
+            description: "Mac settings disclosure card"
+        )
+        let settingsActionGroupBox = try sourceBody(
+            after: "private struct SettingsActionGroupBox<Content: View>: View",
+            in: macSettings,
+            description: "Mac settings action group box"
+        )
         let remoteSettingGroup = try sourceBody(
             after: "private struct RemoteSettingGroup: Identifiable",
             in: ios,
@@ -2786,6 +2806,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("private struct SettingsExpansionBadge"))
         XCTAssertTrue(macSettings.contains("Image(systemName: isExpanded ? \"chevron.up\" : \"chevron.down\")"))
         XCTAssertTrue(macSettings.contains("Text(isExpanded ? \"접기\" : \"펼치기\")"))
+        XCTAssertTrue(settingsGroupBox.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
+        XCTAssertTrue(settingsFieldRow.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
+        XCTAssertTrue(settingsDisclosureCard.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
+        XCTAssertTrue(settingsActionGroupBox.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertTrue(macSettings.contains(".overlay(alignment: .leading)"))
         XCTAssertTrue(macSettings.contains("if !collapsible || isExpanded"))
         XCTAssertTrue(macSettings.contains("if collapsible {\n                SettingsExpansionBadge(isExpanded: isExpanded)"))
@@ -2917,6 +2941,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteSettingGroupSection.contains("if group.isCollapsible"))
         XCTAssertTrue(remoteSettingGroupSection.contains("if !group.isCollapsible || isExpanded"))
         XCTAssertTrue(remoteSettingGroupSection.contains("CompanionExpansionBadge(isExpanded: isExpanded, compact: true)"))
+        XCTAssertTrue(remoteSettingGroupSection.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertFalse(ios.contains("\"Safari\",\n                \"safari\""))
         XCTAssertTrue(ios.contains("private struct CompanionConnectionInput"))
         let companionConnectionInput = try sourceStructBody(named: "CompanionConnectionInput", in: ios)
@@ -2945,6 +2970,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("CompanionSettingsSubsectionCard("))
         XCTAssertTrue(ios.contains("collapsible: true"))
         XCTAssertTrue(companionSettingsSubsectionCard.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(companionSettingsSubsectionCard.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertTrue(ios.contains("settingValueSummary"))
         XCTAssertTrue(ios.contains("private func compactSettingValueSummary(_ value: String) -> String"))
         XCTAssertTrue(ios.contains("trimmed.contains(\"/\") || trimmed.contains(\"\\\\\") || trimmed.count > 18"))

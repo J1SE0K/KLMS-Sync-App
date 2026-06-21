@@ -3631,6 +3631,8 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
                 CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -12042,6 +12044,8 @@ private struct RemoteSettingGroupSection: View {
                 CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
