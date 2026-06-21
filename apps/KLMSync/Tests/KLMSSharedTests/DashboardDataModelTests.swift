@@ -3015,6 +3015,11 @@ final class DashboardDataModelTests: XCTestCase {
         let logSummaryPanelView = try sourceStructBody(named: "LogSummaryPanelView", in: mac)
         let logSummaryDetailView = try sourceStructBody(named: "LogSummaryDetailView", in: mac)
         let logSummaryTile = try sourceStructBody(named: "LogSummaryTile", in: mac)
+        let sectionBox = try sourceBody(
+            after: "struct SectionBox<Content: View>: View",
+            in: mac,
+            description: "Mac section box"
+        )
         let commandPanelView = try sourceStructBody(named: "CommandPanelView", in: mac)
         let iosHistoryScreen = try sourceStructBody(named: "CompanionHistoryScreen", in: ios)
         let iosHistoryRegularWorkspace = try sourceBody(
@@ -3423,6 +3428,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSummaryContent.contains("let archiveMetrics = ["))
         let logsBody = try sectionBody(in: workstationBody, from: "case .activityLogs:", to: "case .diagnostics:")
         XCTAssertTrue(logsBody.contains("DeferredMacWorkspacePanel(id: \"workspace-activityLogs\""))
+        XCTAssertTrue(logsBody.contains("VStack(alignment: .leading, spacing: 16)"))
+        XCTAssertTrue(logsBody.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
         XCTAssertFalse(logsBody.contains("loadingText:"))
         XCTAssertTrue(logsBody.contains("LogSummaryPanelView(model: model"))
         XCTAssertTrue(logsBody.contains("DiagnosticStageDurationPanelView(model: model)"))
@@ -3447,6 +3454,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macRemoteActivityPanel.contains("SectionBox(title: \"서버·파일 요청 기록\")"))
         XCTAssertTrue(logSummaryTile.contains(".accessibilityHint(detail)"))
         XCTAssertTrue(logSummaryTile.contains("로그 요약"))
+        XCTAssertTrue(logSummaryPanelView.contains("HStack(alignment: .top, spacing: 8)"))
+        XCTAssertFalse(logSummaryPanelView.contains("LazyVGrid(columns: [GridItem(.adaptive(minimum: 176)"))
+        XCTAssertTrue(logSummaryPanelView.contains(".background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))"))
+        XCTAssertTrue(logSummaryPanelView.contains(".stroke(Color.klmsMacBorder.opacity(0.72), lineWidth: 1)"))
+        XCTAssertTrue(sectionBox.contains("VStack(alignment: .leading, spacing: 9)"))
+        XCTAssertTrue(sectionBox.contains(".stroke(borderColor.opacity(0.78), lineWidth: 1)"))
         XCTAssertTrue(macServerRequestLogActivityRow.contains(".padding(8)"))
         XCTAssertTrue(macServerRequestLogActivityRow.contains(".background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))"))
         XCTAssertTrue(macServerRequestLogActivityRow.contains(".contentShape(RoundedRectangle(cornerRadius: 8))"))
@@ -3502,6 +3515,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(doctorPanelView.contains("DiagnosticChecksDisclosure("))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityHint(isExpanded ? \"\\(title) 접기\" : \"\\(title) 펼치기\")"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains("Color.klmsMacSubtleCardBackground.opacity(0.34)"))
+        XCTAssertFalse(diagnosticChecksDisclosure.contains(".stroke(Color.klmsMacBorder.opacity(0.54)"))
         let collapsibleSectionBox = try sourceBody(
             after: "struct CollapsibleSectionBox<Content: View>: View",
             in: mac,
@@ -3517,6 +3532,8 @@ final class DashboardDataModelTests: XCTestCase {
 
         let diagnosticsBody = try sectionBody(in: workstationBody, from: "case .diagnostics:", to: ".padding(.vertical, 4)")
         XCTAssertTrue(diagnosticsBody.contains("DeferredMacWorkspacePanel(id: \"workspace-diagnostics\""))
+        XCTAssertTrue(diagnosticsBody.contains("VStack(alignment: .leading, spacing: 16)"))
+        XCTAssertTrue(diagnosticsBody.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
         XCTAssertFalse(diagnosticsBody.contains("loadingText:"))
         XCTAssertLessThan(
             try XCTUnwrap(diagnosticsBody.range(of: "DeferredMacWorkspacePanel(id: \"workspace-diagnostics\"")).lowerBound,

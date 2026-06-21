@@ -300,18 +300,24 @@ private struct MacWorkstationLayoutView: View {
                 }
             case .activityLogs:
                 DeferredMacWorkspacePanel(id: "workspace-activityLogs", contentIdentifier: "workspace-content-activityLogs") {
-                    LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
-                    DiagnosticStageDurationPanelView(model: model)
-                    RemoteActivityPanelView(model: model)
-                    RunLogArchivePanelView(model: model)
+                    VStack(alignment: .leading, spacing: 16) {
+                        LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
+                        DiagnosticStageDurationPanelView(model: model)
+                        RemoteActivityPanelView(model: model)
+                        RunLogArchivePanelView(model: model)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             case .diagnostics:
                 DeferredMacWorkspacePanel(id: "workspace-diagnostics", contentIdentifier: "workspace-content-diagnostics") {
-                    VerifyPanelView(snapshot: model.snapshot)
-                    DiagnosticToolsPanelView(model: model)
-                    DoctorPanelView(snapshot: model.snapshot)
-                    AppDiagnosticsPanelView(model: model)
-                    LoginPanelView(model: model)
+                    VStack(alignment: .leading, spacing: 16) {
+                        VerifyPanelView(snapshot: model.snapshot)
+                        DiagnosticToolsPanelView(model: model)
+                        DoctorPanelView(snapshot: model.snapshot)
+                        AppDiagnosticsPanelView(model: model)
+                        LoginPanelView(model: model)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             case .settings:
                 DeferredMacWorkspacePanel(id: "workspace-settings", contentIdentifier: "workspace-content-settings") {
@@ -1741,7 +1747,7 @@ private struct LogSummaryPanelView: View {
                 .disabled(model.runningCommand != nil || !model.hasClearableVisibleLogs)
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 176), spacing: 8)], alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 LogSummaryTile(
                     title: "실행",
                     value: runValue,
@@ -1773,6 +1779,7 @@ private struct LogSummaryPanelView: View {
                     toggle(.fileRequest)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if let expandedKind {
                 LogSummaryDetailView(kind: expandedKind, model: model)
@@ -1782,8 +1789,13 @@ private struct LogSummaryPanelView: View {
                     .foregroundStyle(Color.klmsMacSecondaryText)
             }
         }
-        .padding(10)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.klmsMacBorder.opacity(0.72), lineWidth: 1)
+        }
     }
 
     private var latestFileRequest: ServerRelayFileAccessRequest? {
@@ -4493,15 +4505,9 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
                 .padding(.top, compact ? 1 : 3)
             }
         }
-        .padding(compact ? 0 : 8)
+        .padding(compact ? 0 : 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(compact ? Color.clear : Color.klmsMacSubtleCardBackground.opacity(0.56), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            if !compact {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.klmsMacBorder.opacity(0.54), lineWidth: 1)
-            }
-        }
+        .background(compact ? Color.clear : Color.klmsMacSubtleCardBackground.opacity(0.34), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -5602,18 +5608,21 @@ struct SectionBox<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 11) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(titleColor)
-            content
+            VStack(alignment: .leading, spacing: 9) {
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(12)
+        .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
-                .stroke(borderColor, lineWidth: 1)
+                .stroke(borderColor.opacity(0.78), lineWidth: 1)
         }
     }
 }
