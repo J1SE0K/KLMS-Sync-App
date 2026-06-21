@@ -1232,18 +1232,21 @@ private struct DashboardControlBox<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label(title, systemImage: systemImage)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color.klmsMacSecondaryText)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .frame(width: 14)
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                Spacer(minLength: 0)
+            }
             content
         }
-        .padding(10)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsMacBorder, lineWidth: 1)
-        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 3)
     }
 }
 
@@ -1264,11 +1267,7 @@ private struct DashboardRangeField<Content: View>: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .frame(minWidth: minWidth, alignment: .leading)
-        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsMacBorder.opacity(disabled ? 0.45 : 1), lineWidth: 1)
-        }
+        .background(Color.klmsMacSubtleCardBackground.opacity(disabled ? 0.38 : 0.54), in: RoundedRectangle(cornerRadius: 8))
         .opacity(disabled ? 0.58 : 1)
     }
 }

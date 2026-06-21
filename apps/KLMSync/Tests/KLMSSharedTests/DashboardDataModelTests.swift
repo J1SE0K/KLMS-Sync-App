@@ -1033,6 +1033,16 @@ final class DashboardDataModelTests: XCTestCase {
         let issueRowView = try sourceStructBody(named: "IssueRowView", in: view)
         let logTextBlock = try sourceStructBody(named: "LogTextBlock", in: view)
         let dashboardFilterBar = try sourceStructBody(named: "DashboardFilterBarView", in: detail)
+        let dashboardControlBox = try sourceBody(
+            after: "private struct DashboardControlBox<Content: View>: View",
+            in: detail,
+            description: "dashboard filter control box"
+        )
+        let dashboardRangeField = try sourceBody(
+            after: "private struct DashboardRangeField<Content: View>: View",
+            in: detail,
+            description: "dashboard filter range field"
+        )
         let noticeListView = try sourceStructBody(named: "NoticeListView", in: detail)
         let stateItemRowView = try sourceStructBody(named: "StateItemRowView", in: detail)
         let noticeRowView = try sourceStructBody(named: "NoticeRowView", in: detail)
@@ -1058,6 +1068,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardFilterBar.contains("collapsedActiveFilterSummary"))
         XCTAssertFalse(dashboardFilterBar.contains("DashboardFilterExpansionBadge"))
         XCTAssertFalse(detail.contains("private struct DashboardFilterExpansionBadge"))
+        XCTAssertFalse(dashboardControlBox.contains(".stroke(Color.klmsMacBorder"))
+        XCTAssertFalse(dashboardControlBox.contains(".background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle"))
+        XCTAssertFalse(dashboardRangeField.contains(".stroke(Color.klmsMacBorder"))
         XCTAssertTrue(detail.contains("private func noticeMatchesDashboardBaseFilters("))
         XCTAssertTrue(noticeListView.contains("@State private var presentation: NoticeDashboardPresentation"))
         XCTAssertTrue(noticeListView.contains("@State private var presentationSignature: NoticeDashboardInputSignature?"))
