@@ -9,6 +9,10 @@ SYMROOT="${SYMROOT:-/private/tmp/klms-ios-build}"
 OBJROOT="${OBJROOT:-/private/tmp/klms-ios-obj}"
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-/private/tmp/klms-ios-derived}"
 MODULE_CACHE_DIR="${MODULE_CACHE_DIR:-/private/tmp/klms-ios-module-cache}"
+LOCAL_SIGNING_OVERRIDES=(
+  KLMS_IOS_DEVELOPMENT_TEAM=
+  KLMS_IOS_BUNDLE_IDENTIFIER=com.local.KLMSync.iOS
+)
 
 "$ROOT_DIR/tools/generate_klms_ios_xcode_project.py" >/dev/null
 
@@ -21,6 +25,7 @@ xcodebuild \
   -sdk "$SDK" \
   -derivedDataPath "$DERIVED_DATA_PATH" \
   CODE_SIGNING_ALLOWED=NO \
+  "${LOCAL_SIGNING_OVERRIDES[@]}" \
   SYMROOT="$SYMROOT" \
   OBJROOT="$OBJROOT" \
   CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_DIR" \
