@@ -2316,14 +2316,14 @@ final class DashboardDataModelTests: XCTestCase {
         let settingsDiagnosticIndex = try XCTUnwrap(settingsScreen.range(of: "RemoteDiagnosticPanel(model: model)")?.lowerBound)
         let settingsPrivacyIndex = try XCTUnwrap(settingsScreen.range(of: "RemotePrivacyNote()")?.lowerBound)
         XCTAssertLessThan(
-            settingsScreen.distance(from: settingsScreen.startIndex, to: settingsRelayIndex),
-            settingsScreen.distance(from: settingsScreen.startIndex, to: settingsDiagnosticIndex),
-            "iPad settings should lead with the actionable server connection card before diagnostic tools."
-        )
-        XCTAssertLessThan(
             settingsScreen.distance(from: settingsScreen.startIndex, to: settingsDiagnosticIndex),
             settingsScreen.distance(from: settingsScreen.startIndex, to: settingsPrivacyIndex),
-            "Privacy notes should stay below the diagnostic and connection controls."
+            "iPad settings should show diagnostics before the privacy note."
+        )
+        XCTAssertLessThan(
+            settingsScreen.distance(from: settingsScreen.startIndex, to: settingsPrivacyIndex),
+            settingsScreen.distance(from: settingsScreen.startIndex, to: settingsRelayIndex),
+            "Server relay setup should stay at the bottom because it is needed less often after pairing."
         )
         XCTAssertFalse(settingsScreen.contains("RemoteLogSummaryPanel"))
         XCTAssertFalse(settingsScreen.contains("RecentRemoteCommandsView"))

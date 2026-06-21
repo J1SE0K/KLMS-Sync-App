@@ -3347,9 +3347,9 @@ private struct CompanionSettingsScreen: View {
 
     private var settingsSupportColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ServerRelayConnectionPanel(model: model)
             RemoteDiagnosticPanel(model: model)
             RemotePrivacyNote()
+            ServerRelayConnectionPanel(model: model)
         }
     }
 }
