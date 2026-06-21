@@ -5454,7 +5454,7 @@ private struct RemoteDashboardSyncCard: View {
         if model.hasInFlightRequest || model.status.phase == "running" {
             return model.activeRequestLabel
         }
-        return model.isRemoteAvailable ? "준비됨" : "연결 필요"
+        return model.isRemoteAvailable ? "준비됨" : "설정 필요"
     }
 
     private var syncStateColor: Color {

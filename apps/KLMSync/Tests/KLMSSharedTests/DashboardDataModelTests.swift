@@ -2434,6 +2434,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSyncCard.contains("return \"전체 동기화\""))
         XCTAssertFalse(dashboardSyncCard.contains("return \"Mac 연결 필요\""))
         XCTAssertFalse(dashboardSyncCard.contains("return \"잠시 대기\""))
+        XCTAssertTrue(dashboardSyncCard.contains("return model.isRemoteAvailable ? \"준비됨\" : \"설정 필요\""))
+        XCTAssertFalse(dashboardSyncCard.contains("return model.isRemoteAvailable ? \"준비됨\" : \"연결 필요\""))
         XCTAssertTrue(dashboardSyncCard.contains("isDisabled ? Color.klmsSecondaryText.opacity(0.76) : Color.klmsPrimaryCommandButtonForeground"))
         XCTAssertTrue(dashboardSyncCard.contains("if isDisabled { return Color.klmsSubtleCardBackground.opacity(0.86) }"))
         XCTAssertTrue(dashboardSyncCard.contains("if isDisabled { return Color.klmsCommandButtonBorder.opacity(0.64) }"))
