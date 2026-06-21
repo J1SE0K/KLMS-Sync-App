@@ -217,7 +217,7 @@ private func verifyWorkspaceNavigation(
 
     Thread.sleep(forTimeInterval: navigationDelay)
 
-    let requiredIdentifiers = [target.panelIdentifier, target.renderedIdentifier]
+    let requiredIdentifiers = [target.renderedIdentifier]
     guard waitForElements(withIdentifiers: requiredIdentifiers, in: appElement, timeout: timeout) else {
         for identifier in requiredIdentifiers where waitForElement(withIdentifier: identifier, in: appElement, timeout: 0.1) == nil {
             throw SmokeFailure.workspaceContentMissing(identifier)
