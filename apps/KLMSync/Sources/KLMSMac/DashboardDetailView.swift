@@ -91,44 +91,72 @@ struct DashboardRenderSignature: Equatable {
     private static func combineStateItems(_ items: [StateItem]?, into hasher: inout Hasher) {
         let items = items ?? []
         hasher.combine(items.count)
-        for item in Array(items.prefix(3)) + Array(items.suffix(3)) {
-            hasher.combine(item.id)
-            hasher.combine(item.title)
-            hasher.combine(item.due)
-            hasher.combine(item.category)
+        for item in items.prefix(3) {
+            combineStateItem(item, into: &hasher)
         }
+        for item in items.suffix(3) {
+            combineStateItem(item, into: &hasher)
+        }
+    }
+
+    private static func combineStateItem(_ item: StateItem, into hasher: inout Hasher) {
+        hasher.combine(item.id)
+        hasher.combine(item.title)
+        hasher.combine(item.due)
+        hasher.combine(item.category)
     }
 
     private static func combineNotices(_ notices: [NoticeDigestEntry]?, generatedAt: String, into hasher: inout Hasher) {
         let notices = notices ?? []
         hasher.combine(generatedAt)
         hasher.combine(notices.count)
-        for notice in Array(notices.prefix(3)) + Array(notices.suffix(3)) {
-            hasher.combine(notice.id)
-            hasher.combine(notice.title)
-            hasher.combine(notice.fingerprint)
-            hasher.combine(notice.changeState)
+        for notice in notices.prefix(3) {
+            combineNotice(notice, into: &hasher)
         }
+        for notice in notices.suffix(3) {
+            combineNotice(notice, into: &hasher)
+        }
+    }
+
+    private static func combineNotice(_ notice: NoticeDigestEntry, into hasher: inout Hasher) {
+        hasher.combine(notice.id)
+        hasher.combine(notice.title)
+        hasher.combine(notice.fingerprint)
+        hasher.combine(notice.changeState)
     }
 
     private static func combineFiles(_ files: [CourseFileManifestEntry], into hasher: inout Hasher) {
         hasher.combine(files.count)
-        for file in Array(files.prefix(4)) + Array(files.suffix(4)) {
-            hasher.combine(file.id)
-            hasher.combine(file.relativePath)
-            hasher.combine(file.localDownloadedAt)
-            hasher.combine(file.klmsTimestampEpoch ?? -1)
+        for file in files.prefix(4) {
+            combineFile(file, into: &hasher)
         }
+        for file in files.suffix(4) {
+            combineFile(file, into: &hasher)
+        }
+    }
+
+    private static func combineFile(_ file: CourseFileManifestEntry, into hasher: inout Hasher) {
+        hasher.combine(file.id)
+        hasher.combine(file.relativePath)
+        hasher.combine(file.localDownloadedAt)
+        hasher.combine(file.klmsTimestampEpoch ?? -1)
     }
 
     private static func combineCalendar(_ changes: [CalendarChange]?, into hasher: inout Hasher) {
         let changes = changes ?? []
         hasher.combine(changes.count)
-        for change in Array(changes.prefix(3)) + Array(changes.suffix(3)) {
-            hasher.combine(change.id)
-            hasher.combine(change.action)
-            hasher.combine(change.title)
+        for change in changes.prefix(3) {
+            combineCalendarChange(change, into: &hasher)
         }
+        for change in changes.suffix(3) {
+            combineCalendarChange(change, into: &hasher)
+        }
+    }
+
+    private static func combineCalendarChange(_ change: CalendarChange, into hasher: inout Hasher) {
+        hasher.combine(change.id)
+        hasher.combine(change.action)
+        hasher.combine(change.title)
     }
 
     private static func combineNoticeInteractions(_ states: [String: NoticeInteractionState], into hasher: inout Hasher) {
@@ -301,6 +329,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             case .assignments:
                 StateItemListView(
                     items: model.dashboardStateItems(for: .assignments),
+                    itemsSignature: model.dashboardStateItemsSignature(for: .assignments),
                     emptyText: "과제가 없습니다.",
                     editor: .assignment,
                     filters: filters,
@@ -310,6 +339,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             case .assignmentCandidates:
                 StateItemListView(
                     items: snapshot.legacyState?.content.assignmentCandidates ?? [],
+                    itemsSignature: model.dashboardStateItemsSignature(for: .assignmentCandidates),
                     emptyText: "과제 후보가 없습니다.",
                     editor: .assignment,
                     filters: filters,
@@ -319,6 +349,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             case .exams:
                 StateItemListView(
                     items: model.dashboardStateItems(for: .exams),
+                    itemsSignature: model.dashboardStateItemsSignature(for: .exams),
                     emptyText: "시험 항목이 없습니다.",
                     editor: .exam,
                     filters: filters,
@@ -328,6 +359,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             case .examCandidates:
                 StateItemListView(
                     items: snapshot.legacyState?.content.examCandidates ?? [],
+                    itemsSignature: model.dashboardStateItemsSignature(for: .examCandidates),
                     emptyText: "시험 후보가 없습니다.",
                     editor: .exam,
                     filters: filters,
@@ -337,6 +369,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             case .helpDesk:
                 StateItemListView(
                     items: snapshot.legacyState?.content.helpDeskItems ?? [],
+                    itemsSignature: model.dashboardStateItemsSignature(for: .helpDesk),
                     emptyText: "헬프데스크 항목이 없습니다.",
                     editor: .assignment,
                     filters: filters,
@@ -531,9 +564,235 @@ struct DashboardFilterOptions: Equatable, Sendable {
     var semesters: [String]
 
     init(kind: DashboardDetailKind, snapshot: EngineSnapshot) {
-        courses = DashboardCourseFilter.options(for: kind, snapshot: snapshot)
-        years = DashboardTermFilter.yearOptions(for: kind, snapshot: snapshot)
-        semesters = DashboardTermFilter.semesterOptions(for: kind, snapshot: snapshot)
+        if kind == .newFiles {
+            let newFileOptions = DashboardNewFileFilterOptions(snapshot: snapshot)
+            courses = newFileOptions.courses
+            years = newFileOptions.years
+            semesters = newFileOptions.semesters
+            return
+        }
+        let source = DashboardFilterOptionSource(kind: kind, snapshot: snapshot)
+        courses = DashboardCourseFilter.optionLabels(from: source.courses)
+        let termOptions = DashboardTermFilter.options(from: source.terms)
+        years = termOptions.years
+        semesters = termOptions.semesters
+    }
+}
+
+private struct DashboardFilterOptionSource: Sendable {
+    var courses: [String]
+    var terms: [AcademicTerm?]
+
+    init(kind: DashboardDetailKind, snapshot: EngineSnapshot) {
+        switch kind {
+        case .assignments:
+            self = Self.stateItems(snapshot.legacyState?.content.assignments ?? [])
+        case .assignmentCandidates:
+            self = Self.stateItems(snapshot.legacyState?.content.assignmentCandidates ?? [])
+        case .exams:
+            self = Self.stateItems(snapshot.legacyState?.content.examItems ?? [])
+        case .examCandidates:
+            self = Self.stateItems(snapshot.legacyState?.content.examCandidates ?? [])
+        case .helpDesk:
+            self = Self.stateItems(snapshot.legacyState?.content.helpDeskItems ?? [])
+        case .notices:
+            self = Self.notices(snapshot: snapshot)
+        case .files:
+            self = Self.courseFiles(snapshot.courseFileManifest)
+        case .missingFiles:
+            self = Self.missingFiles(snapshot: snapshot)
+        case .quarantine:
+            self = Self.quarantine(snapshot.quarantineReport?.records ?? [])
+        case .pruned:
+            self = Self.cleanup(snapshot.cleanupResult?.actions ?? [])
+        case .calendar:
+            self = Self.calendar(snapshot.calendarSyncResult?.changes ?? [])
+        case .hidden:
+            self = Self.hidden(snapshot: snapshot)
+        case .newFiles:
+            self = Self(courses: [], terms: [])
+        }
+    }
+
+    private init(courses: [String], terms: [AcademicTerm?]) {
+        self.courses = courses
+        self.terms = terms
+    }
+
+    private static func stateItems(_ items: [StateItem]) -> Self {
+        var courses: [String] = []
+        var terms: [AcademicTerm?] = []
+        courses.reserveCapacity(items.count)
+        terms.reserveCapacity(items.count)
+        for item in items {
+            courses.append(item.course)
+            terms.append(item.academicTerm)
+        }
+        return Self(courses: courses, terms: terms)
+    }
+
+    private static func notices(snapshot: EngineSnapshot) -> Self {
+        let notices = snapshot.noticeDigest?.notices ?? []
+        let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
+        var courses: [String] = []
+        var terms: [AcademicTerm?] = []
+        courses.reserveCapacity(notices.count)
+        terms.reserveCapacity(notices.count)
+        for notice in notices {
+            courses.append(notice.course)
+            terms.append(notice.academicTerm(generatedAt: generatedAt))
+        }
+        return Self(courses: courses, terms: terms)
+    }
+
+    private static func courseFiles(_ entries: [CourseFileManifestEntry]) -> Self {
+        var courses: [String] = []
+        var terms: [AcademicTerm?] = []
+        courses.reserveCapacity(entries.count)
+        terms.reserveCapacity(entries.count)
+        for entry in entries {
+            courses.append(entry.course)
+            terms.append(entry.academicTerm)
+        }
+        return Self(courses: courses, terms: terms)
+    }
+
+    private static func missingFiles(snapshot: EngineSnapshot) -> Self {
+        let entries = snapshot.filePreview?.localMissingEntries ?? []
+        var courses: [String] = []
+        var terms: [AcademicTerm?] = []
+        courses.reserveCapacity(entries.count)
+        terms.reserveCapacity(entries.count)
+        for entry in entries {
+            courses.append(entry.course)
+            terms.append(AcademicTerm.infer(
+                title: entry.effectiveRelativePath,
+                dateTexts: [entry.effectiveRelativePath, entry.expectedPath ?? ""]
+            ))
+        }
+        return Self(courses: courses, terms: terms)
+    }
+
+    private static func quarantine(_ records: [QuarantineRecord]) -> Self {
+        let terms = records.map { record in
+            AcademicTerm.infer(
+                title: record.quarantineRelativePath,
+                dateTexts: [record.quarantinePath, record.quarantineRelativePath]
+            )
+        }
+        return Self(courses: [], terms: terms)
+    }
+
+    private static func cleanup(_ actions: [CleanupAction]) -> Self {
+        Self(courses: [], terms: actions.map { AcademicTerm.infer(title: $0.path, dateTexts: [$0.path]) })
+    }
+
+    private static func calendar(_ changes: [CalendarChange]) -> Self {
+        var courses: [String] = []
+        var terms: [AcademicTerm?] = []
+        courses.reserveCapacity(changes.count)
+        terms.reserveCapacity(changes.count)
+        for change in changes {
+            courses.append(change.course)
+            terms.append(change.academicTerm)
+        }
+        return Self(courses: courses, terms: terms)
+    }
+
+    private static func hidden(snapshot: EngineSnapshot) -> Self {
+        var courses: [String] = []
+        var terms: [AcademicTerm?] = []
+        let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content
+        let overrides = snapshot.manualOverrides
+        appendHiddenStateItems(
+            (content?.assignments ?? [])
+                + (content?.assignmentCandidates ?? [])
+                + (content?.completedAssignments ?? [])
+                + (content?.assignmentRecords ?? [])
+                + (content?.helpDeskItems ?? []),
+            to: &courses,
+            terms: &terms
+        ) { overrides?.isAssignmentHidden($0) == true }
+        appendHiddenStateItems((content?.examItems ?? []) + (content?.examCandidates ?? []), to: &courses, terms: &terms) {
+            overrides?.isExamHidden($0) == true
+        }
+
+        let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
+        for notice in snapshot.noticeDigest?.notices ?? [] where snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true {
+            courses.append(notice.course)
+            terms.append(notice.academicTerm(generatedAt: generatedAt))
+        }
+        if let fileStates = snapshot.appUserState?.files.values {
+            for state in fileStates where state.isHiddenLike {
+                courses.append(state.course)
+                terms.append(state.academicTerm)
+            }
+        }
+        if let quarantineStates = snapshot.appUserState?.quarantine.values {
+            for state in quarantineStates where state.isHiddenLike {
+                courses.append(state.course)
+                terms.append(state.academicTerm)
+            }
+        }
+        return Self(courses: courses, terms: terms)
+    }
+
+    private static func appendHiddenStateItems(
+        _ items: [StateItem],
+        to courses: inout [String],
+        terms: inout [AcademicTerm?],
+        isHidden: (StateItem) -> Bool
+    ) {
+        for item in items where isHidden(item) {
+            courses.append(item.course)
+            terms.append(item.academicTerm)
+        }
+    }
+}
+
+private struct DashboardNewFileFilterOptions: Sendable {
+    var courses: [String]
+    var years: [String]
+    var semesters: [String]
+
+    init(snapshot: EngineSnapshot) {
+        let manifestLookup = Self.manifestLookup(snapshot.courseFileManifest)
+        let downloadItems = snapshot.downloadResult?.results.filter(\.copiedToNewFilesInbox) ?? []
+        var courses: [String] = []
+        var terms: [AcademicTerm?] = []
+        courses.reserveCapacity(downloadItems.count)
+        terms.reserveCapacity(downloadItems.count)
+
+        for item in downloadItems {
+            let manifest = (!item.url.isEmpty ? manifestLookup.byURL[item.url] : nil)
+                ?? manifestLookup.byRelativePath[item.relativePath]
+            courses.append(manifest?.course ?? "")
+            terms.append(manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]))
+        }
+
+        self.courses = DashboardCourseFilter.optionLabels(from: courses)
+        let termOptions = DashboardTermFilter.options(from: terms)
+        years = termOptions.years
+        semesters = termOptions.semesters
+    }
+
+    private static func manifestLookup(_ manifest: [CourseFileManifestEntry]) -> (
+        byURL: [String: CourseFileManifestEntry],
+        byRelativePath: [String: CourseFileManifestEntry]
+    ) {
+        var byURL: [String: CourseFileManifestEntry] = [:]
+        var byRelativePath: [String: CourseFileManifestEntry] = [:]
+        byURL.reserveCapacity(manifest.count)
+        byRelativePath.reserveCapacity(manifest.count)
+        for entry in manifest {
+            if !entry.url.isEmpty {
+                byURL[entry.url] = entry
+            }
+            if !entry.relativePath.isEmpty {
+                byRelativePath[entry.relativePath] = entry
+            }
+        }
+        return (byURL, byRelativePath)
     }
 }
 
@@ -823,8 +1082,10 @@ private enum DashboardCourseFilter {
             courses = snapshot.legacyState?.content.helpDeskItems.map(\.course) ?? []
         case .notices:
             courses = snapshot.noticeDigest?.notices.map(\.course) ?? []
-        case .files, .newFiles:
+        case .files:
             courses = snapshot.courseFileManifest.map(\.course)
+        case .newFiles:
+            courses = newFileCourseOptions(snapshot: snapshot)
         case .missingFiles:
             courses = snapshot.filePreview?.localMissingEntries.map(\.course) ?? []
         case .calendar:
@@ -834,8 +1095,41 @@ private enum DashboardCourseFilter {
         default:
             courses = []
         }
+        return optionLabels(from: courses)
+    }
+
+    static func optionLabels(from courses: [String]) -> [String] {
         let unique = Set(courses.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         return [all] + unique.sorted()
+    }
+
+    private static func newFileCourseOptions(snapshot: EngineSnapshot) -> [String] {
+        let downloadItems = snapshot.downloadResult?.results.filter(\.copiedToNewFilesInbox) ?? []
+        let manifestLookup = courseManifestLookup(snapshot.courseFileManifest)
+        return downloadItems.map { item in
+            let manifest = (!item.url.isEmpty ? manifestLookup.byURL[item.url] : nil)
+                ?? manifestLookup.byRelativePath[item.relativePath]
+            return manifest?.course ?? ""
+        }
+    }
+
+    private static func courseManifestLookup(_ manifest: [CourseFileManifestEntry]) -> (
+        byURL: [String: CourseFileManifestEntry],
+        byRelativePath: [String: CourseFileManifestEntry]
+    ) {
+        var byURL: [String: CourseFileManifestEntry] = [:]
+        var byRelativePath: [String: CourseFileManifestEntry] = [:]
+        byURL.reserveCapacity(manifest.count)
+        byRelativePath.reserveCapacity(manifest.count)
+        for entry in manifest {
+            if !entry.url.isEmpty {
+                byURL[entry.url] = entry
+            }
+            if !entry.relativePath.isEmpty {
+                byRelativePath[entry.relativePath] = entry
+            }
+        }
+        return (byURL, byRelativePath)
     }
 
     private static func hiddenCourseOptions(snapshot: EngineSnapshot) -> [String] {
@@ -889,12 +1183,33 @@ private enum DashboardTermFilter {
     }
 
     static func yearOptions(for kind: DashboardDetailKind, snapshot: EngineSnapshot) -> [String] {
-        let years = Set(terms(for: kind, snapshot: snapshot).compactMap { $0?.year })
-        return [allYears] + years.sorted(by: >).map(String.init)
+        options(for: kind, snapshot: snapshot).years
     }
 
     static func semesterOptions(for kind: DashboardDetailKind, snapshot: EngineSnapshot) -> [String] {
-        let terms = terms(for: kind, snapshot: snapshot)
+        options(for: kind, snapshot: snapshot).semesters
+    }
+
+    static func options(for kind: DashboardDetailKind, snapshot: EngineSnapshot) -> (
+        years: [String],
+        semesters: [String]
+    ) {
+        options(from: terms(for: kind, snapshot: snapshot))
+    }
+
+    static func options(from terms: [AcademicTerm?]) -> (
+        years: [String],
+        semesters: [String]
+    ) {
+        (yearOptions(from: terms), semesterOptions(from: terms))
+    }
+
+    private static func yearOptions(from terms: [AcademicTerm?]) -> [String] {
+        let years = Set(terms.compactMap { $0?.year })
+        return [allYears] + years.sorted(by: >).map(String.init)
+    }
+
+    private static func semesterOptions(from terms: [AcademicTerm?]) -> [String] {
         let known = Set(terms.compactMap { $0?.semester })
             .sorted(by: <)
             .map(\.displayName)
@@ -938,12 +1253,31 @@ private enum DashboardTermFilter {
 
     private static func newFileTerms(snapshot: EngineSnapshot) -> [AcademicTerm?] {
         let downloadItems = snapshot.downloadResult?.results.filter(\.copiedToNewFilesInbox) ?? []
+        let manifestLookup = manifestLookup(snapshot.courseFileManifest)
         return downloadItems.map { item in
-            let manifest = snapshot.courseFileManifest.first { entry in
-                (!item.url.isEmpty && entry.url == item.url) || entry.relativePath == item.relativePath
-            }
+            let manifest = (!item.url.isEmpty ? manifestLookup.byURL[item.url] : nil)
+                ?? manifestLookup.byRelativePath[item.relativePath]
             return manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath])
         }
+    }
+
+    private static func manifestLookup(_ manifest: [CourseFileManifestEntry]) -> (
+        byURL: [String: CourseFileManifestEntry],
+        byRelativePath: [String: CourseFileManifestEntry]
+    ) {
+        var byURL: [String: CourseFileManifestEntry] = [:]
+        var byRelativePath: [String: CourseFileManifestEntry] = [:]
+        byURL.reserveCapacity(manifest.count)
+        byRelativePath.reserveCapacity(manifest.count)
+        for entry in manifest {
+            if !entry.url.isEmpty {
+                byURL[entry.url] = entry
+            }
+            if !entry.relativePath.isEmpty {
+                byRelativePath[entry.relativePath] = entry
+            }
+        }
+        return (byURL, byRelativePath)
     }
 
     private static func missingFileTerms(snapshot: EngineSnapshot) -> [AcademicTerm?] {
@@ -1289,7 +1623,7 @@ private struct DashboardRangeField<Content: View>: View {
     }
 }
 
-private enum StateItemEditorKind: Sendable {
+enum StateItemEditorKind: Sendable {
     case assignment
     case assignmentRecord
     case exam
@@ -1297,6 +1631,7 @@ private enum StateItemEditorKind: Sendable {
 
 private struct StateItemListView: View {
     var items: [StateItem]
+    var itemsSignature: Int?
     var emptyText: String
     var editor: StateItemEditorKind
     var filters: DashboardDetailFilters
@@ -1312,6 +1647,7 @@ private struct StateItemListView: View {
 
     init(
         items: [StateItem],
+        itemsSignature: Int? = nil,
         emptyText: String,
         editor: StateItemEditorKind,
         filters: DashboardDetailFilters,
@@ -1319,12 +1655,19 @@ private struct StateItemListView: View {
         model: KLMSMacModel
     ) {
         self.items = items
+        self.itemsSignature = itemsSignature
         self.emptyText = emptyText
         self.editor = editor
         self.filters = filters
         self.snapshot = snapshot
         self.model = model
-        let signature = DashboardStateItemListInputSignature(items: items, editor: editor, filters: filters, snapshot: snapshot)
+        let signature = DashboardStateItemListInputSignature(
+            items: items,
+            itemsSignature: itemsSignature,
+            editor: editor,
+            filters: filters,
+            snapshot: snapshot
+        )
         self.inputSignature = signature
         _presentation = State(initialValue: DashboardStateItemListPresentation())
         _presentationSignature = State(initialValue: nil)
@@ -1397,7 +1740,13 @@ private struct StateItemListView: View {
 private struct DashboardStateItemListInputSignature: Equatable {
     private var value: Int
 
-    init(items: [StateItem], editor: StateItemEditorKind, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
+    init(
+        items: [StateItem],
+        itemsSignature: Int? = nil,
+        editor: StateItemEditorKind,
+        filters: DashboardDetailFilters,
+        snapshot: EngineSnapshot
+    ) {
         var hasher = Hasher()
         hasher.combine(editor.signatureValue)
         hasher.combine(filters.searchText)
@@ -1408,38 +1757,42 @@ private struct DashboardStateItemListInputSignature: Equatable {
         hasher.combine(filters.hiddenOnly)
         hasher.combine(filters.newOnly)
         hasher.combine(filters.recentOnly)
-        hasher.combine(items.count)
-        for item in items {
-            hasher.combine(item.id)
-            hasher.combine(item.url)
-            hasher.combine(item.type)
-            hasher.combine(item.category)
-            hasher.combine(item.course)
-            hasher.combine(item.title)
-            hasher.combine(item.due)
-            hasher.combine(item.submission)
-            hasher.combine(item.syncDue)
-            hasher.combine(item.syncStart)
-            hasher.combine(item.location)
-            hasher.combine(item.coverageSummary)
-            hasher.combine(item.autoCompleted)
-            hasher.combine(item.recordStatus)
-            hasher.combine(item.completionReason)
-            hasher.combine(item.academicTerm?.displayName ?? "")
-            switch editor {
-            case .assignment, .assignmentRecord:
-                hasher.combine(snapshot.manualOverrides?.assignmentStatus(for: item) ?? "")
-            case .exam:
-                let override = snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride()
-                hasher.combine(override.status)
-                hasher.combine(override.due)
-                hasher.combine(override.timingPrecision)
-                hasher.combine(override.syncStart)
-                hasher.combine(override.syncDue)
-                hasher.combine(override.location)
-                hasher.combine(override.coverage)
-                hasher.combine(override.coverageSummary)
-                hasher.combine(override.instructionsAppend)
+        if let itemsSignature {
+            hasher.combine(itemsSignature)
+        } else {
+            hasher.combine(items.count)
+            for item in items {
+                hasher.combine(item.id)
+                hasher.combine(item.url)
+                hasher.combine(item.type)
+                hasher.combine(item.category)
+                hasher.combine(item.course)
+                hasher.combine(item.title)
+                hasher.combine(item.due)
+                hasher.combine(item.submission)
+                hasher.combine(item.syncDue)
+                hasher.combine(item.syncStart)
+                hasher.combine(item.location)
+                hasher.combine(item.coverageSummary)
+                hasher.combine(item.autoCompleted)
+                hasher.combine(item.recordStatus)
+                hasher.combine(item.completionReason)
+                hasher.combine(item.academicTerm?.displayName ?? "")
+                switch editor {
+                case .assignment, .assignmentRecord:
+                    hasher.combine(snapshot.manualOverrides?.assignmentStatus(for: item) ?? "")
+                case .exam:
+                    let override = snapshot.manualOverrides?.examOverride(for: item) ?? ExamOverride()
+                    hasher.combine(override.status)
+                    hasher.combine(override.due)
+                    hasher.combine(override.timingPrecision)
+                    hasher.combine(override.syncStart)
+                    hasher.combine(override.syncDue)
+                    hasher.combine(override.location)
+                    hasher.combine(override.coverage)
+                    hasher.combine(override.coverageSummary)
+                    hasher.combine(override.instructionsAppend)
+                }
             }
         }
         value = hasher.finalize()
@@ -1452,8 +1805,15 @@ private struct DashboardStateItemListPresentation: Sendable {
     init() {}
 
     init(items: [StateItem], editor: StateItemEditorKind, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
+        let normalizedQuery = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let filtered = items.filter { item in
-            Self.matches(item: item, editor: editor, filters: filters, snapshot: snapshot)
+            Self.matches(
+                item: item,
+                editor: editor,
+                filters: filters,
+                normalizedQuery: normalizedQuery,
+                snapshot: snapshot
+            )
         }
         switch editor {
         case .exam:
@@ -1467,6 +1827,7 @@ private struct DashboardStateItemListPresentation: Sendable {
         item: StateItem,
         editor: StateItemEditorKind,
         filters: DashboardDetailFilters,
+        normalizedQuery: String,
         snapshot: EngineSnapshot
     ) -> Bool {
         let hidden = isHidden(item, editor: editor, snapshot: snapshot)
@@ -1480,15 +1841,7 @@ private struct DashboardStateItemListPresentation: Sendable {
         ) else {
             return false
         }
-        guard searchMatches([
-            item.academicTerm?.displayName ?? "",
-            item.title,
-            item.course,
-            item.due,
-            item.location,
-            item.coverageSummary,
-            item.url,
-        ], filters: filters) else {
+        guard searchMatches(item, query: normalizedQuery) else {
             return false
         }
         return true
@@ -1507,10 +1860,15 @@ private struct DashboardStateItemListPresentation: Sendable {
         filters.selectedCourse == DashboardCourseFilter.all || course == filters.selectedCourse
     }
 
-    private static func searchMatches(_ fields: [String], filters: DashboardDetailFilters) -> Bool {
-        let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private static func searchMatches(_ item: StateItem, query: String) -> Bool {
         guard !query.isEmpty else { return true }
-        return fields.joined(separator: " ").localizedCaseInsensitiveContains(query)
+        return (item.academicTerm?.displayName.localizedCaseInsensitiveContains(query) == true)
+            || item.title.localizedCaseInsensitiveContains(query)
+            || item.course.localizedCaseInsensitiveContains(query)
+            || item.due.localizedCaseInsensitiveContains(query)
+            || item.location.localizedCaseInsensitiveContains(query)
+            || item.coverageSummary.localizedCaseInsensitiveContains(query)
+            || item.url.localizedCaseInsensitiveContains(query)
     }
 }
 
@@ -1576,7 +1934,8 @@ private struct StateItemRowView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel("\(item.title.isEmpty ? "항목" : item.title) \(isExpanded ? "접기" : "작업 펼치기")")
+                .accessibilityLabel("\(item.title.isEmpty ? "항목" : item.title) 작업 \(isExpanded ? "펼쳐짐" : "접힘")")
+                .accessibilityHint(isExpanded ? "항목 작업 접기" : "항목 작업 펼치기")
                 if !item.url.isEmpty {
                     Button {
                         openExternalURL(item.url)
@@ -2070,6 +2429,7 @@ private struct NoticeDashboardPresentation: Sendable {
     init(category: NoticeListCategory, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
         let state = snapshot.noticeUserState?.notices ?? [:]
         let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
+        let normalizedQuery = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         var counts: [NoticeListCategory: Int] = [:]
         var notices: [NoticeDigestEntry] = []
         for notice in snapshot.noticeDigest?.notices ?? [] {
@@ -2082,7 +2442,8 @@ private struct NoticeDashboardPresentation: Sendable {
                 notice,
                 interaction: interaction,
                 generatedAt: generatedAt,
-                filters: filters
+                filters: filters,
+                normalizedQuery: normalizedQuery
             ) else { continue }
             for item in NoticeListCategory.allCases where item.matches(
                 hidden: hidden,
@@ -2114,7 +2475,8 @@ private func noticeMatchesDashboardBaseFilters(
     _ notice: NoticeDigestEntry,
     interaction: NoticeInteractionState?,
     generatedAt: String,
-    filters: DashboardDetailFilters
+    filters: DashboardDetailFilters,
+    normalizedQuery query: String
 ) -> Bool {
     let hidden = interaction?.hidden == true
     let fresh = notice.changeState == "new" || notice.changeState == "updated"
@@ -2133,15 +2495,14 @@ private func noticeMatchesDashboardBaseFilters(
     guard filters.selectedCourse == DashboardCourseFilter.all || notice.course == filters.selectedCourse else {
         return false
     }
-    let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !query.isEmpty else { return true }
-    var searchableFields = [term?.displayName ?? "", notice.title, notice.course, notice.postedAt, notice.summary, notice.url]
-    if query.count >= 3 {
-        searchableFields.append(notice.bodyText)
-    }
-    return searchableFields
-        .joined(separator: " ")
-        .localizedCaseInsensitiveContains(query)
+    return (term?.displayName.localizedCaseInsensitiveContains(query) == true)
+        || notice.title.localizedCaseInsensitiveContains(query)
+        || notice.course.localizedCaseInsensitiveContains(query)
+        || notice.postedAt.localizedCaseInsensitiveContains(query)
+        || notice.summary.localizedCaseInsensitiveContains(query)
+        || notice.url.localizedCaseInsensitiveContains(query)
+        || (query.count >= 3 && notice.bodyText.localizedCaseInsensitiveContains(query))
 }
 
 private func noticeReadStateMatches(_ state: NoticeInteractionState?, fingerprint: String) -> Bool {
@@ -2271,7 +2632,8 @@ private struct NoticeRowView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel("\(notice.title.isEmpty ? "공지" : notice.title.klmsDisplayText) \(isExpanded ? "접기" : "작업 펼치기")")
+                .accessibilityLabel("\(notice.title.isEmpty ? "공지" : notice.title.klmsDisplayText) 작업 \(isExpanded ? "펼쳐짐" : "접힘")")
+                .accessibilityHint(isExpanded ? "공지 작업 접기" : "공지 작업 펼치기")
                 if !notice.url.isEmpty {
                     Button {
                         openExternalURL(notice.url)
@@ -2548,8 +2910,9 @@ private struct DashboardFileListPresentation: Sendable {
     init() {}
 
     init(files: [DashboardFileItem], filters: DashboardDetailFilters, sortOption: DashboardFileSortOption) {
+        let normalizedQuery = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         self.files = files
-            .filter { $0.matches(filters: filters) }
+            .filter { $0.matches(filters: filters, normalizedQuery: normalizedQuery) }
             .sorted(by: sortOption)
     }
 }
@@ -2757,7 +3120,7 @@ private struct DashboardFileItem: Identifiable, Sendable {
         interaction?.isHiddenLike == true
     }
 
-    func matches(filters: DashboardDetailFilters) -> Bool {
+    func matches(filters: DashboardDetailFilters, normalizedQuery query: String) -> Bool {
         guard filters.showHidden || !isHidden else { return false }
         guard !filters.hiddenOnly || isHidden else { return false }
         guard !filters.newOnly || isRecent else { return false }
@@ -2772,7 +3135,6 @@ private struct DashboardFileItem: Identifiable, Sendable {
         guard filters.selectedCourse == DashboardCourseFilter.all || course == filters.selectedCourse else {
             return false
         }
-        let query = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return true }
         return searchBlob.localizedCaseInsensitiveContains(query)
     }
@@ -3135,7 +3497,10 @@ private struct HiddenItemsListView: View {
 
     @ViewBuilder
     private var hiddenFileRows: some View {
-        let items = (hiddenFileItems + hiddenQuarantineItems).filter { $0.matches(filters: filters) }
+        let normalizedQuery = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let items = (hiddenFileItems + hiddenQuarantineItems).filter {
+            $0.matches(filters: filters, normalizedQuery: normalizedQuery)
+        }
         let visibleItems = items.prefix(visibleLimit)
         if items.isEmpty {
             EmptyDetailText(text: "숨긴 파일이 없습니다.")
@@ -3430,7 +3795,8 @@ private struct FileRowView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
-                .accessibilityLabel("\(item.title.isEmpty ? "파일" : item.title) \(isExpanded ? "접기" : "작업 펼치기")")
+                .accessibilityLabel("\(item.title.isEmpty ? "파일" : item.title) 작업 \(isExpanded ? "펼쳐짐" : "접힘")")
+                .accessibilityHint(isExpanded ? "파일 작업 접기" : "파일 작업 펼치기")
                 if pathExists {
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
@@ -4728,46 +5094,58 @@ private struct MacMailAnalysisProcessView: View {
 
     var body: some View {
         if !steps.isEmpty {
-            DisclosureGroup(isExpanded: $isExpanded) {
-                VStack(alignment: .leading, spacing: 7) {
-                    ForEach(steps) { step in
-                        HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: step.systemImage)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(step.tint)
-                                .frame(width: 20, height: 20)
-                                .background(step.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(step.title)
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    isExpanded.toggle()
+                } label: {
+                    HStack(spacing: 7) {
+                        Label("분석 과정", systemImage: "list.bullet.clipboard")
+                            .font(.caption.weight(.semibold))
+                        Spacer(minLength: 0)
+                        Text("\(steps.count)단계")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+                    .contentShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(KLMSMacPressFeedbackButtonStyle(cornerRadius: 7))
+                .accessibilityLabel("분석 과정 \(steps.count)단계 \(isExpanded ? "펼쳐짐" : "접힘")")
+                .accessibilityHint(isExpanded ? "분석 과정 접기" : "분석 과정 펼치기")
+
+                if isExpanded {
+                    VStack(alignment: .leading, spacing: 7) {
+                        ForEach(steps) { step in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: step.systemImage)
                                     .font(.caption.weight(.semibold))
-                                Text(step.detail)
-                                    .font(.caption2)
-                                    .foregroundStyle(Color.klmsMacSecondaryText)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .foregroundStyle(step.tint)
+                                    .frame(width: 20, height: 20)
+                                    .background(step.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(step.title)
+                                        .font(.caption.weight(.semibold))
+                                    Text(step.detail)
+                                        .font(.caption2)
+                                        .foregroundStyle(Color.klmsMacSecondaryText)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
                             }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(7)
-                        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 7))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(Color.klmsMacBorder, lineWidth: 1)
+                            .padding(7)
+                            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 7))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 7)
+                                    .stroke(Color.klmsMacBorder, lineWidth: 1)
+                            }
                         }
                     }
+                    .padding(.top, 8)
                 }
-                .padding(.top, 8)
-            } label: {
-                HStack(spacing: 7) {
-                    Label("분석 과정", systemImage: "list.bullet.clipboard")
-                        .font(.caption.weight(.semibold))
-                    Spacer(minLength: 0)
-                    Text("\(steps.count)단계")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(KLMSMacPressFeedbackButtonStyle())
             .padding(9)
             .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {

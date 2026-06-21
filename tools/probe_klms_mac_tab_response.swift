@@ -70,7 +70,7 @@ private let targets = [
 do {
     try runProbe()
 } catch {
-    let message = "probe failed: \(error)\n\(visibleWindowDiagnostics())"
+    let message = "probe failed: \(error)\n\(visibleWindowDiagnostics())\(sessionDiagnostics())"
     FileHandle.standardError.write(Data(message.utf8))
     exit(1)
 }
@@ -90,6 +90,7 @@ private func runProbe() throws {
     }
 
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
+    bringKLMSAppForward(app: app, appElement: appElement)
     try openDashboardWindowIfNeeded(appElement: appElement)
 
     var results: [ProbeRunResult] = []
@@ -120,6 +121,45 @@ private func runProbe() throws {
             "Slowest tab \(slowest.0) \(Int(slowest.1.rounded()))ms exceeded \(Int(slowestLimit.rounded()))ms."
         )
     }
+}
+
+private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElement) {
+    activateApplicationBundle()
+    app.unhide()
+    app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
+    AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    activateApplicationWithAppleScript()
+    requestDashboardWindowReopen()
+
+    let deadline = Date().addingTimeInterval(min(1.5, timeout))
+    repeat {
+        if hasUsableAccessibilityWindow(in: appElement)
+            || NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+}
+
+private func activateApplicationBundle() {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    process.arguments = ["-b", bundleID]
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    try? process.run()
+    process.waitUntilExit()
+}
+
+private func activateApplicationWithAppleScript() {
+    let escapedAppName = appName.replacingOccurrences(of: "\"", with: "\\\"")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    process.arguments = ["-e", "tell application \"\(escapedAppName)\" to activate"]
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    try? process.run()
+    process.waitUntilExit()
 }
 
 private struct ProbeRunResult {
@@ -223,6 +263,39 @@ private func visibleWindowDiagnostics() -> String {
         return "visible-window none for \(appName)\n"
     }
     return matching.joined(separator: "\n") + "\n"
+}
+
+private func sessionDiagnostics() -> String {
+    var lines: [String] = []
+    if let session = CGSessionCopyCurrentDictionary() as? [String: Any] {
+        let onConsole = diagnosticValue(session["kCGSessionOnConsoleKey"])
+        let loginDone = diagnosticValue(session["kCGSessionLoginDoneKey"])
+        let screenLocked = diagnosticValue(session["CGSSessionScreenIsLocked"])
+        lines.append("session on-console=\(onConsole) login-done=\(loginDone) screen-locked=\(screenLocked)")
+    } else {
+        lines.append("session unavailable")
+    }
+    if let frontmost = NSWorkspace.shared.frontmostApplication {
+        lines.append(
+            "frontmost-app name=\(frontmost.localizedName ?? "-") pid=\(frontmost.processIdentifier) bundle=\(frontmost.bundleIdentifier ?? "-")"
+        )
+    } else {
+        lines.append("frontmost-app unavailable")
+    }
+    return lines.joined(separator: "\n") + "\n"
+}
+
+private func diagnosticValue(_ value: Any?) -> String {
+    switch value {
+    case let number as NSNumber:
+        return number.boolValue ? "true" : "false"
+    case let string as String where !string.isEmpty:
+        return string
+    case .some:
+        return "present"
+    case .none:
+        return "unknown"
+    }
 }
 
 private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Double {

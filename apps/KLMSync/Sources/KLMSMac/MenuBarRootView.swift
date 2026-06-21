@@ -2153,8 +2153,8 @@ private struct LogSummaryTile: View {
         }
         .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
         .help(isExpanded ? "관련 로그 접기" : "관련 로그 펼치기")
-        .accessibilityLabel("\(title) 로그 요약 \(isExpanded ? "접기" : "펼치기")")
-        .accessibilityHint(detail)
+        .accessibilityLabel("\(title) 로그 요약 \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityHint(isExpanded ? "관련 로그 접기" : "관련 로그 펼치기")
     }
 }
 
@@ -2437,24 +2437,21 @@ private struct DiagnosticToolsPanelView: View {
                     diagnosticButton(.report)
                 }
 
-                DisclosureGroup(isExpanded: $isAdvancedExpanded) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("변경 예정량만 보거나 내부 상태 파일을 다시 만들 때 사용합니다.")
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        diagnosticButton(.v2BuildState)
-                        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                            ForEach(dryRunCommands, id: \.self) { command in
-                                dryRunButton(command)
-                            }
+                DiagnosticChecksDisclosure(
+                    title: "고급 도구",
+                    isExpanded: $isAdvancedExpanded
+                ) {
+                    Text("변경 예정량만 보거나 내부 상태 파일을 다시 만들 때 사용합니다.")
+                        .font(.caption2)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    diagnosticButton(.v2BuildState)
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                        ForEach(dryRunCommands, id: \.self) { command in
+                            dryRunButton(command)
                         }
-                        dryRunReportSummary
                     }
-                    .padding(.top, 6)
-                } label: {
-                    Label("고급 도구", systemImage: "slider.horizontal.3")
-                        .font(.caption.weight(.semibold))
+                    dryRunReportSummary
                 }
 
             }
@@ -2525,6 +2522,7 @@ private struct DiagnosticToolsPanelView: View {
 
 private struct DiagnosticStageDurationPanelView: View {
     let model: KLMSMacModel
+    @State private var isDetailExpanded = false
 
     var body: some View {
         if !stageDurations.isEmpty {
@@ -2534,12 +2532,11 @@ private struct DiagnosticStageDurationPanelView: View {
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                     CompactStageDurationRowsView(durations: stageDurations)
-                    DisclosureGroup {
+                    DiagnosticChecksDisclosure(
+                        title: "자세히 보기",
+                        isExpanded: $isDetailExpanded
+                    ) {
                         CommandStageDurationSummaryView(durations: stageDurations)
-                            .padding(.top, 6)
-                    } label: {
-                        Text("자세히 보기")
-                            .font(.caption.weight(.semibold))
                     }
                 }
             }
@@ -2579,17 +2576,12 @@ private struct LogTextBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ReadableLogHighlightsView(highlights: highlights, detailed: detailed)
-            if isRawExpanded {
+            DiagnosticChecksDisclosure(
+                title: "원본 로그 보기",
+                isExpanded: $isRawExpanded,
+                compact: true
+            ) {
                 rawLogText
-            } else {
-                DisclosureGroup(isExpanded: $isRawExpanded) {
-                    rawLogText
-                        .padding(.top, 4)
-                } label: {
-                    Label("원본 로그 보기", systemImage: "doc.text.magnifyingglass")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -2807,7 +2799,7 @@ private struct DashboardSummaryView: View {
         DashboardSummaryContentView(
             model: model,
             snapshot: model.snapshot,
-            summary: model.dashboardSummaryCache,
+            presentation: model.dashboardSummaryPresentation,
             renderSignature: model.dashboardRenderSignature
         )
         .equatable()
@@ -2817,9 +2809,8 @@ private struct DashboardSummaryView: View {
 private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     var model: KLMSMacModel
     var snapshot: EngineSnapshot
-    var summary: KLMSMacDashboardSummaryCache
+    var presentation: DashboardSummaryPresentation
     var renderSignature: DashboardRenderSignature
-    private var presentation: DashboardSummaryPresentation
     @State private var selectedDetail: DashboardDetailKind?
     @State private var renderedDetail: DashboardDetailKind?
     @State private var isArchiveMetricsExpanded = false
@@ -2827,14 +2818,13 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     init(
         model: KLMSMacModel,
         snapshot: EngineSnapshot,
-        summary: KLMSMacDashboardSummaryCache,
+        presentation: DashboardSummaryPresentation,
         renderSignature: DashboardRenderSignature
     ) {
         self.model = model
         self.snapshot = snapshot
-        self.summary = summary
+        self.presentation = presentation
         self.renderSignature = renderSignature
-        self.presentation = DashboardSummaryPresentation(snapshot: snapshot, summary: summary)
     }
 
     static func == (lhs: DashboardSummaryContentView, rhs: DashboardSummaryContentView) -> Bool {
@@ -2991,7 +2981,7 @@ private struct DashboardDetailHint: View {
     }
 }
 
-private struct DashboardSummaryPresentation {
+struct DashboardSummaryPresentation {
     var primaryMetrics: [Metric]
     var attentionMetrics: [Metric]
     var archiveMetrics: [Metric]
@@ -3403,7 +3393,8 @@ private struct SharedRunLogActivityRow: View {
             )
         }
         .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
-        .accessibilityLabel("\(log.commandTitle.nilIfBlank ?? "동기화") 실행 로그 \(isExpanded ? "접기" : "펼치기")")
+        .accessibilityLabel("\(log.commandTitle.nilIfBlank ?? "동기화") 실행 로그 \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityHint(isExpanded ? "실행 로그 접기" : "실행 로그 펼치기")
     }
 
     private var systemImage: String {
@@ -3470,7 +3461,8 @@ private struct ServerRequestLogActivityRow: View {
             }
         }
         .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
-        .accessibilityLabel("\(entry.action.nilIfBlank ?? entry.path.nilIfBlank ?? "서버 요청") 기록 \(isExpanded ? "접기" : "펼치기")")
+        .accessibilityLabel("\(entry.action.nilIfBlank ?? entry.path.nilIfBlank ?? "서버 요청") 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityHint(isExpanded ? "서버 요청 기록 접기" : "서버 요청 기록 펼치기")
     }
 
     private var detail: String {
@@ -3575,7 +3567,8 @@ private struct RemoteCommandActivityRow: View {
             }
         }
         .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
-        .accessibilityLabel("\(command.kind.displayName) 원격 실행 기록 \(isExpanded ? "접기" : "펼치기")")
+        .accessibilityLabel("\(command.kind.displayName) 원격 실행 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityHint(isExpanded ? "원격 실행 기록 접기" : "원격 실행 기록 펼치기")
     }
 
     private var remoteCommandDetail: String {
@@ -3717,7 +3710,8 @@ private struct FileAccessActivityRow: View {
             }
         }
         .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
-        .accessibilityLabel("\(request.itemTitle.nilIfBlank ?? "파일") 파일 요청 기록 \(isExpanded ? "접기" : "펼치기")")
+        .accessibilityLabel("\(request.itemTitle.nilIfBlank ?? "파일") 파일 요청 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityHint(isExpanded ? "파일 요청 기록 접기" : "파일 요청 기록 펼치기")
     }
 
     private var detail: String {
@@ -4264,16 +4258,13 @@ private struct VerifyPanelView: View {
                             VerifyCheckExplanationRowView(check: check)
                         }
                         if !checkSummary.remainingIssues.isEmpty {
-                            DisclosureGroup(isExpanded: $isRemainingIssuesExpanded) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    ForEach(checkSummary.remainingIssues) { check in
-                                        VerifyCheckExplanationRowView(check: check, compact: true)
-                                    }
+                            DiagnosticChecksDisclosure(
+                                title: "나머지 확인 항목 \(checkSummary.remainingIssues.count)개",
+                                isExpanded: $isRemainingIssuesExpanded
+                            ) {
+                                ForEach(checkSummary.remainingIssues) { check in
+                                    VerifyCheckExplanationRowView(check: check, compact: true)
                                 }
-                                .padding(.top, 4)
-                            } label: {
-                                Text("나머지 확인 항목 \(checkSummary.remainingIssues.count)개")
-                                    .font(.caption.weight(.semibold))
                             }
                         }
                     }
@@ -4459,16 +4450,13 @@ private struct DoctorPanelView: View {
                         DoctorCheckRowView(check: check)
                     }
                     if !checkSummary.remainingIssues.isEmpty {
-                        DisclosureGroup(isExpanded: $isRemainingIssuesExpanded) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(checkSummary.remainingIssues) { check in
-                                    DoctorCheckRowView(check: check, compact: true)
-                                }
+                        DiagnosticChecksDisclosure(
+                            title: "나머지 진단 항목 \(checkSummary.remainingIssues.count)개",
+                            isExpanded: $isRemainingIssuesExpanded
+                        ) {
+                            ForEach(checkSummary.remainingIssues) { check in
+                                DoctorCheckRowView(check: check, compact: true)
                             }
-                            .padding(.top, 4)
-                        } label: {
-                            Text("나머지 진단 항목 \(checkSummary.remainingIssues.count)개")
-                                .font(.caption.weight(.semibold))
                         }
                     }
                 }
@@ -4622,12 +4610,32 @@ private struct DoctorCheckRowView: View {
 private struct AppDiagnosticsPanelView: View {
     let model: KLMSMacModel
     @State private var isExpanded = false
+    @State private var isPermissionScopeExpanded = false
     private let permissionActionColumns = [GridItem(.adaptive(minimum: 136), spacing: 8)]
 
     var body: some View {
         SectionBox(title: "앱/설치 정보") {
             let diagnostics = model.appDiagnostics
-            DisclosureGroup(isExpanded: $isExpanded) {
+            HStack(spacing: 9) {
+                Image(systemName: "app.badge.checkmark")
+                    .foregroundStyle(diagnostics.codeSigning.needsAttention ? Color.klmsMacWarningBorder : Color.klmsMacSecondaryText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(diagnostics.codeSigning.needsAttention ? "권한이나 서명 상태를 확인하세요." : "앱과 엔진 상태가 준비되어 있습니다.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    Text(diagnostics.installedPayloadVersion.isEmpty ? "엔진 설치 상태 확인 필요" : "엔진 \(diagnostics.installedPayloadVersion)")
+                        .font(.caption2)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(8)
+            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+
+            DiagnosticChecksDisclosure(
+                title: "설치·권한 세부 정보",
+                isExpanded: $isExpanded
+            ) {
                 VStack(alignment: .leading, spacing: 8) {
                     DiagnosticRowView(
                         title: "코드 서명",
@@ -4700,7 +4708,11 @@ private struct AppDiagnosticsPanelView: View {
                         }
                     }
 
-                    DisclosureGroup("필요 권한 범위") {
+                    DiagnosticChecksDisclosure(
+                        title: "필요 권한 범위",
+                        isExpanded: $isPermissionScopeExpanded,
+                        compact: true
+                    ) {
                         VStack(alignment: .leading, spacing: 6) {
                             PermissionScopeText("손쉬운 사용: 시스템 설정에서 KLMS Sync를 켜야 합니다. KLMS 공지 메모 렌더러가 따로 보이면 그것도 켜 주세요.")
                             PermissionScopeText("손쉬운 사용 사용처: Notes 편집 영역 포커스 확인, 체크리스트와 문단 서식 적용")
@@ -4716,20 +4728,6 @@ private struct AppDiagnosticsPanelView: View {
                     .font(.caption)
                 }
                 .padding(.top, 6)
-            } label: {
-                HStack(spacing: 9) {
-                    Image(systemName: "app.badge.checkmark")
-                        .foregroundStyle(diagnostics.codeSigning.needsAttention ? Color.klmsMacWarningBorder : Color.klmsMacSecondaryText)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(diagnostics.codeSigning.needsAttention ? "권한이나 서명 상태를 확인하세요." : "앱과 엔진 정보는 접어 두었습니다.")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacPrimaryText)
-                        Text(diagnostics.installedPayloadVersion.isEmpty ? "엔진 설치 상태 확인 필요" : "엔진 \(diagnostics.installedPayloadVersion)")
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                    }
-                    Spacer()
-                }
             }
         }
     }
@@ -5185,64 +5183,81 @@ private struct RunLogArchiveRowView: View {
     @State private var isExpanded = false
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Label(record.command.isDiagnostic ? "진단 명령" : "동기화 명령", systemImage: record.command.isDiagnostic ? "wrench.and.screwdriver" : "arrow.triangle.2.circlepath")
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                    if record.dryRun {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: statusImage)
+                        .foregroundStyle(statusColor)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(record.command.displayName)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            if record.dryRun {
+                                Text("변경량 계산")
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.klmsMacCommandAccent)
+                                    .lineLimit(1)
+                            }
+                        }
+                        Text("\(record.startedAt.formatted(date: .numeric, time: .shortened)) · \(record.elapsedSecondsText)")
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                        CompactStageDurationRowsView(durations: record.visibleStageDurations)
+                    }
+                    .layoutPriority(1)
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(record.statusText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(statusColor)
+                            .lineLimit(1)
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                    }
+                }
+                .padding(9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+            .accessibilityLabel("\(record.command.displayName) 실행 로그 \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityHint(isExpanded ? "실행 로그 접기" : "실행 로그 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Label(record.command.isDiagnostic ? "진단 명령" : "동기화 명령", systemImage: record.command.isDiagnostic ? "wrench.and.screwdriver" : "arrow.triangle.2.circlepath")
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                        if record.dryRun {
                             Text("변경량 계산")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacCommandAccent)
-                    }
-                    Spacer()
-                    Text("종료 코드 \(record.exitCode)")
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                }
-                if record.outputTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("이 실행에는 저장된 로그가 없습니다.")
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                } else {
-                    CommandStageDurationSummaryView(durations: record.visibleStageDurations)
-                    LogTextBlock(text: record.outputTail)
-                }
-            }
-            .padding(.top, 6)
-        } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: statusImage)
-                    .foregroundStyle(statusColor)
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(record.command.displayName)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if record.dryRun {
-                            Text("변경량 계산")
-                                .font(.caption2)
-                                .foregroundStyle(Color.klmsMacCommandAccent)
-                                .lineLimit(1)
                         }
+                        Spacer()
+                        Text("종료 코드 \(record.exitCode)")
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
                     }
-                    Text("\(record.startedAt.formatted(date: .numeric, time: .shortened)) · \(record.elapsedSecondsText)")
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                    CompactStageDurationRowsView(durations: record.visibleStageDurations)
+                    if record.outputTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("이 실행에는 저장된 로그가 없습니다.")
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                    } else {
+                        CommandStageDurationSummaryView(durations: record.visibleStageDurations)
+                        LogTextBlock(text: record.outputTail)
+                    }
                 }
-                .layoutPriority(1)
-                Spacer(minLength: 8)
-                Text(record.statusText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(statusColor)
-                    .lineLimit(1)
+                .padding(.horizontal, 9)
+                .padding(.bottom, 9)
             }
         }
-        .padding(9)
         .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)

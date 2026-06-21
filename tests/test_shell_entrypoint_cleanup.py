@@ -41,6 +41,20 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
                 text = (PROJECT_DIR / script_name).read_text(encoding="utf-8")
                 self.assertIn(f'exec /bin/zsh "$SCRIPT_DIR/bin/{script_name}" "$@"', text)
 
+    def test_ios_device_installer_reports_generic_device_labels(self) -> None:
+        script = (PROJECT_DIR / "tools" / "install_klms_ios_device.sh").read_text(encoding="utf-8")
+        readme = (PROJECT_DIR / "apps" / "KLMSync" / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn('local device_label="${2:-device}"', script)
+        self.assertIn('print -r -- "${device_label}: installed"', script)
+        self.assertIn('print -r -- "${device_label}: installed-and-launched"', script)
+        self.assertIn('print -ru2 -- "${device_label}: installed, but launch was denied', script)
+        self.assertIn('print(f"{identifier}\\t{hardware.get(\'deviceType\', \'device\')}")', script)
+        self.assertIn('target_device="${device_entry%%$\'\\t\'*}"', script)
+        self.assertIn('device_label="${device_entry#*$\'\\t\'}"', script)
+        self.assertNotIn("properties.get(\"name\")", script)
+        self.assertIn("prints a generic `iPhone` or `iPad` label for each result", readme)
+
     def test_serial_run_scripts_share_common_job_runner(self) -> None:
         for script_name in ["run_all.sh", "run_all_full.sh"]:
             with self.subTest(script=script_name):
@@ -1351,7 +1365,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("fetchCancelRequest", model)
         self.assertIn("await model.cancelRunningCommand()", ios_app)
         self.assertIn("private struct RemoteRunningStatusBanner", ios_app)
-        self.assertIn("if model.shouldShowCancelControl", ios_app)
+        self.assertIn("shouldShowCancelControl: model.shouldShowCancelControl", ios_app)
+        self.assertIn("if snapshot.shouldShowCancelControl", ios_app)
         self.assertNotIn("private struct RemoteCancelControl", ios_app)
         self.assertNotIn("RemoteCancelControl(model:", ios_app)
         self.assertIn('return "요청 중"', ios_app)
@@ -1370,7 +1385,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("SecureField(\"입력\"", ios_app)
         self.assertIn("clearServerRelayConnectionInfo", ios_app)
         self.assertIn('Text("서버 릴레이")', ios_app)
-        self.assertIn("Cloudflare 릴레이 연결 정보를 붙여넣어 주세요.", ios_app)
+        self.assertIn("연결 정보를 붙여넣어 주세요.", ios_app)
         self.assertIn('title: "연결 확인"', ios_app)
         self.assertIn('title: "복사"', ios_app)
         self.assertIn('connectionAsyncButton("연결 확인"', ios_app)
@@ -1401,7 +1416,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("@State private var selectedDashboardPreview", ios_app)
         self.assertIn("DashboardCategoryInlineDetailPanel(", ios_app)
         self.assertIn("ServerSyncItemInlineDetailPanel(item: item, model: model)", ios_app)
-        self.assertIn("if let category = displayedDashboardPreview", ios_app)
+        self.assertIn("else if let category = displayedDashboardPreview", ios_app)
         self.assertIn("deferDashboardPreview(category)", ios_app)
         self.assertNotIn('Label("상세 보기", systemImage: "arrow.right.circle")', ios_app)
         status_screen = ios_app.split("private struct CompanionStatusScreen", 1)[1].split(
@@ -1412,7 +1427,14 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             "}",
             1,
         )[0]
-        self.assertIn("selectedDashboardPreview = category", status_tap_block)
+        select_category_block = status_screen.split("private func selectDashboardCategory(_ category: DashboardMetricCategory)", 1)[1].split(
+            "private func selectChangeSummary",
+            1,
+        )[0]
+        self.assertIn("selectDashboardCategory(category)", status_tap_block)
+        self.assertIn("selectedDashboardPreview = category", select_category_block)
+        self.assertIn("displayedDashboardPreview = nil", select_category_block)
+        self.assertIn("deferDashboardPreview(category)", select_category_block)
         self.assertNotIn("selectedDashboardRoute = category", status_tap_block)
         self.assertNotIn("selectedSyncItem", status_screen)
         self.assertNotIn(".navigationDestination", status_screen)
@@ -1421,11 +1443,11 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertNotIn(".sheet(item: $selectedDashboardPreview)", status_screen)
         self.assertIn("CompanionSettingHelpText", ios_app)
         for description in [
-            "집 주소, 로컬 IP, Mac의 사설 주소는 저장하지 않습니다.",
-            "Mac 전용 토큰은 여기에 넣지 않습니다.",
+            "공개 HTTPS 주소만 넣습니다. 로컬 주소는 저장하지 않습니다.",
+            "이 기기용 토큰입니다. Mac 전용 토큰은 넣지 않습니다.",
             "복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.",
-            "연결 확인은 URL과 토큰으로 서버 응답만 검사합니다.",
-            "Mac 앱이 요청을 확인하면 설정에 반영합니다.",
+            "연결 확인은 동기화 없이 서버 응답만 검사합니다.",
+            "변경한 값은 서버에 저장되고 Mac 앱이 받아 적용합니다.",
             "읽음/중요 표시는 유지하되, 공지 내용이 그대로면 Notes 메모를 다시 쓰지 않습니다.",
             "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다.",
         ]:

@@ -131,7 +131,7 @@ final class CompanionModel: ObservableObject {
         didSet { rebuildRemoteLogDerivedState() }
     }
     @Published var syncItems: [ServerRelaySyncItem] = [] {
-        didSet { rebuildVisibleCalendarChanges(); rebuildDashboardDerivedState(); rebuildChangeSummaryItemLookup() }
+        didSet { rebuildVisibleCalendarChanges(); rebuildDashboardDerivedState() }
     }
     @Published var dryRunReports: [DryRunReport] = [] {
         didSet { rebuildDashboardFileCleanupDetails(); rebuildFileCleanupReportCache() }
@@ -231,6 +231,8 @@ final class CompanionModel: ObservableObject {
     private var defaultDashboardListDataByCategoryID: [String: CompanionItemListData] = [:]
     private var visibleDashboardTaskItems: [ServerRelaySyncItem] = []
     private var visibleCalendarChangeByID: [String: CalendarChange] = [:]
+    private var dashboardSortedSyncItems: [ServerRelaySyncItem] = []
+    private var dashboardActionHiddenItemIDsCache = Set<String>()
 
     private static let terminalLogSummaryDisplayInterval: TimeInterval = 5 * 60
 
@@ -443,23 +445,37 @@ final class CompanionModel: ObservableObject {
 
     private func rebuildDashboardDerivedState() {
         let nextItems = (syncItems + dashboardMailItems).dedupedForServerRelay()
-        if dashboardSyncItems != nextItems {
+        let nextHiddenByActionItemIDs = dashboardActionHiddenItemIDs()
+        let itemsChanged = dashboardSyncItems != nextItems
+        let hiddenActionsChanged = dashboardActionHiddenItemIDsCache != nextHiddenByActionItemIDs
+        if itemsChanged {
             dashboardSyncItems = nextItems
             dashboardSyncItemsRevision &+= 1
-            rebuildDashboardItemLookup()
+            dashboardSortedSyncItems = nextItems.companionSorted(by: .recent)
+            rebuildChangeSummaryItemLookup(sortedItems: dashboardSortedSyncItems)
+        }
+        if itemsChanged || hiddenActionsChanged {
+            dashboardActionHiddenItemIDsCache = nextHiddenByActionItemIDs
+            rebuildDashboardItemLookup(
+                sortedDashboardItems: dashboardSortedSyncItems,
+                hiddenByActionItemIDs: nextHiddenByActionItemIDs
+            )
         }
         rebuildDashboardStatus()
     }
 
-    private func rebuildDashboardItemLookup() {
+    private func rebuildDashboardItemLookup(
+        sortedDashboardItems: [ServerRelaySyncItem]? = nil,
+        hiddenByActionItemIDs providedHiddenByActionItemIDs: Set<String>? = nil
+    ) {
         var next: [String: [ServerRelaySyncItem]] = [:]
         var nextVisible: [String: [ServerRelaySyncItem]] = [:]
         var nextVisibleLookup: [String: [String: ServerRelaySyncItem]] = [:]
         var nextVisibleCounts = CompanionDashboardVisibleCounts()
         var nextFilterOptions: [String: CompanionItemFilterOptions] = [:]
         var nextDefaultListData: [String: CompanionItemListData] = [:]
-        let hiddenByActionItemIDs = dashboardActionHiddenItemIDs()
-        let sortedDashboardItems = dashboardSyncItems.companionSorted(by: .recent)
+        let hiddenByActionItemIDs = providedHiddenByActionItemIDs ?? dashboardActionHiddenItemIDs()
+        let sortedDashboardItems = sortedDashboardItems ?? dashboardSyncItems.companionSorted(by: .recent)
         var categoryItemsByID = Dictionary(uniqueKeysWithValues: DashboardMetricCategory.allCases.map { ($0.rawValue, [ServerRelaySyncItem]()) })
         var nextVisibleTaskItems: [ServerRelaySyncItem] = []
         for item in sortedDashboardItems {
@@ -551,11 +567,11 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    private func rebuildChangeSummaryItemLookup() {
+    private func rebuildChangeSummaryItemLookup(sortedItems: [ServerRelaySyncItem]? = nil) {
         var next = Dictionary(
             uniqueKeysWithValues: RemoteChangeSummaryKind.itemChangeKinds.map { ($0.rawValue, [ServerRelaySyncItem]()) }
         )
-        for item in syncItems.companionSorted(by: .recent) {
+        for item in sortedItems ?? dashboardSyncItems.companionSorted(by: .recent) {
             for kind in RemoteChangeSummaryKind.itemChangeKinds(for: item) {
                 next[kind.rawValue, default: []].append(item)
             }
@@ -3001,6 +3017,8 @@ private struct CompanionSectionContent: View {
 private struct CompanionStatusScreen: View {
     let model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
+    @State private var displayedDashboardPreview: DashboardMetricCategory?
+    @State private var dashboardPreviewTask: Task<Void, Never>?
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -3096,7 +3114,7 @@ private struct CompanionStatusScreen: View {
                     model: model
                 )
                 .id(kind)
-            } else if let category = selectedDashboardPreview {
+            } else if let category = displayedDashboardPreview {
                 DashboardCategoryInlineDetailPanel(category: category, model: model)
                     .id(category)
             }
@@ -3143,7 +3161,7 @@ private struct CompanionStatusScreen: View {
                 model: model
             )
                 .id(kind)
-        } else if let category = selectedDashboardPreview {
+        } else if let category = displayedDashboardPreview {
             DashboardCategoryInlineDetailPanel(category: category, model: model)
                 .id(category)
         } else if horizontalSizeClass == .regular {
@@ -3169,13 +3187,32 @@ private struct CompanionStatusScreen: View {
         companionPerformWithoutAnimation {
             selectedChangeSummary = nil
             selectedDashboardPreview = category
+            displayedDashboardPreview = nil
         }
+        deferDashboardPreview(category)
     }
 
     private func selectChangeSummary(_ kind: RemoteChangeSummaryKind) {
+        dashboardPreviewTask?.cancel()
+        dashboardPreviewTask = nil
         companionPerformWithoutAnimation {
             selectedDashboardPreview = nil
+            displayedDashboardPreview = nil
             selectedChangeSummary = kind
+        }
+    }
+
+    private func deferDashboardPreview(_ category: DashboardMetricCategory) {
+        dashboardPreviewTask?.cancel()
+        dashboardPreviewTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else {
+                return
+            }
+            companionPerformWithoutAnimation {
+                displayedDashboardPreview = category
+            }
+            dashboardPreviewTask = nil
         }
     }
 
@@ -4808,16 +4845,8 @@ private enum CompanionItemStatusFilter: String, CaseIterable, Identifiable, Send
         case nil:
             candidates = [.all, .active, .unread, .important, .completed, .candidates, .changed, .withAttachments]
         }
-        return candidates.filter { filter in
-            switch filter {
-            case .all:
-                true
-            case .active:
-                items.contains { filter.includes($0) }
-            case .completed, .candidates, .unread, .read, .important, .changed, .withAttachments:
-                items.contains { filter.includes($0) }
-            }
-        }
+        let availability = CompanionItemStatusFilterAvailability(items: items)
+        return candidates.filter { availability.contains($0) }
     }
 
     func includes(_ item: ServerRelaySyncItem) -> Bool {
@@ -4844,31 +4873,132 @@ private enum CompanionItemStatusFilter: String, CaseIterable, Identifiable, Send
     }
 }
 
+private struct CompanionItemStatusFilterAvailability: Sendable {
+    private var hasActive = false
+    private var hasCompleted = false
+    private var hasCandidates = false
+    private var hasUnread = false
+    private var hasRead = false
+    private var hasImportant = false
+    private var hasChanged = false
+    private var hasAttachments = false
+
+    init(items: [ServerRelaySyncItem]) {
+        for item in items {
+            switch item.kind {
+            case "assignment", "exam", "helpDesk":
+                hasActive = true
+            case "completedAssignment":
+                hasCompleted = true
+            case "assignmentCandidate", "examCandidate":
+                hasCandidates = true
+            default:
+                break
+            }
+            if item.kind == "notice" {
+                if item.isRead {
+                    hasRead = true
+                } else {
+                    hasUnread = true
+                }
+                if item.isImportant {
+                    hasImportant = true
+                }
+            }
+            if !hasCompleted,
+               item.searchText.localizedCaseInsensitiveContains("완료") || item.searchText.localizedCaseInsensitiveContains("completed") {
+                hasCompleted = true
+            }
+            if item.isCompanionChangedLike {
+                hasChanged = true
+            }
+            if item.attachmentCount > 0 {
+                hasAttachments = true
+            }
+        }
+    }
+
+    func contains(_ filter: CompanionItemStatusFilter) -> Bool {
+        switch filter {
+        case .all:
+            true
+        case .active:
+            hasActive
+        case .completed:
+            hasCompleted
+        case .candidates:
+            hasCandidates
+        case .unread:
+            hasUnread
+        case .read:
+            hasRead
+        case .important:
+            hasImportant
+        case .changed:
+            hasChanged
+        case .withAttachments:
+            hasAttachments
+        }
+    }
+}
+
 private enum CompanionItemListFilter {
     static let allCourses = "전체 과목"
     static let allYears = "전체 연도"
     static let allSemesters = "전체 학기"
 
     static func courseOptions(for items: [ServerRelaySyncItem]) -> [String] {
-        let courses = Set(
-            items
-                .map { $0.course.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-        )
-        return [allCourses] + courses.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        options(for: items).courses
     }
 
     static func yearOptions(for items: [ServerRelaySyncItem]) -> [String] {
-        let years = Set(items.compactMap(\.academicYear))
-        return [allYears] + years.sorted(by: >).map(String.init)
+        options(for: items).years
     }
 
     static func semesterOptions(for items: [ServerRelaySyncItem]) -> [String] {
-        let semesters = Set(
-            items
-                .map { $0.academicSemester.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
+        options(for: items).semesters
+    }
+
+    static func options(for items: [ServerRelaySyncItem]) -> (
+        courses: [String],
+        years: [String],
+        semesters: [String]
+    ) {
+        var courses = Set<String>()
+        var years = Set<Int>()
+        var semesters = Set<String>()
+        courses.reserveCapacity(items.count)
+        years.reserveCapacity(items.count)
+        semesters.reserveCapacity(items.count)
+        for item in items {
+            let course = item.course.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !course.isEmpty {
+                courses.insert(course)
+            }
+            if let year = item.academicYear {
+                years.insert(year)
+            }
+            let semester = item.academicSemester.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !semester.isEmpty {
+                semesters.insert(semester)
+            }
+        }
+        return (
+            courseOptions(from: courses),
+            yearOptions(from: years),
+            semesterOptions(from: semesters)
         )
+    }
+
+    private static func courseOptions(from courses: Set<String>) -> [String] {
+        [allCourses] + courses.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    private static func yearOptions(from years: Set<Int>) -> [String] {
+        [allYears] + years.sorted(by: >).map(String.init)
+    }
+
+    private static func semesterOptions(from semesters: Set<String>) -> [String] {
         let ordered = ["봄학기", "가을학기"].filter { semesters.contains($0) }
         let rest = semesters.subtracting(ordered).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         return [allSemesters] + ordered + rest
@@ -5004,9 +5134,10 @@ private struct CompanionItemFilterOptions: Equatable, Sendable {
     var availableStatusFilters: [CompanionItemStatusFilter]
 
     init(items: [ServerRelaySyncItem], category: DashboardMetricCategory?) {
-        courseOptions = CompanionItemListFilter.courseOptions(for: items)
-        yearOptions = CompanionItemListFilter.yearOptions(for: items)
-        semesterOptions = CompanionItemListFilter.semesterOptions(for: items)
+        let listOptions = CompanionItemListFilter.options(for: items)
+        courseOptions = listOptions.courses
+        yearOptions = listOptions.years
+        semesterOptions = listOptions.semesters
         availableStatusFilters = CompanionItemStatusFilter.options(for: category, items: items)
     }
 }
@@ -5062,7 +5193,6 @@ private struct CompanionItemListData: Sendable {
     var availableStatusFilters: [CompanionItemStatusFilter]
     var effectiveStatusFilter: CompanionItemStatusFilter
     var filteredItems: [ServerRelaySyncItem]
-    var filteredItemIDs: Set<String>
 
     init(
         items: [ServerRelaySyncItem],
@@ -5121,7 +5251,6 @@ private struct CompanionItemListData: Sendable {
         self.availableStatusFilters = statusFilters
         self.effectiveStatusFilter = effectiveStatus
         self.filteredItems = sortedFiltered
-        self.filteredItemIDs = Set(sortedFiltered.map(\.id))
     }
 }
 
@@ -7165,7 +7294,6 @@ private struct DashboardCategoryInlineDetailPanel: View {
                         CompanionInlineItemRowsView(
                             category: category,
                             items: filtered,
-                            itemIDs: listData.filteredItemIDs,
                             model: model,
                             presentation: itemPresentation,
                             externalSelectedItemID: externallySelectedItemID,
@@ -7966,7 +8094,6 @@ private struct CompanionInlineItemRowsView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var category: DashboardMetricCategory
     var items: [ServerRelaySyncItem]
-    var itemIDs: Set<String>? = nil
     let model: CompanionModel
     var presentation: CompanionInlineItemRowsPresentation
     var externalSelectedItemID: String?
@@ -7978,7 +8105,6 @@ private struct CompanionInlineItemRowsView: View {
     init(
         category: DashboardMetricCategory,
         items: [ServerRelaySyncItem],
-        itemIDs: Set<String>? = nil,
         model: CompanionModel,
         presentation: CompanionInlineItemRowsPresentation = .inlineDetail,
         externalSelectedItemID: String? = nil,
@@ -7986,7 +8112,6 @@ private struct CompanionInlineItemRowsView: View {
     ) {
         self.category = category
         self.items = items
-        self.itemIDs = itemIDs
         self.model = model
         self.presentation = presentation
         self.externalSelectedItemID = externalSelectedItemID
@@ -8125,9 +8250,6 @@ private struct CompanionInlineItemRowsView: View {
     }
 
     private func containsItemID(_ itemID: String) -> Bool {
-        if let itemIDs {
-            return itemIDs.contains(itemID)
-        }
         return items.contains { $0.id == itemID }
     }
 }
@@ -8135,18 +8257,15 @@ private struct CompanionInlineItemRowsView: View {
 private struct CompanionSelectableItemListRows: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var items: [ServerRelaySyncItem]
-    var itemIDs: Set<String>? = nil
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
         items: [ServerRelaySyncItem],
-        itemIDs: Set<String>? = nil,
         onSelect: @escaping (ServerRelaySyncItem) -> Void
     ) {
         self.items = items
-        self.itemIDs = itemIDs
         self.onSelect = onSelect
     }
 
@@ -8223,9 +8342,6 @@ private struct CompanionSelectableItemListRows: View {
     }
 
     private func containsItemID(_ itemID: String) -> Bool {
-        if let itemIDs {
-            return itemIDs.contains(itemID)
-        }
         return items.contains { $0.id == itemID }
     }
 }
@@ -10547,7 +10663,6 @@ private struct ServerSyncDataPanel: View {
                     let filtered = listData.filteredItems
                     CompanionSelectableItemListRows(
                         items: filtered,
-                        itemIDs: listData.filteredItemIDs,
                         onSelect: onSelect
                     )
                 } else {
@@ -11719,30 +11834,24 @@ private struct RemoteVerifySummaryPanel: View {
                         RemoteVerifyCheckRow(check: check)
                     }
                     if !checkSummary.remainingIssues.isEmpty {
-                        DisclosureGroup(isExpanded: $showsRemainingIssues) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(checkSummary.remainingIssues, id: \.id) { check in
-                                    RemoteVerifyCheckRow(check: check, compact: true)
-                                }
+                        CompanionDiagnosticDisclosure(
+                            title: "나머지 확인 항목 \(checkSummary.remainingIssues.count)개",
+                            isExpanded: $showsRemainingIssues
+                        ) {
+                            ForEach(checkSummary.remainingIssues, id: \.id) { check in
+                                RemoteVerifyCheckRow(check: check, compact: true)
                             }
-                            .padding(.top, 4)
-                        } label: {
-                            Text("나머지 확인 항목 \(checkSummary.remainingIssues.count)개")
-                                .font(.caption.weight(.semibold))
                         }
                     }
                 }
 
-                DisclosureGroup(isExpanded: $showsAllChecks) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(summary.checks, id: \.id) { check in
-                            RemoteVerifyCheckRow(check: check, compact: true)
-                        }
+                CompanionDiagnosticDisclosure(
+                    title: "전체 상태 검사 항목 \(summary.checks.count)개",
+                    isExpanded: $showsAllChecks
+                ) {
+                    ForEach(summary.checks, id: \.id) { check in
+                        RemoteVerifyCheckRow(check: check, compact: true)
                     }
-                    .padding(.top, 4)
-                } label: {
-                    Text("전체 상태 검사 항목 \(summary.checks.count)개")
-                        .font(.caption.weight(.semibold))
                 }
             } else {
                 Text("아직 Mac에서 상태 검사 결과를 서버에 올리지 않았습니다. 상태 검사를 실행하면 캘린더/미리 알림/메모 불일치를 한국어로 풀어 보여줍니다.")
@@ -11839,33 +11948,32 @@ private struct RemoteVerifyCheckRow: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: false, vertical: true)
 
-                DisclosureGroup(isExpanded: $showsGuidance) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(check.diagnosticExplanation)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsPrimaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(check.diagnosticNextAction)
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if !rawDetail.isEmpty {
-                            DisclosureGroup(isExpanded: $showsRawDetail) {
-                                Text(rawDetail)
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(Color.klmsSecondaryText)
-                                    .textSelection(.enabled)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            } label: {
-                                Text("원본 보기")
-                                    .font(.caption2.weight(.semibold))
-                            }
+                CompanionDiagnosticDisclosure(
+                    title: "원인과 조치 보기",
+                    isExpanded: $showsGuidance,
+                    compact: true
+                ) {
+                    Text(check.diagnosticExplanation)
+                        .font(.caption2)
+                        .foregroundStyle(Color.klmsPrimaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(check.diagnosticNextAction)
+                        .font(.caption2)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !rawDetail.isEmpty {
+                        CompanionDiagnosticDisclosure(
+                            title: "원본 보기",
+                            isExpanded: $showsRawDetail,
+                            compact: true
+                        ) {
+                            Text(rawDetail)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(Color.klmsSecondaryText)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    .padding(.top, 3)
-                } label: {
-                    Text("원인과 조치 보기")
-                        .font(.caption2.weight(.semibold))
                 }
             }
         }
@@ -11907,6 +12015,57 @@ private struct RemoteVerifyCheckRow: View {
 
     private var isIssue: Bool {
         ["fail", "failed", "error", "warn", "warning"].contains(status)
+    }
+}
+
+private struct CompanionDiagnosticDisclosure<Content: View>: View {
+    var title: String
+    @Binding var isExpanded: Bool
+    var compact = false
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: compact ? 5 : 7) {
+            Button {
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .frame(width: 14)
+                    Text(title)
+                        .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsPrimaryText)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, compact ? 8 : 10)
+                .padding(.vertical, compact ? 6 : 8)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(
+                    isExpanded ? Color.klmsSelectedBackground.opacity(0.72) : Color.klmsSubtleCardBackground.opacity(0.64),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.70) : Color.klmsBorder.opacity(0.78), lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
+            .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: compact ? 5 : 6) {
+                    content()
+                }
+                .padding(.top, compact ? 1 : 3)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -12200,7 +12359,6 @@ private struct RemoteSettingGroup: Identifiable {
                     "FILE_REFRESH_MODE",
                     "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY",
                     "FILE_WEEKLY_FOLDERS_ENABLED",
-                    "FILE_FORCE_DOWNLOAD",
                     "FILE_KEEP_FRESH_DOWNLOADS",
                     "FILE_PRESERVE_DOWNLOAD_ARCHIVE",
                 ]
@@ -12218,7 +12376,6 @@ private struct RemoteSettingGroup: Identifiable {
                     "NOTICE_NATIVE_STABLE_NOOP_SKIP",
                     "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE",
                     "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
-                    "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY",
                     "NOTICE_NATIVE_PLAIN_TEXT_PASTE",
                 ]
             ),
@@ -12880,8 +13037,8 @@ private struct SharedRunLogRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-        .accessibilityLabel("\(log.commandTitle.nilIfEmpty ?? "동기화") 로그 \(isExpanded ? "접기" : "펼치기")")
-        .accessibilityHint("단계별 소요 시간과 마지막 로그를 보여줍니다.")
+        .accessibilityLabel("\(log.commandTitle.nilIfEmpty ?? "동기화") 로그 \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityHint(isExpanded ? "단계별 소요 시간과 마지막 로그를 접습니다." : "단계별 소요 시간과 마지막 로그를 펼칩니다.")
     }
 
     private var systemImage: String {
@@ -13112,8 +13269,8 @@ private struct ServerRequestLogRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
-        .accessibilityLabel("\(entry.action.nilIfEmpty ?? entry.path.nilIfEmpty ?? "서버 요청") 기록 \(isExpanded ? "접기" : "펼치기")")
-        .accessibilityHint("요청 출처와 상세 로그를 보여줍니다.")
+        .accessibilityLabel("\(entry.action.nilIfEmpty ?? entry.path.nilIfEmpty ?? "서버 요청") 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityHint(isExpanded ? "요청 출처와 상세 로그를 접습니다." : "요청 출처와 상세 로그를 펼칩니다.")
     }
 
     private var detail: String {
@@ -13225,8 +13382,8 @@ private struct RemoteFileAccessRequestRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
-        .accessibilityLabel("\(request.itemTitle.nilIfEmpty ?? "파일") 요청 기록 \(isExpanded ? "접기" : "펼치기")")
-        .accessibilityHint("파일 요청 상태와 상세 로그를 보여줍니다.")
+        .accessibilityLabel("\(request.itemTitle.nilIfEmpty ?? "파일") 요청 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityHint(isExpanded ? "파일 요청 상태와 상세 로그를 접습니다." : "파일 요청 상태와 상세 로그를 펼칩니다.")
     }
 
     private var expandedLog: String {
@@ -13512,8 +13669,6 @@ private struct RemoteSettingRow: View {
             return "새로 받은 파일의 임시 다운로드본을 작업 폴더에 남깁니다. 평소에는 꺼두는 편이 깔끔합니다."
         case "FILE_WEEKLY_FOLDERS_ENABLED":
             return "파일을 과목, 주차, KLMS 출처 구조에 맞춰 정리합니다. 기본값은 켜짐입니다."
-        case "FILE_FORCE_DOWNLOAD":
-            return "로컬에 같은 파일이 있어도 다시 받습니다. 파일이 꼬였을 때만 잠깐 켜세요."
         case "FILE_PRESERVE_DOWNLOAD_ARCHIVE":
             return "정리 후에도 다운로드 작업 폴더의 보관본을 남깁니다. 저장 공간을 더 씁니다."
         case "NOTICE_COLLAPSE_SECTIONS":
@@ -13532,8 +13687,6 @@ private struct RemoteSettingRow: View {
             return "공지 메모의 읽음/중요 체크 상태를 매번 확인합니다. 상태가 풀리는 일을 줄입니다."
         case "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT":
             return "내용이 바뀌지 않은 공지는 양식 검사를 건너뜁니다. 속도는 빨라지지만 양식 확인은 줄어듭니다."
-        case "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY":
-            return "공지 본문을 먼저 정리한 뒤 붙여넣습니다. Notes 양식 적용 문제를 확인할 때만 켜세요."
         case "NOTICE_NATIVE_PLAIN_TEXT_PASTE":
             return "공지 메모를 일반 텍스트로 붙여넣습니다. 체크리스트와 접기 양식은 줄어듭니다."
         case "CALENDAR_SKIP_UNCHANGED_DESIRED":
@@ -13730,8 +13883,8 @@ private struct RemoteCommandRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
-        .accessibilityLabel("\(command.kind.displayName) 원격 실행 기록 \(isExpanded ? "접기" : "펼치기")")
-        .accessibilityHint("실행 상태와 상세 로그를 보여줍니다.")
+        .accessibilityLabel("\(command.kind.displayName) 원격 실행 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
+        .accessibilityHint(isExpanded ? "실행 상태와 상세 로그를 접습니다." : "실행 상태와 상세 로그를 펼칩니다.")
     }
 
     private var statusColor: Color {

@@ -40,6 +40,7 @@ fi
 
 install_one_device() {
   local target_device="$1"
+  local device_label="${2:-device}"
   xcrun devicectl device install app \
     --device "$target_device" \
     --timeout "$TIMEOUT_SECONDS" \
@@ -47,7 +48,7 @@ install_one_device() {
     "$APP_PATH"
 
   if [[ "$LAUNCH_AFTER_INSTALL" != "1" ]]; then
-    print -r -- "installed"
+    print -r -- "${device_label}: installed"
     return 0
   fi
 
@@ -61,7 +62,7 @@ install_one_device() {
     "$BUNDLE_IDENTIFIER" >"$LAUNCH_OUTPUT" 2>&1; then
     if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
-      print -ru2 -- "Installed, but launch was denied because the device is locked. Unlock the device and rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
+      print -ru2 -- "${device_label}: installed, but launch was denied because the device is locked. Unlock the device and rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
         return 3
       fi
@@ -75,7 +76,7 @@ install_one_device() {
     exit 1
   fi
   rm -f "$LAUNCH_OUTPUT"
-  print -r -- "installed-and-launched"
+  print -r -- "${device_label}: installed-and-launched"
 }
 
 discover_ios_devices() {
@@ -103,7 +104,7 @@ for device in devices:
         continue
     identifier = device.get("identifier")
     if identifier:
-        print(identifier)
+        print(f"{identifier}\t{hardware.get('deviceType', 'device')}")
 PY
   rm -f "$devices_json"
 }
@@ -117,9 +118,14 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   fi
   print -r -- "installing-on-${#device_ids[@]}-ios-devices"
   overall_status=0
-  for target_device in "${device_ids[@]}"; do
+  for device_entry in "${device_ids[@]}"; do
+    target_device="${device_entry%%$'\t'*}"
+    device_label="${device_entry#*$'\t'}"
+    if [[ "$device_label" == "$device_entry" || -z "$device_label" ]]; then
+      device_label="device"
+    fi
     set +e
-    install_one_device "$target_device"
+    install_one_device "$target_device" "$device_label"
     device_status=$?
     set -e
     if (( device_status == 0 )); then
@@ -131,5 +137,5 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   done
   exit "$overall_status"
 else
-  install_one_device "$DEVICE_IDENTIFIER"
+  install_one_device "$DEVICE_IDENTIFIER" "device"
 fi

@@ -136,7 +136,6 @@ final class KLMSMacModel: ObservableObject {
         ServerRelaySettingDefinition(.fileSkipDownloadWhenPreviewEmpty, title: "파일 변경 없으면 다운로드 확인 건너뛰기", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.fileKeepFreshDownloads, title: "새 다운로드 임시 폴더 유지", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.fileWeeklyFoldersEnabled, title: "주차/출처 폴더 사용", valueKind: .bool, defaultValue: "1"),
-        ServerRelaySettingDefinition(.fileForceDownload, title: "파일 강제 다시 받기", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.filePreserveDownloadArchive, title: "임시 다운로드 보관", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.noticeCollapseSections, title: "공지 큰 섹션 접기", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.noticeCollapseCourses, title: "공지 과목명 접기", valueKind: .bool, defaultValue: "1"),
@@ -146,7 +145,6 @@ final class KLMSMacModel: ObservableObject {
         ServerRelaySettingDefinition(.noticeStableNoopSkip, title: "공지 내용이 같으면 메모 다시 쓰지 않기", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.noticeAlwaysCaptureState, title: "공지 읽음/중요 상태 항상 확인", valueKind: .bool, defaultValue: "1"),
         ServerRelaySettingDefinition(.noticeVerifyStableSkipFormat, title: "변경 없는 공지는 양식 검증 생략", valueKind: .bool, defaultValue: "0"),
-        ServerRelaySettingDefinition(.noticePreformattedPasteOnly, title: "공지 메모에 원문 양식으로 붙여넣기", valueKind: .bool, defaultValue: "0"),
         ServerRelaySettingDefinition(.noticePlainTextPaste, title: "공지 메모를 일반 텍스트로 붙여넣기", valueKind: .bool, defaultValue: "0"),
     ]
 
@@ -186,6 +184,10 @@ final class KLMSMacModel: ObservableObject {
     @Published private(set) var cachedIssues: [EngineIssue] = []
     @Published private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]
     private(set) var dashboardSummaryCache = KLMSMacDashboardSummaryCache()
+    private(set) var dashboardSummaryPresentation = DashboardSummaryPresentation(
+        snapshot: EngineSnapshot(),
+        summary: KLMSMacDashboardSummaryCache()
+    )
     private(set) var dashboardRenderSignature = DashboardRenderSignature(
         snapshot: EngineSnapshot(),
         summary: KLMSMacDashboardSummaryCache()
@@ -224,6 +226,7 @@ final class KLMSMacModel: ObservableObject {
     private var cachedMailDashboardItemsByKind: [String: [ServerRelaySyncItem]] = [:]
     private var cachedMailDashboardStateItemsByKind: [String: [StateItem]] = [:]
     private var cachedDashboardStateItemsByKind: [DashboardDetailKind: [StateItem]] = [:]
+    private var cachedDashboardStateItemSignaturesByKind: [DashboardDetailKind: Int] = [:]
     private var cachedMailCalendarChanges: [CalendarChange] = []
     private var serverRelaySharedSettingsSignature: Int?
     private var lastPassiveAuxiliaryRefreshAt: Date?
@@ -410,12 +413,12 @@ final class KLMSMacModel: ObservableObject {
             "NOTICE_NATIVE_VALIDATE_STYLE": "0",
             "NOTICE_NATIVE_SELECTION_SETTLE_SECONDS": "0.012",
             "NOTICE_NATIVE_CHECKLIST_PRESS_SETTLE_US": "15000",
-            "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": runtimeBoolConfigValue(.noticePreformattedPasteOnly, default: false),
+            "NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY": "0",
             "NOTICE_NATIVE_PLAIN_TEXT_PASTE": runtimeBoolConfigValue(.noticePlainTextPaste, default: false),
             "NOTICE_NATIVE_STYLE_BUDGET_SECONDS": "60",
             "SYNC_MODE": runtimeConfigValue(.syncMode, default: "auto"),
             "FILE_REFRESH_MODE": runtimeConfigValue(.fileRefreshMode, default: "auto"),
-            "FILE_FORCE_DOWNLOAD": runtimeBoolConfigValue(.fileForceDownload, default: false),
+            "FILE_FORCE_DOWNLOAD": "0",
             "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY": runtimeBoolConfigValue(.fileSkipDownloadWhenPreviewEmpty, default: true),
             "FILE_KEEP_FRESH_DOWNLOADS": runtimeBoolConfigValue(.fileKeepFreshDownloads, default: false),
             "FILE_WEEKLY_FOLDERS_ENABLED": runtimeBoolConfigValue(.fileWeeklyFoldersEnabled, default: true),
@@ -1603,6 +1606,10 @@ final class KLMSMacModel: ObservableObject {
         cachedDashboardStateItemsByKind[kind] ?? []
     }
 
+    func dashboardStateItemsSignature(for kind: DashboardDetailKind) -> Int? {
+        cachedDashboardStateItemSignaturesByKind[kind]
+    }
+
     func mailCalendarChanges() -> [CalendarChange] {
         cachedMailCalendarChanges
     }
@@ -1646,6 +1653,33 @@ final class KLMSMacModel: ObservableObject {
         cachedDashboardStateItemsByKind[.exams] = Self.dedupedStateItems(
             (content?.examItems ?? []) + (cachedMailDashboardStateItemsByKind["exam"] ?? [])
         )
+        cachedDashboardStateItemSignaturesByKind = [
+            .assignments: Self.dashboardStateItemListSignature(
+                cachedDashboardStateItemsByKind[.assignments] ?? [],
+                editor: .assignment,
+                overrides: snapshot.manualOverrides
+            ),
+            .assignmentCandidates: Self.dashboardStateItemListSignature(
+                content?.assignmentCandidates ?? [],
+                editor: .assignment,
+                overrides: snapshot.manualOverrides
+            ),
+            .exams: Self.dashboardStateItemListSignature(
+                cachedDashboardStateItemsByKind[.exams] ?? [],
+                editor: .exam,
+                overrides: snapshot.manualOverrides
+            ),
+            .examCandidates: Self.dashboardStateItemListSignature(
+                content?.examCandidates ?? [],
+                editor: .exam,
+                overrides: snapshot.manualOverrides
+            ),
+            .helpDesk: Self.dashboardStateItemListSignature(
+                content?.helpDeskItems ?? [],
+                editor: .assignment,
+                overrides: snapshot.manualOverrides
+            ),
+        ]
         let calendarAttentionCount = (
             (snapshot.calendarSyncResult?.changes ?? []) + cachedMailCalendarChanges
         )
@@ -1664,6 +1698,7 @@ final class KLMSMacModel: ObservableObject {
             mailAssignmentCount: cachedMailDashboardItemsByKind["assignment"]?.count ?? 0,
             mailExamCount: cachedMailDashboardItemsByKind["exam"]?.count ?? 0
         )
+        dashboardSummaryPresentation = DashboardSummaryPresentation(snapshot: snapshot, summary: dashboardSummaryCache)
         dashboardFilterOptionsByKind = Dictionary(
             uniqueKeysWithValues: DashboardDetailKind.allCases.map { kind in
                 (kind, DashboardFilterOptions(kind: kind, snapshot: snapshot))
@@ -1671,6 +1706,57 @@ final class KLMSMacModel: ObservableObject {
         )
         dashboardRenderSignature = DashboardRenderSignature(snapshot: snapshot, summary: dashboardSummaryCache)
         dashboardFileRenderSignature = DashboardFileRenderSignature(snapshot: snapshot)
+    }
+
+    private static func dashboardStateItemListSignature(
+        _ items: [StateItem],
+        editor: StateItemEditorKind,
+        overrides: ManualOverridesSnapshot?
+    ) -> Int {
+        var hasher = Hasher()
+        switch editor {
+        case .assignment:
+            hasher.combine("assignment")
+        case .assignmentRecord:
+            hasher.combine("assignmentRecord")
+        case .exam:
+            hasher.combine("exam")
+        }
+        hasher.combine(items.count)
+        for item in items {
+            hasher.combine(item.id)
+            hasher.combine(item.url)
+            hasher.combine(item.type)
+            hasher.combine(item.category)
+            hasher.combine(item.course)
+            hasher.combine(item.title)
+            hasher.combine(item.due)
+            hasher.combine(item.submission)
+            hasher.combine(item.syncDue)
+            hasher.combine(item.syncStart)
+            hasher.combine(item.location)
+            hasher.combine(item.coverageSummary)
+            hasher.combine(item.autoCompleted)
+            hasher.combine(item.recordStatus)
+            hasher.combine(item.completionReason)
+            hasher.combine(item.academicTerm?.displayName ?? "")
+            switch editor {
+            case .assignment, .assignmentRecord:
+                hasher.combine(overrides?.assignmentStatus(for: item) ?? "")
+            case .exam:
+                let override = overrides?.examOverride(for: item) ?? ExamOverride()
+                hasher.combine(override.status)
+                hasher.combine(override.due)
+                hasher.combine(override.timingPrecision)
+                hasher.combine(override.syncStart)
+                hasher.combine(override.syncDue)
+                hasher.combine(override.location)
+                hasher.combine(override.coverage)
+                hasher.combine(override.coverageSummary)
+                hasher.combine(override.instructionsAppend)
+            }
+        }
+        return hasher.finalize()
     }
 
     private static func sortedMailDashboardItems(_ items: [ServerRelaySyncItem]) -> [ServerRelaySyncItem] {

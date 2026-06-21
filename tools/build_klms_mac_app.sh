@@ -254,7 +254,7 @@ EOF
     print -u2 -- "warning: macOS may invalidate Automation/Accessibility permissions after each rebuild."
     print -u2 -- "warning: set CODE_SIGN_IDENTITY to a stable local code-signing identity to keep permissions stable."
   else
-    print -u2 -- "Signing KLMS Sync.app with a configured local identity."
+    print -u2 -- "Signing KLMS Sync.app with identity: configured local identity."
   fi
   if [[ "$ENABLE_CLOUDKIT_ENTITLEMENT" == "1" ]]; then
     print -u2 -- "CloudKit container entitlement: enabled"

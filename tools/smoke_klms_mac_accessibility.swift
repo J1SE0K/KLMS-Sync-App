@@ -16,6 +16,7 @@ private enum SmokeFailure: Error, CustomStringConvertible {
     case pressFailed(identifier: String, AXError)
     case selectedValueMissing(String)
     case expectedTextMissing(String)
+    case screenshotFailed(String)
 
     var description: String {
         switch self {
@@ -41,6 +42,8 @@ private enum SmokeFailure: Error, CustomStringConvertible {
             return "Button '\(identifier)' did not expose the selected accessibility value after navigation."
         case let .expectedTextMissing(text):
             return "Expected text '\(text)' did not appear after navigation."
+        case let .screenshotFailed(message):
+            return message
         }
     }
 }
@@ -50,6 +53,13 @@ private let bundleID = environment["KLMS_MAC_BUNDLE_ID"] ?? "com.local.KLMSync"
 private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
 private let navigationDelay = TimeInterval(environment["KLMS_MAC_AX_NAVIGATION_DELAY_SECONDS"] ?? "0.60") ?? 0.60
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
+private let screenshotDirectoryURL: URL? = {
+    guard let rawPath = environment["KLMS_MAC_AX_SCREENSHOT_DIR"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !rawPath.isEmpty else {
+        return nil
+    }
+    return URL(fileURLWithPath: (rawPath as NSString).expandingTildeInPath, isDirectory: true)
+}()
 
 private struct WorkspaceSmokeTarget {
     var rawValue: String
@@ -91,6 +101,8 @@ do {
 } catch {
     FileHandle.standardError.write(Data("smoke failed: \(error)\n".utf8))
     FileHandle.standardError.write(Data(visibleWindowDiagnostics().utf8))
+    FileHandle.standardError.write(Data(sessionDiagnostics().utf8))
+    captureFailureScreenshotIfRequested()
     exit(1)
 }
 
@@ -109,6 +121,7 @@ private func runSmoke() throws {
     }
 
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
+    bringKLMSAppForward(app: app, appElement: appElement)
 
     try openDashboardWindowIfNeeded(appElement: appElement)
 
@@ -125,6 +138,45 @@ private func runSmoke() throws {
     try verifyWorkspaceNavigation(appElement: appElement, target: workspaceTargets[0])
 
     print("ok: KLMS Mac workspace accessibility navigation is responsive")
+}
+
+private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElement) {
+    activateApplicationBundle()
+    app.unhide()
+    app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
+    AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    activateApplicationWithAppleScript()
+    requestDashboardWindowReopen()
+
+    let deadline = Date().addingTimeInterval(min(1.5, timeout))
+    repeat {
+        if hasUsableAccessibilityWindow(in: appElement)
+            || NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+}
+
+private func activateApplicationBundle() {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    process.arguments = ["-b", bundleID]
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    try? process.run()
+    process.waitUntilExit()
+}
+
+private func activateApplicationWithAppleScript() {
+    let escapedAppName = appName.replacingOccurrences(of: "\"", with: "\\\"")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+    process.arguments = ["-e", "tell application \"\(escapedAppName)\" to activate"]
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    try? process.run()
+    process.waitUntilExit()
 }
 
 private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
@@ -202,6 +254,39 @@ private func visibleWindowDiagnostics() -> String {
     return matching.joined(separator: "\n") + "\n"
 }
 
+private func sessionDiagnostics() -> String {
+    var lines: [String] = []
+    if let session = CGSessionCopyCurrentDictionary() as? [String: Any] {
+        let onConsole = diagnosticValue(session["kCGSessionOnConsoleKey"])
+        let loginDone = diagnosticValue(session["kCGSessionLoginDoneKey"])
+        let screenLocked = diagnosticValue(session["CGSSessionScreenIsLocked"])
+        lines.append("session on-console=\(onConsole) login-done=\(loginDone) screen-locked=\(screenLocked)")
+    } else {
+        lines.append("session unavailable")
+    }
+    if let frontmost = NSWorkspace.shared.frontmostApplication {
+        lines.append(
+            "frontmost-app name=\(frontmost.localizedName ?? "-") pid=\(frontmost.processIdentifier) bundle=\(frontmost.bundleIdentifier ?? "-")"
+        )
+    } else {
+        lines.append("frontmost-app unavailable")
+    }
+    return lines.joined(separator: "\n") + "\n"
+}
+
+private func diagnosticValue(_ value: Any?) -> String {
+    switch value {
+    case let number as NSNumber:
+        return number.boolValue ? "true" : "false"
+    case let string as String where !string.isEmpty:
+        return string
+    case .some:
+        return "present"
+    case .none:
+        return "unknown"
+    }
+}
+
 private func verifyWorkspaceNavigation(
     appElement: AXUIElement,
     target: WorkspaceSmokeTarget
@@ -245,6 +330,7 @@ private func verifyWorkspaceNavigation(
             break
         }
         if foundAllExpectedText {
+            try captureScreenshotIfRequested(named: "workspace-\(target.rawValue)")
             print("ok: \(target.buttonIdentifier) -> \(target.title)")
             return
         }
@@ -292,6 +378,7 @@ private func verifySettingsTabNavigation(
         Thread.sleep(forTimeInterval: navigationDelay)
         didSelect = waitForSelectedValue(identifier: identifier, in: appElement, timeout: 0.7)
         if didSelect, waitForText(expectedText, in: appElement, timeout: timeout) {
+            try captureScreenshotIfRequested(named: identifier)
             print("ok: \(identifier) -> \(expectedText)")
             return
         }
@@ -307,6 +394,71 @@ private func verifySettingsTabNavigation(
     if !waitForText(expectedText, in: appElement, timeout: timeout) {
         throw SmokeFailure.expectedTextMissing(expectedText)
     }
+    try captureScreenshotIfRequested(named: identifier)
+}
+
+private func captureScreenshotIfRequested(named rawName: String) throws {
+    guard let screenshotDirectoryURL else {
+        return
+    }
+    try FileManager.default.createDirectory(
+        at: screenshotDirectoryURL,
+        withIntermediateDirectories: true
+    )
+    guard let windowID = visibleDashboardWindowID() else {
+        throw SmokeFailure.screenshotFailed("Could not find a visible KLMS Sync window to capture.")
+    }
+    let safeName = rawName
+        .replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
+        .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    let outputURL = screenshotDirectoryURL.appendingPathComponent("\(safeName).png")
+    let captured = captureWindowUsingScreencapture(windowID: windowID, to: outputURL)
+    guard captured,
+          FileManager.default.fileExists(atPath: outputURL.path) else {
+        throw SmokeFailure.screenshotFailed("Could not capture KLMS Sync screenshot for '\(rawName)'.")
+    }
+    print("screenshot: \(outputURL.path)")
+}
+
+private func captureWindowUsingScreencapture(windowID: Int, to outputURL: URL) -> Bool {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+    process.arguments = ["-x", "-l", String(windowID), outputURL.path]
+    process.standardOutput = Pipe()
+    process.standardError = Pipe()
+    do {
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    } catch {
+        return false
+    }
+}
+
+private func captureFailureScreenshotIfRequested() {
+    do {
+        try captureScreenshotIfRequested(named: "failure-current-window")
+    } catch {
+        FileHandle.standardError.write(Data("screenshot failed: \(error)\n".utf8))
+    }
+}
+
+private func visibleDashboardWindowID() -> Int? {
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    let candidates = windows.compactMap { info -> (id: Int, area: Double)? in
+        let owner = info[kCGWindowOwnerName as String] as? String ?? ""
+        guard owner == appName || owner == "KLMS Sync" || owner == "KLMSMac" else { return nil }
+        let layer = info[kCGWindowLayer as String] as? Int ?? -1
+        guard layer == 0,
+              let id = info[kCGWindowNumber as String] as? Int else {
+            return nil
+        }
+        let bounds = info[kCGWindowBounds as String] as? [String: Any] ?? [:]
+        let width = (bounds["Width"] as? NSNumber)?.doubleValue ?? 0
+        let height = (bounds["Height"] as? NSNumber)?.doubleValue ?? 0
+        return (id, width * height)
+    }
+    return candidates.max { $0.area < $1.area }?.id
 }
 
 private func waitForElement(
