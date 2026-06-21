@@ -12366,28 +12366,11 @@ private struct RemoteLogDetailPanel: View {
             case .command:
                 RecentRemoteCommandsView(
                     commands: model.recentCommands,
-                    compact: false,
-                    clearAction: {
-                        Task {
-                            await model.clearRemoteLogs(scope: .command)
-                        }
-                    },
-                    clearDisabled: !model.serverRelayConfigured
-                        || model.isSubmitting
-                        || !model.hasClearableCommandLogs
+                    compact: false
                 )
             case .fileRequest:
                 RecentFileAccessRequestsView(
-                    requests: model.recentFileAccessRequests,
-                    clearAction: {
-                        Task {
-                            await model.clearRemoteLogs(scope: .fileAccess)
-                        }
-                    },
-                    clearDisabled: !model.serverRelayConfigured
-                        || model.isSubmitting
-                        || !model.hasClearableFileAccessLogs
-                        || model.activeRemoteLogFileRequest != nil
+                    requests: model.recentFileAccessRequests
                 )
             }
         }
