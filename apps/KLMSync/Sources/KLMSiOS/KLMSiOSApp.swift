@@ -457,10 +457,22 @@ final class CompanionModel: ObservableObject {
         var nextFilterOptions: [String: CompanionItemFilterOptions] = [:]
         var nextDefaultListData: [String: CompanionItemListData] = [:]
         let hiddenByActionItemIDs = dashboardActionHiddenItemIDs()
+        let sortedDashboardItems = dashboardSyncItems.companionSorted(by: .recent)
+        var categoryItemsByID = Dictionary(uniqueKeysWithValues: DashboardMetricCategory.allCases.map { ($0.rawValue, [ServerRelaySyncItem]()) })
+        var nextVisibleTaskItems: [ServerRelaySyncItem] = []
+        for item in sortedDashboardItems {
+            guard let category = DashboardMetricCategory.itemCategory(for: item) else {
+                continue
+            }
+            categoryItemsByID[category.rawValue, default: []].append(item)
+            if category.isTaskCategory,
+               !item.isHidden,
+               !hiddenByActionItemIDs.contains(item.id) {
+                nextVisibleTaskItems.append(item)
+            }
+        }
         for category in DashboardMetricCategory.allCases {
-            let categoryItems = dashboardSyncItems
-                .filter { category.includes($0) }
-                .companionSorted(by: .recent)
+            let categoryItems = categoryItemsByID[category.rawValue] ?? []
             let visibleItems = categoryItems.filter { !$0.isHidden && !hiddenByActionItemIDs.contains($0.id) }
             let filterOptions = CompanionItemFilterOptions(items: categoryItems, category: category)
             next[category.rawValue] = categoryItems
@@ -490,13 +502,7 @@ final class CompanionModel: ObservableObject {
         visibleDashboardItemLookupByCategoryID = nextVisibleLookup
         dashboardFilterOptionsByCategoryID = nextFilterOptions
         defaultDashboardListDataByCategoryID = nextDefaultListData
-        visibleDashboardTaskItems = [
-            nextVisible[DashboardMetricCategory.assignments.rawValue] ?? [],
-            nextVisible[DashboardMetricCategory.exams.rawValue] ?? [],
-            nextVisible[DashboardMetricCategory.helpDesk.rawValue] ?? [],
-        ]
-        .flatMap { $0 }
-        .companionSorted(by: .recent)
+        visibleDashboardTaskItems = nextVisibleTaskItems
     }
 
     private func dashboardActionHiddenItemIDs() -> Set<String> {
@@ -4565,19 +4571,32 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable, Sendab
     }
 
     func includes(_ item: ServerRelaySyncItem) -> Bool {
+        Self.itemCategory(for: item) == self
+    }
+
+    static func itemCategory(for item: ServerRelaySyncItem) -> DashboardMetricCategory? {
+        switch item.kind {
+        case "assignment", "completedAssignment", "assignmentCandidate":
+            return .assignments
+        case "exam", "examCandidate":
+            return .exams
+        case "notice":
+            return .notices
+        case "file":
+            return .files
+        case "helpDesk":
+            return .helpDesk
+        default:
+            return nil
+        }
+    }
+
+    var isTaskCategory: Bool {
         switch self {
-        case .assignments:
-            item.kind == "assignment" || item.kind == "completedAssignment" || item.kind == "assignmentCandidate"
-        case .exams:
-            item.kind == "exam" || item.kind == "examCandidate"
-        case .notices:
-            item.kind == "notice"
-        case .files:
-            item.kind == "file"
-        case .helpDesk:
-            item.kind == "helpDesk"
-        case .quarantine, .calendar:
-            false
+        case .assignments, .exams, .helpDesk:
+            return true
+        case .notices, .files, .quarantine, .calendar:
+            return false
         }
     }
 
