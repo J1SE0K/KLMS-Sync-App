@@ -554,9 +554,14 @@ final class CompanionModel: ObservableObject {
 
     private func rebuildChangeSummaryCalendarLookup(using changes: [CalendarChange]? = nil) {
         let source = changes ?? visibleCalendarChangesCache
-        var next: [String: [CalendarChange]] = [:]
-        for kind in RemoteChangeSummaryKind.allCases where kind.isCalendarChange {
-            next[kind.rawValue] = source.filter { kind.includes($0) }
+        var next = Dictionary(
+            uniqueKeysWithValues: RemoteChangeSummaryKind.calendarChangeKinds.map { ($0.rawValue, [CalendarChange]()) }
+        )
+        for change in source {
+            guard let kind = RemoteChangeSummaryKind.calendarChangeKind(for: change) else {
+                continue
+            }
+            next[kind.rawValue, default: []].append(change)
         }
         if changeSummaryCalendarChangesByKindID != next {
             changeSummaryCalendarChangesByKindID = next
@@ -5903,6 +5908,10 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
         [.noticeNew, .noticeUpdated, .newFiles]
     }
 
+    static var calendarChangeKinds: [RemoteChangeSummaryKind] {
+        [.calendarCreated, .calendarUpdated, .calendarDeleted]
+    }
+
     func value(from status: SanitizedRemoteStatus) -> Int {
         switch self {
         case .noticeNew:
@@ -5941,15 +5950,19 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
     }
 
     func includes(_ change: CalendarChange) -> Bool {
-        switch self {
-        case .calendarCreated:
-            change.action == "created"
-        case .calendarUpdated:
-            change.action == "updated"
-        case .calendarDeleted:
-            change.action == "deleted"
+        Self.calendarChangeKind(for: change) == self
+    }
+
+    static func calendarChangeKind(for change: CalendarChange) -> RemoteChangeSummaryKind? {
+        switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "created", "mail":
+            return .calendarCreated
+        case "updated":
+            return .calendarUpdated
+        case "deleted":
+            return .calendarDeleted
         default:
-            false
+            return nil
         }
     }
 }
