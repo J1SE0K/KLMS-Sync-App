@@ -5153,6 +5153,33 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(shared.contains("path: \"/v1/worker/inbox\""))
     }
 
+    func testIOSServerConnectionPasteImmediatelyRefreshesSummary() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let pasteMethod = try sourceBody(
+            after: "func pasteServerRelayConnectionInfo()",
+            in: ios,
+            description: "iOS server relay paste"
+        )
+        let refreshMethod = try sourceBody(
+            after: "private func refreshAfterServerRelayConnectionChange()",
+            in: ios,
+            description: "iOS server relay paste refresh"
+        )
+        let loadingCard = try sourceStructBody(named: "CompanionDashboardDataLoadingCard", in: ios)
+
+        XCTAssertTrue(pasteMethod.contains("refreshAfterServerRelayConnectionChange()"))
+        XCTAssertFalse(pasteMethod.contains("이제 서버 연결 확인을 눌러 주세요."))
+        XCTAssertTrue(refreshMethod.contains("configureServerRelayEventStream()"))
+        XCTAssertTrue(refreshMethod.contains("await self?.refreshRecent(includeSyncData: true, showsActivity: true)"))
+        XCTAssertTrue(loadingCard.contains("서버 URL과 클라이언트 토큰을 넣으면 최신 요약을 바로 불러옵니다."))
+        XCTAssertFalse(loadingCard.contains("연결 확인을 눌러 주세요."))
+    }
+
     func testLogClearPreservesActiveCancellationAndFileRequests() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

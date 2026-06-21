@@ -1915,12 +1915,23 @@ final class CompanionModel: ObservableObject {
         if UIPasteboard.general.string == text {
             UIPasteboard.general.string = ""
         }
-        connectionMessage = "서버 연결 정보를 붙여넣었습니다. 이제 서버 연결 확인을 눌러 주세요."
+        connectionMessage = "서버 연결 정보를 붙여넣었습니다. 최신 요약을 바로 불러옵니다."
         connectionSucceeded = nil
         errorMessage = ""
+        refreshAfterServerRelayConnectionChange()
         #else
         errorMessage = "이 빌드는 클립보드 붙여넣기를 사용할 수 없습니다."
         #endif
+    }
+
+    private func refreshAfterServerRelayConnectionChange() {
+        guard serverRelayConfigured else {
+            return
+        }
+        configureServerRelayEventStream()
+        Task { @MainActor [weak self] in
+            await self?.refreshRecent(includeSyncData: true, showsActivity: true)
+        }
     }
 
     func copyServerRelayURL() {
@@ -6137,7 +6148,7 @@ private struct CompanionDashboardDataLoadingCard: View {
                 Text(isServerConfigured ? "서버 요약을 불러오는 중" : "서버 연결 필요")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
-                Text(isServerConfigured ? "Mac이 올린 파일, 과제, 공지, 캘린더 요약을 받은 뒤 숫자를 표시합니다." : "설정에서 서버 URL과 클라이언트 토큰을 저장한 뒤 연결 확인을 눌러 주세요.")
+                Text(isServerConfigured ? "Mac이 올린 파일, 과제, 공지, 캘린더 요약을 받은 뒤 숫자를 표시합니다." : "설정에서 서버 URL과 클라이언트 토큰을 넣으면 최신 요약을 바로 불러옵니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
