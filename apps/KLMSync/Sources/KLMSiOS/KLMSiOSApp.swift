@@ -2995,6 +2995,7 @@ private struct CompanionStatusScreen: View {
                 status: model.dashboardStatus,
                 isDataLoaded: model.hasLoadedServerSyncData,
                 hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
+                showsLoadingPlaceholder: false,
                 selectedCategory: $selectedDashboardPreview,
                 effectiveSelectedCategory: effectiveDashboardSelection,
                 onCategoryTap: { category in
@@ -3043,6 +3044,7 @@ private struct CompanionStatusScreen: View {
                 status: model.dashboardStatus,
                 isDataLoaded: model.hasLoadedServerSyncData,
                 hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
+                showsLoadingPlaceholder: false,
                 selectedCategory: $selectedDashboardPreview,
                 effectiveSelectedCategory: effectiveDashboardSelection,
                 onCategoryTap: { category in
@@ -5481,6 +5483,7 @@ private struct RemoteDashboardMetricOverview: View {
     var status: SanitizedRemoteStatus
     var isDataLoaded: Bool
     var hasFileCleanupDetails: Bool
+    var showsLoadingPlaceholder = true
     @Binding var selectedCategory: DashboardMetricCategory?
     var effectiveSelectedCategory: DashboardMetricCategory? = nil
     var onCategoryTap: (DashboardMetricCategory) -> Void
@@ -5497,7 +5500,9 @@ private struct RemoteDashboardMetricOverview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !isDataLoaded {
-                CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                if showsLoadingPlaceholder {
+                    CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                }
             } else if shouldShowPrimaryMetricSection {
                 metricSection("주요 항목", categories: primaryMetricCategories)
             }
@@ -5592,7 +5597,8 @@ private struct RemoteDashboardMetricOverview: View {
     }
 
     private var shouldShowInlineEmptyDashboardMessage: Bool {
-        horizontalSizeClass != .regular
+        isDataLoaded
+            && horizontalSizeClass != .regular
             && primaryMetricCategories.isEmpty
             && attentionMetricCategories.isEmpty
             && !hasVisibleChangeSummary

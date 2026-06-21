@@ -2074,6 +2074,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteRunningStatusBanner.contains("Label(cancelButtonTitle"))
         XCTAssertTrue(remoteRunningStatusBanner.contains(".frame(minHeight: 44)"))
         XCTAssertTrue(statusScreen.contains("RemoteDashboardMetricOverview"))
+        XCTAssertTrue(statusScreen.contains("hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,\n                showsLoadingPlaceholder: false"))
         XCTAssertLessThan(
             try XCTUnwrap(statusScreen.range(of: "RemoteDashboardMetricOverview(")).lowerBound,
             try XCTUnwrap(statusScreen.range(of: "compactDashboardDetail")).lowerBound
@@ -2094,6 +2095,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(statusScreen.contains("if model.hasLoadedServerSyncData"))
         XCTAssertTrue(statusScreen.contains("WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)"))
         XCTAssertTrue(statusScreen.contains("CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)"))
+        XCTAssertTrue(metricOverview.contains("var showsLoadingPlaceholder = true"))
+        XCTAssertTrue(metricOverview.contains("if showsLoadingPlaceholder {\n                    CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)\n                }"))
+        XCTAssertTrue(metricOverview.contains("isDataLoaded\n            && horizontalSizeClass != .regular"))
         let rebuildDashboardStatus = try sourceBody(
             after: "private func rebuildDashboardStatus()",
             in: ios,
