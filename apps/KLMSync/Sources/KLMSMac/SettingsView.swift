@@ -147,18 +147,16 @@ struct SettingsView: View {
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 Spacer()
-                Text(selectedTab.primarySectionTitle)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.klmsMacSubtleCardBackground, in: Capsule())
-                Text(selectedTab.scopeLabel)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.klmsMacSubtleCardBackground, in: Capsule())
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        settingsHeaderBadge(selectedTab.primarySectionTitle, primary: true)
+                        settingsHeaderBadge(selectedTab.scopeLabel, primary: false)
+                    }
+                    VStack(alignment: .trailing, spacing: 4) {
+                        settingsHeaderBadge(selectedTab.primarySectionTitle, primary: true)
+                        settingsHeaderBadge(selectedTab.scopeLabel, primary: false)
+                    }
+                }
             }
             .padding(.horizontal, 12)
             .padding(.top, 12)
@@ -251,6 +249,17 @@ struct SettingsView: View {
         .accessibilityLabel(tab.title)
         .accessibilityIdentifier("settings-\(tab.rawValue)")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+    }
+
+    private func settingsHeaderBadge(_ text: String, primary: Bool) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(primary ? Color.klmsMacPrimaryText : Color.klmsMacSecondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color.klmsMacSubtleCardBackground, in: Capsule())
     }
 
     private func selectSettingsTab(_ tab: SettingsTab) {
