@@ -885,6 +885,12 @@ final class CompanionModel: ObservableObject {
             }
             return "Mac에서 요청을 처리 중입니다."
         }
+        if !serverRelayConfigured {
+            return "서버 연결 정보를 저장하면 상태를 불러옵니다."
+        }
+        if !hasLoadedServerSyncData {
+            return "서버 요약을 불러오는 중입니다."
+        }
         return "아직 Mac에서 받은 상태가 없습니다."
     }
 

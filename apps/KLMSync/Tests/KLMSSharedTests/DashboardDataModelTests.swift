@@ -2063,6 +2063,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("파일 열기 요청을 서버에 올렸습니다. Mac 확인을 기다리는 중입니다."))
         XCTAssertTrue(ios.contains("파일 링크를 준비 중입니다."))
         XCTAssertTrue(ios.contains("설정 저장 요청이"))
+        XCTAssertTrue(ios.contains("if !serverRelayConfigured {\n            return \"서버 연결 정보를 저장하면 상태를 불러옵니다.\""))
+        XCTAssertTrue(ios.contains("if !hasLoadedServerSyncData {\n            return \"서버 요약을 불러오는 중입니다.\""))
         XCTAssertTrue(ios.contains("private func activeStatusText(_ status: ServerRelayItemActionStatus) -> String"))
         XCTAssertTrue(ios.contains("private func activeStatusText(_ status: ServerRelaySettingActionStatus) -> String"))
         XCTAssertTrue(ios.contains(".equatable()"))
