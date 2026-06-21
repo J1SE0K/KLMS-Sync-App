@@ -70,7 +70,7 @@ npm run dist:win
 
 HTTP는 `localhost`, 사설 IP, `.local` 주소에서만 허용한다. 외부에서 쓰는 공개 주소는 HTTPS여야 한다.
 
-같은 네트워크 밖에서 쓰려면 `deploy/cloudflare-worker`의 Cloudflare Workers + D1 릴레이를 띄운 뒤 Windows/iPhone에는 클라이언트 토큰을, Mac 앱에는 Mac worker 토큰을 넣는다. Windows 앱은 Mac에 직접 접속하지 않고 서버 DB에 요청을 남긴다. Mac 앱은 서버의 WebSocket 실시간 이벤트로 요청을 받고, 놓친 이벤트는 짧은 fallback 확인으로 보강해 실제 동기화를 실행한다.
+같은 네트워크 밖에서 쓰려면 `deploy/cloudflare-worker`의 Cloudflare Workers + D1 릴레이를 띄운 뒤 Windows/iPhone/iPad에는 클라이언트 토큰을, Mac 앱에는 Mac worker 토큰을 넣는다. Windows 앱은 Mac에 직접 접속하지 않고 서버 DB에 요청을 남긴다. Mac 앱은 서버의 WebSocket 실시간 이벤트로 요청을 받고, 놓친 이벤트는 짧은 fallback 확인으로 보강해 실제 동기화를 실행한다.
 
 ## 보안
 
