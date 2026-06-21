@@ -103,7 +103,15 @@ Then run a signed device build with local signing settings:
 tools/build_klms_ios_device.sh
 ```
 
-Run the generated Xcode app on an iPhone and an iPad. iPhone must show the compact `상태 / 로그 / 설정` tab flow with dashboard detail opened inline. iPad must show the split workspace with the section list on the left and the selected detail on the right. Important banners such as KAIST auth digits and running/cancel status must stay visible above the selected screen on both devices.
+To install and launch the signed app on a connected device:
+
+```sh
+IOS_DEVICE_IDENTIFIER="<device id or name>" tools/install_klms_ios_device.sh
+```
+
+The device must be unlocked for the launch step. To install without launching, use `IOS_DEVICE_LAUNCH=0`.
+
+Run it once on an iPhone and once on an iPad. iPhone must show the compact `상태 / 로그 / 설정` tab flow with dashboard detail opened inline. iPad must show the split workspace with the section list on the left and the selected detail on the right. Important banners such as KAIST auth digits and running/cancel status must stay visible above the selected screen on both devices.
 
 If the app is ad-hoc signed, macOS can treat each rebuilt bundle as a different privacy subject. When Notes automation works from Terminal/Codex but fails from `KLMS Sync.app`, reset the app privacy records and grant them again:
 
