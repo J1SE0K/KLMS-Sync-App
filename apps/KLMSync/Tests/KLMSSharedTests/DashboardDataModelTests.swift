@@ -4071,6 +4071,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("filterOptions: CompanionItemFilterOptions? = nil"))
         XCTAssertTrue(ios.contains("let resolvedFilterOptions = filterOptions ?? CompanionItemFilterOptions(items: base, category: category)"))
         XCTAssertTrue(ios.contains("private enum CompanionItemListPreloadStore"))
+        XCTAssertTrue(ios.contains("private static let maxCachedLists = 20"))
+        XCTAssertFalse(ios.contains("private static let maxCachedLists = 8"))
         XCTAssertTrue(ios.contains("CompanionItemListPreloadStore.cachedData(for: currentKey)"))
         XCTAssertTrue(ios.contains("CompanionItemListPreloadStore.store(listData, for: inputKey)"))
         XCTAssertFalse(ios.contains("private struct CompanionItemListPrewarmView: View"))

@@ -4922,7 +4922,7 @@ private struct CompanionItemListData: Sendable {
 @MainActor
 private enum CompanionItemListPreloadStore {
     private static var cachedDataByKey: [CompanionItemListInputKey: CompanionItemListData] = [:]
-    private static let maxCachedLists = 8
+    private static let maxCachedLists = 20
 
     static func cachedData(for key: CompanionItemListInputKey) -> CompanionItemListData? {
         cachedDataByKey[key]
