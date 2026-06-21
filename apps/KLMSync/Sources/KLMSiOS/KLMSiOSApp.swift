@@ -11690,14 +11690,18 @@ private struct RemoteVerifySummaryPanel: View {
     private let primaryVisibleIssueCount = 1
 
     var body: some View {
+        let checkSummary = RemoteVerifyCheckSummary(
+            summary: summary,
+            primaryVisibleIssueCount: primaryVisibleIssueCount
+        )
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: issueChecks.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(issueChecks.isEmpty ? Color.klmsSuccessBorder : Color.klmsWarningBorder)
+                Image(systemName: checkSummary.hasIssues ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
+                    .foregroundStyle(checkSummary.hasIssues ? Color.klmsWarningBorder : Color.klmsSuccessBorder)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("상태 검사 해설")
                         .font(.subheadline.weight(.semibold))
-                    Text(summaryText)
+                    Text(summaryText(checkSummary: checkSummary))
                         .font(.caption2)
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
@@ -11705,27 +11709,25 @@ private struct RemoteVerifySummaryPanel: View {
             }
 
             if let summary {
-                if issueChecks.isEmpty {
+                if !checkSummary.hasIssues {
                     Text("메모, 파일, 캘린더, 미리 알림 검사에서 설명이 필요한 실패 항목이 없습니다.")
                         .font(.caption2)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    let primaryIssues = Array(issueChecks.prefix(primaryVisibleIssueCount))
-                    let remainingIssues = Array(issueChecks.dropFirst(primaryVisibleIssueCount))
-                    ForEach(primaryIssues, id: \.id) { check in
+                    ForEach(checkSummary.primaryIssues, id: \.id) { check in
                         RemoteVerifyCheckRow(check: check)
                     }
-                    if !remainingIssues.isEmpty {
+                    if !checkSummary.remainingIssues.isEmpty {
                         DisclosureGroup(isExpanded: $showsRemainingIssues) {
                             VStack(alignment: .leading, spacing: 6) {
-                                ForEach(remainingIssues, id: \.id) { check in
+                                ForEach(checkSummary.remainingIssues, id: \.id) { check in
                                     RemoteVerifyCheckRow(check: check, compact: true)
                                 }
                             }
                             .padding(.top, 4)
                         } label: {
-                            Text("나머지 확인 항목 \(remainingIssues.count)개")
+                            Text("나머지 확인 항목 \(checkSummary.remainingIssues.count)개")
                                 .font(.caption.weight(.semibold))
                         }
                     }
@@ -11757,19 +11759,47 @@ private struct RemoteVerifySummaryPanel: View {
         }
     }
 
-    private var issueChecks: [VerifyCheck] {
-        summary?.issueChecks ?? []
-    }
-
-    private var summaryText: String {
+    private func summaryText(checkSummary: RemoteVerifyCheckSummary) -> String {
         guard let summary else {
             return "검사 전"
         }
-        let okCount = summary.checks.filter { $0.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ok" }.count
-        if issueChecks.isEmpty {
-            return "상태 \(summary.status.klmsLocalizedStatus) · 정상 \(okCount)개"
+        if !checkSummary.hasIssues {
+            return "상태 \(summary.status.klmsLocalizedStatus) · 정상 \(checkSummary.okCount)개"
         }
-        return "상태 \(summary.status.klmsLocalizedStatus) · 확인 필요 \(issueChecks.count)개 · 정상 \(okCount)개"
+        return "상태 \(summary.status.klmsLocalizedStatus) · 확인 필요 \(checkSummary.issueCount)개 · 정상 \(checkSummary.okCount)개"
+    }
+}
+
+private struct RemoteVerifyCheckSummary {
+    var primaryIssues: [VerifyCheck] = []
+    var remainingIssues: [VerifyCheck] = []
+    var okCount = 0
+
+    init(summary: ServerRelayVerifySummary?, primaryVisibleIssueCount: Int) {
+        guard let summary else { return }
+        primaryIssues.reserveCapacity(primaryVisibleIssueCount)
+        for check in summary.checks {
+            let normalizedStatus = check.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalizedStatus == "ok" {
+                okCount += 1
+            }
+            guard ["fail", "failed", "error", "warn", "warning"].contains(normalizedStatus) else {
+                continue
+            }
+            if primaryIssues.count < primaryVisibleIssueCount {
+                primaryIssues.append(check)
+            } else {
+                remainingIssues.append(check)
+            }
+        }
+    }
+
+    var issueCount: Int {
+        primaryIssues.count + remainingIssues.count
+    }
+
+    var hasIssues: Bool {
+        issueCount > 0
     }
 }
 

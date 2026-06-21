@@ -4245,33 +4245,34 @@ private struct VerifyPanelView: View {
     var body: some View {
         if let verify = snapshot.verifyResult {
             SectionBox(title: "상태 검사") {
-                let issueChecks = verify.checks.filter { isIssueStatus($0.status) }
-                let primaryIssues = Array(issueChecks.prefix(primaryVisibleIssueCount))
-                let remainingIssues = Array(issueChecks.dropFirst(primaryVisibleIssueCount))
+                let checkSummary = VerifyDiagnosticSummary(
+                    checks: verify.checks,
+                    primaryVisibleIssueCount: primaryVisibleIssueCount
+                )
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(summaryText(for: verify, issueCount: issueChecks.count))
+                    Text(summaryText(for: verify, checkSummary: checkSummary))
                         .font(.caption)
-                        .foregroundStyle(issueChecks.isEmpty && verify.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
+                        .foregroundStyle(!checkSummary.hasIssues && verify.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if issueChecks.isEmpty {
+                    if !checkSummary.hasIssues {
                         Text("상태 검사에서 설명이 필요한 실패 항목이 없습니다.")
                             .font(.caption)
                             .foregroundStyle(Color.klmsMacSecondaryText)
                     } else {
-                        ForEach(primaryIssues) { check in
+                        ForEach(checkSummary.primaryIssues) { check in
                             VerifyCheckExplanationRowView(check: check)
                         }
-                        if !remainingIssues.isEmpty {
+                        if !checkSummary.remainingIssues.isEmpty {
                             DisclosureGroup(isExpanded: $isRemainingIssuesExpanded) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    ForEach(remainingIssues) { check in
+                                    ForEach(checkSummary.remainingIssues) { check in
                                         VerifyCheckExplanationRowView(check: check, compact: true)
                                     }
                                 }
                                 .padding(.top, 4)
                             } label: {
-                                Text("나머지 확인 항목 \(remainingIssues.count)개")
+                                Text("나머지 확인 항목 \(checkSummary.remainingIssues.count)개")
                                     .font(.caption.weight(.semibold))
                             }
                         }
@@ -4290,16 +4291,43 @@ private struct VerifyPanelView: View {
         }
     }
 
-    private func summaryText(for verify: VerifyResult, issueCount: Int) -> String {
-        let okCount = verify.checks.filter { $0.status.lowercased() == "ok" }.count
-        if issueCount == 0 {
-            return "상태: \(verify.status.klmsLocalizedStatus) · 정상 \(okCount)개"
+    private func summaryText(for verify: VerifyResult, checkSummary: VerifyDiagnosticSummary) -> String {
+        if !checkSummary.hasIssues {
+            return "상태: \(verify.status.klmsLocalizedStatus) · 정상 \(checkSummary.okCount)개"
         }
-        return "상태: \(verify.status.klmsLocalizedStatus) · 확인 필요 \(issueCount)개 · 정상 \(okCount)개"
+        return "상태: \(verify.status.klmsLocalizedStatus) · 확인 필요 \(checkSummary.issueCount)개 · 정상 \(checkSummary.okCount)개"
+    }
+}
+
+private struct VerifyDiagnosticSummary {
+    var primaryIssues: [VerifyCheck] = []
+    var remainingIssues: [VerifyCheck] = []
+    var okCount = 0
+
+    init(checks: [VerifyCheck], primaryVisibleIssueCount: Int) {
+        primaryIssues.reserveCapacity(primaryVisibleIssueCount)
+        for check in checks {
+            let normalizedStatus = check.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalizedStatus == "ok" {
+                okCount += 1
+            }
+            guard ["fail", "failed", "error", "warn", "warning"].contains(normalizedStatus) else {
+                continue
+            }
+            if primaryIssues.count < primaryVisibleIssueCount {
+                primaryIssues.append(check)
+            } else {
+                remainingIssues.append(check)
+            }
+        }
     }
 
-    private func isIssueStatus(_ status: String) -> Bool {
-        ["fail", "failed", "error", "warn", "warning"].contains(status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    var issueCount: Int {
+        primaryIssues.count + remainingIssues.count
+    }
+
+    var hasIssues: Bool {
+        issueCount > 0
     }
 }
 
@@ -4414,31 +4442,32 @@ private struct DoctorPanelView: View {
     var body: some View {
         if let doctor = snapshot.doctorResult {
             SectionBox(title: "권한/환경 진단") {
-                let issueChecks = doctor.checks.filter { ["fail", "failed", "error", "warn", "warning"].contains($0.status.lowercased()) }
-                let primaryIssues = Array(issueChecks.prefix(primaryVisibleIssueCount))
-                let remainingIssues = Array(issueChecks.dropFirst(primaryVisibleIssueCount))
-                Text(summaryText(for: doctor, issueCount: issueChecks.count))
+                let checkSummary = DoctorDiagnosticSummary(
+                    checks: doctor.checks,
+                    primaryVisibleIssueCount: primaryVisibleIssueCount
+                )
+                Text(summaryText(for: doctor, checkSummary: checkSummary))
                     .font(.caption)
-                    .foregroundStyle(issueChecks.isEmpty && doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
+                    .foregroundStyle(!checkSummary.hasIssues && doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
 
-                if issueChecks.isEmpty {
+                if !checkSummary.hasIssues {
                     Text("권한과 실행 환경에서 설명이 필요한 실패 항목이 없습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 } else {
-                    ForEach(primaryIssues) { check in
+                    ForEach(checkSummary.primaryIssues) { check in
                         DoctorCheckRowView(check: check)
                     }
-                    if !remainingIssues.isEmpty {
+                    if !checkSummary.remainingIssues.isEmpty {
                         DisclosureGroup(isExpanded: $isRemainingIssuesExpanded) {
                             VStack(alignment: .leading, spacing: 6) {
-                                ForEach(remainingIssues) { check in
+                                ForEach(checkSummary.remainingIssues) { check in
                                     DoctorCheckRowView(check: check, compact: true)
                                 }
                             }
                             .padding(.top, 4)
                         } label: {
-                            Text("나머지 진단 항목 \(remainingIssues.count)개")
+                            Text("나머지 진단 항목 \(checkSummary.remainingIssues.count)개")
                                 .font(.caption.weight(.semibold))
                         }
                     }
@@ -4456,12 +4485,43 @@ private struct DoctorPanelView: View {
         }
     }
 
-    private func summaryText(for doctor: DoctorResult, issueCount: Int) -> String {
-        let okCount = doctor.checks.filter { $0.status.lowercased() == "ok" }.count
-        if issueCount == 0 {
-            return "상태: \(doctor.status.klmsLocalizedStatus) · 정상 \(okCount)개"
+    private func summaryText(for doctor: DoctorResult, checkSummary: DoctorDiagnosticSummary) -> String {
+        if !checkSummary.hasIssues {
+            return "상태: \(doctor.status.klmsLocalizedStatus) · 정상 \(checkSummary.okCount)개"
         }
-        return "상태: \(doctor.status.klmsLocalizedStatus) · 확인 필요 \(issueCount)개 · 정상 \(okCount)개"
+        return "상태: \(doctor.status.klmsLocalizedStatus) · 확인 필요 \(checkSummary.issueCount)개 · 정상 \(checkSummary.okCount)개"
+    }
+}
+
+private struct DoctorDiagnosticSummary {
+    var primaryIssues: [DoctorCheck] = []
+    var remainingIssues: [DoctorCheck] = []
+    var okCount = 0
+
+    init(checks: [DoctorCheck], primaryVisibleIssueCount: Int) {
+        primaryIssues.reserveCapacity(primaryVisibleIssueCount)
+        for check in checks {
+            let normalizedStatus = check.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalizedStatus == "ok" {
+                okCount += 1
+            }
+            guard ["fail", "failed", "error", "warn", "warning"].contains(normalizedStatus) else {
+                continue
+            }
+            if primaryIssues.count < primaryVisibleIssueCount {
+                primaryIssues.append(check)
+            } else {
+                remainingIssues.append(check)
+            }
+        }
+    }
+
+    var issueCount: Int {
+        primaryIssues.count + remainingIssues.count
+    }
+
+    var hasIssues: Bool {
+        issueCount > 0
     }
 }
 
