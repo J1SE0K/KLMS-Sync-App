@@ -3615,13 +3615,19 @@ private struct CalendarDetailView: View {
     var model: KLMSMacModel
 
     var body: some View {
+        let allCalendarChanges = calendarChanges
+        let visibleChanges = visibleCalendarChanges(from: allCalendarChanges)
+        let hasReportedCalendarChanges = hasReportedCalendarChanges(
+            allChanges: allCalendarChanges,
+            visibleChanges: visibleChanges
+        )
+
         VStack(alignment: .leading, spacing: 8) {
             CalendarActionGuideView(
                 hasReportedCalendarChanges: hasReportedCalendarChanges,
                 model: model
             )
 
-            let visibleChanges = visibleCalendarChanges
             let visibleChangeCounts = calendarChangeCounts(for: visibleChanges)
             if snapshot.syncReport?.calendar != nil || !visibleChanges.isEmpty {
                 MetricGrid(metrics: [
@@ -3664,22 +3670,25 @@ private struct CalendarDetailView: View {
         ((snapshot.calendarSyncResult?.changes ?? []) + model.mailCalendarChanges()).dedupedForCalendarDisplay()
     }
 
-    private var visibleCalendarChanges: [CalendarChange] {
-        calendarChanges.filter { change in
+    private func visibleCalendarChanges(from changes: [CalendarChange]) -> [CalendarChange] {
+        changes.filter { change in
             change.isUserVisibleCalendarChange && !model.isCalendarChangeResolved(change)
         }
     }
 
-    private var hasReportedCalendarChanges: Bool {
-        if snapshot.calendarSyncResult?.changes.isEmpty == false || !model.mailCalendarChanges().isEmpty {
-            return !visibleCalendarChanges.isEmpty
+    private func hasReportedCalendarChanges(
+        allChanges: [CalendarChange],
+        visibleChanges: [CalendarChange]
+    ) -> Bool {
+        if !allChanges.isEmpty {
+            return !visibleChanges.isEmpty
         }
         let counts = snapshot.syncReport?.calendar
         let reportCount = (counts?.created ?? 0) + (counts?.updated ?? 0) + (counts?.deleted ?? 0)
         let summaryCount = snapshot.calendarSyncResult?.summaries.reduce(0) {
             $0 + $1.created + $1.updated + $1.deleted
         } ?? 0
-        return reportCount + summaryCount + model.mailCalendarChanges().count > 0
+        return reportCount + summaryCount > 0
     }
 
     private func calendarChangeCounts(for changes: [CalendarChange]) -> (created: Int, updated: Int, deleted: Int) {
