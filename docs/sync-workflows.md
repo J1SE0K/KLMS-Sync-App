@@ -86,7 +86,7 @@ node ./src/js/kaikey_cli.mjs status
 
 기본 기기키 저장 위치는 `~/Library/Application Support/KLMSNotesSync/kaikey_state.json`이고 권한은 `0600`으로 맞춘다. 경로를 바꾸려면 `KAIKEY_STATE_PATH`를 설정한다.
 
-iPhone에서 Mac 승인을 호출할 때는 공개 HTTP endpoint를 만들지 말고 SSH, 로컬 네트워크, VPN처럼 접근 제어가 있는 경로만 사용한다.
+iPhone/iPad/Windows에서 원격 실행이나 인증 승인을 보낼 때 기본 경로는 서버 릴레이이다. 앱에는 HTTPS 릴레이 주소와 클라이언트 토큰만 넣고, Mac 앱은 worker 토큰으로 요청을 처리한다. 예전 단축어 방식으로 Mac 승인을 직접 호출해야 하는 개발/복구 상황에서는 공개 HTTP endpoint를 만들지 말고 SSH, 로컬 네트워크, VPN처럼 접근 제어가 있는 경로만 사용한다.
 
 ```sh
 cd ~/Library/Application\ Support/KLMSNotesSync

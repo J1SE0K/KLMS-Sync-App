@@ -215,8 +215,6 @@ private func verifyWorkspaceNavigation(
         throw SmokeFailure.pressFailed(identifier: target.buttonIdentifier, error)
     }
 
-    Thread.sleep(forTimeInterval: navigationDelay)
-
     let requiredIdentifiers = [target.renderedIdentifier]
     guard waitForElements(withIdentifiers: requiredIdentifiers, in: appElement, timeout: timeout) else {
         for identifier in requiredIdentifiers where waitForElement(withIdentifier: identifier, in: appElement, timeout: 0.1) == nil {
@@ -224,6 +222,8 @@ private func verifyWorkspaceNavigation(
         }
         throw SmokeFailure.workspaceContentMissing(requiredIdentifiers.joined(separator: ", "))
     }
+
+    Thread.sleep(forTimeInterval: navigationDelay)
 
     for expectedText in target.expectedTexts {
         guard waitForText(expectedText, in: appElement, timeout: timeout) else {
