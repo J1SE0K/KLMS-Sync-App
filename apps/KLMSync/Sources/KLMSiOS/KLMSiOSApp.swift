@@ -14436,9 +14436,10 @@ private extension SanitizedRemoteStatus {
             category: .files,
             statusFilter: CompanionItemStatusFilter.defaultFilter(for: .files)
         )
-        next.calendarCreated = Self.calendarCount(in: calendarChanges, actions: ["created", "mail"])
-        next.calendarUpdated = Self.calendarCount(in: calendarChanges, actions: ["updated"])
-        next.calendarDeleted = Self.calendarCount(in: calendarChanges, actions: ["deleted"])
+        let calendarCounts = Self.calendarCounts(in: calendarChanges)
+        next.calendarCreated = calendarCounts.created
+        next.calendarUpdated = calendarCounts.updated
+        next.calendarDeleted = calendarCounts.deleted
         return next
     }
 
@@ -14452,10 +14453,27 @@ private extension SanitizedRemoteStatus {
             .count
     }
 
-    private static func calendarCount(in changes: [CalendarChange], actions: Set<String>) -> Int {
-        changes.filter { change in
-            actions.contains(change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
-        }.count
+    private struct CalendarChangeCounts: Equatable {
+        var created = 0
+        var updated = 0
+        var deleted = 0
+    }
+
+    private static func calendarCounts(in changes: [CalendarChange]) -> CalendarChangeCounts {
+        var counts = CalendarChangeCounts()
+        for change in changes {
+            switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "created", "mail":
+                counts.created += 1
+            case "updated":
+                counts.updated += 1
+            case "deleted":
+                counts.deleted += 1
+            default:
+                continue
+            }
+        }
+        return counts
     }
 
     var hasCompanionChangeSummary: Bool {

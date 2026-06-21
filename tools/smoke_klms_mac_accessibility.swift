@@ -206,32 +206,61 @@ private func verifyWorkspaceNavigation(
     appElement: AXUIElement,
     target: WorkspaceSmokeTarget
 ) throws {
-    guard let button = waitForElement(withIdentifier: target.buttonIdentifier, in: appElement, timeout: timeout) else {
-        throw SmokeFailure.workspaceButtonMissing(target.buttonIdentifier)
-    }
-
-    let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
-    guard error == .success else {
-        throw SmokeFailure.pressFailed(identifier: target.buttonIdentifier, error)
-    }
-
-    let requiredIdentifiers = [target.renderedIdentifier]
-    guard waitForElements(withIdentifiers: requiredIdentifiers, in: appElement, timeout: timeout) else {
-        for identifier in requiredIdentifiers where waitForElement(withIdentifier: identifier, in: appElement, timeout: 0.1) == nil {
-            throw SmokeFailure.workspaceContentMissing(identifier)
+    var lastError: AXError = .success
+    var didSelect = false
+    for _ in 0..<5 {
+        guard let button = waitForElement(withIdentifier: target.buttonIdentifier, in: appElement, timeout: timeout) else {
+            throw SmokeFailure.workspaceButtonMissing(target.buttonIdentifier)
         }
-        throw SmokeFailure.workspaceContentMissing(requiredIdentifiers.joined(separator: ", "))
-    }
 
-    Thread.sleep(forTimeInterval: navigationDelay)
-
-    for expectedText in target.expectedTexts {
-        guard waitForText(expectedText, in: appElement, timeout: timeout) else {
-            throw SmokeFailure.expectedTextMissing(expectedText)
+        let alreadySelected = textAttributes(of: button).contains { $0.localizedCaseInsensitiveContains("선택됨") }
+        if !alreadySelected {
+            _ = AXUIElementPerformAction(button, "AXScrollToVisible" as CFString)
+            let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
+            lastError = error
+            if error != .success {
+                Thread.sleep(forTimeInterval: 0.25)
+                continue
+            }
         }
+
+        let requiredIdentifiers = [target.renderedIdentifier]
+        guard waitForElements(withIdentifiers: requiredIdentifiers, in: appElement, timeout: timeout) else {
+            for identifier in requiredIdentifiers where waitForElement(withIdentifier: identifier, in: appElement, timeout: 0.1) == nil {
+                throw SmokeFailure.workspaceContentMissing(identifier)
+            }
+            throw SmokeFailure.workspaceContentMissing(requiredIdentifiers.joined(separator: ", "))
+        }
+
+        Thread.sleep(forTimeInterval: navigationDelay)
+        didSelect = waitForSelectedValue(identifier: target.buttonIdentifier, in: appElement, timeout: 0.7)
+        guard didSelect else {
+            Thread.sleep(forTimeInterval: 0.25)
+            continue
+        }
+
+        var foundAllExpectedText = true
+        for expectedText in target.expectedTexts where !waitForText(expectedText, in: appElement, timeout: timeout) {
+            foundAllExpectedText = false
+            break
+        }
+        if foundAllExpectedText {
+            print("ok: \(target.buttonIdentifier) -> \(target.title)")
+            return
+        }
+
+        Thread.sleep(forTimeInterval: 0.25)
     }
 
-    print("ok: \(target.buttonIdentifier) -> \(target.title)")
+    if lastError != .success {
+        throw SmokeFailure.pressFailed(identifier: target.buttonIdentifier, lastError)
+    }
+    if !didSelect {
+        throw SmokeFailure.selectedValueMissing(target.buttonIdentifier)
+    }
+    for expectedText in target.expectedTexts where !waitForText(expectedText, in: appElement, timeout: timeout) {
+        throw SmokeFailure.expectedTextMissing(expectedText)
+    }
 }
 
 private func verifySettingsTabNavigation(
