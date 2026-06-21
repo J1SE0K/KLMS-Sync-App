@@ -4122,7 +4122,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("CompanionItemListPreloadStore.store(listData, for: inputKey)"))
         XCTAssertFalse(ios.contains("private struct CompanionItemListPrewarmView: View"))
         XCTAssertFalse(ios.contains("static func defaultCategoryKey(itemsRevision: Int, category: DashboardMetricCategory) -> CompanionItemListInputKey"))
-        XCTAssertFalse(ios.contains("Task.detached(priority: .utility)"))
+        XCTAssertFalse(listData.contains("Task.detached(priority: .utility)"))
+        XCTAssertFalse(selectableRows.contains("Task.detached(priority: .utility)"))
+        XCTAssertFalse(inlineRows.contains("Task.detached(priority: .utility)"))
         XCTAssertFalse(ios.contains("prewarmDelayNanoseconds"))
         XCTAssertFalse(ios.contains("try? await Task.sleep(nanoseconds: CompanionLargeList.prewarmDelayNanoseconds)"))
         XCTAssertTrue(inlineRows.contains("return isSelected ? \"checkmark.circle.fill\" : \"chevron.right\""))
@@ -5178,6 +5180,32 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(refreshMethod.contains("await self?.refreshRecent(includeSyncData: true, showsActivity: true)"))
         XCTAssertTrue(loadingCard.contains("서버 URL과 클라이언트 토큰을 넣으면 최신 요약을 바로 불러옵니다."))
         XCTAssertFalse(loadingCard.contains("연결 확인을 눌러 주세요."))
+    }
+
+    func testIOSServerTokenPersistenceDoesNotBlockTyping() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let companionModel = try sourceBody(
+            after: "final class CompanionModel: ObservableObject",
+            in: ios,
+            description: "CompanionModel"
+        )
+        let schedulePersist = try sourceBody(
+            after: "private func schedulePersistServerToken(_ token: String)",
+            in: ios,
+            description: "iOS server token persistence debounce"
+        )
+
+        XCTAssertTrue(companionModel.contains("didSet { schedulePersistServerToken(serverToken) }"))
+        XCTAssertFalse(companionModel.contains("didSet { Self.persistServerToken(serverToken) }"))
+        XCTAssertTrue(companionModel.contains("private var serverTokenPersistTask: Task<Void, Never>?"))
+        XCTAssertTrue(schedulePersist.contains("try? await Task.sleep(nanoseconds: 350_000_000)"))
+        XCTAssertTrue(schedulePersist.contains("Task.detached(priority: .utility)"))
+        XCTAssertTrue(ios.contains("nonisolated private static func persistServerToken(_ token: String)"))
     }
 
     func testLogClearPreservesActiveCancellationAndFileRequests() throws {

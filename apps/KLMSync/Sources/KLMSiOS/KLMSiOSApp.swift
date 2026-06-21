@@ -194,7 +194,7 @@ final class CompanionModel: ObservableObject {
         didSet { UserDefaults.standard.set(serverURL, forKey: Self.serverURLKey) }
     }
     @Published var serverToken: String {
-        didSet { Self.persistServerToken(serverToken) }
+        didSet { schedulePersistServerToken(serverToken) }
     }
 
     private var lastAuthSuccessAlertMessage = ""
@@ -203,6 +203,7 @@ final class CompanionModel: ObservableObject {
     private var notifiedCancelCompletionCommandIDs = Set<UUID>()
     private var pasteboardClearTask: Task<Void, Never>?
     private var cancelFollowUpTask: Task<Void, Never>?
+    private var serverTokenPersistTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
     private var serverRelayEventStreamKey = ""
@@ -2528,17 +2529,34 @@ final class CompanionModel: ObservableObject {
         return "새로고침 실패 · \(trimmedReason)"
     }
 
-    private static func persistServerToken(_ token: String) {
+    private func schedulePersistServerToken(_ token: String) {
+        serverTokenPersistTask?.cancel()
+        serverTokenPersistTask = Task { [weak self, token] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            await Task.detached(priority: .utility) {
+                Self.persistServerToken(token)
+            }.value
+            await MainActor.run {
+                if self?.serverToken == token {
+                    self?.serverTokenPersistTask = nil
+                }
+            }
+        }
+    }
+
+    nonisolated private static func persistServerToken(_ token: String) {
+        let serverTokenKey = "KLMSServerRelayToken"
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedToken.isEmpty {
             LocalRemoteTokenStore.delete(account: "server-relay-ios")
-            UserDefaults.standard.removeObject(forKey: Self.serverTokenKey)
+            UserDefaults.standard.removeObject(forKey: serverTokenKey)
             return
         }
         if LocalRemoteTokenStore.save(trimmedToken, account: "server-relay-ios") {
-            UserDefaults.standard.removeObject(forKey: Self.serverTokenKey)
+            UserDefaults.standard.removeObject(forKey: serverTokenKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: Self.serverTokenKey)
+            UserDefaults.standard.removeObject(forKey: serverTokenKey)
         }
     }
 
