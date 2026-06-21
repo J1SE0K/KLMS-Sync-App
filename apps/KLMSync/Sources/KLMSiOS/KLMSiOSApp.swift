@@ -539,11 +539,13 @@ final class CompanionModel: ObservableObject {
     }
 
     private func rebuildChangeSummaryItemLookup() {
-        var next: [String: [ServerRelaySyncItem]] = [:]
-        for kind in RemoteChangeSummaryKind.allCases where !kind.isCalendarChange && kind != .fileCleanup {
-            next[kind.rawValue] = syncItems
-                .filter { kind.includes($0) }
-                .companionSorted(by: .recent)
+        var next = Dictionary(
+            uniqueKeysWithValues: RemoteChangeSummaryKind.itemChangeKinds.map { ($0.rawValue, [ServerRelaySyncItem]()) }
+        )
+        for item in syncItems.companionSorted(by: .recent) {
+            for kind in RemoteChangeSummaryKind.itemChangeKinds(for: item) {
+                next[kind.rawValue, default: []].append(item)
+            }
         }
         if changeSummaryItemsByKindID != next {
             changeSummaryItemsByKindID = next
@@ -5897,6 +5899,10 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
         }
     }
 
+    static var itemChangeKinds: [RemoteChangeSummaryKind] {
+        [.noticeNew, .noticeUpdated, .newFiles]
+    }
+
     func value(from status: SanitizedRemoteStatus) -> Int {
         switch self {
         case .noticeNew:
@@ -5917,16 +5923,21 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
     }
 
     func includes(_ item: ServerRelaySyncItem) -> Bool {
-        switch self {
-        case .noticeNew:
-            item.kind == "notice" && item.isCompanionNewLike
-        case .noticeUpdated:
-            item.kind == "notice" && item.isCompanionUpdatedLike
-        case .newFiles:
-            item.kind == "file" && item.isCompanionChangedLike
-        case .fileCleanup, .calendarCreated, .calendarUpdated, .calendarDeleted:
-            false
+        Self.itemChangeKinds(for: item).contains(self)
+    }
+
+    static func itemChangeKinds(for item: ServerRelaySyncItem) -> [RemoteChangeSummaryKind] {
+        var kinds: [RemoteChangeSummaryKind] = []
+        if item.kind == "notice", item.isCompanionNewLike {
+            kinds.append(.noticeNew)
         }
+        if item.kind == "notice", item.isCompanionUpdatedLike {
+            kinds.append(.noticeUpdated)
+        }
+        if item.kind == "file", item.isCompanionChangedLike {
+            kinds.append(.newFiles)
+        }
+        return kinds
     }
 
     func includes(_ change: CalendarChange) -> Bool {
