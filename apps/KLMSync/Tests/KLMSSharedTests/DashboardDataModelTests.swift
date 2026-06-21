@@ -2098,6 +2098,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(statusScreen.contains("if model.hasLoadedServerSyncData"))
         XCTAssertTrue(statusScreen.contains("WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)"))
         XCTAssertTrue(statusScreen.contains("CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)"))
+        XCTAssertTrue(statusScreen.contains("WorkstationDashboardEmptyGuidePanel()"))
+        XCTAssertLessThan(
+            try XCTUnwrap(statusScreen.range(of: "CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)")).lowerBound,
+            try XCTUnwrap(statusScreen.range(of: "WorkstationDashboardEmptyGuidePanel()")).lowerBound
+        )
         XCTAssertTrue(metricOverview.contains("var showsLoadingPlaceholder = true"))
         XCTAssertTrue(metricOverview.contains("if showsLoadingPlaceholder {\n                    CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)\n                }"))
         XCTAssertTrue(metricOverview.contains("isDataLoaded\n            && horizontalSizeClass != .regular"))
@@ -3841,6 +3846,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosStatusScreen.contains("if model.hasLoadedServerSyncData"))
         XCTAssertTrue(iosStatusScreen.contains("WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)"))
         XCTAssertTrue(iosStatusScreen.contains("CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)"))
+        XCTAssertTrue(iosStatusScreen.contains("WorkstationDashboardEmptyGuidePanel()"))
         XCTAssertTrue(iosStatusScreen.contains("WorkstationDashboardOverviewData(model: model)"))
         XCTAssertTrue(iosStatusScreen.contains("showsMetrics: false"))
         XCTAssertFalse(iosStatusScreen.contains("title: \"항목 선택\""))

@@ -3093,6 +3093,7 @@ private struct CompanionStatusScreen: View {
                     )
                 } else {
                     CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                    WorkstationDashboardEmptyGuidePanel()
                 }
             }
         }
