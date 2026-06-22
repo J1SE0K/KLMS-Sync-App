@@ -12625,23 +12625,26 @@ private struct RemoteSettingGroup: Identifiable, Equatable {
     static func grouped(settings: [ServerRelaySetting]) -> [RemoteSettingGroup] {
         let byKey = Dictionary(settings.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
         var used = Set<String>()
-        let specs: [(String, String, String, [String])] = [
+        let specs: [(title: String, systemImage: String, detail: String, isCollapsible: Bool, keys: [String])] = [
             (
                 "로그인",
                 "person.badge.key",
                 "인증번호 감지와 로그인 보조 방식을 정합니다.",
+                false,
                 ["KLMS_LOGIN_ASSIST_ENABLED", "KLMS_LOGIN_ASSIST_MODE", "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE"]
             ),
             (
                 "동기화",
                 "arrow.triangle.2.circlepath",
                 "동기화 범위를 정합니다.",
+                false,
                 ["SYNC_MODE"]
             ),
             (
                 "파일",
                 "folder",
                 "파일 탐색, 주차별 폴더, 보존 방식을 정합니다.",
+                false,
                 [
                     "FILE_REFRESH_MODE",
                     "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY",
@@ -12654,6 +12657,7 @@ private struct RemoteSettingGroup: Identifiable, Equatable {
                 "공지 메모",
                 "checklist",
                 "공지 메모의 접기, 양식, 상태 반영 방식을 정합니다.",
+                true,
                 [
                     "NOTICE_COLLAPSE_SECTIONS",
                     "NOTICE_COLLAPSE_COURSES",
@@ -12670,12 +12674,14 @@ private struct RemoteSettingGroup: Identifiable, Equatable {
                 "캘린더",
                 "calendar",
                 "같은 일정은 건너뛰고 변경이 있을 때만 반영합니다.",
+                false,
                 ["CALENDAR_SKIP_UNCHANGED_DESIRED"]
             ),
             (
                 "고급",
                 "slider.horizontal.3",
                 "Safari 창 동작처럼 자주 바꾸지 않는 설정입니다.",
+                true,
                 [
                     "KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED",
                     "KLMS_SAFARI_BACKGROUND_WINDOW_MODE",
@@ -12685,14 +12691,19 @@ private struct RemoteSettingGroup: Identifiable, Equatable {
         ]
 
         var groups: [RemoteSettingGroup] = specs.compactMap { spec in
-            let (title, systemImage, detail, keys) = spec
-            let groupSettings = keys.compactMap { key -> ServerRelaySetting? in
+            let groupSettings = spec.keys.compactMap { key -> ServerRelaySetting? in
                 guard let setting = byKey[key] else { return nil }
                 used.insert(key)
                 return setting
             }
             guard !groupSettings.isEmpty else { return nil }
-            return RemoteSettingGroup(title: title, systemImage: systemImage, detail: detail, settings: groupSettings)
+            return RemoteSettingGroup(
+                title: spec.title,
+                systemImage: spec.systemImage,
+                detail: spec.detail,
+                settings: groupSettings,
+                isCollapsible: spec.isCollapsible
+            )
         }
 
         let extras = settings.filter { !used.contains($0.key) }
