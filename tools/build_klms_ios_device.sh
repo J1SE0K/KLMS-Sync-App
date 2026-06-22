@@ -25,10 +25,40 @@ if [[ "${IOS_ALLOW_PROVISIONING_UPDATES:-0}" == "1" ]]; then
   XCODEBUILD_PROVISIONING_ARGS=(-allowProvisioningUpdates)
 fi
 
+xcconfig_value() {
+  local key="$1"
+  /usr/bin/awk -F= -v key="$key" '
+    /^[[:space:]]*(\/\/|#)/ { next }
+    $1 ~ "^[[:space:]]*" key "[[:space:]]*$" {
+      value=$2
+      sub(/^[[:space:]]+/, "", value)
+      sub(/[[:space:]]+$/, "", value)
+      gsub(/"/, "", value)
+      print value
+      exit
+    }
+  ' "$LOCAL_CONFIG"
+}
+
 if [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" && ! -f "$LOCAL_CONFIG" ]]; then
   print -ru2 -- "Missing ignored local signing config: apps/KLMSync/Config/KLMSiOS.local.xcconfig"
   print -ru2 -- "Create it from apps/KLMSync/README.md, or run CODE_SIGNING_ALLOWED=NO $0 for compile-only validation."
   exit 2
+fi
+
+if [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" ]]; then
+  local_team="$(xcconfig_value KLMS_IOS_DEVELOPMENT_TEAM)"
+  local_bundle="$(xcconfig_value KLMS_IOS_BUNDLE_IDENTIFIER)"
+  if [[ -z "$local_team" || "$local_team" == "YOURTEAMID" ]]; then
+    print -ru2 -- "Local iOS signing config is missing a real KLMS_IOS_DEVELOPMENT_TEAM."
+    print -ru2 -- "Edit apps/KLMSync/Config/KLMSiOS.local.xcconfig with your local Personal Team value, or run CODE_SIGNING_ALLOWED=NO $0 for compile-only validation."
+    exit 2
+  fi
+  if [[ -z "$local_bundle" || "$local_bundle" == "com.example.KLMSync.iOS" || "$local_bundle" == "com.local.KLMSync.iOS" ]]; then
+    print -ru2 -- "Local iOS signing config is missing a unique KLMS_IOS_BUNDLE_IDENTIFIER."
+    print -ru2 -- "Edit apps/KLMSync/Config/KLMSiOS.local.xcconfig with a device-build bundle identifier that is not committed to git."
+    exit 2
+  fi
 fi
 
 if [[ "$CODE_SIGNING_ALLOWED_VALUE" == "NO" ]]; then

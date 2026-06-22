@@ -103,6 +103,8 @@ Then run a signed device build with local signing settings:
 tools/build_klms_ios_device.sh
 ```
 
+The helper validates `Config/KLMSiOS.local.xcconfig` before it starts `xcodebuild`. Empty values, `YOURTEAMID`, `com.example.KLMSync.iOS`, and the checked-in `com.local.KLMSync.iOS` placeholder fail fast so a real iPhone/iPad install does not spend time building an unsigned or non-unique app.
+
 If Xcode has a signed-in development account but the provisioning profile has not been created yet, allow Xcode to create or update the local profile:
 
 ```sh
@@ -118,6 +120,8 @@ To install and launch the signed app on a connected device:
 ```sh
 IOS_DEVICE_IDENTIFIER="<device id or name>" tools/install_klms_ios_device.sh
 ```
+
+The install helper builds first by default, so the same local signing checks and `No Accounts` guidance apply before the app is copied to the device.
 
 To install the same signed build on every paired iPhone/iPad with Developer Mode enabled:
 

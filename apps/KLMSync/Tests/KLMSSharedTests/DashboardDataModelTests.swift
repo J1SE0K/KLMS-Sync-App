@@ -1033,6 +1033,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(buildScript.contains("XCODEBUILD_PROVISIONING_ARGS=(-allowProvisioningUpdates)"))
         XCTAssertTrue(buildScript.contains("\"${XCODEBUILD_PROVISIONING_ARGS[@]}\""))
         XCTAssertTrue(buildScript.contains("Xcode has no signed-in Apple development account"))
+        XCTAssertTrue(buildScript.contains("xcconfig_value()"))
+        XCTAssertTrue(buildScript.contains("Local iOS signing config is missing a real KLMS_IOS_DEVELOPMENT_TEAM"))
+        XCTAssertTrue(buildScript.contains("Local iOS signing config is missing a unique KLMS_IOS_BUNDLE_IDENTIFIER"))
+        XCTAssertTrue(buildScript.contains("\"$local_team\" == \"YOURTEAMID\""))
+        XCTAssertTrue(buildScript.contains("\"$local_bundle\" == \"com.example.KLMSync.iOS\""))
+        XCTAssertTrue(buildScript.contains("\"$local_bundle\" == \"com.local.KLMSync.iOS\""))
         XCTAssertTrue(buildScript.contains("Full xcodebuild log: $BUILD_LOG"))
         XCTAssertTrue(installScript.contains("WAIT_FOR_AVAILABLE_SECONDS=\"${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-45}\""))
         XCTAssertTrue(installScript.contains("DISCOVERY_POLL_SECONDS=\"${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-3}\""))
@@ -1050,6 +1056,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(readme.contains("IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS=0"))
         XCTAssertTrue(readme.contains("IOS_ALLOW_PROVISIONING_UPDATES=1 tools/build_klms_ios_device.sh"))
         XCTAssertTrue(readme.contains("If the signed build says `No Accounts`"))
+        XCTAssertTrue(readme.contains("validates `Config/KLMSiOS.local.xcconfig` before it starts `xcodebuild`"))
+        XCTAssertTrue(readme.contains("The install helper builds first by default"))
     }
 
     func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {
