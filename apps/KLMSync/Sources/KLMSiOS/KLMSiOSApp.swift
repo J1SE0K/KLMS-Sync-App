@@ -3473,8 +3473,42 @@ private struct CompanionSettingsScreen: View {
                 await model.createCommand(kind, dryRun: dryRun)
             }
             RemotePrivacyNote()
-            ServerRelayConnectionPanel(model: model)
+            ServerRelayConnectionPanel(
+                isConfigured: model.serverRelayConfigured,
+                connectionMessage: model.connectionMessage,
+                connectionSucceeded: model.connectionSucceeded,
+                serverURL: serverURLBinding,
+                serverToken: serverTokenBinding,
+                isRefreshing: model.isRefreshing,
+                isSubmitting: model.isSubmitting,
+                hasInFlightRequest: model.hasInFlightRequest,
+                pasteConnectionInfo: model.pasteServerRelayConnectionInfo,
+                checkConnection: {
+                    await model.checkServerRelayConnection()
+                },
+                refreshSummary: {
+                    await model.createCommand(.report)
+                },
+                copyURL: model.copyServerRelayURL,
+                copyConnectionInfo: model.copyServerRelayConnectionInfo,
+                copyClientToken: model.copyServerRelayClientToken,
+                clearConnectionInfo: model.clearServerRelayConnectionInfo
+            )
         }
+    }
+
+    private var serverURLBinding: Binding<String> {
+        Binding(
+            get: { model.serverURL },
+            set: { model.serverURL = $0 }
+        )
+    }
+
+    private var serverTokenBinding: Binding<String> {
+        Binding(
+            get: { model.serverToken },
+            set: { model.serverToken = $0 }
+        )
     }
 }
 
@@ -4287,7 +4321,21 @@ private struct RemoteRunningStatusBanner: View {
 }
 
 private struct ServerRelayConnectionPanel: View {
-    @ObservedObject var model: CompanionModel
+    var isConfigured: Bool
+    var connectionMessage: String
+    var connectionSucceeded: Bool?
+    @Binding var serverURL: String
+    @Binding var serverToken: String
+    var isRefreshing: Bool
+    var isSubmitting: Bool
+    var hasInFlightRequest: Bool
+    var pasteConnectionInfo: () -> Void
+    var checkConnection: () async -> Void
+    var refreshSummary: () async -> Void
+    var copyURL: () -> Void
+    var copyConnectionInfo: () -> Void
+    var copyClientToken: () -> Void
+    var clearConnectionInfo: () -> Void
     @State private var isExpanded = false
     private let actionColumns = [
         GridItem(.adaptive(minimum: 145), spacing: 8),
@@ -4301,22 +4349,22 @@ private struct ServerRelayConnectionPanel: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: model.serverRelayConfigured ? "checkmark.circle.fill" : "server.rack")
+                    Image(systemName: isConfigured ? "checkmark.circle.fill" : "server.rack")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
+                        .foregroundStyle(isConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
                         .frame(width: 44, height: 44)
                         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("서버 릴레이")
                             .font(.headline)
-                        Text(model.serverRelayConfigured ? "연결 정보가 저장되어 있습니다." : "연결 정보를 붙여넣어 주세요.")
+                        Text(isConfigured ? "연결 정보가 저장되어 있습니다." : "연결 정보를 붙여넣어 주세요.")
                             .font(.caption)
                             .foregroundStyle(Color.klmsSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
                     VStack(alignment: .trailing, spacing: 5) {
-                        Text(model.serverRelayConfigured ? "저장됨" : "미설정")
+                        Text(isConfigured ? "저장됨" : "미설정")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Color.klmsSecondaryText)
                             .padding(.horizontal, 8)
@@ -4328,15 +4376,15 @@ private struct ServerRelayConnectionPanel: View {
                 .contentShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-            .accessibilityLabel("서버 릴레이 \(model.serverRelayConfigured ? "저장됨" : "미설정") \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityLabel("서버 릴레이 \(isConfigured ? "저장됨" : "미설정") \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "서버 릴레이 설정 접기" : "서버 릴레이 설정 펼치기")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
-                    if !model.connectionMessage.isEmpty {
+                    if !connectionMessage.isEmpty {
                         ConnectionNoticeBanner(
-                            message: model.connectionMessage,
-                            succeeded: model.connectionSucceeded
+                            message: connectionMessage,
+                            succeeded: connectionSucceeded
                         )
                     }
 
@@ -4344,18 +4392,18 @@ private struct ServerRelayConnectionPanel: View {
                         title: "서버 연결 정보",
                         detail: "서버 URL과 클라이언트 토큰을 관리합니다.",
                         systemImage: "link",
-                        statusText: model.serverRelayConfigured ? "저장됨" : "미설정",
-                        statusTint: model.serverRelayConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText
+                        statusText: isConfigured ? "저장됨" : "미설정",
+                        statusTint: isConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText
                     ) {
                         CompanionConnectionInput(
                             title: "서버 URL",
                             detail: "공개 HTTPS 주소만 넣습니다. 로컬 주소는 저장하지 않습니다.",
-                            text: $model.serverURL
+                            text: $serverURL
                         )
                         CompanionConnectionInput(
                             title: "클라이언트 토큰",
                             detail: "이 기기용 토큰입니다. Mac 전용 토큰은 넣지 않습니다.",
-                            text: $model.serverToken,
+                            text: $serverToken,
                             secure: true
                         )
                         CompanionSettingHelpText("실제 KLMS 수집은 Mac 앱이 처리합니다.")
@@ -4368,16 +4416,16 @@ private struct ServerRelayConnectionPanel: View {
                     ) {
                         LazyVGrid(columns: actionColumns, spacing: 8) {
                             connectionButton("붙여넣기", systemImage: "doc.on.clipboard") {
-                                model.pasteServerRelayConnectionInfo()
+                                pasteConnectionInfo()
                             }
                             connectionAsyncButton("연결 확인", systemImage: "checkmark.seal") {
-                                await model.checkServerRelayConnection()
+                                await checkConnection()
                             }
-                            .disabled(!model.serverRelayConfigured || model.isRefreshing)
+                            .disabled(!isConfigured || isRefreshing)
                             connectionAsyncButton("요약 갱신", systemImage: "arrow.triangle.2.circlepath") {
-                                await model.createCommand(.report)
+                                await refreshSummary()
                             }
-                            .disabled(!model.serverRelayConfigured || model.isSubmitting || model.hasInFlightRequest)
+                            .disabled(!isConfigured || isSubmitting || hasInFlightRequest)
                         }
                         CompanionSettingHelpText("연결 확인은 동기화 없이 서버 응답만 검사합니다.")
                     }
@@ -4389,17 +4437,17 @@ private struct ServerRelayConnectionPanel: View {
                     ) {
                         LazyVGrid(columns: actionColumns, spacing: 8) {
                             connectionButton("URL 복사", systemImage: "link") {
-                                model.copyServerRelayURL()
+                                copyURL()
                             }
-                            .disabled(model.serverURL.isEmpty)
+                            .disabled(serverURL.isEmpty)
                             connectionButton("연결 정보 복사", systemImage: "doc.on.doc") {
-                                model.copyServerRelayConnectionInfo()
+                                copyConnectionInfo()
                             }
-                            .disabled(model.serverURL.isEmpty || model.serverToken.isEmpty)
+                            .disabled(serverURL.isEmpty || serverToken.isEmpty)
                             connectionButton("클라이언트 토큰 복사", systemImage: "key") {
-                                model.copyServerRelayClientToken()
+                                copyClientToken()
                             }
-                            .disabled(model.serverToken.isEmpty)
+                            .disabled(serverToken.isEmpty)
                         }
                         CompanionSettingHelpText("복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.")
                     }
@@ -4410,13 +4458,13 @@ private struct ServerRelayConnectionPanel: View {
                         systemImage: "trash"
                     ) {
                         Button(role: .destructive) {
-                            model.clearServerRelayConnectionInfo()
+                            clearConnectionInfo()
                         } label: {
                             Label("연결 정보 지우기", systemImage: "trash")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                        .disabled(!model.serverRelayConfigured && model.serverURL.isEmpty && model.serverToken.isEmpty)
+                        .disabled(!isConfigured && serverURL.isEmpty && serverToken.isEmpty)
                     }
                 }
             }
