@@ -4355,6 +4355,7 @@ private struct RemoteRunningStatusBanner: View {
                 .tint(Color.klmsCommandAccent)
                 .frame(width: 28, height: 28)
                 .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(snapshot.runningTitle)
                     .font(.subheadline.weight(.semibold))
@@ -4364,6 +4365,8 @@ private struct RemoteRunningStatusBanner: View {
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(snapshot.runningTitle). \(statusMessage)")
             Spacer(minLength: 8)
             if snapshot.shouldShowCancelControl {
                 Button(role: .destructive) {
@@ -4394,6 +4397,8 @@ private struct RemoteRunningStatusBanner: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.klmsCommandAccent.opacity(0.42), lineWidth: 1)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilitySortPriority(90)
     }
 
     private var statusMessage: String {
@@ -14441,6 +14446,9 @@ private struct ErrorBanner: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.klmsDangerBorder.opacity(0.48), lineWidth: 1)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("오류. \(message)")
+            .accessibilitySortPriority(95)
     }
 }
 
@@ -14458,6 +14466,9 @@ private struct AuthSuccessBanner: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.klmsSuccessBorder, lineWidth: 1)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("인증 완료. \(message)")
+            .accessibilitySortPriority(92)
     }
 }
 
@@ -14486,7 +14497,7 @@ private struct AuthCodeHero: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.klmsWarningBorder.opacity(0.44), lineWidth: 1)
                 }
-                .accessibilityLabel("KAIST 인증 번호 \(digits)")
+                .accessibilityHidden(true)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -14495,6 +14506,9 @@ private struct AuthCodeHero: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("KAIST 인증 번호 \(digits). 휴대폰 인증 화면에서 같은 번호를 선택하세요.")
+        .accessibilitySortPriority(100)
     }
 }
 
@@ -14512,6 +14526,9 @@ private struct LoginAttentionBanner: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.klmsWarningBorder, lineWidth: 1)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("로그인 필요. \(message)")
+            .accessibilitySortPriority(94)
     }
 }
 

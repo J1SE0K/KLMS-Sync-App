@@ -2135,7 +2135,9 @@ final class DashboardDataModelTests: XCTestCase {
             description: "iPhone/iPad diagnostic disclosure"
         )
         let errorBanner = try sourceStructBody(named: "ErrorBanner", in: ios)
+        let authSuccessBanner = try sourceStructBody(named: "AuthSuccessBanner", in: ios)
         let authCodeHero = try sourceStructBody(named: "AuthCodeHero", in: ios)
+        let loginAttentionBanner = try sourceStructBody(named: "LoginAttentionBanner", in: ios)
         let companionSection = try sourceBody(
             after: "private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable",
             in: ios,
@@ -2257,6 +2259,16 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct RemoteAttentionStackContent: View, Equatable"))
         XCTAssertTrue(ios.contains("private struct RemoteRunningStatusBanner"))
         XCTAssertTrue(ios.contains("RemoteRunningStatusBanner(snapshot: snapshot, onCancel: onCancel)"))
+        XCTAssertTrue(remoteRunningStatusBanner.contains("ProgressView()"))
+        XCTAssertTrue(remoteRunningStatusBanner.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(remoteRunningStatusBanner.contains(".accessibilityLabel(\"\\(snapshot.runningTitle). \\(statusMessage)\")"))
+        XCTAssertTrue(remoteRunningStatusBanner.contains(".accessibilitySortPriority(90)"))
+        XCTAssertTrue(authCodeHero.contains(".accessibilityLabel(\"KAIST 인증 번호 \\(digits). 휴대폰 인증 화면에서 같은 번호를 선택하세요.\")"))
+        XCTAssertTrue(authCodeHero.contains(".accessibilitySortPriority(100)"))
+        XCTAssertTrue(loginAttentionBanner.contains(".accessibilityLabel(\"로그인 필요. \\(message)\")"))
+        XCTAssertTrue(authSuccessBanner.contains(".accessibilityLabel(\"인증 완료. \\(message)\")"))
+        XCTAssertTrue(errorBanner.contains(".accessibilityLabel(\"오류. \\(message)\")"))
+        XCTAssertTrue(errorBanner.contains(".accessibilitySortPriority(95)"))
         XCTAssertFalse(ios.contains("private struct RemoteCancelControl"))
         XCTAssertTrue(ios.contains("var activeItemAction: ServerRelayItemAction?"))
         XCTAssertTrue(ios.contains("var activeSettingAction: ServerRelaySettingAction?"))
