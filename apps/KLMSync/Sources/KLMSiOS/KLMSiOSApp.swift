@@ -12331,6 +12331,34 @@ private struct RemoteSettingsPanel: View {
     var usesWideGrid = false
 
     var body: some View {
+        RemoteSettingsPanelContent(
+            settingGroups: model.remoteSettingGroups,
+            settingCount: model.remoteSettings.count,
+            isSubmitting: model.isSubmitting,
+            usesWideGrid: usesWideGrid,
+            createSettingAction: { setting, value in
+                await model.createSettingAction(setting: setting, value: value)
+            }
+        )
+        .equatable()
+    }
+}
+
+private struct RemoteSettingsPanelContent: View, Equatable {
+    var settingGroups: [RemoteSettingGroup]
+    var settingCount: Int
+    var isSubmitting: Bool
+    var usesWideGrid = false
+    var createSettingAction: (ServerRelaySetting, String) async -> Void
+
+    nonisolated static func == (lhs: RemoteSettingsPanelContent, rhs: RemoteSettingsPanelContent) -> Bool {
+        lhs.settingGroups == rhs.settingGroups
+            && lhs.settingCount == rhs.settingCount
+            && lhs.isSubmitting == rhs.isSubmitting
+            && lhs.usesWideGrid == rhs.usesWideGrid
+    }
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
                 Image(systemName: "macbook.and.iphone")
@@ -12347,7 +12375,7 @@ private struct RemoteSettingsPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Text(model.remoteSettings.isEmpty ? "대기" : "\(model.remoteSettings.count)개")
+                Text(settingGroups.isEmpty ? "대기" : "\(settingCount)개")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(Color.klmsSecondaryText)
                     .padding(.horizontal, 8)
@@ -12357,7 +12385,7 @@ private struct RemoteSettingsPanel: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 CompanionSettingHelpText("변경한 값은 서버에 저장되고 Mac 앱이 받아 적용합니다.")
-                if model.remoteSettings.isEmpty {
+                if settingGroups.isEmpty {
                     Text("Mac 앱이 설정 목록을 올리면 여기에서 바꿀 수 있습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
@@ -12370,23 +12398,21 @@ private struct RemoteSettingsPanel: View {
                         alignment: .leading,
                         spacing: 10
                     ) {
-                        ForEach(model.remoteSettingGroups) { group in
+                        ForEach(settingGroups) { group in
                             RemoteSettingGroupSection(
                                 group: group,
-                                isSubmitting: model.isSubmitting
-                            ) { setting, value in
-                                await model.createSettingAction(setting: setting, value: value)
-                            }
+                                isSubmitting: isSubmitting,
+                                createSettingAction: createSettingAction
+                            )
                         }
                     }
                 } else {
-                    ForEach(model.remoteSettingGroups) { group in
+                    ForEach(settingGroups) { group in
                         RemoteSettingGroupSection(
                             group: group,
-                            isSubmitting: model.isSubmitting
-                        ) { setting, value in
-                            await model.createSettingAction(setting: setting, value: value)
-                        }
+                            isSubmitting: isSubmitting,
+                            createSettingAction: createSettingAction
+                        )
                     }
                 }
             }
@@ -12400,7 +12426,7 @@ private struct RemoteSettingsPanel: View {
     }
 }
 
-private struct RemoteSettingGroup: Identifiable {
+private struct RemoteSettingGroup: Identifiable, Equatable {
     var title: String
     var systemImage: String
     var detail: String
