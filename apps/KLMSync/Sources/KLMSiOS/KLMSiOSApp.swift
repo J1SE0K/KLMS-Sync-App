@@ -11749,53 +11749,52 @@ private extension ServerRelayItemActionKind {
 }
 
 private struct ServerSyncDataRow: View, Equatable {
-    var item: ServerRelaySyncItem
+    var snapshot: ServerSyncRowSnapshot
     var isSelected = false
     var accessorySystemImage: String?
+
+    init(
+        item: ServerRelaySyncItem,
+        isSelected: Bool = false,
+        accessorySystemImage: String? = nil
+    ) {
+        self.snapshot = ServerSyncRowSnapshot(item: item)
+        self.isSelected = isSelected
+        self.accessorySystemImage = accessorySystemImage
+    }
 
     nonisolated static func == (lhs: ServerSyncDataRow, rhs: ServerSyncDataRow) -> Bool {
         lhs.isSelected == rhs.isSelected
             && lhs.accessorySystemImage == rhs.accessorySystemImage
-            && lhs.item.id == rhs.item.id
-            && lhs.item.kind == rhs.item.kind
-            && lhs.item.course == rhs.item.course
-            && lhs.item.academicTerm == rhs.item.academicTerm
-            && lhs.item.title == rhs.item.title
-            && lhs.item.timestamp == rhs.item.timestamp
-            && lhs.item.status == rhs.item.status
-            && lhs.item.attachmentCount == rhs.item.attachmentCount
-            && lhs.item.isRead == rhs.item.isRead
-            && lhs.item.isImportant == rhs.item.isImportant
-            && lhs.item.isHidden == rhs.item.isHidden
+            && lhs.snapshot == rhs.snapshot
     }
 
     var body: some View {
-        let summary = rowSummary
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: summary.systemImage)
+            Image(systemName: snapshot.systemImage)
                 .foregroundStyle(primaryForeground)
                 .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(summary.kindName)
+                    Text(snapshot.kindName)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(primaryForeground)
-                    if !item.status.isEmpty {
-                        Text(item.status)
+                    if !snapshot.status.isEmpty {
+                        Text(snapshot.status)
                             .font(.caption2)
                             .foregroundStyle(secondaryForeground)
                     }
-                    if item.isHidden {
+                    if snapshot.isHidden {
                         Text("숨김")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(secondaryForeground)
                     }
                 }
-                Text(item.title.isEmpty ? "제목 없음" : item.title)
+                Text(snapshot.title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                     .lineLimit(2)
-                Text(summary.metadata)
+                Text(snapshot.metadata)
                     .font(.caption)
                     .foregroundStyle(secondaryForeground)
                     .lineLimit(2)
@@ -11824,7 +11823,7 @@ private struct ServerSyncDataRow: View, Equatable {
                 .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(summary.accessibilityLabel)
+        .accessibilityLabel(snapshot.accessibilityLabel)
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
     }
 
@@ -11836,20 +11835,37 @@ private struct ServerSyncDataRow: View, Equatable {
         Color.klmsSecondaryText
     }
 
-    private var rowSummary: ServerSyncRowSummary {
-        let kindName = kindName
-        let metadata = metadata
-        return ServerSyncRowSummary(
-            kindName: kindName,
-            systemImage: systemImage,
-            metadata: metadata,
-            accessibilityLabel: [kindName, item.title.isEmpty ? "제목 없음" : item.title, metadata]
-                .filter { !$0.isEmpty }
-                .joined(separator: ", ")
-        )
+    private var tint: Color {
+        companionItemKindTint(snapshot.kind)
+    }
+}
+
+private struct ServerSyncRowSnapshot: Equatable {
+    var id: String
+    var kind: String
+    var kindName: String
+    var systemImage: String
+    var status: String
+    var title: String
+    var metadata: String
+    var isHidden: Bool
+    var accessibilityLabel: String
+
+    init(item: ServerRelaySyncItem) {
+        id = item.id
+        kind = item.kind
+        kindName = Self.kindName(for: item.kind)
+        systemImage = Self.systemImage(for: item.kind)
+        status = item.status
+        title = item.title.isEmpty ? "제목 없음" : item.title
+        metadata = Self.metadata(for: item)
+        isHidden = item.isHidden
+        accessibilityLabel = [kindName, title, metadata]
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
     }
 
-    private var metadata: String {
+    private static func metadata(for item: ServerRelaySyncItem) -> String {
         var parts: [String] = []
         if !item.course.isEmpty {
             parts.append(item.course)
@@ -11872,8 +11888,8 @@ private struct ServerSyncDataRow: View, Equatable {
         return parts.isEmpty ? "세부 정보 없음" : parts.joined(separator: " · ")
     }
 
-    private var kindName: String {
-        switch item.kind {
+    private static func kindName(for kind: String) -> String {
+        switch kind {
         case "assignment":
             "과제"
         case "completedAssignment":
@@ -11891,12 +11907,12 @@ private struct ServerSyncDataRow: View, Equatable {
         case "file":
             "파일"
         default:
-            item.kind
+            kind
         }
     }
 
-    private var systemImage: String {
-        switch item.kind {
+    private static func systemImage(for kind: String) -> String {
+        switch kind {
         case "assignment", "completedAssignment", "assignmentCandidate":
             "checklist"
         case "exam", "examCandidate":
@@ -11911,17 +11927,6 @@ private struct ServerSyncDataRow: View, Equatable {
             "circle"
         }
     }
-
-    private var tint: Color {
-        companionItemKindTint(item.kind)
-    }
-}
-
-private struct ServerSyncRowSummary: Equatable {
-    var kindName: String
-    var systemImage: String
-    var metadata: String
-    var accessibilityLabel: String
 }
 
 private struct RemoteStageDurationSummaryView: View {
