@@ -3903,12 +3903,38 @@ private struct CompanionHistoryScreen: View {
     private var historySummaryColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
             RemoteLogSummaryPanel(
-                model: model,
+                snapshot: remoteLogSummarySnapshot,
                 compact: false,
                 showsInlineDetail: horizontalSizeClass != .regular,
-                selectedKind: horizontalSizeClass == .regular ? $selectedLogSummaryKind : nil
+                selectedKind: horizontalSizeClass == .regular ? $selectedLogSummaryKind : nil,
+                clearRemoteLogs: {
+                    Task {
+                        await model.clearRemoteLogs()
+                    }
+                },
+                inlineDetail: { kind in
+                    AnyView(RemoteLogDetailPanel(kind: kind, model: model))
+                }
             )
         }
+    }
+
+    private var remoteLogSummarySnapshot: RemoteLogSummarySnapshot {
+        RemoteLogSummarySnapshot(
+            lastRefreshAt: model.lastRefreshAt,
+            clearDisabled: !model.serverRelayConfigured || model.isSubmitting || !model.hasClearableRemoteLogs,
+            statusLine: model.statusLine,
+            runningPhaseDetail: model.runningPhaseDetail,
+            phase: model.status.phase,
+            authDigits: model.status.authDigits,
+            loginRequired: model.status.loginRequired,
+            hasInFlightRequest: model.hasInFlightRequest,
+            latestDisplayStatus: model.latestDisplayStatus,
+            currentCommand: model.currentRemoteLogCommand,
+            hasLatestCommand: model.latestCommand != nil,
+            latestFileRequest: model.latestRemoteLogFileRequest,
+            hasRecentFileRequests: !model.recentFileAccessRequests.isEmpty
+        )
     }
 
     private var historyStageColumn: some View {
@@ -12537,6 +12563,26 @@ private enum RemoteLogSummaryKind: String {
     case fileRequest
 }
 
+private struct RemoteLogSummarySnapshot: Equatable {
+    var lastRefreshAt: Date?
+    var clearDisabled: Bool
+    var statusLine: String
+    var runningPhaseDetail: String?
+    var phase: String
+    var authDigits: String?
+    var loginRequired: Bool
+    var hasInFlightRequest: Bool
+    var latestDisplayStatus: RemoteCommandStatus?
+    var currentCommand: RemoteRunCommand?
+    var hasLatestCommand: Bool
+    var latestFileRequest: ServerRelayFileAccessRequest?
+    var hasRecentFileRequests: Bool
+
+    var shouldShowFileRequestRow: Bool {
+        latestFileRequest != nil
+    }
+}
+
 private extension ServerRelayLogClearScope {
     var clearTitle: String {
         switch self {
@@ -12579,10 +12625,12 @@ private extension ServerRelayLogClearScope {
 }
 
 private struct RemoteLogSummaryPanel: View {
-    @ObservedObject var model: CompanionModel
+    var snapshot: RemoteLogSummarySnapshot
     var compact: Bool
     var showsInlineDetail = true
     var selectedKind: Binding<RemoteLogSummaryKind?>? = nil
+    var clearRemoteLogs: () -> Void
+    var inlineDetail: (RemoteLogSummaryKind) -> AnyView
     @State private var localExpandedKind: RemoteLogSummaryKind?
 
     private var expandedKind: RemoteLogSummaryKind? {
@@ -12595,29 +12643,25 @@ private struct RemoteLogSummaryPanel: View {
                 Label("로그 요약", systemImage: "list.bullet.rectangle")
                     .font(.headline)
                 Spacer(minLength: 8)
-                if let lastRefreshAt = model.lastRefreshAt {
+                if let lastRefreshAt = snapshot.lastRefreshAt {
                     Text(lastRefreshAt.formatted(date: .omitted, time: .shortened))
                         .font(.caption2)
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
-                Button {
-                    Task {
-                        await model.clearRemoteLogs()
-                    }
-                } label: {
+                Button(action: clearRemoteLogs) {
                     Image(systemName: "trash")
                         .frame(width: 44, height: 44)
                 }
                 .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                .disabled(!model.serverRelayConfigured || model.isSubmitting || !model.hasClearableRemoteLogs)
+                .disabled(snapshot.clearDisabled)
                 .accessibilityLabel("전체 기록 지우기")
             }
 
             VStack(spacing: 8) {
                 RemoteLogSummaryRow(
                     title: "현재 상태",
-                    value: model.statusLine,
-                    detail: model.runningPhaseDetail ?? model.status.phase.klmsRemotePhaseName,
+                    value: snapshot.statusLine,
+                    detail: snapshot.runningPhaseDetail ?? snapshot.phase.klmsRemotePhaseName,
                     systemImage: statusSystemImage,
                     tint: statusTint,
                     isExpanded: expandedKind == .status
@@ -12634,7 +12678,7 @@ private struct RemoteLogSummaryPanel: View {
                 ) {
                     toggle(.command)
                 }
-                if !compact || model.latestRemoteLogFileRequest != nil {
+                if !compact || snapshot.shouldShowFileRequestRow {
                     RemoteLogSummaryRow(
                         title: "파일 요청",
                         value: fileRequestValue,
@@ -12649,7 +12693,7 @@ private struct RemoteLogSummaryPanel: View {
 
                 if let expandedKind {
                     if showsInlineDetail {
-                        RemoteLogDetailPanel(kind: expandedKind, model: model)
+                        inlineDetail(expandedKind)
                     }
                 } else if showsInlineDetail || compact {
                     Text("행을 누르면 펼쳐집니다.")
@@ -12668,33 +12712,33 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private var currentCommand: RemoteRunCommand? {
-        model.currentRemoteLogCommand
+        snapshot.currentCommand
     }
 
     private var statusSystemImage: String {
-        if model.status.authDigits != nil {
+        if snapshot.authDigits != nil {
             return "key"
         }
-        if model.hasInFlightRequest || model.status.phase == "running" {
+        if snapshot.hasInFlightRequest || snapshot.phase == "running" {
             return "arrow.triangle.2.circlepath"
         }
-        if model.status.loginRequired {
+        if snapshot.loginRequired {
             return "person.crop.circle.badge.exclamationmark"
         }
         return "gauge"
     }
 
     private var statusTint: Color {
-        if model.status.authDigits != nil || model.status.loginRequired {
+        if snapshot.authDigits != nil || snapshot.loginRequired {
             return Color.klmsWarningBorder
         }
-        if model.hasInFlightRequest || model.status.phase == "running" {
+        if snapshot.hasInFlightRequest || snapshot.phase == "running" {
             return .klmsCommandAccent
         }
-        if model.latestDisplayStatus == .failed || model.latestDisplayStatus == .macUnavailable {
+        if snapshot.latestDisplayStatus == .failed || snapshot.latestDisplayStatus == .macUnavailable {
             return Color.klmsWarningBorder
         }
-        if model.latestDisplayStatus == .cancelled {
+        if snapshot.latestDisplayStatus == .cancelled {
             return Color.klmsSecondaryText
         }
         return Color.klmsSuccessBorder
@@ -12702,16 +12746,16 @@ private struct RemoteLogSummaryPanel: View {
 
     private var recentCommandValue: String {
         guard let command = currentCommand else {
-            return model.latestCommand == nil ? "요청 기록 없음" : "현재 요청 없음"
+            return snapshot.hasLatestCommand ? "현재 요청 없음" : "요청 기록 없음"
         }
         return "\(command.kind.displayName) · \(command.displayStatus().displayName)"
     }
 
     private var recentCommandDetail: String {
         guard let command = currentCommand else {
-            return model.latestCommand == nil
-                ? "실행하면 서버에 요청이 올라갑니다."
-                : "지난 기록은 펼쳐서 봅니다."
+            return snapshot.hasLatestCommand
+                ? "지난 기록은 펼쳐서 봅니다."
+                : "실행하면 서버에 요청이 올라갑니다."
         }
         var parts = [
             "과제 \(command.summary.assignments)",
@@ -12745,17 +12789,17 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private var fileRequestValue: String {
-        guard let latestFileRequest = model.latestRemoteLogFileRequest else {
+        guard let latestFileRequest = snapshot.latestFileRequest else {
             return "요청 없음"
         }
         return latestFileRequest.status.displayName
     }
 
     private var fileRequestDetail: String {
-        guard let latestFileRequest = model.latestRemoteLogFileRequest else {
-            return model.recentFileAccessRequests.isEmpty
-                ? "파일에서 링크 요청을 누르면 임시 링크를 준비합니다."
-                : "지난 기록은 펼쳐서 봅니다."
+        guard let latestFileRequest = snapshot.latestFileRequest else {
+            return snapshot.hasRecentFileRequests
+                ? "지난 기록은 펼쳐서 봅니다."
+                : "파일에서 링크 요청을 누르면 임시 링크를 준비합니다."
         }
         let title = latestFileRequest.itemTitle.nilIfEmpty ?? "파일"
         let message = latestFileRequest.message.nilIfEmpty ?? latestFileRequest.updatedAt.formatted(date: .omitted, time: .shortened)
@@ -12763,7 +12807,7 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private var fileRequestSystemImage: String {
-        switch model.latestRemoteLogFileRequest?.status {
+        switch snapshot.latestFileRequest?.status {
         case .pending:
             return "clock"
         case .running:
@@ -12778,7 +12822,7 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     private var fileRequestTint: Color {
-        switch model.latestRemoteLogFileRequest?.status {
+        switch snapshot.latestFileRequest?.status {
         case .pending, .running:
             return .klmsCommandAccent
         case .completed:
