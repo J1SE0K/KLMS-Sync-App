@@ -165,12 +165,14 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
 
 private enum MacWorkspacePanelTiming {
     static let deferredContentDelayNanoseconds: UInt64 = 90_000_000
+    static let heavyListContentDelayNanoseconds: UInt64 = 260_000_000
 }
 
 private struct DeferredMacWorkspacePanel<Content: View>: View {
     var id: String
     var contentIdentifier: String?
     var deferContent: Bool
+    var contentDelayNanoseconds: UInt64
     private let content: () -> Content
     @State private var isContentReady = false
     @State private var contentTask: Task<Void, Never>?
@@ -179,11 +181,13 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
         id: String,
         contentIdentifier: String? = nil,
         deferContent: Bool = true,
+        contentDelayNanoseconds: UInt64 = MacWorkspacePanelTiming.deferredContentDelayNanoseconds,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.id = id
         self.contentIdentifier = contentIdentifier
         self.deferContent = deferContent
+        self.contentDelayNanoseconds = contentDelayNanoseconds
         self.content = content
     }
 
@@ -230,7 +234,7 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
         contentTask?.cancel()
         contentTask = Task { @MainActor in
             await Task.yield()
-            try? await Task.sleep(nanoseconds: MacWorkspacePanelTiming.deferredContentDelayNanoseconds)
+            try? await Task.sleep(nanoseconds: contentDelayNanoseconds)
             guard !Task.isCancelled else { return }
             var transaction = Transaction()
             transaction.animation = nil
@@ -291,7 +295,11 @@ private struct MacWorkstationLayoutView: View {
                         .equatable()
                 }
             case .tasks:
-                DeferredMacWorkspacePanel(id: "workspace-tasks", contentIdentifier: "workspace-content-tasks") {
+                DeferredMacWorkspacePanel(
+                    id: "workspace-tasks",
+                    contentIdentifier: "workspace-content-tasks",
+                    contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds
+                ) {
                     TaskAndExamWorkspaceView(model: model)
                 }
             case .notices:
@@ -5322,7 +5330,9 @@ private struct IssueSummaryView: View {
             let remainingIssues = Array(issues.dropFirst(primaryVisibleIssueCount))
             VStack(alignment: .leading, spacing: 8) {
                 Button {
-                    isExpanded.toggle()
+                    macPerformWithoutAnimation {
+                        isExpanded.toggle()
+                    }
                 } label: {
                     HStack(alignment: .center, spacing: 8) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -5368,7 +5378,9 @@ private struct IssueSummaryView: View {
                         }
                         if !remainingIssues.isEmpty {
                             Button {
-                                isRemainingIssuesExpanded.toggle()
+                                macPerformWithoutAnimation {
+                                    isRemainingIssuesExpanded.toggle()
+                                }
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: isRemainingIssuesExpanded ? "chevron.down" : "chevron.right")
