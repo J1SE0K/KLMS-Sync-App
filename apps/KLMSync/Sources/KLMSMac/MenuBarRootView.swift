@@ -2544,14 +2544,10 @@ private struct DiagnosticStageDurationPanelView: View {
     }
 
     private var stageDurations: [KLMSStageDuration] {
-        let liveOutput = model.liveCommandOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !liveOutput.isEmpty {
-            return KLMSStageDurationParser.parse(from: liveOutput)
+        if !model.liveStageDurations.isEmpty {
+            return model.liveStageDurations
         }
-        if let record = model.commandHistory.records.first(where: { !$0.outputTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
-            return record.visibleStageDurations
-        }
-        return []
+        return model.latestCommandHistoryStageDurations
     }
 }
 

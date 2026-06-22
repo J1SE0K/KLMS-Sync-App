@@ -152,7 +152,11 @@ final class KLMSMacModel: ObservableObject {
     @Published var snapshot = EngineSnapshot()
     @Published var envDocument: EnvDocument?
     @Published var appDiagnostics = KLMSAppDiagnostics()
-    @Published var commandHistory = CommandRunHistory()
+    @Published var commandHistory = CommandRunHistory() {
+        didSet {
+            rebuildCommandHistoryStageDurationCache()
+        }
+    }
     @Published var latestBackup: AppDataBackupRecord?
     @Published var installResult: EngineInstallResult?
     @Published var lastCommandResult: KLMSCommandResult?
@@ -176,6 +180,8 @@ final class KLMSMacModel: ObservableObject {
     @Published var runningCommand: KLMSEngineCommand?
     @Published var isCancellingCommand = false
     @Published var liveCommandOutput = ""
+    @Published private(set) var liveStageDurations: [KLMSStageDuration] = []
+    @Published private(set) var latestCommandHistoryStageDurations: [KLMSStageDuration] = []
     @Published var liveAuthDigits: String?
     @Published var authStatusMessage: String?
     @Published private var authDigitsSuppressed = false
@@ -4157,6 +4163,7 @@ final class KLMSMacModel: ObservableObject {
         liveAuthObservationBuffer = ""
         cachedLiveProgressLine = nil
         cachedCurrentPhaseText = nil
+        liveStageDurations = []
         liveCommandOutput = ""
     }
 
@@ -4181,7 +4188,18 @@ final class KLMSMacModel: ObservableObject {
         if liveCommandOutput != liveCommandOutputBuffer {
             cachedLiveProgressLine = Self.extractLiveProgressLine(from: liveCommandOutputBuffer)
             cachedCurrentPhaseText = KLMSLiveCommandPhase.currentPhase(in: liveCommandOutputBuffer).displayName
+            let nextStageDurations = KLMSStageDurationParser.parse(from: liveCommandOutputBuffer)
+            if liveStageDurations != nextStageDurations {
+                liveStageDurations = nextStageDurations
+            }
             liveCommandOutput = liveCommandOutputBuffer
+        }
+    }
+
+    private func rebuildCommandHistoryStageDurationCache() {
+        let nextStageDurations = commandHistory.records.first { !$0.stageDurations.isEmpty }?.stageDurations ?? []
+        if latestCommandHistoryStageDurations != nextStageDurations {
+            latestCommandHistoryStageDurations = nextStageDurations
         }
     }
 
