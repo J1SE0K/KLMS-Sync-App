@@ -1042,6 +1042,17 @@ private struct DeferredDashboardExpansion<Content: View>: View {
             guard !expanded else { return }
             shouldRender = false
         }
+        .transaction { transaction in
+            transaction.animation = nil
+        }
+    }
+}
+
+private func dashboardPerformWithoutAnimation(_ updates: () -> Void) {
+    var transaction = Transaction()
+    transaction.animation = nil
+    withTransaction(transaction) {
+        updates()
     }
 }
 
@@ -1898,7 +1909,9 @@ private struct StateItemRowView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Button {
-                    isExpanded.toggle()
+                    dashboardPerformWithoutAnimation {
+                        isExpanded.toggle()
+                    }
                 } label: {
                     HStack(alignment: .top, spacing: 8) {
                         VStack(alignment: .leading, spacing: 3) {
@@ -2603,7 +2616,9 @@ private struct NoticeRowView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Button {
-                    isExpanded.toggle()
+                    dashboardPerformWithoutAnimation {
+                        isExpanded.toggle()
+                    }
                 } label: {
                     HStack(alignment: .top, spacing: 8) {
                         VStack(alignment: .leading, spacing: 3) {
@@ -3752,7 +3767,9 @@ private struct FileRowView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Button {
-                    isExpanded.toggle()
+                    dashboardPerformWithoutAnimation {
+                        isExpanded.toggle()
+                    }
                 } label: {
                     HStack(alignment: .top, spacing: 8) {
                         VStack(alignment: .leading, spacing: 3) {
@@ -4521,7 +4538,9 @@ struct MacMailPasteAnalyzerPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                isExpanded.toggle()
+                dashboardPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 MacMailPasteHeaderButtonContent(isExpanded: isExpanded, analysis: analysis)
             }
@@ -5096,7 +5115,9 @@ private struct MacMailAnalysisProcessView: View {
         if !steps.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 Button {
-                    isExpanded.toggle()
+                    dashboardPerformWithoutAnimation {
+                        isExpanded.toggle()
+                    }
                 } label: {
                     HStack(spacing: 7) {
                         Label("분석 과정", systemImage: "list.bullet.clipboard")

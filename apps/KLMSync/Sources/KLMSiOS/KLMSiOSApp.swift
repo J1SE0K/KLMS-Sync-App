@@ -6647,6 +6647,9 @@ private struct DeferredInteractionExpansion<Content: View>: View {
             guard !expanded else { return }
             shouldRender = false
         }
+        .transaction { transaction in
+            transaction.animation = nil
+        }
     }
 }
 
