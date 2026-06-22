@@ -139,7 +139,9 @@ final class CompanionModel: ObservableObject {
     @Published var calendarChanges: [CalendarChange] = [] {
         didSet { rebuildVisibleCalendarChanges() }
     }
-    @Published var remoteSettings: [ServerRelaySetting] = []
+    @Published var remoteSettings: [ServerRelaySetting] = [] {
+        didSet { rebuildRemoteSettingGroups() }
+    }
     @Published var sharedRunLogs: [ServerRelayRunLog] = [] {
         didSet {
             rebuildSharedRunLogStageDurationCache()
@@ -169,6 +171,7 @@ final class CompanionModel: ObservableObject {
     @Published private(set) var hasClearableFileAccessLogs = false
     @Published private(set) var sharedRunLogStageDurationsByID: [String: [KLMSStageDuration]] = [:]
     @Published private(set) var latestSharedRunLogStageDurations: [KLMSStageDuration] = []
+    fileprivate var remoteSettingGroups: [RemoteSettingGroup] = []
     @Published var status = SanitizedRemoteStatus() {
         didSet { rebuildDashboardStatus() }
     }
@@ -1538,6 +1541,10 @@ final class CompanionModel: ObservableObject {
             next[request.itemID] = request
         }
         latestFileAccessRequestByItemID = next
+    }
+
+    private func rebuildRemoteSettingGroups() {
+        remoteSettingGroups = RemoteSettingGroup.grouped(settings: remoteSettings)
     }
 
     private func rebuildItemActionLookups() {
@@ -12271,10 +12278,6 @@ private struct RemoteSettingsPanel: View {
     @ObservedObject var model: CompanionModel
     var usesWideGrid = false
 
-    private var settingGroups: [RemoteSettingGroup] {
-        RemoteSettingGroup.grouped(settings: model.remoteSettings)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
@@ -12315,13 +12318,23 @@ private struct RemoteSettingsPanel: View {
                         alignment: .leading,
                         spacing: 10
                     ) {
-                        ForEach(settingGroups) { group in
-                            RemoteSettingGroupSection(group: group, model: model)
+                        ForEach(model.remoteSettingGroups) { group in
+                            RemoteSettingGroupSection(
+                                group: group,
+                                isSubmitting: model.isSubmitting
+                            ) { setting, value in
+                                await model.createSettingAction(setting: setting, value: value)
+                            }
                         }
                     }
                 } else {
-                    ForEach(settingGroups) { group in
-                        RemoteSettingGroupSection(group: group, model: model)
+                    ForEach(model.remoteSettingGroups) { group in
+                        RemoteSettingGroupSection(
+                            group: group,
+                            isSubmitting: model.isSubmitting
+                        ) { setting, value in
+                            await model.createSettingAction(setting: setting, value: value)
+                        }
                     }
                 }
             }
@@ -12443,7 +12456,8 @@ private struct RemoteSettingGroup: Identifiable {
 
 private struct RemoteSettingGroupSection: View {
     var group: RemoteSettingGroup
-    @ObservedObject var model: CompanionModel
+    var isSubmitting: Bool
+    var createSettingAction: (ServerRelaySetting, String) async -> Void
     @State private var isExpanded = false
 
     var body: some View {
@@ -12468,7 +12482,11 @@ private struct RemoteSettingGroupSection: View {
             if !group.isCollapsible || isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(group.settings) { setting in
-                        RemoteSettingRow(setting: setting, model: model)
+                        RemoteSettingRow(
+                            setting: setting,
+                            isSubmitting: isSubmitting,
+                            createSettingAction: createSettingAction
+                        )
                     }
                 }
             }
@@ -13553,7 +13571,8 @@ private struct CompanionReadableLogHighlightsView: View {
 
 private struct RemoteSettingRow: View {
     var setting: ServerRelaySetting
-    @ObservedObject var model: CompanionModel
+    var isSubmitting: Bool
+    var createSettingAction: (ServerRelaySetting, String) async -> Void
     @State private var draftValue = ""
 
     var body: some View {
@@ -13612,23 +13631,20 @@ private struct RemoteSettingRow: View {
         case .bool:
             Button {
                 Task {
-                    await model.createSettingAction(
-                        setting: setting,
-                        value: setting.boolValue ? "0" : "1"
-                    )
+                    await createSettingAction(setting, setting.boolValue ? "0" : "1")
                 }
             } label: {
                 Label(setting.boolValue ? "켜짐" : "꺼짐", systemImage: setting.boolValue ? "checkmark.circle.fill" : "circle")
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(KLMSActionButtonStyle(tone: setting.boolValue ? .success : .soft))
-            .disabled(!setting.editable || model.isSubmitting)
+            .disabled(!setting.editable || isSubmitting)
         case .choice:
             Menu {
                 ForEach(setting.options, id: \.self) { option in
                     Button(settingChoiceTitle(option)) {
                         Task {
-                            await model.createSettingAction(setting: setting, value: option)
+                            await createSettingAction(setting, option)
                         }
                     }
                 }
@@ -13642,7 +13658,7 @@ private struct RemoteSettingRow: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(KLMSActionButtonStyle())
-            .disabled(!setting.editable || model.isSubmitting)
+            .disabled(!setting.editable || isSubmitting)
         case .number, .text:
             HStack(spacing: 6) {
                 TextField("값", text: $draftValue)
@@ -13650,12 +13666,12 @@ private struct RemoteSettingRow: View {
                     .frame(minWidth: 120)
                 Button("저장") {
                     Task {
-                        await model.createSettingAction(setting: setting, value: draftValue)
+                        await createSettingAction(setting, draftValue)
                     }
                 }
                 .frame(minHeight: 44)
                 .buttonStyle(KLMSActionButtonStyle())
-                .disabled(!setting.editable || model.isSubmitting || draftValue == setting.value)
+                .disabled(!setting.editable || isSubmitting || draftValue == setting.value)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
