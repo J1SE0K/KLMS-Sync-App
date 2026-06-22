@@ -3320,6 +3320,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("CompanionExpansionBadge(isExpanded: isExpanded)"))
         XCTAssertTrue(ios.contains("CompanionExpansionBadge(isExpanded: isPanelExpanded)"))
         XCTAssertTrue(ios.contains("CompanionExpansionBadge(isExpanded: isExpanded, compact: true)"))
+        XCTAssertTrue(ios.contains(".onAppear {\n            if !isConfigured {\n                isExpanded = true\n            }\n        }"))
+        XCTAssertTrue(ios.contains(".onChange(of: isConfigured) { _, configured in\n            if !configured {\n                isExpanded = true\n            }\n        }"))
         XCTAssertTrue(ios.contains("Image(systemName: isExpanded ? \"chevron.up\" : \"chevron.down\")"))
         XCTAssertTrue(ios.contains("Text(isExpanded ? \"접기\" : \"펼치기\")"))
         XCTAssertTrue(ios.contains("isExpanded ? Color.klmsSelectedBackground.opacity(0.92) : Color.klmsSubtleCardBackground"))
