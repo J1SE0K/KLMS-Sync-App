@@ -4635,6 +4635,7 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "CompanionModel"
         )
+        let longDetailFieldRow = try sourceStructBody(named: "LongDetailFieldRow", in: ios)
 
         XCTAssertTrue(ios.contains("private struct CompanionItemListData"))
         XCTAssertTrue(listData.contains("var filteredItemIDs: Set<String>"))
@@ -4684,6 +4685,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(ios.contains("private struct ServerSyncRowSummary: Equatable"))
         XCTAssertFalse(serverSyncDataRow.contains("let summary = rowSummary"))
         XCTAssertFalse(serverSyncDataRow.contains(".accessibilityLabel(accessibilityLabelText)"))
+        XCTAssertTrue(inlineItemDetail.contains("LongDetailFieldRow(title: \"세부 내용\", value: item.detail)"))
+        XCTAssertFalse(inlineItemDetail.contains("\n            DetailFieldRow(title: \"세부 내용\", value: item.detail)"))
+        XCTAssertTrue(longDetailFieldRow.contains("private static let collapsedCharacterLimit = 520"))
+        XCTAssertTrue(longDetailFieldRow.contains("Text(collapsedText(displayValue))"))
+        XCTAssertTrue(longDetailFieldRow.contains("Label(isExpanded ? \"접기\" : \"전체 보기\""))
+        XCTAssertTrue(longDetailFieldRow.contains(".lineLimit(6)"))
         XCTAssertTrue(recentFileRequests.contains(".frame(width: 44, height: 44)"))
         XCTAssertTrue(recentServerRequests.contains(".frame(width: 44, height: 44)"))
         XCTAssertTrue(recentRemoteCommands.contains(".frame(width: 44, height: 44)"))

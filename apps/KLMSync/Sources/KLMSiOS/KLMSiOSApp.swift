@@ -11200,7 +11200,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
             }
             DetailFieldRow(title: "시간", value: item.timestamp)
             DetailFieldRow(title: "학기", value: item.academicTerm)
-            DetailFieldRow(title: "세부 내용", value: item.detail)
+            LongDetailFieldRow(title: "세부 내용", value: item.detail)
             DetailFieldRow(title: "첨부", value: item.attachmentCount > 0 ? "\(item.attachmentCount)개" : "")
             DetailFieldRow(title: "서버 갱신", value: item.updatedAt)
         }
@@ -11428,6 +11428,56 @@ private struct ServerSyncItemInlineDetailPanel: View {
 
     private var tint: Color {
         companionItemKindTint(item.kind)
+    }
+}
+
+private struct LongDetailFieldRow: View {
+    var title: String
+    var value: String
+    @State private var isExpanded = false
+
+    private static let collapsedCharacterLimit = 520
+
+    var body: some View {
+        if let displayValue = value.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+
+                if isExpanded || !isCollapsible(displayValue) {
+                    Text(displayValue)
+                        .font(.subheadline)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text(collapsedText(displayValue))
+                        .font(.subheadline)
+                        .lineLimit(6)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if isCollapsible(displayValue) {
+                    Button {
+                        isExpanded.toggle()
+                    } label: {
+                        Label(isExpanded ? "접기" : "전체 보기", systemImage: isExpanded ? "chevron.up" : "chevron.down")
+                            .frame(minHeight: 36)
+                    }
+                    .buttonStyle(KLMSActionButtonStyle())
+                    .accessibilityLabel(isExpanded ? "\(title) 접기" : "\(title) 전체 보기")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func isCollapsible(_ text: String) -> Bool {
+        text.count > Self.collapsedCharacterLimit
+    }
+
+    private func collapsedText(_ text: String) -> String {
+        "\(String(text.prefix(Self.collapsedCharacterLimit)))..."
     }
 }
 
