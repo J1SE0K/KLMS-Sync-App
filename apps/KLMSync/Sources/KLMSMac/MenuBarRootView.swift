@@ -544,7 +544,7 @@ private struct DashboardTopBarView: View {
         if model.needsAttention {
             return DashboardTopBarSnapshot(
                 title: selectedSection.title,
-                statusText: "확인이 필요합니다 · \(model.attentionSummary)",
+                statusText: "확인이 필요합니다 · 진단 보기에서 원인을 확인하세요.",
                 runningPhaseLabel: nil,
                 statusBadgeText: "확인 필요",
                 tone: .attention
@@ -605,8 +605,9 @@ private struct DashboardTopBarStatusContent: View, Equatable {
             Text(snapshot.statusText)
                 .font(.caption)
                 .foregroundStyle(Color.klmsMacSecondaryText)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
+                .minimumScaleFactor(0.84)
+                .truncationMode(.tail)
         }
         Spacer(minLength: 12)
 
@@ -2217,8 +2218,8 @@ private struct NextActionPanelView: View {
         if model.needsAttention {
             return NextAction(
                 kind: .openDiagnostics,
-                title: model.attentionSummary,
-                detail: "진단 화면에서 권한, 로그인, 파일 상태를 확인하세요.",
+                title: "상태 확인이 필요합니다",
+                detail: "진단 탭에서 실패 원인과 다음 조치를 확인하세요.",
                 buttonTitle: "진단 보기",
                 buttonImage: "wrench.and.screwdriver",
                 systemImage: "exclamationmark.triangle.fill",
@@ -5307,7 +5308,7 @@ private struct IssueSummaryView: View {
     @State private var isExpanded = false
     @State private var isRemainingIssuesExpanded = false
     private let primaryVisibleIssueCount = 1
-    private let remainingVisibleLimit = 6
+    private let remainingVisibleLimit = 3
 
     var body: some View {
         if !issues.isEmpty {
@@ -5384,7 +5385,7 @@ private struct IssueSummaryView: View {
                             if isRemainingIssuesExpanded {
                                 VStack(alignment: .leading, spacing: 6) {
                                     ForEach(remainingIssues.prefix(remainingVisibleLimit)) { issue in
-                                        IssueRowView(issue: issue)
+                                        IssueRowView(issue: issue, compact: true)
                                     }
                                     if remainingIssues.count > remainingVisibleLimit {
                                         Text("나머지 \(remainingIssues.count - remainingVisibleLimit)개는 진단 화면에서 확인할 수 있습니다.")
@@ -5423,6 +5424,7 @@ private struct IssueSummaryView: View {
 
 private struct IssueRowView: View {
     var issue: EngineIssue
+    var compact = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -5436,17 +5438,18 @@ private struct IssueRowView: View {
                 Text(issue.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
+                    .lineLimit(compact ? 1 : 2)
                 if !issue.detail.isEmpty {
                     Text(issue.detail)
                         .font(.caption2)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                         .textSelection(.enabled)
-                        .lineLimit(2)
+                        .lineLimit(compact ? 1 : 2)
                         .truncationMode(.tail)
                 }
             }
         }
-        .padding(9)
+        .padding(compact ? 7 : 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
