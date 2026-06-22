@@ -9013,18 +9013,27 @@ private struct MailPasteAnalyzerPanel: View {
     }
 
     private func runAnalysis() {
-        deferredAnalysisTask?.cancel()
-        analysis = MailPasteAnalyzer.analyze(mailText, syncItems: model.dashboardSyncItems)
+        startAnalysis()
     }
 
     private func scheduleAnalysis() {
+        startAnalysis(debounceNanos: 280_000_000)
+    }
+
+    private func startAnalysis(debounceNanos: UInt64? = nil) {
         deferredAnalysisTask?.cancel()
         let text = mailText
         let items = model.dashboardSyncItems
         deferredAnalysisTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 280_000_000)
+            if let debounceNanos {
+                try? await Task.sleep(nanoseconds: debounceNanos)
+            }
             guard !Task.isCancelled else { return }
-            analysis = MailPasteAnalyzer.analyze(text, syncItems: items)
+            let nextAnalysis = await Task.detached(priority: .userInitiated) {
+                MailPasteAnalyzer.analyze(text, syncItems: items)
+            }.value
+            guard !Task.isCancelled else { return }
+            analysis = nextAnalysis
         }
     }
 }
@@ -9549,7 +9558,7 @@ private struct MailAnalysisPill: View {
     }
 }
 
-private enum MailAnalysisStepTone: String, Equatable {
+private enum MailAnalysisStepTone: String, Equatable, Sendable {
     case secondary
     case orange
     case green
@@ -9578,7 +9587,7 @@ private enum MailAnalysisStepTone: String, Equatable {
     }
 }
 
-private struct MailAnalysisStep: Identifiable, Equatable {
+private struct MailAnalysisStep: Identifiable, Equatable, Sendable {
     var id: String
     var title: String
     var detail: String
@@ -9654,7 +9663,7 @@ private struct MailActionPlanView: View {
     }
 }
 
-private enum MailPasteDetectedKind: String {
+private enum MailPasteDetectedKind: String, Sendable {
     case none
     case assignment
     case exam
@@ -9722,7 +9731,7 @@ private enum MailPasteDetectedKind: String {
     }
 }
 
-private struct MailPasteAnalysis: Equatable {
+private struct MailPasteAnalysis: Equatable, Sendable {
     var kind: MailPasteDetectedKind
     var title: String
     var course: String

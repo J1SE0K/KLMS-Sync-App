@@ -290,7 +290,11 @@ private struct MacWorkstationLayoutView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             case .files:
-                DeferredMacWorkspacePanel(id: "workspace-files", contentIdentifier: "workspace-content-files") {
+                DeferredMacWorkspacePanel(
+                    id: "workspace-files",
+                    contentIdentifier: "workspace-content-files",
+                    contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds
+                ) {
                     cachedDashboardDetailPanel(kind: .files)
                         .equatable()
                 }
