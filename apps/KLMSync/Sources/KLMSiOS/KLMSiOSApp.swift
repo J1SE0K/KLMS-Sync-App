@@ -11073,23 +11073,58 @@ private struct ServerSyncDataPanel: View {
 private struct DeferredServerSyncItemDetailPanel: View {
     var item: ServerRelaySyncItem
     let model: CompanionModel
-    @State private var shouldRender = false
+    @State private var renderedItemID: String?
 
     var body: some View {
         Group {
-            if shouldRender {
+            if renderedItemID == item.id {
                 ServerSyncItemInlineDetailPanel(item: item, model: model)
+            } else {
+                DeferredServerSyncItemDetailPreparingPanel(item: item)
             }
         }
         .task(id: item.id) {
-            shouldRender = false
+            renderedItemID = nil
             await Task.yield()
             guard !Task.isCancelled else { return }
-            shouldRender = true
+            renderedItemID = item.id
         }
         .transaction { transaction in
             transaction.animation = nil
         }
+    }
+}
+
+private struct DeferredServerSyncItemDetailPreparingPanel: View {
+    var item: ServerRelaySyncItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("상세를 준비하는 중입니다.")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text(item.title.nilIfEmpty ?? "선택한 항목")
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("상세 준비 중")
+        .accessibilityValue(item.title.nilIfEmpty ?? "선택한 항목")
     }
 }
 
