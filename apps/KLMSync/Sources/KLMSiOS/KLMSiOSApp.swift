@@ -9048,9 +9048,53 @@ private func companionMailThemeAccent(for colorScheme: ColorScheme) -> Color {
 private struct MailPasteAnalysisResultView: View {
     var analysis: MailPasteAnalysis
     @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        MailPasteAnalysisResultContent(
+            analysis: analysis,
+            registeredDashboardItem: registeredDashboardItem,
+            isSubmitting: model.isSubmitting,
+            detailPanel: { item in
+                AnyView(DeferredServerSyncItemDetailPanel(item: item, model: model))
+            },
+            createCalendarAction: { title, edit in
+                await model.createManualCalendarAction(title: title, edit: edit)
+            },
+            submitDashboardItem: { item in
+                await model.submitMailDashboardItem(item)
+            },
+            removeDashboardItem: { item in
+                await model.submitRemoveMailDashboardItem(item)
+            }
+        )
+        .equatable()
+    }
+
+    private var registeredDashboardItem: ServerRelaySyncItem? {
+        guard let dashboardItem = analysis.dashboardItem else {
+            return nil
+        }
+        return model.mailDashboardItems.first { $0.id == dashboardItem.id }
+    }
+}
+
+private struct MailPasteAnalysisResultContent: View, Equatable {
+    var analysis: MailPasteAnalysis
+    var registeredDashboardItem: ServerRelaySyncItem?
+    var isSubmitting: Bool
+    var detailPanel: (ServerRelaySyncItem) -> AnyView
+    var createCalendarAction: (String, CalendarEventEdit) async -> Void
+    var submitDashboardItem: (ServerRelaySyncItem) async -> Void
+    var removeDashboardItem: (ServerRelaySyncItem) async -> Void
     @State private var selectedItemID: String?
     @State private var isShowingCreateSheet = false
     @State private var dashboardEditItem: ServerRelaySyncItem?
+
+    nonisolated static func == (lhs: MailPasteAnalysisResultContent, rhs: MailPasteAnalysisResultContent) -> Bool {
+        lhs.analysis == rhs.analysis
+            && lhs.registeredDashboardItem == rhs.registeredDashboardItem
+            && lhs.isSubmitting == rhs.isSubmitting
+    }
 
     var body: some View {
         if analysis.isEmpty {
@@ -9155,7 +9199,7 @@ private struct MailPasteAnalysisResultView: View {
                                 .accessibilityHint(selectedItemID == item.id ? "관련 KLMS 항목 상세와 처리 버튼을 접습니다." : "관련 KLMS 항목 상세와 처리 버튼을 펼칩니다.")
 
                                 if selectedItemID == item.id {
-                                    DeferredServerSyncItemDetailPanel(item: item, model: model)
+                                    detailPanel(item)
                                 }
                             }
                         }
@@ -9174,13 +9218,12 @@ private struct MailPasteAnalysisResultView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(KLMSActionButtonStyle(tone: .success))
-                    .disabled(model.isSubmitting)
+                    .disabled(isSubmitting)
                 }
 
                 if let dashboardItem = analysis.dashboardItem {
-                    let registeredItem = model.mailDashboardItems.first { $0.id == dashboardItem.id }
-                    let editableItem = registeredItem ?? dashboardItem
-                    if registeredItem != nil {
+                    let editableItem = registeredDashboardItem ?? dashboardItem
+                    if registeredDashboardItem != nil {
                         HStack(spacing: 8) {
                             Label("대시보드 등록됨", systemImage: "checkmark.circle.fill")
                                 .font(.caption.weight(.semibold))
@@ -9192,16 +9235,16 @@ private struct MailPasteAnalysisResultView: View {
                                 Label("수정", systemImage: "pencil")
                             }
                             .buttonStyle(KLMSActionButtonStyle())
-                            .disabled(model.isSubmitting)
+                            .disabled(isSubmitting)
                             Button(role: .destructive) {
                                 Task {
-                                    await model.submitRemoveMailDashboardItem(editableItem)
+                                    await removeDashboardItem(editableItem)
                                 }
                             } label: {
                                 Label("제거", systemImage: "minus.circle")
                             }
                             .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                            .disabled(model.isSubmitting)
+                            .disabled(isSubmitting)
                         }
                     } else {
                         HStack(spacing: 8) {
@@ -9212,17 +9255,17 @@ private struct MailPasteAnalysisResultView: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(KLMSActionButtonStyle())
-                            .disabled(model.isSubmitting)
+                            .disabled(isSubmitting)
                             Button {
                                 Task {
-                                    await model.submitMailDashboardItem(dashboardItem)
+                                    await submitDashboardItem(dashboardItem)
                                 }
                             } label: {
                                 Label("등록", systemImage: "plus.circle")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(KLMSActionButtonStyle(tone: .accent(analysis.kind.tint)))
-                            .disabled(model.isSubmitting)
+                            .disabled(isSubmitting)
                         }
                     }
                 }
@@ -9236,14 +9279,14 @@ private struct MailPasteAnalysisResultView: View {
             .sheet(isPresented: $isShowingCreateSheet) {
                 MailCalendarCreateForm(analysis: analysis) { edit in
                     Task {
-                        await model.createManualCalendarAction(title: analysis.calendarTitle, edit: edit)
+                        await createCalendarAction(analysis.calendarTitle, edit)
                     }
                 }
             }
             .sheet(item: $dashboardEditItem) { item in
                 MailDashboardItemEditForm(item: item) { edited in
                     Task {
-                        await model.submitMailDashboardItem(edited)
+                        await submitDashboardItem(edited)
                     }
                 }
             }

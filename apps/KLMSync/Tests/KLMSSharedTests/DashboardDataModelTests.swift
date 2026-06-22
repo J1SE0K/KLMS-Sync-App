@@ -2113,7 +2113,10 @@ final class DashboardDataModelTests: XCTestCase {
         let deferredInlineItemDetail = try sourceStructBody(named: "DeferredServerSyncItemDetailPanel", in: ios)
         let inlineItemDetail = try sourceStructBody(named: "ServerSyncItemInlineDetailPanel", in: ios)
         let serverSyncDataRow = try sourceStructBody(named: "ServerSyncDataRow", in: ios)
-        let mailAnalysisResult = try sourceStructBody(named: "MailPasteAnalysisResultView", in: ios)
+        let mailAnalysisResult = try sourceStructBodies(
+            named: ["MailPasteAnalysisResultView", "MailPasteAnalysisResultContent"],
+            in: ios
+        )
         let sharedRunLogRow = try sourceStructBody(named: "SharedRunLogRow", in: ios)
         let serverRequestLogRow = try sourceStructBody(named: "ServerRequestLogRow", in: ios)
         let remoteFileAccessRequestRow = try sourceStructBody(named: "RemoteFileAccessRequestRow", in: ios)
@@ -5035,7 +5038,11 @@ final class DashboardDataModelTests: XCTestCase {
         let dashboardInlineDetail = try sourceStructBody(named: "DashboardCategoryInlineDetailPanel", in: ios)
         let remoteChangeSummary = try sourceStructBody(named: "RemoteDashboardChangeSummary", in: ios)
         let mailPastePanel = try sourceStructBody(named: "MailPasteAnalyzerPanel", in: ios)
-        let mailPasteResult = try sourceStructBody(named: "MailPasteAnalysisResultView", in: ios)
+        let mailPasteResult = try sourceStructBodies(
+            named: ["MailPasteAnalysisResultView", "MailPasteAnalysisResultContent"],
+            in: ios
+        )
+        let mailPasteResultContent = try sourceStructBody(named: "MailPasteAnalysisResultContent", in: ios)
         let mailAnalysisProcess = try sourceStructBody(named: "MailAnalysisProcessView", in: ios)
         let mailPasteAnalyzer = try sourceBody(
             after: "private enum MailPasteAnalyzer",
@@ -5104,6 +5111,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(mailPastePanel.contains("Label(\"입력 비우기\", systemImage: \"trash\")"))
         XCTAssertTrue(mailPastePanel.contains(".onChange(of: model.dashboardSyncItemsRevision)"))
         XCTAssertFalse(mailPastePanel.contains(".onChange(of: model.syncItems)"))
+        XCTAssertFalse(mailPasteResultContent.contains("@ObservedObject var model"))
+        XCTAssertTrue(mailPasteResult.contains(".equatable()"))
+        XCTAssertTrue(mailPasteResult.contains("registeredDashboardItem: registeredDashboardItem"))
+        XCTAssertTrue(mailPasteResult.contains("isSubmitting: model.isSubmitting"))
         XCTAssertTrue(mailPasteResult.contains(".buttonStyle(KLMSCardButtonStyle())"))
         XCTAssertFalse(mailAnalysisProcess.contains("DisclosureGroup"))
         XCTAssertFalse(mailAnalysisProcess.contains("@State private var isExpanded"))
