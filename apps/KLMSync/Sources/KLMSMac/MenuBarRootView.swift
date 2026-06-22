@@ -2874,6 +2874,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     var renderSignature: DashboardRenderSignature
     @State private var selectedDetail: DashboardDetailKind?
     @State private var renderedDetail: DashboardDetailKind?
+    @State private var detailRenderTask: Task<Void, Never>?
     @State private var isArchiveMetricsExpanded = false
 
     init(
@@ -2916,6 +2917,10 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .onDisappear {
+            detailRenderTask?.cancel()
+            detailRenderTask = nil
+        }
     }
 
     private var currentActiveDetail: DashboardDetailKind? {
@@ -2946,7 +2951,17 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
         transaction.animation = nil
         withTransaction(transaction) {
             selectedDetail = detail
-            renderedDetail = detail
+        }
+        detailRenderTask?.cancel()
+        detailRenderTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled, selectedDetail == detail else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                renderedDetail = detail
+            }
+            detailRenderTask = nil
         }
     }
 
@@ -2986,6 +3001,8 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                   archiveMetrics.contains(where: { $0.detail == selectedDetail }) else {
                 return
             }
+            detailRenderTask?.cancel()
+            detailRenderTask = nil
             self.selectedDetail = nil
             self.renderedDetail = nil
         }
