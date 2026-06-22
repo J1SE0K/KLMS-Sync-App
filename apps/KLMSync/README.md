@@ -109,6 +109,8 @@ If Xcode has a signed-in development account but the provisioning profile has no
 IOS_ALLOW_PROVISIONING_UPDATES=1 tools/build_klms_ios_device.sh
 ```
 
+If the signed build says `No Accounts`, open Xcode > Settings > Accounts and sign in with the Apple ID used for device development. The helper prints the full xcodebuild log path and the compile-only fallback command.
+
 `CODE_SIGNING_ALLOWED=NO` is only for compile checks. iPhone and iPad devices reject unsigned app bundles, so install with the signed build path produced by the normal device build or let the install helper build it for you.
 
 To install and launch the signed app on a connected device:

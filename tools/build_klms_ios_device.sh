@@ -14,6 +14,12 @@ MODULE_CACHE_DIR="${MODULE_CACHE_DIR:-/private/tmp/klms-ios-device-module-cache}
 CODE_SIGNING_ALLOWED_VALUE="${CODE_SIGNING_ALLOWED:-YES}"
 LOCAL_SIGNING_OVERRIDES=()
 XCODEBUILD_PROVISIONING_ARGS=()
+BUILD_LOG="${IOS_DEVICE_BUILD_LOG:-$(mktemp -t klms-ios-device-build.XXXXXX)}"
+REMOVE_BUILD_LOG=0
+
+if [[ -z "${IOS_DEVICE_BUILD_LOG:-}" ]]; then
+  REMOVE_BUILD_LOG=1
+fi
 
 if [[ "${IOS_ALLOW_PROVISIONING_UPDATES:-0}" == "1" ]]; then
   XCODEBUILD_PROVISIONING_ARGS=(-allowProvisioningUpdates)
@@ -36,6 +42,7 @@ fi
 
 mkdir -p "$SYMROOT" "$OBJROOT" "$DERIVED_DATA_PATH" "$MODULE_CACHE_DIR"
 
+set +e
 xcodebuild \
   -project "$PROJECT_PATH" \
   -scheme KLMSiOS \
@@ -49,6 +56,30 @@ xcodebuild \
   SYMROOT="$SYMROOT" \
   OBJROOT="$OBJROOT" \
   CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_DIR" \
-  build
+  build 2>&1 | tee "$BUILD_LOG"
+xcodebuild_status=${pipestatus[1]}
+set -e
+
+if (( xcodebuild_status != 0 )); then
+  if [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" ]] && grep -q "No Accounts" "$BUILD_LOG"; then
+    print -ru2 -- ""
+    print -ru2 -- "iPhone/iPad signed build failed because Xcode has no signed-in Apple development account."
+    print -ru2 -- "Open Xcode > Settings > Accounts, sign in, then rerun:"
+    print -ru2 -- "  IOS_ALLOW_PROVISIONING_UPDATES=1 $0"
+    print -ru2 -- "For compile-only validation without installing on a device, run:"
+    print -ru2 -- "  CODE_SIGNING_ALLOWED=NO $0"
+  elif [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" ]] && grep -q "No profiles for" "$BUILD_LOG"; then
+    print -ru2 -- ""
+    print -ru2 -- "iPhone/iPad signed build failed because the local provisioning profile is missing."
+    print -ru2 -- "If Xcode is signed in, let Xcode create/update the profile:"
+    print -ru2 -- "  IOS_ALLOW_PROVISIONING_UPDATES=1 $0"
+  fi
+  print -ru2 -- "Full xcodebuild log: $BUILD_LOG"
+  exit "$xcodebuild_status"
+fi
+
+if (( REMOVE_BUILD_LOG == 1 )); then
+  rm -f "$BUILD_LOG"
+fi
 
 print -r -- "$SYMROOT/Debug-iphoneos/KLMSiOS.app"

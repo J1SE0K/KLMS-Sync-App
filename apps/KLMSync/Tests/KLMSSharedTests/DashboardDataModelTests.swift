@@ -1026,9 +1026,14 @@ final class DashboardDataModelTests: XCTestCase {
         let installScript = try String(contentsOf: installScriptRoot, encoding: .utf8)
         let readme = try String(contentsOf: readmeRoot, encoding: .utf8)
 
+        XCTAssertTrue(buildScript.contains("BUILD_LOG=\"${IOS_DEVICE_BUILD_LOG:-$(mktemp -t klms-ios-device-build.XXXXXX)}\""))
+        XCTAssertTrue(buildScript.contains("2>&1 | tee \"$BUILD_LOG\""))
+        XCTAssertTrue(buildScript.contains("xcodebuild_status=${pipestatus[1]}"))
         XCTAssertTrue(buildScript.contains("IOS_ALLOW_PROVISIONING_UPDATES"))
         XCTAssertTrue(buildScript.contains("XCODEBUILD_PROVISIONING_ARGS=(-allowProvisioningUpdates)"))
         XCTAssertTrue(buildScript.contains("\"${XCODEBUILD_PROVISIONING_ARGS[@]}\""))
+        XCTAssertTrue(buildScript.contains("Xcode has no signed-in Apple development account"))
+        XCTAssertTrue(buildScript.contains("Full xcodebuild log: $BUILD_LOG"))
         XCTAssertTrue(installScript.contains("WAIT_FOR_AVAILABLE_SECONDS=\"${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-45}\""))
         XCTAssertTrue(installScript.contains("DISCOVERY_POLL_SECONDS=\"${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-3}\""))
         XCTAssertTrue(installScript.contains("current_epoch_seconds()"))
@@ -1044,6 +1049,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(readme.contains("waits up to 45 seconds for paired iPhone/iPad devices to become available"))
         XCTAssertTrue(readme.contains("IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS=0"))
         XCTAssertTrue(readme.contains("IOS_ALLOW_PROVISIONING_UPDATES=1 tools/build_klms_ios_device.sh"))
+        XCTAssertTrue(readme.contains("If the signed build says `No Accounts`"))
     }
 
     func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {
