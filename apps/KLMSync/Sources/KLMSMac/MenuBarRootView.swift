@@ -1742,6 +1742,7 @@ private struct LogSummaryPanelView: View {
     let model: KLMSMacModel
     @Binding var expandedKind: LogSummaryKind?
     private static let terminalSummaryDisplayInterval: TimeInterval = 5 * 60
+    private let tileColumns = [GridItem(.adaptive(minimum: 176), spacing: 8)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1767,7 +1768,7 @@ private struct LogSummaryPanelView: View {
                 .disabled(model.runningCommand != nil || !model.hasClearableVisibleLogs)
             }
 
-            HStack(alignment: .top, spacing: 8) {
+            LazyVGrid(columns: tileColumns, alignment: .leading, spacing: 8) {
                 LogSummaryTile(
                     title: "실행",
                     value: runValue,
