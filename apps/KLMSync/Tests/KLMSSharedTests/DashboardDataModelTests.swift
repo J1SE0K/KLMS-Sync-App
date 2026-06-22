@@ -2057,7 +2057,10 @@ final class DashboardDataModelTests: XCTestCase {
         let sectionContent = try sourceStructBody(named: "CompanionSectionContent", in: ios)
         let compactRoot = try sourceStructBody(named: "CompanionTabRootView", in: ios)
         let compactTabBar = try sourceStructBody(named: "CompanionCompactTabBar", in: ios)
-        let dashboardSyncCard = try sourceStructBody(named: "RemoteDashboardSyncCard", in: ios)
+        let dashboardSyncCard = try sourceStructBodies(
+            named: ["RemoteDashboardSyncCard", "RemoteDashboardSyncSnapshot", "RemoteDashboardSyncCardContent"],
+            in: ios
+        )
         let metricOverview = try sourceStructBody(named: "RemoteDashboardMetricOverview", in: ios)
         let metricTile = try sourceStructBody(named: "RemoteMetricTile", in: ios)
         let compactSelectedRow = try sourceStructBody(named: "CompactDashboardSelectedRow", in: ios)
@@ -2714,7 +2717,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSyncCard.contains("return \"전체 동기화\""))
         XCTAssertFalse(dashboardSyncCard.contains("return \"Mac 연결 필요\""))
         XCTAssertFalse(dashboardSyncCard.contains("return \"잠시 대기\""))
-        XCTAssertTrue(dashboardSyncCard.contains("return model.isRemoteAvailable ? \"준비됨\" : \"설정 필요\""))
+        XCTAssertTrue(dashboardSyncCard.contains("return isRemoteAvailable ? \"준비됨\" : \"설정 필요\""))
         XCTAssertFalse(dashboardSyncCard.contains("return model.isRemoteAvailable ? \"준비됨\" : \"연결 필요\""))
         XCTAssertTrue(dashboardSyncCard.contains("isDisabled ? Color.klmsSecondaryText.opacity(0.76) : Color.klmsPrimaryCommandButtonForeground"))
         XCTAssertTrue(dashboardSyncCard.contains("if isDisabled { return Color.klmsSubtleCardBackground.opacity(0.86) }"))
@@ -5068,7 +5071,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(statusScreen.contains("dashboardDetailTask?.cancel()"))
         XCTAssertFalse(statusScreen.contains("deferredStatusDetailTask?.cancel()"))
         XCTAssertTrue(statusScreen.contains("RemoteChangeSummaryDetailPanel"))
-        let dashboardSyncCard = try sourceStructBody(named: "RemoteDashboardSyncCard", in: ios)
+        let dashboardSyncCard = try sourceStructBodies(
+            named: ["RemoteDashboardSyncCard", "RemoteDashboardSyncSnapshot", "RemoteDashboardSyncCardContent"],
+            in: ios
+        )
 
         XCTAssertTrue(dashboardSyncCard.contains("MailPasteAnalyzerPanel"))
         XCTAssertFalse(ios.contains("private struct RemoteCommandPanel"))
@@ -5934,6 +5940,19 @@ final class DashboardDataModelTests: XCTestCase {
     private func sourceStructBody(named name: String, in source: String) throws -> String {
         let marker = "private struct \(name): View"
         return try sourceBody(after: marker, in: source, description: "SwiftUI view struct \(name)")
+    }
+
+    private func sourceStructBodies(named names: [String], in source: String) throws -> String {
+        try names
+            .map { try sourceAnyStructBody(named: $0, in: source) }
+            .joined(separator: "\n")
+    }
+
+    private func sourceAnyStructBody(named name: String, in source: String) throws -> String {
+        if source.contains("private struct \(name): View") {
+            return try sourceStructBody(named: name, in: source)
+        }
+        return try sourceBody(after: "private struct \(name)", in: source, description: "Swift struct \(name)")
     }
 
     private func sourceBody(after marker: String, in source: String, description: String) throws -> String {

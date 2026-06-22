@@ -5750,9 +5750,6 @@ private struct RemoteDashboardSyncCard: View {
     @ObservedObject var model: CompanionModel
     var compact: Bool
 
-    private let secondaryCommands: [RemoteCommandKind] = [.filesSync, .coreSync, .noticeSync]
-    private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 7), count: 3)
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
@@ -5765,13 +5762,14 @@ private struct RemoteDashboardSyncCard: View {
 
             MailPasteAnalyzerPanel(model: model)
 
-            dashboardPrimaryButton
-
-            LazyVGrid(columns: secondaryColumns, spacing: 7) {
-                ForEach(secondaryCommands, id: \.self) { command in
-                    dashboardSecondaryButton(command)
+            RemoteDashboardSyncCardContent(
+                snapshot: snapshot,
+                compact: compact,
+                runOrCancel: { kind in
+                    runOrCancel(kind)
                 }
-            }
+            )
+            .equatable()
         }
         .padding(11)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
@@ -5779,6 +5777,18 @@ private struct RemoteDashboardSyncCard: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
+    }
+
+    private var snapshot: RemoteDashboardSyncSnapshot {
+        RemoteDashboardSyncSnapshot(
+            isRemoteAvailable: model.isRemoteAvailable,
+            isSubmitting: model.isSubmitting,
+            hasInFlightRequest: model.hasInFlightRequest,
+            phase: model.status.phase,
+            activeRequestLabel: model.activeRequestLabel,
+            latestDisplayStatusIsInFlight: model.latestDisplayStatus?.isInFlight == true,
+            latestCommandKind: model.latestCommand?.kind
+        )
     }
 
     private var syncStateChip: some View {
@@ -5790,6 +5800,79 @@ private struct RemoteDashboardSyncCard: View {
             .background(syncStateColor.opacity(0.13), in: Capsule())
             .lineLimit(1)
             .minimumScaleFactor(0.8)
+    }
+
+    private func runOrCancel(_ kind: RemoteCommandKind) {
+        Task {
+            if model.latestDisplayStatus?.isInFlight == true && model.latestCommand?.kind == kind {
+                await model.cancelRunningCommand()
+            } else {
+                await model.createCommand(kind)
+            }
+        }
+    }
+
+    private var syncStateTitle: String {
+        snapshot.syncStateTitle
+    }
+
+    private var syncStateColor: Color {
+        snapshot.isRunning ? Color.klmsCommandAccent : (snapshot.isRemoteAvailable ? Color.klmsSecondaryText : Color.klmsWarningBorder)
+    }
+}
+
+private struct RemoteDashboardSyncSnapshot: Equatable {
+    var isRemoteAvailable: Bool
+    var isSubmitting: Bool
+    var hasInFlightRequest: Bool
+    var phase: String
+    var activeRequestLabel: String
+    var latestDisplayStatusIsInFlight: Bool
+    var latestCommandKind: RemoteCommandKind?
+
+    var isRunning: Bool {
+        hasInFlightRequest || phase == "running"
+    }
+
+    var syncStateTitle: String {
+        if isRunning {
+            return activeRequestLabel
+        }
+        return isRemoteAvailable ? "준비됨" : "설정 필요"
+    }
+
+    func commandDisabled(for kind: RemoteCommandKind) -> Bool {
+        !isRemoteAvailable || isSubmitting || (hasInFlightRequest && !isCommandActive(kind))
+    }
+
+    func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
+        latestDisplayStatusIsInFlight && latestCommandKind == kind
+    }
+}
+
+private struct RemoteDashboardSyncCardContent: View, Equatable {
+    var snapshot: RemoteDashboardSyncSnapshot
+    var compact: Bool
+    var runOrCancel: (RemoteCommandKind) -> Void
+
+    private let secondaryCommands: [RemoteCommandKind] = [.filesSync, .coreSync, .noticeSync]
+    private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 7), count: 3)
+
+    nonisolated static func == (lhs: RemoteDashboardSyncCardContent, rhs: RemoteDashboardSyncCardContent) -> Bool {
+        lhs.snapshot == rhs.snapshot
+            && lhs.compact == rhs.compact
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            dashboardPrimaryButton
+
+            LazyVGrid(columns: secondaryColumns, spacing: 7) {
+                ForEach(secondaryCommands, id: \.self) { command in
+                    dashboardSecondaryButton(command)
+                }
+            }
+        }
     }
 
     private var dashboardPrimaryButton: some View {
@@ -5863,21 +5946,11 @@ private struct RemoteDashboardSyncCard: View {
     }
 
     private func commandDisabled(for kind: RemoteCommandKind) -> Bool {
-        !model.isRemoteAvailable || model.isSubmitting || (model.hasInFlightRequest && !isCommandActive(kind))
+        snapshot.commandDisabled(for: kind)
     }
 
     private func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
-        model.latestDisplayStatus?.isInFlight == true && model.latestCommand?.kind == kind
-    }
-
-    private func runOrCancel(_ kind: RemoteCommandKind) {
-        Task {
-            if isCommandActive(kind) {
-                await model.cancelRunningCommand()
-            } else {
-                await model.createCommand(kind)
-            }
-        }
+        snapshot.isCommandActive(kind)
     }
 
     private func primaryCommandTitle(isRunning: Bool, isDisabled _: Bool) -> String {
@@ -5923,20 +5996,6 @@ private struct RemoteDashboardSyncCard: View {
     private func secondaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
         if isDisabled { return Color.klmsCommandButtonBorder.opacity(0.54) }
         return Color.klmsCommandButtonBorder.opacity(isRunning ? 1.0 : 0.92)
-    }
-
-    private var syncStateTitle: String {
-        if model.hasInFlightRequest || model.status.phase == "running" {
-            return model.activeRequestLabel
-        }
-        return model.isRemoteAvailable ? "준비됨" : "설정 필요"
-    }
-
-    private var syncStateColor: Color {
-        if model.hasInFlightRequest || model.status.phase == "running" {
-            return Color.klmsCommandAccent
-        }
-        return model.isRemoteAvailable ? Color.klmsSecondaryText : Color.klmsWarningBorder
     }
 
     private func shortTitle(for kind: RemoteCommandKind) -> String {
