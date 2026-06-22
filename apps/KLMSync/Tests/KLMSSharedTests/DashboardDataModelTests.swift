@@ -1064,6 +1064,8 @@ final class DashboardDataModelTests: XCTestCase {
         let verifyCheckRow = try sourceStructBody(named: "VerifyCheckExplanationRowView", in: view)
         let issueRowView = try sourceStructBody(named: "IssueRowView", in: view)
         let logTextBlock = try sourceStructBody(named: "LogTextBlock", in: view)
+        let logSummaryDetail = try sourceStructBody(named: "LogSummaryDetailView", in: view)
+        let currentRunLogCard = try sourceStructBody(named: "CurrentRunLogCardView", in: view)
         let dashboardFilterBar = try sourceStructBody(named: "DashboardFilterBarView", in: detail)
         let dashboardControlBox = try sourceBody(
             after: "private struct DashboardControlBox<Content: View>: View",
@@ -1305,6 +1307,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macModel.contains("@Published private(set) var latestCommandHistoryStageDurations: [KLMSStageDuration] = []"))
         XCTAssertTrue(macModel.contains("rebuildCommandHistoryStageDurationCache()"))
         XCTAssertTrue(macModel.contains("let nextStageDurations = KLMSStageDurationParser.parse(from: liveCommandOutputBuffer)"))
+        XCTAssertTrue(macModel.contains("@Published private(set) var lastCommandDisplayOutput = \"\""))
+        XCTAssertTrue(macModel.contains("rebuildLastCommandDisplayOutputCache()"))
+        XCTAssertTrue(macModel.contains("private static func lastCommandDisplayOutput(from result: KLMSCommandResult?) -> String"))
+        XCTAssertTrue(logSummaryDetail.contains("return model.lastCommandDisplayOutput"))
+        XCTAssertTrue(currentRunLogCard.contains("return model.lastCommandDisplayOutput"))
+        XCTAssertFalse(logSummaryDetail.contains("result.combinedOutput.klmsDisplayText"))
+        XCTAssertFalse(currentRunLogCard.contains("result.combinedOutput.klmsDisplayText"))
+        XCTAssertFalse(currentRunLogCard.contains("private static func boundedOutput"))
         XCTAssertTrue(view.contains("return model.latestCommandHistoryStageDurations"))
         XCTAssertFalse(view.contains("first(where: { !$0.outputTail.trimmingCharacters"))
         XCTAssertFalse(commandPanel.contains("private static func boundedStageDurationSource(_ output: String) -> String"))

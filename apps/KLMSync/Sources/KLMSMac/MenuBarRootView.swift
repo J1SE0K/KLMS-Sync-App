@@ -2088,14 +2088,9 @@ private struct LogSummaryDetailView: View {
 
     private var runLogText: String {
         if !model.liveCommandOutput.isEmpty {
-            return model.liveCommandOutput.klmsDisplayText
+            return model.liveCommandOutput
         }
-        guard let result = model.lastCommandResult else {
-            return ""
-        }
-        return result.wasCancelled
-            ? result.combinedOutput.klmsDisplayText.klmsRedactingAuthDigitsForDisplay
-            : result.combinedOutput.klmsDisplayText
+        return model.lastCommandDisplayOutput
     }
 
     private func bounded(_ text: String) -> String {
@@ -5109,15 +5104,9 @@ private struct CurrentRunLogCardView: View {
 
     private var currentOutput: String {
         if !model.liveCommandOutput.isEmpty {
-            return Self.boundedOutput(model.liveCommandOutput.klmsDisplayText)
+            return model.liveCommandOutput
         }
-        guard let result = model.lastCommandResult else {
-            return ""
-        }
-        let output = result.wasCancelled
-            ? result.combinedOutput.klmsDisplayText.klmsRedactingAuthDigitsForDisplay
-            : result.combinedOutput.klmsDisplayText
-        return Self.boundedOutput(output)
+        return model.lastCommandDisplayOutput
     }
 
     private var statusText: String {
@@ -5162,15 +5151,6 @@ private struct CurrentRunLogCardView: View {
         return .klmsMacSecondaryText
     }
 
-    private static func boundedOutput(_ text: String) -> String {
-        let maxCharacters = 32_000
-        let prefix = "... 이전 로그 일부 생략됨 ...\n"
-        guard text.count > maxCharacters else {
-            return text
-        }
-        let suffixLength = max(0, maxCharacters - prefix.count)
-        return prefix + String(text.suffix(suffixLength))
-    }
 }
 
 private struct RunLogArchiveRowView: View {

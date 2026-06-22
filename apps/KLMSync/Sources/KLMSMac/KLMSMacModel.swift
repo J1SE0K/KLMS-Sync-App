@@ -159,7 +159,12 @@ final class KLMSMacModel: ObservableObject {
     }
     @Published var latestBackup: AppDataBackupRecord?
     @Published var installResult: EngineInstallResult?
-    @Published var lastCommandResult: KLMSCommandResult?
+    @Published var lastCommandResult: KLMSCommandResult? {
+        didSet {
+            rebuildLastCommandDisplayOutputCache()
+        }
+    }
+    @Published private(set) var lastCommandDisplayOutput = ""
     @Published var lastRemoteCommand: RemoteRunCommand?
     @Published var serverRelayRecentRequestLog: [ServerRelayRequestLogEntry] = []
     @Published var serverRelayRecentFileAccessRequests: [ServerRelayFileAccessRequest] = []
@@ -260,6 +265,7 @@ final class KLMSMacModel: ObservableObject {
     private static let passiveAuxiliaryRefreshMinimumInterval: TimeInterval = 300
     private static let liveCommandOutputPublishIntervalNanoseconds: UInt64 = 500_000_000
     private static let liveCommandOutputMaxCharacters = 8_000
+    private static let lastCommandDisplayOutputMaxCharacters = 32_000
     private static let liveAuthObservationMaxCharacters = 4_000
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
@@ -4203,6 +4209,13 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
+    private func rebuildLastCommandDisplayOutputCache() {
+        let nextOutput = Self.lastCommandDisplayOutput(from: lastCommandResult)
+        if lastCommandDisplayOutput != nextOutput {
+            lastCommandDisplayOutput = nextOutput
+        }
+    }
+
     private func scheduleLiveCommandOutputPublish() {
         guard liveCommandOutputPublishTask == nil else {
             return
@@ -4238,6 +4251,20 @@ final class KLMSMacModel: ObservableObject {
         }
         let suffixLength = max(0, liveCommandOutputMaxCharacters - trimmedLiveCommandOutputPrefix.count)
         return trimmedLiveCommandOutputPrefix + String(text.suffix(suffixLength))
+    }
+
+    private static func lastCommandDisplayOutput(from result: KLMSCommandResult?) -> String {
+        guard let result else {
+            return ""
+        }
+        let output = result.wasCancelled
+            ? result.combinedOutput.klmsDisplayText.klmsRedactingAuthDigitsForDisplay
+            : result.combinedOutput.klmsDisplayText
+        guard output.count > lastCommandDisplayOutputMaxCharacters else {
+            return output
+        }
+        let suffixLength = max(0, lastCommandDisplayOutputMaxCharacters - trimmedLiveCommandOutputPrefix.count)
+        return trimmedLiveCommandOutputPrefix + String(output.suffix(suffixLength))
     }
 
     private static func trimSuffix(_ text: String, maxCharacters: Int) -> String {
