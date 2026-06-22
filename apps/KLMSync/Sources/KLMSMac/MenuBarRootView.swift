@@ -5298,7 +5298,7 @@ private struct RunLogArchiveRowView: View {
             .accessibilityLabel("\(record.command.displayName) 실행 로그 \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "실행 로그 접기" : "실행 로그 펼치기")
 
-            if isExpanded {
+            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Label(record.command.isDiagnostic ? "진단 명령" : "동기화 명령", systemImage: record.command.isDiagnostic ? "wrench.and.screwdriver" : "arrow.triangle.2.circlepath")
