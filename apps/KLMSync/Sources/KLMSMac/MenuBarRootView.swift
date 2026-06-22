@@ -4620,7 +4620,7 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
             .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
 
-            if isExpanded {
+            DeferredMacInteractionExpansion(isExpanded: isExpanded) {
                 VStack(alignment: .leading, spacing: compact ? 5 : 6) {
                     content()
                 }
