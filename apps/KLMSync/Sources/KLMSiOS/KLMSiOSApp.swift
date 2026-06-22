@@ -6034,6 +6034,7 @@ private struct RemoteDashboardMetricOverview: View {
     var selectedChangeSummary: RemoteChangeSummaryKind?
     var showsCompactChangeDetail = true
     var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void
+    private let metricSnapshot: RemoteDashboardMetricSnapshot
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private let compactColumns = [
@@ -6041,17 +6042,47 @@ private struct RemoteDashboardMetricOverview: View {
     ]
     private let workstationColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 2)
 
+    init(
+        model: CompanionModel,
+        status: SanitizedRemoteStatus,
+        isDataLoaded: Bool,
+        hasFileCleanupDetails: Bool,
+        showsLoadingPlaceholder: Bool = true,
+        selectedCategory: Binding<DashboardMetricCategory?>,
+        effectiveSelectedCategory: DashboardMetricCategory? = nil,
+        onCategoryTap: @escaping (DashboardMetricCategory) -> Void,
+        selectedChangeSummary: RemoteChangeSummaryKind?,
+        showsCompactChangeDetail: Bool = true,
+        onChangeSummaryTap: @escaping (RemoteChangeSummaryKind) -> Void
+    ) {
+        self.model = model
+        self.status = status
+        self.isDataLoaded = isDataLoaded
+        self.hasFileCleanupDetails = hasFileCleanupDetails
+        self.showsLoadingPlaceholder = showsLoadingPlaceholder
+        _selectedCategory = selectedCategory
+        self.effectiveSelectedCategory = effectiveSelectedCategory
+        self.onCategoryTap = onCategoryTap
+        self.selectedChangeSummary = selectedChangeSummary
+        self.showsCompactChangeDetail = showsCompactChangeDetail
+        self.onChangeSummaryTap = onChangeSummaryTap
+        metricSnapshot = RemoteDashboardMetricSnapshot(
+            status: status,
+            hasFileCleanupDetails: hasFileCleanupDetails
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !isDataLoaded {
                 if showsLoadingPlaceholder {
                     CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
                 }
-            } else if shouldShowPrimaryMetricSection {
-                metricSection("주요 항목", categories: primaryMetricCategories)
+            } else if metricSnapshot.shouldShowPrimaryMetricSection {
+                metricSection("주요 항목", categories: metricSnapshot.primaryMetricCategories)
             }
-            if shouldShowAttentionMetricSection {
-                metricSection("확인 필요", categories: attentionMetricCategories)
+            if metricSnapshot.shouldShowAttentionMetricSection {
+                metricSection("확인 필요", categories: metricSnapshot.attentionMetricCategories)
             } else if shouldShowInlineEmptyDashboardMessage {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.subheadline.weight(.semibold))
@@ -6065,7 +6096,7 @@ private struct RemoteDashboardMetricOverview: View {
                     }
             }
 
-            if hasVisibleChangeSummary {
+            if metricSnapshot.hasVisibleChangeSummary {
                 RemoteDashboardChangeSummary(
                     status: displayStatus,
                     hasFileCleanupDetails: hasFileCleanupDetails,
@@ -6120,39 +6151,12 @@ private struct RemoteDashboardMetricOverview: View {
         status
     }
 
-    private var primaryMetricCategories: [DashboardMetricCategory] {
-        let required: [DashboardMetricCategory] = [.files, .assignments, .notices, .exams]
-            .filter { $0.value(from: displayStatus) > 0 }
-        let optional: [DashboardMetricCategory] = [.helpDesk].filter { $0.value(from: displayStatus) > 0 }
-        return required + optional
-    }
-
-    private var attentionMetricCategories: [DashboardMetricCategory] {
-        let categories: [DashboardMetricCategory] = [.quarantine, .calendar]
-        return categories.filter { $0.value(from: displayStatus) > 0 }
-    }
-
-    private var shouldShowPrimaryMetricSection: Bool {
-        !primaryMetricCategories.isEmpty
-    }
-
-    private var shouldShowAttentionMetricSection: Bool {
-        !attentionMetricCategories.isEmpty
-    }
-
     private var shouldShowInlineEmptyDashboardMessage: Bool {
         isDataLoaded
             && horizontalSizeClass != .regular
-            && primaryMetricCategories.isEmpty
-            && attentionMetricCategories.isEmpty
-            && !hasVisibleChangeSummary
-    }
-
-    private var hasVisibleChangeSummary: Bool {
-        RemoteChangeSummaryKind.allCases.contains { kind in
-            guard kind.value(from: displayStatus) > 0 else { return false }
-            return kind != .fileCleanup || hasFileCleanupDetails
-        }
+            && metricSnapshot.primaryMetricCategories.isEmpty
+            && metricSnapshot.attentionMetricCategories.isEmpty
+            && !metricSnapshot.hasVisibleChangeSummary
     }
 
     private func selectCategory(_ category: DashboardMetricCategory) {
@@ -6164,6 +6168,36 @@ private struct RemoteDashboardMetricOverview: View {
 
     private func isSelected(_ category: DashboardMetricCategory) -> Bool {
         (effectiveSelectedCategory ?? selectedCategory) == category
+    }
+}
+
+private struct RemoteDashboardMetricSnapshot: Equatable {
+    var primaryMetricCategories: [DashboardMetricCategory]
+    var attentionMetricCategories: [DashboardMetricCategory]
+    var hasVisibleChangeSummary: Bool
+
+    init(status: SanitizedRemoteStatus, hasFileCleanupDetails: Bool) {
+        let required: [DashboardMetricCategory] = [.files, .assignments, .notices, .exams]
+            .filter { $0.value(from: status) > 0 }
+        let optional: [DashboardMetricCategory] = [.helpDesk]
+            .filter { $0.value(from: status) > 0 }
+        primaryMetricCategories = required + optional
+
+        let attentionCategories: [DashboardMetricCategory] = [.quarantine, .calendar]
+        attentionMetricCategories = attentionCategories.filter { $0.value(from: status) > 0 }
+
+        hasVisibleChangeSummary = RemoteChangeSummaryKind.allCases.contains { kind in
+            guard kind.value(from: status) > 0 else { return false }
+            return kind != .fileCleanup || hasFileCleanupDetails
+        }
+    }
+
+    var shouldShowPrimaryMetricSection: Bool {
+        !primaryMetricCategories.isEmpty
+    }
+
+    var shouldShowAttentionMetricSection: Bool {
+        !attentionMetricCategories.isEmpty
     }
 }
 
