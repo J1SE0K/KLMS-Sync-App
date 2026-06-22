@@ -2393,6 +2393,17 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(rebuildDashboardStatus.contains("visibleCounts: dashboardVisibleCounts"))
         XCTAssertTrue(rebuildDashboardStatus.contains("calendarChanges: visibleCalendarChangesCache"))
         XCTAssertFalse(rebuildDashboardStatus.contains("next.applyMailDashboardItems"))
+        let withoutDashboardCounts = try sourceBody(
+            after: "func withoutDashboardCounts() -> SanitizedRemoteStatus",
+            in: ios,
+            description: "iOS dashboard status without loaded sync data"
+        )
+        XCTAssertFalse(withoutDashboardCounts.contains("assignments: assignments"))
+        XCTAssertFalse(withoutDashboardCounts.contains("exams: exams"))
+        XCTAssertFalse(withoutDashboardCounts.contains("notices: notices"))
+        XCTAssertFalse(withoutDashboardCounts.contains("fileTotal: fileTotal"))
+        XCTAssertTrue(withoutDashboardCounts.contains("phase: phase"))
+        XCTAssertTrue(withoutDashboardCounts.contains("authDigits: authDigits"))
         XCTAssertTrue(ios.contains("var nextVisibleCounts = CompanionDashboardVisibleCounts()"))
         XCTAssertTrue(ios.contains("let defaultStatusFilter = CompanionItemStatusFilter.defaultFilter(for: category)"))
         XCTAssertTrue(ios.contains("if defaultStatusFilter.includes(item) {\n                    defaultVisibleCount += 1"))
