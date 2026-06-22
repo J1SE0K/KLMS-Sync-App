@@ -4149,7 +4149,7 @@ private struct CompanionScreenHeader: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(1)
-                CompanionHeaderStatusPill(model: model)
+                CompanionHeaderStatusPill(snapshot: headerStatusSnapshot)
             }
         }
     }
@@ -4160,24 +4160,24 @@ private struct CompanionScreenHeader: View {
                 .font(.title2.weight(.bold))
                 .foregroundStyle(Color.klmsPrimaryText)
             Spacer(minLength: 8)
-            CompanionHeaderStatusPill(model: model)
+            CompanionHeaderStatusPill(snapshot: headerStatusSnapshot)
         }
     }
-}
 
-private struct CompanionHeaderStatusPill: View {
-    @ObservedObject var model: CompanionModel
-
-    var body: some View {
-        CompanionHeaderStatusPillContent(snapshot: snapshot)
-            .equatable()
-    }
-
-    private var snapshot: CompanionHeaderStatusSnapshot {
+    private var headerStatusSnapshot: CompanionHeaderStatusSnapshot {
         CompanionHeaderStatusSnapshot(
             isRefreshing: model.isRefreshing,
             lastRefreshAt: model.lastRefreshAt
         )
+    }
+}
+
+private struct CompanionHeaderStatusPill: View {
+    var snapshot: CompanionHeaderStatusSnapshot
+
+    var body: some View {
+        CompanionHeaderStatusPillContent(snapshot: snapshot)
+            .equatable()
     }
 }
 
