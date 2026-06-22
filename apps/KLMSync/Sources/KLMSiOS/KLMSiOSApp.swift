@@ -11736,85 +11736,6 @@ private struct RemoteStageDurationSummaryView: View {
     }
 }
 
-private struct RemoteRunRequestHistoryPanel: View {
-    @ObservedObject var model: CompanionModel
-
-    private var commandRows: [RemoteRunCommand] {
-        Array(model.recentCommands.prefix(3))
-    }
-
-    private var fileRequestRows: [ServerRelayFileAccessRequest] {
-        Array(model.recentFileAccessRequests.prefix(3))
-    }
-
-    private var serverRequestRows: [ServerRelayRequestLogEntry] {
-        Array(model.recentRequestLog.prefix(5))
-    }
-
-    private var totalCount: Int {
-        model.recentCommands.count + model.recentFileAccessRequests.count + model.recentRequestLog.count
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 8) {
-                Label("요청 기록", systemImage: "clock.arrow.circlepath")
-                    .font(.headline)
-                Spacer(minLength: 8)
-                Text(totalCount == 0 ? "없음" : "최근 \(totalCount)개")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(Color.klmsSecondaryText)
-            }
-
-            if totalCount == 0 {
-                Text("요청이 오면 최근 기록을 여기에 보여줍니다.")
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-            } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    if !commandRows.isEmpty {
-                        requestGroupTitle("원격 실행")
-                        ForEach(commandRows) { command in
-                            RemoteCommandRow(command: command, compact: true)
-                        }
-                    }
-                    if !fileRequestRows.isEmpty {
-                        requestGroupTitle("파일 요청")
-                        ForEach(fileRequestRows) { request in
-                            RemoteFileAccessRequestRow(request: request)
-                        }
-                    }
-                    if !serverRequestRows.isEmpty {
-                        requestGroupTitle("서버 요청")
-                        ForEach(serverRequestRows) { entry in
-                            ServerRequestLogRow(entry: entry)
-                        }
-                    }
-                    Text("전체 내역은 아래 메뉴의 로그 탭에서 볼 수 있습니다.")
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
-            }
-        }
-        .padding(14)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        }
-    }
-
-    private func requestGroupTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(Color.klmsSecondaryText)
-            .padding(.top, 2)
-    }
-}
-
 private struct RemoteVerifySummaryPanel: View {
     var summary: ServerRelayVerifySummary?
     @State private var showsAllChecks = false
@@ -12098,7 +12019,9 @@ private struct RemoteDiagnosticPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                isPanelExpanded.toggle()
+                companionPerformWithoutAnimation {
+                    isPanelExpanded.toggle()
+                }
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     Image(systemName: "wrench.and.screwdriver")
