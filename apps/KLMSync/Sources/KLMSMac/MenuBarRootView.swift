@@ -1620,6 +1620,41 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
     }
 }
 
+private struct KLMSMacCompactDangerIconButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(isEnabled ? Color.klmsMacDangerBorder : Color.klmsMacSecondaryText.opacity(0.58))
+            .frame(width: 32, height: 32)
+            .background {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(background(isPressed: configuration.isPressed))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1.0 : 0.54)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func background(isPressed: Bool) -> Color {
+        guard isEnabled else {
+            return Color.klmsMacCommandButtonBackground.opacity(0.36)
+        }
+        return Color.klmsMacDangerBorder.opacity(isPressed ? 0.18 : 0.10)
+    }
+
+    private func border(isPressed: Bool) -> Color {
+        guard isEnabled else {
+            return Color.klmsMacCommandButtonBorder.opacity(0.38)
+        }
+        return Color.klmsMacDangerBorder.opacity(isPressed ? 0.70 : 0.42)
+    }
+}
+
 private enum IntegrationHealth {
     case ok
     case warning
@@ -1774,7 +1809,7 @@ private struct LogSummaryPanelView: View {
                 } label: {
                     Image(systemName: "trash")
                 }
-                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                 .help("화면의 실행 로그, 서버 요청, 파일 요청, 항목 변경, 설정 변경, 공유 실행 로그를 지웁니다. 진행 중인 요청은 유지됩니다.")
                 .accessibilityLabel("전체 기록 지우기")
                 .disabled(model.runningCommand != nil || !model.hasClearableVisibleLogs)
@@ -3298,7 +3333,7 @@ private struct RemoteActivityPanelView: View {
                         } label: {
                             Image(systemName: "trash")
                         }
-                        .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                        .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                         .help("서버·파일 요청 기록 지우기")
                         .accessibilityLabel("서버·파일 요청 기록 지우기")
                         .disabled(!model.serverRelayConfigured || !model.hasClearableServerActivityLogs)
@@ -4913,7 +4948,7 @@ private struct RunLogArchivePanelView: View {
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                    .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                     .help("실행 로그 지우기")
                     .accessibilityLabel("실행 로그 지우기")
                     .disabled(model.runningCommand != nil || !model.hasClearableExecutionRunLogs)
@@ -5026,7 +5061,7 @@ private struct RunLogArchivePanelView: View {
                         } label: {
                             Image(systemName: "trash")
                         }
-                        .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
+                        .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                         .help("서버 로그 지우기")
                         .accessibilityLabel("서버 로그 지우기")
                         .disabled(!model.hasClearableLocalRelayLogs)
