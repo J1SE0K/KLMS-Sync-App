@@ -916,6 +916,14 @@ private struct MacWorkspaceScrollResetKey: Equatable {
     var nonce: Int
 }
 
+private func macPerformWithoutAnimation(_ updates: () -> Void) {
+    var transaction = Transaction()
+    transaction.animation = nil
+    withTransaction(transaction) {
+        updates()
+    }
+}
+
 private struct WholeScreenVerticalScrollView<ResetID: Equatable, Content: View>: View {
     var resetID: ResetID
     @ViewBuilder var content: Content
@@ -3034,7 +3042,9 @@ private struct DashboardRuntimePanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                isExpanded.toggle()
+                macPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(spacing: 8) {
                     Label("연동 상태", systemImage: "link")
@@ -4513,7 +4523,9 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 5 : 7) {
             Button {
-                isExpanded.toggle()
+                macPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(spacing: 7) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -4839,7 +4851,9 @@ private struct RunLogArchivePanelView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Button {
-                        isHistoryExpanded.toggle()
+                        macPerformWithoutAnimation {
+                            isHistoryExpanded.toggle()
+                        }
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "clock.arrow.circlepath")
@@ -4961,7 +4975,9 @@ private struct RunLogArchivePanelView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Button {
-                            showingSystemLogs.toggle()
+                            macPerformWithoutAnimation {
+                                showingSystemLogs.toggle()
+                            }
                         } label: {
                             HStack(spacing: 8) {
                                 Label("서버 로그 보기", systemImage: "network")
@@ -5161,7 +5177,9 @@ private struct RunLogArchiveRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                isExpanded.toggle()
+                macPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: statusImage)

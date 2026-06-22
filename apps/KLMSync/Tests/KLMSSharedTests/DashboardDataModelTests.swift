@@ -3850,6 +3850,7 @@ final class DashboardDataModelTests: XCTestCase {
         let diagnosticToolsPanel = try sourceStructBody(named: "DiagnosticToolsPanelView", in: mac)
         let diagnosticStageDurationPanel = try sourceStructBody(named: "DiagnosticStageDurationPanelView", in: mac)
         let appDiagnosticsPanel = try sourceStructBody(named: "AppDiagnosticsPanelView", in: mac)
+        let runLogArchivePanel = try sourceStructBody(named: "RunLogArchivePanelView", in: mac)
         XCTAssertTrue(issueSummaryView.contains("@State private var isExpanded = false"))
         XCTAssertTrue(issueSummaryView.contains("@State private var isRemainingIssuesExpanded = false"))
         XCTAssertTrue(issueSummaryView.contains("private let primaryVisibleIssueCount = 1"))
@@ -3885,6 +3886,10 @@ final class DashboardDataModelTests: XCTestCase {
             description: "Mac diagnostic checks disclosure"
         )
         XCTAssertTrue(mac.contains("private struct DiagnosticChecksDisclosure"))
+        XCTAssertTrue(mac.contains("private func macPerformWithoutAnimation"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains("macPerformWithoutAnimation {\n                    isExpanded.toggle()"))
+        XCTAssertTrue(runLogArchivePanel.contains("macPerformWithoutAnimation {\n                            isHistoryExpanded.toggle()"))
+        XCTAssertTrue(runLogArchivePanel.contains("macPerformWithoutAnimation {\n                                showingSystemLogs.toggle()"))
         XCTAssertTrue(verifyPanelView.contains("SectionBox(title: \"상태 검사\")"))
         XCTAssertTrue(verifyPanelView.contains("상태 검사에서 설명이 필요한 실패 항목이 없습니다."))
         XCTAssertTrue(verifyPanelView.contains("@State private var isAllChecksExpanded = false"))
