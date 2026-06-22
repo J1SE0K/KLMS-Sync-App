@@ -8339,6 +8339,7 @@ private struct CompanionInlineItemRowsView: View {
     var onSelectItem: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var optimisticExternalSelectedItemID: String?
+    @State private var deferredExternalSelectionTask: Task<Void, Never>?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
@@ -8418,6 +8419,10 @@ private struct CompanionInlineItemRowsView: View {
             clearStaleInlineSelectionIfNeeded()
             clearStaleExternalSelectionIfNeeded()
         }
+        .onDisappear {
+            deferredExternalSelectionTask?.cancel()
+            deferredExternalSelectionTask = nil
+        }
     }
 
     private var activeSelectedItemID: String? {
@@ -8461,7 +8466,13 @@ private struct CompanionInlineItemRowsView: View {
             companionPerformWithoutAnimation {
                 optimisticExternalSelectedItemID = itemID
             }
-            onSelectItem(item)
+            deferredExternalSelectionTask?.cancel()
+            deferredExternalSelectionTask = Task { @MainActor in
+                await Task.yield()
+                guard !Task.isCancelled, optimisticExternalSelectedItemID == itemID else { return }
+                onSelectItem(item)
+                deferredExternalSelectionTask = nil
+            }
             return
         }
 
@@ -8501,6 +8512,7 @@ private struct CompanionSelectableItemListRows: View {
     var itemIDs: Set<String>
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
+    @State private var deferredSelectionTask: Task<Void, Never>?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
@@ -8551,6 +8563,10 @@ private struct CompanionSelectableItemListRows: View {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
             clearStaleSelectionIfNeeded()
         }
+        .onDisappear {
+            deferredSelectionTask?.cancel()
+            deferredSelectionTask = nil
+        }
     }
 
     private var currentInitialVisibleLimit: Int {
@@ -8573,8 +8589,13 @@ private struct CompanionSelectableItemListRows: View {
         companionPerformWithoutAnimation {
             selectedItemID = item.id
         }
-        guard selectedItemID == itemID else { return }
-        onSelect(item)
+        deferredSelectionTask?.cancel()
+        deferredSelectionTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled, selectedItemID == itemID else { return }
+            onSelect(item)
+            deferredSelectionTask = nil
+        }
     }
 
     private func clearStaleSelectionIfNeeded() {
