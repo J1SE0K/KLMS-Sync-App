@@ -4833,12 +4833,17 @@ private enum RunLogArchiveFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private enum RunLogArchiveList {
+    static let initialVisibleLimit = 12
+    static let increment = 18
+}
+
 private struct RunLogArchivePanelView: View {
     let model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
     @State private var isHistoryExpanded = false
     @State private var showingSystemLogs = false
-    @State private var visibleLimit = 30
+    @State private var visibleLimit = RunLogArchiveList.initialVisibleLimit
 
     private var records: [CommandRunRecord] {
         model.commandHistory.records
@@ -4952,7 +4957,7 @@ private struct RunLogArchivePanelView: View {
                             }
                             if filtered.count > visible.count {
                                 Button {
-                                    visibleLimit += 30
+                                    visibleLimit += RunLogArchiveList.increment
                                 } label: {
                                     HStack {
                                         Text("더 보기")
@@ -5026,7 +5031,7 @@ private struct RunLogArchivePanelView: View {
             }
         }
         .onChange(of: filter) { _, _ in
-            visibleLimit = 30
+            visibleLimit = RunLogArchiveList.initialVisibleLimit
         }
     }
 
