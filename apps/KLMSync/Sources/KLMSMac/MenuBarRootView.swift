@@ -1285,7 +1285,9 @@ private struct ExternalIntegrationStatusView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Button {
-                    isExpanded.toggle()
+                    macPerformWithoutAnimation {
+                        isExpanded.toggle()
+                    }
                 } label: {
                     HStack(spacing: 8) {
                         Label("연동 상태", systemImage: "link")
@@ -4239,7 +4241,9 @@ private struct DashboardArchiveMetricSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                isExpanded.toggle()
+                macPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -5808,7 +5812,9 @@ struct CollapsibleSectionBox<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
-                isExpanded.toggle()
+                macPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(spacing: 8) {
                     if let systemImage {
