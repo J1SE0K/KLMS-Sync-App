@@ -7736,10 +7736,10 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         categoryRegularWorkspace
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .onAppear {
-                refreshExternalSelection()
+                clearStaleExternalSelectionIfNeeded()
             }
             .onChange(of: itemsResetKey) { _, _ in
-                refreshExternalSelection()
+                clearStaleExternalSelectionIfNeeded()
             }
     }
 
@@ -7795,21 +7795,14 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         }
     }
 
-    private func refreshExternalSelection() {
+    private func clearStaleExternalSelectionIfNeeded() {
         if let selectedItemID,
            model.cachedVisibleDashboardItem(for: selectedItemID, categoryID: category.rawValue) != nil {
             return
         }
 
-        guard let first = items.first else {
-            companionPerformWithoutAnimation {
-                selectedItemID = nil
-            }
-            return
-        }
-
         companionPerformWithoutAnimation {
-            selectedItemID = first.id
+            selectedItemID = nil
         }
     }
 }
@@ -7869,17 +7862,17 @@ private struct WorkstationTasksWorkspace: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .onAppear {
             normalizeSelectedTaskCategory()
-            refreshExternalSelection()
+            clearStaleExternalSelectionIfNeeded()
         }
         .onChange(of: categoryAvailabilityKey) { _, _ in
             normalizeSelectedTaskCategory()
-            refreshExternalSelection()
+            clearStaleExternalSelectionIfNeeded()
         }
         .onChange(of: selectedTaskCategory) { _, _ in
-            refreshExternalSelection()
+            clearStaleExternalSelectionIfNeeded()
         }
         .onChange(of: itemsResetKey) { _, _ in
-            refreshExternalSelection()
+            clearStaleExternalSelectionIfNeeded()
         }
     }
 
@@ -7947,21 +7940,14 @@ private struct WorkstationTasksWorkspace: View {
         }
     }
 
-    private func refreshExternalSelection() {
+    private func clearStaleExternalSelectionIfNeeded() {
         if let selectedItemID,
            model.cachedVisibleDashboardItem(for: selectedItemID, categoryID: selectedTaskCategory.rawValue) != nil {
             return
         }
 
-        guard let first = selectedCategoryItems.first else {
-            companionPerformWithoutAnimation {
-                selectedItemID = nil
-            }
-            return
-        }
-
         companionPerformWithoutAnimation {
-            selectedItemID = first.id
+            selectedItemID = nil
         }
     }
 
@@ -8083,11 +8069,11 @@ private struct WorkstationCalendarWorkspace: View {
         calendarRegularWorkspace
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .onAppear {
-                refreshExternalSelection()
+                clearStaleExternalSelectionIfNeeded()
             }
             .onChange(of: changesResetKey) { _, _ in
                 calendarVisibleLimit = CompanionLargeList.regularCalendarVisibleLimit
-                refreshExternalSelection()
+                clearStaleExternalSelectionIfNeeded()
             }
     }
 
@@ -8285,21 +8271,14 @@ private struct WorkstationCalendarWorkspace: View {
         }
     }
 
-    private func refreshExternalSelection() {
+    private func clearStaleExternalSelectionIfNeeded() {
         if let selectedChangeID,
            model.visibleCalendarChange(for: selectedChangeID) != nil {
             return
         }
 
-        guard let first = changes.first else {
-            companionPerformWithoutAnimation {
-                selectedChangeID = nil
-            }
-            return
-        }
-
         companionPerformWithoutAnimation {
-            selectedChangeID = first.id
+            selectedChangeID = nil
         }
     }
 }
