@@ -1276,7 +1276,7 @@ private struct StatusChipView: View {
 
 private struct ExternalIntegrationStatusView: View {
     let model: KLMSMacModel
-    @AppStorage("KLMSMacIntegrationStatusExpanded") private var isExpanded = false
+    @State private var isExpanded = false
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
 
     var body: some View {

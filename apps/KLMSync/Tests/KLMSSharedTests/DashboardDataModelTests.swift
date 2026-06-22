@@ -3771,6 +3771,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSidebarView.contains("Color.klmsMacSidebarBackground"))
         XCTAssertTrue(macRuntimePanel.contains("@State private var isExpanded = false"))
         XCTAssertFalse(macRuntimePanel.contains("@AppStorage(\"KLMSMacRuntimePanelExpanded\")"))
+        XCTAssertTrue(externalIntegrationStatusView.contains("@State private var isExpanded = false"))
+        XCTAssertFalse(externalIntegrationStatusView.contains("@AppStorage(\"KLMSMacIntegrationStatusExpanded\")"))
         XCTAssertTrue(macRuntimePanel.contains("if isExpanded {"))
         XCTAssertTrue(macRuntimePanel.contains("runtimeSummaryBadgeText"))
         XCTAssertTrue(macRuntimePanel.contains("runtimeSummaryBadgeColor"))
