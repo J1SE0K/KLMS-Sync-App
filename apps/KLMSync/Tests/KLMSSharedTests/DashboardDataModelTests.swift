@@ -4177,16 +4177,24 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(iosSplitRoot.contains("CompanionInlineDetailPreparingView"))
         XCTAssertTrue(iosScreenContainer.contains("let model: CompanionModel"))
         XCTAssertFalse(iosScreenContainer.contains("showsAttentionStack"))
-        XCTAssertTrue(iosScreenContainer.contains("RemoteAttentionStack(model: model)"))
+        XCTAssertTrue(iosScreenContainer.contains("RemoteAttentionStack("))
+        XCTAssertTrue(iosScreenContainer.contains("snapshot: attentionSnapshot"))
+        XCTAssertTrue(iosScreenContainer.contains("await model.cancelRunningCommand()"))
+        XCTAssertTrue(iosScreenContainer.contains("private var attentionSnapshot: RemoteAttentionSnapshot"))
         XCTAssertTrue(iosScreenContainer.contains(".accessibilitySortPriority(100)"))
         XCTAssertTrue(iosScreenContainer.contains(".zIndex(1)"))
         XCTAssertLessThan(
-            try XCTUnwrap(iosScreenContainer.range(of: "RemoteAttentionStack(model: model)")).lowerBound,
+            try XCTUnwrap(iosScreenContainer.range(of: "RemoteAttentionStack(")).lowerBound,
             try XCTUnwrap(iosScreenContainer.range(of: "WholeScreenVerticalScrollView")).lowerBound
         )
         XCTAssertTrue(iosScreenContainer.contains("Color.klmsScreenBackground"))
         XCTAssertFalse(iosScreenContainer.contains("Color.klmsScreenBackground.ignoresSafeArea()"))
         XCTAssertFalse(iosScreenContainer.contains("@ObservedObject var model"))
+        XCTAssertTrue(ios.contains("private struct RemoteAttentionStack: View"))
+        let remoteAttentionStack = try sourceStructBody(named: "RemoteAttentionStack", in: ios)
+        XCTAssertFalse(remoteAttentionStack.contains("@ObservedObject var model"))
+        XCTAssertTrue(remoteAttentionStack.contains("var snapshot: RemoteAttentionSnapshot"))
+        XCTAssertTrue(remoteAttentionStack.contains("var onCancel: () async -> Void"))
         XCTAssertTrue(iosHeader.contains("@Environment(\\.horizontalSizeClass)"))
         XCTAssertTrue(iosHeader.contains("compactHeader"))
         XCTAssertTrue(iosHeader.contains("regularHeader"))

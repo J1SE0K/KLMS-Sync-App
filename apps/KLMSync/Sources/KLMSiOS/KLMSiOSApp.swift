@@ -4089,7 +4089,12 @@ private struct CompanionScreenContainer<Content: View>: View {
         ZStack {
             Color.klmsScreenBackground
             VStack(spacing: 0) {
-                RemoteAttentionStack(model: model)
+                RemoteAttentionStack(
+                    snapshot: attentionSnapshot,
+                    onCancel: {
+                        await model.cancelRunningCommand()
+                    }
+                )
                     .accessibilitySortPriority(100)
                     .zIndex(1)
                     .padding(.horizontal, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16)
@@ -4115,6 +4120,22 @@ private struct CompanionScreenContainer<Content: View>: View {
         .klmsNavigationTitleMode()
         .klmsNavigationChrome()
         .klmsContentNavigationChrome()
+    }
+
+    private var attentionSnapshot: RemoteAttentionSnapshot {
+        RemoteAttentionSnapshot(
+            authDigits: model.status.authDigits,
+            runningTitle: model.activeAttentionTitle,
+            shouldShowRunningStatus: model.hasActiveServerWork || model.status.phase == "running",
+            statusMessage: model.statusLine,
+            loginAttentionMessage: model.loginAttentionMessage,
+            authSuccessMessage: model.authSuccessMessage,
+            errorMessage: model.errorMessage,
+            shouldShowCancelControl: model.shouldShowCancelControl,
+            canCancelRunningCommand: model.canCancelRunningCommand,
+            cancelAlreadyRequested: model.isCancelRequestedForLatestCommand,
+            isSubmitting: model.isSubmitting
+        )
     }
 }
 
@@ -4235,29 +4256,12 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
 }
 
 private struct RemoteAttentionStack: View {
-    @ObservedObject var model: CompanionModel
+    var snapshot: RemoteAttentionSnapshot
+    var onCancel: () async -> Void
 
     var body: some View {
-        RemoteAttentionStackContent(snapshot: snapshot) {
-            await model.cancelRunningCommand()
-        }
+        RemoteAttentionStackContent(snapshot: snapshot, onCancel: onCancel)
         .equatable()
-    }
-
-    private var snapshot: RemoteAttentionSnapshot {
-        RemoteAttentionSnapshot(
-            authDigits: model.status.authDigits,
-            runningTitle: model.activeAttentionTitle,
-            shouldShowRunningStatus: model.hasActiveServerWork || model.status.phase == "running",
-            statusMessage: model.statusLine,
-            loginAttentionMessage: model.loginAttentionMessage,
-            authSuccessMessage: model.authSuccessMessage,
-            errorMessage: model.errorMessage,
-            shouldShowCancelControl: model.shouldShowCancelControl,
-            canCancelRunningCommand: model.canCancelRunningCommand,
-            cancelAlreadyRequested: model.isCancelRequestedForLatestCommand,
-            isSubmitting: model.isSubmitting
-        )
     }
 }
 
