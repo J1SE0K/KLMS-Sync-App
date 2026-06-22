@@ -3371,7 +3371,9 @@ private struct SharedRunLogActivityRow: View {
 
     var body: some View {
         Button {
-            isExpanded.toggle()
+            macPerformWithoutAnimation {
+                isExpanded.toggle()
+            }
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top, spacing: 8) {
@@ -3429,7 +3431,9 @@ private struct ServerRequestLogActivityRow: View {
 
     var body: some View {
         Button {
-            isExpanded.toggle()
+            macPerformWithoutAnimation {
+                isExpanded.toggle()
+            }
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top, spacing: 8) {
@@ -3536,7 +3540,9 @@ private struct RemoteCommandActivityRow: View {
 
     var body: some View {
         Button {
-            isExpanded.toggle()
+            macPerformWithoutAnimation {
+                isExpanded.toggle()
+            }
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top, spacing: 8) {
@@ -3678,7 +3684,9 @@ private struct FileAccessActivityRow: View {
 
     var body: some View {
         Button {
-            isExpanded.toggle()
+            macPerformWithoutAnimation {
+                isExpanded.toggle()
+            }
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top, spacing: 8) {
