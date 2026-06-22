@@ -3942,7 +3942,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(doctorPanelView.contains("DisclosureGroup(isExpanded: $isRemainingIssuesExpanded)"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityHint(isExpanded ? \"\\(title) 접기\" : \"\\(title) 펼치기\")"))
-        XCTAssertTrue(diagnosticChecksDisclosure.contains(".frame(maxWidth: .infinity, minHeight: compact ? 28 : 36, alignment: .leading)"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains(".frame(maxWidth: .infinity, minHeight: compact ? 36 : 44, alignment: .leading)"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".contentShape(RoundedRectangle(cornerRadius: 7))"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains("Color.klmsMacSubtleCardBackground.opacity(0.34)"))
         XCTAssertFalse(diagnosticChecksDisclosure.contains(".stroke(Color.klmsMacBorder.opacity(0.54)"))

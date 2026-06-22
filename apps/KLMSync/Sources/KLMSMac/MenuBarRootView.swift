@@ -4540,7 +4540,7 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
                 .foregroundStyle(Color.klmsMacSecondaryText)
                 .padding(.horizontal, compact ? 6 : 8)
                 .padding(.vertical, compact ? 4 : 6)
-                .frame(maxWidth: .infinity, minHeight: compact ? 28 : 36, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: compact ? 36 : 44, alignment: .leading)
                 .background(Color.klmsMacSubtleCardBackground.opacity(compact ? 0.18 : 0.30), in: RoundedRectangle(cornerRadius: 7))
                 .overlay {
                     RoundedRectangle(cornerRadius: 7)
