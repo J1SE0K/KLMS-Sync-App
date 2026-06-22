@@ -12370,7 +12370,7 @@ private struct RemoteDiagnosticPanel: View {
             .accessibilityLabel("진단 \(isPanelExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isPanelExpanded ? "진단 도구 접기" : "진단 도구 펼치기")
 
-            if isPanelExpanded {
+            DeferredInteractionExpansion(isExpanded: isPanelExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
                     RemoteVerifySummaryPanel(summary: verifySummary)
                     Text("권장 순서: 상태 검사 → 권한/환경 진단 → 리포트")
@@ -12763,16 +12763,12 @@ private struct RemoteSettingGroupSection: View {
                     .accessibilityElement(children: .combine)
             }
 
-            if !group.isCollapsible || isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(group.settings) { setting in
-                        RemoteSettingRow(
-                            setting: setting,
-                            isSubmitting: isSubmitting,
-                            createSettingAction: createSettingAction
-                        )
-                    }
+            if group.isCollapsible {
+                DeferredInteractionExpansion(isExpanded: isExpanded) {
+                    groupSettingsRows
                 }
+            } else {
+                groupSettingsRows
             }
         }
         .padding(11)
@@ -12784,6 +12780,18 @@ private struct RemoteSettingGroupSection: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke((!group.isCollapsible || isExpanded) ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
         )
+    }
+
+    private var groupSettingsRows: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(group.settings) { setting in
+                RemoteSettingRow(
+                    setting: setting,
+                    isSubmitting: isSubmitting,
+                    createSettingAction: createSettingAction
+                )
+            }
+        }
     }
 
     private var groupHeader: some View {
