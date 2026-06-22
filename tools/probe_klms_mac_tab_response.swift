@@ -126,7 +126,7 @@ private func runProbe() throws {
 private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElement) {
     activateApplicationBundle()
     app.unhide()
-    app.activate(options: [.activateIgnoringOtherApps, .activateAllWindows])
+    app.activate(options: [.activateAllWindows])
     AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
     activateApplicationWithAppleScript()
     requestDashboardWindowReopen()
