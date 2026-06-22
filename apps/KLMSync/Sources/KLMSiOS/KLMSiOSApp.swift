@@ -2864,6 +2864,7 @@ private struct CompanionCompactTabBar: View {
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel(section.compactTitle)
         .accessibilityValue(selectedSection == section ? "선택됨" : "선택 안 됨")
+        .accessibilityHint("\(section.compactTitle) 탭으로 이동합니다.")
     }
 }
 
@@ -3001,6 +3002,7 @@ private struct CompanionSidebarButton: View {
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel(section.title)
         .accessibilityValue(accessibilityValue)
+        .accessibilityHint("\(section.title) 작업 공간으로 이동합니다.")
     }
 
     private var accessibilityValue: String {
