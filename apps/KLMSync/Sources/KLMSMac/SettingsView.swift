@@ -84,6 +84,14 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     }
 }
 
+private func settingsPerformWithoutAnimation(_ updates: () -> Void) {
+    var transaction = Transaction()
+    transaction.animation = nil
+    withTransaction(transaction) {
+        updates()
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedTab: SettingsTab = .app
@@ -1039,7 +1047,9 @@ private struct SettingsGroupBox<Content: View>: View {
     private var header: some View {
         if collapsible {
             Button {
-                isExpanded.toggle()
+                settingsPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 headerContent
             }
@@ -1133,7 +1143,9 @@ private struct SettingsFieldRow<Content: View>: View {
     private var header: some View {
         if collapsible {
             Button {
-                isExpanded.toggle()
+                settingsPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 headerContent
             }
@@ -1236,7 +1248,9 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button {
-                isExpanded.toggle()
+                settingsPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 HStack(alignment: .center, spacing: 10) {
                     label()
@@ -1329,7 +1343,9 @@ private struct SettingsActionGroupBox<Content: View>: View {
     private var header: some View {
         if collapsible {
             Button {
-                isExpanded.toggle()
+                settingsPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
             } label: {
                 headerContent
             }
