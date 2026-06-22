@@ -41,11 +41,29 @@ fi
 install_one_device() {
   local target_device="$1"
   local device_label="${2:-device}"
-  xcrun devicectl device install app \
+  local INSTALL_OUTPUT
+  INSTALL_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/klms-ios-install.XXXXXX")"
+  if ! xcrun devicectl device install app \
     --device "$target_device" \
     --timeout "$TIMEOUT_SECONDS" \
     --quiet \
-    "$APP_PATH"
+    "$APP_PATH" >"$INSTALL_OUTPUT" 2>&1; then
+    if /usr/bin/grep -Eiq "unavailable|Connection invalid|locked|not connected|not paired|No such device|timed out" "$INSTALL_OUTPUT"; then
+      rm -f "$INSTALL_OUTPUT"
+      print -ru2 -- "${device_label}: install failed because the device is unavailable. Unlock it, reconnect the cable, keep the Trust prompt accepted, and confirm Developer Mode is enabled."
+      if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
+        return 3
+      fi
+      exit 3
+    fi
+    /usr/bin/sed "s/${BUNDLE_IDENTIFIER//\//\\/}/<bundle-id>/g" "$INSTALL_OUTPUT" >&2
+    rm -f "$INSTALL_OUTPUT"
+    if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
+      return 1
+    fi
+    exit 1
+  fi
+  rm -f "$INSTALL_OUTPUT"
 
   if [[ "$LAUNCH_AFTER_INSTALL" != "1" ]]; then
     print -r -- "${device_label}: installed"
@@ -102,6 +120,14 @@ for device in devices:
         continue
     if properties.get("developerModeStatus") == "disabled":
         continue
+    tunnel_state = connection.get("tunnelState")
+    if tunnel_state == "unavailable":
+        print(
+            f"Skipping {hardware.get('deviceType', 'device')}: device is paired but unavailable. "
+            "Unlock it, reconnect the cable, and accept the Trust prompt if shown.",
+            file=sys.stderr,
+        )
+        continue
     identifier = device.get("identifier")
     if identifier:
         print(f"{identifier}\t{hardware.get('deviceType', 'device')}")
@@ -111,9 +137,15 @@ PY
 
 if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   INSTALL_ALL_MODE=1
-  device_ids=("${(@f)$(discover_ios_devices)}")
+  discovered_devices="$(discover_ios_devices)"
+  if [[ -z "$discovered_devices" ]]; then
+    device_ids=()
+  else
+    device_ids=("${(@f)discovered_devices}")
+  fi
   if (( ${#device_ids[@]} == 0 )); then
-    print -ru2 -- "No paired iPhone/iPad device with Developer Mode enabled was found."
+    print -ru2 -- "No available iPhone/iPad device with Developer Mode enabled was found."
+    print -ru2 -- "Unlock the device, reconnect USB, accept the Trust prompt, then retry: IOS_DEVICE_IDENTIFIER=all IOS_DEVICE_LAUNCH=0 $0"
     exit 2
   fi
   print -r -- "installing-on-${#device_ids[@]}-ios-devices"
