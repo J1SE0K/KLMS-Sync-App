@@ -16,6 +16,7 @@ private enum SmokeFailure: Error, CustomStringConvertible {
     case pressFailed(identifier: String, AXError)
     case selectedValueMissing(String)
     case expectedTextMissing(String)
+    case layoutOverlap(String)
     case screenshotFailed(String)
 
     var description: String {
@@ -42,6 +43,8 @@ private enum SmokeFailure: Error, CustomStringConvertible {
             return "Button '\(identifier)' did not expose the selected accessibility value after navigation."
         case let .expectedTextMissing(text):
             return "Expected text '\(text)' did not appear after navigation."
+        case let .layoutOverlap(message):
+            return message
         case let .screenshotFailed(message):
             return message
         }
@@ -124,6 +127,7 @@ private func runSmoke() throws {
     bringKLMSAppForward(app: app, appElement: appElement)
 
     try openDashboardWindowIfNeeded(appElement: appElement)
+    try verifyWorkspaceButtonsDoNotOverlap(appElement: appElement)
 
     for target in workspaceTargets {
         try verifyWorkspaceNavigation(appElement: appElement, target: target)
@@ -135,6 +139,7 @@ private func runSmoke() throws {
             expectedText: target.expectedText
         )
     }
+    try verifySettingsTabsDoNotOverlap(appElement: appElement)
     try verifyWorkspaceNavigation(appElement: appElement, target: workspaceTargets[0])
 
     print("ok: KLMS Mac workspace accessibility navigation is responsive")
@@ -395,6 +400,84 @@ private func verifySettingsTabNavigation(
         throw SmokeFailure.expectedTextMissing(expectedText)
     }
     try captureScreenshotIfRequested(named: identifier)
+}
+
+private func verifyWorkspaceButtonsDoNotOverlap(appElement: AXUIElement) throws {
+    let frames = workspaceTargets.compactMap { target -> (String, CGRect)? in
+        guard let element = waitForElement(withIdentifier: target.buttonIdentifier, in: appElement, timeout: timeout),
+              let frame = accessibilityFrame(of: element),
+              isMeaningful(frame) else {
+            return nil
+        }
+        return (target.buttonIdentifier, frame)
+    }
+    try verifyNoMeaningfulOverlap(frames, context: "workspace navigation")
+}
+
+private func verifySettingsTabsDoNotOverlap(appElement: AXUIElement) throws {
+    guard waitForElement(withIdentifier: "settings-app", in: appElement, timeout: 0.2) != nil else {
+        return
+    }
+    let frames = settingsTargets.compactMap { target -> (String, CGRect)? in
+        guard let element = waitForElement(withIdentifier: target.identifier, in: appElement, timeout: timeout),
+              let frame = accessibilityFrame(of: element),
+              isMeaningful(frame) else {
+            return nil
+        }
+        return (target.identifier, frame)
+    }
+    try verifyNoMeaningfulOverlap(frames, context: "settings tabs")
+}
+
+private func verifyNoMeaningfulOverlap(_ frames: [(String, CGRect)], context: String) throws {
+    for firstIndex in frames.indices {
+        for secondIndex in frames.indices where secondIndex > firstIndex {
+            let first = frames[firstIndex]
+            let second = frames[secondIndex]
+            let intersection = first.1.intersection(second.1)
+            guard !intersection.isNull, isMeaningful(intersection) else {
+                continue
+            }
+            let minArea = max(1, min(first.1.width * first.1.height, second.1.width * second.1.height))
+            let overlapRatio = (intersection.width * intersection.height) / minArea
+            guard overlapRatio > 0.08,
+                  intersection.width > 6,
+                  intersection.height > 6 else {
+                continue
+            }
+            throw SmokeFailure.layoutOverlap(
+                "\(context) layout overlap: \(first.0) and \(second.0) overlap by \(Int((overlapRatio * 100).rounded()))%."
+            )
+        }
+    }
+}
+
+private func accessibilityFrame(of element: AXUIElement) -> CGRect? {
+    var positionValue: CFTypeRef?
+    var sizeValue: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
+          AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
+          let positionAXValue = positionValue,
+          let sizeAXValue = sizeValue else {
+        return nil
+    }
+
+    var point = CGPoint.zero
+    var size = CGSize.zero
+    guard CFGetTypeID(positionAXValue) == AXValueGetTypeID(),
+          CFGetTypeID(sizeAXValue) == AXValueGetTypeID(),
+          AXValueGetValue(positionAXValue as! AXValue, .cgPoint, &point),
+          AXValueGetValue(sizeAXValue as! AXValue, .cgSize, &size) else {
+        return nil
+    }
+    return CGRect(origin: point, size: size)
+}
+
+private func isMeaningful(_ frame: CGRect) -> Bool {
+    frame.width.isFinite
+        && frame.height.isFinite
+        && frame.width > 1
+        && frame.height > 1
 }
 
 private func captureScreenshotIfRequested(named rawName: String) throws {

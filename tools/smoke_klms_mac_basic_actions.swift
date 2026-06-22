@@ -34,6 +34,8 @@ private enum SmokeFailure: Error, CustomStringConvertible {
 private let environment = ProcessInfo.processInfo.environment
 private let bundleID = environment["KLMS_MAC_BUNDLE_ID"] ?? "com.local.KLMSync"
 private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
+private let appPath = ((environment["KLMS_MAC_APP_PATH"] ?? "~/Applications/KLMS Sync.app") as NSString)
+    .expandingTildeInPath
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
 private let verifyCommandQ = environment["KLMS_MAC_SMOKE_SKIP_CMD_Q"] != "1"
 private let requiredDashboardControls = [
@@ -98,13 +100,24 @@ private func findRunningApp() -> NSRunningApplication? {
 }
 
 private func launchApp() {
+    if runOpen(arguments: ["-b", bundleID]) {
+        return
+    }
+    if runOpen(arguments: ["-a", appName]) {
+        return
+    }
+    _ = runOpen(arguments: [appPath])
+}
+
+private func runOpen(arguments: [String]) -> Bool {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-a", appName]
+    process.arguments = arguments
     process.standardOutput = Pipe()
     process.standardError = Pipe()
     try? process.run()
     process.waitUntilExit()
+    return process.terminationStatus == 0
 }
 
 private func openDashboardWindow(appElement: AXUIElement) throws {
