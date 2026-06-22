@@ -3913,10 +3913,29 @@ private struct CompanionHistoryScreen: View {
                     }
                 },
                 inlineDetail: { kind in
-                    AnyView(RemoteLogDetailPanel(kind: kind, model: model))
+                    AnyView(
+                        RemoteLogDetailPanel(
+                            kind: kind,
+                            snapshot: remoteLogDetailSnapshot,
+                            recentCommands: model.recentCommands,
+                            recentFileAccessRequests: model.recentFileAccessRequests
+                        )
+                    )
                 }
             )
         }
+    }
+
+    private var remoteLogDetailSnapshot: RemoteLogDetailSnapshot {
+        RemoteLogDetailSnapshot(
+            authDigits: model.status.authDigits,
+            loginRequired: model.status.loginRequired,
+            phase: model.status.phase,
+            hasInFlightRequest: model.hasInFlightRequest,
+            runningPhaseDetail: model.runningPhaseDetail,
+            activeCommand: model.activeRemoteLogCommand,
+            activeFileRequest: model.activeRemoteLogFileRequest
+        )
     }
 
     private var remoteLogSummarySnapshot: RemoteLogSummarySnapshot {
@@ -3961,7 +3980,12 @@ private struct CompanionHistoryScreen: View {
     @ViewBuilder
     private var selectedHistoryDetailPanel: some View {
         if let selectedLogSummaryKind {
-            RemoteLogDetailPanel(kind: selectedLogSummaryKind, model: model)
+            RemoteLogDetailPanel(
+                kind: selectedLogSummaryKind,
+                snapshot: remoteLogDetailSnapshot,
+                recentCommands: model.recentCommands,
+                recentFileAccessRequests: model.recentFileAccessRequests
+            )
                 .id(selectedLogSummaryKind)
         } else {
             CompanionEmptyDetailPanel(
@@ -12583,6 +12607,24 @@ private struct RemoteLogSummarySnapshot: Equatable {
     }
 }
 
+private struct RemoteLogDetailSnapshot: Equatable {
+    var authDigits: String?
+    var loginRequired: Bool
+    var phase: String
+    var hasInFlightRequest: Bool
+    var runningPhaseDetail: String?
+    var activeCommand: RemoteRunCommand?
+    var activeFileRequest: ServerRelayFileAccessRequest?
+
+    var hasCurrentDetail: Bool {
+        authDigits != nil
+            || loginRequired
+            || phase == "running"
+            || activeCommand != nil
+            || activeFileRequest != nil
+    }
+}
+
 private extension ServerRelayLogClearScope {
     var clearTitle: String {
         switch self {
@@ -12845,7 +12887,9 @@ private struct RemoteLogSummaryPanel: View {
 
 private struct RemoteLogDetailPanel: View {
     var kind: RemoteLogSummaryKind
-    @ObservedObject var model: CompanionModel
+    var snapshot: RemoteLogDetailSnapshot
+    var recentCommands: [RemoteRunCommand]
+    var recentFileAccessRequests: [ServerRelayFileAccessRequest]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -12854,12 +12898,12 @@ private struct RemoteLogDetailPanel: View {
                 statusDetails
             case .command:
                 RecentRemoteCommandsView(
-                    commands: model.recentCommands,
+                    commands: recentCommands,
                     compact: false
                 )
             case .fileRequest:
                 RecentFileAccessRequestsView(
-                    requests: model.recentFileAccessRequests
+                    requests: recentFileAccessRequests
                 )
             }
         }
@@ -12874,45 +12918,29 @@ private struct RemoteLogDetailPanel: View {
 
     private var statusDetails: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let digits = model.status.authDigits {
+            if let digits = snapshot.authDigits {
                 DetailFieldRow(title: "인증번호", value: digits)
             }
-            if model.status.loginRequired {
+            if snapshot.loginRequired {
                 DetailFieldRow(title: "로그인", value: "KLMS 로그인이 필요합니다.")
             }
-            if model.status.phase == "running" || model.hasInFlightRequest {
-                DetailFieldRow(title: "단계", value: model.status.phase.klmsRemotePhaseName)
-                DetailFieldRow(title: "세부 단계", value: model.runningPhaseDetail ?? "처리 중")
+            if snapshot.phase == "running" || snapshot.hasInFlightRequest {
+                DetailFieldRow(title: "단계", value: snapshot.phase.klmsRemotePhaseName)
+                DetailFieldRow(title: "세부 단계", value: snapshot.runningPhaseDetail ?? "처리 중")
             }
-            if let activeCommand {
+            if let activeCommand = snapshot.activeCommand {
                 DetailFieldRow(title: "실행 중", value: "\(activeCommand.kind.displayName) · \(activeCommand.displayStatus().displayName)")
             }
-            if let activeFileRequest {
+            if let activeFileRequest = snapshot.activeFileRequest {
                 DetailFieldRow(title: "파일 요청", value: "\(activeFileRequest.itemTitle.nilIfEmpty ?? "파일") · \(activeFileRequest.status.displayName)")
             }
-            if !hasCurrentDetail {
+            if !snapshot.hasCurrentDetail {
                 Text("현재 진행 중인 요청이 없습니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-    }
-
-    private var activeCommand: RemoteRunCommand? {
-        model.activeRemoteLogCommand
-    }
-
-    private var activeFileRequest: ServerRelayFileAccessRequest? {
-        model.activeRemoteLogFileRequest
-    }
-
-    private var hasCurrentDetail: Bool {
-        model.status.authDigits != nil
-            || model.status.loginRequired
-            || model.status.phase == "running"
-            || activeCommand != nil
-            || activeFileRequest != nil
     }
 }
 
