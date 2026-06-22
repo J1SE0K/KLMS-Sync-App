@@ -3464,7 +3464,14 @@ private struct CompanionSettingsScreen: View {
 
     private var settingsSupportColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
-            RemoteDiagnosticPanel(model: model)
+            RemoteDiagnosticPanel(
+                verifySummary: model.verifySummary,
+                stageDurations: model.latestSharedRunLogStageDurations,
+                dryRunReports: model.dryRunReports,
+                commandsDisabled: !model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest
+            ) { kind, dryRun in
+                await model.createCommand(kind, dryRun: dryRun)
+            }
             RemotePrivacyNote()
             ServerRelayConnectionPanel(model: model)
         }
@@ -12008,7 +12015,11 @@ private struct CompanionDiagnosticDisclosure<Content: View>: View {
 }
 
 private struct RemoteDiagnosticPanel: View {
-    @ObservedObject var model: CompanionModel
+    var verifySummary: ServerRelayVerifySummary?
+    var stageDurations: [KLMSStageDuration]
+    var dryRunReports: [DryRunReport]
+    var commandsDisabled: Bool
+    var createCommand: (RemoteCommandKind, Bool) async -> Void
     @State private var isPanelExpanded = false
 
     private let columns = [
@@ -12048,7 +12059,7 @@ private struct RemoteDiagnosticPanel: View {
 
             if isPanelExpanded {
                 VStack(alignment: .leading, spacing: 10) {
-                    RemoteVerifySummaryPanel(summary: model.verifySummary)
+                    RemoteVerifySummaryPanel(summary: verifySummary)
                     Text("권장 순서: 상태 검사 → 권한/환경 진단 → 리포트")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
@@ -12059,7 +12070,7 @@ private struct RemoteDiagnosticPanel: View {
                         diagnosticButton(.doctor)
                         diagnosticButton(.report)
                     }
-                    RemoteStageDurationSummaryView(durations: model.latestSharedRunLogStageDurations)
+                    RemoteStageDurationSummaryView(durations: stageDurations)
 
                     CompanionSettingsSubsectionCard(
                         title: "고급 도구",
@@ -12078,7 +12089,7 @@ private struct RemoteDiagnosticPanel: View {
                                     dryRunButton(command)
                                 }
                             }
-                            RemoteDryRunPanel(reports: model.dryRunReports)
+                            RemoteDryRunPanel(reports: dryRunReports)
                         }
                     }
                 }
@@ -12096,7 +12107,7 @@ private struct RemoteDiagnosticPanel: View {
     private func diagnosticButton(_ kind: RemoteCommandKind) -> some View {
         Button {
             Task {
-                await model.createCommand(kind)
+                await createCommand(kind, false)
             }
         } label: {
             VStack(spacing: 4) {
@@ -12111,13 +12122,13 @@ private struct RemoteDiagnosticPanel: View {
             .frame(maxWidth: .infinity, minHeight: 58)
         }
         .buttonStyle(KLMSActionButtonStyle())
-        .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
+        .disabled(commandsDisabled)
     }
 
     private func dryRunButton(_ kind: RemoteCommandKind) -> some View {
         Button {
             Task {
-                await model.createCommand(kind, dryRun: true)
+                await createCommand(kind, true)
             }
         } label: {
             Label("\(kind.displayName) 변경량 계산", systemImage: "magnifyingglass")
@@ -12127,7 +12138,7 @@ private struct RemoteDiagnosticPanel: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(KLMSActionButtonStyle())
-        .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest || !kind.engineCommand.supportsDryRun)
+        .disabled(commandsDisabled || !kind.engineCommand.supportsDryRun)
         .accessibilityLabel("\(kind.displayName) 변경량 계산")
         .accessibilityHint("서버에 \(kind.displayName) 변경량 계산 요청을 올립니다.")
     }
