@@ -3793,7 +3793,14 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
                 subsectionHeader
             }
 
-            if !collapsible || isExpanded {
+            if collapsible {
+                DeferredInteractionExpansion(isExpanded: isExpanded) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        content()
+                    }
+                    .padding(.top, 2)
+                }
+            } else {
                 VStack(alignment: .leading, spacing: 8) {
                     content()
                 }
@@ -12337,7 +12344,7 @@ private struct CompanionDiagnosticDisclosure<Content: View>: View {
             .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
 
-            if isExpanded {
+            DeferredInteractionExpansion(isExpanded: isExpanded) {
                 VStack(alignment: .leading, spacing: compact ? 5 : 6) {
                     content()
                 }
