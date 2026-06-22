@@ -1091,11 +1091,10 @@ private struct TaskAndExamWorkspaceView: View {
     }
 
     private var taskKindSelector: some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: taskKindColumns, spacing: 8) {
             ForEach(availableKinds) { kind in
                 taskKindButton(kind)
             }
-            Spacer(minLength: 0)
         }
         .padding(8)
         .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 12))
@@ -1103,6 +1102,10 @@ private struct TaskAndExamWorkspaceView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
+    }
+
+    private var taskKindColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: max(availableKinds.count, 1))
     }
 
     private func taskKindButton(_ kind: DashboardDetailKind) -> some View {
@@ -1128,7 +1131,7 @@ private struct TaskAndExamWorkspaceView: View {
             }
             .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
             .padding(.horizontal, 11)
-            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 44)
             .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground.opacity(0.70), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
