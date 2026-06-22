@@ -103,6 +103,12 @@ Then run a signed device build with local signing settings:
 tools/build_klms_ios_device.sh
 ```
 
+If Xcode has a signed-in development account but the provisioning profile has not been created yet, allow Xcode to create or update the local profile:
+
+```sh
+IOS_ALLOW_PROVISIONING_UPDATES=1 tools/build_klms_ios_device.sh
+```
+
 `CODE_SIGNING_ALLOWED=NO` is only for compile checks. iPhone and iPad devices reject unsigned app bundles, so install with the signed build path produced by the normal device build or let the install helper build it for you.
 
 To install and launch the signed app on a connected device:

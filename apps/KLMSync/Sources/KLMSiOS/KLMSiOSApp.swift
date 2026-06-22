@@ -4575,16 +4575,6 @@ private struct ServerRelayConnectionPanel: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
-        .onAppear {
-            if !isConfigured {
-                isExpanded = true
-            }
-        }
-        .onChange(of: isConfigured) { _, configured in
-            if !configured {
-                isExpanded = true
-            }
-        }
     }
 
     private func connectionButton(

@@ -1019,11 +1019,16 @@ final class DashboardDataModelTests: XCTestCase {
         let repoRoot = packageRoot
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+        let buildScriptRoot = repoRoot.appendingPathComponent("tools/build_klms_ios_device.sh")
         let installScriptRoot = repoRoot.appendingPathComponent("tools/install_klms_ios_device.sh")
         let readmeRoot = packageRoot.appendingPathComponent("README.md")
+        let buildScript = try String(contentsOf: buildScriptRoot, encoding: .utf8)
         let installScript = try String(contentsOf: installScriptRoot, encoding: .utf8)
         let readme = try String(contentsOf: readmeRoot, encoding: .utf8)
 
+        XCTAssertTrue(buildScript.contains("IOS_ALLOW_PROVISIONING_UPDATES"))
+        XCTAssertTrue(buildScript.contains("XCODEBUILD_PROVISIONING_ARGS=(-allowProvisioningUpdates)"))
+        XCTAssertTrue(buildScript.contains("\"${XCODEBUILD_PROVISIONING_ARGS[@]}\""))
         XCTAssertTrue(installScript.contains("WAIT_FOR_AVAILABLE_SECONDS=\"${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-45}\""))
         XCTAssertTrue(installScript.contains("DISCOVERY_POLL_SECONDS=\"${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-3}\""))
         XCTAssertTrue(installScript.contains("current_epoch_seconds()"))
@@ -1038,6 +1043,7 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(readme.contains("waits up to 45 seconds for paired iPhone/iPad devices to become available"))
         XCTAssertTrue(readme.contains("IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS=0"))
+        XCTAssertTrue(readme.contains("IOS_ALLOW_PROVISIONING_UPDATES=1 tools/build_klms_ios_device.sh"))
     }
 
     func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {
@@ -2732,6 +2738,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteDiagnosticPanel.contains("title: \"고급 도구\""))
         XCTAssertTrue(remoteDiagnosticPanel.contains("collapsible: true"))
         XCTAssertTrue(relayConnectionPanel.contains("@State private var isExpanded = false"))
+        XCTAssertFalse(relayConnectionPanel.contains("isExpanded = true"))
+        XCTAssertFalse(relayConnectionPanel.contains(".onAppear"))
+        XCTAssertFalse(relayConnectionPanel.contains(".onChange(of: isConfigured)"))
         XCTAssertFalse(relayConnectionPanel.contains("withAnimation(.easeInOut(duration: 0.08))"))
         XCTAssertFalse(relayConnectionPanel.contains(".transition(.opacity)"))
         XCTAssertTrue(relayConnectionPanel.contains(".buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))"))
@@ -3376,8 +3385,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("CompanionExpansionBadge(isExpanded: isExpanded)"))
         XCTAssertTrue(ios.contains("CompanionExpansionBadge(isExpanded: isPanelExpanded)"))
         XCTAssertTrue(ios.contains("CompanionExpansionBadge(isExpanded: isExpanded, compact: true)"))
-        XCTAssertTrue(ios.contains(".onAppear {\n            if !isConfigured {\n                isExpanded = true\n            }\n        }"))
-        XCTAssertTrue(ios.contains(".onChange(of: isConfigured) { _, configured in\n            if !configured {\n                isExpanded = true\n            }\n        }"))
+        XCTAssertFalse(ios.contains(".onAppear {\n            if !isConfigured {\n                isExpanded = true\n            }\n        }"))
+        XCTAssertFalse(ios.contains(".onChange(of: isConfigured) { _, configured in\n            if !configured {\n                isExpanded = true\n            }\n        }"))
         XCTAssertTrue(ios.contains("Image(systemName: isExpanded ? \"chevron.up\" : \"chevron.down\")"))
         XCTAssertTrue(ios.contains("Text(isExpanded ? \"접기\" : \"펼치기\")"))
         XCTAssertTrue(ios.contains("isExpanded ? Color.klmsSelectedBackground.opacity(0.92) : Color.klmsSubtleCardBackground"))

@@ -13,6 +13,11 @@ DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-/private/tmp/klms-ios-device-derived}"
 MODULE_CACHE_DIR="${MODULE_CACHE_DIR:-/private/tmp/klms-ios-device-module-cache}"
 CODE_SIGNING_ALLOWED_VALUE="${CODE_SIGNING_ALLOWED:-YES}"
 LOCAL_SIGNING_OVERRIDES=()
+XCODEBUILD_PROVISIONING_ARGS=()
+
+if [[ "${IOS_ALLOW_PROVISIONING_UPDATES:-0}" == "1" ]]; then
+  XCODEBUILD_PROVISIONING_ARGS=(-allowProvisioningUpdates)
+fi
 
 if [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" && ! -f "$LOCAL_CONFIG" ]]; then
   print -ru2 -- "Missing ignored local signing config: apps/KLMSync/Config/KLMSiOS.local.xcconfig"
@@ -38,6 +43,7 @@ xcodebuild \
   -sdk "$SDK" \
   -destination "$DESTINATION" \
   -derivedDataPath "$DERIVED_DATA_PATH" \
+  "${XCODEBUILD_PROVISIONING_ARGS[@]}" \
   CODE_SIGNING_ALLOWED="$CODE_SIGNING_ALLOWED_VALUE" \
   "${LOCAL_SIGNING_OVERRIDES[@]}" \
   SYMROOT="$SYMROOT" \
