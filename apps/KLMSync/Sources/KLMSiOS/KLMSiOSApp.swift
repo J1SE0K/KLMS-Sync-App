@@ -3457,7 +3457,17 @@ private struct CompanionSettingsScreen: View {
 
     private var settingsPrimaryColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
-            CompanionImmediateSettingsPanel(model: model)
+            CompanionImmediateSettingsPanel(
+                selectedAppearanceMode: KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue) ?? .system,
+                noticeNotesEnabled: model.sharedNoticeUpdateNotesEnabled,
+                isSubmitting: model.isSubmitting,
+                updateAppearanceMode: { mode in
+                    await model.updateSharedAppearanceMode(mode.rawValue)
+                },
+                updateNoticeNotes: { enabled in
+                    await model.updateSharedNoticeNotes(enabled)
+                }
+            )
             RemoteSettingsPanel(model: model, usesWideGrid: horizontalSizeClass == .regular)
         }
     }
@@ -3513,7 +3523,11 @@ private struct CompanionSettingsScreen: View {
 }
 
 private struct CompanionImmediateSettingsPanel: View {
-    @ObservedObject var model: CompanionModel
+    var selectedAppearanceMode: KLMSAppearanceMode
+    var noticeNotesEnabled: Bool
+    var isSubmitting: Bool
+    var updateAppearanceMode: (KLMSAppearanceMode) async -> Void
+    var updateNoticeNotes: (Bool) async -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -3537,39 +3551,43 @@ private struct CompanionImmediateSettingsPanel: View {
             VStack(alignment: .leading, spacing: 10) {
                 CompanionImmediateSettingRow(
                     title: "화면 모드",
-                    statusText: KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue)?.title ?? "시스템",
+                    statusText: selectedAppearanceMode.title,
                     detail: "기기 설정을 따르거나, KLMS Sync에서만 라이트/다크 모드를 고정합니다."
                 ) {
-                    CompanionAppearanceModeSelector(model: model)
+                    CompanionAppearanceModeSelector(
+                        selectedMode: selectedAppearanceMode,
+                        isSubmitting: isSubmitting,
+                        updateAppearanceMode: updateAppearanceMode
+                    )
                 }
 
                 CompanionImmediateSettingRow(
                     title: "공지 메모",
-                    statusText: model.sharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐",
+                    statusText: noticeNotesEnabled ? "켜짐" : "꺼짐",
                     detail: "끄면 원격 동기화에서 Notes 공지 메모만 건너뜁니다."
                 ) {
                     Button {
-                        let enabled = !model.sharedNoticeUpdateNotesEnabled
+                        let enabled = !noticeNotesEnabled
                         Task {
-                            await model.updateSharedNoticeNotes(enabled)
+                            await updateNoticeNotes(enabled)
                         }
                     } label: {
                         HStack(spacing: 8) {
                             Label(
                                 "원격 실행에서 공지 메모도 갱신",
-                                systemImage: model.sharedNoticeUpdateNotesEnabled ? "checkmark.circle.fill" : "circle"
+                                systemImage: noticeNotesEnabled ? "checkmark.circle.fill" : "circle"
                             )
                             Spacer(minLength: 8)
-                            Text(model.sharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐")
+                            Text(noticeNotesEnabled ? "켜짐" : "꺼짐")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color.klmsSecondaryText)
                         }
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
-                    .buttonStyle(KLMSActionButtonStyle(tone: model.sharedNoticeUpdateNotesEnabled ? .success : .soft))
-                    .disabled(model.isSubmitting)
+                    .buttonStyle(KLMSActionButtonStyle(tone: noticeNotesEnabled ? .success : .soft))
+                    .disabled(isSubmitting)
                     .accessibilityLabel("공지 메모 갱신")
-                    .accessibilityValue(model.sharedNoticeUpdateNotesEnabled ? "켜짐" : "꺼짐")
+                    .accessibilityValue(noticeNotesEnabled ? "켜짐" : "꺼짐")
                     .accessibilityHint("원격 동기화에서 Notes 공지 메모를 쓸지 정합니다.")
                 }
             }
@@ -3585,11 +3603,9 @@ private struct CompanionImmediateSettingsPanel: View {
 }
 
 private struct CompanionAppearanceModeSelector: View {
-    @ObservedObject var model: CompanionModel
-
-    private var selectedMode: KLMSAppearanceMode {
-        KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue) ?? .system
-    }
+    var selectedMode: KLMSAppearanceMode
+    var isSubmitting: Bool
+    var updateAppearanceMode: (KLMSAppearanceMode) async -> Void
 
     var body: some View {
         HStack(spacing: 7) {
@@ -3597,7 +3613,7 @@ private struct CompanionAppearanceModeSelector: View {
                 Button {
                     guard selectedMode != mode else { return }
                     Task {
-                        await model.updateSharedAppearanceMode(mode.rawValue)
+                        await updateAppearanceMode(mode)
                     }
                 } label: {
                     HStack(spacing: 7) {
@@ -3621,7 +3637,7 @@ private struct CompanionAppearanceModeSelector: View {
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-                .disabled(model.isSubmitting)
+                .disabled(isSubmitting)
                 .accessibilityLabel("화면 모드 \(mode.title)")
                 .accessibilityValue(selectedMode == mode ? "선택됨" : "선택 안 됨")
                 .accessibilityHint("KLMS Sync 화면 모드를 \(mode.title)으로 바꿉니다.")
