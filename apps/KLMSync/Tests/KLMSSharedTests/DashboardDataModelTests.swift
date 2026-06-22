@@ -1117,6 +1117,7 @@ final class DashboardDataModelTests: XCTestCase {
         let logTextBlock = try sourceStructBody(named: "LogTextBlock", in: view)
         let logSummaryDetail = try sourceStructBody(named: "LogSummaryDetailView", in: view)
         let currentRunLogCard = try sourceStructBody(named: "CurrentRunLogCardView", in: view)
+        let dashboardRuntimePanel = try sourceStructBody(named: "DashboardRuntimePanelView", in: view)
         let dashboardFilterBar = try sourceStructBody(named: "DashboardFilterBarView", in: detail)
         let dashboardControlBox = try sourceBody(
             after: "private struct DashboardControlBox<Content: View>: View",
@@ -1143,6 +1144,8 @@ final class DashboardDataModelTests: XCTestCase {
         let courseFieldIndex = try XCTUnwrap(dashboardFilterBar.range(of: "coursePickerField")?.lowerBound)
 
         XCTAssertTrue(app.contains("MenuBarRootView(model: model)"))
+        XCTAssertTrue(dashboardRuntimePanel.contains("@State private var isExpanded = false"))
+        XCTAssertFalse(dashboardRuntimePanel.contains("@AppStorage(\"KLMSMacRuntimePanelExpanded\")"))
         XCTAssertLessThan(dashboardFilterBar.distance(from: dashboardFilterBar.startIndex, to: yearFieldIndex), dashboardFilterBar.distance(from: dashboardFilterBar.startIndex, to: courseFieldIndex))
         XCTAssertLessThan(dashboardFilterBar.distance(from: dashboardFilterBar.startIndex, to: semesterFieldIndex), dashboardFilterBar.distance(from: dashboardFilterBar.startIndex, to: courseFieldIndex))
         XCTAssertTrue(dashboardFilterBar.contains("filterHeader"))
@@ -3766,7 +3769,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertLessThan(sidebarNavigationRange.lowerBound, sidebarRuntimeRange.lowerBound)
         XCTAssertTrue(macSidebarView.contains("DashboardRuntimePanelView(model: model)"))
         XCTAssertTrue(macSidebarView.contains("Color.klmsMacSidebarBackground"))
-        XCTAssertTrue(macRuntimePanel.contains("@AppStorage(\"KLMSMacRuntimePanelExpanded\") private var isExpanded = false"))
+        XCTAssertTrue(macRuntimePanel.contains("@State private var isExpanded = false"))
+        XCTAssertFalse(macRuntimePanel.contains("@AppStorage(\"KLMSMacRuntimePanelExpanded\")"))
         XCTAssertTrue(macRuntimePanel.contains("if isExpanded {"))
         XCTAssertTrue(macRuntimePanel.contains("runtimeSummaryBadgeText"))
         XCTAssertTrue(macRuntimePanel.contains("runtimeSummaryBadgeColor"))

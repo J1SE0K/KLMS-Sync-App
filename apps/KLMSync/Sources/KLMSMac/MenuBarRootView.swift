@@ -3120,7 +3120,7 @@ struct DashboardSummaryPresentation {
 
 private struct DashboardRuntimePanelView: View {
     let model: KLMSMacModel
-    @AppStorage("KLMSMacRuntimePanelExpanded") private var isExpanded = false
+    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
