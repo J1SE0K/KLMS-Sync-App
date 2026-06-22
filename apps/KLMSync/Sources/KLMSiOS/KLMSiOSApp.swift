@@ -13739,7 +13739,8 @@ private struct RemoteFileAccessRequestRow: View {
 private struct CompanionInlineLogBlock: View {
     var text: String
     private let displayText: String
-    private let highlights: [KLMSLogHighlight]
+    private let highlightSourceText: String
+    @State private var highlights: [KLMSLogHighlight]
 
     init(text: String) {
         self.text = text
@@ -13747,7 +13748,8 @@ private struct CompanionInlineLogBlock: View {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty ?? "표시할 로그가 없습니다."
         self.displayText = boundedText
-        self.highlights = KLMSReadableLogParser.highlights(from: boundedText)
+        self.highlightSourceText = Self.boundedHighlightSourceText(boundedText)
+        self._highlights = State(initialValue: [])
     }
 
     var body: some View {
@@ -13766,6 +13768,9 @@ private struct CompanionInlineLogBlock: View {
                 )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: highlightSourceText) {
+            await rebuildHighlights()
+        }
     }
 
     private static func boundedText(_ text: String) -> String {
@@ -13775,6 +13780,28 @@ private struct CompanionInlineLogBlock: View {
         }
         let prefix = "... 화면 표시용으로 이전 로그 일부를 접었습니다 ...\n"
         return prefix + String(text.suffix(maxCharacters - prefix.count))
+    }
+
+    private static func boundedHighlightSourceText(_ text: String) -> String {
+        let maxCharacters = 3_000
+        guard text.count > maxCharacters else {
+            return text
+        }
+        return String(text.suffix(maxCharacters))
+    }
+
+    @MainActor
+    private func rebuildHighlights() async {
+        if !highlights.isEmpty {
+            highlights = []
+        }
+        let text = highlightSourceText
+        let nextHighlights = await Task.detached(priority: .utility) {
+            KLMSReadableLogParser.highlights(from: text)
+        }.value
+        if highlights != nextHighlights {
+            highlights = nextHighlights
+        }
     }
 }
 
