@@ -1011,6 +1011,35 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(probe.contains("queue.removeFirst()"))
     }
 
+    func testIOSDeviceInstallHelperWaitsForUnavailableDevices() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let repoRoot = packageRoot
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let installScriptRoot = repoRoot.appendingPathComponent("tools/install_klms_ios_device.sh")
+        let readmeRoot = packageRoot.appendingPathComponent("README.md")
+        let installScript = try String(contentsOf: installScriptRoot, encoding: .utf8)
+        let readme = try String(contentsOf: readmeRoot, encoding: .utf8)
+
+        XCTAssertTrue(installScript.contains("WAIT_FOR_AVAILABLE_SECONDS=\"${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-45}\""))
+        XCTAssertTrue(installScript.contains("DISCOVERY_POLL_SECONDS=\"${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-3}\""))
+        XCTAssertTrue(installScript.contains("current_epoch_seconds()"))
+        XCTAssertTrue(installScript.contains("/bin/date +%s"))
+        XCTAssertTrue(installScript.contains("wait_for_ios_devices()"))
+        XCTAssertTrue(installScript.contains("discovered_devices=\"$(wait_for_ios_devices)\""))
+        XCTAssertTrue(installScript.contains("discovery_status=$?"))
+        XCTAssertTrue(installScript.contains("quiet_unavailable"))
+        XCTAssertTrue(installScript.contains("Waiting up to ${WAIT_FOR_AVAILABLE_SECONDS}s for an unlocked iPhone/iPad to become available"))
+        XCTAssertFalse(installScript.contains("EPOCHSECONDS"))
+        XCTAssertFalse(installScript.contains("klms-ios-devices.XXXXXX.json"))
+
+        XCTAssertTrue(readme.contains("waits up to 45 seconds for paired iPhone/iPad devices to become available"))
+        XCTAssertTrue(readme.contains("IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS=0"))
+    }
+
     func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
