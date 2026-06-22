@@ -1638,6 +1638,8 @@ final class CompanionModel: ObservableObject {
                 }
                 if let syncData = await syncDataTask {
                     didChange = apply(syncData) || didChange
+                } else if shouldLoadSyncData && !hasLoadedServerSyncData {
+                    didChange = markInitialSyncDataLoadFailure(silentErrors: silentErrors) || didChange
                 }
                 if let fileRequests = await fileRequestsTask {
                     let visibleFileRequests = visibleFileAccessRequests(fileRequests)
@@ -2584,6 +2586,29 @@ final class CompanionModel: ObservableObject {
             return "새로고침에 실패했습니다. 설정과 네트워크 상태를 확인해 주세요."
         }
         return "새로고침 실패 · \(trimmedReason)"
+    }
+
+    @discardableResult
+    private func markInitialSyncDataLoadFailure(silentErrors: Bool) -> Bool {
+        let message = "서버 요약을 불러오지 못했습니다. 연결을 확인한 뒤 새로고침해 주세요."
+        var didChange = false
+        if connectionMessage != message {
+            connectionMessage = message
+            didChange = true
+        }
+        if connectionSucceeded != false {
+            connectionSucceeded = false
+            didChange = true
+        }
+        if errorMessage != message {
+            errorMessage = message
+            didChange = true
+        }
+        if !silentErrors {
+            userAlert = UserAlert(title: "요약 갱신 실패", message: message)
+            didChange = true
+        }
+        return didChange
     }
 
     private func schedulePersistServerToken(_ token: String) {

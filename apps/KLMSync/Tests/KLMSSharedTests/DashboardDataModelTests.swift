@@ -5779,7 +5779,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(refreshBody.contains("async let itemActionsTask = Self.fetchRecentItemActionsIfNeeded(scope.fetchesItemActions"))
         XCTAssertTrue(refreshBody.contains("async let requestLogTask = Self.fetchRecentRequestLogIfNeeded(scope.fetchesRequestLog"))
         XCTAssertTrue(refreshBody.contains("async let settingActionsTask = Self.fetchRecentSettingActionsIfNeeded(scope.fetchesSettingActions"))
+        XCTAssertTrue(refreshBody.contains("} else if shouldLoadSyncData && !hasLoadedServerSyncData {"))
+        XCTAssertTrue(refreshBody.contains("didChange = markInitialSyncDataLoadFailure(silentErrors: silentErrors) || didChange"))
         XCTAssertTrue(ios.contains("private static func fetchSyncDataIfNeeded"))
+        XCTAssertTrue(ios.contains("private func markInitialSyncDataLoadFailure(silentErrors: Bool) -> Bool"))
+        XCTAssertTrue(ios.contains("서버 요약을 불러오지 못했습니다. 연결을 확인한 뒤 새로고침해 주세요."))
+        XCTAssertTrue(ios.contains("userAlert = UserAlert(title: \"요약 갱신 실패\", message: message)"))
         XCTAssertTrue(ios.contains("struct RelayRefreshScope: Equatable"))
         XCTAssertTrue(ios.contains("scope.formUnion(newScope)"))
     }
