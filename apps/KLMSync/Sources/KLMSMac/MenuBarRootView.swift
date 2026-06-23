@@ -1812,6 +1812,7 @@ private struct LogSummaryPanelView: View {
     @Binding var expandedKind: LogSummaryKind?
     private static let terminalSummaryDisplayInterval: TimeInterval = 5 * 60
     private let tileColumns = [GridItem(.adaptive(minimum: 176), spacing: 8)]
+    private let renderReferenceDate = Date()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1893,7 +1894,7 @@ private struct LogSummaryPanelView: View {
             return active
         }
         return model.serverRelayRecentFileAccessRequests.first {
-            Date().timeIntervalSince($0.updatedAt) <= Self.terminalSummaryDisplayInterval
+            renderReferenceDate.timeIntervalSince($0.updatedAt) <= Self.terminalSummaryDisplayInterval
         }
     }
 
@@ -1905,7 +1906,7 @@ private struct LogSummaryPanelView: View {
         if status.isInFlight {
             return command
         }
-        if Date().timeIntervalSince(command.updatedAt) <= Self.terminalSummaryDisplayInterval {
+        if renderReferenceDate.timeIntervalSince(command.updatedAt) <= Self.terminalSummaryDisplayInterval {
             return command
         }
         return nil
