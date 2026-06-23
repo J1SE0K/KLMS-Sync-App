@@ -91,17 +91,18 @@ xcodebuild_status=${pipestatus[1]}
 set -e
 
 if (( xcodebuild_status != 0 )); then
-  if [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" ]] && grep -q "No Accounts" "$BUILD_LOG"; then
+  if [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" ]] && grep -Eq "No Accounts|Invalid credentials in keychain|missing Xcode-Username" "$BUILD_LOG"; then
     print -ru2 -- ""
-    print -ru2 -- "iPhone/iPad signed build failed because Xcode has no signed-in Apple development account."
-    print -ru2 -- "Open Xcode > Settings > Accounts, sign in, then rerun:"
+    print -ru2 -- "iPhone/iPad signed build failed because Xcode signing credentials are not usable."
+    print -ru2 -- "Open Xcode > Settings > Accounts, confirm the Apple ID is signed in, then update apps/KLMSync/Config/KLMSiOS.local.xcconfig with that account's Team ID and a unique bundle identifier."
+    print -ru2 -- "Then rerun:"
     print -ru2 -- "  IOS_ALLOW_PROVISIONING_UPDATES=1 $0"
     print -ru2 -- "For compile-only validation without installing on a device, run:"
     print -ru2 -- "  CODE_SIGNING_ALLOWED=NO $0"
   elif [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" ]] && grep -q "No profiles for" "$BUILD_LOG"; then
     print -ru2 -- ""
     print -ru2 -- "iPhone/iPad signed build failed because the local provisioning profile is missing."
-    print -ru2 -- "If Xcode is signed in, let Xcode create/update the profile:"
+    print -ru2 -- "Check that apps/KLMSync/Config/KLMSiOS.local.xcconfig has the correct Team ID and a bundle identifier registered to that account, then let Xcode create/update the profile:"
     print -ru2 -- "  IOS_ALLOW_PROVISIONING_UPDATES=1 $0"
   fi
   print -ru2 -- "Full xcodebuild log: $BUILD_LOG"

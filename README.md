@@ -53,7 +53,7 @@ Mac에서 릴레이 서버를 백그라운드 서비스로 켜려면:
 tools/install_klms_relay_agent.sh install
 ```
 
-iPhone용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodeproj`에 생성되어 있고, `tools/build_klms_ios_sim.sh`로 simulator SDK 컴파일을 확인한다. 기본 설정은 서버 릴레이 URL, 클라이언트 토큰, 필요 시 Mac worker 토큰을 앱 설정에 넣는 흐름이다. 로컬 원격 제어를 따로 켜는 경우에만 iPhone의 로컬 네트워크 권한과 macOS 방화벽의 수신 연결 허용이 필요하다.
+iPhone/iPad용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodeproj`에 생성되어 있고, `tools/build_klms_ios_sim.sh`로 simulator SDK 컴파일을 확인한다. iPhone/iPad에는 서버 릴레이 URL과 클라이언트 토큰만 넣는다. Mac worker 토큰은 Mac 앱에만 저장한다. 로컬 원격 제어를 따로 켜는 경우에만 iPhone/iPad의 로컬 네트워크 권한과 macOS 방화벽의 수신 연결 허용이 필요하다.
 
 ## 실행 파일
 

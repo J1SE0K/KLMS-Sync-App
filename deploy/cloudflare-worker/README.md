@@ -6,8 +6,8 @@ Mac/iPhone/Windows 앱은 기존 서버 릴레이 API를 그대로 쓰기 때문
 구조:
 
 ```text
-iPhone/Windows/Mac 앱 -> Cloudflare Worker HTTPS API -> D1 DB -> Mac 앱 polling -> KLMS 동기화
-iPhone/Windows 파일 열기 요청 -> Mac 앱 -> R2 임시 업로드 -> 만료 링크 다운로드
+iPhone/iPad/Windows/Mac 앱 -> Cloudflare Worker HTTPS API/WebSocket -> D1 DB -> Mac worker -> KLMS 동기화
+iPhone/iPad/Windows 파일 열기 요청 -> Mac worker -> R2 임시 업로드 -> 만료 링크 다운로드
 ```
 
 서버에는 sanitized 상태와 항목만 저장한다.
@@ -132,8 +132,8 @@ Mac 앱에는 같은 서버 주소와 `<RELAY_WORKER_TOKEN>`을 입력한다.
 
 ## 파일 열기 링크
 
-iPhone/Windows에서 파일 항목의 `파일 열기`를 누르면 서버에는 파일 열기 요청만 저장된다.
-Mac 앱이 polling으로 요청을 받아 로컬 `course_files` 원본을 찾고, 해당 파일 하나만 R2에 임시 업로드한다.
+iPhone/iPad/Windows에서 파일 항목의 `파일 열기`를 누르면 서버에는 파일 열기 요청만 저장된다.
+Mac 앱은 WebSocket 이벤트로 요청을 받고, 놓친 이벤트는 짧은 fallback 확인으로 보강한다. 요청을 받으면 로컬 `course_files` 원본을 찾고, 해당 파일 하나만 R2에 임시 업로드한다.
 서버는 짧게 만료되는 다운로드 URL을 내려준다.
 
 - 기본 만료 시간: 5분
