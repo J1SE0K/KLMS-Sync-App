@@ -1081,23 +1081,22 @@ final class CompanionModel: ObservableObject {
         )
         command.summary = status
         recentCommands.insert(command, at: 0)
+        rebuildRemoteLogDerivedState()
         status = command.summary
         lastRefreshAt = Date()
         connectionMessage = "\(kind.displayName) 요청을 서버에 보내는 중입니다."
         connectionSucceeded = nil
         errorMessage = ""
-        isSubmitting = true
-        defer {
-            isSubmitting = false
-        }
         do {
             try await serverRelayStore.create(command)
             trackReportNotificationIfNeeded(for: command)
             connectionMessage = "\(kind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
+            rebuildRemoteLogDerivedState()
         } catch {
             guard !isCancellationError(error) else { return }
             recentCommands.removeAll { $0.id == command.id }
+            rebuildRemoteLogDerivedState()
             errorMessage = userFacingMessage(for: error)
             connectionMessage = "요청 전송 실패"
             connectionSucceeded = false
@@ -1594,20 +1593,20 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
-        isSubmitting = true
-        defer {
-            isSubmitting = false
-        }
         let request = ServerRelayFileAccessRequest(
             itemID: item.id,
             itemKind: item.kind,
             itemTitle: item.title
         )
         recentFileAccessRequests.insert(request, at: 0)
+        rebuildFileAccessLookup()
+        rebuildRemoteLogDerivedState()
         do {
             let created = try await serverRelayStore.createFileAccessRequest(request)
             recentFileAccessRequests.removeAll { $0.id == request.id }
             recentFileAccessRequests.insert(created, at: 0)
+            rebuildFileAccessLookup()
+            rebuildRemoteLogDerivedState()
             connectionMessage = "서버에 파일 링크 준비를 요청했습니다."
             connectionSucceeded = true
             errorMessage = ""
@@ -1615,6 +1614,8 @@ final class CompanionModel: ObservableObject {
         } catch {
             guard !isCancellationError(error) else { return }
             recentFileAccessRequests.removeAll { $0.id == request.id }
+            rebuildFileAccessLookup()
+            rebuildRemoteLogDerivedState()
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "파일 요청 실패", message: message)
@@ -3973,7 +3974,7 @@ private struct CompanionSettingsScreen: View {
                 verifySummary: model.verifySummary,
                 stageDurations: model.latestSharedRunLogStageDurations,
                 dryRunReports: model.dryRunReports,
-                commandsDisabled: !model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest
+                commandsDisabled: !model.isRemoteAvailable || model.hasInFlightRequest
             ) { kind, dryRun in
                 await model.createCommand(kind, dryRun: dryRun)
             }
@@ -6319,7 +6320,6 @@ private struct RemoteDashboardSyncCard: View {
     private var snapshot: RemoteDashboardSyncSnapshot {
         RemoteDashboardSyncSnapshot(
             isRemoteAvailable: model.isRemoteAvailable,
-            isSubmitting: model.isSubmitting,
             hasInFlightRequest: model.hasInFlightRequest,
             phase: model.status.phase,
             activeRequestLabel: model.activeRequestLabel,
@@ -6360,7 +6360,6 @@ private struct RemoteDashboardSyncCard: View {
 
 private struct RemoteDashboardSyncSnapshot: Equatable {
     var isRemoteAvailable: Bool
-    var isSubmitting: Bool
     var hasInFlightRequest: Bool
     var phase: String
     var activeRequestLabel: String
@@ -6379,7 +6378,7 @@ private struct RemoteDashboardSyncSnapshot: Equatable {
     }
 
     func commandDisabled(for kind: RemoteCommandKind) -> Bool {
-        !isRemoteAvailable || isSubmitting || (hasInFlightRequest && !isCommandActive(kind))
+        !isRemoteAvailable || (hasInFlightRequest && !isCommandActive(kind))
     }
 
     func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
@@ -11900,7 +11899,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(KLMSActionButtonStyle())
-            .disabled(!model.serverRelayConfigured || model.isSubmitting || request?.status.isInFlight == true)
+            .disabled(!model.serverRelayConfigured || request?.status.isInFlight == true)
         }
         .padding(12)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))

@@ -2986,7 +2986,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(settingsScreen.contains("verifySummary: model.verifySummary"))
         XCTAssertTrue(settingsScreen.contains("stageDurations: model.latestSharedRunLogStageDurations"))
         XCTAssertTrue(settingsScreen.contains("dryRunReports: model.dryRunReports"))
-        XCTAssertTrue(settingsScreen.contains("commandsDisabled: !model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest"))
+        XCTAssertTrue(settingsScreen.contains("commandsDisabled: !model.isRemoteAvailable || model.hasInFlightRequest"))
         XCTAssertTrue(settingsScreen.contains("await model.createCommand(kind, dryRun: dryRun)"))
         XCTAssertTrue(remoteDiagnosticPanel.contains("companionPerformWithoutAnimation {\n                    isPanelExpanded.toggle()"))
         XCTAssertFalse(remoteDiagnosticPanel.contains("Button {\n                isPanelExpanded.toggle()"))
@@ -6327,9 +6327,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(createCalendarAction.contains("markCalendarChangeResolvedLocally(change)"))
         XCTAssertFalse(createCalendarAction.contains("await refreshRecent("))
         XCTAssertTrue(createCommand.contains("recentCommands.insert(command, at: 0)"))
+        XCTAssertTrue(createCommand.contains("rebuildRemoteLogDerivedState()"))
+        XCTAssertFalse(createCommand.contains("isSubmitting = true"))
         XCTAssertFalse(createCommand.contains("await refreshRecent("))
         XCTAssertFalse(cancelCommand.contains("await refreshRecent("))
         XCTAssertTrue(createFileAccess.contains("recentFileAccessRequests.insert(request, at: 0)"))
+        XCTAssertTrue(createFileAccess.contains("rebuildFileAccessLookup()"))
+        XCTAssertTrue(createFileAccess.contains("rebuildRemoteLogDerivedState()"))
+        XCTAssertFalse(createFileAccess.contains("isSubmitting = true"))
         XCTAssertFalse(createFileAccess.contains("await refreshRecent("))
     }
 
