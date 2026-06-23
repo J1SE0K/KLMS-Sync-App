@@ -11462,7 +11462,7 @@ private struct LongDetailFieldRow: View {
                         isExpanded.toggle()
                     } label: {
                         Label(isExpanded ? "접기" : "전체 보기", systemImage: isExpanded ? "chevron.up" : "chevron.down")
-                            .frame(minHeight: 36)
+                            .frame(minHeight: 44)
                     }
                     .buttonStyle(KLMSActionButtonStyle())
                     .accessibilityLabel(isExpanded ? "\(title) 접기" : "\(title) 전체 보기")

@@ -4706,6 +4706,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(longDetailFieldRow.contains("Text(collapsedText(displayValue))"))
         XCTAssertTrue(longDetailFieldRow.contains("Label(isExpanded ? \"접기\" : \"전체 보기\""))
         XCTAssertTrue(longDetailFieldRow.contains(".lineLimit(6)"))
+        XCTAssertTrue(longDetailFieldRow.contains(".frame(minHeight: 44)"))
+        XCTAssertFalse(longDetailFieldRow.contains(".frame(minHeight: 36)"))
         XCTAssertTrue(recentFileRequests.contains(".frame(width: 44, height: 44)"))
         XCTAssertTrue(recentServerRequests.contains(".frame(width: 44, height: 44)"))
         XCTAssertTrue(recentRemoteCommands.contains(".frame(width: 44, height: 44)"))
