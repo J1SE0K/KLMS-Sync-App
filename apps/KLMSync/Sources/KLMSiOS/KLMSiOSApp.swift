@@ -9713,7 +9713,6 @@ private struct MailPasteAnalysisResultView: View {
         MailPasteAnalysisResultContent(
             analysis: analysis,
             registeredDashboardItem: registeredDashboardItem,
-            isSubmitting: model.isSubmitting,
             detailPanel: { item in
                 AnyView(DeferredServerSyncItemDetailPanel(item: item, model: model))
             },
@@ -9741,7 +9740,6 @@ private struct MailPasteAnalysisResultView: View {
 private struct MailPasteAnalysisResultContent: View, Equatable {
     var analysis: MailPasteAnalysis
     var registeredDashboardItem: ServerRelaySyncItem?
-    var isSubmitting: Bool
     var detailPanel: (ServerRelaySyncItem) -> AnyView
     var createCalendarAction: (String, CalendarEventEdit) async -> Void
     var submitDashboardItem: (ServerRelaySyncItem) async -> Void
@@ -9753,7 +9751,6 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
     nonisolated static func == (lhs: MailPasteAnalysisResultContent, rhs: MailPasteAnalysisResultContent) -> Bool {
         lhs.analysis == rhs.analysis
             && lhs.registeredDashboardItem == rhs.registeredDashboardItem
-            && lhs.isSubmitting == rhs.isSubmitting
     }
 
     var body: some View {
@@ -9878,7 +9875,6 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(KLMSActionButtonStyle(tone: .success))
-                    .disabled(isSubmitting)
                 }
 
                 if let dashboardItem = analysis.dashboardItem {
@@ -9895,7 +9891,6 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                 Label("수정", systemImage: "pencil")
                             }
                             .buttonStyle(KLMSActionButtonStyle())
-                            .disabled(isSubmitting)
                             Button(role: .destructive) {
                                 Task {
                                     await removeDashboardItem(editableItem)
@@ -9904,7 +9899,6 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                 Label("제거", systemImage: "minus.circle")
                             }
                             .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                            .disabled(isSubmitting)
                         }
                     } else {
                         HStack(spacing: 8) {
@@ -9915,7 +9909,6 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(KLMSActionButtonStyle())
-                            .disabled(isSubmitting)
                             Button {
                                 Task {
                                     await submitDashboardItem(dashboardItem)
@@ -9925,7 +9918,6 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(KLMSActionButtonStyle(tone: .accent(analysis.kind.tint)))
-                            .disabled(isSubmitting)
                         }
                     }
                 }
