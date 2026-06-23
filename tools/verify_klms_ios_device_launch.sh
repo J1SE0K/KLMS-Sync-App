@@ -11,6 +11,7 @@ TIMEOUT_SECONDS="${IOS_DEVICE_TIMEOUT_SECONDS:-60}"
 WAIT_FOR_AVAILABLE_SECONDS="${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-20}"
 DISCOVERY_POLL_SECONDS="${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-2}"
 MANUAL_LAUNCH_STATUS=4
+REQUIRED_DEVICE_TYPES="${IOS_DEVICE_REQUIRE_TYPES:-}"
 
 xcconfig_value() {
   local key="$1"
@@ -43,6 +44,18 @@ fi
 
 redact_bundle_id() {
   /usr/bin/sed "s/${BUNDLE_IDENTIFIER//\//\\/}/<bundle-id>/g"
+}
+
+array_contains() {
+  local needle="$1"
+  shift
+  local item
+  for item in "$@"; do
+    if [[ "$item" == "$needle" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 launch_one_device() {
@@ -170,18 +183,22 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   manual_launch_count=0
   failed_count=0
   overall_status=0
+  seen_device_types=()
+  launched_device_types=()
   for device_entry in "${device_entries[@]}"; do
     target_device="${device_entry%%$'\t'*}"
     device_label="${device_entry#*$'\t'}"
     if [[ "$device_label" == "$device_entry" || -z "$device_label" ]]; then
       device_label="device"
     fi
+    seen_device_types+=("$device_label")
     set +e
     launch_one_device "$target_device" "$device_label"
     device_status=$?
     set -e
     if (( device_status == 0 )); then
       launched_count=$(( launched_count + 1 ))
+      launched_device_types+=("$device_label")
       continue
     fi
     if (( device_status == MANUAL_LAUNCH_STATUS )); then
@@ -193,6 +210,25 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
       overall_status="$device_status"
     fi
   done
+  if [[ -n "$REQUIRED_DEVICE_TYPES" ]]; then
+    required_device_types=("${(@s:,:)REQUIRED_DEVICE_TYPES}")
+    for required_device_type in "${required_device_types[@]}"; do
+      if [[ -z "$required_device_type" ]]; then
+        continue
+      fi
+      if ! array_contains "$required_device_type" "${seen_device_types[@]}"; then
+        print -ru2 -- "${required_device_type}: launch-check missing. Connect and unlock this device, confirm Developer Mode is enabled, then rerun this launch check."
+        failed_count=$(( failed_count + 1 ))
+        if (( overall_status == 0 )); then
+          overall_status=3
+        fi
+        continue
+      fi
+      if ! array_contains "$required_device_type" "${launched_device_types[@]}" && (( overall_status == 0 )); then
+        overall_status="$MANUAL_LAUNCH_STATUS"
+      fi
+    done
+  fi
   print -r -- "launch-check-summary launched=${launched_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
   exit "$overall_status"
 fi

@@ -76,7 +76,9 @@ if [[ "$RUN_IOS_BUILD" == "1" ]]; then
 fi
 
 if [[ "$RUN_IOS_LAUNCH" == "1" ]]; then
-  record_step "ios-device-launch" "$ROOT_DIR/tools/verify_klms_ios_device_launch.sh"
+  record_step "ios-device-launch" /usr/bin/env \
+    IOS_DEVICE_REQUIRE_TYPES=iPhone,iPad \
+    "$ROOT_DIR/tools/verify_klms_ios_device_launch.sh"
 fi
 
 swift_state="skipped"
