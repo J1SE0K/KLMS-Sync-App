@@ -6031,7 +6031,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(rootView.contains("@Environment(\\.scenePhase) private var scenePhase"))
         XCTAssertTrue(rootView.contains(".onChange(of: scenePhase)"))
         XCTAssertTrue(rootView.contains("guard newPhase == .active else { return }"))
-        XCTAssertTrue(rootView.contains("await model.refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false)"))
+        XCTAssertTrue(rootView.contains("await model.startServerRelayRealtime()"))
     }
 
     func testIOSServerTokenPersistenceDoesNotBlockTyping() throws {

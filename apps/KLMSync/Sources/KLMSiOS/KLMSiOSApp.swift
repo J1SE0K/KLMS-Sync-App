@@ -2780,7 +2780,7 @@ struct CompanionRootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             Task {
-                await model.refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false)
+                await model.startServerRelayRealtime()
             }
         }
         .alert(item: $model.userAlert) { alert in
