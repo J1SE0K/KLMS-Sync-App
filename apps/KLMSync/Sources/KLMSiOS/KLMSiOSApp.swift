@@ -408,9 +408,7 @@ final class CompanionModel: ObservableObject {
         #if canImport(UserNotifications)
         UNUserNotificationCenter.current().delegate = KLMSCompanionNotificationDelegate.shared
         #endif
-        let storedServerToken = LocalRemoteTokenStore.load(account: "server-relay-ios")
-            ?? UserDefaults.standard.string(forKey: Self.serverTokenKey)
-            ?? ""
+        let storedServerToken = Self.loadServerRelayTokenMigratingUserDefaults()
         let storedServerURL = UserDefaults.standard.string(forKey: Self.serverURLKey) ?? ""
         if storedServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             serverURL = ""
@@ -426,7 +424,6 @@ final class CompanionModel: ObservableObject {
         resolvedCalendarChangeIDs = Self.loadResolvedCalendarChangeIDs()
         mailDashboardItems = Self.loadMailDashboardItems()
         trackedReportNotificationCommandIDs = Self.loadTrackedReportNotificationCommandIDs()
-        Self.persistServerToken(storedServerToken)
         Self.clearDeprecatedLocalConnectionInfo()
         if let cachedSyncData = Self.loadCachedServerSyncData(for: serverURL) {
             _ = apply(cachedSyncData, persistCache: false)
@@ -3009,6 +3006,18 @@ final class CompanionModel: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: serverTokenKey)
         }
+    }
+
+    nonisolated private static func loadServerRelayTokenMigratingUserDefaults() -> String {
+        let serverTokenKey = "KLMSServerRelayToken"
+        if let keychainToken = LocalRemoteTokenStore.load(account: "server-relay-ios"),
+           !keychainToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            UserDefaults.standard.removeObject(forKey: serverTokenKey)
+            return keychainToken
+        }
+        let legacyToken = UserDefaults.standard.string(forKey: serverTokenKey) ?? ""
+        persistServerToken(legacyToken)
+        return legacyToken.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func clearDeprecatedLocalConnectionInfo() {

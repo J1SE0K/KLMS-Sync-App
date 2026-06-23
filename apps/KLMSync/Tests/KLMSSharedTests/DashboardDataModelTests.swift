@@ -6371,10 +6371,22 @@ final class DashboardDataModelTests: XCTestCase {
             in: companionModel,
             description: "iOS server token persistence"
         )
+        let loadMigratingToken = try sourceBody(
+            after: "nonisolated private static func loadServerRelayTokenMigratingUserDefaults() -> String",
+            in: companionModel,
+            description: "iOS server token migration"
+        )
 
-        XCTAssertTrue(initializer.contains("LocalRemoteTokenStore.load(account: \"server-relay-ios\")"))
-        XCTAssertTrue(initializer.contains("?? UserDefaults.standard.string(forKey: Self.serverTokenKey)"))
-        XCTAssertTrue(initializer.contains("Self.persistServerToken(storedServerToken)"))
+        XCTAssertTrue(initializer.contains("Self.loadServerRelayTokenMigratingUserDefaults()"))
+        XCTAssertFalse(initializer.contains("UserDefaults.standard.string(forKey: Self.serverTokenKey)"))
+        XCTAssertFalse(initializer.contains("Self.persistServerToken(storedServerToken)"))
+        XCTAssertTrue(loadMigratingToken.contains("LocalRemoteTokenStore.load(account: \"server-relay-ios\")"))
+        XCTAssertTrue(loadMigratingToken.contains("UserDefaults.standard.string(forKey: serverTokenKey)"))
+        XCTAssertTrue(loadMigratingToken.contains("persistServerToken(legacyToken)"))
+        XCTAssertGreaterThanOrEqual(
+            loadMigratingToken.components(separatedBy: "UserDefaults.standard.removeObject(forKey: serverTokenKey)").count - 1,
+            1
+        )
         XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.save(trimmedToken, account: \"server-relay-ios\")"))
         XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: serverTokenKey)"))
         XCTAssertFalse(persistToken.contains("UserDefaults.standard.set"))
