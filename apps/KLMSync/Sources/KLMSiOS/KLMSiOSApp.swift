@@ -731,6 +731,12 @@ final class CompanionModel: ObservableObject {
         serverRelayStore != nil
     }
 
+    var serverRelayBootstrapKey: String {
+        let normalizedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tokenState = serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "missing-token" : "token-present"
+        return "\(normalizedURL)|\(tokenState)"
+    }
+
     var hasClearableRemoteLogs: Bool {
         hasClearableRemoteLogsCache
     }
@@ -2334,6 +2340,11 @@ final class CompanionModel: ObservableObject {
         #endif
     }
 
+    func bootstrapServerRelayFromLaunch(silentInitialErrors: Bool = false) async {
+        syncDataNeedsRefresh = true
+        await startServerRelayRealtime(silentInitialErrors: silentInitialErrors)
+    }
+
     func startServerRelayRealtime(silentInitialErrors: Bool = false) async {
         configureServerRelayEventStream()
         await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)
@@ -3130,13 +3141,13 @@ struct CompanionRootView: View {
         }
         .background(Color.klmsScreenBackground.ignoresSafeArea())
         .tint(.klmsCommandAccent)
-        .task {
-            await model.startServerRelayRealtime()
+        .task(id: model.serverRelayBootstrapKey) {
+            await model.bootstrapServerRelayFromLaunch()
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             Task {
-                await model.startServerRelayRealtime(silentInitialErrors: true)
+                await model.bootstrapServerRelayFromLaunch(silentInitialErrors: true)
             }
         }
         .alert(item: $model.userAlert) { alert in
@@ -7043,7 +7054,6 @@ private struct DeferredInteractionExpansion<Content: View>: View {
     var isExpanded: Bool
     private let content: () -> Content
     @State private var shouldRender: Bool
-    @State private var renderTask: Task<Void, Never>?
 
     init(
         isExpanded: Bool,
@@ -7066,29 +7076,13 @@ private struct DeferredInteractionExpansion<Content: View>: View {
         .onChange(of: isExpanded) { _, expanded in
             scheduleRender(expanded)
         }
-        .onDisappear {
-            renderTask?.cancel()
-            renderTask = nil
-        }
         .transaction { transaction in
             transaction.animation = nil
         }
     }
 
     private func scheduleRender(_ expanded: Bool) {
-        renderTask?.cancel()
-        renderTask = nil
-        guard expanded else {
-            shouldRender = false
-            return
-        }
-        shouldRender = false
-        renderTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled, isExpanded else { return }
-            shouldRender = true
-            renderTask = nil
-        }
+        shouldRender = expanded
     }
 }
 
@@ -8866,7 +8860,6 @@ private struct CompanionInlineItemRowsView: View {
     var onSelectItem: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var optimisticExternalSelectedItemID: String?
-    @State private var deferredExternalSelectionTask: Task<Void, Never>?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
@@ -8946,10 +8939,6 @@ private struct CompanionInlineItemRowsView: View {
             clearStaleInlineSelectionIfNeeded()
             clearStaleExternalSelectionIfNeeded()
         }
-        .onDisappear {
-            deferredExternalSelectionTask?.cancel()
-            deferredExternalSelectionTask = nil
-        }
     }
 
     private var activeSelectedItemID: String? {
@@ -8992,13 +8981,7 @@ private struct CompanionInlineItemRowsView: View {
             let itemID = item.id
             companionPerformWithoutAnimation {
                 optimisticExternalSelectedItemID = itemID
-            }
-            deferredExternalSelectionTask?.cancel()
-            deferredExternalSelectionTask = Task { @MainActor in
-                await Task.yield()
-                guard !Task.isCancelled, optimisticExternalSelectedItemID == itemID else { return }
                 onSelectItem(item)
-                deferredExternalSelectionTask = nil
             }
             return
         }
@@ -9039,7 +9022,6 @@ private struct CompanionSelectableItemListRows: View {
     var itemIDs: Set<String>
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
-    @State private var deferredSelectionTask: Task<Void, Never>?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
@@ -9090,10 +9072,6 @@ private struct CompanionSelectableItemListRows: View {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
             clearStaleSelectionIfNeeded()
         }
-        .onDisappear {
-            deferredSelectionTask?.cancel()
-            deferredSelectionTask = nil
-        }
     }
 
     private var currentInitialVisibleLimit: Int {
@@ -9114,14 +9092,8 @@ private struct CompanionSelectableItemListRows: View {
     private func select(_ item: ServerRelaySyncItem) {
         let itemID = item.id
         companionPerformWithoutAnimation {
-            selectedItemID = item.id
-        }
-        deferredSelectionTask?.cancel()
-        deferredSelectionTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled, selectedItemID == itemID else { return }
+            selectedItemID = itemID
             onSelect(item)
-            deferredSelectionTask = nil
         }
     }
 

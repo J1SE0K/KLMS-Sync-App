@@ -1362,7 +1362,9 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("configureServerRelayEventStream()", ios_app)
         self.assertIn('webSocketTask(with: store.eventStreamRequest(role: "client"))', ios_app)
         self.assertIn("task.receive()", ios_app)
-        self.assertIn("async let responseTask = serverRelayStore.fetchStatusResponse()", ios_app)
+        self.assertIn("async let responseTask = Self.fetchStatusResponseResult(store: serverRelayStore)", ios_app)
+        self.assertIn("await model.bootstrapServerRelayFromLaunch()", ios_app)
+        self.assertIn("syncDataNeedsRefresh = true", ios_app)
         self.assertNotIn("pendingCancelCommandID == nil ? 350_000_000 : 250_000_000", ios_app)
 
     def test_ios_companion_notifies_report_refresh_result(self) -> None:

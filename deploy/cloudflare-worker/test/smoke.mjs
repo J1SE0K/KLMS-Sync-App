@@ -372,6 +372,55 @@ async function runSmoke() {
     assert.equal(status.status.notices, 1);
   }
 
+  const futureAction = await expectJSON("/v1/item-actions", {
+    action: "noticeImportant",
+    itemID: "notice-future",
+    itemKind: "notice",
+    itemTitle: "나중에 들어올 공지",
+  }, { method: "POST", status: 201 });
+  assert.equal(futureAction.status, "completed");
+  assert.match(futureAction.message, /서버 화면에 바로 반영/);
+  {
+    const pendingActions = await expectJSON("/relay/v1/item-actions/pending", undefined, { role: "worker" });
+    assert.equal(
+      pendingActions.actions.some((pendingAction) => pendingAction.id === futureAction.id),
+      false
+    );
+  }
+  await expectJSON("/v1/sync-data", {
+    generatedAt: "2026-05-31T00:00:20Z",
+    items: [
+      {
+        id: "notice-future",
+        kind: "notice",
+        course: "알고리즘",
+        title: "나중에 들어올 공지",
+        timestamp: "2026-05-31",
+        status: "",
+        detail: "",
+        attachmentCount: 0,
+        updatedAt: "2026-05-31T00:00:20Z",
+      },
+    ],
+    calendarChanges: [
+      {
+        action: "created",
+        calendar: "KLMS 시험",
+        bucket: "exam",
+        title: "추가 시험",
+        start_at: "2026-06-18 09:00",
+        due_at: "2026-06-18 10:00",
+        changes: ["새 일정"],
+      },
+    ],
+  }, { method: "POST", role: "worker" });
+  {
+    const payload = await expectJSON("/v1/sync-data?kind=notice&limit=10");
+    const futureNotice = payload.items.find((item) => item.id === "notice-future");
+    assert.ok(futureNotice);
+    assert.equal(futureNotice.isImportant, true);
+  }
+
   const calendarAction = await expectJSON("/v1/item-actions", {
     action: "calendarCreate",
     itemID: calendarChangeID,

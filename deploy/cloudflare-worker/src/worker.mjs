@@ -430,26 +430,27 @@ async function route(request, env) {
       return sendJSON(400, { error: "missing item action target" });
     }
     const syncPatch = await applyItemActionToStoredSyncData(db, state, action);
-    if (syncPatch.changed && isServerDisplayOnlyItemAction(action.action)) {
+    const serverApplied = isServerDisplayOnlyItemAction(action.action);
+    if (serverApplied) {
       action.status = "completed";
     }
-    if (syncPatch.changed && !action.message) {
+    if (serverApplied && !action.message) {
       action.message = "서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다.";
       action.updatedAt = new Date().toISOString();
     }
     await upsertItemAction(db, action);
     await appendRequestLog(db, request, {
       action: displayItemActionName(action.action),
-      status: syncPatch.changed ? "updated" : "queued",
-      message: syncPatch.changed
+      status: serverApplied ? "updated" : "queued",
+      message: serverApplied
         ? "서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다."
         : action.itemTitle || action.itemID,
     });
-    state.message = syncPatch.changed
+    state.message = serverApplied
       ? `${displayItemActionName(action.action)} 서버 반영 완료`
       : `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, syncPatch.changed ? "item-actions:server-state" : "item-actions:pending");
+    await saveMetaState(db, state, env, serverApplied ? "item-actions:server-state" : "item-actions:pending");
     return sendJSON(201, action);
   }
 

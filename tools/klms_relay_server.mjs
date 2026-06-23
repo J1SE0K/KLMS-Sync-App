@@ -422,26 +422,27 @@ async function route(request, response) {
       return;
     }
     const syncPatch = applyItemActionToStoredSyncData(action);
-    if (syncPatch.changed && isServerDisplayOnlyItemAction(action.action)) {
+    const serverApplied = isServerDisplayOnlyItemAction(action.action);
+    if (serverApplied) {
       action.status = "completed";
     }
-    if (syncPatch.changed && !action.message) {
+    if (serverApplied && !action.message) {
       action.message = "서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다.";
       action.updatedAt = new Date().toISOString();
     }
     upsertItemAction(action);
     appendRequestLog(request, {
       action: displayItemActionName(action.action),
-      status: syncPatch.changed ? "updated" : "queued",
-      message: syncPatch.changed
+      status: serverApplied ? "updated" : "queued",
+      message: serverApplied
         ? "서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다."
         : action.itemTitle || action.itemID,
     });
-    state.message = syncPatch.changed
+    state.message = serverApplied
       ? `${displayItemActionName(action.action)} 서버 반영 완료`
       : `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveState(syncPatch.changed ? "item-actions:server-state" : "item-actions:pending");
+    await saveState(serverApplied ? "item-actions:server-state" : "item-actions:pending");
     sendJSON(response, 201, action);
     return;
   }
