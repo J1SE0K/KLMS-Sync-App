@@ -1134,6 +1134,7 @@ final class CompanionModel: ObservableObject {
             let savedAction = try await serverRelayStore.createSettingAction(action)
             recentSettingActions.removeAll { $0.id == savedAction.id || $0.key == savedAction.key }
             recentSettingActions.insert(savedAction, at: 0)
+            applyRemoteSettingActionLocally(savedAction, fallbackSetting: setting)
             connectionMessage = savedAction.message.nilIfBlank ?? "\(setting.title) 설정 변경 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
@@ -1145,6 +1146,34 @@ final class CompanionModel: ObservableObject {
             errorMessage = message
             userAlert = UserAlert(title: "설정 요청 실패", message: message)
         }
+    }
+
+    private func applyRemoteSettingActionLocally(
+        _ action: ServerRelaySettingAction,
+        fallbackSetting: ServerRelaySetting
+    ) {
+        let key = action.key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            return
+        }
+        var settings = remoteSettings
+        let existingIndex = settings.firstIndex { $0.key == key }
+        let existing = existingIndex.map { settings[$0] }
+        let next = ServerRelaySetting(
+            key: key,
+            title: action.title.nilIfBlank ?? existing?.title ?? fallbackSetting.title,
+            value: action.value,
+            valueKind: existing?.valueKind ?? fallbackSetting.valueKind,
+            options: existing?.options ?? fallbackSetting.options,
+            editable: existing?.editable ?? fallbackSetting.editable,
+            updatedAt: ServerRelaySyncItem.isoTimestamp(date: action.updatedAt)
+        )
+        if let existingIndex {
+            settings[existingIndex] = next
+        } else {
+            settings.insert(next, at: 0)
+        }
+        remoteSettings = settings.sorted { $0.key < $1.key }
     }
 
     func updateSharedAppearanceMode(_ rawValue: String) async {

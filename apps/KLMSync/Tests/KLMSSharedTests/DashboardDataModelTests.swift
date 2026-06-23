@@ -6051,6 +6051,31 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macModel.contains("\"NOTICE_COLLAPSE_NOTICE_ITEMS\": runtimeBoolConfigValue(.noticeCollapseItems"))
     }
 
+    func testIOSSettingActionsUpdateRemoteSettingsImmediately() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let createSettingAction = try sourceBody(
+            after: "func createSettingAction(setting: ServerRelaySetting, value: String) async",
+            in: ios,
+            description: "iOS create setting action"
+        )
+        let localApply = try sourceBody(
+            after: "private func applyRemoteSettingActionLocally",
+            in: ios,
+            description: "iOS local setting action apply"
+        )
+
+        XCTAssertTrue(createSettingAction.contains("applyRemoteSettingActionLocally(savedAction, fallbackSetting: setting)"))
+        XCTAssertTrue(localApply.contains("var settings = remoteSettings"))
+        XCTAssertTrue(localApply.contains("ServerRelaySetting("))
+        XCTAssertTrue(localApply.contains("value: action.value"))
+        XCTAssertTrue(localApply.contains("remoteSettings = settings.sorted { $0.key < $1.key }"))
+    }
+
     func testIOSServerConnectionPasteImmediatelyRefreshesSummary() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
