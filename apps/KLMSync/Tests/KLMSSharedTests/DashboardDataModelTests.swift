@@ -2381,6 +2381,7 @@ final class DashboardDataModelTests: XCTestCase {
         let remoteFileAccessRequestRow = try sourceStructBody(named: "RemoteFileAccessRequestRow", in: ios)
         let remoteCommandRow = try sourceStructBody(named: "RemoteCommandRow", in: ios)
         let remoteRunningStatusBanner = try sourceStructBody(named: "RemoteRunningStatusBanner", in: ios)
+        let remoteAttentionStackContent = try sourceStructBody(named: "RemoteAttentionStackContent", in: ios)
         let remoteVerifySummaryPanel = try sourceStructBody(named: "RemoteVerifySummaryPanel", in: ios)
         let remoteVerifyCheckRow = try sourceStructBody(named: "RemoteVerifyCheckRow", in: ios)
         let companionDiagnosticDisclosure = try sourceBody(
@@ -2532,6 +2533,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct RemoteAttentionSnapshot: Equatable"))
         XCTAssertTrue(ios.contains("private struct RemoteAttentionStackContent: View, Equatable"))
         XCTAssertTrue(ios.contains("private struct RemoteRunningStatusBanner"))
+        XCTAssertLessThan(
+            remoteAttentionStackContent.range(of: "ErrorBanner(message: snapshot.errorMessage)")!.lowerBound,
+            remoteAttentionStackContent.range(of: "AuthSuccessBanner(message: message)")!.lowerBound
+        )
         XCTAssertTrue(ios.contains("RemoteRunningStatusBanner(snapshot: snapshot, onCancel: onCancel)"))
         XCTAssertTrue(remoteRunningStatusBanner.contains("ProgressView()"))
         XCTAssertTrue(remoteRunningStatusBanner.contains("Image(systemName: \"stop.circle.fill\")"))
@@ -2543,10 +2548,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(authCodeHero.contains(".accessibilitySortPriority(100)"))
         XCTAssertTrue(loginAttentionBanner.contains(".accessibilityLabel(\"로그인 필요. \\(message)\")"))
         XCTAssertTrue(authSuccessBanner.contains(".accessibilityLabel(\"인증 완료. \\(message)\")"))
+        XCTAssertTrue(authSuccessBanner.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertTrue(errorBanner.contains(".lineLimit(2)"))
         XCTAssertTrue(errorBanner.contains(".accessibilityLabel(\"오류. \\(message)\")"))
         XCTAssertTrue(errorBanner.contains(".accessibilityHint(\"전체 오류 내용은 로그 탭에서 확인할 수 있습니다.\")"))
         XCTAssertTrue(errorBanner.contains(".accessibilitySortPriority(95)"))
+        XCTAssertTrue(errorBanner.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
+        XCTAssertTrue(loginAttentionBanner.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertFalse(ios.contains("private struct RemoteCancelControl"))
         XCTAssertTrue(ios.contains("var activeItemAction: ServerRelayItemAction?"))
         XCTAssertTrue(ios.contains("var activeSettingAction: ServerRelaySettingAction?"))
@@ -4467,6 +4475,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosCompanionEmptyDetailPanel.contains("minHeight: 180"))
         XCTAssertTrue(iosCompanionEmptyDetailPanel.contains("Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(iosRemoteLogSummaryRow.contains("isExpanded ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.62)"))
+        XCTAssertTrue(iosRemoteLogSummaryRow.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .topLeading)"))
         XCTAssertTrue(iosRemoteLogSummaryRow.contains("KLMSCardButtonStyle(cornerRadius: 12)"))
         XCTAssertTrue(iosRemoteLogSummaryRow.contains(".accessibilityLabel(accessibilitySummary)"))
         XCTAssertTrue(iosRemoteLogSummaryRow.contains("private var accessibilitySummary: String"))

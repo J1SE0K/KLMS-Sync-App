@@ -4777,14 +4777,14 @@ private struct RemoteAttentionStackContent: View, Equatable {
                 if snapshot.shouldShowRunningStatus {
                     RemoteRunningStatusBanner(snapshot: snapshot, onCancel: onCancel)
                 }
+                if !snapshot.errorMessage.isEmpty {
+                    ErrorBanner(message: snapshot.errorMessage)
+                }
                 if let message = snapshot.loginAttentionMessage {
                     LoginAttentionBanner(message: message)
                 }
                 if let message = snapshot.authSuccessMessage {
                     AuthSuccessBanner(message: message)
-                }
-                if !snapshot.errorMessage.isEmpty {
-                    ErrorBanner(message: snapshot.errorMessage)
                 }
             }
         }
@@ -13960,7 +13960,7 @@ private struct RemoteLogSummaryRow: View {
                     .foregroundStyle(Color.klmsSecondaryText)
             }
             .padding(10)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .topLeading)
             .background(isExpanded ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
             .contentShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
@@ -15137,7 +15137,7 @@ private struct InfoBanner: View {
             .font(.subheadline)
             .foregroundStyle(Color.klmsSecondaryText)
             .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(Color.klmsCommandBackground)
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
@@ -15156,7 +15156,7 @@ private struct ErrorBanner: View {
             .foregroundStyle(Color.klmsDangerBorder)
             .lineLimit(2)
             .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
@@ -15177,7 +15177,7 @@ private struct AuthSuccessBanner: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.klmsSuccessBorder)
             .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(Color.klmsSuccessBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
@@ -15237,7 +15237,7 @@ private struct LoginAttentionBanner: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.klmsWarningBorder)
             .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
