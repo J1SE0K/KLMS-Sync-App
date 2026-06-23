@@ -430,16 +430,20 @@ async function route(request, env) {
       return sendJSON(400, { error: "missing item action target" });
     }
     const syncPatch = await applyItemActionToStoredSyncData(db, state, action);
+    if (syncPatch.changed && !action.message) {
+      action.message = "서버 화면에 바로 반영했습니다. Mac 로컬 반영은 뒤에서 맞춰집니다.";
+      action.updatedAt = new Date().toISOString();
+    }
     await upsertItemAction(db, action);
     await appendRequestLog(db, request, {
       action: displayItemActionName(action.action),
       status: syncPatch.changed ? "updated" : "queued",
       message: syncPatch.changed
-        ? "서버 화면에는 바로 반영했고 Mac 로컬 반영을 기다리고 있습니다."
+        ? "서버 화면에 바로 반영했습니다. Mac 로컬 반영은 뒤에서 맞춰집니다."
         : action.itemTitle || action.itemID,
     });
     state.message = syncPatch.changed
-      ? `${displayItemActionName(action.action)} 서버 반영 완료 · Mac 반영 대기 중`
+      ? `${displayItemActionName(action.action)} 서버 반영 완료`
       : `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
     await saveMetaState(db, state, env, syncPatch.changed ? "item-actions:server-state" : "item-actions:pending");
@@ -491,16 +495,20 @@ async function route(request, env) {
       return sendJSON(400, { error: "missing setting key" });
     }
     const syncPatch = await applySettingActionToStoredSyncData(db, action);
+    if (syncPatch.changed && !action.message) {
+      action.message = "서버 설정에 바로 반영했습니다. Mac 로컬 설정은 뒤에서 맞춰집니다.";
+      action.updatedAt = new Date().toISOString();
+    }
     await upsertSettingAction(db, action);
     await appendRequestLog(db, request, {
       action: `${action.title || action.key} 설정 변경`,
       status: syncPatch.changed ? "updated" : "queued",
       message: syncPatch.changed
-        ? "서버 설정 목록에는 바로 반영했고 Mac 로컬 설정 반영을 기다리고 있습니다."
+        ? "서버 설정에 바로 반영했습니다. Mac 로컬 설정은 뒤에서 맞춰집니다."
         : "설정 변경 요청을 서버에 기록했습니다.",
     });
     state.message = syncPatch.changed
-      ? `${action.title || action.key} 서버 반영 완료 · Mac 반영 대기 중`
+      ? `${action.title || action.key} 서버 반영 완료`
       : `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
     await saveMetaState(db, state, env, syncPatch.changed ? "setting-actions:server-state" : "setting-actions:pending");

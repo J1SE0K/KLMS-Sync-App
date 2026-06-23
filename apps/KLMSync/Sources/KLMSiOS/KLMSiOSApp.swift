@@ -1131,12 +1131,13 @@ final class CompanionModel: ObservableObject {
                 value: value,
                 title: setting.title
             )
-            try await serverRelayStore.createSettingAction(action)
-            recentSettingActions.insert(action, at: 0)
-            connectionMessage = "\(setting.title) 설정 변경 요청을 보냈습니다."
+            let savedAction = try await serverRelayStore.createSettingAction(action)
+            recentSettingActions.removeAll { $0.id == savedAction.id || $0.key == savedAction.key }
+            recentSettingActions.insert(savedAction, at: 0)
+            connectionMessage = savedAction.message.nilIfBlank ?? "\(setting.title) 설정 변경 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
-            userAlert = UserAlert(title: "설정 요청 완료", message: "서버에 저장했습니다. Mac이 확인하면 로컬 설정에도 반영합니다.")
+            userAlert = UserAlert(title: "설정 요청 완료", message: connectionMessage)
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
@@ -1233,8 +1234,10 @@ final class CompanionModel: ObservableObject {
             )
             recentItemActions.removeAll { $0.itemID == item.id }
             recentItemActions.insert(action, at: 0)
-            try await serverRelayStore.createItemAction(action)
-            connectionMessage = "\(actionKind.displayName) 요청을 보냈습니다."
+            let savedAction = try await serverRelayStore.createItemAction(action)
+            recentItemActions.removeAll { $0.id == action.id || $0.itemID == item.id }
+            recentItemActions.insert(savedAction, at: 0)
+            connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
@@ -1274,8 +1277,10 @@ final class CompanionModel: ObservableObject {
             )
             recentItemActions.removeAll { candidateIDs.contains($0.itemID) }
             recentItemActions.insert(action, at: 0)
-            try await serverRelayStore.createItemAction(action)
-            connectionMessage = "\(actionKind.displayName) 요청을 보냈습니다."
+            let savedAction = try await serverRelayStore.createItemAction(action)
+            recentItemActions.removeAll { $0.id == action.id || candidateIDs.contains($0.itemID) }
+            recentItemActions.insert(savedAction, at: 0)
+            connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: calendarActionRequestMessage(for: actionKind))
@@ -1309,8 +1314,10 @@ final class CompanionModel: ObservableObject {
                 message: try edit.encodedMessage()
             )
             recentItemActions.insert(action, at: 0)
-            try await serverRelayStore.createItemAction(action)
-            connectionMessage = "\(ServerRelayItemActionKind.calendarCreate.displayName) 요청을 보냈습니다."
+            let savedAction = try await serverRelayStore.createItemAction(action)
+            recentItemActions.removeAll { $0.id == action.id }
+            recentItemActions.insert(savedAction, at: 0)
+            connectionMessage = savedAction.message.nilIfBlank ?? "\(ServerRelayItemActionKind.calendarCreate.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: "Mac 앱이 Apple Calendar에 새 일정을 등록합니다.")
@@ -2058,9 +2065,9 @@ final class CompanionModel: ObservableObject {
         #endif
     }
 
-    func startServerRelayRealtime() async {
+    func startServerRelayRealtime(silentInitialErrors: Bool = false) async {
         configureServerRelayEventStream()
-        await refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false)
+        await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)
     }
 
     private func configureServerRelayEventStream() {
@@ -2780,7 +2787,7 @@ struct CompanionRootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             Task {
-                await model.startServerRelayRealtime()
+                await model.startServerRelayRealtime(silentInitialErrors: true)
             }
         }
         .alert(item: $model.userAlert) { alert in
@@ -12903,7 +12910,7 @@ private struct RemoteSettingGroupSection: View {
             }
 
             if group.isCollapsible {
-                DeferredInteractionExpansion(isExpanded: isExpanded) {
+                if isExpanded {
                     groupSettingsRows
                 }
             } else {

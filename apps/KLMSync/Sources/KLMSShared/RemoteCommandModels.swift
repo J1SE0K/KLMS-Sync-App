@@ -2552,8 +2552,9 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         return request
     }
 
-    public func createItemAction(_ action: ServerRelayItemAction) async throws {
-        let _: ServerRelayItemAction = try await send(
+    @discardableResult
+    public func createItemAction(_ action: ServerRelayItemAction) async throws -> ServerRelayItemAction {
+        try await send(
             method: "POST",
             path: "/v1/item-actions",
             body: action
@@ -2585,8 +2586,9 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         )
     }
 
-    public func createSettingAction(_ action: ServerRelaySettingAction) async throws {
-        let _: ServerRelaySettingAction = try await send(
+    @discardableResult
+    public func createSettingAction(_ action: ServerRelaySettingAction) async throws -> ServerRelaySettingAction {
+        try await send(
             method: "POST",
             path: "/v1/setting-actions",
             body: action

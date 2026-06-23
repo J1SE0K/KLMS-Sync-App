@@ -362,6 +362,7 @@ async function runSmoke() {
     itemTitle: "공지",
   }, { method: "POST", status: 201 });
   assert.equal(action.status, "pending");
+  assert.match(action.message, /서버 화면에 바로 반영/);
   {
     const payload = await expectJSON("/v1/sync-data?kind=notice&limit=10");
     assert.equal(payload.items.length, 1);
@@ -403,6 +404,7 @@ async function runSmoke() {
     value: "quick",
   }, { method: "POST", status: 201 });
   assert.equal(settingAction.status, "pending");
+  assert.match(settingAction.message, /서버 설정에 바로 반영/);
   {
     const payload = await expectJSON("/v1/sync-data?limit=10");
     assert.equal(payload.settings.find((setting) => setting.key === "FILE_REFRESH_MODE")?.value, "quick");
