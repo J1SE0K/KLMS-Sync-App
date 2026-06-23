@@ -6015,6 +6015,25 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(loadingCard.contains("연결 확인을 눌러 주세요."))
     }
 
+    func testIOSRefreshesServerSummaryWhenAppBecomesActive() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let rootView = try sourceBody(
+            after: "struct CompanionRootView: View",
+            in: ios,
+            description: "iOS companion root view"
+        )
+
+        XCTAssertTrue(rootView.contains("@Environment(\\.scenePhase) private var scenePhase"))
+        XCTAssertTrue(rootView.contains(".onChange(of: scenePhase)"))
+        XCTAssertTrue(rootView.contains("guard newPhase == .active else { return }"))
+        XCTAssertTrue(rootView.contains("await model.refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false)"))
+    }
+
     func testIOSServerTokenPersistenceDoesNotBlockTyping() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

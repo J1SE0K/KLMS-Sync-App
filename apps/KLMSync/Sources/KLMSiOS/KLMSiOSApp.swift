@@ -2761,6 +2761,7 @@ private enum CompanionWorkstationMetrics {
 struct CompanionRootView: View {
     @StateObject private var model = CompanionModel()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedSection: CompanionAppSection? = .status
 
     var body: some View {
@@ -2775,6 +2776,12 @@ struct CompanionRootView: View {
         .tint(.klmsCommandAccent)
         .task {
             await model.startServerRelayRealtime()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task {
+                await model.refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false)
+            }
         }
         .alert(item: $model.userAlert) { alert in
             Alert(
