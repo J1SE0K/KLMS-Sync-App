@@ -42,6 +42,46 @@ async function runSmoke() {
     message: "worker status",
   }, { method: "POST", role: "worker" });
 
+  {
+    const originalRealtime = env.RELAY_REALTIME;
+    let waitUntilCalled = 0;
+    let resolveBroadcast;
+    env.RELAY_REALTIME = {
+      idFromName: () => "default",
+      get: () => ({
+        fetch: () => new Promise((resolve) => {
+          resolveBroadcast = () => resolve(new Response("ok"));
+        }),
+      }),
+    };
+    const ctx = {
+      waitUntil(promise) {
+        waitUntilCalled += 1;
+        promise.catch(() => {});
+      },
+    };
+    const responsePromise = request("/v1/status", {
+      method: "POST",
+      role: "worker",
+      body: {
+        status: { assignments: 1, phase: "idle" },
+        running: false,
+        message: "nonblocking realtime",
+      },
+      ctx,
+    });
+    const response = await Promise.race([
+      responsePromise,
+      new Promise((resolve) => setTimeout(() => resolve(null), 100)),
+    ]);
+    assert.ok(response, "status update should not wait for realtime broadcast");
+    assert.equal(response.status, 200);
+    assert.equal(waitUntilCalled, 1);
+    resolveBroadcast();
+    await responsePromise;
+    env.RELAY_REALTIME = originalRealtime;
+  }
+
   let createdCommand = await expectJSON("/v1/commands", {
     kind: "fullSync",
     options: { updateNoticeNotes: false, dryRun: true },
@@ -1014,7 +1054,7 @@ async function expectJSON(path, body, options = {}) {
   return response.json();
 }
 
-function request(path, { method = "GET", body, rawBody, headers: extraHeaders = {}, auth = true, role = "client" } = {}) {
+function request(path, { method = "GET", body, rawBody, headers: extraHeaders = {}, auth = true, role = "client", ctx } = {}) {
   const headers = new Headers({ Accept: "application/json" });
   for (const [key, value] of Object.entries(extraHeaders)) {
     headers.set(key, value);
@@ -1029,7 +1069,7 @@ function request(path, { method = "GET", body, rawBody, headers: extraHeaders = 
     method,
     headers,
     body: rawBody != null ? rawBody : body != null && method !== "GET" ? JSON.stringify(body) : undefined,
-  }), env);
+  }), env, ctx);
 }
 
 class FakeD1 {

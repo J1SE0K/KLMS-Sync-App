@@ -134,9 +134,9 @@ export class RelayRealtimeRoom {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
-      return await route(request, env);
+      return await route(request, env, ctx);
     } catch (error) {
       console.error(error);
       return sendJSON(500, { error: "server error" });
@@ -147,7 +147,7 @@ export default {
   },
 };
 
-async function route(request, env) {
+async function route(request, env, ctx = null) {
   const url = new URL(request.url);
   const pathname = normalizedPath(url.pathname, env);
 
@@ -196,7 +196,7 @@ async function route(request, env) {
     const db = database(env);
     await ensureSchema(db);
     await cleanupExpiredFileAccess(db, env);
-    return downloadFileAccess(db, env, request, downloadMatch[1]);
+    return downloadFileAccess(db, env, request, downloadMatch[1], ctx);
   }
 
   const requiredRole = requiredRoleFor(request.method, pathname);
@@ -246,7 +246,7 @@ async function route(request, env) {
       state.latestCommand = command;
     }
     state.updatedAt = now;
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, "state", ctx);
     return sendJSON(200, relayResponse(state));
   }
 
@@ -272,7 +272,7 @@ async function route(request, env) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
-    const setting = await updateSharedSetting(db, env, sharedSettingMatch[1], body, request);
+    const setting = await updateSharedSetting(db, env, sharedSettingMatch[1], body, request, ctx);
     if (!setting) {
       return sendJSON(400, { error: "unsupported shared setting" });
     }
@@ -297,7 +297,7 @@ async function route(request, env) {
     await touchRelayEvent(db, env, {
       reason: "sync-data",
       updatedAt: new Date().toISOString(),
-    });
+    }, ctx);
     return sendJSON(200, await syncDataResponse(db, { limit: MAX_SYNC_ITEMS }));
   }
 
@@ -305,7 +305,7 @@ async function route(request, env) {
     if (!(await authorized(request, env, "client"))) {
       return sendJSON(401, { error: "unauthorized" });
     }
-    return sendJSON(200, await clearSharedRunLogs(db, env));
+    return sendJSON(200, await clearSharedRunLogs(db, env, ctx));
   }
 
   if (request.method === "POST" && pathname === "/v1/cancel") {
@@ -334,7 +334,7 @@ async function route(request, env) {
     });
     state.message = "실행 중단 요청 대기 중";
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "cancel:requested");
+    await saveMetaState(db, state, env, "cancel:requested", ctx);
     return sendJSON(202, cancelRequest);
   }
 
@@ -378,7 +378,7 @@ async function route(request, env) {
     state.running = false;
     state.message = `${displayCommandName(command.kind)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "commands:pending");
+    await saveMetaState(db, state, env, "commands:pending", ctx);
     return sendJSON(201, command);
   }
 
@@ -416,7 +416,7 @@ async function route(request, env) {
     state.running = command.status === "running";
     state.message = `${displayCommandName(command.kind)} · ${displayStatus(command.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, `commands:${command.status || "updated"}`);
+    await saveMetaState(db, state, env, `commands:${command.status || "updated"}`, ctx);
     return sendJSON(200, command);
   }
 
@@ -454,7 +454,7 @@ async function route(request, env) {
         ? `${displayItemActionName(action.action)} 서버 화면 반영 완료 · Mac 적용 대기`
       : `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, serverSnapshotUpdated ? "item-actions:server-state" : "item-actions:pending");
+    await saveMetaState(db, state, env, serverSnapshotUpdated ? "item-actions:server-state" : "item-actions:pending", ctx);
     return sendJSON(201, action);
   }
 
@@ -489,7 +489,7 @@ async function route(request, env) {
     await upsertItemAction(db, action);
     state.message = `${displayItemActionName(action.action)} · ${displayStatus(action.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, `item-actions:${action.status || "updated"}`);
+    await saveMetaState(db, state, env, `item-actions:${action.status || "updated"}`, ctx);
     return sendJSON(200, action);
   }
 
@@ -529,7 +529,7 @@ async function route(request, env) {
       ? `${action.title || action.key} 서버 화면 반영 완료 · Mac 적용 대기`
       : `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "setting-actions:pending");
+    await saveMetaState(db, state, env, "setting-actions:pending", ctx);
     return sendJSON(201, action);
   }
 
@@ -564,7 +564,7 @@ async function route(request, env) {
     await upsertSettingAction(db, action);
     state.message = `${action.title || action.key} · ${displayStatus(action.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, `setting-actions:${action.status || "updated"}`);
+    await saveMetaState(db, state, env, `setting-actions:${action.status || "updated"}`, ctx);
     return sendJSON(200, action);
   }
 
@@ -593,7 +593,7 @@ async function route(request, env) {
     });
     state.message = `파일 열기 요청 대기 중: ${fileRequest.itemTitle || fileRequest.itemID}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "file-access:pending");
+    await saveMetaState(db, state, env, "file-access:pending", ctx);
     return sendJSON(201, fileAccessResponseItem(fileRequest, request, env));
   }
 
@@ -639,7 +639,7 @@ async function route(request, env) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const scope = normalizeLogClearScope(url.searchParams.get("scope"));
-    return sendJSON(200, await clearDisplayLogs(db, env, state, scope));
+    return sendJSON(200, await clearDisplayLogs(db, env, state, scope, ctx));
   }
 
   if (request.method === "DELETE" && pathname === "/v1/logs") {
@@ -650,7 +650,7 @@ async function route(request, env) {
     if (scope === "fileAccess" && await hasActiveFileAccessWork(db)) {
       return sendJSON(409, { error: "active file access request is still running" });
     }
-    return sendJSON(200, await clearRelayLogs(db, env, state, scope));
+    return sendJSON(200, await clearRelayLogs(db, env, state, scope, ctx));
   }
 
   const fileAccessMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)$/);
@@ -675,7 +675,7 @@ async function route(request, env) {
     await touchRelayEvent(db, env, {
       reason: `file-access:${fileRequest.status}`,
       updatedAt: fileRequest.updatedAt,
-    });
+    }, ctx);
     return sendJSON(200, fileAccessResponseItem(fileRequest, request, env));
   }
 
@@ -684,7 +684,7 @@ async function route(request, env) {
     if (!(await authorized(request, env, "worker"))) {
       return sendJSON(401, { error: "unauthorized" });
     }
-    return uploadFileAccess(db, env, request, fileUploadMatch[1]);
+    return uploadFileAccess(db, env, request, fileUploadMatch[1], ctx);
   }
 
   return sendJSON(404, { error: "not found" });
@@ -956,7 +956,7 @@ async function notifyRelayChange(env, payload = {}) {
   }
 }
 
-async function touchRelayEvent(db, env, payload = {}) {
+async function touchRelayEvent(db, env, payload = {}, ctx = null) {
   const updatedAt = sanitizePublicText(payload.updatedAt) || new Date().toISOString();
   const reason = sanitizePublicText(payload.reason) || "updated";
   if (db) {
@@ -965,11 +965,16 @@ async function touchRelayEvent(db, env, payload = {}) {
       setMetaStatement(db, "relayEventReason", reason),
     ]);
   }
-  await notifyRelayChange(env, {
+  const notifyPromise = notifyRelayChange(env, {
     ...payload,
     reason,
     updatedAt,
   });
+  if (ctx?.waitUntil) {
+    ctx.waitUntil(notifyPromise);
+  } else {
+    await notifyPromise;
+  }
 }
 
 function normalizedPath(pathname, env) {
@@ -1076,7 +1081,7 @@ function deduplicateByID(items, limit) {
     .slice(0, limit);
 }
 
-async function saveMetaState(db, state, env = null, reason = "state") {
+async function saveMetaState(db, state, env = null, reason = "state", ctx = null) {
   await db.batch([
     setMetaStatement(db, "status", JSON.stringify(normalizeStatus(state.status || defaultStatus))),
     setMetaStatement(db, "latestCommand", JSON.stringify(state.latestCommand || null)),
@@ -1087,7 +1092,7 @@ async function saveMetaState(db, state, env = null, reason = "state") {
   await touchRelayEvent(db, env, {
     reason,
     updatedAt: state.updatedAt || new Date().toISOString(),
-  });
+  }, ctx);
 }
 
 async function getMeta(db, key) {
@@ -1309,7 +1314,7 @@ function normalizeLogClearScope(value) {
   return "all";
 }
 
-async function clearDisplayLogs(db, env, state, scope = "all") {
+async function clearDisplayLogs(db, env, state, scope = "all", ctx = null) {
   const clearedAt = new Date().toISOString();
   const shouldClearAll = scope === "all";
   const shouldClearCommands = shouldClearAll || scope === "command";
@@ -1357,11 +1362,11 @@ async function clearDisplayLogs(db, env, state, scope = "all") {
   await touchRelayEvent(db, env, {
     reason: `logs-display:${scope}`,
     updatedAt: clearedAt,
-  });
+  }, ctx);
   return result;
 }
 
-async function clearRelayLogs(db, env, state, scope = "all") {
+async function clearRelayLogs(db, env, state, scope = "all", ctx = null) {
   const clearedAt = new Date().toISOString();
   const shouldClearAll = scope === "all";
   const shouldClearCommands = shouldClearAll || scope === "command";
@@ -1436,16 +1441,16 @@ async function clearRelayLogs(db, env, state, scope = "all") {
     state.settingActions = state.settingActions.filter((action) => action.status === "pending" || action.status === "running");
     state.message = "로그를 지웠습니다.";
     state.updatedAt = clearedAt;
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, "state", ctx);
   } else if (shouldClearCommands) {
     state.message = "최근 실행 요청 기록을 지웠습니다.";
     state.updatedAt = clearedAt;
-    await saveMetaState(db, state, env);
+    await saveMetaState(db, state, env, "state", ctx);
   } else {
     await touchRelayEvent(db, env, {
       reason: `logs:${scope}`,
       updatedAt: clearedAt,
-    });
+    }, ctx);
   }
   return result;
 }
@@ -1667,7 +1672,7 @@ async function cleanupExpiredFileAccess(db, env) {
   }
 }
 
-async function uploadFileAccess(db, env, request, id) {
+async function uploadFileAccess(db, env, request, id, ctx = null) {
   if (!env?.RELAY_FILES) {
     return sendJSON(503, { error: "file relay storage is not configured" });
   }
@@ -1730,7 +1735,7 @@ async function uploadFileAccess(db, env, request, id) {
   await touchRelayEvent(db, env, {
     reason: "file-access:completed",
     updatedAt: updated.updatedAt,
-  });
+  }, ctx);
   await appendRequestLog(db, request, {
     action: "파일 업로드 완료",
     status: "completed",
@@ -1745,7 +1750,7 @@ async function uploadFileAccess(db, env, request, id) {
   return sendJSON(200, fileAccessResponseItem(updated, request, env));
 }
 
-async function downloadFileAccess(db, env, request, id) {
+async function downloadFileAccess(db, env, request, id, ctx = null) {
   const url = new URL(request.url);
   const ticket = url.searchParams.get("ticket") || "";
   const wantsPreview = url.searchParams.has("preview") && !url.searchParams.has("download");
@@ -1857,7 +1862,7 @@ async function downloadFileAccess(db, env, request, id) {
     await touchRelayEvent(db, env, {
       reason: "file-access:previewed",
       updatedAt: new Date().toISOString(),
-    });
+    }, ctx);
     return fileAccessObjectResponse(fileRequest, object, { disposition: "inline", preview });
   }
   if (!url.searchParams.has("download")) {
@@ -1911,7 +1916,7 @@ async function downloadFileAccess(db, env, request, id) {
   await touchRelayEvent(db, env, {
     reason: "file-access:downloaded",
     updatedAt: new Date().toISOString(),
-  });
+  }, ctx);
   return fileAccessObjectResponse(fileRequest, object, { disposition: "attachment" });
 }
 
@@ -3062,7 +3067,7 @@ async function loadSharedSettings(db) {
   return normalizedSharedSettings(stored);
 }
 
-async function updateSharedSetting(db, env, key, body, request) {
+async function updateSharedSetting(db, env, key, body, request, ctx = null) {
   const setting = normalizeSharedSettingInput(key, body);
   if (!setting) {
     return null;
@@ -3084,7 +3089,7 @@ async function updateSharedSetting(db, env, key, body, request) {
   await touchRelayEvent(db, env, {
     reason: "shared-settings",
     updatedAt: setting.updatedAt,
-  });
+  }, ctx);
   return setting;
 }
 
@@ -3133,7 +3138,7 @@ function normalizeSharedSettingValue(definition, value) {
   return text;
 }
 
-async function clearSharedRunLogs(db, env) {
+async function clearSharedRunLogs(db, env, ctx = null) {
   const clearedAt = new Date().toISOString();
   const previous = normalizeRunLogs(parseJSON(await getMeta(db, "syncDataRunLogs"), []));
   await db.batch([
@@ -3144,7 +3149,7 @@ async function clearSharedRunLogs(db, env) {
   await touchRelayEvent(db, env, {
     reason: "sync-data:run-logs-clear",
     updatedAt: clearedAt,
-  });
+  }, ctx);
   return {
     clearedAt,
     runLogs: previous.length,
