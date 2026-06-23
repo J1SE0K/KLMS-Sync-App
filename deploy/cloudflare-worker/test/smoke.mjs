@@ -451,8 +451,8 @@ async function runSmoke() {
     title: "파일 탐색 모드",
     value: "quick",
   }, { method: "POST", status: 201 });
-  assert.equal(settingAction.status, "completed");
-  assert.match(settingAction.message, /서버 설정에 바로 반영/);
+  assert.equal(settingAction.status, "pending");
+  assert.match(settingAction.message, /서버 화면에는 바로 반영/);
   {
     const payload = await expectJSON("/v1/sync-data?limit=10");
     assert.equal(payload.settings.find((setting) => setting.key === "FILE_REFRESH_MODE")?.value, "quick");
@@ -508,12 +508,13 @@ async function runSmoke() {
     title: "파일 탐색 모드",
     value: "quick",
   }, { method: "POST", status: 201 });
-  assert.equal(noOpSettingAction.status, "completed");
-  assert.match(noOpSettingAction.message, /이미 같은 값/);
+  assert.equal(noOpSettingAction.id, settingAction.id);
+  assert.equal(noOpSettingAction.status, "pending");
 
   {
     const payload = await expectJSON("/v1/setting-actions/pending", undefined, { role: "worker" });
-    assert.equal(payload.actions.length, 0);
+    assert.equal(payload.actions.length, 1);
+    assert.equal(payload.actions[0].id, settingAction.id);
   }
 
   await expectJSON(`/v1/setting-actions/${settingAction.id}`, {

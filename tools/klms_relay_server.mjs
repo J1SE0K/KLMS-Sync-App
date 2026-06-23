@@ -512,32 +512,33 @@ async function route(request, response) {
       sendJSON(response, 400, { error: "missing setting key" });
       return;
     }
-    const syncPatch = applySettingActionToStoredSyncData(action);
-    const serverApplied = syncPatch.changed || syncPatch.applied;
-    if (serverApplied) {
-      action.status = "completed";
+    const duplicateAction = duplicateActiveSettingAction(state.settingActions, action);
+    if (duplicateAction) {
+      sendJSON(response, 201, duplicateAction);
+      return;
     }
-    if (serverApplied && !action.message) {
+    const syncPatch = applySettingActionToStoredSyncData(action);
+    const serverSnapshotUpdated = syncPatch.changed || syncPatch.applied;
+    action.status = "pending";
+    if (serverSnapshotUpdated && !action.message) {
       action.message = syncPatch.changed
-        ? "서버 설정에 바로 반영했습니다. 모든 기기가 최신 설정을 받아옵니다."
-        : "이미 같은 값이라 서버에서 바로 완료했습니다.";
+        ? "서버 화면에는 바로 반영했습니다. Mac 앱이 켜지면 실제 동기화 설정에도 적용합니다."
+        : "서버 화면은 이미 같은 값입니다. Mac 앱이 켜지면 실제 동기화 설정을 다시 확인합니다.";
       action.updatedAt = new Date().toISOString();
     }
     upsertSettingAction(action);
     appendRequestLog(request, {
       action: `${action.title || action.key} 설정 변경`,
-      status: serverApplied ? "updated" : "queued",
-      message: serverApplied
+      status: "queued",
+      message: serverSnapshotUpdated
         ? (syncPatch.changed
-          ? "서버 설정에 바로 반영했습니다. 모든 기기가 최신 설정을 받아옵니다."
-          : "이미 같은 값이라 서버에서 바로 완료했습니다.")
+          ? "서버 화면에는 바로 반영했습니다. Mac 앱이 켜지면 실제 동기화 설정에도 적용합니다."
+          : "서버 화면은 이미 같은 값입니다. Mac 앱이 켜지면 실제 동기화 설정을 다시 확인합니다.")
         : "설정 변경 요청을 서버에 기록했습니다.",
     });
-    state.message = serverApplied
-      ? `${action.title || action.key} 서버 반영 완료`
-      : `${action.title || action.key} 설정 변경 요청 대기 중`;
+    state.message = `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveState(serverApplied ? "setting-actions:server-state" : "setting-actions:pending");
+    await saveState("setting-actions:pending");
     sendJSON(response, 201, action);
     return;
   }
@@ -2748,6 +2749,15 @@ function applySettingActionsToSettings(inputSettings, actions, now) {
   return settings
     .slice()
     .sort((lhs, rhs) => String(lhs.key || "").localeCompare(String(rhs.key || "")));
+}
+
+function duplicateActiveSettingAction(actions, action) {
+  return (Array.isArray(actions) ? actions : []).find((candidate) => {
+    const status = String(candidate?.status || "").toLowerCase();
+    return ["pending", "running"].includes(status)
+      && String(candidate?.key || "") === String(action?.key || "")
+      && String(candidate?.value ?? "") === String(action?.value ?? "");
+  });
 }
 
 function applyItemActionToStoredSyncData(action) {

@@ -732,8 +732,17 @@ final class CompanionModel: ObservableObject {
 
     var serverRelayBootstrapKey: String {
         let normalizedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tokenState = serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "missing-token" : "token-present"
-        return "\(normalizedURL)|\(tokenState)"
+        return "\(normalizedURL)|\(Self.serverRelayBootstrapTokenFingerprint(serverToken))"
+    }
+
+    private static func serverRelayBootstrapTokenFingerprint(_ token: String) -> String {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "missing-token"
+        }
+        var hasher = Hasher()
+        hasher.combine(trimmed)
+        return "token-\(trimmed.count)-\(hasher.finalize())"
     }
 
     var hasClearableRemoteLogs: Bool {
@@ -878,6 +887,7 @@ final class CompanionModel: ObservableObject {
     var shouldShowAuthCompletion: Bool {
         hasAuthCompletionStatus
             && latestDisplayStatus?.isTerminal != true
+            && errorMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var hasAuthCompletionStatus: Bool {
@@ -11697,7 +11707,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                     title: "요청 전송됨",
                     message: "\(activeAction.action.companionActionTitle) · \(activeAction.status.displayName)"
                 )
-            } else if model.hasInFlightRequest {
+            } else if model.hasInFlightRequest && !hasImmediateServerActions {
                 RemoteItemRequestPendingView(
                     title: "처리 중",
                     message: "Mac 앱에서 요청을 처리하고 있습니다. 끝나면 결과를 다시 불러옵니다."
@@ -11790,6 +11800,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 if !regularItemActions.isEmpty {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 8)], spacing: 8) {
                         ForEach(regularItemActions) { action in
+                            let requiresMac = !action.isServerDisplayOnlyAction
                             Button {
                                 Task {
                                     await model.createItemAction(action, item: item)
@@ -11799,7 +11810,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
-                        .disabled(!model.serverRelayConfigured || model.isSubmitting)
+                        .disabled(!model.serverRelayConfigured || model.isSubmitting || (model.hasInFlightRequest && requiresMac))
                         }
                     }
                 }
@@ -11928,6 +11939,10 @@ private struct ServerSyncItemInlineDetailPanel: View {
 
     private var regularItemActions: [ServerRelayItemActionKind] {
         itemActions
+    }
+
+    private var hasImmediateServerActions: Bool {
+        itemActions.contains { $0.isServerDisplayOnlyAction } || item.kind == "notice"
     }
 
     private var relevantCommand: RemoteCommandKind {
@@ -12356,7 +12371,7 @@ private extension ServerRelayItemAction {
 
 private extension ServerRelaySettingAction {
     var isServerAppliedForCompanionDisplay: Bool {
-        status == .pending
+        status == .completed
             && message.localizedStandardContains("서버 설정에 바로 반영")
     }
 

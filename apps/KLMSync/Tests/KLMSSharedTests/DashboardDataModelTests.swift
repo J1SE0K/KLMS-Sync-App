@@ -2564,6 +2564,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("recentSettingActions.first(where: \\.isActiveForCompanionDisplay)"))
         XCTAssertTrue(ios.contains("message.localizedStandardContains(\"서버 화면에 바로 반영\")"))
         XCTAssertTrue(ios.contains("message.localizedStandardContains(\"서버 설정에 바로 반영\")"))
+        XCTAssertTrue(ios.contains("status == .completed\n            && message.localizedStandardContains(\"서버 설정에 바로 반영\")"))
+        XCTAssertTrue(ios.contains("serverRelayBootstrapTokenFingerprint(serverToken)"))
+        XCTAssertTrue(ios.contains("private static func serverRelayBootstrapTokenFingerprint(_ token: String) -> String"))
         XCTAssertTrue(ios.contains("var hasActiveNonCommandWork: Bool"))
         XCTAssertTrue(ios.contains("var activeAttentionTitle: String"))
         XCTAssertTrue(ios.contains("return \"동기화 중단 중\""))
@@ -2835,6 +2838,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(inlineItemDetail.contains("Text(\"항목 처리\")"))
         XCTAssertTrue(inlineItemDetail.contains("Text(\"동기화\")"))
         XCTAssertTrue(inlineItemDetail.contains("Label(\"\\(relevantCommand.displayName) 다시 실행\""))
+        XCTAssertTrue(inlineItemDetail.contains("model.hasInFlightRequest && !hasImmediateServerActions"))
+        XCTAssertTrue(inlineItemDetail.contains("let requiresMac = !action.isServerDisplayOnlyAction"))
+        XCTAssertTrue(inlineItemDetail.contains("(model.hasInFlightRequest && requiresMac)"))
         XCTAssertFalse(inlineItemDetail.contains("Text(\"수정/삭제 선택\")"))
         XCTAssertFalse(inlineItemDetail.contains("Text(\"반영\")"))
         XCTAssertFalse(ios.contains("private struct ServerSyncItemDetailView"))
@@ -5904,6 +5910,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("shouldNotifyAuthSuccess(from: previousStatus, to: response.status)"))
         XCTAssertTrue(ios.contains("previousStatus.authDigits != nil"))
         XCTAssertTrue(ios.contains("return !Self.isAlreadyLoggedInMessage(message)"))
+        XCTAssertTrue(ios.contains("var shouldShowAuthCompletion: Bool"))
+        XCTAssertTrue(ios.contains("&& errorMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty"))
         XCTAssertTrue(ios.contains("private static func authSuccessDeduplicationKey(_ message: String) -> String"))
         XCTAssertTrue(ios.contains("return \"already-logged-in\""))
         XCTAssertTrue(ios.contains("return \"auth-completed\""))
@@ -6371,6 +6379,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(retryInitialLoad.contains("await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)"))
         XCTAssertTrue(ios.contains("private var shouldRetryInitialServerSyncData: Bool"))
         XCTAssertTrue(ios.contains("serverRelayConfigured && (syncDataNeedsRefresh || !hasLoadedServerSyncData)"))
+        XCTAssertTrue(ios.contains("serverRelayBootstrapTokenFingerprint(serverToken)"))
+        XCTAssertTrue(ios.contains("return \"token-\\(trimmed.count)-\\(hasher.finalize())\""))
     }
 
     func testIOSDeferredExpansionRendersImmediatelyAfterToggle() throws {
