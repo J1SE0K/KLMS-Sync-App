@@ -1163,10 +1163,6 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
-        isSubmitting = true
-        defer {
-            isSubmitting = false
-        }
         let optimisticAction = ServerRelaySettingAction(
             key: setting.key,
             value: value,
@@ -11823,7 +11819,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                                 .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
-                        .disabled(!model.serverRelayConfigured || model.isSubmitting || (model.hasInFlightRequest && requiresMac))
+                        .disabled(!model.serverRelayConfigured || (requiresMac && (model.isSubmitting || model.hasInFlightRequest)))
                         }
                     }
                 }
@@ -12190,7 +12186,7 @@ private struct RemoteItemToggleButton: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isOn ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
         }
-        .disabled(!model.serverRelayConfigured || model.isSubmitting)
+        .disabled(!model.serverRelayConfigured || (!action.isServerDisplayOnlyAction && (model.isSubmitting || model.hasInFlightRequest)))
         .accessibilityLabel("\(title) \(isOn ? "켜짐" : "꺼짐")")
         .accessibilityHint("누르면 \(action.displayName) 요청을 보냅니다.")
     }
@@ -14751,7 +14747,7 @@ private struct RemoteSettingRow: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(KLMSActionButtonStyle(tone: setting.boolValue ? .success : .soft))
-            .disabled(!setting.editable || isSubmitting)
+            .disabled(!setting.editable)
         case .choice:
             Menu {
                 ForEach(setting.options, id: \.self) { option in
@@ -14771,7 +14767,7 @@ private struct RemoteSettingRow: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(KLMSActionButtonStyle())
-            .disabled(!setting.editable || isSubmitting)
+            .disabled(!setting.editable)
         case .number, .text:
             HStack(spacing: 6) {
                 TextField("값", text: $draftValue)
@@ -14784,7 +14780,7 @@ private struct RemoteSettingRow: View {
                 }
                 .frame(minHeight: 44)
                 .buttonStyle(KLMSActionButtonStyle())
-                .disabled(!setting.editable || isSubmitting || draftValue == setting.value)
+                .disabled(!setting.editable || draftValue == setting.value)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -2850,7 +2850,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(inlineItemDetail.contains("Label(\"\\(relevantCommand.displayName) 다시 실행\""))
         XCTAssertTrue(inlineItemDetail.contains("model.hasInFlightRequest && !hasImmediateServerActions"))
         XCTAssertTrue(inlineItemDetail.contains("let requiresMac = !action.isServerDisplayOnlyAction"))
-        XCTAssertTrue(inlineItemDetail.contains("(model.hasInFlightRequest && requiresMac)"))
+        XCTAssertTrue(inlineItemDetail.contains("(requiresMac && (model.isSubmitting || model.hasInFlightRequest))"))
         XCTAssertFalse(inlineItemDetail.contains("Text(\"수정/삭제 선택\")"))
         XCTAssertFalse(inlineItemDetail.contains("Text(\"반영\")"))
         XCTAssertFalse(ios.contains("private struct ServerSyncItemDetailView"))
@@ -2948,6 +2948,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(remoteSettingRow.contains("@ObservedObject var model"))
         XCTAssertTrue(remoteSettingGroupSection.contains("var createSettingAction: (ServerRelaySetting, String) async -> Void"))
         XCTAssertTrue(remoteSettingRow.contains("var createSettingAction: (ServerRelaySetting, String) async -> Void"))
+        XCTAssertFalse(remoteSettingRow.contains("|| isSubmitting"))
         XCTAssertTrue(remoteSettingRow.contains("Button(settingChoiceTitle(option))"))
         XCTAssertTrue(remoteSettingRow.contains("Text(settingChoiceTitle(setting.value.nilIfEmpty ?? \"\"))"))
         XCTAssertTrue(remoteSettingRow.contains("case \"manual-digits\":"))
@@ -6245,6 +6246,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(createItemAction.contains("let requiresMac = !actionKind.isServerDisplayOnlyAction"))
         XCTAssertTrue(createItemAction.contains("if requiresMac {\n            isSubmitting = true\n        }"))
         XCTAssertFalse(createItemAction.contains("isSubmitting = true\n        defer {\n            isSubmitting = false\n        }"))
+        let inlineItemDetail = try sourceStructBody(named: "ServerSyncItemInlineDetailPanel", in: ios)
+        let remoteItemToggleButton = try sourceStructBody(named: "RemoteItemToggleButton", in: ios)
+        XCTAssertTrue(inlineItemDetail.contains(".disabled(!model.serverRelayConfigured || (requiresMac && (model.isSubmitting || model.hasInFlightRequest)))"))
+        XCTAssertFalse(inlineItemDetail.contains(".disabled(!model.serverRelayConfigured || model.isSubmitting || (model.hasInFlightRequest && requiresMac))"))
+        XCTAssertTrue(remoteItemToggleButton.contains(".disabled(!model.serverRelayConfigured || (!action.isServerDisplayOnlyAction && (model.isSubmitting || model.hasInFlightRequest)))"))
+        XCTAssertFalse(remoteItemToggleButton.contains(".disabled(!model.serverRelayConfigured || model.isSubmitting)"))
         XCTAssertTrue(createItemAction.contains("if !savedAction.action.isServerDisplayOnlyAction"))
         XCTAssertFalse(createItemAction.contains("includeSyncData: !savedAction.action.isServerDisplayOnlyAction"))
         XCTAssertTrue(createItemAction.contains("if !savedAction.action.isServerDisplayOnlyAction {\n                await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)\n            }"))
@@ -6302,6 +6309,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS shared setting update"
         )
+        let createSettingAction = try sourceBody(
+            after: "func createSettingAction(setting: ServerRelaySetting, value: String) async",
+            in: ios,
+            description: "iOS create setting action"
+        )
         let createManualCalendarAction = try sourceBody(
             after: "func createManualCalendarAction(",
             in: ios,
@@ -6332,6 +6344,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(removeMail.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)"))
         XCTAssertFalse(updateSharedSetting.contains("await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false, scope: .settings)"))
         XCTAssertFalse(updateSharedSetting.contains("isSubmitting = true"))
+        XCTAssertFalse(createSettingAction.contains("isSubmitting = true"))
         XCTAssertTrue(updateSharedSetting.contains("let previousSharedSettings = sharedSettings"))
         XCTAssertTrue(updateSharedSetting.contains("sharedSettings = previousSharedSettings"))
         XCTAssertFalse(createManualCalendarAction.contains("isSubmitting = true"))
