@@ -1050,7 +1050,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(installScript.contains("discovered_devices=\"$(wait_for_ios_devices)\""))
         XCTAssertTrue(installScript.contains("discovery_status=$?"))
         XCTAssertTrue(installScript.contains("quiet_unavailable"))
+        XCTAssertTrue(installScript.contains("launch_ready = ("))
+        XCTAssertTrue(installScript.contains("properties.get(\"ddiServicesAvailable\") is not False"))
+        XCTAssertTrue(installScript.contains("device_label=\"${device_rest%%$'\\t'*}\""))
+        XCTAssertTrue(installScript.contains("install_one_device \"$target_device\" \"$device_label\" \"$launch_ready\""))
         XCTAssertTrue(installScript.contains("Waiting up to ${WAIT_FOR_AVAILABLE_SECONDS}s for an unlocked iPhone/iPad to become available"))
+        XCTAssertTrue(installScript.contains("installed; launch was skipped because the device is locked or not ready for developer launch"))
         XCTAssertTrue(installScript.contains("installed; launch was denied because the device is locked"))
         XCTAssertTrue(installScript.contains("The app is already on the device"))
         XCTAssertFalse(installScript.contains("EPOCHSECONDS"))
@@ -1063,7 +1068,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(readme.contains("uses that account's current Team ID and a unique bundle identifier"))
         XCTAssertTrue(readme.contains("validates `Config/KLMSiOS.local.xcconfig` before it starts `xcodebuild`"))
         XCTAssertTrue(readme.contains("The install helper builds first by default"))
-        XCTAssertTrue(readme.contains("If the helper says `installed; launch was denied because the device is locked`, the app is already installed"))
+        XCTAssertTrue(readme.contains("installed; launch was skipped because the device is locked or not ready for developer launch"))
+        XCTAssertTrue(readme.contains("installed; launch was denied because the device is locked"))
+        XCTAssertTrue(readme.contains("the app is already installed"))
     }
 
     func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {

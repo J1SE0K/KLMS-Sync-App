@@ -43,6 +43,7 @@ fi
 install_one_device() {
   local target_device="$1"
   local device_label="${2:-device}"
+  local launch_ready="${3:-1}"
   local INSTALL_OUTPUT
   INSTALL_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/klms-ios-install.XXXXXX")"
   if ! xcrun devicectl device install app \
@@ -70,6 +71,14 @@ install_one_device() {
   if [[ "$LAUNCH_AFTER_INSTALL" != "1" ]]; then
     print -r -- "${device_label}: installed"
     return 0
+  fi
+
+  if [[ "$launch_ready" != "1" ]]; then
+    print -ru2 -- "${device_label}: installed; launch was skipped because the device is locked or not ready for developer launch. The app is already on the device. Unlock it and open KLMS Sync manually, or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
+    if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
+      return 3
+    fi
+    exit 3
   fi
 
   local LAUNCH_OUTPUT
@@ -134,9 +143,13 @@ for device in devices:
                 file=sys.stderr,
             )
         continue
+    launch_ready = (
+        tunnel_state == "connected"
+        and properties.get("ddiServicesAvailable") is not False
+    )
     identifier = device.get("identifier")
     if identifier:
-        print(f"{identifier}\t{hardware.get('deviceType', 'device')}")
+        print(f"{identifier}\t{hardware.get('deviceType', 'device')}\t{1 if launch_ready else 0}")
 PY
   rm -f "$devices_json"
 }
@@ -199,12 +212,17 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   overall_status=0
   for device_entry in "${device_ids[@]}"; do
     target_device="${device_entry%%$'\t'*}"
-    device_label="${device_entry#*$'\t'}"
+    device_rest="${device_entry#*$'\t'}"
+    device_label="${device_rest%%$'\t'*}"
+    launch_ready="${device_rest#*$'\t'}"
     if [[ "$device_label" == "$device_entry" || -z "$device_label" ]]; then
       device_label="device"
     fi
+    if [[ "$launch_ready" == "$device_rest" || -z "$launch_ready" ]]; then
+      launch_ready="1"
+    fi
     set +e
-    install_one_device "$target_device" "$device_label"
+    install_one_device "$target_device" "$device_label" "$launch_ready"
     device_status=$?
     set -e
     if (( device_status == 0 )); then
