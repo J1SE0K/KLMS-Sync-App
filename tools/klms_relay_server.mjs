@@ -422,8 +422,11 @@ async function route(request, response) {
       return;
     }
     const syncPatch = applyItemActionToStoredSyncData(action);
+    if (syncPatch.changed && isServerDisplayOnlyItemAction(action.action)) {
+      action.status = "completed";
+    }
     if (syncPatch.changed && !action.message) {
-      action.message = "서버 화면에 바로 반영했습니다. Mac 로컬 반영은 뒤에서 맞춰집니다.";
+      action.message = "서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다.";
       action.updatedAt = new Date().toISOString();
     }
     upsertItemAction(action);
@@ -431,7 +434,7 @@ async function route(request, response) {
       action: displayItemActionName(action.action),
       status: syncPatch.changed ? "updated" : "queued",
       message: syncPatch.changed
-        ? "서버 화면에 바로 반영했습니다. Mac 로컬 반영은 뒤에서 맞춰집니다."
+        ? "서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다."
         : action.itemTitle || action.itemID,
     });
     state.message = syncPatch.changed
@@ -509,8 +512,11 @@ async function route(request, response) {
       return;
     }
     const syncPatch = applySettingActionToStoredSyncData(action);
+    if (syncPatch.changed) {
+      action.status = "completed";
+    }
     if (syncPatch.changed && !action.message) {
-      action.message = "서버 설정에 바로 반영했습니다. Mac 로컬 설정은 뒤에서 맞춰집니다.";
+      action.message = "서버 설정에 바로 반영했습니다. 모든 기기가 최신 설정을 받아옵니다.";
       action.updatedAt = new Date().toISOString();
     }
     upsertSettingAction(action);
@@ -518,7 +524,7 @@ async function route(request, response) {
       action: `${action.title || action.key} 설정 변경`,
       status: syncPatch.changed ? "updated" : "queued",
       message: syncPatch.changed
-        ? "서버 설정에 바로 반영했습니다. Mac 로컬 설정은 뒤에서 맞춰집니다."
+        ? "서버 설정에 바로 반영했습니다. 모든 기기가 최신 설정을 받아옵니다."
         : "설정 변경 요청을 서버에 기록했습니다.",
     });
     state.message = syncPatch.changed
@@ -2906,6 +2912,28 @@ function mutateSyncItemsForItemAction(inputItems, action, now) {
   }
 
   return { items: items.sort(compareSyncItems), changed };
+}
+
+function isServerDisplayOnlyItemAction(action) {
+  return [
+    "assignmentComplete",
+    "assignmentRestore",
+    "assignmentHide",
+    "assignmentUnhide",
+    "examPromote",
+    "examIgnore",
+    "examRestore",
+    "noticeRead",
+    "noticeUnread",
+    "noticeImportant",
+    "noticeUnimportant",
+    "noticeHide",
+    "noticeUnhide",
+    "fileHide",
+    "fileUnhide",
+    "mailDashboardAdd",
+    "mailDashboardRemove",
+  ].includes(String(action || ""));
 }
 
 function mutateCalendarChangesForItemAction(inputChanges, action) {

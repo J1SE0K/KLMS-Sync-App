@@ -361,7 +361,7 @@ async function runSmoke() {
     itemKind: "notice",
     itemTitle: "공지",
   }, { method: "POST", status: 201 });
-  assert.equal(action.status, "pending");
+  assert.equal(action.status, "completed");
   assert.match(action.message, /서버 화면에 바로 반영/);
   {
     const payload = await expectJSON("/v1/sync-data?kind=notice&limit=10");
@@ -394,8 +394,7 @@ async function runSmoke() {
 
   {
     const payload = await expectJSON("/relay/v1/item-actions/pending", undefined, { role: "worker" });
-    assert.equal(payload.actions.length, 1);
-    assert.equal(payload.actions[0].itemID, "notice-1");
+    assert.equal(payload.actions.length, 0);
   }
 
   const settingAction = await expectJSON("/v1/setting-actions", {
@@ -403,7 +402,7 @@ async function runSmoke() {
     title: "파일 탐색 모드",
     value: "quick",
   }, { method: "POST", status: 201 });
-  assert.equal(settingAction.status, "pending");
+  assert.equal(settingAction.status, "completed");
   assert.match(settingAction.message, /서버 설정에 바로 반영/);
   {
     const payload = await expectJSON("/v1/sync-data?limit=10");
@@ -458,8 +457,7 @@ async function runSmoke() {
 
   {
     const payload = await expectJSON("/v1/setting-actions/pending", undefined, { role: "worker" });
-    assert.equal(payload.actions.length, 1);
-    assert.equal(payload.actions[0].key, "FILE_REFRESH_MODE");
+    assert.equal(payload.actions.length, 0);
   }
 
   await expectJSON(`/v1/setting-actions/${settingAction.id}`, {
@@ -565,8 +563,7 @@ async function runSmoke() {
     assert.equal(inbox.statusResponse.ok, true);
     assert.equal(inbox.pendingFileAccessRequests.length, 1);
     assert.equal(inbox.pendingFileAccessRequests[0].itemID, "file-1");
-    assert.equal(inbox.pendingItemActions.length, 1);
-    assert.equal(inbox.pendingItemActions[0].itemID, "notice-1");
+    assert.equal(inbox.pendingItemActions.length, 0);
     assert.equal(inbox.pendingSettingActions.length, 0);
     assert.equal(inbox.pendingCommands.length, 0);
     assert.equal(inbox.cancelRequest.requested, false);
