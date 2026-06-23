@@ -11,6 +11,7 @@ TIMEOUT_SECONDS="${IOS_DEVICE_TIMEOUT_SECONDS:-120}"
 WAIT_FOR_AVAILABLE_SECONDS="${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-45}"
 DISCOVERY_POLL_SECONDS="${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-3}"
 INSTALL_ALL_MODE=0
+MANUAL_LAUNCH_STATUS=4
 
 if [[ -z "$DEVICE_IDENTIFIER" ]]; then
   print -ru2 -- "Usage: IOS_DEVICE_IDENTIFIER=<device-id-or-name|all> $0"
@@ -76,9 +77,9 @@ install_one_device() {
   if [[ "$launch_ready" != "1" ]]; then
     print -ru2 -- "${device_label}: installed; launch was skipped because the device is locked or not ready for developer launch. The app is already on the device. Unlock it and open KLMS Sync manually, or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
     if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
-      return 3
+      return "$MANUAL_LAUNCH_STATUS"
     fi
-    exit 3
+    exit "$MANUAL_LAUNCH_STATUS"
   fi
 
   local LAUNCH_OUTPUT
@@ -89,13 +90,13 @@ install_one_device() {
     --quiet \
     --terminate-existing \
     "$BUNDLE_IDENTIFIER" >"$LAUNCH_OUTPUT" 2>&1; then
-    if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch" "$LAUNCH_OUTPUT"; then
+    if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
-      print -ru2 -- "${device_label}: installed; launch was denied because the device is locked. The app is already on the device. Unlock it and open KLMS Sync manually, or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
+      print -ru2 -- "${device_label}: installed; launch could not be verified because the device is locked or iOS is still refreshing app registration. The app is already on the device. Unlock it and open KLMS Sync manually, or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
-        return 3
+        return "$MANUAL_LAUNCH_STATUS"
       fi
-      exit 3
+      exit "$MANUAL_LAUNCH_STATUS"
     fi
     /usr/bin/sed "s/${BUNDLE_IDENTIFIER//\//\\/}/<bundle-id>/g" "$LAUNCH_OUTPUT" >&2
     rm -f "$LAUNCH_OUTPUT"
@@ -210,6 +211,9 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   fi
   print -r -- "installing-on-${#device_ids[@]}-ios-devices"
   overall_status=0
+  installed_ready_count=0
+  manual_launch_count=0
+  failed_count=0
   for device_entry in "${device_ids[@]}"; do
     target_device="${device_entry%%$'\t'*}"
     device_rest="${device_entry#*$'\t'}"
@@ -226,12 +230,19 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
     device_status=$?
     set -e
     if (( device_status == 0 )); then
+      installed_ready_count=$(( installed_ready_count + 1 ))
       continue
+    fi
+    if (( device_status == MANUAL_LAUNCH_STATUS )); then
+      manual_launch_count=$(( manual_launch_count + 1 ))
+    else
+      failed_count=$(( failed_count + 1 ))
     fi
     if (( overall_status == 0 )); then
       overall_status="$device_status"
     fi
   done
+  print -r -- "install-summary installed_ready=${installed_ready_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
   exit "$overall_status"
 else
   install_one_device "$DEVICE_IDENTIFIER" "device"

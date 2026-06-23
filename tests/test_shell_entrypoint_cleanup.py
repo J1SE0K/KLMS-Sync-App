@@ -48,13 +48,18 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('local device_label="${2:-device}"', script)
         self.assertIn('print -r -- "${device_label}: installed"', script)
         self.assertIn('print -r -- "${device_label}: installed-and-launched"', script)
-        self.assertIn('print -ru2 -- "${device_label}: installed; launch was denied because the device is locked', script)
+        self.assertIn('LaunchServicesDataMismatch|LaunchServices GUID', script)
+        self.assertIn('print -ru2 -- "${device_label}: installed; launch could not be verified because the device is locked or iOS is still refreshing app registration', script)
         self.assertIn('print(f"{identifier}\\t{hardware.get(\'deviceType\', \'device\')}\\t{1 if launch_ready else 0}")', script)
         self.assertIn('target_device="${device_entry%%$\'\\t\'*}"', script)
         self.assertIn('device_rest="${device_entry#*$\'\\t\'}"', script)
         self.assertIn('device_label="${device_rest%%$\'\\t\'*}"', script)
+        self.assertIn("MANUAL_LAUNCH_STATUS=4", script)
+        self.assertIn("manual_launch_count=$(( manual_launch_count + 1 ))", script)
+        self.assertIn('print -r -- "install-summary installed_ready=${installed_ready_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"', script)
         self.assertNotIn("properties.get(\"name\")", script)
         self.assertIn("prints a generic `iPhone` or `iPad` label for each result", readme)
+        self.assertIn("iOS is still refreshing app registration", readme)
 
     def test_serial_run_scripts_share_common_job_runner(self) -> None:
         for script_name in ["run_all.sh", "run_all_full.sh"]:
