@@ -226,7 +226,9 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   fi
   print -r -- "installing-on-${#device_ids[@]}-ios-devices"
   overall_status=0
-  installed_ready_count=0
+  installed_count=0
+  launched_count=0
+  installed_only_count=0
   manual_launch_count=0
   failed_count=0
   for device_entry in "${device_ids[@]}"; do
@@ -245,10 +247,16 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
     device_status=$?
     set -e
     if (( device_status == 0 )); then
-      installed_ready_count=$(( installed_ready_count + 1 ))
+      installed_count=$(( installed_count + 1 ))
+      if [[ "$LAUNCH_AFTER_INSTALL" == "1" ]]; then
+        launched_count=$(( launched_count + 1 ))
+      else
+        installed_only_count=$(( installed_only_count + 1 ))
+      fi
       continue
     fi
     if (( device_status == MANUAL_LAUNCH_STATUS )); then
+      installed_count=$(( installed_count + 1 ))
       manual_launch_count=$(( manual_launch_count + 1 ))
     else
       failed_count=$(( failed_count + 1 ))
@@ -257,7 +265,7 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
       overall_status="$device_status"
     fi
   done
-  print -r -- "install-summary installed_ready=${installed_ready_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
+  print -r -- "install-summary installed=${installed_count} launched=${launched_count} installed_only=${installed_only_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
   exit "$overall_status"
 else
   install_one_device "$DEVICE_IDENTIFIER" "device"
