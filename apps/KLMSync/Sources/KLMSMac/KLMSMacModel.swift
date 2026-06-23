@@ -1160,7 +1160,7 @@ final class KLMSMacModel: ObservableObject {
             serverRelaySharedRunLogs = syncData.runLogs
             rebuildSharedRunLogStageDurationCache()
         }
-        _ = applyServerRelaySharedSettings(syncData.sharedSettings)
+        _ = applyServerRelaySharedSettings(syncData.settings + syncData.sharedSettings)
         serverRelayLastSyncDataFetchAt = Date()
     }
 
@@ -2598,32 +2598,61 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func configValue(_ key: EnvKnownKey) -> String {
-        envDocument?.value(for: key) ?? ""
+        serverRelayRuntimeSettingValue(key) ?? envDocument?.value(for: key) ?? ""
     }
 
     func boolConfigValue(_ key: EnvKnownKey, default defaultValue: Bool = false) -> Bool {
-        envDocument?.boolValue(for: key, default: defaultValue) ?? defaultValue
+        if let remoteValue = serverRelayRuntimeSettingValue(key),
+           let parsed = Self.parseConfigBool(remoteValue) {
+            return parsed
+        }
+        return envDocument?.boolValue(for: key, default: defaultValue) ?? defaultValue
     }
 
     private func runtimeConfigValue(_ key: EnvKnownKey, default defaultValue: String) -> String {
-        let value = envDocument?.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let value = serverRelayRuntimeSettingValue(key)
+            ?? envDocument?.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? ""
         return value.isEmpty ? defaultValue : value
     }
 
     private func runtimeOptionalConfigValue(_ key: EnvKnownKey) -> String? {
-        let value = envDocument?.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let value = serverRelayRuntimeSettingValue(key)
+            ?? envDocument?.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? ""
         return value.isEmpty ? nil : value
     }
 
     private func runtimeBoolConfigValue(_ key: EnvKnownKey, default defaultValue: Bool) -> String {
-        let value = envDocument?.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
-        if ["1", "true", "yes", "on"].contains(value) {
+        let value = serverRelayRuntimeSettingValue(key)
+            ?? envDocument?.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? ""
+        if Self.parseConfigBool(value) == true {
             return "1"
         }
-        if ["0", "false", "no", "off"].contains(value) {
+        if Self.parseConfigBool(value) == false {
             return "0"
         }
         return defaultValue ? "1" : "0"
+    }
+
+    private func serverRelayRuntimeSettingValue(_ key: EnvKnownKey) -> String? {
+        serverRelaySharedSettings
+            .first { $0.key == key.rawValue }?
+            .value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfBlank
+    }
+
+    private static func parseConfigBool(_ value: String) -> Bool? {
+        let lowercased = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if ["1", "true", "yes", "on"].contains(lowercased) {
+            return true
+        }
+        if ["0", "false", "no", "off"].contains(lowercased) {
+            return false
+        }
+        return nil
     }
 
     func setConfigValue(_ value: String, for key: EnvKnownKey) {
@@ -2632,9 +2661,27 @@ final class KLMSMacModel: ObservableObject {
             document.setValue(value, for: key)
             try EnvStore(url: paths.configURL).save(document)
             envDocument = document
+            if let setting = serverRelaySetting(for: key, value: value) {
+                _ = applyServerRelaySharedSettings([setting])
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func serverRelaySetting(for key: EnvKnownKey, value: String) -> ServerRelaySetting? {
+        guard let definition = Self.serverRelayEditableSettings.first(where: { $0.key == key }) else {
+            return nil
+        }
+        return ServerRelaySetting(
+            key: key.rawValue,
+            title: definition.title,
+            value: value,
+            valueKind: definition.valueKind,
+            options: definition.options,
+            editable: true,
+            updatedAt: ServerRelaySyncItem.isoTimestamp()
+        )
     }
 
     func setBoolConfigValue(_ value: Bool, for key: EnvKnownKey) {

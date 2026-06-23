@@ -5999,6 +5999,58 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(shared.contains("path: \"/v1/worker/inbox\""))
     }
 
+    func testMacRuntimeUsesServerSyncSettingsBeforeConfigEnv() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
+        let macModel = try String(contentsOf: macModelRoot, encoding: .utf8)
+
+        let applySyncData = try sourceBody(
+            after: "private func applyServerRelaySyncData",
+            in: macModel,
+            description: "Mac apply server sync data"
+        )
+        let configValue = try sourceBody(
+            after: "func configValue(_ key: EnvKnownKey)",
+            in: macModel,
+            description: "Mac config value"
+        )
+        let boolConfigValue = try sourceBody(
+            after: "func boolConfigValue(_ key: EnvKnownKey",
+            in: macModel,
+            description: "Mac bool config value"
+        )
+        let runtimeConfigValue = try sourceBody(
+            after: "private func runtimeConfigValue",
+            in: macModel,
+            description: "Mac runtime config value"
+        )
+        let runtimeBoolConfigValue = try sourceBody(
+            after: "private func runtimeBoolConfigValue",
+            in: macModel,
+            description: "Mac runtime bool config value"
+        )
+        let setConfigValue = try sourceBody(
+            after: "func setConfigValue(_ value: String, for key: EnvKnownKey)",
+            in: macModel,
+            description: "Mac set config value"
+        )
+
+        XCTAssertTrue(applySyncData.contains("syncData.settings + syncData.sharedSettings"))
+        XCTAssertTrue(configValue.contains("serverRelayRuntimeSettingValue(key)"))
+        XCTAssertTrue(boolConfigValue.contains("serverRelayRuntimeSettingValue(key)"))
+        XCTAssertTrue(runtimeConfigValue.contains("serverRelayRuntimeSettingValue(key)"))
+        XCTAssertTrue(runtimeBoolConfigValue.contains("serverRelayRuntimeSettingValue(key)"))
+        XCTAssertTrue(setConfigValue.contains("serverRelaySetting(for: key, value: value)"))
+        XCTAssertTrue(setConfigValue.contains("applyServerRelaySharedSettings([setting])"))
+        XCTAssertTrue(macModel.contains("private func serverRelayRuntimeSettingValue(_ key: EnvKnownKey) -> String?"))
+        XCTAssertTrue(macModel.contains("private static func parseConfigBool(_ value: String) -> Bool?"))
+        XCTAssertTrue(macModel.contains("\"NOTICE_COLLAPSE_COURSES\": runtimeBoolConfigValue(.noticeCollapseCourses"))
+        XCTAssertTrue(macModel.contains("\"NOTICE_COLLAPSE_NOTICE_ITEMS\": runtimeBoolConfigValue(.noticeCollapseItems"))
+    }
+
     func testIOSServerConnectionPasteImmediatelyRefreshesSummary() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
