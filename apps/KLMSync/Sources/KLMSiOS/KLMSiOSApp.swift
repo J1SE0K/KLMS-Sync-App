@@ -3453,6 +3453,7 @@ private struct CompanionSectionContent: View {
         .transaction { transaction in
             transaction.animation = nil
         }
+        .accessibilityIdentifier("companion-section-\(section.rawValue)")
     }
 }
 

@@ -2420,6 +2420,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionSection.contains("return \"캘린더\""))
         XCTAssertTrue(companionSection.contains("return \"로그\""))
         XCTAssertTrue(companionSection.contains("return \"설정\""))
+        let companionSectionContent = try sourceStructBody(named: "CompanionSectionContent", in: ios)
+        for sectionID in ["status", "files", "notices", "tasks", "calendar", "history", "settings"] {
+            XCTAssertTrue(
+                companionSectionContent.contains(".accessibilityIdentifier(\"companion-section-\\(section.rawValue)\")"),
+                "iPhone/iPad section content must expose a stable identifier so device QA can verify \(sectionID) renders after navigation."
+            )
+        }
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection]"))
         XCTAssertTrue(ios.contains("static var compactTabs: [CompanionAppSection] {\n        [.status, .history, .settings]"))
         XCTAssertTrue(ios.contains("static var workstationSections: [CompanionAppSection] {\n        [.status, .files, .notices, .tasks, .calendar, .history, .settings]"))

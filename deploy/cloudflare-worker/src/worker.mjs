@@ -499,26 +499,31 @@ async function route(request, env) {
       return sendJSON(400, { error: "missing setting key" });
     }
     const syncPatch = await applySettingActionToStoredSyncData(db, action);
-    if (syncPatch.changed) {
+    const serverApplied = syncPatch.changed || syncPatch.applied;
+    if (serverApplied) {
       action.status = "completed";
     }
-    if (syncPatch.changed && !action.message) {
-      action.message = "서버 설정에 바로 반영했습니다. 모든 기기가 최신 설정을 받아옵니다.";
+    if (serverApplied && !action.message) {
+      action.message = syncPatch.changed
+        ? "서버 설정에 바로 반영했습니다. 모든 기기가 최신 설정을 받아옵니다."
+        : "이미 같은 값이라 서버에서 바로 완료했습니다.";
       action.updatedAt = new Date().toISOString();
     }
     await upsertSettingAction(db, action);
     await appendRequestLog(db, request, {
       action: `${action.title || action.key} 설정 변경`,
-      status: syncPatch.changed ? "updated" : "queued",
-      message: syncPatch.changed
-        ? "서버 설정에 바로 반영했습니다. 모든 기기가 최신 설정을 받아옵니다."
+      status: serverApplied ? "updated" : "queued",
+      message: serverApplied
+        ? (syncPatch.changed
+          ? "서버 설정에 바로 반영했습니다. 모든 기기가 최신 설정을 받아옵니다."
+          : "이미 같은 값이라 서버에서 바로 완료했습니다.")
         : "설정 변경 요청을 서버에 기록했습니다.",
     });
-    state.message = syncPatch.changed
+    state.message = serverApplied
       ? `${action.title || action.key} 서버 반영 완료`
       : `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, syncPatch.changed ? "setting-actions:server-state" : "setting-actions:pending");
+    await saveMetaState(db, state, env, serverApplied ? "setting-actions:server-state" : "setting-actions:pending");
     return sendJSON(201, action);
   }
 
@@ -2721,13 +2726,13 @@ async function applySettingActionToStoredSyncData(db, action) {
   const settings = normalizeSettings(parseJSON(await getMeta(db, "syncDataSettings"), []));
   const next = applySettingActionsToSettings(settings, [action], action.updatedAt || new Date().toISOString());
   if (JSON.stringify(settings) === JSON.stringify(next)) {
-    return { changed: false };
+    return { changed: false, applied: Boolean(action.key) };
   }
   await db.batch([
     setMetaStatement(db, "syncDataSettings", JSON.stringify(next)),
     setMetaStatement(db, "syncDataUpdatedAt", action.updatedAt || new Date().toISOString()),
   ]);
-  return { changed: true };
+  return { changed: true, applied: true };
 }
 
 function applySettingActionsToSettings(inputSettings, actions, now) {
@@ -2738,6 +2743,9 @@ function applySettingActionsToSettings(inputSettings, actions, now) {
     }
     const index = settings.findIndex((setting) => setting.key === action.key);
     const previous = index >= 0 ? settings[index] : {};
+    if (index >= 0 && String(previous.value ?? "") === String(action.value ?? "")) {
+      continue;
+    }
     const next = normalizeSettings([{
       ...previous,
       key: action.key,

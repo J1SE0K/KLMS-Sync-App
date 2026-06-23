@@ -503,6 +503,13 @@ async function runSmoke() {
     assert.equal(payload.items.find((item) => item.id === "notice-1")?.isRead, true);
     assert.equal(payload.settings.find((setting) => setting.key === "FILE_REFRESH_MODE")?.value, "quick");
   }
+  const noOpSettingAction = await expectJSON("/v1/setting-actions", {
+    key: "FILE_REFRESH_MODE",
+    title: "파일 탐색 모드",
+    value: "quick",
+  }, { method: "POST", status: 201 });
+  assert.equal(noOpSettingAction.status, "completed");
+  assert.match(noOpSettingAction.message, /이미 같은 값/);
 
   {
     const payload = await expectJSON("/v1/setting-actions/pending", undefined, { role: "worker" });
