@@ -15,6 +15,7 @@ LAUNCH_RETRY_DELAY_SECONDS="${IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS:-2}"
 TUNNEL_WARMUP_SECONDS="${IOS_DEVICE_TUNNEL_WARMUP_SECONDS:-15}"
 INSTALL_ALL_MODE=0
 MANUAL_LAUNCH_STATUS=4
+BLOCKED_LAUNCH_STATUS=5
 
 if [[ -z "$DEVICE_IDENTIFIER" ]]; then
   print -ru2 -- "Usage: IOS_DEVICE_IDENTIFIER=<device-id-or-name|all> $0"
@@ -123,9 +124,9 @@ install_one_device() {
       rm -f "$LAUNCH_OUTPUT"
       print -ru2 -- "${device_label}: installed; launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun this install command to verify launch."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
-        return "$MANUAL_LAUNCH_STATUS"
+        return "$BLOCKED_LAUNCH_STATUS"
       fi
-      exit "$MANUAL_LAUNCH_STATUS"
+      exit "$BLOCKED_LAUNCH_STATUS"
     fi
     if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
@@ -247,6 +248,8 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   launched_count=0
   installed_only_count=0
   manual_launch_count=0
+  pending_launch_count=0
+  blocked_launch_count=0
   failed_count=0
   for device_entry in "${device_ids[@]}"; do
     target_device="${device_entry%%$'\t'*}"
@@ -274,6 +277,11 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
     fi
     if (( device_status == MANUAL_LAUNCH_STATUS )); then
       installed_count=$(( installed_count + 1 ))
+      pending_launch_count=$(( pending_launch_count + 1 ))
+      manual_launch_count=$(( manual_launch_count + 1 ))
+    elif (( device_status == BLOCKED_LAUNCH_STATUS )); then
+      installed_count=$(( installed_count + 1 ))
+      blocked_launch_count=$(( blocked_launch_count + 1 ))
       manual_launch_count=$(( manual_launch_count + 1 ))
     else
       failed_count=$(( failed_count + 1 ))
@@ -282,7 +290,7 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
       overall_status="$device_status"
     fi
   done
-  print -r -- "install-summary installed=${installed_count} launched=${launched_count} installed_only=${installed_only_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
+  print -r -- "install-summary installed=${installed_count} launched=${launched_count} installed_only=${installed_only_count} pending=${pending_launch_count} blocked=${blocked_launch_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
   exit "$overall_status"
 else
   install_one_device "$DEVICE_IDENTIFIER" "device"

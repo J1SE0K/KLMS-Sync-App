@@ -11,6 +11,7 @@ TIMEOUT_SECONDS="${IOS_DEVICE_TIMEOUT_SECONDS:-60}"
 WAIT_FOR_AVAILABLE_SECONDS="${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-20}"
 DISCOVERY_POLL_SECONDS="${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-2}"
 MANUAL_LAUNCH_STATUS=4
+BLOCKED_LAUNCH_STATUS=5
 REQUIRED_DEVICE_TYPES="${IOS_DEVICE_REQUIRE_TYPES:-}"
 TUNNEL_WARMUP_SECONDS="${IOS_DEVICE_TUNNEL_WARMUP_SECONDS:-15}"
 
@@ -93,7 +94,7 @@ launch_one_device() {
   if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|not trusted|Security" "$LAUNCH_OUTPUT"; then
     rm -f "$LAUNCH_OUTPUT"
     print -ru2 -- "${device_label}: launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then rerun this launch check."
-    return "$MANUAL_LAUNCH_STATUS"
+    return "$BLOCKED_LAUNCH_STATUS"
   fi
   if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID|not connected|unavailable|timed out" "$LAUNCH_OUTPUT"; then
     rm -f "$LAUNCH_OUTPUT"
@@ -199,6 +200,8 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   print -r -- "launch-checking-${#device_entries[@]}-ios-devices"
   launched_count=0
   manual_launch_count=0
+  pending_launch_count=0
+  blocked_launch_count=0
   failed_count=0
   overall_status=0
   seen_device_types=()
@@ -230,6 +233,10 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
       continue
     fi
     if (( device_status == MANUAL_LAUNCH_STATUS )); then
+      pending_launch_count=$(( pending_launch_count + 1 ))
+      manual_launch_count=$(( manual_launch_count + 1 ))
+    elif (( device_status == BLOCKED_LAUNCH_STATUS )); then
+      blocked_launch_count=$(( blocked_launch_count + 1 ))
       manual_launch_count=$(( manual_launch_count + 1 ))
     else
       failed_count=$(( failed_count + 1 ))
@@ -257,7 +264,7 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
       fi
     done
   fi
-  print -r -- "launch-check-summary launched=${launched_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
+  print -r -- "launch-check-summary launched=${launched_count} pending=${pending_launch_count} blocked=${blocked_launch_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
   exit "$overall_status"
 fi
 
