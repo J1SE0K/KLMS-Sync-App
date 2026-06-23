@@ -1084,13 +1084,13 @@ final class CompanionModel: ObservableObject {
         rebuildRemoteLogDerivedState()
         status = command.summary
         lastRefreshAt = Date()
-        connectionMessage = "\(kind.displayName) 요청을 서버에 보내는 중입니다."
-        connectionSucceeded = nil
+        connectionMessage = "\(kind.displayName) 요청을 대기열에 올렸습니다. 서버 확인을 기다리는 중입니다."
+        connectionSucceeded = true
         errorMessage = ""
         do {
             try await serverRelayStore.create(command)
             trackReportNotificationIfNeeded(for: command)
-            connectionMessage = "\(kind.displayName) 요청을 보냈습니다."
+            connectionMessage = "\(kind.displayName) 요청이 서버에 전달됐습니다."
             connectionSucceeded = true
             rebuildRemoteLogDerivedState()
         } catch {
@@ -1122,11 +1122,13 @@ final class CompanionModel: ObservableObject {
         }
         pendingCancelCommandID = commandID
         pendingCancelRequestedAt = Date()
+        let previousCommands = recentCommands
+        let previousStatus = status
+        let previousLastRefreshAt = lastRefreshAt
         markCancelRequestedLocally(commandID: commandID)
-        isSubmitting = true
-        defer {
-            isSubmitting = false
-        }
+        connectionMessage = "중단 요청을 대기열에 올렸습니다. 서버 확인을 기다리는 중입니다."
+        connectionSucceeded = true
+        errorMessage = ""
         do {
             let cancelResponse = try await serverRelayStore.requestCancel(commandID: commandID)
             connectionSucceeded = true
@@ -1151,8 +1153,14 @@ final class CompanionModel: ObservableObject {
                 cancelFollowUpTask?.cancel()
                 cancelFollowUpTask = nil
             }
+            recentCommands = previousCommands
+            status = previousStatus
+            lastRefreshAt = previousLastRefreshAt
+            rebuildRemoteLogDerivedState()
             let message = userFacingMessage(for: error)
             errorMessage = message
+            connectionMessage = "중단 요청 전송 실패"
+            connectionSucceeded = false
             userAlert = UserAlert(title: "중단 요청 실패", message: message)
         }
     }
@@ -1607,6 +1615,9 @@ final class CompanionModel: ObservableObject {
         recentFileAccessRequests.insert(request, at: 0)
         rebuildFileAccessLookup()
         rebuildRemoteLogDerivedState()
+        connectionMessage = "파일 링크 요청을 대기열에 올렸습니다. 서버 확인을 기다리는 중입니다."
+        connectionSucceeded = true
+        errorMessage = ""
         do {
             let created = try await serverRelayStore.createFileAccessRequest(request)
             recentFileAccessRequests.removeAll { $0.id == request.id }
