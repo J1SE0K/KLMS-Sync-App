@@ -133,6 +133,14 @@ IOS_DEVICE_IDENTIFIER=all IOS_DEVICE_LAUNCH=0 tools/install_klms_ios_device.sh
 
 The device must be unlocked for the launch step. If iOS is still refreshing app registration after installation, the helper retries launch verification briefly before giving up. Tune that with `IOS_DEVICE_LAUNCH_RETRIES` and `IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS`. If the helper says `installed; launch-check skipped` or `installed; launch-check pending`, the app is already installed; unlock the device and open KLMS Sync manually, or rerun the same install command after the device is ready. If the helper says `installed; launch-check blocked`, open Settings > General > VPN & Device Management on that iPhone/iPad, trust the developer app, then open KLMS Sync or rerun the same install command to verify launch. To install without launching, use `IOS_DEVICE_LAUNCH=0`. When installing to `all`, the helper waits up to 45 seconds for paired iPhone/iPad devices to become available, prints a generic `iPhone` or `iPad` label for each result, skips devices that CoreDevice still reports as unavailable, continues with the remaining devices, and ends with `install-summary installed=... launched=... installed_only=... manual_launch_needed=... failed=...`. That line separates total installed devices, devices launched by the helper, install-only devices, and devices that need a manual app open. It still exits non-zero when a requested launch could not be verified. Set `IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS=0` to fail immediately. If a device is skipped, unlock it, reconnect USB, accept the Trust prompt, and confirm Developer Mode is enabled. If installation says the app is not signed, rebuild without `CODE_SIGNING_ALLOWED=NO`.
 
+After trusting the developer app on a device, verify launch without reinstalling:
+
+```sh
+IOS_DEVICE_IDENTIFIER=all tools/verify_klms_ios_device_launch.sh
+```
+
+The launch checker prints generic `iPhone`/`iPad` labels and ends with `launch-check-summary launched=... manual_launch_needed=... failed=...`. It uses the signed app bundle or ignored local iOS config only to find the bundle identifier, and it redacts that identifier from error output.
+
 Run it once on an iPhone and once on an iPad. iPhone must show the compact `상태 / 로그 / 설정` tab flow with dashboard detail opened inline. iPad must show the split workspace with the section list on the left and the selected detail on the right. Important banners such as KAIST auth digits and running/cancel status must stay visible above the selected screen on both devices.
 
 If the app is ad-hoc signed, macOS can treat each rebuilt bundle as a different privacy subject. When Notes automation works from Terminal/Codex but fails from `KLMS Sync.app`, reset the app privacy records and grant them again:

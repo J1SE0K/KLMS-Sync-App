@@ -43,6 +43,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
 
     def test_ios_device_installer_reports_generic_device_labels(self) -> None:
         script = (PROJECT_DIR / "tools" / "install_klms_ios_device.sh").read_text(encoding="utf-8")
+        launch_script = (PROJECT_DIR / "tools" / "verify_klms_ios_device_launch.sh").read_text(encoding="utf-8")
         readme = (PROJECT_DIR / "apps" / "KLMSync" / "README.md").read_text(encoding="utf-8")
 
         self.assertIn('local device_label="${2:-device}"', script)
@@ -68,10 +69,20 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("manual_launch_count=$(( manual_launch_count + 1 ))", script)
         self.assertIn('print -r -- "install-summary installed=${installed_count} launched=${launched_count} installed_only=${installed_only_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"', script)
         self.assertNotIn("properties.get(\"name\")", script)
+        self.assertIn('DEVICE_IDENTIFIER="${IOS_DEVICE_IDENTIFIER:-${1:-all}}"', launch_script)
+        self.assertIn('print -r -- "${device_label}: launch-verified"', launch_script)
+        self.assertIn('print -r -- "launch-check-summary launched=${launched_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"', launch_script)
+        self.assertIn('redact_bundle_id <"$LAUNCH_OUTPUT"', launch_script)
+        self.assertIn('print(f"{identifier}\\t{hardware.get(\'deviceType\', \'device\')}")', launch_script)
+        self.assertNotIn("RequestDenied|Security", script)
+        self.assertNotIn("RequestDenied|Security", launch_script)
+        self.assertNotIn("properties.get(\"name\")", launch_script)
         self.assertIn("prints a generic `iPhone` or `iPad` label for each result", readme)
         self.assertIn("installed; launch-check pending", readme)
         self.assertIn("installed; launch-check blocked", readme)
         self.assertIn("installed; launch-check skipped", readme)
+        self.assertIn("tools/verify_klms_ios_device_launch.sh", readme)
+        self.assertIn("launch-check-summary launched=... manual_launch_needed=... failed=...", readme)
         self.assertIn("iOS is still refreshing app registration", readme)
         self.assertIn("IOS_DEVICE_LAUNCH_RETRIES", readme)
         self.assertIn("IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS", readme)

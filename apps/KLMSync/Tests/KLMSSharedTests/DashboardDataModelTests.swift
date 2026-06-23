@@ -1021,9 +1021,11 @@ final class DashboardDataModelTests: XCTestCase {
             .deletingLastPathComponent()
         let buildScriptRoot = repoRoot.appendingPathComponent("tools/build_klms_ios_device.sh")
         let installScriptRoot = repoRoot.appendingPathComponent("tools/install_klms_ios_device.sh")
+        let launchCheckScriptRoot = repoRoot.appendingPathComponent("tools/verify_klms_ios_device_launch.sh")
         let readmeRoot = packageRoot.appendingPathComponent("README.md")
         let buildScript = try String(contentsOf: buildScriptRoot, encoding: .utf8)
         let installScript = try String(contentsOf: installScriptRoot, encoding: .utf8)
+        let launchCheckScript = try String(contentsOf: launchCheckScriptRoot, encoding: .utf8)
         let readme = try String(contentsOf: readmeRoot, encoding: .utf8)
 
         XCTAssertTrue(buildScript.contains("BUILD_LOG=\"${IOS_DEVICE_BUILD_LOG:-$(mktemp -t klms-ios-device-build.XXXXXX)}\""))
@@ -1079,8 +1081,19 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(installScript.contains("installed; launch-check pending"))
         XCTAssertTrue(installScript.contains("installed; launch-check blocked"))
         XCTAssertTrue(installScript.contains("rerun this install command"))
+        XCTAssertFalse(installScript.contains("RequestDenied|Security"))
         XCTAssertFalse(installScript.contains("EPOCHSECONDS"))
         XCTAssertFalse(installScript.contains("klms-ios-devices.XXXXXX.json"))
+        XCTAssertTrue(launchCheckScript.contains("DEVICE_IDENTIFIER=\"${IOS_DEVICE_IDENTIFIER:-${1:-all}}\""))
+        XCTAssertTrue(launchCheckScript.contains("launch-checking-${#device_entries[@]}-ios-devices"))
+        XCTAssertTrue(launchCheckScript.contains("launch-check-summary launched=${launched_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"))
+        XCTAssertTrue(launchCheckScript.contains("print -r -- \"${device_label}: launch-verified\""))
+        XCTAssertTrue(launchCheckScript.contains("print -ru2 -- \"${device_label}: launch-check blocked"))
+        XCTAssertTrue(launchCheckScript.contains("print -ru2 -- \"${device_label}: launch-check pending"))
+        XCTAssertTrue(launchCheckScript.contains("redact_bundle_id <\"$LAUNCH_OUTPUT\""))
+        XCTAssertTrue(launchCheckScript.contains("print(f\"{identifier}\\t{hardware.get('deviceType', 'device')}\")"))
+        XCTAssertFalse(launchCheckScript.contains("RequestDenied|Security"))
+        XCTAssertFalse(launchCheckScript.contains("properties.get(\"name\")"))
 
         XCTAssertTrue(readme.contains("waits up to 45 seconds for paired iPhone/iPad devices to become available"))
         XCTAssertTrue(readme.contains("IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS=0"))
@@ -1104,6 +1117,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(readme.contains("trust the developer app"))
         XCTAssertTrue(readme.contains("the app is already installed"))
         XCTAssertTrue(readme.contains("rerun the same install command"))
+        XCTAssertTrue(readme.contains("tools/verify_klms_ios_device_launch.sh"))
+        XCTAssertTrue(readme.contains("launch-check-summary launched=... manual_launch_needed=... failed=..."))
+        XCTAssertTrue(readme.contains("redacts that identifier from error output"))
     }
 
     func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {

@@ -107,17 +107,17 @@ install_one_device() {
       continue
     fi
 
-    if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|RequestDenied|Security" "$LAUNCH_OUTPUT"; then
+    if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
-      print -ru2 -- "${device_label}: installed; launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun this install command to verify launch."
+      print -ru2 -- "${device_label}: installed; launch-check pending. The device is locked or iOS is still refreshing app registration. Unlock it, open KLMS Sync manually, or rerun this install command after a few seconds."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
         return "$MANUAL_LAUNCH_STATUS"
       fi
       exit "$MANUAL_LAUNCH_STATUS"
     fi
-    if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
+    if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|not trusted|Security" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
-      print -ru2 -- "${device_label}: installed; launch-check pending. The device is locked or iOS is still refreshing app registration. Unlock it, open KLMS Sync manually, or rerun this install command after a few seconds."
+      print -ru2 -- "${device_label}: installed; launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun this install command to verify launch."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
         return "$MANUAL_LAUNCH_STATUS"
       fi
