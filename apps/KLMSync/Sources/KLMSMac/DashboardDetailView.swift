@@ -3485,6 +3485,7 @@ private struct HiddenItemsListView: View {
     var hiddenQuarantineItems: [DashboardFileItem]
     var snapshot: EngineSnapshot
     var model: KLMSMacModel
+    private let renderReferenceDate = Date()
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
     var body: some View {
@@ -3552,7 +3553,7 @@ private struct HiddenItemsListView: View {
         let overrides = snapshot.manualOverrides
         return ((content?.examItems ?? []) + (content?.examCandidates ?? []))
             .filter { overrides?.isExamHidden($0) == true }
-            .filter { !$0.isPastDashboardExamForApp }
+            .filter { !$0.isPastDashboardExamForApp(referenceDate: renderReferenceDate) }
     }
 }
 
@@ -3566,7 +3567,7 @@ private extension Array where Element == StateItem {
 }
 
 private extension StateItem {
-    var isPastDashboardExamForApp: Bool {
+    func isPastDashboardExamForApp(referenceDate: Date) -> Bool {
         let normalizedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard normalizedCategory == "exam" || normalizedCategory == "exam_candidate" else {
             return false
@@ -3575,7 +3576,7 @@ private extension StateItem {
         guard !rawDue.isEmpty, let due = ISO8601DateFormatter().date(from: rawDue) else {
             return false
         }
-        return due < Date()
+        return due < referenceDate
     }
 }
 

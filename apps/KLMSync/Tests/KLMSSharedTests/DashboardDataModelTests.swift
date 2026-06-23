@@ -3498,6 +3498,7 @@ final class DashboardDataModelTests: XCTestCase {
         let macSidebarView = try sourceStructBody(named: "MacWorkspaceSidebarView", in: mac)
         let macRuntimePanel = try sourceStructBody(named: "DashboardRuntimePanelView", in: mac)
         let macMetricTile = try sourceStructBody(named: "MetricTile", in: mac)
+        let hiddenItemsListView = try sourceStructBody(named: "HiddenItemsListView", in: macDetail)
         let dashboardTopBarView = try sourceStructBody(named: "DashboardTopBarView", in: mac)
         let dashboardTopBarStatusContent = try sourceStructBody(named: "DashboardTopBarStatusContent", in: mac)
         let macAlertBannerSnapshot = try sourceBody(
@@ -4030,6 +4031,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(logSummaryPanelView.contains("renderReferenceDate.timeIntervalSince($0.updatedAt) <= Self.terminalSummaryDisplayInterval"))
         XCTAssertTrue(logSummaryPanelView.contains("renderReferenceDate.timeIntervalSince(command.updatedAt) <= Self.terminalSummaryDisplayInterval"))
         XCTAssertFalse(logSummaryPanelView.contains("Date().timeIntervalSince"))
+        XCTAssertTrue(hiddenItemsListView.contains("private let renderReferenceDate = Date()"))
+        XCTAssertTrue(hiddenItemsListView.contains("isPastDashboardExamForApp(referenceDate: renderReferenceDate)"))
+        XCTAssertFalse(macDetail.contains("return due < Date()"))
+        XCTAssertTrue(macDetail.contains("return due < referenceDate"))
         XCTAssertTrue(logSummaryPanelView.contains("LazyVGrid(columns: tileColumns, alignment: .leading, spacing: 8)"))
         XCTAssertFalse(logSummaryPanelView.contains("HStack(alignment: .top, spacing: 8)"))
         XCTAssertTrue(logSummaryPanelView.contains(".background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))"))
