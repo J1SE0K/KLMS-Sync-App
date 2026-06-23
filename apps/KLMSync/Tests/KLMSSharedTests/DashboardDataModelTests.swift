@@ -2313,6 +2313,8 @@ final class DashboardDataModelTests: XCTestCase {
         let sectionContent = try sourceStructBody(named: "CompanionSectionContent", in: ios)
         let compactRoot = try sourceStructBody(named: "CompanionTabRootView", in: ios)
         let compactTabBar = try sourceStructBody(named: "CompanionCompactTabBar", in: ios)
+        let workstationSidebar = try sourceStructBody(named: "WorkstationSidebar", in: ios)
+        let sidebarButton = try sourceStructBody(named: "CompanionSidebarButton", in: ios)
         let dashboardSyncCard = try sourceStructBodies(
             named: ["RemoteDashboardSyncCard", "RemoteDashboardSyncSnapshot", "RemoteDashboardSyncCardContent"],
             in: ios
@@ -2348,6 +2350,7 @@ final class DashboardDataModelTests: XCTestCase {
         let remoteDiagnosticPanel = try sourceStructBody(named: "RemoteDiagnosticPanel", in: ios)
         let remotePrivacyNote = try sourceStructBody(named: "RemotePrivacyNote", in: ios)
         let companionItemListControls = try sourceStructBody(named: "CompanionItemListControls", in: ios)
+        let mailPasteAnalyzerPanel = try sourceStructBody(named: "MailPasteAnalyzerPanel", in: ios)
         let mailCalendarCreateForm = try sourceStructBody(named: "MailCalendarCreateForm", in: ios)
         let mailDashboardItemEditForm = try sourceStructBody(named: "MailDashboardItemEditForm", in: ios)
         let calendarEventEditForm = try sourceStructBody(named: "CalendarEventEditForm", in: ios)
@@ -2456,8 +2459,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(compactTabBar.contains(".accessibilityLabel(section.compactTitle)"))
         XCTAssertTrue(compactTabBar.contains(".accessibilityValue(selectedSection == section ? \"선택됨\" : \"선택 안 됨\")"))
         XCTAssertTrue(compactTabBar.contains(".accessibilityHint(\"\\(section.compactTitle) 탭으로 이동합니다.\")"))
+        XCTAssertTrue(compactTabBar.contains(".accessibilityIdentifier(\"companion-compact-tab-\\(section.rawValue)\")"))
         XCTAssertFalse(compactTabBar.contains(".accessibilityLabel(section.title)"))
         XCTAssertTrue(compactTabBar.contains(".frame(maxWidth: .infinity, minHeight: 44)"))
+        XCTAssertTrue(workstationSidebar.contains("CompanionAppSection.workstationSections"))
+        XCTAssertTrue(sidebarButton.contains(".accessibilityLabel(section.title)"))
+        XCTAssertTrue(sidebarButton.contains(".accessibilityIdentifier(\"companion-sidebar-\\(section.rawValue)\")"))
+        XCTAssertTrue(sidebarButton.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertFalse(compactTabBar.contains("private func compactTabMinWidth(for section: CompanionAppSection) -> CGFloat"))
         XCTAssertFalse(compactTabBar.contains("ScrollView(.horizontal"))
         XCTAssertFalse(compactTabBar.contains(".frame(maxWidth: .infinity, minHeight: 34)"))
@@ -2468,6 +2476,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(compactTabBar.contains(".shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear"))
         XCTAssertTrue(compactTabBar.contains(".buttonStyle(KLMSCardButtonStyle())"))
         XCTAssertTrue(remoteDiagnosticPanel.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
+        XCTAssertTrue(companionDiagnosticDisclosure.contains(".accessibilityIdentifier(\"companion-diagnostic-\\(title)\")"))
+        XCTAssertTrue(mailPasteAnalyzerPanel.contains(".accessibilityIdentifier(\"mail-paste-analyzer-disclosure\")"))
+        XCTAssertTrue(relayConnectionPanel.contains(".accessibilityIdentifier(\"server-relay-disclosure\")"))
+        XCTAssertTrue(remoteSettingGroupSection.contains(".accessibilityIdentifier(\"remote-setting-group-\\(group.title)\")"))
+        XCTAssertTrue(remoteSettingGroupSection.contains(".contentShape(RoundedRectangle(cornerRadius: 10))"))
         XCTAssertFalse(compactTabBar.contains("Label(section.compactTitle, systemImage:"))
         XCTAssertTrue(compactTabBar.contains(".padding(6)"))
         XCTAssertFalse(compactTabBar.contains(".padding(.horizontal, 6)"))
@@ -6294,6 +6307,16 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS companion root view"
         )
+        let bootstrap = try sourceBody(
+            after: "func bootstrapServerRelayFromLaunch(silentInitialErrors: Bool = false) async",
+            in: ios,
+            description: "iOS server relay bootstrap"
+        )
+        let retryInitialLoad = try sourceBody(
+            after: "private func retryInitialServerSyncDataIfNeeded",
+            in: ios,
+            description: "iOS initial sync-data retry"
+        )
 
         XCTAssertTrue(rootView.contains("@Environment(\\.scenePhase) private var scenePhase"))
         XCTAssertTrue(rootView.contains(".task(id: model.serverRelayBootstrapKey)"))
@@ -6304,6 +6327,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("var serverRelayBootstrapKey: String"))
         XCTAssertTrue(ios.contains("func bootstrapServerRelayFromLaunch(silentInitialErrors: Bool = false) async"))
         XCTAssertTrue(ios.contains("syncDataNeedsRefresh = true"))
+        XCTAssertTrue(ios.contains("private static let initialSyncDataRetryDelayNanoseconds"))
+        XCTAssertTrue(bootstrap.contains("await startServerRelayRealtime(silentInitialErrors: silentInitialErrors)"))
+        XCTAssertTrue(bootstrap.contains("await retryInitialServerSyncDataIfNeeded(silentInitialErrors: silentInitialErrors)"))
+        XCTAssertTrue(retryInitialLoad.contains("guard shouldRetryInitialServerSyncData"))
+        XCTAssertTrue(retryInitialLoad.contains("try? await Task.sleep(nanoseconds: Self.initialSyncDataRetryDelayNanoseconds)"))
+        XCTAssertTrue(retryInitialLoad.contains("guard !Task.isCancelled, shouldRetryInitialServerSyncData"))
+        XCTAssertTrue(retryInitialLoad.contains("await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)"))
+        XCTAssertTrue(ios.contains("private var shouldRetryInitialServerSyncData: Bool"))
+        XCTAssertTrue(ios.contains("serverRelayConfigured && (syncDataNeedsRefresh || !hasLoadedServerSyncData)"))
     }
 
     func testIOSDeferredExpansionRendersImmediatelyAfterToggle() throws {

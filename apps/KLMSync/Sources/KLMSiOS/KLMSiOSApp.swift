@@ -239,6 +239,7 @@ final class CompanionModel: ObservableObject {
     private var dashboardActionHiddenItemIDsCache = Set<String>()
 
     private static let terminalLogSummaryDisplayInterval: TimeInterval = 5 * 60
+    private static let initialSyncDataRetryDelayNanoseconds: UInt64 = 850_000_000
 
     private static let deprecatedLocalHostKey = "KLMSLocalRemoteHost"
     private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
@@ -2340,11 +2341,28 @@ final class CompanionModel: ObservableObject {
     func bootstrapServerRelayFromLaunch(silentInitialErrors: Bool = false) async {
         syncDataNeedsRefresh = true
         await startServerRelayRealtime(silentInitialErrors: silentInitialErrors)
+        await retryInitialServerSyncDataIfNeeded(silentInitialErrors: silentInitialErrors)
     }
 
     func startServerRelayRealtime(silentInitialErrors: Bool = false) async {
         configureServerRelayEventStream()
         await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)
+    }
+
+    private func retryInitialServerSyncDataIfNeeded(silentInitialErrors: Bool) async {
+        guard shouldRetryInitialServerSyncData else {
+            return
+        }
+        try? await Task.sleep(nanoseconds: Self.initialSyncDataRetryDelayNanoseconds)
+        guard !Task.isCancelled, shouldRetryInitialServerSyncData else {
+            return
+        }
+        syncDataNeedsRefresh = true
+        await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)
+    }
+
+    private var shouldRetryInitialServerSyncData: Bool {
+        serverRelayConfigured && (syncDataNeedsRefresh || !hasLoadedServerSyncData)
     }
 
     private func configureServerRelayEventStream() {
@@ -3250,6 +3268,7 @@ private struct CompanionCompactTabBar: View {
         .accessibilityLabel(section.compactTitle)
         .accessibilityValue(selectedSection == section ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(section.compactTitle) 탭으로 이동합니다.")
+        .accessibilityIdentifier("companion-compact-tab-\(section.rawValue)")
     }
 }
 
@@ -3388,6 +3407,7 @@ private struct CompanionSidebarButton: View {
         .accessibilityLabel(section.title)
         .accessibilityValue(accessibilityValue)
         .accessibilityHint("\(section.title) 작업 공간으로 이동합니다.")
+        .accessibilityIdentifier("companion-sidebar-\(section.rawValue)")
     }
 
     private var accessibilityValue: String {
@@ -4201,6 +4221,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
                 .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
                 .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
+                .accessibilityIdentifier("companion-settings-section-\(title)")
             } else {
                 subsectionHeader
             }
@@ -4917,6 +4938,7 @@ private struct ServerRelayConnectionPanel: View {
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
             .accessibilityLabel("서버 릴레이 \(isConfigured ? "저장됨" : "미설정") \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "서버 릴레이 설정 접기" : "서버 릴레이 설정 펼치기")
+            .accessibilityIdentifier("server-relay-disclosure")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 12) {
@@ -9450,6 +9472,7 @@ private struct MailPasteAnalyzerPanel: View {
             .buttonStyle(KLMSCardButtonStyle())
             .accessibilityLabel("메일·캘린더 분석 \(analysis.isEmpty ? "입력 대기" : analysis.kind.title) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "메일 판독 입력 접기" : "메일 판독 입력 펼치기")
+            .accessibilityIdentifier("mail-paste-analyzer-disclosure")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 10) {
@@ -12993,6 +13016,7 @@ private struct CompanionDiagnosticDisclosure<Content: View>: View {
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
             .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
+            .accessibilityIdentifier("companion-diagnostic-\(title)")
 
             DeferredInteractionExpansion(isExpanded: isExpanded) {
                 VStack(alignment: .leading, spacing: compact ? 5 : 6) {
@@ -13437,6 +13461,7 @@ private struct RemoteSettingGroupSection: View {
                 .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
                 .accessibilityLabel("\(group.title) \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "\(group.title) 접기" : "\(group.title) 펼치기")
+                .accessibilityIdentifier("remote-setting-group-\(group.title)")
             } else {
                 groupHeader
                     .accessibilityElement(children: .combine)
