@@ -239,7 +239,8 @@ final class CompanionModel: ObservableObject {
     private var dashboardActionHiddenItemIDsCache = Set<String>()
 
     private static let terminalLogSummaryDisplayInterval: TimeInterval = 5 * 60
-    private static let initialSyncDataRetryDelayNanoseconds: UInt64 = 850_000_000
+    private static let initialSyncDataRetryDelayNanoseconds: UInt64 = 650_000_000
+    private static let initialSyncDataRetryLimit = 3
 
     private static let deprecatedLocalHostKey = "KLMSLocalRemoteHost"
     private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
@@ -2350,15 +2351,17 @@ final class CompanionModel: ObservableObject {
     }
 
     private func retryInitialServerSyncDataIfNeeded(silentInitialErrors: Bool) async {
-        guard shouldRetryInitialServerSyncData else {
-            return
+        for _ in 0..<Self.initialSyncDataRetryLimit {
+            guard shouldRetryInitialServerSyncData else {
+                return
+            }
+            try? await Task.sleep(nanoseconds: Self.initialSyncDataRetryDelayNanoseconds)
+            guard !Task.isCancelled, shouldRetryInitialServerSyncData else {
+                return
+            }
+            syncDataNeedsRefresh = true
+            await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)
         }
-        try? await Task.sleep(nanoseconds: Self.initialSyncDataRetryDelayNanoseconds)
-        guard !Task.isCancelled, shouldRetryInitialServerSyncData else {
-            return
-        }
-        syncDataNeedsRefresh = true
-        await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)
     }
 
     private var shouldRetryInitialServerSyncData: Bool {
