@@ -6529,6 +6529,15 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(persistCacheBody.contains("UserDefaults.standard.set(data, forKey: Self.cachedServerSyncDataKey)"))
         XCTAssertTrue(applyBody.contains("applySharedSettings(syncData.sharedSettings, merge: false)"))
         XCTAssertTrue(ios.contains("private func applySharedSettings(_ incomingSettings: [ServerRelaySetting], merge: Bool) -> Bool"))
+        let applySharedSettings = try sourceBody(
+            after: "private func applySharedSettings(_ incomingSettings: [ServerRelaySetting], merge: Bool)",
+            in: ios,
+            description: "iOS shared settings apply"
+        )
+        XCTAssertTrue(applySharedSettings.contains("let previousByKey = Dictionary(uniqueKeysWithValues: sharedSettings.map { ($0.key, $0) })"))
+        XCTAssertTrue(applySharedSettings.contains("var mergedByKey = previousByKey"))
+        XCTAssertTrue(applySharedSettings.contains("for setting in next where previousByKey[setting.key] != setting"))
+        XCTAssertFalse(applySharedSettings.contains("for setting in next {\n            applySharedSettingLocally(setting)"))
         XCTAssertTrue(ios.contains("applySharedSettings([setting], merge: true)"))
         XCTAssertTrue(ios.contains("applySharedSettings([saved], merge: true)"))
         XCTAssertTrue(ios.contains("private static func loadCachedServerSyncData(for serverURL: String, tokenFingerprint: String) -> ServerRelaySyncData?"))

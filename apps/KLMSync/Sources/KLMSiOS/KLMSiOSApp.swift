@@ -2837,9 +2837,10 @@ final class CompanionModel: ObservableObject {
 
     @discardableResult
     private func applySharedSettings(_ incomingSettings: [ServerRelaySetting], merge: Bool) -> Bool {
+        let previousByKey = Dictionary(uniqueKeysWithValues: sharedSettings.map { ($0.key, $0) })
         let next: [ServerRelaySetting]
         if merge {
-            var mergedByKey = Dictionary(uniqueKeysWithValues: sharedSettings.map { ($0.key, $0) })
+            var mergedByKey = previousByKey
             for setting in incomingSettings {
                 mergedByKey[setting.key] = setting
             }
@@ -2853,7 +2854,7 @@ final class CompanionModel: ObservableObject {
         }
         sharedSettings = next
         sharedSettingsSignature = nextSignature
-        for setting in next {
+        for setting in next where previousByKey[setting.key] != setting {
             applySharedSettingLocally(setting)
         }
         return true
