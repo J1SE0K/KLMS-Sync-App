@@ -1339,7 +1339,7 @@ final class CompanionModel: ObservableObject {
         ))
     }
 
-    private func schedulePostActionRefresh(scope: RelayRefreshScope, delayNanoseconds: UInt64 = 350_000_000) {
+    private func schedulePostActionRefresh(scope: RelayRefreshScope, delayNanoseconds: UInt64 = 80_000_000) {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: delayNanoseconds)
             guard !Task.isCancelled else { return }

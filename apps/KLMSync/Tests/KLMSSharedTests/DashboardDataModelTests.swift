@@ -3917,7 +3917,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSelectionMarker.contains(".accessibilityIdentifier(\"workspace-content-\\(section.rawValue)\")"))
         XCTAssertTrue(macSelectionMarker.contains(".accessibilityLabel(section.accessibilitySummary)"))
         XCTAssertTrue(macSelectionMarker.contains(".frame(width: 1, height: 1)"))
-        XCTAssertTrue(macModel.contains("@Published private(set) var cachedIssues: [EngineIssue] = []"))
+        XCTAssertTrue(macModel.contains("private(set) var cachedIssues: [EngineIssue] = []"))
+        XCTAssertFalse(macModel.contains("@Published private(set) var cachedIssues"))
         XCTAssertTrue(macModel.contains("var needsAttention: Bool"))
         XCTAssertTrue(macModel.contains("var attentionSummary: String"))
         XCTAssertTrue(macModel.contains("let nextIssues = nextSnapshot.issues"))
@@ -6013,6 +6014,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(model.contains("guard force || lastSnapshotSourceSignature != signature else"))
         XCTAssertTrue(model.contains("self.loadEngineSnapshot(force: false)"))
         XCTAssertTrue(model.contains("self.replaceSnapshot(loadedSnapshot)"))
+        XCTAssertTrue(model.contains("private(set) var cachedIssues: [EngineIssue] = []"))
+        XCTAssertFalse(model.contains("@Published private(set) var cachedIssues"))
     }
 
     func testIOSCompanionUsesAdaptiveIPadNavigation() throws {
@@ -6274,6 +6277,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(createItemAction.contains("if !savedAction.action.isServerDisplayOnlyAction"))
         XCTAssertFalse(createItemAction.contains("includeSyncData: !savedAction.action.isServerDisplayOnlyAction"))
         XCTAssertTrue(createItemAction.contains("schedulePostActionRefresh(scope: .itemActions)"))
+        XCTAssertTrue(ios.contains("private func schedulePostActionRefresh(scope: RelayRefreshScope, delayNanoseconds: UInt64 = 80_000_000)"))
         XCTAssertFalse(createItemAction.contains("await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)"))
         XCTAssertTrue(createItemAction.contains("let previousSyncItems = syncItems"))
         XCTAssertTrue(createItemAction.contains("let previousSyncItemsSignature = syncItemsSignature"))

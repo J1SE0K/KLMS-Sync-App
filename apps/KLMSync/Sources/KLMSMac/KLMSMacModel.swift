@@ -192,7 +192,7 @@ final class KLMSMacModel: ObservableObject {
     @Published private var authDigitsSuppressed = false
     @Published var errorMessage: String?
     @Published var payload: EnginePayload?
-    @Published private(set) var cachedIssues: [EngineIssue] = []
+    private(set) var cachedIssues: [EngineIssue] = []
     @Published private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]
     private(set) var dashboardSummaryCache = KLMSMacDashboardSummaryCache()
     private(set) var dashboardSummaryPresentation = DashboardSummaryPresentation(
