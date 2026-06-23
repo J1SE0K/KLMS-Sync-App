@@ -6286,6 +6286,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS clear server relay connection"
         )
+        let clearLoadedServerSyncData = try sourceBody(
+            after: "private func clearLoadedServerSyncData()",
+            in: ios,
+            description: "iOS clear loaded server sync data"
+        )
 
         XCTAssertTrue(ios.contains("private static let cachedServerSyncDataKey = \"KLMSCompanionCachedServerSyncData\""))
         XCTAssertTrue(ios.contains("private struct CachedServerSyncData: Codable"))
@@ -6302,6 +6307,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("UserDefaults.standard.removeObject(forKey: cachedServerSyncDataKey)"))
         XCTAssertTrue(ios.contains("private func persistCachedServerSyncData(_ syncData: ServerRelaySyncData)"))
         XCTAssertTrue(ios.contains("private func clearLoadedServerSyncData()"))
+        XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettings = []"))
+        XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettingsSignature = nil"))
         XCTAssertTrue(clearConnection.contains("clearLoadedServerSyncData()"))
         XCTAssertTrue(clearConnection.contains("UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)"))
     }

@@ -2652,11 +2652,13 @@ final class CompanionModel: ObservableObject {
         dryRunReports = []
         calendarChanges = []
         remoteSettings = []
+        sharedSettings = []
         sharedRunLogs = []
         verifySummary = nil
         syncItemsSignature = nil
         calendarChangesSignature = nil
         remoteSettingsSignature = nil
+        sharedSettingsSignature = nil
         sharedRunLogsSignature = nil
         verifySummarySignature = nil
         hasLoadedServerSyncData = false
