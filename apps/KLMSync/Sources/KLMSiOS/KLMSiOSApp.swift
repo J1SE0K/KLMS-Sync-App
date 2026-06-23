@@ -381,6 +381,15 @@ final class CompanionModel: ObservableObject {
             fetchesSettingActions: false
         )
 
+        static let itemActionServerState = RelayRefreshScope(
+            fetchesCommands: false,
+            fetchesSyncData: true,
+            fetchesFileRequests: false,
+            fetchesItemActions: true,
+            fetchesRequestLog: false,
+            fetchesSettingActions: false
+        )
+
         static let settings = RelayRefreshScope(
             fetchesCommands: false,
             fetchesSyncData: true,
@@ -1155,13 +1164,13 @@ final class CompanionModel: ObservableObject {
         rebuildRemoteLogDerivedState()
         status = command.summary
         lastRefreshAt = Date()
-        connectionMessage = "\(kind.displayName) 요청을 대기열에 올렸습니다. 서버 확인을 기다리는 중입니다."
+        connectionMessage = "\(kind.displayName) 요청을 화면에 먼저 반영했습니다. 서버로 보내는 중입니다."
         connectionSucceeded = true
         errorMessage = ""
         do {
             try await serverRelayStore.create(command)
             trackReportNotificationIfNeeded(for: command)
-            connectionMessage = "\(kind.displayName) 요청이 서버에 전달됐습니다."
+            connectionMessage = "\(kind.displayName) 요청이 서버에 전달됐습니다. Mac이 확인하면 상태가 바로 바뀝니다."
             connectionSucceeded = true
             rebuildRemoteLogDerivedState()
         } catch {
@@ -1197,7 +1206,7 @@ final class CompanionModel: ObservableObject {
         let previousStatus = status
         let previousLastRefreshAt = lastRefreshAt
         markCancelRequestedLocally(commandID: commandID)
-        connectionMessage = "중단 요청을 대기열에 올렸습니다. 서버 확인을 기다리는 중입니다."
+        connectionMessage = "중단 요청을 화면에 먼저 반영했습니다. 서버로 보내는 중입니다."
         connectionSucceeded = true
         errorMessage = ""
         do {
@@ -1412,6 +1421,9 @@ final class CompanionModel: ObservableObject {
     }
 
     private func schedulePostActionRefresh(scope: RelayRefreshScope, delayNanoseconds: UInt64 = 80_000_000) {
+        guard serverRelayEventWebSocketTask?.state != .running else {
+            return
+        }
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: delayNanoseconds)
             guard !Task.isCancelled else { return }
@@ -2470,7 +2482,8 @@ final class CompanionModel: ObservableObject {
         includeSyncData: Bool? = true
     ) async {
         configureServerRelayEventStream()
-        await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: includeSyncData, showsActivity: false)
+        let scope: RelayRefreshScope = includeSyncData == true ? .syncData : .state
+        await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: includeSyncData, showsActivity: false, scope: scope)
     }
 
     private func retryInitialServerSyncDataIfNeeded(silentInitialErrors: Bool) async {
@@ -2562,6 +2575,9 @@ final class CompanionModel: ObservableObject {
         }
         if reason.hasPrefix("commands:") {
             return reason == "commands:pending" ? .commandRequest : .state
+        }
+        if reason == "item-actions:server-state" {
+            return .itemActionServerState
         }
         if reason.hasPrefix("item-actions:") {
             return .itemActions
@@ -9653,28 +9669,31 @@ private struct MailPasteAnalyzerPanel: View {
                             pasteFromClipboard()
                         } label: {
                             Label("클립보드 붙여넣기", systemImage: "doc.on.clipboard")
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
+                        .accessibilityHint("클립보드의 메일 본문을 입력칸에 붙여넣고 바로 판독합니다.")
 
                         Button {
                             runAnalysis()
                         } label: {
                             Label("판독하기", systemImage: "wand.and.stars")
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                         .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityHint("붙여넣은 본문에서 과제, 시험, 일정, 공지 후보를 찾습니다.")
 
                         Button {
                             mailText = ""
                             analysis = .empty
                         } label: {
                             Label("입력 비우기", systemImage: "xmark.circle")
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                         .disabled(mailText.isEmpty)
+                        .accessibilityHint("붙여넣은 본문과 판독 결과를 지웁니다.")
                     }
                     .font(.caption.weight(.semibold))
 
@@ -10003,9 +10022,10 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                         isShowingCreateSheet = true
                     } label: {
                         Label("Mac 캘린더에 등록", systemImage: "calendar.badge.plus")
-                            .frame(maxWidth: .infinity)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(KLMSActionButtonStyle(tone: .success))
+                    .accessibilityHint("판독한 일정을 확인한 뒤 Mac Calendar 등록 요청을 보냅니다.")
                 }
 
                 if let dashboardItem = analysis.dashboardItem {
@@ -10020,16 +10040,20 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                 dashboardEditItem = editableItem
                             } label: {
                                 Label("수정", systemImage: "pencil")
+                                    .frame(minHeight: 44)
                             }
                             .buttonStyle(KLMSActionButtonStyle())
+                            .accessibilityHint("메일 판독 항목의 제목, 분류, 과목, 시간을 수정합니다.")
                             Button(role: .destructive) {
                                 Task {
                                     await removeDashboardItem(editableItem)
                                 }
                             } label: {
                                 Label("제거", systemImage: "minus.circle")
+                                    .frame(minHeight: 44)
                             }
                             .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                            .accessibilityHint("메일 판독으로 추가한 대시보드 항목을 제거합니다.")
                         }
                     } else {
                         HStack(spacing: 8) {
@@ -10037,18 +10061,20 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                 dashboardEditItem = editableItem
                             } label: {
                                 Label("수정", systemImage: "pencil")
-                                    .frame(maxWidth: .infinity)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
                             }
                             .buttonStyle(KLMSActionButtonStyle())
+                            .accessibilityHint("메일 판독 항목을 등록하기 전에 내용을 수정합니다.")
                             Button {
                                 Task {
                                     await submitDashboardItem(dashboardItem)
                                 }
                             } label: {
                                 Label("등록", systemImage: "plus.circle")
-                                    .frame(maxWidth: .infinity)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
                             }
                             .buttonStyle(KLMSActionButtonStyle(tone: .accent(analysis.kind.tint)))
+                            .accessibilityHint("판독한 항목을 서버 대시보드에 바로 반영합니다.")
                         }
                     }
                 }
