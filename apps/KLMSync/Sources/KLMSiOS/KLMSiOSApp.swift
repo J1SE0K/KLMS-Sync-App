@@ -1897,21 +1897,6 @@ final class CompanionModel: ObservableObject {
                 var didChange = false
                 var statusRefreshError: Error?
                 var loadedSyncData = false
-                switch await responseTask {
-                case let .success(response):
-                    didChange = apply(response)
-                case let .failure(error):
-                    statusRefreshError = error
-                }
-                if let commands = await commandsTask, !commands.isEmpty {
-                    let visibleCommands = visibleCommands(commands)
-                    if recentCommands != visibleCommands {
-                        recentCommands = visibleCommands
-                        didChange = true
-                    }
-                    clearFinishedCancelRequestIfNeeded(commands)
-                    handleReportNotificationUpdates(commands)
-                }
                 switch await syncDataTask {
                 case let .success(syncData?):
                     loadedSyncData = true
@@ -1924,6 +1909,21 @@ final class CompanionModel: ObservableObject {
                     if shouldLoadSyncData {
                         didChange = markSyncDataLoadFailure(error, silentErrors: silentErrors) || didChange
                     }
+                }
+                switch await responseTask {
+                case let .success(response):
+                    didChange = apply(response) || didChange
+                case let .failure(error):
+                    statusRefreshError = error
+                }
+                if let commands = await commandsTask, !commands.isEmpty {
+                    let visibleCommands = visibleCommands(commands)
+                    if recentCommands != visibleCommands {
+                        recentCommands = visibleCommands
+                        didChange = true
+                    }
+                    clearFinishedCancelRequestIfNeeded(commands)
+                    handleReportNotificationUpdates(commands)
                 }
                 if let fileRequests = await fileRequestsTask {
                     let visibleFileRequests = visibleFileAccessRequests(fileRequests)
@@ -2501,6 +2501,7 @@ final class CompanionModel: ObservableObject {
         let previousStatus = status
         if status != response.status {
             status = response.status
+            rebuildDashboardStatus()
             didChange = true
         }
         if shouldNotifyAuthSuccess(from: previousStatus, to: response.status),

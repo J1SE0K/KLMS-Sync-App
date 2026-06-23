@@ -6452,6 +6452,16 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS initial sync-data retry"
         )
+        let refreshRecent = try sourceBody(
+            after: "func refreshRecent(",
+            in: ios,
+            description: "iOS refresh recent"
+        )
+        let applyResponse = try sourceBody(
+            after: "private func apply(_ response: LocalRemoteResponse",
+            in: ios,
+            description: "iOS status apply"
+        )
         let tokenFingerprint = try sourceBody(
             after: "private static func serverRelayBootstrapTokenFingerprint",
             in: ios,
@@ -6476,6 +6486,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(retryInitialLoad.contains("try? await Task.sleep(nanoseconds: Self.initialSyncDataRetryDelayNanoseconds)"))
         XCTAssertTrue(retryInitialLoad.contains("guard !Task.isCancelled, shouldRetryInitialServerSyncData"))
         XCTAssertTrue(retryInitialLoad.contains("await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)"))
+        let syncDataApplyIndex = try XCTUnwrap(refreshRecent.range(of: "switch await syncDataTask")?.lowerBound)
+        let responseApplyIndex = try XCTUnwrap(refreshRecent.range(of: "switch await responseTask")?.lowerBound)
+        XCTAssertLessThan(
+            refreshRecent.distance(from: refreshRecent.startIndex, to: syncDataApplyIndex),
+            refreshRecent.distance(from: refreshRecent.startIndex, to: responseApplyIndex)
+        )
+        XCTAssertTrue(applyResponse.contains("rebuildDashboardStatus()"))
         XCTAssertTrue(ios.contains("private var shouldRetryInitialServerSyncData: Bool"))
         XCTAssertTrue(ios.contains("serverRelayConfigured && (syncDataNeedsRefresh || !hasLoadedServerSyncData)"))
         XCTAssertTrue(ios.contains("serverRelayBootstrapTokenFingerprint(serverToken)"))
