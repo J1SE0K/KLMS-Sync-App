@@ -4278,7 +4278,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
             }
 
             if collapsible {
-                if isExpanded {
+                DeferredInteractionExpansion(isExpanded: isExpanded) {
                     VStack(alignment: .leading, spacing: 8) {
                         content()
                     }
@@ -7464,7 +7464,9 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 WorkstationDashboardEmptyGuidePanel()
             }
 
-            WorkstationChangeSummaryCard(status: data.status)
+            if data.hasLoadedServerSyncData {
+                WorkstationChangeSummaryCard(status: data.status)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
