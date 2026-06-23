@@ -114,7 +114,6 @@ attempt_launch_once() {
     --terminate-existing \
     "$BUNDLE_IDENTIFIER" >"$LAUNCH_OUTPUT" 2>&1; then
     rm -f "$LAUNCH_OUTPUT"
-    print -r -- "${device_label}: launch-verified"
     return 0
   fi
 
@@ -298,6 +297,7 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
     device_status=$?
     set -e
     if (( device_status == 0 )); then
+      print -r -- "${device_label}: launch-verified"
       launched_count=$(( launched_count + 1 ))
       launched_device_types+=("$device_label")
       continue
@@ -334,8 +334,15 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
       fi
     done
   fi
-  print -r -- "launch-check-summary launched=${launched_count} pending=${pending_launch_count} blocked=${blocked_launch_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
+  print -r -- "launch-check-summary launched=${launched_count} launched_types=${(j:,:)launched_device_types} pending=${pending_launch_count} blocked=${blocked_launch_count} manual_launch_needed=${manual_launch_count} failed=${failed_count}"
   exit "$overall_status"
 fi
 
+set +e
 launch_one_device "$DEVICE_IDENTIFIER" "device"
+device_status=$?
+set -e
+if (( device_status == 0 )); then
+  print -r -- "device: launch-verified"
+fi
+exit "$device_status"
