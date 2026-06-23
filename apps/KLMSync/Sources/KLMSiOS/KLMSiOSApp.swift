@@ -651,7 +651,7 @@ final class CompanionModel: ObservableObject {
                 itemTitle: normalizedItem.title,
                 message: message
             ))
-            await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)
+            await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)
         } catch {
             mailDashboardItems = previousMailDashboardItems
             persistMailDashboardItems()
@@ -682,7 +682,7 @@ final class CompanionModel: ObservableObject {
                 itemTitle: item.title,
                 message: message
             ))
-            await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)
+            await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)
         } catch {
             mailDashboardItems = previousMailDashboardItems
             persistMailDashboardItems()
@@ -1184,7 +1184,7 @@ final class CompanionModel: ObservableObject {
             if savedAction.status != .completed {
                 userAlert = UserAlert(title: "설정 요청 완료", message: connectionMessage)
             }
-            await refreshRecent(includeSyncData: true, showsActivity: false, scope: .settingActions)
+            await refreshRecent(includeSyncData: false, showsActivity: false, scope: .settingActions)
         } catch {
             guard !isCancellationError(error) else { return }
             let rollbackAction = ServerRelaySettingAction(
@@ -1402,7 +1402,7 @@ final class CompanionModel: ObservableObject {
             connectionMessage = successMessage
             connectionSucceeded = true
             errorMessage = ""
-            await refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false, scope: .settings)
+            await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false, scope: .settings)
         } catch {
             guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
@@ -1447,7 +1447,11 @@ final class CompanionModel: ObservableObject {
             if !savedAction.action.isServerDisplayOnlyAction {
                 userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
             }
-            await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)
+            await refreshRecent(
+                includeSyncData: !savedAction.action.isServerDisplayOnlyAction,
+                showsActivity: false,
+                scope: .itemActions
+            )
         } catch {
             guard !isCancellationError(error) else { return }
             if actionKind.isServerDisplayOnlyAction {
@@ -6600,7 +6604,7 @@ private struct RemoteDashboardMetricOverview: View {
             } else if metricSnapshot.shouldShowPrimaryMetricSection {
                 metricSection("주요 항목", categories: metricSnapshot.primaryMetricCategories)
             }
-            if metricSnapshot.shouldShowAttentionMetricSection {
+            if isDataLoaded && metricSnapshot.shouldShowAttentionMetricSection {
                 metricSection("확인 필요", categories: metricSnapshot.attentionMetricCategories)
             } else if shouldShowInlineEmptyDashboardMessage {
                 Text("표시할 대시보드 항목이 없습니다.")
@@ -6615,7 +6619,7 @@ private struct RemoteDashboardMetricOverview: View {
                     }
             }
 
-            if metricSnapshot.hasVisibleChangeSummary {
+            if isDataLoaded && metricSnapshot.hasVisibleChangeSummary {
                 RemoteDashboardChangeSummary(
                     status: displayStatus,
                     hasFileCleanupDetails: hasFileCleanupDetails,
@@ -13530,7 +13534,7 @@ private struct RemoteSettingGroupSection: View {
             }
 
             if group.isCollapsible {
-                if isExpanded {
+                DeferredInteractionExpansion(isExpanded: isExpanded) {
                     groupSettingsRows
                 }
             } else {
