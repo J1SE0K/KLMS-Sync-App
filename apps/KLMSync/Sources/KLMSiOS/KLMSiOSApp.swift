@@ -3954,7 +3954,6 @@ private struct CompanionSettingsScreen: View {
             CompanionImmediateSettingsPanel(
                 selectedAppearanceMode: KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue) ?? .system,
                 noticeNotesEnabled: model.sharedNoticeUpdateNotesEnabled,
-                isSubmitting: model.isSubmitting,
                 updateAppearanceMode: { mode in
                     await model.updateSharedAppearanceMode(mode.rawValue)
                 },
@@ -4019,7 +4018,6 @@ private struct CompanionSettingsScreen: View {
 private struct CompanionImmediateSettingsPanel: View {
     var selectedAppearanceMode: KLMSAppearanceMode
     var noticeNotesEnabled: Bool
-    var isSubmitting: Bool
     var updateAppearanceMode: (KLMSAppearanceMode) async -> Void
     var updateNoticeNotes: (Bool) async -> Void
 
@@ -4050,7 +4048,6 @@ private struct CompanionImmediateSettingsPanel: View {
                 ) {
                     CompanionAppearanceModeSelector(
                         selectedMode: selectedAppearanceMode,
-                        isSubmitting: isSubmitting,
                         updateAppearanceMode: updateAppearanceMode
                     )
                 }
@@ -4079,7 +4076,6 @@ private struct CompanionImmediateSettingsPanel: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
                     .buttonStyle(KLMSActionButtonStyle(tone: noticeNotesEnabled ? .success : .soft))
-                    .disabled(isSubmitting)
                     .accessibilityLabel("공지 메모 갱신")
                     .accessibilityValue(noticeNotesEnabled ? "켜짐" : "꺼짐")
                     .accessibilityHint("원격 동기화에서 Notes 공지 메모를 쓸지 정합니다.")
@@ -4098,7 +4094,6 @@ private struct CompanionImmediateSettingsPanel: View {
 
 private struct CompanionAppearanceModeSelector: View {
     var selectedMode: KLMSAppearanceMode
-    var isSubmitting: Bool
     var updateAppearanceMode: (KLMSAppearanceMode) async -> Void
 
     var body: some View {
@@ -4131,7 +4126,6 @@ private struct CompanionAppearanceModeSelector: View {
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-                .disabled(isSubmitting)
                 .accessibilityLabel("화면 모드 \(mode.title)")
                 .accessibilityValue(selectedMode == mode ? "선택됨" : "선택 안 됨")
                 .accessibilityHint("KLMS Sync 화면 모드를 \(mode.title)으로 바꿉니다.")
