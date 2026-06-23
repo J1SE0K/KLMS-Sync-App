@@ -1160,7 +1160,7 @@ final class KLMSMacModel: ObservableObject {
             serverRelaySharedRunLogs = syncData.runLogs
             rebuildSharedRunLogStageDurationCache()
         }
-        _ = applyServerRelaySharedSettings(syncData.settings + syncData.sharedSettings)
+        _ = applyServerRelaySharedSettings(syncData.settings + syncData.sharedSettings, merge: false)
         serverRelayLastSyncDataFetchAt = Date()
     }
 
@@ -1424,15 +1424,17 @@ final class KLMSMacModel: ObservableObject {
     }
 
     @discardableResult
-    private func applyServerRelaySharedSettings(_ settings: [ServerRelaySetting]) -> Bool {
-        guard !settings.isEmpty else {
-            return false
+    private func applyServerRelaySharedSettings(_ settings: [ServerRelaySetting], merge: Bool = true) -> Bool {
+        let sorted: [ServerRelaySetting]
+        if merge {
+            var mergedByKey = Dictionary(uniqueKeysWithValues: serverRelaySharedSettings.map { ($0.key, $0) })
+            for setting in settings {
+                mergedByKey[setting.key] = setting
+            }
+            sorted = mergedByKey.values.sorted { $0.key < $1.key }
+        } else {
+            sorted = settings.sorted { $0.key < $1.key }
         }
-        var mergedByKey = Dictionary(uniqueKeysWithValues: serverRelaySharedSettings.map { ($0.key, $0) })
-        for setting in settings {
-            mergedByKey[setting.key] = setting
-        }
-        let sorted = mergedByKey.values.sorted { $0.key < $1.key }
         let signature = Self.serverRelaySharedSettingSignature(sorted)
         guard serverRelaySharedSettingsSignature != signature else {
             return false
@@ -3084,7 +3086,7 @@ final class KLMSMacModel: ObservableObject {
             if serverRelayRecentFileAccessRequests != inbox.recentFileAccessRequests {
                 serverRelayRecentFileAccessRequests = inbox.recentFileAccessRequests
             }
-            _ = applyServerRelaySharedSettings(inbox.sharedSettings)
+            _ = applyServerRelaySharedSettings(inbox.sharedSettings, merge: false)
             if shouldFetchServerRelaySyncData(force: false),
                let syncData = try? await store.fetchSyncData(limit: 1) {
                 applyServerRelaySyncData(syncData)

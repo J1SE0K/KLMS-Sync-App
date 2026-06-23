@@ -1375,7 +1375,7 @@ final class CompanionModel: ObservableObject {
             editable: true,
             updatedAt: updatedAt
         )
-        _ = applySharedSettings([setting])
+        _ = applySharedSettings([setting], merge: true)
         guard let serverRelayStore else {
             connectionMessage = "서버 연결 정보가 없어 이 기기에만 적용했습니다."
             connectionSucceeded = false
@@ -1387,7 +1387,7 @@ final class CompanionModel: ObservableObject {
         }
         do {
             let saved = try await serverRelayStore.updateSharedSetting(setting)
-            _ = applySharedSettings([saved])
+            _ = applySharedSettings([saved], merge: true)
             connectionMessage = successMessage
             connectionSucceeded = true
             errorMessage = ""
@@ -2589,7 +2589,7 @@ final class CompanionModel: ObservableObject {
             remoteSettingsSignature = nextRemoteSettingsSignature
             didChange = true
         }
-        didChange = applySharedSettings(syncData.sharedSettings) || didChange
+        didChange = applySharedSettings(syncData.sharedSettings, merge: false) || didChange
         let nextSharedRunLogsSignature = Self.signature(for: syncData.runLogs)
         if sharedRunLogsSignature != nextSharedRunLogsSignature {
             sharedRunLogs = syncData.runLogs
@@ -2669,15 +2669,17 @@ final class CompanionModel: ObservableObject {
     }
 
     @discardableResult
-    private func applySharedSettings(_ incomingSettings: [ServerRelaySetting]) -> Bool {
-        guard !incomingSettings.isEmpty else {
-            return false
+    private func applySharedSettings(_ incomingSettings: [ServerRelaySetting], merge: Bool) -> Bool {
+        let next: [ServerRelaySetting]
+        if merge {
+            var mergedByKey = Dictionary(uniqueKeysWithValues: sharedSettings.map { ($0.key, $0) })
+            for setting in incomingSettings {
+                mergedByKey[setting.key] = setting
+            }
+            next = mergedByKey.values.sorted { $0.key < $1.key }
+        } else {
+            next = incomingSettings.sorted { $0.key < $1.key }
         }
-        var mergedByKey = Dictionary(uniqueKeysWithValues: sharedSettings.map { ($0.key, $0) })
-        for setting in incomingSettings {
-            mergedByKey[setting.key] = setting
-        }
-        let next = mergedByKey.values.sorted { $0.key < $1.key }
         let nextSignature = Self.signature(for: next)
         guard sharedSettingsSignature != nextSignature else {
             return false
