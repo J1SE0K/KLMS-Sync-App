@@ -515,6 +515,23 @@ async function runSmoke() {
     const payload = await expectJSON("/v1/sync-data?limit=10");
     assert.equal(payload.settings.find((setting) => setting.key === "FILE_REFRESH_MODE")?.value, "quick");
   }
+  const noticeCollapseSettingAction = await expectJSON("/v1/setting-actions", {
+    key: "NOTICE_COLLAPSE_COURSES",
+    title: "공지 과목명 접기",
+    value: "1",
+  }, { method: "POST", status: 201 });
+  assert.equal(noticeCollapseSettingAction.status, "pending");
+  assert.match(noticeCollapseSettingAction.message, /서버 화면에는 바로 반영/);
+  {
+    const payload = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(payload.settings.find((setting) => setting.key === "NOTICE_COLLAPSE_COURSES")?.value, "1");
+  }
+  await expectJSON(`/v1/setting-actions/${noticeCollapseSettingAction.id}`, {
+    ...noticeCollapseSettingAction,
+    status: "completed",
+    updatedAt: new Date().toISOString(),
+    message: "notice collapse done",
+  }, { method: "PUT", role: "worker" });
 
   await expectJSON("/v1/sync-data", {
     generatedAt: "2026-05-31T00:01:00Z",
