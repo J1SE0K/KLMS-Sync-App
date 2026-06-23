@@ -16,6 +16,8 @@ LOCAL_SIGNING_OVERRIDES=()
 XCODEBUILD_PROVISIONING_ARGS=()
 BUILD_LOG="${IOS_DEVICE_BUILD_LOG:-$(mktemp -t klms-ios-device-build.XXXXXX)}"
 REMOVE_BUILD_LOG=0
+local_team=""
+local_bundle=""
 
 if [[ -z "${IOS_DEVICE_BUILD_LOG:-}" ]]; then
   REMOVE_BUILD_LOG=1
@@ -38,6 +40,21 @@ xcconfig_value() {
       exit
     }
   ' "$LOCAL_CONFIG"
+}
+
+sanitize_xcodebuild_output() {
+  /usr/bin/perl -pe '
+    s/Apple Development: [^"\n]+ \([A-Z0-9]{10}\)/Apple Development: <redacted>/g;
+    s/Signing Identity:\s+".*"/Signing Identity: "<redacted>"/g;
+    s/Provisioning Profile:\s+".*"/Provisioning Profile: "<redacted>"/g;
+    s/[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}\.mobileprovision/<provisioning-profile>.mobileprovision/g;
+    s/\([A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}\)/(<provisioning-profile-id>)/g;
+    s/[A-Fa-f0-9]{40}/<signing-identity-hash>/g;
+    s/[A-Z0-9]{10}\.com\.[A-Za-z0-9._-]+/<app-identifier>/g;
+    s/\bcom\.[A-Za-z0-9._-]*KLMSync\.iOS\b/<bundle-id>/g;
+    s/\b[A-Z0-9]{10}\b/<team-id>/g;
+    s/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<email>/g;
+  '
 }
 
 if [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" && ! -f "$LOCAL_CONFIG" ]]; then
@@ -86,7 +103,7 @@ xcodebuild \
   SYMROOT="$SYMROOT" \
   OBJROOT="$OBJROOT" \
   CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_DIR" \
-  build 2>&1 | tee "$BUILD_LOG"
+  build 2>&1 | sanitize_xcodebuild_output | tee "$BUILD_LOG"
 xcodebuild_status=${pipestatus[1]}
 set -e
 

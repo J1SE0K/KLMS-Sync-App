@@ -113,6 +113,8 @@ IOS_ALLOW_PROVISIONING_UPDATES=1 tools/build_klms_ios_device.sh
 
 If the signed build says `No Accounts`, `Invalid credentials in keychain`, or `No profiles for ...`, open Xcode > Settings > Accounts and confirm the Apple ID used for device development is signed in. Then make sure `Config/KLMSiOS.local.xcconfig` uses that account's current Team ID and a unique bundle identifier. The helper prints the full xcodebuild log path and the compile-only fallback command.
 
+Device build output is sanitized by default. Team IDs, app identifiers, provisioning profile IDs, signing hashes, and account emails are replaced with placeholders in the terminal and in the temporary build log. Keep `Config/KLMSiOS.local.xcconfig` ignored and never paste real signing values into tracked docs or issues.
+
 `CODE_SIGNING_ALLOWED=NO` is only for compile checks. iPhone and iPad devices reject unsigned app bundles, so install with the signed build path produced by the normal device build or let the install helper build it for you.
 
 To install and launch the signed app on a connected device:
