@@ -969,6 +969,9 @@ final class CompanionModel: ObservableObject {
     }
 
     var activeAttentionTitle: String {
+        if isCancelRequestedForLatestCommand {
+            return "동기화 중단 중"
+        }
         if latestDisplayStatus?.isInFlight == true || status.phase == "running" {
             return "동기화 진행 중"
         }
@@ -4359,12 +4362,7 @@ private struct RemoteRunningStatusBanner: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(Color.klmsCommandAccent)
-                .frame(width: 28, height: 28)
-                .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                .accessibilityHidden(true)
+            leadingStatusSymbol
             VStack(alignment: .leading, spacing: 3) {
                 Text(snapshot.runningTitle)
                     .font(.subheadline.weight(.semibold))
@@ -4397,6 +4395,7 @@ private struct RemoteRunningStatusBanner: View {
                 .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                 .disabled(!snapshot.canCancelRunningCommand || localCancelSubmitting)
                 .accessibilityLabel(cancelButtonTitle)
+                .accessibilityHint(cancelAlreadyRequested ? "이미 중단 요청을 보냈습니다." : "실행 중인 동기화를 중단합니다.")
             }
         }
         .padding(12)
@@ -4404,10 +4403,30 @@ private struct RemoteRunningStatusBanner: View {
         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.klmsCommandAccent.opacity(0.42), lineWidth: 1)
+                .stroke(bannerTint.opacity(0.42), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
+        .accessibilityHint(cancelAlreadyRequested ? "Mac이 실행 중단 요청을 확인하고 있습니다." : "중요한 실행 상태입니다.")
         .accessibilitySortPriority(90)
+    }
+
+    @ViewBuilder
+    private var leadingStatusSymbol: some View {
+        if cancelAlreadyRequested {
+            Image(systemName: "stop.circle.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(bannerTint)
+                .frame(width: 28, height: 28)
+                .background(bannerTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityHidden(true)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .tint(bannerTint)
+                .frame(width: 28, height: 28)
+                .background(bannerTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityHidden(true)
+        }
     }
 
     private var statusMessage: String {
@@ -4426,6 +4445,10 @@ private struct RemoteRunningStatusBanner: View {
             return "요청 중"
         }
         return "중단"
+    }
+
+    private var bannerTint: Color {
+        cancelAlreadyRequested ? Color.klmsWarningBorder : Color.klmsCommandAccent
     }
 }
 
