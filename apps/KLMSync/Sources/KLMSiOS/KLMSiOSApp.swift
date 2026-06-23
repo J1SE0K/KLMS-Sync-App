@@ -1158,7 +1158,9 @@ final class CompanionModel: ObservableObject {
             connectionMessage = savedAction.message.nilIfBlank ?? "\(setting.title) 설정 변경 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
-            userAlert = UserAlert(title: "설정 요청 완료", message: connectionMessage)
+            if savedAction.status != .completed {
+                userAlert = UserAlert(title: "설정 요청 완료", message: connectionMessage)
+            }
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
@@ -1392,7 +1394,9 @@ final class CompanionModel: ObservableObject {
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
-            userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
+            if !savedAction.action.isServerDisplayOnlyAction {
+                userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
+            }
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
