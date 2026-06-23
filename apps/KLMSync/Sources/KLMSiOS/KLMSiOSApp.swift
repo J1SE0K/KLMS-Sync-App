@@ -635,6 +635,7 @@ final class CompanionModel: ObservableObject {
 
     func submitMailDashboardItem(_ item: ServerRelaySyncItem) async {
         let normalizedItem = item.normalizedDashboardItem
+        let previousMailDashboardItems = mailDashboardItems
         addMailDashboardItem(normalizedItem)
         guard let serverRelayStore else {
             return
@@ -651,6 +652,8 @@ final class CompanionModel: ObservableObject {
             ))
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
+            mailDashboardItems = previousMailDashboardItems
+            persistMailDashboardItems()
             errorMessage = userFacingMessage(for: error)
         }
     }
@@ -663,6 +666,7 @@ final class CompanionModel: ObservableObject {
     }
 
     func submitRemoveMailDashboardItem(_ item: ServerRelaySyncItem) async {
+        let previousMailDashboardItems = mailDashboardItems
         removeMailDashboardItem(item)
         guard let serverRelayStore else {
             return
@@ -679,6 +683,8 @@ final class CompanionModel: ObservableObject {
             ))
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
+            mailDashboardItems = previousMailDashboardItems
+            persistMailDashboardItems()
             errorMessage = userFacingMessage(for: error)
         }
     }
@@ -1299,6 +1305,27 @@ final class CompanionModel: ObservableObject {
         ))
     }
 
+    private func restoreServerDisplayItemActionState(
+        syncItems previousSyncItems: [ServerRelaySyncItem],
+        syncItemsSignature previousSyncItemsSignature: Int?,
+        mailDashboardItems previousMailDashboardItems: [ServerRelaySyncItem]
+    ) {
+        syncItems = previousSyncItems
+        syncItemsSignature = previousSyncItemsSignature
+        mailDashboardItems = previousMailDashboardItems
+        persistMailDashboardItems()
+        persistCachedServerSyncData(ServerRelaySyncData(
+            generatedAt: ServerRelaySyncItem.isoTimestamp(),
+            items: previousSyncItems,
+            dryRunReports: dryRunReports,
+            calendarChanges: calendarChanges,
+            settings: remoteSettings,
+            sharedSettings: sharedSettings,
+            runLogs: sharedRunLogs,
+            verifySummary: verifySummary
+        ))
+    }
+
     func updateSharedAppearanceMode(_ rawValue: String) async {
         let normalized = KLMSAppearanceMode(rawValue: rawValue)?.rawValue ?? KLMSAppearanceMode.system.rawValue
         await updateSharedSetting(
@@ -1377,6 +1404,9 @@ final class CompanionModel: ObservableObject {
         defer {
             isSubmitting = false
         }
+        let previousSyncItems = syncItems
+        let previousSyncItemsSignature = syncItemsSignature
+        let previousMailDashboardItems = mailDashboardItems
         do {
             let action = ServerRelayItemAction(
                 action: actionKind,
@@ -1400,6 +1430,13 @@ final class CompanionModel: ObservableObject {
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
+            if actionKind.isServerDisplayOnlyAction {
+                restoreServerDisplayItemActionState(
+                    syncItems: previousSyncItems,
+                    syncItemsSignature: previousSyncItemsSignature,
+                    mailDashboardItems: previousMailDashboardItems
+                )
+            }
             recentItemActions.removeAll { $0.itemID == item.id && $0.action == actionKind && $0.status == .pending }
             syncDataNeedsRefresh = true
             let message = userFacingMessage(for: error)
