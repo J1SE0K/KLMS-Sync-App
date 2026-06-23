@@ -514,14 +514,16 @@ async function route(request, env) {
     await upsertSettingAction(db, action);
     await appendRequestLog(db, request, {
       action: `${action.title || action.key} 설정 변경`,
-      status: "queued",
+      status: serverSnapshotUpdated ? "updated" : "queued",
       message: serverSnapshotUpdated
         ? (syncPatch.changed
           ? "서버 화면에는 바로 반영했습니다. Mac 앱이 켜지면 실제 동기화 설정에도 적용합니다."
           : "서버 화면은 이미 같은 값입니다. Mac 앱이 켜지면 실제 동기화 설정을 다시 확인합니다.")
         : "설정 변경 요청을 서버에 기록했습니다.",
     });
-    state.message = `${action.title || action.key} 설정 변경 요청 대기 중`;
+    state.message = serverSnapshotUpdated
+      ? `${action.title || action.key} 서버 화면 반영 완료 · Mac 적용 대기`
+      : `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
     await saveMetaState(db, state, env, "setting-actions:pending");
     return sendJSON(201, action);

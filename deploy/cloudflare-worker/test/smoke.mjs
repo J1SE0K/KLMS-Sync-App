@@ -454,6 +454,13 @@ async function runSmoke() {
   assert.equal(settingAction.status, "pending");
   assert.match(settingAction.message, /서버 화면에는 바로 반영/);
   {
+    const status = await expectJSON("/v1/status");
+    assert.match(status.message, /서버 화면 반영 완료/);
+    const requestLog = await expectJSON("/v1/request-log/recent?limit=1");
+    assert.equal(requestLog.entries[0].status, "updated");
+    assert.match(requestLog.entries[0].message, /서버 화면에는 바로 반영/);
+  }
+  {
     const payload = await expectJSON("/v1/sync-data?limit=10");
     assert.equal(payload.settings.find((setting) => setting.key === "FILE_REFRESH_MODE")?.value, "quick");
   }
