@@ -431,26 +431,30 @@ async function route(request, env) {
     }
     const syncPatch = await applyItemActionToStoredSyncData(db, state, action);
     const serverApplied = isServerDisplayOnlyItemAction(action.action);
+    const serverSnapshotUpdated = serverApplied || syncPatch.changed || itemActionUpdatesServerVisibleState(action.action);
     if (serverApplied) {
       action.status = "completed";
     }
     if (serverApplied && !action.message) {
       action.message = "서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다.";
       action.updatedAt = new Date().toISOString();
+    } else if (serverSnapshotUpdated && !action.message) {
+      action.message = "서버 화면에는 바로 반영했습니다. Mac 앱이 켜지면 실제 앱에도 적용합니다.";
+      action.updatedAt = new Date().toISOString();
     }
     await upsertItemAction(db, action);
     await appendRequestLog(db, request, {
       action: displayItemActionName(action.action),
-      status: serverApplied ? "updated" : "queued",
-      message: serverApplied
-        ? "서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다."
-        : action.itemTitle || action.itemID,
+      status: serverSnapshotUpdated ? "updated" : "queued",
+      message: action.message || action.itemTitle || action.itemID,
     });
     state.message = serverApplied
       ? `${displayItemActionName(action.action)} 서버 반영 완료`
+      : serverSnapshotUpdated
+        ? `${displayItemActionName(action.action)} 서버 화면 반영 완료 · Mac 적용 대기`
       : `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, serverApplied ? "item-actions:server-state" : "item-actions:pending");
+    await saveMetaState(db, state, env, serverSnapshotUpdated ? "item-actions:server-state" : "item-actions:pending");
     return sendJSON(201, action);
   }
 
@@ -2930,6 +2934,16 @@ function isServerDisplayOnlyItemAction(action) {
     "fileUnhide",
     "mailDashboardAdd",
     "mailDashboardRemove",
+  ].includes(String(action || ""));
+}
+
+function itemActionUpdatesServerVisibleState(action) {
+  return isServerDisplayOnlyItemAction(action) || [
+    "fileTrash",
+    "calendarApply",
+    "calendarCreate",
+    "calendarEdit",
+    "calendarDelete",
   ].includes(String(action || ""));
 }
 

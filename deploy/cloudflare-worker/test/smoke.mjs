@@ -485,6 +485,10 @@ async function runSmoke() {
     assert.equal(payload.calendarChanges.length, 0);
     const status = await expectJSON("/v1/status");
     assert.equal(status.status.calendarCreated, 0);
+    assert.match(status.message, /서버 화면 반영 완료/);
+    const requestLog = await expectJSON("/v1/request-log/recent?limit=1");
+    assert.equal(requestLog.entries[0].status, "updated");
+    assert.match(requestLog.entries[0].message, /Mac 앱이 켜지면 실제 앱에도 적용/);
   }
   await expectJSON(`/v1/item-actions/${calendarApplyAction.id}`, {
     ...calendarApplyAction,
