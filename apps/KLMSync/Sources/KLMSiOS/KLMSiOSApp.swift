@@ -358,7 +358,7 @@ final class CompanionModel: ObservableObject {
 
         static let itemActions = RelayRefreshScope(
             fetchesCommands: false,
-            fetchesSyncData: true,
+            fetchesSyncData: false,
             fetchesFileRequests: false,
             fetchesItemActions: true,
             fetchesRequestLog: true,
@@ -376,7 +376,7 @@ final class CompanionModel: ObservableObject {
 
         static let settingActions = RelayRefreshScope(
             fetchesCommands: false,
-            fetchesSyncData: true,
+            fetchesSyncData: false,
             fetchesFileRequests: false,
             fetchesItemActions: false,
             fetchesRequestLog: true,

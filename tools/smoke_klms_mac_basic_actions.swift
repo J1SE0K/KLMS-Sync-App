@@ -163,7 +163,19 @@ private func pressWorkspaceButton(_ identifier: String, appElement: AXUIElement)
         throw SmokeFailure.expectedControlMissing(identifier)
     }
     _ = AXUIElementPerformAction(button, kAXPressAction as CFString)
-    Thread.sleep(forTimeInterval: 0.1)
+    if let contentIdentifier = workspaceContentIdentifier(for: identifier) {
+        _ = waitForElement(withIdentifier: contentIdentifier, in: appElement, timeout: timeout)
+    } else {
+        Thread.sleep(forTimeInterval: 0.1)
+    }
+}
+
+private func workspaceContentIdentifier(for buttonIdentifier: String) -> String? {
+    let prefix = "workspace-"
+    guard buttonIdentifier.hasPrefix(prefix) else {
+        return nil
+    }
+    return "workspace-content-\(buttonIdentifier.dropFirst(prefix.count))"
 }
 
 private func verifyCommandQTerminatesAndReopens(app: NSRunningApplication) throws {
@@ -316,6 +328,7 @@ private func textAttributes(of element: AXUIElement) -> [String] {
         kAXTitleAttribute as CFString,
         kAXDescriptionAttribute as CFString,
         kAXValueAttribute as CFString,
+        "AXHelp" as CFString,
     ].compactMap { stringAttribute(element, $0) }
 }
 

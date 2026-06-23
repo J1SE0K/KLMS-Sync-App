@@ -958,6 +958,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(script.contains("process.arguments = [\"-b\", bundleID]"))
         XCTAssertTrue(script.contains("activateApplicationWithAppleScript()"))
         XCTAssertTrue(script.contains("app.activate(options: [.activateAllWindows])"))
+        XCTAssertTrue(basicActionsScript.contains("workspaceContentIdentifier(for: identifier)"))
+        XCTAssertTrue(basicActionsScript.contains("waitForElement(withIdentifier: contentIdentifier, in: appElement, timeout: timeout)"))
+        XCTAssertTrue(basicActionsScript.contains("\"AXHelp\" as CFString"))
         XCTAssertFalse(script.contains(".activateIgnoringOtherApps"))
         XCTAssertTrue(script.contains("AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)"))
         XCTAssertTrue(script.contains("sessionDiagnostics()"))
@@ -6113,6 +6116,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("return .itemActions"))
         XCTAssertTrue(ios.contains("if reason.hasPrefix(\"setting-actions:\")"))
         XCTAssertTrue(ios.contains("return .settingActions"))
+        XCTAssertTrue(ios.contains("static let itemActions = RelayRefreshScope(\n            fetchesCommands: false,\n            fetchesSyncData: false"))
+        XCTAssertTrue(ios.contains("static let settingActions = RelayRefreshScope(\n            fetchesCommands: false,\n            fetchesSyncData: false"))
         XCTAssertTrue(ios.contains("if reason == \"state\" || reason == \"updated\""))
         XCTAssertTrue(ios.contains("return .state"))
         let iosEventStream = try sourceBody(
