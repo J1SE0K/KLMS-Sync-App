@@ -46,7 +46,6 @@ private struct ProbeTarget {
     var rawValue: String
     var buttonIdentifier: String { "workspace-\(rawValue)" }
     var selectionIdentifier: String { "workspace-container-\(rawValue)" }
-    var contentIdentifier: String { "workspace-panel-workspace-\(rawValue)" }
 }
 
 private let environment = ProcessInfo.processInfo.environment
@@ -309,12 +308,12 @@ private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Dou
         throw ProbeFailure.pressFailed(identifier: target.buttonIdentifier, error)
     }
 
-    let requiredIdentifiers = [target.selectionIdentifier, target.contentIdentifier]
+    let requiredIdentifiers = [target.selectionIdentifier]
     guard waitForElements(withIdentifiers: requiredIdentifiers, in: appElement, timeout: timeout) else {
         if waitForElement(withIdentifier: target.selectionIdentifier, in: appElement, timeout: 0.1) == nil {
             throw ProbeFailure.workspaceSelectionMissing(target.buttonIdentifier)
         }
-        throw ProbeFailure.workspaceContentMissing(target.contentIdentifier)
+        throw ProbeFailure.workspaceContentMissing(target.selectionIdentifier)
     }
     let end = DispatchTime.now()
     return Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000

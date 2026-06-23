@@ -1424,6 +1424,10 @@ final class CompanionModel: ObservableObject {
         }
         let actionItemID = serverRelayCalendarChange(change).id
         let candidateIDs = calendarChangeResolvedIDs(for: change)
+        let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
+        if actionKind.resolvesCalendarChange {
+            markCalendarChangeResolvedLocally(change)
+        }
         do {
             let action = ServerRelayItemAction(
                 action: actionKind,
@@ -1435,6 +1439,9 @@ final class CompanionModel: ObservableObject {
             recentItemActions.removeAll { candidateIDs.contains($0.itemID) }
             recentItemActions.insert(action, at: 0)
             let savedAction = try await serverRelayStore.createItemAction(action)
+            if savedAction.action.resolvesCalendarChange, !savedAction.status.isFailedLike {
+                markCalendarChangeResolvedLocally(change)
+            }
             recentItemActions.removeAll { $0.id == action.id || candidateIDs.contains($0.itemID) }
             recentItemActions.insert(savedAction, at: 0)
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
@@ -1444,6 +1451,11 @@ final class CompanionModel: ObservableObject {
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
+            if actionKind.resolvesCalendarChange {
+                resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
+                persistResolvedCalendarChangeIDs()
+                rebuildVisibleCalendarChanges()
+            }
             recentItemActions.removeAll { candidateIDs.contains($0.itemID) && $0.action == actionKind && $0.status == .pending }
             let message = userFacingMessage(for: error)
             errorMessage = message
@@ -1698,6 +1710,18 @@ final class CompanionModel: ObservableObject {
         rebuildVisibleCalendarChanges()
     }
 
+    private func markCalendarChangeResolvedLocally(_ change: CalendarChange) {
+        let ids = calendarChangeResolvedIDs(for: change)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !ids.isEmpty else { return }
+        let previous = resolvedCalendarChangeIDs
+        resolvedCalendarChangeIDs.formUnion(ids)
+        guard resolvedCalendarChangeIDs != previous else { return }
+        persistResolvedCalendarChangeIDs()
+        rebuildVisibleCalendarChanges()
+    }
+
     private func rebuildFileAccessLookup() {
         var next: [String: ServerRelayFileAccessRequest] = [:]
         for request in recentFileAccessRequests {
@@ -1780,7 +1804,6 @@ final class CompanionModel: ObservableObject {
             }
             runPendingRefreshIfNeeded()
         }
-        do {
             if let serverRelayStore {
                 let shouldLoadSyncData = includeSyncData == true
                     || (scope.fetchesSyncData && shouldFetchSyncData(includeSyncData: includeSyncData))
@@ -1792,7 +1815,7 @@ final class CompanionModel: ObservableObject {
                         isLoadingServerSyncData = false
                     }
                 }
-                async let responseTask = serverRelayStore.fetchStatusResponse()
+                async let responseTask = Self.fetchStatusResponseResult(store: serverRelayStore)
                 async let commandsTask = Self.fetchRecentCommandsIfNeeded(scope.fetchesCommands, store: serverRelayStore, limit: 8)
                 async let syncDataTask = Self.fetchSyncDataResultIfNeeded(shouldLoadSyncData, store: serverRelayStore)
                 async let fileRequestsTask = Self.fetchRecentFileAccessRequestsIfNeeded(scope.fetchesFileRequests, store: serverRelayStore, limit: 20)
@@ -1800,8 +1823,15 @@ final class CompanionModel: ObservableObject {
                 async let requestLogTask = Self.fetchRecentRequestLogIfNeeded(scope.fetchesRequestLog, store: serverRelayStore, limit: 30)
                 async let settingActionsTask = Self.fetchRecentSettingActionsIfNeeded(scope.fetchesSettingActions, store: serverRelayStore, limit: 20)
 
-                let response = try await responseTask
-                var didChange = apply(response)
+                var didChange = false
+                var statusRefreshError: Error?
+                var loadedSyncData = false
+                switch await responseTask {
+                case let .success(response):
+                    didChange = apply(response)
+                case let .failure(error):
+                    statusRefreshError = error
+                }
                 if let commands = await commandsTask, !commands.isEmpty {
                     let visibleCommands = visibleCommands(commands)
                     if recentCommands != visibleCommands {
@@ -1813,6 +1843,7 @@ final class CompanionModel: ObservableObject {
                 }
                 switch await syncDataTask {
                 case let .success(syncData?):
+                    loadedSyncData = true
                     didChange = apply(syncData) || didChange
                 case .success(nil):
                     if shouldLoadSyncData && !hasLoadedServerSyncData {
@@ -1856,27 +1887,40 @@ final class CompanionModel: ObservableObject {
                     lastRefreshAt = Date()
                 }
                 if showsActivity {
-                    connectionMessage = "최신 상태를 불러왔습니다."
-                    connectionSucceeded = true
+                    if let statusRefreshError, loadedSyncData {
+                        connectionMessage = "대시보드는 불러왔지만 현재 실행 상태 갱신은 실패했습니다. \(userFacingMessage(for: statusRefreshError))"
+                        connectionSucceeded = nil
+                    } else if statusRefreshError == nil {
+                        connectionMessage = "최신 상태를 불러왔습니다."
+                        connectionSucceeded = true
+                    }
                 }
-                errorMessage = ""
-            } else {
-                if showsActivity {
-                    connectionMessage = "설정에서 서버 URL과 클라이언트 토큰을 먼저 저장해 주세요."
-                    connectionSucceeded = false
+                if statusRefreshError == nil || loadedSyncData {
+                    errorMessage = ""
+                } else if let statusRefreshError, !silentErrors {
+                    let message = userFacingMessage(for: statusRefreshError)
+                    errorMessage = message
+                    if showsActivity {
+                        connectionMessage = refreshFailureMessage(reason: message)
+                        connectionSucceeded = false
+                    }
                 }
-                errorMessage = ""
+        } else {
+            if showsActivity {
+                connectionMessage = "설정에서 서버 URL과 클라이언트 토큰을 먼저 저장해 주세요."
+                connectionSucceeded = false
             }
+            errorMessage = ""
+        }
+    }
+
+    private static func fetchStatusResponseResult(
+        store: ServerRelayCommandStore
+    ) async -> Result<LocalRemoteResponse, Error> {
+        do {
+            return .success(try await store.fetchStatusResponse())
         } catch {
-            guard !isCancellationError(error) else { return }
-            if !silentErrors {
-                let message = userFacingMessage(for: error)
-                errorMessage = message
-                if showsActivity {
-                    connectionMessage = refreshFailureMessage(reason: message)
-                    connectionSucceeded = false
-                }
-            }
+            return .failure(error)
         }
     }
 
@@ -6953,13 +6997,14 @@ private func companionPerformWithoutAnimation(_ updates: () -> Void) {
 private struct DeferredInteractionExpansion<Content: View>: View {
     var isExpanded: Bool
     private let content: () -> Content
-    @State private var shouldRender = false
+    @State private var shouldRender: Bool
 
     init(
         isExpanded: Bool,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.isExpanded = isExpanded
+        _shouldRender = State(initialValue: isExpanded)
         self.content = content
     }
 
@@ -6969,19 +7014,11 @@ private struct DeferredInteractionExpansion<Content: View>: View {
                 content()
             }
         }
-        .task(id: isExpanded) {
-            guard isExpanded else {
-                shouldRender = false
-                return
-            }
-            guard !shouldRender else { return }
-            await Task.yield()
-            guard !Task.isCancelled, isExpanded else { return }
-            shouldRender = true
+        .onAppear {
+            shouldRender = isExpanded
         }
         .onChange(of: isExpanded) { _, expanded in
-            guard !expanded else { return }
-            shouldRender = false
+            shouldRender = expanded
         }
         .transaction { transaction in
             transaction.animation = nil

@@ -335,6 +335,7 @@ private func verifyWorkspaceNavigation(
             break
         }
         if foundAllExpectedText {
+            try verifyWorkspaceContentLayout(appElement: appElement, target: target)
             try captureScreenshotIfRequested(named: "workspace-\(target.rawValue)")
             print("ok: \(target.buttonIdentifier) -> \(target.title)")
             return
@@ -427,6 +428,67 @@ private func verifySettingsTabsDoNotOverlap(appElement: AXUIElement) throws {
         return (target.identifier, frame)
     }
     try verifyNoMeaningfulOverlap(frames, context: "settings tabs")
+}
+
+private func verifyWorkspaceContentLayout(
+    appElement: AXUIElement,
+    target: WorkspaceSmokeTarget
+) throws {
+    guard let button = waitForElement(withIdentifier: target.buttonIdentifier, in: appElement, timeout: timeout),
+          let buttonFrame = accessibilityFrame(of: button),
+          let scroll = waitForElement(withIdentifier: target.scrollIdentifier, in: appElement, timeout: timeout),
+          let scrollFrame = accessibilityFrame(of: scroll),
+          isMeaningful(buttonFrame),
+          isMeaningful(scrollFrame) else {
+        throw SmokeFailure.layoutOverlap("workspace \(target.rawValue) layout frame is missing from the accessibility tree.")
+    }
+
+    guard scrollFrame.width >= 420, scrollFrame.height >= 240 else {
+        throw SmokeFailure.layoutOverlap(
+            "workspace \(target.rawValue) scroll area is too small: \(Int(scrollFrame.width))x\(Int(scrollFrame.height))."
+        )
+    }
+
+    guard scrollFrame.minX >= buttonFrame.maxX - 16 else {
+        throw SmokeFailure.layoutOverlap(
+            "workspace \(target.rawValue) scroll area overlaps the sidebar."
+        )
+    }
+
+    let horizontalSlack: CGFloat = 10
+    if let panel = waitForElement(withIdentifier: target.panelIdentifier, in: appElement, timeout: 0.2),
+       let panelFrame = accessibilityFrame(of: panel),
+       isMeaningful(panelFrame) {
+        guard panelFrame.width >= 360, panelFrame.height >= 80 else {
+            throw SmokeFailure.layoutOverlap(
+                "workspace \(target.rawValue) panel frame is too small: \(Int(panelFrame.width))x\(Int(panelFrame.height))."
+            )
+        }
+        guard panelFrame.minX >= scrollFrame.minX - horizontalSlack,
+              panelFrame.maxX <= scrollFrame.maxX + horizontalSlack else {
+            throw SmokeFailure.layoutOverlap(
+                "workspace \(target.rawValue) panel is outside the scroll area."
+            )
+        }
+    }
+
+    if let container = waitForElement(withIdentifier: target.renderedIdentifier, in: appElement, timeout: 0.2),
+       let containerFrame = accessibilityFrame(of: container),
+       isMeaningful(containerFrame),
+       containerFrame.width < 360 {
+        throw SmokeFailure.layoutOverlap(
+            "workspace \(target.rawValue) container frame is too narrow: \(Int(containerFrame.width))."
+        )
+    }
+
+    let navIntersection = buttonFrame.intersection(scrollFrame)
+    if !navIntersection.isNull, isMeaningful(navIntersection),
+       navIntersection.width > 4,
+       navIntersection.height > 4 {
+        throw SmokeFailure.layoutOverlap(
+            "workspace \(target.rawValue) scroll area overlaps the sidebar button \(target.buttonIdentifier)."
+        )
+    }
 }
 
 private func verifyNoMeaningfulOverlap(_ frames: [(String, CGRect)], context: String) throws {

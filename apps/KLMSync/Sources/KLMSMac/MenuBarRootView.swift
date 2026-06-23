@@ -92,7 +92,7 @@ private struct MacWorkspaceRenderedAccessibilityMarker: View {
             .clipped()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(section.title) 렌더링됨")
-            .accessibilityIdentifier("workspace-rendered-section-\(section.rawValue)")
+            .accessibilityIdentifier("workspace-rendered-section-marker-\(section.rawValue)")
     }
 }
 
@@ -108,7 +108,7 @@ private struct MacWorkspacePanelAccessibilityMarker: View {
             .clipped()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(section.title) 패널")
-            .accessibilityIdentifier("workspace-panel-workspace-\(section.rawValue)")
+            .accessibilityIdentifier("workspace-panel-marker-workspace-\(section.rawValue)")
     }
 }
 
@@ -124,7 +124,7 @@ private struct MacWorkspaceContainerAccessibilityMarker: View {
             .clipped()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(section.accessibilitySummary)
-            .accessibilityIdentifier("workspace-container-\(section.rawValue)")
+            .accessibilityIdentifier("workspace-container-marker-\(section.rawValue)")
     }
 }
 
@@ -235,7 +235,7 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
             .clipped()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("작업공간 내용")
-            .accessibilityIdentifier("workspace-panel-\(id)")
+            .accessibilityIdentifier("workspace-panel-marker-\(id)")
     }
 
     private func prepareContentIfNeeded() {
