@@ -1876,6 +1876,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: macDetail,
             description: "Mac deferred dashboard expansion"
         )
+        let macDeferredInteractionExpansion = try sourceBody(
+            after: "private struct DeferredMacInteractionExpansion<Content: View>: View",
+            in: mac,
+            description: "Mac deferred interaction expansion"
+        )
         let iosDeferredInteractionExpansion = try sourceBody(
             after: "private struct DeferredInteractionExpansion<Content: View>: View",
             in: ios,
@@ -1923,10 +1928,22 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(logTextBlock.contains("DisclosureGroup(isExpanded: $isRawExpanded)"))
         XCTAssertFalse(logTextBlock.contains("self.highlights = KLMSReadableLogParser.highlights(from: boundedText)"))
         XCTAssertTrue(sources.contains("private struct DeferredDashboardExpansion"))
-        XCTAssertTrue(macDeferredExpansion.contains("@State private var shouldRender = false"))
-        XCTAssertTrue(macDeferredExpansion.contains(".task(id: isExpanded)"))
-        XCTAssertTrue(macDeferredExpansion.contains("await Task.yield()"))
+        XCTAssertTrue(macDeferredExpansion.contains("@State private var shouldRender: Bool"))
+        XCTAssertTrue(macDeferredExpansion.contains("_shouldRender = State(initialValue: isExpanded)"))
+        XCTAssertTrue(macDeferredExpansion.contains(".onAppear"))
+        XCTAssertTrue(macDeferredExpansion.contains(".onChange(of: isExpanded)"))
+        XCTAssertTrue(macDeferredExpansion.contains("shouldRender = expanded"))
+        XCTAssertFalse(macDeferredExpansion.contains(".task(id: isExpanded)"))
+        XCTAssertFalse(macDeferredExpansion.contains("await Task.yield()"))
         XCTAssertTrue(macDeferredExpansion.contains("transaction.animation = nil"))
+        XCTAssertTrue(macDeferredInteractionExpansion.contains("@State private var shouldRender: Bool"))
+        XCTAssertTrue(macDeferredInteractionExpansion.contains("_shouldRender = State(initialValue: isExpanded)"))
+        XCTAssertTrue(macDeferredInteractionExpansion.contains(".onAppear"))
+        XCTAssertTrue(macDeferredInteractionExpansion.contains(".onChange(of: isExpanded)"))
+        XCTAssertTrue(macDeferredInteractionExpansion.contains("shouldRender = expanded"))
+        XCTAssertFalse(macDeferredInteractionExpansion.contains(".task(id: isExpanded)"))
+        XCTAssertFalse(macDeferredInteractionExpansion.contains("await Task.yield()"))
+        XCTAssertTrue(macDeferredInteractionExpansion.contains("transaction.animation = nil"))
         XCTAssertTrue(iosDeferredInteractionExpansion.contains("@State private var shouldRender: Bool"))
         XCTAssertFalse(iosDeferredInteractionExpansion.contains("@State private var renderTask: Task<Void, Never>?"))
         XCTAssertTrue(iosDeferredInteractionExpansion.contains("_shouldRender = State(initialValue: isExpanded)"))

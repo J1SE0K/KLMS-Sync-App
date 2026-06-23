@@ -147,7 +147,7 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
 private struct DeferredMacInteractionExpansion<Content: View>: View {
     var isExpanded: Bool
     private let content: () -> Content
-    @State private var shouldRender = false
+    @State private var shouldRender: Bool
 
     init(
         isExpanded: Bool,
@@ -155,6 +155,7 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
     ) {
         self.isExpanded = isExpanded
         self.content = content
+        _shouldRender = State(initialValue: isExpanded)
     }
 
     var body: some View {
@@ -163,15 +164,14 @@ private struct DeferredMacInteractionExpansion<Content: View>: View {
                 content()
             }
         }
-        .task(id: isExpanded) {
-            guard isExpanded else {
-                shouldRender = false
-                return
-            }
-            shouldRender = false
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            shouldRender = true
+        .onAppear {
+            shouldRender = isExpanded
+        }
+        .onChange(of: isExpanded) { _, expanded in
+            shouldRender = expanded
+        }
+        .transaction { transaction in
+            transaction.animation = nil
         }
     }
 }
