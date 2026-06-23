@@ -43,7 +43,18 @@ xcconfig_value() {
 }
 
 sanitize_xcodebuild_output() {
-  /usr/bin/perl -pe '
+  KLMS_REPO_ROOT="$ROOT_DIR" /usr/bin/perl -pe '
+    BEGIN {
+      $repo_root = $ENV{"KLMS_REPO_ROOT"} // "";
+      $home_dir = $ENV{"HOME"} // "";
+    }
+    if ($repo_root ne "") {
+      s/\Q$repo_root\E/<repo-root>/g;
+    }
+    if ($home_dir ne "") {
+      s/\Q$home_dir\E/<home>/g;
+    }
+    s#/Users/[^/\s"'\'']+#<home>#g;
     s/Apple Development: [^"\n]+ \([A-Z0-9]{10}\)/Apple Development: <redacted>/g;
     s/Signing Identity:\s+".*"/Signing Identity: "<redacted>"/g;
     s/Provisioning Profile:\s+".*"/Provisioning Profile: "<redacted>"/g;
