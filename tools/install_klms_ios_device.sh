@@ -82,7 +82,7 @@ install_one_device() {
     "$BUNDLE_IDENTIFIER" >"$LAUNCH_OUTPUT" 2>&1; then
     if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
-      print -ru2 -- "${device_label}: installed, but launch was denied because the device is locked. Unlock the device and rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
+      print -ru2 -- "${device_label}: installed; launch was denied because the device is locked. The app is already on the device. Unlock it and open KLMS Sync manually, or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
         return 3
       fi
