@@ -6141,6 +6141,8 @@ final class DashboardDataModelTests: XCTestCase {
         )
 
         XCTAssertTrue(createItemAction.contains("applyServerDisplayItemActionLocally(actionKind, itemID: item.id)"))
+        XCTAssertTrue(createItemAction.contains("let localAction = action.optimisticCompanionDisplayAction"))
+        XCTAssertTrue(createItemAction.contains("recentItemActions.insert(localAction, at: 0)"))
         XCTAssertTrue(createItemAction.contains("serverRelayStore.createItemAction(action)"))
         XCTAssertTrue(createItemAction.contains("applyServerDisplayItemActionLocally(savedAction.action, itemID: savedAction.itemID)"))
         XCTAssertTrue(createItemAction.contains("if !savedAction.action.isServerDisplayOnlyAction"))
@@ -6155,6 +6157,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("syncItems = previousSyncItems"))
         XCTAssertTrue(ios.contains("syncItemsSignature = previousSyncItemsSignature"))
         XCTAssertTrue(ios.contains("mailDashboardItems = previousMailDashboardItems"))
+        XCTAssertTrue(ios.contains("var optimisticCompanionDisplayAction: ServerRelayItemAction"))
+        XCTAssertTrue(ios.contains("next.status = .completed"))
+        XCTAssertTrue(ios.contains("next.message = \"서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다.\""))
         XCTAssertTrue(localApply.contains("guard actionKind.isServerDisplayOnlyAction"))
         XCTAssertTrue(localApply.contains("case .assignmentComplete:"))
         XCTAssertTrue(localApply.contains("item.kind = \"completedAssignment\""))

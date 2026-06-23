@@ -1408,16 +1408,17 @@ final class CompanionModel: ObservableObject {
         let previousSyncItems = syncItems
         let previousSyncItemsSignature = syncItemsSignature
         let previousMailDashboardItems = mailDashboardItems
+        let action = ServerRelayItemAction(
+            action: actionKind,
+            itemID: item.id,
+            itemKind: item.kind,
+            itemTitle: item.title
+        )
         do {
-            let action = ServerRelayItemAction(
-                action: actionKind,
-                itemID: item.id,
-                itemKind: item.kind,
-                itemTitle: item.title
-            )
             applyServerDisplayItemActionLocally(actionKind, itemID: item.id)
+            let localAction = action.optimisticCompanionDisplayAction
             recentItemActions.removeAll { $0.itemID == item.id }
-            recentItemActions.insert(action, at: 0)
+            recentItemActions.insert(localAction, at: 0)
             let savedAction = try await serverRelayStore.createItemAction(action)
             applyServerDisplayItemActionLocally(savedAction.action, itemID: savedAction.itemID)
             recentItemActions.removeAll { $0.id == action.id || $0.itemID == item.id }
@@ -1438,7 +1439,7 @@ final class CompanionModel: ObservableObject {
                     mailDashboardItems: previousMailDashboardItems
                 )
             }
-            recentItemActions.removeAll { $0.itemID == item.id && $0.action == actionKind && $0.status == .pending }
+            recentItemActions.removeAll { ($0.id == action.id || $0.itemID == item.id) && $0.action == actionKind }
             syncDataNeedsRefresh = true
             let message = userFacingMessage(for: error)
             errorMessage = message
@@ -12280,8 +12281,19 @@ private extension ServerRelayItemActionStatus {
 }
 
 private extension ServerRelayItemAction {
+    var optimisticCompanionDisplayAction: ServerRelayItemAction {
+        guard action.isServerDisplayOnlyAction else {
+            return self
+        }
+        var next = self
+        next.status = .completed
+        next.updatedAt = Date()
+        next.message = "서버 화면에 바로 반영했습니다. 모든 기기가 최신 상태를 받아옵니다."
+        return next
+    }
+
     var isServerAppliedForCompanionDisplay: Bool {
-        status == .pending
+        (status == .pending || status == .completed)
             && action.isServerDisplayOnlyAction
             && message.localizedStandardContains("서버 화면에 바로 반영")
     }
