@@ -208,6 +208,7 @@ final class CompanionModel: ObservableObject {
     private var pasteboardClearTask: Task<Void, Never>?
     private var cancelFollowUpTask: Task<Void, Never>?
     private var serverTokenPersistTask: Task<Void, Never>?
+    private var cachedSyncDataPersistTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
     private var serverRelayEventStreamKey = ""
@@ -256,7 +257,7 @@ final class CompanionModel: ObservableObject {
     private static let cachedServerSyncDataKey = "KLMSCompanionCachedServerSyncData"
     private static let cachedServerSyncDataMaxAge: TimeInterval = 10 * 60
 
-    private struct CachedServerSyncData: Codable {
+    private struct CachedServerSyncData: Codable, @unchecked Sendable {
         var serverURL: String
         var tokenFingerprint: String?
         var storedAt: Date
@@ -1671,6 +1672,7 @@ final class CompanionModel: ObservableObject {
         serverRelayEventStreamTask?.cancel()
         pasteboardClearTask?.cancel()
         cancelFollowUpTask?.cancel()
+        cachedSyncDataPersistTask?.cancel()
     }
 
     func latestFileAccessRequest(for item: ServerRelaySyncItem) -> ServerRelayFileAccessRequest? {
@@ -2693,22 +2695,41 @@ final class CompanionModel: ObservableObject {
 
     private func persistCachedServerSyncData(_ syncData: ServerRelaySyncData) {
         let normalizedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        cachedSyncDataPersistTask?.cancel()
         guard !normalizedURL.isEmpty else {
             UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
             return
         }
+        let tokenFingerprint = Self.serverRelayBootstrapTokenFingerprint(serverToken)
         let cached = CachedServerSyncData(
             serverURL: normalizedURL,
-            tokenFingerprint: Self.serverRelayBootstrapTokenFingerprint(serverToken),
+            tokenFingerprint: tokenFingerprint,
             storedAt: Date(),
             syncData: syncData
         )
-        if let data = try? JSONEncoder().encode(cached) {
-            UserDefaults.standard.set(data, forKey: Self.cachedServerSyncDataKey)
+        cachedSyncDataPersistTask = Task { [weak self, cached, normalizedURL, tokenFingerprint] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            let data = await Task.detached(priority: .utility) {
+                try? JSONEncoder().encode(cached)
+            }.value
+            guard !Task.isCancelled, let data else { return }
+            await MainActor.run {
+                guard let self else { return }
+                let currentURL = self.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard currentURL == normalizedURL,
+                      Self.serverRelayBootstrapTokenFingerprint(self.serverToken) == tokenFingerprint else {
+                    return
+                }
+                UserDefaults.standard.set(data, forKey: Self.cachedServerSyncDataKey)
+                self.cachedSyncDataPersistTask = nil
+            }
         }
     }
 
     private func clearLoadedServerSyncData() {
+        cachedSyncDataPersistTask?.cancel()
+        cachedSyncDataPersistTask = nil
         syncItems = []
         dryRunReports = []
         calendarChanges = []

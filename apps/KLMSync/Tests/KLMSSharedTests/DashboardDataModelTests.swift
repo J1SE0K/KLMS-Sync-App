@@ -6310,6 +6310,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(localApply.contains("item.status = \"삭제 요청\""))
         XCTAssertTrue(localApply.contains("syncItems = nextSyncItems.companionSorted(by: .recent)"))
         XCTAssertTrue(localApply.contains("persistCachedServerSyncData(ServerRelaySyncData("))
+        XCTAssertTrue(ios.contains("private var cachedSyncDataPersistTask: Task<Void, Never>?"))
+        XCTAssertTrue(ios.contains("cachedSyncDataPersistTask?.cancel()"))
+        XCTAssertTrue(ios.contains("Task.detached(priority: .utility)"))
     }
 
     func testIOSServerActionRefreshesUseNarrowScopes() throws {
@@ -6461,7 +6464,7 @@ final class DashboardDataModelTests: XCTestCase {
         )
 
         XCTAssertTrue(ios.contains("private static let cachedServerSyncDataKey = \"KLMSCompanionCachedServerSyncData\""))
-        XCTAssertTrue(ios.contains("private struct CachedServerSyncData: Codable"))
+        XCTAssertTrue(ios.contains("private struct CachedServerSyncData: Codable, @unchecked Sendable"))
         XCTAssertTrue(ios.contains("var tokenFingerprint: String?"))
         XCTAssertTrue(ios.contains("private static let cachedServerSyncDataMaxAge: TimeInterval = 10 * 60"))
         XCTAssertTrue(initBody.contains("Self.loadCachedServerSyncData(for: serverURL, tokenFingerprint: Self.serverRelayBootstrapTokenFingerprint(serverToken))"))
@@ -6473,6 +6476,16 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(applyBody.contains("if markLoaded, !hasLoadedServerSyncData"))
         XCTAssertTrue(applyBody.contains("if markLoaded {\n            lastSyncDataRefreshAt = Date()"))
         XCTAssertTrue(applyBody.contains("persistCachedServerSyncData(syncData)"))
+        let persistCacheBody = try sourceBody(
+            after: "private func persistCachedServerSyncData(_ syncData: ServerRelaySyncData)",
+            in: ios,
+            description: "iOS cached sync-data persistence"
+        )
+        XCTAssertTrue(persistCacheBody.contains("cachedSyncDataPersistTask?.cancel()"))
+        XCTAssertTrue(persistCacheBody.contains("try? await Task.sleep(nanoseconds: 350_000_000)"))
+        XCTAssertTrue(persistCacheBody.contains("Task.detached(priority: .utility)"))
+        XCTAssertTrue(persistCacheBody.contains("JSONEncoder().encode(cached)"))
+        XCTAssertTrue(persistCacheBody.contains("UserDefaults.standard.set(data, forKey: Self.cachedServerSyncDataKey)"))
         XCTAssertTrue(applyBody.contains("applySharedSettings(syncData.sharedSettings, merge: false)"))
         XCTAssertTrue(ios.contains("private func applySharedSettings(_ incomingSettings: [ServerRelaySetting], merge: Bool) -> Bool"))
         XCTAssertTrue(ios.contains("applySharedSettings([setting], merge: true)"))
@@ -6485,6 +6498,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private func persistCachedServerSyncData(_ syncData: ServerRelaySyncData)"))
         XCTAssertTrue(ios.contains("tokenFingerprint: Self.serverRelayBootstrapTokenFingerprint(serverToken)"))
         XCTAssertTrue(ios.contains("private func clearLoadedServerSyncData()"))
+        XCTAssertTrue(clearLoadedServerSyncData.contains("cachedSyncDataPersistTask?.cancel()"))
         XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettings = []"))
         XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettingsSignature = nil"))
         XCTAssertTrue(clearConnection.contains("clearLoadedServerSyncData()"))
