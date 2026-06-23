@@ -1620,15 +1620,16 @@ private struct DashboardRangeField<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        HStack(alignment: .center, spacing: 8) {
             Label(title, systemImage: systemImage)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsMacSecondaryText)
+                .frame(minWidth: 46, alignment: .leading)
             content
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .frame(minWidth: minWidth, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(minWidth: minWidth, minHeight: 34, maxHeight: 40, alignment: .leading)
         .background(Color.klmsMacSubtleCardBackground.opacity(disabled ? 0.38 : 0.54), in: RoundedRectangle(cornerRadius: 8))
         .opacity(disabled ? 0.58 : 1)
     }
