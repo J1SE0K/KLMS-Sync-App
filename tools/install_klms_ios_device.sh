@@ -15,6 +15,8 @@ LAUNCH_RETRY_DELAY_SECONDS="${IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS:-2}"
 TUNNEL_WARMUP_SECONDS="${IOS_DEVICE_TUNNEL_WARMUP_SECONDS:-15}"
 OPEN_SETTINGS_ON_BLOCKED="${IOS_DEVICE_OPEN_SETTINGS_ON_BLOCKED:-1}"
 OPEN_SETTINGS_TIMEOUT_SECONDS="${IOS_DEVICE_OPEN_SETTINGS_TIMEOUT_SECONDS:-10}"
+TRUST_RETRY_SECONDS="${IOS_DEVICE_TRUST_RETRY_SECONDS:-30}"
+TRUST_RETRY_POLL_SECONDS="${IOS_DEVICE_TRUST_RETRY_POLL_SECONDS:-3}"
 INSTALL_ALL_MODE=0
 MANUAL_LAUNCH_STATUS=4
 BLOCKED_LAUNCH_STATUS=5
@@ -84,6 +86,61 @@ open_device_settings_for_trust() {
   return 0
 }
 
+attempt_app_launch_once() {
+  local target_device="$1"
+  local device_label="${2:-device}"
+  local success_message="${3:-${device_label}: installed-and-launched}"
+  local emit_blocked_message="${4:-1}"
+  local LAUNCH_OUTPUT
+  LAUNCH_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/klms-ios-launch.XXXXXX")"
+  if xcrun devicectl device process launch \
+    --device "$target_device" \
+    --timeout "$TIMEOUT_SECONDS" \
+    --quiet \
+    --terminate-existing \
+    "$BUNDLE_IDENTIFIER" >"$LAUNCH_OUTPUT" 2>&1; then
+    rm -f "$LAUNCH_OUTPUT"
+    print -r -- "$success_message"
+    return 0
+  fi
+  if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|not trusted|Security" "$LAUNCH_OUTPUT"; then
+    rm -f "$LAUNCH_OUTPUT"
+    if [[ "$emit_blocked_message" == "1" ]]; then
+      print -ru2 -- "${device_label}: installed; launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun this install command to verify launch."
+    fi
+    return "$BLOCKED_LAUNCH_STATUS"
+  fi
+  if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
+    rm -f "$LAUNCH_OUTPUT"
+    print -ru2 -- "${device_label}: installed; launch-check pending. The device is locked or iOS is still refreshing app registration. Unlock it, open KLMS Sync manually, or rerun this install command after a few seconds."
+    return "$MANUAL_LAUNCH_STATUS"
+  fi
+  /usr/bin/sed "s/${BUNDLE_IDENTIFIER//\//\\/}/<bundle-id>/g" "$LAUNCH_OUTPUT" >&2
+  rm -f "$LAUNCH_OUTPUT"
+  return 1
+}
+
+retry_launch_after_trust() {
+  local target_device="$1"
+  local device_label="${2:-device}"
+  if (( TRUST_RETRY_SECONDS <= 0 )); then
+    return "$BLOCKED_LAUNCH_STATUS"
+  fi
+  local deadline=$(( $(current_epoch_seconds) + TRUST_RETRY_SECONDS ))
+  print -ru2 -- "${device_label}: waiting up to ${TRUST_RETRY_SECONDS}s for developer trust, then retrying launch..."
+  while (( $(current_epoch_seconds) < deadline )); do
+    sleep "$TRUST_RETRY_POLL_SECONDS"
+    if attempt_app_launch_once "$target_device" "$device_label" "${device_label}: installed-and-launched" 0; then
+      return 0
+    fi
+    local launch_status=$?
+    if (( launch_status != BLOCKED_LAUNCH_STATUS )); then
+      return "$launch_status"
+    fi
+  done
+  return "$BLOCKED_LAUNCH_STATUS"
+}
+
 install_one_device() {
   local target_device="$1"
   local device_label="${2:-device}"
@@ -147,11 +204,17 @@ install_one_device() {
     if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|not trusted|Security" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
       open_device_settings_for_trust "$target_device" "$device_label"
-      print -ru2 -- "${device_label}: installed; launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun this install command to verify launch."
-      if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
-        return "$BLOCKED_LAUNCH_STATUS"
+      if retry_launch_after_trust "$target_device" "$device_label"; then
+        return 0
       fi
-      exit "$BLOCKED_LAUNCH_STATUS"
+      local retry_status=$?
+      if (( retry_status == BLOCKED_LAUNCH_STATUS )); then
+        print -ru2 -- "${device_label}: installed; launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun this install command to verify launch."
+      fi
+      if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
+        return "$retry_status"
+      fi
+      exit "$retry_status"
     fi
     if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
