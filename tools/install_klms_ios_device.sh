@@ -12,6 +12,7 @@ WAIT_FOR_AVAILABLE_SECONDS="${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-45}"
 DISCOVERY_POLL_SECONDS="${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-3}"
 LAUNCH_RETRY_COUNT="${IOS_DEVICE_LAUNCH_RETRIES:-2}"
 LAUNCH_RETRY_DELAY_SECONDS="${IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS:-2}"
+TUNNEL_WARMUP_SECONDS="${IOS_DEVICE_TUNNEL_WARMUP_SECONDS:-15}"
 INSTALL_ALL_MODE=0
 MANUAL_LAUNCH_STATUS=4
 
@@ -42,6 +43,21 @@ if ! /usr/bin/codesign -dv "$APP_PATH" >/dev/null 2>&1; then
   print -ru2 -- "Use CODE_SIGNING_ALLOWED=NO builds only for compile checks, not device installs."
   exit 2
 fi
+
+warm_device_connection() {
+  local target_device="$1"
+  local info_json
+  local info_log
+  info_json="$(mktemp "${TMPDIR:-/tmp}/klms-ios-device-info.XXXXXX")"
+  info_log="$(mktemp "${TMPDIR:-/tmp}/klms-ios-device-info-log.XXXXXX")"
+  xcrun devicectl device info details \
+    --device "$target_device" \
+    --timeout "$TUNNEL_WARMUP_SECONDS" \
+    --quiet \
+    --json-output "$info_json" \
+    --log-output "$info_log" >/dev/null 2>&1 || true
+  rm -f "$info_json" "$info_log"
+}
 
 install_one_device() {
   local target_device="$1"
@@ -77,11 +93,7 @@ install_one_device() {
   fi
 
   if [[ "$launch_ready" != "1" ]]; then
-    print -ru2 -- "${device_label}: installed; launch-check skipped. CoreDevice tunnel is not connected. Unlock the device, keep USB connected, accept Trust if shown, then open KLMS Sync manually or rerun this install command."
-    if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
-      return "$MANUAL_LAUNCH_STATUS"
-    fi
-    exit "$MANUAL_LAUNCH_STATUS"
+    warm_device_connection "$target_device"
   fi
 
   local launch_attempt=0
@@ -107,17 +119,17 @@ install_one_device() {
       continue
     fi
 
-    if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
+    if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|not trusted|Security" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
-      print -ru2 -- "${device_label}: installed; launch-check pending. The device is locked or iOS is still refreshing app registration. Unlock it, open KLMS Sync manually, or rerun this install command after a few seconds."
+      print -ru2 -- "${device_label}: installed; launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun this install command to verify launch."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
         return "$MANUAL_LAUNCH_STATUS"
       fi
       exit "$MANUAL_LAUNCH_STATUS"
     fi
-    if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|not trusted|Security" "$LAUNCH_OUTPUT"; then
+    if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
-      print -ru2 -- "${device_label}: installed; launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun this install command to verify launch."
+      print -ru2 -- "${device_label}: installed; launch-check pending. The device is locked or iOS is still refreshing app registration. Unlock it, open KLMS Sync manually, or rerun this install command after a few seconds."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
         return "$MANUAL_LAUNCH_STATUS"
       fi

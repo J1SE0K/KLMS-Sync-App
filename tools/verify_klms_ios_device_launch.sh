@@ -12,6 +12,7 @@ WAIT_FOR_AVAILABLE_SECONDS="${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-20}"
 DISCOVERY_POLL_SECONDS="${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-2}"
 MANUAL_LAUNCH_STATUS=4
 REQUIRED_DEVICE_TYPES="${IOS_DEVICE_REQUIRE_TYPES:-}"
+TUNNEL_WARMUP_SECONDS="${IOS_DEVICE_TUNNEL_WARMUP_SECONDS:-15}"
 
 xcconfig_value() {
   local key="$1"
@@ -58,6 +59,21 @@ array_contains() {
   return 1
 }
 
+warm_device_connection() {
+  local target_device="$1"
+  local info_json
+  local info_log
+  info_json="$(mktemp "${TMPDIR:-/tmp}/klms-ios-device-info.XXXXXX")"
+  info_log="$(mktemp "${TMPDIR:-/tmp}/klms-ios-device-info-log.XXXXXX")"
+  xcrun devicectl device info details \
+    --device "$target_device" \
+    --timeout "$TUNNEL_WARMUP_SECONDS" \
+    --quiet \
+    --json-output "$info_json" \
+    --log-output "$info_log" >/dev/null 2>&1 || true
+  rm -f "$info_json" "$info_log"
+}
+
 launch_one_device() {
   local target_device="$1"
   local device_label="${2:-device}"
@@ -74,14 +90,14 @@ launch_one_device() {
     return 0
   fi
 
-  if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID|not connected|unavailable|timed out" "$LAUNCH_OUTPUT"; then
-    rm -f "$LAUNCH_OUTPUT"
-    print -ru2 -- "${device_label}: launch-check pending. Unlock the device, keep USB connected, wait a few seconds if iOS just installed the app, then rerun this launch check."
-    return "$MANUAL_LAUNCH_STATUS"
-  fi
   if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|not trusted|Security" "$LAUNCH_OUTPUT"; then
     rm -f "$LAUNCH_OUTPUT"
     print -ru2 -- "${device_label}: launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then rerun this launch check."
+    return "$MANUAL_LAUNCH_STATUS"
+  fi
+  if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID|not connected|unavailable|timed out" "$LAUNCH_OUTPUT"; then
+    rm -f "$LAUNCH_OUTPUT"
+    print -ru2 -- "${device_label}: launch-check pending. Unlock the device, keep USB connected, wait a few seconds if iOS just installed the app, then rerun this launch check."
     return "$MANUAL_LAUNCH_STATUS"
   fi
 
@@ -200,17 +216,9 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
     if [[ "$launch_ready" == "$device_rest" || -z "$launch_ready" ]]; then
       launch_ready="1"
     fi
-    if [[ "$tunnel_state" == "$launch_rest" ]]; then
-      tunnel_state=""
-    fi
     seen_device_types+=("$device_label")
     if [[ "$launch_ready" != "1" ]]; then
-      print -ru2 -- "${device_label}: launch-check pending. CoreDevice tunnel is ${tunnel_state:-not connected}. Unlock the device, keep USB connected, accept Trust if shown, then rerun this launch check."
-      manual_launch_count=$(( manual_launch_count + 1 ))
-      if (( overall_status == 0 )); then
-        overall_status="$MANUAL_LAUNCH_STATUS"
-      fi
-      continue
+      warm_device_connection "$target_device"
     fi
     set +e
     launch_one_device "$target_device" "$device_label"
