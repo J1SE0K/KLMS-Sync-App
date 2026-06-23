@@ -131,19 +131,34 @@ final class CompanionModel: ObservableObject {
         didSet { rebuildRemoteLogDerivedState() }
     }
     @Published var syncItems: [ServerRelaySyncItem] = [] {
-        didSet { rebuildVisibleCalendarChanges(); rebuildDashboardDerivedState() }
+        didSet {
+            guard !isApplyingServerSyncData else { return }
+            rebuildVisibleCalendarChanges()
+            rebuildDashboardDerivedState()
+        }
     }
     @Published var dryRunReports: [DryRunReport] = [] {
-        didSet { rebuildDashboardFileCleanupDetails(); rebuildFileCleanupReportCache() }
+        didSet {
+            guard !isApplyingServerSyncData else { return }
+            rebuildDashboardFileCleanupDetails()
+            rebuildFileCleanupReportCache()
+        }
     }
     @Published var calendarChanges: [CalendarChange] = [] {
-        didSet { rebuildVisibleCalendarChanges() }
+        didSet {
+            guard !isApplyingServerSyncData else { return }
+            rebuildVisibleCalendarChanges()
+        }
     }
     @Published var remoteSettings: [ServerRelaySetting] = [] {
-        didSet { rebuildRemoteSettingGroups() }
+        didSet {
+            guard !isApplyingServerSyncData else { return }
+            rebuildRemoteSettingGroups()
+        }
     }
     @Published var sharedRunLogs: [ServerRelayRunLog] = [] {
         didSet {
+            guard !isApplyingServerSyncData else { return }
             rebuildSharedRunLogStageDurationCache()
             rebuildRemoteLogDerivedState()
         }
@@ -216,6 +231,7 @@ final class CompanionModel: ObservableObject {
     private var pendingRefreshRequest: PendingRefreshRequest?
     private var lastSyncDataRefreshAt: Date?
     private var syncDataNeedsRefresh = true
+    private var isApplyingServerSyncData = false
     @Published private(set) var hasLoadedServerSyncData = false
     private var syncItemsSignature: Int?
     private var calendarChangesSignature: Int?
@@ -2675,6 +2691,11 @@ final class CompanionModel: ObservableObject {
     @discardableResult
     private func apply(_ syncData: ServerRelaySyncData, persistCache: Bool = true, markLoaded: Bool = true) -> Bool {
         var didChange = false
+        let wasApplyingServerSyncData = isApplyingServerSyncData
+        isApplyingServerSyncData = true
+        defer {
+            isApplyingServerSyncData = wasApplyingServerSyncData
+        }
         let nextSyncItemsSignature = Self.signature(for: syncData.items)
         if syncItemsSignature != nextSyncItemsSignature {
             syncItems = syncData.items
@@ -2725,7 +2746,20 @@ final class CompanionModel: ObservableObject {
         if markLoaded, persistCache {
             persistCachedServerSyncData(syncData)
         }
+        if didChange {
+            rebuildDerivedStateAfterServerSyncDataApply()
+        }
         return didChange
+    }
+
+    private func rebuildDerivedStateAfterServerSyncDataApply() {
+        rebuildVisibleCalendarChanges()
+        rebuildDashboardDerivedState()
+        rebuildDashboardFileCleanupDetails()
+        rebuildFileCleanupReportCache()
+        rebuildRemoteSettingGroups()
+        rebuildSharedRunLogStageDurationCache()
+        rebuildRemoteLogDerivedState()
     }
 
     private static func loadCachedServerSyncData(for serverURL: String, tokenFingerprint: String) -> ServerRelaySyncData? {

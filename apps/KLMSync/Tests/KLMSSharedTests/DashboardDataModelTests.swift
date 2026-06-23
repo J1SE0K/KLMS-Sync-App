@@ -2695,7 +2695,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("next.calendarDeleted = calendarCounts.deleted"))
         XCTAssertFalse(ios.contains("Self.calendarCount(in: calendarChanges"))
         XCTAssertTrue(ios.contains("case \"created\", \"mail\":\n                counts.created += 1"))
-        XCTAssertTrue(ios.contains("didSet { rebuildVisibleCalendarChanges(); rebuildDashboardDerivedState() }"))
+        XCTAssertTrue(ios.contains("private var isApplyingServerSyncData = false"))
+        XCTAssertTrue(ios.contains("guard !isApplyingServerSyncData else { return }\n            rebuildVisibleCalendarChanges()\n            rebuildDashboardDerivedState()"))
         XCTAssertFalse(ios.contains("didSet { rebuildVisibleCalendarChanges(); rebuildDashboardDerivedState(); rebuildChangeSummaryItemLookup() }"))
         XCTAssertTrue(statusScreen.contains("WorkstationDashboardOverviewData(model: model)"))
         XCTAssertTrue(statusScreen.contains("showsMetrics: false"))
@@ -2953,7 +2954,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteSettingsPanelContent.contains("LazyVGrid("))
         XCTAssertTrue(remoteSettingsPanelContent.contains("GridItem(.adaptive(minimum: 260)"))
         XCTAssertTrue(ios.contains("fileprivate var remoteSettingGroups: [RemoteSettingGroup] = []"))
-        XCTAssertTrue(ios.contains("@Published var remoteSettings: [ServerRelaySetting] = [] {\n        didSet { rebuildRemoteSettingGroups() }"))
+        XCTAssertTrue(ios.contains("@Published var remoteSettings: [ServerRelaySetting] = [] {\n        didSet {\n            guard !isApplyingServerSyncData else { return }\n            rebuildRemoteSettingGroups()"))
         XCTAssertTrue(ios.contains("private func rebuildRemoteSettingGroups()"))
         XCTAssertTrue(remoteSettingsPanelContent.contains("ForEach(settingGroups)"))
         XCTAssertFalse(remoteSettingsPanelContent.contains("RemoteSettingGroup.grouped(settings: model.remoteSettings)"))
@@ -5035,7 +5036,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("@Published private(set) var changeSummaryCalendarChangesByKindID: [String: [CalendarChange]] = [:]"))
         XCTAssertTrue(ios.contains("@Published private(set) var fileCleanupReportsForDashboard: [DryRunReport] = []"))
         XCTAssertTrue(ios.contains("private func rebuildDashboardDerivedState()"))
-        XCTAssertTrue(companionModel.contains("didSet { rebuildDashboardFileCleanupDetails(); rebuildFileCleanupReportCache() }"))
+        XCTAssertTrue(companionModel.contains("guard !isApplyingServerSyncData else { return }\n            rebuildDashboardFileCleanupDetails()\n            rebuildFileCleanupReportCache()"))
         XCTAssertTrue(companionModel.contains("latestFileAccessRequestByItemID"))
         XCTAssertTrue(companionModel.contains("activeItemActionByItemID"))
         XCTAssertTrue(companionModel.contains("activeCalendarActionByID"))
@@ -6502,6 +6503,20 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(applyBody.contains("if markLoaded, !hasLoadedServerSyncData"))
         XCTAssertTrue(applyBody.contains("if markLoaded {\n            lastSyncDataRefreshAt = Date()"))
         XCTAssertTrue(applyBody.contains("persistCachedServerSyncData(syncData)"))
+        XCTAssertTrue(applyBody.contains("let wasApplyingServerSyncData = isApplyingServerSyncData"))
+        XCTAssertTrue(applyBody.contains("isApplyingServerSyncData = true"))
+        XCTAssertTrue(applyBody.contains("isApplyingServerSyncData = wasApplyingServerSyncData"))
+        XCTAssertTrue(applyBody.contains("rebuildDerivedStateAfterServerSyncDataApply()"))
+        let rebuildAfterApply = try sourceBody(
+            after: "private func rebuildDerivedStateAfterServerSyncDataApply()",
+            in: ios,
+            description: "iOS sync-data derived rebuild"
+        )
+        XCTAssertTrue(rebuildAfterApply.contains("rebuildVisibleCalendarChanges()"))
+        XCTAssertTrue(rebuildAfterApply.contains("rebuildDashboardDerivedState()"))
+        XCTAssertTrue(rebuildAfterApply.contains("rebuildDashboardFileCleanupDetails()"))
+        XCTAssertTrue(rebuildAfterApply.contains("rebuildRemoteSettingGroups()"))
+        XCTAssertTrue(rebuildAfterApply.contains("rebuildRemoteLogDerivedState()"))
         let persistCacheBody = try sourceBody(
             after: "private func persistCachedServerSyncData(_ syncData: ServerRelaySyncData)",
             in: ios,
