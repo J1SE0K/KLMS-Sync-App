@@ -6186,6 +6186,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(createSettingAction.contains("value: setting.value"))
         XCTAssertTrue(createSettingAction.contains("applyRemoteSettingActionLocally(rollbackAction, fallbackSetting: setting)"))
         XCTAssertTrue(createSettingAction.contains("if savedAction.status != .completed"))
+        XCTAssertTrue(createSettingAction.contains("await refreshRecent(includeSyncData: true, showsActivity: false, scope: .settingActions)"))
         let optimisticApplyIndex = try XCTUnwrap(createSettingAction.range(of: "applyRemoteSettingActionLocally(optimisticAction, fallbackSetting: setting)")?.lowerBound)
         let serverRequestIndex = try XCTUnwrap(createSettingAction.range(of: "serverRelayStore.createSettingAction(action)")?.lowerBound)
         XCTAssertLessThan(optimisticApplyIndex, serverRequestIndex)
@@ -6226,6 +6227,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(createItemAction.contains("serverRelayStore.createItemAction(action)"))
         XCTAssertTrue(createItemAction.contains("applyServerDisplayItemActionLocally(savedAction.action, itemID: savedAction.itemID)"))
         XCTAssertTrue(createItemAction.contains("if !savedAction.action.isServerDisplayOnlyAction"))
+        XCTAssertTrue(createItemAction.contains("await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)"))
         XCTAssertTrue(createItemAction.contains("let previousSyncItems = syncItems"))
         XCTAssertTrue(createItemAction.contains("let previousSyncItemsSignature = syncItemsSignature"))
         XCTAssertTrue(createItemAction.contains("let previousMailDashboardItems = mailDashboardItems"))
@@ -6256,6 +6258,40 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(localApply.contains("item.isHidden = true"))
         XCTAssertTrue(localApply.contains("syncItems = nextSyncItems.companionSorted(by: .recent)"))
         XCTAssertTrue(localApply.contains("persistCachedServerSyncData(ServerRelaySyncData("))
+    }
+
+    func testIOSServerActionRefreshesUseNarrowScopes() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let submitMail = try sourceBody(
+            after: "func submitMailDashboardItem",
+            in: ios,
+            description: "iOS submit mail dashboard item"
+        )
+        let removeMail = try sourceBody(
+            after: "func submitRemoveMailDashboardItem",
+            in: ios,
+            description: "iOS remove mail dashboard item"
+        )
+        let updateSharedSetting = try sourceBody(
+            after: "private func updateSharedSetting(",
+            in: ios,
+            description: "iOS shared setting update"
+        )
+        let createCalendarAction = try sourceBody(
+            after: "func createCalendarAction(",
+            in: ios,
+            description: "iOS create calendar action"
+        )
+
+        XCTAssertTrue(submitMail.contains("await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)"))
+        XCTAssertTrue(removeMail.contains("await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)"))
+        XCTAssertTrue(updateSharedSetting.contains("await refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false, scope: .settings)"))
+        XCTAssertTrue(createCalendarAction.contains("await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)"))
     }
 
     func testIOSServerConnectionPasteImmediatelyRefreshesSummary() throws {
