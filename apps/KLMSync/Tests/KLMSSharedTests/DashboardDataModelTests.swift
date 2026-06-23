@@ -1598,8 +1598,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(workstationLayout.contains("contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds"))
         XCTAssertTrue(workstationLayout.contains("DeferredMacWorkspacePanel(id: \"workspace-notices\""))
         XCTAssertTrue(workstationLayout.contains("DeferredMacWorkspacePanel(id: \"workspace-calendar\""))
-        XCTAssertTrue(workstationLayout.contains("DeferredMacWorkspacePanel(id: \"workspace-activityLogs\""))
-        XCTAssertTrue(workstationLayout.contains("DeferredMacWorkspacePanel(id: \"workspace-diagnostics\""))
+        XCTAssertTrue(workstationLayout.contains("id: \"workspace-activityLogs\""))
+        XCTAssertTrue(workstationLayout.contains("id: \"workspace-diagnostics\""))
         XCTAssertTrue(workstationLayout.contains("id: \"workspace-settings\""))
         XCTAssertTrue(workstationLayout.contains("SettingsView(model: model)"))
         XCTAssertFalse(workstationLayout.contains("guard klmsMacInteractionDetailDelayNanoseconds > 0 else"))
@@ -3879,8 +3879,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macWorkstationLayoutView.contains("contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds"))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-notices\", contentIdentifier: \"workspace-content-notices\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-calendar\", contentIdentifier: \"workspace-content-calendar\""))
-        XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-activityLogs\", contentIdentifier: \"workspace-content-activityLogs\""))
-        XCTAssertTrue(macWorkstationLayoutView.contains("DeferredMacWorkspacePanel(id: \"workspace-diagnostics\", contentIdentifier: \"workspace-content-diagnostics\""))
+        XCTAssertTrue(macWorkstationLayoutView.contains("id: \"workspace-activityLogs\""))
+        XCTAssertTrue(macWorkstationLayoutView.contains("contentIdentifier: \"workspace-content-activityLogs\""))
+        XCTAssertTrue(macWorkstationLayoutView.contains("id: \"workspace-diagnostics\""))
+        XCTAssertTrue(macWorkstationLayoutView.contains("contentIdentifier: \"workspace-content-diagnostics\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("id: \"workspace-settings\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("contentIdentifier: \"workspace-content-settings\""))
         XCTAssertTrue(macWorkstationLayoutView.contains("cachedDashboardDetailPanel(kind: .files)"))
@@ -4054,8 +4056,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(workstationBody.contains("contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds"))
         XCTAssertTrue(workstationBody.contains("DeferredMacWorkspacePanel(id: \"workspace-notices\""))
         XCTAssertTrue(workstationBody.contains("DeferredMacWorkspacePanel(id: \"workspace-calendar\""))
-        XCTAssertTrue(workstationBody.contains("DeferredMacWorkspacePanel(id: \"workspace-activityLogs\""))
-        XCTAssertTrue(workstationBody.contains("DeferredMacWorkspacePanel(id: \"workspace-diagnostics\""))
+        XCTAssertTrue(workstationBody.contains("id: \"workspace-activityLogs\""))
+        XCTAssertTrue(workstationBody.contains("id: \"workspace-diagnostics\""))
         XCTAssertTrue(workstationBody.contains("id: \"workspace-settings\""))
         XCTAssertLessThan(
             try XCTUnwrap(workstationBody.range(of: "case .files:")).lowerBound,
@@ -4127,7 +4129,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSummaryContent.contains("let attentionMetrics = ["))
         XCTAssertFalse(dashboardSummaryContent.contains("let archiveMetrics = ["))
         let logsBody = try sectionBody(in: workstationBody, from: "case .activityLogs:", to: "case .diagnostics:")
-        XCTAssertTrue(logsBody.contains("DeferredMacWorkspacePanel(id: \"workspace-activityLogs\""))
+        XCTAssertTrue(logsBody.contains("id: \"workspace-activityLogs\""))
+        XCTAssertTrue(logsBody.contains("contentIdentifier: \"workspace-content-activityLogs\""))
+        XCTAssertTrue(logsBody.contains("contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds"))
         XCTAssertTrue(logsBody.contains("VStack(alignment: .leading, spacing: 16)"))
         XCTAssertTrue(logsBody.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
         XCTAssertFalse(logsBody.contains("loadingText:"))
@@ -4136,7 +4140,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(logsBody.contains("RemoteActivityPanelView(model: model)"))
         XCTAssertTrue(logsBody.contains("RunLogArchivePanelView(model: model)"))
         XCTAssertLessThan(
-            try XCTUnwrap(logsBody.range(of: "DeferredMacWorkspacePanel(id: \"workspace-activityLogs\"")).lowerBound,
+            try XCTUnwrap(logsBody.range(of: "id: \"workspace-activityLogs\"")).lowerBound,
             try XCTUnwrap(logsBody.range(of: "LogSummaryPanelView(model: model")).lowerBound
         )
         XCTAssertLessThan(
@@ -4289,12 +4293,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(appDiagnosticsPanel.contains("HStack {\n                        Button"))
 
         let diagnosticsBody = try sectionBody(in: workstationBody, from: "case .diagnostics:", to: ".padding(.vertical, 4)")
-        XCTAssertTrue(diagnosticsBody.contains("DeferredMacWorkspacePanel(id: \"workspace-diagnostics\""))
+        XCTAssertTrue(diagnosticsBody.contains("id: \"workspace-diagnostics\""))
+        XCTAssertTrue(diagnosticsBody.contains("contentIdentifier: \"workspace-content-diagnostics\""))
+        XCTAssertTrue(diagnosticsBody.contains("contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds"))
         XCTAssertTrue(diagnosticsBody.contains("VStack(alignment: .leading, spacing: 16)"))
         XCTAssertTrue(diagnosticsBody.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
         XCTAssertFalse(diagnosticsBody.contains("loadingText:"))
         XCTAssertLessThan(
-            try XCTUnwrap(diagnosticsBody.range(of: "DeferredMacWorkspacePanel(id: \"workspace-diagnostics\"")).lowerBound,
+            try XCTUnwrap(diagnosticsBody.range(of: "id: \"workspace-diagnostics\"")).lowerBound,
             try XCTUnwrap(diagnosticsBody.range(of: "VerifyPanelView")).lowerBound
         )
         XCTAssertLessThan(

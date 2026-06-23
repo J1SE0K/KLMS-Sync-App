@@ -330,7 +330,11 @@ private struct MacWorkstationLayoutView: View {
                         .equatable()
                 }
             case .activityLogs:
-                DeferredMacWorkspacePanel(id: "workspace-activityLogs", contentIdentifier: "workspace-content-activityLogs") {
+                DeferredMacWorkspacePanel(
+                    id: "workspace-activityLogs",
+                    contentIdentifier: "workspace-content-activityLogs",
+                    contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds
+                ) {
                     VStack(alignment: .leading, spacing: 16) {
                         LogSummaryPanelView(model: model, expandedKind: $expandedLogSummaryKind)
                         DiagnosticStageDurationPanelView(model: model)
@@ -340,7 +344,11 @@ private struct MacWorkstationLayoutView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             case .diagnostics:
-                DeferredMacWorkspacePanel(id: "workspace-diagnostics", contentIdentifier: "workspace-content-diagnostics") {
+                DeferredMacWorkspacePanel(
+                    id: "workspace-diagnostics",
+                    contentIdentifier: "workspace-content-diagnostics",
+                    contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds
+                ) {
                     VStack(alignment: .leading, spacing: 16) {
                         VerifyPanelView(snapshot: model.snapshot)
                         DiagnosticToolsPanelView(model: model)
