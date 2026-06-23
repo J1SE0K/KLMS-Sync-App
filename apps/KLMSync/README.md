@@ -97,6 +97,14 @@ tools/build_klms_ios_sim.sh
 CODE_SIGNING_ALLOWED=NO tools/build_klms_ios_device.sh
 ```
 
+For the full Mac/iPhone/iPad readiness gate, run:
+
+```sh
+tools/verify_klms_app_readiness.sh
+```
+
+The readiness helper runs the Swift tests, Mac app build, Mac accessibility smoke, Mac tab-response probe, signed iOS build, and iPhone/iPad launch verification. Its summary marks omitted gates as `skipped`, so a run that disables iOS launch verification is not treated as full device readiness. It redacts local paths and signing-related values in its output. If the devices are locked or the developer app is not trusted yet, the iOS launch step fails with the same `launch-check pending` or `launch-check blocked` wording as the install helpers.
+
 Then run a signed device build with local signing settings:
 
 ```sh
