@@ -2093,7 +2093,6 @@ final class CompanionModel: ObservableObject {
                 let task = URLSession.shared.webSocketTask(with: store.eventStreamRequest(role: "client"))
                 serverRelayEventWebSocketTask = task
                 task.resume()
-                await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false)
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
                     let message = try await task.receive()
                     let scope = Self.relayRefreshScope(for: message)

@@ -5961,6 +5961,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("return .settingActions"))
         XCTAssertTrue(ios.contains("if reason == \"state\" || reason == \"updated\""))
         XCTAssertTrue(ios.contains("return .state"))
+        let iosEventStream = try sourceBody(
+            after: "private func runServerRelayEventStream",
+            in: ios,
+            description: "iOS server relay event stream"
+        )
+        XCTAssertFalse(iosEventStream.contains("await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false)"))
+        XCTAssertTrue(ios.contains("await refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false)"))
 
         XCTAssertFalse(macModel.contains("serverRelayPollingTask"))
         XCTAssertFalse(macModel.contains("configureServerRelayPolling"))
