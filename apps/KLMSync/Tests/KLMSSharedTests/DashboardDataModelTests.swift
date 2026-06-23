@@ -6100,7 +6100,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macModel.contains("webSocketTask(with: store.eventStreamRequest(role: \"worker\"))"))
         XCTAssertTrue(ios.contains("webSocketTask(with: store.eventStreamRequest(role: \"client\"))"))
         XCTAssertTrue(ios.contains("await model.bootstrapServerRelayFromLaunch()"))
-        XCTAssertTrue(ios.contains("await startServerRelayRealtime(silentInitialErrors: silentInitialErrors)"))
+        XCTAssertTrue(ios.contains("await startServerRelayRealtime("))
         XCTAssertTrue(ios.contains("private static func relayRefreshScope(for message: URLSessionWebSocketTask.Message) -> RelayRefreshScope"))
         XCTAssertTrue(ios.contains("if reason.hasPrefix(\"file-access:\")"))
         XCTAssertTrue(ios.contains("return .fileAccess"))
@@ -6527,7 +6527,7 @@ final class DashboardDataModelTests: XCTestCase {
             description: "iOS companion root view"
         )
         let bootstrap = try sourceBody(
-            after: "func bootstrapServerRelayFromLaunch(silentInitialErrors: Bool = false) async",
+            after: "func bootstrapServerRelayFromLaunch(",
             in: ios,
             description: "iOS server relay bootstrap"
         )
@@ -6557,13 +6557,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(rootView.contains(".onChange(of: scenePhase)"))
         XCTAssertTrue(rootView.contains("guard newPhase == .active else { return }"))
         XCTAssertTrue(rootView.contains("await model.bootstrapServerRelayFromLaunch()"))
-        XCTAssertTrue(rootView.contains("await model.bootstrapServerRelayFromLaunch(silentInitialErrors: true)"))
+        XCTAssertTrue(rootView.contains("await model.bootstrapServerRelayFromLaunch(silentInitialErrors: true, forceSyncData: false)"))
         XCTAssertTrue(ios.contains("var serverRelayBootstrapKey: String"))
-        XCTAssertTrue(ios.contains("func bootstrapServerRelayFromLaunch(silentInitialErrors: Bool = false) async"))
-        XCTAssertTrue(ios.contains("syncDataNeedsRefresh = true"))
+        XCTAssertTrue(ios.contains("forceSyncData: Bool = true"))
+        XCTAssertTrue(bootstrap.contains("if forceSyncData {\n            syncDataNeedsRefresh = true\n        }"))
         XCTAssertTrue(ios.contains("private static let initialSyncDataRetryDelayNanoseconds"))
         XCTAssertTrue(ios.contains("private static let initialSyncDataRetryLimit = 3"))
-        XCTAssertTrue(bootstrap.contains("await startServerRelayRealtime(silentInitialErrors: silentInitialErrors)"))
+        XCTAssertTrue(bootstrap.contains("includeSyncData: forceSyncData ? true : nil"))
         XCTAssertTrue(bootstrap.contains("await retryInitialServerSyncDataIfNeeded(silentInitialErrors: silentInitialErrors)"))
         XCTAssertTrue(retryInitialLoad.contains("for _ in 0..<Self.initialSyncDataRetryLimit"))
         XCTAssertTrue(retryInitialLoad.contains("guard shouldRetryInitialServerSyncData"))

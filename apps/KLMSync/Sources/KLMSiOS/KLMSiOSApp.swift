@@ -2401,15 +2401,26 @@ final class CompanionModel: ObservableObject {
         #endif
     }
 
-    func bootstrapServerRelayFromLaunch(silentInitialErrors: Bool = false) async {
-        syncDataNeedsRefresh = true
-        await startServerRelayRealtime(silentInitialErrors: silentInitialErrors)
+    func bootstrapServerRelayFromLaunch(
+        silentInitialErrors: Bool = false,
+        forceSyncData: Bool = true
+    ) async {
+        if forceSyncData {
+            syncDataNeedsRefresh = true
+        }
+        await startServerRelayRealtime(
+            silentInitialErrors: silentInitialErrors,
+            includeSyncData: forceSyncData ? true : nil
+        )
         await retryInitialServerSyncDataIfNeeded(silentInitialErrors: silentInitialErrors)
     }
 
-    func startServerRelayRealtime(silentInitialErrors: Bool = false) async {
+    func startServerRelayRealtime(
+        silentInitialErrors: Bool = false,
+        includeSyncData: Bool? = true
+    ) async {
         configureServerRelayEventStream()
-        await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: true, showsActivity: false)
+        await refreshRecent(silentErrors: silentInitialErrors, includeSyncData: includeSyncData, showsActivity: false)
     }
 
     private func retryInitialServerSyncDataIfNeeded(silentInitialErrors: Bool) async {
@@ -3269,7 +3280,7 @@ struct CompanionRootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
             Task {
-                await model.bootstrapServerRelayFromLaunch(silentInitialErrors: true)
+                await model.bootstrapServerRelayFromLaunch(silentInitialErrors: true, forceSyncData: false)
             }
         }
         .alert(item: $model.userAlert) { alert in
