@@ -1125,6 +1125,14 @@ final class CompanionModel: ObservableObject {
         defer {
             isSubmitting = false
         }
+        let optimisticAction = ServerRelaySettingAction(
+            key: setting.key,
+            value: value,
+            title: setting.title,
+            status: .running,
+            message: "서버에 저장하는 중입니다."
+        )
+        applyRemoteSettingActionLocally(optimisticAction, fallbackSetting: setting)
         do {
             let action = ServerRelaySettingAction(
                 key: setting.key,
@@ -1142,6 +1150,14 @@ final class CompanionModel: ObservableObject {
             await refreshRecent(includeSyncData: true, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
+            let rollbackAction = ServerRelaySettingAction(
+                key: setting.key,
+                value: setting.value,
+                title: setting.title,
+                status: .failed,
+                message: "저장 실패로 이전 값으로 되돌렸습니다."
+            )
+            applyRemoteSettingActionLocally(rollbackAction, fallbackSetting: setting)
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "설정 요청 실패", message: message)
