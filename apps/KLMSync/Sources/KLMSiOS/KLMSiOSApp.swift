@@ -11096,6 +11096,9 @@ private struct DeferredServerSyncItemDetailPanel: View {
             guard !Task.isCancelled else { return }
             renderedItemID = item.id
         }
+        .onDisappear {
+            renderedItemID = nil
+        }
         .transaction { transaction in
             transaction.animation = nil
         }

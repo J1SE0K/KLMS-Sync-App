@@ -1799,6 +1799,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosDeferredItemDetailPanel.contains("renderedItemID = nil"))
         XCTAssertTrue(iosDeferredItemDetailPanel.contains("renderedItemID = item.id"))
         XCTAssertTrue(iosDeferredItemDetailPanel.contains(".task(id: item.id)"))
+        XCTAssertTrue(iosDeferredItemDetailPanel.contains(".onDisappear"))
         XCTAssertTrue(iosDeferredItemDetailPanel.contains("await Task.yield()"))
         XCTAssertFalse(sources.contains("dashboardDetailExpansionDelayNanoseconds"))
         XCTAssertFalse(sources.contains("delayNanoseconds"))
@@ -2590,6 +2591,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct DeferredServerSyncItemDetailPreparingPanel"))
         XCTAssertTrue(ios.contains("Text(\"상세를 준비하는 중입니다.\")"))
         XCTAssertTrue(deferredInlineItemDetail.contains(".task(id: item.id)"))
+        XCTAssertTrue(deferredInlineItemDetail.contains(".onDisappear"))
         XCTAssertEqual(
             ios.components(separatedBy: "ServerSyncItemInlineDetailPanel(item: item, model: model)").count - 1,
             1,
@@ -5029,6 +5031,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(deferredInlineItemDetail.contains("await Task.yield()"))
         XCTAssertFalse(deferredInlineItemDetail.contains("try? await Task.sleep(nanoseconds: CompanionLargeList.detailRenderDelayNanoseconds)"))
         XCTAssertTrue(deferredInlineItemDetail.contains("guard !Task.isCancelled else { return }"))
+        XCTAssertTrue(deferredInlineItemDetail.contains(".onDisappear"))
         XCTAssertFalse(inlineRows.contains("deferInlineDetail"))
         XCTAssertTrue(inlineRows.contains("clearStaleInlineSelectionIfNeeded()"))
         XCTAssertTrue(inlineRows.contains("clearStaleExternalSelectionIfNeeded()"))
