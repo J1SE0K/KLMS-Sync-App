@@ -50,6 +50,10 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('print -r -- "${device_label}: installed-and-launched"', script)
         self.assertIn('LaunchServicesDataMismatch|LaunchServices GUID', script)
         self.assertIn('print -ru2 -- "${device_label}: installed; launch could not be verified because the device is locked or iOS is still refreshing app registration', script)
+        self.assertIn('LAUNCH_RETRY_COUNT="${IOS_DEVICE_LAUNCH_RETRIES:-2}"', script)
+        self.assertIn('LAUNCH_RETRY_DELAY_SECONDS="${IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS:-2}"', script)
+        self.assertIn('while true; do', script)
+        self.assertIn('launch verification is waiting for iOS app registration', script)
         self.assertIn('print(f"{identifier}\\t{hardware.get(\'deviceType\', \'device\')}\\t{1 if launch_ready else 0}")', script)
         self.assertIn('target_device="${device_entry%%$\'\\t\'*}"', script)
         self.assertIn('device_rest="${device_entry#*$\'\\t\'}"', script)
@@ -60,6 +64,8 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertNotIn("properties.get(\"name\")", script)
         self.assertIn("prints a generic `iPhone` or `iPad` label for each result", readme)
         self.assertIn("iOS is still refreshing app registration", readme)
+        self.assertIn("IOS_DEVICE_LAUNCH_RETRIES", readme)
+        self.assertIn("IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS", readme)
 
     def test_serial_run_scripts_share_common_job_runner(self) -> None:
         for script_name in ["run_all.sh", "run_all_full.sh"]:

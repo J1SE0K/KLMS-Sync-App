@@ -10,6 +10,8 @@ LAUNCH_AFTER_INSTALL="${IOS_DEVICE_LAUNCH:-1}"
 TIMEOUT_SECONDS="${IOS_DEVICE_TIMEOUT_SECONDS:-120}"
 WAIT_FOR_AVAILABLE_SECONDS="${IOS_DEVICE_WAIT_FOR_AVAILABLE_SECONDS:-45}"
 DISCOVERY_POLL_SECONDS="${IOS_DEVICE_DISCOVERY_POLL_SECONDS:-3}"
+LAUNCH_RETRY_COUNT="${IOS_DEVICE_LAUNCH_RETRIES:-2}"
+LAUNCH_RETRY_DELAY_SECONDS="${IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS:-2}"
 INSTALL_ALL_MODE=0
 MANUAL_LAUNCH_STATUS=4
 
@@ -82,14 +84,29 @@ install_one_device() {
     exit "$MANUAL_LAUNCH_STATUS"
   fi
 
-  local LAUNCH_OUTPUT
-  LAUNCH_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/klms-ios-launch.XXXXXX")"
-  if ! xcrun devicectl device process launch \
-    --device "$target_device" \
-    --timeout "$TIMEOUT_SECONDS" \
-    --quiet \
-    --terminate-existing \
-    "$BUNDLE_IDENTIFIER" >"$LAUNCH_OUTPUT" 2>&1; then
+  local launch_attempt=0
+  while true; do
+    local LAUNCH_OUTPUT
+    LAUNCH_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/klms-ios-launch.XXXXXX")"
+    if xcrun devicectl device process launch \
+      --device "$target_device" \
+      --timeout "$TIMEOUT_SECONDS" \
+      --quiet \
+      --terminate-existing \
+      "$BUNDLE_IDENTIFIER" >"$LAUNCH_OUTPUT" 2>&1; then
+      rm -f "$LAUNCH_OUTPUT"
+      print -r -- "${device_label}: installed-and-launched"
+      return 0
+    fi
+
+    if /usr/bin/grep -Eiq "LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT" && (( launch_attempt < LAUNCH_RETRY_COUNT )); then
+      launch_attempt=$(( launch_attempt + 1 ))
+      rm -f "$LAUNCH_OUTPUT"
+      print -ru2 -- "${device_label}: launch verification is waiting for iOS app registration (${launch_attempt}/${LAUNCH_RETRY_COUNT})..."
+      sleep "$LAUNCH_RETRY_DELAY_SECONDS"
+      continue
+    fi
+
     if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
       print -ru2 -- "${device_label}: installed; launch could not be verified because the device is locked or iOS is still refreshing app registration. The app is already on the device. Unlock it and open KLMS Sync manually, or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
@@ -104,9 +121,7 @@ install_one_device() {
       return 1
     fi
     exit 1
-  fi
-  rm -f "$LAUNCH_OUTPUT"
-  print -r -- "${device_label}: installed-and-launched"
+  done
 }
 
 discover_ios_devices() {
