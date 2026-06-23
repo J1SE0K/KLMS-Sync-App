@@ -799,6 +799,7 @@ private struct DashboardNewFileFilterOptions: Sendable {
 @MainActor
 private enum DashboardFileDataPreloadStore {
     private static var cachedData: DashboardFileData?
+    private static var inFlightSignature: DashboardFileRenderSignature?
 
     static func cachedData(for signature: DashboardFileRenderSignature) -> DashboardFileData? {
         guard cachedData?.signature == signature else { return nil }
@@ -807,6 +808,66 @@ private enum DashboardFileDataPreloadStore {
 
     static func store(_ data: DashboardFileData) {
         cachedData = data
+        if inFlightSignature == data.signature {
+            inFlightSignature = nil
+        }
+    }
+
+    static func beginPrewarmIfNeeded(signature: DashboardFileRenderSignature) -> Bool {
+        if cachedData?.signature == signature || inFlightSignature == signature {
+            return false
+        }
+        inFlightSignature = signature
+        return true
+    }
+
+    static func cancelPrewarm(signature: DashboardFileRenderSignature) {
+        if inFlightSignature == signature {
+            inFlightSignature = nil
+        }
+    }
+}
+
+struct DashboardFileDataPrewarmView: View {
+    var snapshot: EngineSnapshot
+    var signature: DashboardFileRenderSignature
+
+    private static let prewarmDelayNanoseconds: UInt64 = 700_000_000
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .task(id: signature) {
+                await prewarm()
+            }
+    }
+
+    @MainActor
+    private func prewarm() async {
+        guard DashboardFileDataPreloadStore.beginPrewarmIfNeeded(signature: signature) else {
+            return
+        }
+        do {
+            try await Task.sleep(nanoseconds: Self.prewarmDelayNanoseconds)
+        } catch {
+            DashboardFileDataPreloadStore.cancelPrewarm(signature: signature)
+            return
+        }
+        guard !Task.isCancelled else {
+            DashboardFileDataPreloadStore.cancelPrewarm(signature: signature)
+            return
+        }
+        let snapshot = snapshot
+        let signature = signature
+        let data = await Task.detached(priority: .utility) {
+            DashboardFileData(snapshot: snapshot, signature: signature)
+        }.value
+        guard !Task.isCancelled else {
+            DashboardFileDataPreloadStore.cancelPrewarm(signature: signature)
+            return
+        }
+        DashboardFileDataPreloadStore.store(data)
     }
 }
 

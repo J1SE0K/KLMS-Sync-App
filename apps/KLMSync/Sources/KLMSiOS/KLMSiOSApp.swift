@@ -653,7 +653,6 @@ final class CompanionModel: ObservableObject {
                 itemTitle: normalizedItem.title,
                 message: message
             ))
-            await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)
         } catch {
             mailDashboardItems = previousMailDashboardItems
             persistMailDashboardItems()
@@ -684,7 +683,6 @@ final class CompanionModel: ObservableObject {
                 itemTitle: item.title,
                 message: message
             ))
-            await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)
         } catch {
             mailDashboardItems = previousMailDashboardItems
             persistMailDashboardItems()
@@ -743,9 +741,12 @@ final class CompanionModel: ObservableObject {
         guard !trimmed.isEmpty else {
             return "missing-token"
         }
-        var hasher = Hasher()
-        hasher.combine(trimmed)
-        return "token-\(trimmed.count)-\(hasher.finalize())"
+        var hash: UInt64 = 1_469_598_103_934_665_603
+        for byte in trimmed.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return "token-\(trimmed.count)-\(String(hash, radix: 16))"
     }
 
     var hasClearableRemoteLogs: Bool {
@@ -1070,30 +1071,36 @@ final class CompanionModel: ObservableObject {
             errorMessage = "이미 대기 중이거나 실행 중인 요청이 있습니다."
             return
         }
+        guard let serverRelayStore else {
+            errorMessage = remoteAvailabilityMessage
+            return
+        }
+        var command = RemoteRunCommand(
+            kind: kind,
+            options: RemoteRunOptions(updateNoticeNotes: shouldUpdateNoticeNotes, dryRun: dryRun)
+        )
+        command.summary = status
+        recentCommands.insert(command, at: 0)
+        status = command.summary
+        lastRefreshAt = Date()
+        connectionMessage = "\(kind.displayName) 요청을 서버에 보내는 중입니다."
+        connectionSucceeded = nil
+        errorMessage = ""
         isSubmitting = true
         defer {
             isSubmitting = false
         }
         do {
-            if let serverRelayStore {
-                var command = RemoteRunCommand(
-                    kind: kind,
-                    options: RemoteRunOptions(updateNoticeNotes: shouldUpdateNoticeNotes, dryRun: dryRun)
-                )
-                command.summary = status
-                try await serverRelayStore.create(command)
-                trackReportNotificationIfNeeded(for: command)
-                recentCommands.insert(command, at: 0)
-                status = command.summary
-                lastRefreshAt = Date()
-                errorMessage = ""
-                await refreshRecent(includeSyncData: false, showsActivity: false)
-            } else {
-                errorMessage = remoteAvailabilityMessage
-            }
+            try await serverRelayStore.create(command)
+            trackReportNotificationIfNeeded(for: command)
+            connectionMessage = "\(kind.displayName) 요청을 보냈습니다."
+            connectionSucceeded = true
         } catch {
             guard !isCancellationError(error) else { return }
+            recentCommands.removeAll { $0.id == command.id }
             errorMessage = userFacingMessage(for: error)
+            connectionMessage = "요청 전송 실패"
+            connectionSucceeded = false
         }
     }
 
@@ -1137,7 +1144,6 @@ final class CompanionModel: ObservableObject {
                 cancelFollowUpTask = nil
                 userAlert = UserAlert(title: "요청 취소됨", message: connectionMessage)
             }
-            await refreshRecent(includeSyncData: false, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
             if pendingCancelCommandID == commandID {
@@ -1186,7 +1192,6 @@ final class CompanionModel: ObservableObject {
             if savedAction.status != .completed {
                 userAlert = UserAlert(title: "설정 요청 완료", message: connectionMessage)
             }
-            await refreshRecent(includeSyncData: false, showsActivity: false, scope: .settingActions)
         } catch {
             guard !isCancellationError(error) else { return }
             let rollbackAction = ServerRelaySettingAction(
@@ -1404,7 +1409,6 @@ final class CompanionModel: ObservableObject {
             connectionMessage = successMessage
             connectionSucceeded = true
             errorMessage = ""
-            await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false, scope: .settings)
         } catch {
             guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
@@ -1421,9 +1425,14 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
-        isSubmitting = true
+        let requiresMac = !actionKind.isServerDisplayOnlyAction
+        if requiresMac {
+            isSubmitting = true
+        }
         defer {
-            isSubmitting = false
+            if requiresMac {
+                isSubmitting = false
+            }
         }
         let previousSyncItems = syncItems
         let previousSyncItemsSignature = syncItemsSignature
@@ -1449,11 +1458,9 @@ final class CompanionModel: ObservableObject {
             if !savedAction.action.isServerDisplayOnlyAction {
                 userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
             }
-            await refreshRecent(
-                includeSyncData: !savedAction.action.isServerDisplayOnlyAction,
-                showsActivity: false,
-                scope: .itemActions
-            )
+            if !savedAction.action.isServerDisplayOnlyAction {
+                await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)
+            }
         } catch {
             guard !isCancellationError(error) else { return }
             if actionKind.isServerDisplayOnlyAction {
@@ -1511,7 +1518,6 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: calendarActionRequestMessage(for: actionKind))
-            await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)
         } catch {
             guard !isCancellationError(error) else { return }
             if actionKind.resolvesCalendarChange {
@@ -1553,7 +1559,6 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: "Mac 앱이 Apple Calendar에 새 일정을 등록합니다.")
-            await refreshRecent(includeSyncData: false, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
@@ -1593,21 +1598,23 @@ final class CompanionModel: ObservableObject {
         defer {
             isSubmitting = false
         }
+        let request = ServerRelayFileAccessRequest(
+            itemID: item.id,
+            itemKind: item.kind,
+            itemTitle: item.title
+        )
+        recentFileAccessRequests.insert(request, at: 0)
         do {
-            let request = ServerRelayFileAccessRequest(
-                itemID: item.id,
-                itemKind: item.kind,
-                itemTitle: item.title
-            )
             let created = try await serverRelayStore.createFileAccessRequest(request)
+            recentFileAccessRequests.removeAll { $0.id == request.id }
             recentFileAccessRequests.insert(created, at: 0)
             connectionMessage = "서버에 파일 링크 준비를 요청했습니다."
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "파일 요청 완료", message: "Mac 앱이 파일 링크를 준비하면 열기 버튼이 표시됩니다.")
-            await refreshRecent(includeSyncData: false, showsActivity: false)
         } catch {
             guard !isCancellationError(error) else { return }
+            recentFileAccessRequests.removeAll { $0.id == request.id }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "파일 요청 실패", message: message)

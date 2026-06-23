@@ -2242,11 +2242,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("private enum DashboardFileDataPreloadStore"))
         XCTAssertTrue(detail.contains("DashboardFileDataPreloadStore.cachedData(for: signature)"))
         XCTAssertTrue(detail.contains("DashboardFileDataPreloadStore.store(data)"))
-        XCTAssertFalse(detail.contains("struct DashboardFileDataPrewarmView: View"))
-        XCTAssertFalse(detail.contains("Task.detached(priority: .utility)"))
-        XCTAssertFalse(detail.contains("inFlightSignature"))
-        XCTAssertFalse(detail.contains("static func prewarm"))
-        XCTAssertFalse(mac.contains("DashboardFileDataPrewarmView(snapshot: model.snapshot, signature: model.dashboardFileRenderSignature)"))
+        XCTAssertTrue(detail.contains("struct DashboardFileDataPrewarmView: View"))
+        XCTAssertTrue(detail.contains("private static let prewarmDelayNanoseconds: UInt64 = 700_000_000"))
+        XCTAssertTrue(detail.contains("Task.detached(priority: .utility)"))
+        XCTAssertTrue(detail.contains("inFlightSignature"))
+        XCTAssertTrue(detail.contains("beginPrewarmIfNeeded"))
+        XCTAssertTrue(mac.contains("DashboardFileDataPrewarmView(\n                snapshot: model.snapshot,\n                signature: model.dashboardFileRenderSignature\n            )"))
         XCTAssertFalse(macWorkstationLayoutView.contains("DashboardFileDataPrewarmView"))
         let dashboardCaseStart = try XCTUnwrap(macWorkstationLayoutView.range(of: "case .dashboard:")?.lowerBound)
         let filesCaseStart = try XCTUnwrap(macWorkstationLayoutView.range(of: "case .files:")?.lowerBound)
@@ -6199,7 +6200,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(createSettingAction.contains("value: setting.value"))
         XCTAssertTrue(createSettingAction.contains("applyRemoteSettingActionLocally(rollbackAction, fallbackSetting: setting)"))
         XCTAssertTrue(createSettingAction.contains("if savedAction.status != .completed"))
-        XCTAssertTrue(createSettingAction.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .settingActions)"))
+        XCTAssertFalse(createSettingAction.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .settingActions)"))
         let optimisticApplyIndex = try XCTUnwrap(createSettingAction.range(of: "applyRemoteSettingActionLocally(optimisticAction, fallbackSetting: setting)")?.lowerBound)
         let serverRequestIndex = try XCTUnwrap(createSettingAction.range(of: "serverRelayStore.createSettingAction(action)")?.lowerBound)
         XCTAssertLessThan(optimisticApplyIndex, serverRequestIndex)
@@ -6239,9 +6240,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(createItemAction.contains("recentItemActions.insert(localAction, at: 0)"))
         XCTAssertTrue(createItemAction.contains("serverRelayStore.createItemAction(action)"))
         XCTAssertTrue(createItemAction.contains("applyServerDisplayItemActionLocally(savedAction.action, itemID: savedAction.itemID)"))
+        XCTAssertTrue(createItemAction.contains("let requiresMac = !actionKind.isServerDisplayOnlyAction"))
+        XCTAssertTrue(createItemAction.contains("if requiresMac {\n            isSubmitting = true\n        }"))
+        XCTAssertFalse(createItemAction.contains("isSubmitting = true\n        defer {\n            isSubmitting = false\n        }"))
         XCTAssertTrue(createItemAction.contains("if !savedAction.action.isServerDisplayOnlyAction"))
-        XCTAssertTrue(createItemAction.contains("includeSyncData: !savedAction.action.isServerDisplayOnlyAction"))
-        XCTAssertFalse(createItemAction.contains("await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)"))
+        XCTAssertFalse(createItemAction.contains("includeSyncData: !savedAction.action.isServerDisplayOnlyAction"))
+        XCTAssertTrue(createItemAction.contains("if !savedAction.action.isServerDisplayOnlyAction {\n                await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)\n            }"))
         XCTAssertTrue(createItemAction.contains("let previousSyncItems = syncItems"))
         XCTAssertTrue(createItemAction.contains("let previousSyncItemsSignature = syncItemsSignature"))
         XCTAssertTrue(createItemAction.contains("let previousMailDashboardItems = mailDashboardItems"))
@@ -6301,11 +6305,32 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS create calendar action"
         )
+        let createCommand = try sourceBody(
+            after: "func createCommand(_ kind: RemoteCommandKind",
+            in: ios,
+            description: "iOS create remote command"
+        )
+        let cancelCommand = try sourceBody(
+            after: "func cancelRunningCommand() async",
+            in: ios,
+            description: "iOS cancel remote command"
+        )
+        let createFileAccess = try sourceBody(
+            after: "func createFileAccessRequest(item: ServerRelaySyncItem) async",
+            in: ios,
+            description: "iOS file access request"
+        )
 
-        XCTAssertTrue(submitMail.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)"))
-        XCTAssertTrue(removeMail.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)"))
-        XCTAssertTrue(updateSharedSetting.contains("await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false, scope: .settings)"))
-        XCTAssertTrue(createCalendarAction.contains("await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)"))
+        XCTAssertFalse(submitMail.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)"))
+        XCTAssertFalse(removeMail.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)"))
+        XCTAssertFalse(updateSharedSetting.contains("await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false, scope: .settings)"))
+        XCTAssertTrue(createCalendarAction.contains("markCalendarChangeResolvedLocally(change)"))
+        XCTAssertFalse(createCalendarAction.contains("await refreshRecent("))
+        XCTAssertTrue(createCommand.contains("recentCommands.insert(command, at: 0)"))
+        XCTAssertFalse(createCommand.contains("await refreshRecent("))
+        XCTAssertFalse(cancelCommand.contains("await refreshRecent("))
+        XCTAssertTrue(createFileAccess.contains("recentFileAccessRequests.insert(request, at: 0)"))
+        XCTAssertFalse(createFileAccess.contains("await refreshRecent("))
     }
 
     func testIOSServerConnectionPasteImmediatelyRefreshesSummary() throws {
@@ -6422,6 +6447,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS initial sync-data retry"
         )
+        let tokenFingerprint = try sourceBody(
+            after: "private static func serverRelayBootstrapTokenFingerprint",
+            in: ios,
+            description: "iOS server relay token fingerprint"
+        )
 
         XCTAssertTrue(rootView.contains("@Environment(\\.scenePhase) private var scenePhase"))
         XCTAssertTrue(rootView.contains(".task(id: model.serverRelayBootstrapKey)"))
@@ -6444,7 +6474,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private var shouldRetryInitialServerSyncData: Bool"))
         XCTAssertTrue(ios.contains("serverRelayConfigured && (syncDataNeedsRefresh || !hasLoadedServerSyncData)"))
         XCTAssertTrue(ios.contains("serverRelayBootstrapTokenFingerprint(serverToken)"))
-        XCTAssertTrue(ios.contains("return \"token-\\(trimmed.count)-\\(hasher.finalize())\""))
+        XCTAssertFalse(tokenFingerprint.contains("var hasher = Hasher()"))
+        XCTAssertTrue(tokenFingerprint.contains("var hash: UInt64 = 1_469_598_103_934_665_603"))
+        XCTAssertTrue(tokenFingerprint.contains("hash &*= 1_099_511_628_211"))
+        XCTAssertTrue(tokenFingerprint.contains("return \"token-\\(trimmed.count)-\\(String(hash, radix: 16))\""))
     }
 
     func testIOSDeferredExpansionRendersImmediatelyAfterToggle() throws {

@@ -14,6 +14,10 @@ struct MenuBarRootView: View {
             MacWorkspaceRenderedAccessibilityMarker(section: selectedSection)
             MacWorkspacePanelAccessibilityMarker(section: selectedSection)
             MacWorkspaceContainerAccessibilityMarker(section: selectedSection)
+            DashboardFileDataPrewarmView(
+                snapshot: model.snapshot,
+                signature: model.dashboardFileRenderSignature
+            )
 
             HStack(alignment: .top, spacing: 0) {
                 MacWorkspaceSidebarView(
