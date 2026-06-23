@@ -11789,6 +11789,10 @@ private struct ServerSyncItemInlineDetailPanel: View {
                         }
                     }
                 }
+                Text(itemActionHelpMessage)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
                 if !model.serverRelayConfigured {
                     Text("항목 처리 요청은 서버 릴레이가 연결되어 있을 때만 사용할 수 있습니다.")
                         .font(.caption)
@@ -11837,7 +11841,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                     }
                 }
             } else {
-                Text("Mac에 저장된 course_files 원본을 임시 서버 링크로 준비할 수 있습니다.")
+                Text("Mac 앱이 로컬 course_files에서 원본 파일을 찾아 임시 링크를 만듭니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -11872,14 +11876,21 @@ private struct ServerSyncItemInlineDetailPanel: View {
         if !request.message.isEmpty {
             parts.append(request.message)
         }
-        return parts.isEmpty ? "Mac에서 파일을 준비하는 중입니다." : parts.joined(separator: " · ")
+        return parts.isEmpty ? "Mac 앱이 로컬 파일을 확인하고 링크를 준비하는 중입니다." : parts.joined(separator: " · ")
     }
 
     private var detailHelpMessage: String {
         if item.kind == "file" {
-            return "파일 링크를 요청하면 Mac 앱에서 course_files 원본을 임시 링크로 준비합니다. 링크가 만료되면 기록과 임시 파일은 자동으로 정리됩니다."
+            return "숨김 처리는 서버 화면에 바로 반영됩니다. 파일 열기와 삭제처럼 로컬 파일이 필요한 작업은 Mac 앱이 처리합니다."
         }
-        return "항목 처리 요청은 서버에 대기 상태로 올라가고, Mac 앱이 확인한 뒤 기존 상태 파일에 반영합니다."
+        return "읽음, 중요, 숨김, 완료 같은 화면 상태는 서버에 바로 반영됩니다. Notes, Calendar, Reminders 실제 반영은 다음 Mac 동기화에서 맞춰집니다."
+    }
+
+    private var itemActionHelpMessage: String {
+        if item.kind == "file" {
+            return "숨김은 모든 기기 화면에 바로 반영됩니다. 삭제와 파일 링크 준비는 Mac 앱이 로컬 파일을 확인한 뒤 처리합니다."
+        }
+        return "이 버튼들은 서버 상태를 즉시 바꿉니다. Mac이 꺼져 있어도 다른 기기 화면에는 바로 반영됩니다."
     }
 
     private var itemActions: [ServerRelayItemActionKind] {
