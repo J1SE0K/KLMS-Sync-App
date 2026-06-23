@@ -42,7 +42,6 @@ private let requiredDashboardControls = [
     "전체 동기화",
 ]
 private let requiredLogControls = [
-    "전체 기록 지우기",
     "실행 로그 지우기",
     "서버 로그 지우기",
 ]

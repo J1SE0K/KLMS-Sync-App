@@ -1048,6 +1048,60 @@ final class CompanionModel: ObservableObject {
         }
     }
 
+    private func replaceRecentSettingAction(
+        _ action: ServerRelaySettingAction,
+        removing shouldRemove: (ServerRelaySettingAction) -> Bool
+    ) {
+        var next = recentSettingActions.filter { !shouldRemove($0) }
+        next.insert(action, at: 0)
+        if next != recentSettingActions {
+            recentSettingActions = next
+        }
+    }
+
+    private func removeRecentSettingActions(where shouldRemove: (ServerRelaySettingAction) -> Bool) {
+        let next = recentSettingActions.filter { !shouldRemove($0) }
+        if next != recentSettingActions {
+            recentSettingActions = next
+        }
+    }
+
+    private func replaceRecentItemAction(
+        _ action: ServerRelayItemAction,
+        removing shouldRemove: (ServerRelayItemAction) -> Bool
+    ) {
+        var next = recentItemActions.filter { !shouldRemove($0) }
+        next.insert(action, at: 0)
+        if next != recentItemActions {
+            recentItemActions = next
+        }
+    }
+
+    private func removeRecentItemActions(where shouldRemove: (ServerRelayItemAction) -> Bool) {
+        let next = recentItemActions.filter { !shouldRemove($0) }
+        if next != recentItemActions {
+            recentItemActions = next
+        }
+    }
+
+    private func replaceRecentFileAccessRequest(
+        _ request: ServerRelayFileAccessRequest,
+        removing shouldRemove: (ServerRelayFileAccessRequest) -> Bool
+    ) {
+        var next = recentFileAccessRequests.filter { !shouldRemove($0) }
+        next.insert(request, at: 0)
+        if next != recentFileAccessRequests {
+            recentFileAccessRequests = next
+        }
+    }
+
+    private func removeRecentFileAccessRequests(where shouldRemove: (ServerRelayFileAccessRequest) -> Bool) {
+        let next = recentFileAccessRequests.filter { !shouldRemove($0) }
+        if next != recentFileAccessRequests {
+            recentFileAccessRequests = next
+        }
+    }
+
     var runningPhaseDetail: String? {
         let detail = status.phaseDetail?.trimmingCharacters(in: .whitespacesAndNewlines)
         return detail?.isEmpty == false ? detail : nil
@@ -1180,8 +1234,7 @@ final class CompanionModel: ObservableObject {
             message: "서버에 저장하는 중입니다."
         )
         applyRemoteSettingActionLocally(optimisticAction, fallbackSetting: setting)
-        recentSettingActions.removeAll { $0.key == setting.key }
-        recentSettingActions.insert(optimisticAction, at: 0)
+        replaceRecentSettingAction(optimisticAction) { $0.key == setting.key }
         connectionMessage = "\(setting.title) 설정을 저장하는 중입니다."
         connectionSucceeded = true
         errorMessage = ""
@@ -1192,8 +1245,7 @@ final class CompanionModel: ObservableObject {
                 title: setting.title
             )
             let savedAction = try await serverRelayStore.createSettingAction(action)
-            recentSettingActions.removeAll { $0.id == savedAction.id || $0.key == savedAction.key }
-            recentSettingActions.insert(savedAction, at: 0)
+            replaceRecentSettingAction(savedAction) { $0.id == savedAction.id || $0.key == savedAction.key }
             applyRemoteSettingActionLocally(savedAction, fallbackSetting: setting)
             connectionMessage = savedAction.message.nilIfBlank ?? "\(setting.title) 설정 변경 요청을 보냈습니다."
             connectionSucceeded = true
@@ -1212,7 +1264,7 @@ final class CompanionModel: ObservableObject {
                 message: "저장 실패로 이전 값으로 되돌렸습니다."
             )
             applyRemoteSettingActionLocally(rollbackAction, fallbackSetting: setting)
-            recentSettingActions.removeAll { $0.key == setting.key }
+            removeRecentSettingActions { $0.key == setting.key }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "설정 요청 실패", message: message)
@@ -1469,15 +1521,13 @@ final class CompanionModel: ObservableObject {
         do {
             applyServerVisibleItemActionLocally(actionKind, itemID: item.id)
             let localAction = action.optimisticCompanionDisplayAction
-            recentItemActions.removeAll { $0.itemID == item.id }
-            recentItemActions.insert(localAction, at: 0)
+            replaceRecentItemAction(localAction) { $0.itemID == item.id }
             connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
             connectionSucceeded = true
             errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
             applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)
-            recentItemActions.removeAll { $0.id == action.id || $0.itemID == item.id }
-            recentItemActions.insert(savedAction, at: 0)
+            replaceRecentItemAction(savedAction) { $0.id == action.id || $0.itemID == item.id }
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
@@ -1494,7 +1544,7 @@ final class CompanionModel: ObservableObject {
                     mailDashboardItems: previousMailDashboardItems
                 )
             }
-            recentItemActions.removeAll { ($0.id == action.id || $0.itemID == item.id) && $0.action == actionKind }
+            removeRecentItemActions { ($0.id == action.id || $0.itemID == item.id) && $0.action == actionKind }
             syncDataNeedsRefresh = true
             let message = userFacingMessage(for: error)
             errorMessage = message
@@ -1526,9 +1576,7 @@ final class CompanionModel: ObservableObject {
                 itemTitle: change.title.nilIfEmpty ?? change.course.nilIfEmpty ?? "캘린더 변경",
                 message: try edit?.encodedMessage() ?? ""
             )
-            recentItemActions.removeAll { candidateIDs.contains($0.itemID) }
-            recentItemActions.insert(action, at: 0)
-            rebuildItemActionLookups()
+            replaceRecentItemAction(action) { candidateIDs.contains($0.itemID) }
             connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
             connectionSucceeded = true
             errorMessage = ""
@@ -1536,9 +1584,7 @@ final class CompanionModel: ObservableObject {
             if savedAction.action.resolvesCalendarChange, !savedAction.status.isFailedLike {
                 markCalendarChangeResolvedLocally(change)
             }
-            recentItemActions.removeAll { $0.id == action.id || candidateIDs.contains($0.itemID) }
-            recentItemActions.insert(savedAction, at: 0)
-            rebuildItemActionLookups()
+            replaceRecentItemAction(savedAction) { $0.id == action.id || candidateIDs.contains($0.itemID) }
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
@@ -1551,8 +1597,7 @@ final class CompanionModel: ObservableObject {
                 persistResolvedCalendarChangeIDs()
                 rebuildVisibleCalendarChanges()
             }
-            recentItemActions.removeAll { candidateIDs.contains($0.itemID) && $0.action == actionKind && $0.status == .pending }
-            rebuildItemActionLookups()
+            removeRecentItemActions { candidateIDs.contains($0.itemID) && $0.action == actionKind && $0.status == .pending }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "요청 실패", message: message)
@@ -1575,15 +1620,12 @@ final class CompanionModel: ObservableObject {
                 itemTitle: title.isEmpty ? "메일 일정" : title,
                 message: try edit.encodedMessage()
             )
-            recentItemActions.insert(action, at: 0)
-            rebuildItemActionLookups()
+            replaceRecentItemAction(action) { $0.id == action.id }
             connectionMessage = "\(ServerRelayItemActionKind.calendarCreate.displayName) 요청을 보내는 중입니다."
             connectionSucceeded = true
             errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
-            recentItemActions.removeAll { $0.id == action.id }
-            recentItemActions.insert(savedAction, at: 0)
-            rebuildItemActionLookups()
+            replaceRecentItemAction(savedAction) { $0.id == action.id }
             connectionMessage = savedAction.message.nilIfBlank ?? "\(ServerRelayItemActionKind.calendarCreate.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
@@ -1591,8 +1633,7 @@ final class CompanionModel: ObservableObject {
             schedulePostActionRefresh(scope: .itemActions)
         } catch {
             guard !isCancellationError(error) else { return }
-            recentItemActions.removeAll { $0.itemID == requestItemID && $0.status == .pending }
-            rebuildItemActionLookups()
+            removeRecentItemActions { $0.itemID == requestItemID && $0.status == .pending }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "요청 실패", message: message)
@@ -1631,27 +1672,20 @@ final class CompanionModel: ObservableObject {
             itemKind: item.kind,
             itemTitle: item.title
         )
-        recentFileAccessRequests.insert(request, at: 0)
-        rebuildFileAccessLookup()
-        rebuildRemoteLogDerivedState()
+        replaceRecentFileAccessRequest(request) { $0.id == request.id }
         connectionMessage = "파일 링크 요청을 대기열에 올렸습니다. 서버 확인을 기다리는 중입니다."
         connectionSucceeded = true
         errorMessage = ""
         do {
             let created = try await serverRelayStore.createFileAccessRequest(request)
-            recentFileAccessRequests.removeAll { $0.id == request.id }
-            recentFileAccessRequests.insert(created, at: 0)
-            rebuildFileAccessLookup()
-            rebuildRemoteLogDerivedState()
+            replaceRecentFileAccessRequest(created) { $0.id == request.id }
             connectionMessage = "서버에 파일 링크 준비를 요청했습니다."
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "파일 요청 완료", message: "Mac 앱이 파일 링크를 준비하면 열기 버튼이 표시됩니다.")
         } catch {
             guard !isCancellationError(error) else { return }
-            recentFileAccessRequests.removeAll { $0.id == request.id }
-            rebuildFileAccessLookup()
-            rebuildRemoteLogDerivedState()
+            removeRecentFileAccessRequests { $0.id == request.id }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "파일 요청 실패", message: message)
