@@ -2180,7 +2180,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardNewFileFilterOptions.contains("terms.append(manifest?.academicTerm ?? AcademicTerm.infer"))
         XCTAssertTrue(dashboardNewFileFilterOptions.contains("self.courses = DashboardCourseFilter.optionLabels(from: courses)"))
         XCTAssertTrue(dashboardNewFileFilterOptions.contains("let termOptions = DashboardTermFilter.options(from: terms)"))
-        XCTAssertTrue(macModel.contains("@Published private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]"))
+        XCTAssertTrue(macModel.contains("private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]"))
+        XCTAssertFalse(macModel.contains("@Published private(set) var dashboardFilterOptionsByKind"))
         XCTAssertTrue(macModel.contains("func dashboardFilterOptions(for kind: DashboardDetailKind) -> DashboardFilterOptions?"))
         XCTAssertTrue(macModel.contains("dashboardFilterOptionsByKind = Dictionary("))
         XCTAssertTrue(macModel.contains("(kind, DashboardFilterOptions(kind: kind, snapshot: snapshot))"))
@@ -6016,6 +6017,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(model.contains("self.replaceSnapshot(loadedSnapshot)"))
         XCTAssertTrue(model.contains("private(set) var cachedIssues: [EngineIssue] = []"))
         XCTAssertFalse(model.contains("@Published private(set) var cachedIssues"))
+        XCTAssertTrue(model.contains("private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]"))
+        XCTAssertFalse(model.contains("@Published private(set) var dashboardFilterOptionsByKind"))
     }
 
     func testIOSCompanionUsesAdaptiveIPadNavigation() throws {
