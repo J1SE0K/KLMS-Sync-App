@@ -258,6 +258,7 @@ final class CompanionModel: ObservableObject {
 
     private struct CachedServerSyncData: Codable {
         var serverURL: String
+        var tokenFingerprint: String?
         var storedAt: Date
         var syncData: ServerRelaySyncData
     }
@@ -427,8 +428,8 @@ final class CompanionModel: ObservableObject {
         mailDashboardItems = Self.loadMailDashboardItems()
         trackedReportNotificationCommandIDs = Self.loadTrackedReportNotificationCommandIDs()
         Self.clearDeprecatedLocalConnectionInfo()
-        if let cachedSyncData = Self.loadCachedServerSyncData(for: serverURL) {
-            _ = apply(cachedSyncData, persistCache: false)
+        if let cachedSyncData = Self.loadCachedServerSyncData(for: serverURL, tokenFingerprint: Self.serverRelayBootstrapTokenFingerprint(serverToken)) {
+            _ = apply(cachedSyncData, persistCache: false, markLoaded: false)
             syncDataNeedsRefresh = true
         }
         rebuildDashboardDerivedState()
@@ -2575,7 +2576,7 @@ final class CompanionModel: ObservableObject {
     }
 
     @discardableResult
-    private func apply(_ syncData: ServerRelaySyncData, persistCache: Bool = true) -> Bool {
+    private func apply(_ syncData: ServerRelaySyncData, persistCache: Bool = true, markLoaded: Bool = true) -> Bool {
         var didChange = false
         let nextSyncItemsSignature = Self.signature(for: syncData.items)
         if syncItemsSignature != nextSyncItemsSignature {
@@ -2612,26 +2613,31 @@ final class CompanionModel: ObservableObject {
             verifySummarySignature = nextVerifySummarySignature
             didChange = true
         }
-        if !hasLoadedServerSyncData {
+        if markLoaded, !hasLoadedServerSyncData {
             hasLoadedServerSyncData = true
             rebuildDashboardDerivedState()
             rebuildVisibleCalendarChanges()
             didChange = true
         }
-        lastSyncDataRefreshAt = Date()
-        syncDataNeedsRefresh = false
-        if persistCache {
+        if markLoaded {
+            lastSyncDataRefreshAt = Date()
+            syncDataNeedsRefresh = false
+        } else {
+            syncDataNeedsRefresh = true
+        }
+        if markLoaded, persistCache {
             persistCachedServerSyncData(syncData)
         }
         return didChange
     }
 
-    private static func loadCachedServerSyncData(for serverURL: String) -> ServerRelaySyncData? {
+    private static func loadCachedServerSyncData(for serverURL: String, tokenFingerprint: String) -> ServerRelaySyncData? {
         let normalizedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedURL.isEmpty,
               let data = UserDefaults.standard.data(forKey: cachedServerSyncDataKey),
               let cached = try? JSONDecoder().decode(CachedServerSyncData.self, from: data),
-              cached.serverURL == normalizedURL else {
+              cached.serverURL == normalizedURL,
+              cached.tokenFingerprint == tokenFingerprint else {
             return nil
         }
         guard Date().timeIntervalSince(cached.storedAt) <= cachedServerSyncDataMaxAge else {
@@ -2649,6 +2655,7 @@ final class CompanionModel: ObservableObject {
         }
         let cached = CachedServerSyncData(
             serverURL: normalizedURL,
+            tokenFingerprint: Self.serverRelayBootstrapTokenFingerprint(serverToken),
             storedAt: Date(),
             syncData: syncData
         )
@@ -12371,8 +12378,14 @@ private extension ServerRelayItemAction {
 
 private extension ServerRelaySettingAction {
     var isServerAppliedForCompanionDisplay: Bool {
-        status == .completed
-            && message.localizedStandardContains("서버 설정에 바로 반영")
+        switch status {
+        case .pending, .running, .completed:
+            let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalizedMessage.localizedStandardContains("서버 화면에는 바로 반영")
+                || normalizedMessage.localizedStandardContains("서버 설정에 바로 반영")
+        case .failed, .macUnavailable:
+            return false
+        }
     }
 
     var isActiveForCompanionDisplay: Bool {

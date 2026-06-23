@@ -2563,8 +2563,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("recentItemActions.first(where: \\.isActiveForCompanionDisplay)"))
         XCTAssertTrue(ios.contains("recentSettingActions.first(where: \\.isActiveForCompanionDisplay)"))
         XCTAssertTrue(ios.contains("message.localizedStandardContains(\"서버 화면에 바로 반영\")"))
-        XCTAssertTrue(ios.contains("message.localizedStandardContains(\"서버 설정에 바로 반영\")"))
-        XCTAssertTrue(ios.contains("status == .completed\n            && message.localizedStandardContains(\"서버 설정에 바로 반영\")"))
+        XCTAssertTrue(ios.contains("normalizedMessage.localizedStandardContains(\"서버 화면에는 바로 반영\")"))
+        XCTAssertTrue(ios.contains("normalizedMessage.localizedStandardContains(\"서버 설정에 바로 반영\")"))
+        XCTAssertFalse(ios.contains("status == .completed\n            && message.localizedStandardContains(\"서버 설정에 바로 반영\")"))
         XCTAssertTrue(ios.contains("serverRelayBootstrapTokenFingerprint(serverToken)"))
         XCTAssertTrue(ios.contains("private static func serverRelayBootstrapTokenFingerprint(_ token: String) -> String"))
         XCTAssertTrue(ios.contains("var hasActiveNonCommandWork: Bool"))
@@ -6192,6 +6193,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(localApply.contains("ServerRelaySetting("))
         XCTAssertTrue(localApply.contains("value: action.value"))
         XCTAssertTrue(localApply.contains("remoteSettings = settings.sorted { $0.key < $1.key }"))
+        let settingActionDisplay = try sourceBody(
+            after: "private extension ServerRelaySettingAction",
+            in: ios,
+            description: "iOS setting action display state"
+        )
+        XCTAssertTrue(settingActionDisplay.contains("localizedStandardContains(\"서버 화면에는 바로 반영\")"))
+        XCTAssertTrue(settingActionDisplay.contains("localizedStandardContains(\"서버 설정에 바로 반영\")"))
     }
 
     func testIOSServerDisplayItemActionsUpdateDashboardImmediately() throws {
@@ -6313,22 +6321,27 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(ios.contains("private static let cachedServerSyncDataKey = \"KLMSCompanionCachedServerSyncData\""))
         XCTAssertTrue(ios.contains("private struct CachedServerSyncData: Codable"))
+        XCTAssertTrue(ios.contains("var tokenFingerprint: String?"))
         XCTAssertTrue(ios.contains("private static let cachedServerSyncDataMaxAge: TimeInterval = 10 * 60"))
-        XCTAssertTrue(initBody.contains("Self.loadCachedServerSyncData(for: serverURL)"))
-        XCTAssertTrue(initBody.contains("apply(cachedSyncData, persistCache: false)"))
+        XCTAssertTrue(initBody.contains("Self.loadCachedServerSyncData(for: serverURL, tokenFingerprint: Self.serverRelayBootstrapTokenFingerprint(serverToken))"))
+        XCTAssertTrue(initBody.contains("apply(cachedSyncData, persistCache: false, markLoaded: false)"))
         XCTAssertTrue(initBody.contains("syncDataNeedsRefresh = true"))
-        XCTAssertTrue(ios.contains("private func apply(_ syncData: ServerRelaySyncData, persistCache: Bool = true) -> Bool"))
-        XCTAssertTrue(applyBody.contains("if persistCache"))
+        XCTAssertTrue(ios.contains("markLoaded: Bool = true"))
+        XCTAssertTrue(applyBody.contains("if markLoaded, persistCache"))
+        XCTAssertTrue(applyBody.contains("if markLoaded, !hasLoadedServerSyncData"))
+        XCTAssertTrue(applyBody.contains("if markLoaded {\n            lastSyncDataRefreshAt = Date()"))
         XCTAssertTrue(applyBody.contains("persistCachedServerSyncData(syncData)"))
         XCTAssertTrue(applyBody.contains("applySharedSettings(syncData.sharedSettings, merge: false)"))
         XCTAssertTrue(ios.contains("private func applySharedSettings(_ incomingSettings: [ServerRelaySetting], merge: Bool) -> Bool"))
         XCTAssertTrue(ios.contains("applySharedSettings([setting], merge: true)"))
         XCTAssertTrue(ios.contains("applySharedSettings([saved], merge: true)"))
-        XCTAssertTrue(ios.contains("private static func loadCachedServerSyncData(for serverURL: String) -> ServerRelaySyncData?"))
+        XCTAssertTrue(ios.contains("private static func loadCachedServerSyncData(for serverURL: String, tokenFingerprint: String) -> ServerRelaySyncData?"))
         XCTAssertTrue(ios.contains("cached.serverURL == normalizedURL"))
+        XCTAssertTrue(ios.contains("cached.tokenFingerprint == tokenFingerprint"))
         XCTAssertTrue(ios.contains("Date().timeIntervalSince(cached.storedAt) <= cachedServerSyncDataMaxAge"))
         XCTAssertTrue(ios.contains("UserDefaults.standard.removeObject(forKey: cachedServerSyncDataKey)"))
         XCTAssertTrue(ios.contains("private func persistCachedServerSyncData(_ syncData: ServerRelaySyncData)"))
+        XCTAssertTrue(ios.contains("tokenFingerprint: Self.serverRelayBootstrapTokenFingerprint(serverToken)"))
         XCTAssertTrue(ios.contains("private func clearLoadedServerSyncData()"))
         XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettings = []"))
         XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettingsSignature = nil"))
