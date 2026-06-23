@@ -1179,6 +1179,9 @@ final class CompanionModel: ObservableObject {
             message: "서버에 저장하는 중입니다."
         )
         applyRemoteSettingActionLocally(optimisticAction, fallbackSetting: setting)
+        connectionMessage = "\(setting.title) 설정을 저장하는 중입니다."
+        connectionSucceeded = true
+        errorMessage = ""
         do {
             let action = ServerRelaySettingAction(
                 key: setting.key,
@@ -1463,6 +1466,9 @@ final class CompanionModel: ObservableObject {
             let localAction = action.optimisticCompanionDisplayAction
             recentItemActions.removeAll { $0.itemID == item.id }
             recentItemActions.insert(localAction, at: 0)
+            connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
+            connectionSucceeded = true
+            errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
             applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)
             recentItemActions.removeAll { $0.id == action.id || $0.itemID == item.id }
@@ -1518,6 +1524,9 @@ final class CompanionModel: ObservableObject {
             recentItemActions.removeAll { candidateIDs.contains($0.itemID) }
             recentItemActions.insert(action, at: 0)
             rebuildItemActionLookups()
+            connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
+            connectionSucceeded = true
+            errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
             if savedAction.action.resolvesCalendarChange, !savedAction.status.isFailedLike {
                 markCalendarChangeResolvedLocally(change)
@@ -1562,6 +1571,9 @@ final class CompanionModel: ObservableObject {
             )
             recentItemActions.insert(action, at: 0)
             rebuildItemActionLookups()
+            connectionMessage = "\(ServerRelayItemActionKind.calendarCreate.displayName) 요청을 보내는 중입니다."
+            connectionSucceeded = true
+            errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
             recentItemActions.removeAll { $0.id == action.id }
             recentItemActions.insert(savedAction, at: 0)
@@ -11658,61 +11670,13 @@ private struct ServerSyncDataPanel: View {
 private struct DeferredServerSyncItemDetailPanel: View {
     var item: ServerRelaySyncItem
     let model: CompanionModel
-    @State private var renderedItemID: String?
 
     var body: some View {
-        Group {
-            if renderedItemID == item.id {
-                ServerSyncItemInlineDetailPanel(item: item, model: model)
-            } else {
-                DeferredServerSyncItemDetailPreparingPanel(item: item)
-            }
-        }
-        .task(id: item.id) {
-            renderedItemID = nil
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            renderedItemID = item.id
-        }
-        .onDisappear {
-            renderedItemID = nil
-        }
+        ServerSyncItemInlineDetailPanel(item: item, model: model)
+            .id(item.id)
         .transaction { transaction in
             transaction.animation = nil
         }
-    }
-}
-
-private struct DeferredServerSyncItemDetailPreparingPanel: View {
-    var item: ServerRelaySyncItem
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-                .frame(width: 24, height: 24)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("상세를 준비하는 중입니다.")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                Text(item.title.nilIfEmpty ?? "선택한 항목")
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("상세 준비 중")
-        .accessibilityValue(item.title.nilIfEmpty ?? "선택한 항목")
     }
 }
 
