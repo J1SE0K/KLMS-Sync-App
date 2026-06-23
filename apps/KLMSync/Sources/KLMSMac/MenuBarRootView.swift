@@ -682,7 +682,6 @@ private struct MacAlertBannerView: View {
 
     private var snapshot: MacAlertBannerSnapshot {
         MacAlertBannerSnapshot(
-            selectedSection: selectedSection,
             authDigits: model.currentAuthDigits,
             authStatusMessage: model.authStatusMessage?.nilIfBlank,
             runningCommandDisplayName: model.runningCommand?.displayName,
@@ -719,7 +718,6 @@ private struct MacAlertBannerView: View {
 }
 
 private struct MacAlertBannerSnapshot: Equatable {
-    var selectedSection: KLMSMacSection
     var authDigits: String?
     var authStatusMessage: String?
     var runningCommandDisplayName: String?
@@ -734,7 +732,7 @@ private struct MacAlertBannerSnapshot: Equatable {
             || authStatusMessage != nil
             || runningCommandDisplayName != nil
             || needsAttention
-            || selectedSection == .dashboard
+            || !hasSyncReport
     }
 
     var title: String {
