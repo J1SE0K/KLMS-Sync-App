@@ -14,6 +14,8 @@ MANUAL_LAUNCH_STATUS=4
 BLOCKED_LAUNCH_STATUS=5
 REQUIRED_DEVICE_TYPES="${IOS_DEVICE_REQUIRE_TYPES:-}"
 TUNNEL_WARMUP_SECONDS="${IOS_DEVICE_TUNNEL_WARMUP_SECONDS:-15}"
+OPEN_SETTINGS_ON_BLOCKED="${IOS_DEVICE_OPEN_SETTINGS_ON_BLOCKED:-1}"
+OPEN_SETTINGS_TIMEOUT_SECONDS="${IOS_DEVICE_OPEN_SETTINGS_TIMEOUT_SECONDS:-10}"
 
 xcconfig_value() {
   local key="$1"
@@ -75,6 +77,28 @@ warm_device_connection() {
   rm -f "$info_json" "$info_log"
 }
 
+open_device_settings_for_trust() {
+  local target_device="$1"
+  local device_label="${2:-device}"
+  if [[ "$OPEN_SETTINGS_ON_BLOCKED" != "1" ]]; then
+    return 0
+  fi
+  local settings_output
+  settings_output="$(mktemp "${TMPDIR:-/tmp}/klms-ios-settings-open.XXXXXX")"
+  if xcrun devicectl device process launch \
+    --device "$target_device" \
+    --timeout "$OPEN_SETTINGS_TIMEOUT_SECONDS" \
+    --quiet \
+    com.apple.Preferences >"$settings_output" 2>&1; then
+    rm -f "$settings_output"
+    print -ru2 -- "${device_label}: opened Settings on the device for developer trust."
+    return 0
+  fi
+  rm -f "$settings_output"
+  print -ru2 -- "${device_label}: could not open Settings automatically; open Settings > General > VPN & Device Management manually."
+  return 0
+}
+
 launch_one_device() {
   local target_device="$1"
   local device_label="${2:-device}"
@@ -93,6 +117,7 @@ launch_one_device() {
 
   if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|not trusted|Security" "$LAUNCH_OUTPUT"; then
     rm -f "$LAUNCH_OUTPUT"
+    open_device_settings_for_trust "$target_device" "$device_label"
     print -ru2 -- "${device_label}: launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then rerun this launch check."
     return "$BLOCKED_LAUNCH_STATUS"
   fi
