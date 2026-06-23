@@ -149,6 +149,7 @@ Windows 앱은 KLMS를 직접 읽지 않는다. Cloudflare 서버 릴레이의 s
 - 토큰 평문 저장 금지
 - Mac/iPhone/iPad와 같은 용어 사용
 - Mac 앱 패치가 들어가면 iPhone/iPad 반영 여부와 Windows 안내/라벨 업데이트를 같은 작업 범위에서 확인
+- Mac/iPhone/iPad 앱 변경 후 `tools/verify_klms_app_readiness.sh`를 통과한 상태를 기준으로 Windows 문서와 라벨을 맞춘다. 특히 Mac basic-actions smoke가 확인하는 전체 동기화, 로그 지우기, Command-Q, 앱 재열기 의미와 Windows 안내 문구가 어긋나면 안 된다.
 - 새 서버 액션이 생기면 Windows 앱 action label과 README에 먼저 반영
 - 메일 판독에서 과제/시험/공지/파일 분류가 생기면 대시보드 카운트와 상세 목록까지 반영
 - 메일 등록 시험과 KLMS 자동 수집 시험이 섞여 있을 때 시험 카운트/목록/진단이 서로 어긋나지 않는지 확인

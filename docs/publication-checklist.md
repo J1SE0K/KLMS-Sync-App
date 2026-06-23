@@ -44,6 +44,14 @@ swiftc -typecheck src/swift/notice_native_note_support.swift src/swift/update_no
 
 Some runtime checks need Safari, macOS Automation permissions, Reminders, Calendar, Notes, and an active KLMS session. Do not record or publish outputs containing course pages or account data.
 
+Run the app readiness gate before shipping Mac/iPhone/iPad UI or relay changes:
+
+```sh
+tools/verify_klms_app_readiness.sh
+```
+
+This helper runs Swift tests, the signed Mac app build, Mac accessibility smoke, Mac basic-actions smoke, the Mac tab-response probe, signed iOS build, and iPhone/iPad launch verification. The basic-actions smoke covers the dashboard action, log clear controls, Command-Q, and app reopen path. Treat a skipped or pending iPhone/iPad launch gate as incomplete device readiness, not as a clean release.
+
 ## GitHub
 
 Create an empty public repository, then push only after the scans are clean:

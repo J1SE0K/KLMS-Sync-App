@@ -87,6 +87,7 @@ if [[ "$RUN_MAC_CHECKS" == "1" ]]; then
   record_step "mac-build" "$ROOT_DIR/tools/build_klms_mac_app.sh"
   record_step "mac-relaunch" relaunch_mac_app
   record_step "mac-accessibility-smoke" swift "$ROOT_DIR/tools/smoke_klms_mac_accessibility.swift"
+  record_step "mac-basic-actions" swift "$ROOT_DIR/tools/smoke_klms_mac_basic_actions.swift"
   record_step "mac-tab-response" /usr/bin/env \
     KLMS_MAC_TAB_PROBE_RUNS=3 \
     KLMS_MAC_TAB_AVERAGE_LIMIT_MS=100 \
@@ -127,7 +128,7 @@ for failed_step in "${failed_steps[@]}"; do
     swift-tests)
       swift_state="failed"
       ;;
-    mac-build|mac-relaunch|mac-accessibility-smoke|mac-tab-response)
+    mac-build|mac-relaunch|mac-accessibility-smoke|mac-basic-actions|mac-tab-response)
       mac_state="failed"
       ;;
     ios-signed-build)

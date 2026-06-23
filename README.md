@@ -133,6 +133,7 @@ zsh -n *.sh bin/*.sh src/sh/*.sh
 node --check src/js/kaikey_cli.mjs
 node --check src/js/sync_klms_notes.js
 node --check src/js/download_klms_files.js
+tools/verify_klms_app_readiness.sh
 ```
 
 실제 상태 검증은 아래 한 번으로 공지 렌더 누락, 파일 manifest 누락, 캘린더 개수를 함께 확인한다.
@@ -147,6 +148,8 @@ node --check src/js/download_klms_files.js
 레포에서 위 검증/진단/리포트 명령을 실행하면 기본값은 앱 설치본
 `~/Library/Application Support/KLMSNotesSync`의 runtime이다. 레포 내부 runtime을 직접 확인할 때만
 `--source`를 붙인다.
+
+`tools/verify_klms_app_readiness.sh`는 Swift 테스트, Mac 앱 빌드, Mac 접근성 스모크, Mac 기본 동작 스모크, 탭 반응성 측정, iPhone/iPad 실기기 실행 확인을 묶어서 실행한다. iPhone/iPad가 연결되어 있지 않거나 잠겨 있으면 해당 단계는 실패/대기로 표시된다.
 
 ## 보안
 
