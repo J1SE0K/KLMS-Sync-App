@@ -5397,11 +5397,12 @@ private struct RunLogArchiveRowView: View {
 
 private struct CompactStageDurationRowsView: View {
     var durations: [KLMSStageDuration]
+    private static let visibleLimit = 4
 
     var body: some View {
         if !durations.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                ForEach(durations) { duration in
+                ForEach(visibleDurations) { duration in
                     HStack(spacing: 4) {
                         Text(duration.displayName)
                             .font(.caption2.weight(.semibold))
@@ -5412,8 +5413,22 @@ private struct CompactStageDurationRowsView: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
                 }
+                if remainingCount > 0 {
+                    Text("+\(remainingCount)단계")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .lineLimit(1)
+                }
             }
         }
+    }
+
+    private var visibleDurations: [KLMSStageDuration] {
+        Array(durations.prefix(Self.visibleLimit))
+    }
+
+    private var remainingCount: Int {
+        max(0, durations.count - Self.visibleLimit)
     }
 }
 

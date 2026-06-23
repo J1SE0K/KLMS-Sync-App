@@ -1231,8 +1231,8 @@ final class CompanionModel: ObservableObject {
         remoteSettings = settings.sorted { $0.key < $1.key }
     }
 
-    private func applyServerDisplayItemActionLocally(_ actionKind: ServerRelayItemActionKind, itemID: String) {
-        guard actionKind.isServerDisplayOnlyAction,
+    private func applyServerVisibleItemActionLocally(_ actionKind: ServerRelayItemActionKind, itemID: String) {
+        guard actionKind.isCompanionImmediateDisplayAction,
               !itemID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return
         }
@@ -1287,6 +1287,8 @@ final class CompanionModel: ObservableObject {
                  .calendarCreate,
                  .calendarEdit,
                  .calendarDelete:
+                item.status = "삭제 요청"
+                item.isHidden = true
                 break
             }
         }
@@ -1323,6 +1325,14 @@ final class CompanionModel: ObservableObject {
             runLogs: sharedRunLogs,
             verifySummary: verifySummary
         ))
+    }
+
+    private func schedulePostActionRefresh(scope: RelayRefreshScope, delayNanoseconds: UInt64 = 350_000_000) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard !Task.isCancelled else { return }
+            await self?.refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false, scope: scope)
+        }
     }
 
     private func restoreServerDisplayItemActionState(
@@ -1422,6 +1432,7 @@ final class CompanionModel: ObservableObject {
             return
         }
         let requiresMac = !actionKind.isServerDisplayOnlyAction
+        let updatesServerVisibleState = actionKind.isCompanionImmediateDisplayAction
         if requiresMac {
             isSubmitting = true
         }
@@ -1440,12 +1451,12 @@ final class CompanionModel: ObservableObject {
             itemTitle: item.title
         )
         do {
-            applyServerDisplayItemActionLocally(actionKind, itemID: item.id)
+            applyServerVisibleItemActionLocally(actionKind, itemID: item.id)
             let localAction = action.optimisticCompanionDisplayAction
             recentItemActions.removeAll { $0.itemID == item.id }
             recentItemActions.insert(localAction, at: 0)
             let savedAction = try await serverRelayStore.createItemAction(action)
-            applyServerDisplayItemActionLocally(savedAction.action, itemID: savedAction.itemID)
+            applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)
             recentItemActions.removeAll { $0.id == action.id || $0.itemID == item.id }
             recentItemActions.insert(savedAction, at: 0)
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
@@ -1454,12 +1465,10 @@ final class CompanionModel: ObservableObject {
             if !savedAction.action.isServerDisplayOnlyAction {
                 userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
             }
-            if !savedAction.action.isServerDisplayOnlyAction {
-                await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)
-            }
+            schedulePostActionRefresh(scope: .itemActions)
         } catch {
             guard !isCancellationError(error) else { return }
-            if actionKind.isServerDisplayOnlyAction {
+            if updatesServerVisibleState {
                 restoreServerDisplayItemActionState(
                     syncItems: previousSyncItems,
                     syncItemsSignature: previousSyncItemsSignature,
@@ -12351,7 +12360,7 @@ private extension ServerRelayItemActionStatus {
 
 private extension ServerRelayItemAction {
     var optimisticCompanionDisplayAction: ServerRelayItemAction {
-        guard action.isServerDisplayOnlyAction else {
+        guard action.isCompanionImmediateDisplayAction else {
             return self
         }
         var next = self
@@ -12362,9 +12371,13 @@ private extension ServerRelayItemAction {
     }
 
     var isServerAppliedForCompanionDisplay: Bool {
-        (status == .pending || status == .completed)
-            && action.isServerDisplayOnlyAction
-            && message.localizedStandardContains("서버 화면에 바로 반영")
+        let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (status == .pending || status == .completed)
+            && action.isCompanionImmediateDisplayAction
+            && (
+                normalizedMessage.localizedStandardContains("서버 화면에 바로 반영")
+                    || normalizedMessage.localizedStandardContains("서버 화면에는 바로 반영")
+            )
     }
 
     var isActiveForCompanionDisplay: Bool {
@@ -12395,6 +12408,10 @@ private extension ServerRelaySettingAction {
 }
 
 private extension ServerRelayItemActionKind {
+    var isCompanionImmediateDisplayAction: Bool {
+        isServerDisplayOnlyAction || self == .fileTrash
+    }
+
     var isServerDisplayOnlyAction: Bool {
         switch self {
         case .assignmentComplete,
