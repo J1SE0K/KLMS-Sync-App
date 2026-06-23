@@ -2262,6 +2262,8 @@ final class DashboardDataModelTests: XCTestCase {
         let categoryScreen = try sourceStructBody(named: "CompanionDashboardCategoryScreen", in: ios)
         let tasksScreen = try sourceStructBody(named: "CompanionTasksScreen", in: ios)
         let categoryDetailPanel = try sourceStructBody(named: "DashboardCategoryInlineDetailPanel", in: ios)
+        XCTAssertTrue(categoryDetailPanel.contains("Text(\"열림\")"))
+        XCTAssertTrue(categoryDetailPanel.contains(".accessibilityLabel(\"\\(category.title) 상세 열림. \\(summaryText)\")"))
         let categoryLoadingState = try sourceStructBody(named: "CompanionCategoryDataLoadingState", in: ios)
         let settingsScreen = try sourceStructBody(named: "CompanionSettingsScreen", in: ios)
         let sectionContent = try sourceStructBody(named: "CompanionSectionContent", in: ios)

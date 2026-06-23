@@ -7488,6 +7488,12 @@ private struct DashboardCategoryInlineDetailPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
+            Text("열림")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(category.tint)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(category.tint.opacity(0.12), in: Capsule())
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -7497,6 +7503,8 @@ private struct DashboardCategoryInlineDetailPanel: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(category.title) 상세 열림. \(summaryText)")
     }
 
     @ViewBuilder
