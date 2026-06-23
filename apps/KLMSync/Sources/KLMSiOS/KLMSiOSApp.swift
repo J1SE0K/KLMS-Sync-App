@@ -11992,35 +11992,61 @@ private struct LongDetailFieldRow: View {
 
     var body: some View {
         if let displayValue = value.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+            let collapsible = isCollapsible(displayValue)
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
 
-                if isExpanded || !isCollapsible(displayValue) {
+                if collapsible {
+                    Button {
+                        companionPerformWithoutAnimation {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        longDetailBody(displayValue)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .background(
+                                isExpanded ? Color.klmsSelectedBackground.opacity(0.72) : Color.klmsSubtleCardBackground.opacity(0.64),
+                                in: RoundedRectangle(cornerRadius: 10)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.70) : Color.klmsBorder.opacity(0.78), lineWidth: 1)
+                            }
+                            .contentShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                    .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
+                    .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 전체 보기")
+                } else {
                     Text(displayValue)
                         .font(.subheadline)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text(collapsedText(displayValue))
-                        .font(.subheadline)
-                        .lineLimit(6)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if isCollapsible(displayValue) {
-                    Button {
-                        isExpanded.toggle()
-                    } label: {
-                        Label(isExpanded ? "접기" : "전체 보기", systemImage: isExpanded ? "chevron.up" : "chevron.down")
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(KLMSActionButtonStyle())
-                    .accessibilityLabel(isExpanded ? "\(title) 접기" : "\(title) 전체 보기")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func longDetailBody(_ displayValue: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if isExpanded {
+                Text(displayValue)
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(collapsedText(displayValue))
+                    .font(.subheadline)
+                    .lineLimit(6)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Label(isExpanded ? "접기" : "전체 보기", systemImage: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         }
     }
 
