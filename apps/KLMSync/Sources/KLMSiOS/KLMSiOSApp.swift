@@ -1294,6 +1294,7 @@ final class CompanionModel: ObservableObject {
         }
 
         guard didChange else { return }
+        rebuildDashboardDerivedState()
         persistCachedServerSyncData(ServerRelaySyncData(
             generatedAt: updatedAt,
             items: syncItems,
@@ -1315,6 +1316,7 @@ final class CompanionModel: ObservableObject {
         syncItemsSignature = previousSyncItemsSignature
         mailDashboardItems = previousMailDashboardItems
         persistMailDashboardItems()
+        rebuildDashboardDerivedState()
         persistCachedServerSyncData(ServerRelaySyncData(
             generatedAt: ServerRelaySyncItem.isoTimestamp(),
             items: previousSyncItems,
@@ -4184,7 +4186,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
             }
 
             if collapsible {
-                DeferredInteractionExpansion(isExpanded: isExpanded) {
+                if isExpanded {
                     VStack(alignment: .leading, spacing: 8) {
                         content()
                     }
