@@ -250,6 +250,13 @@ final class CompanionModel: ObservableObject {
     private static let trackedReportNotificationCommandIDsKey = "KLMSTrackedReportNotificationCommandIDs"
     private static let mailDashboardItemsKey = "KLMSCompanionMailDashboardItems"
     private static let resolvedCalendarChangeIDsKey = "KLMSResolvedCalendarChangeIDs"
+    private static let cachedServerSyncDataKey = "KLMSCompanionCachedServerSyncData"
+
+    private struct CachedServerSyncData: Codable {
+        var serverURL: String
+        var storedAt: Date
+        var syncData: ServerRelaySyncData
+    }
 
     private struct PendingRefreshRequest {
         var silentErrors: Bool
@@ -419,6 +426,10 @@ final class CompanionModel: ObservableObject {
         trackedReportNotificationCommandIDs = Self.loadTrackedReportNotificationCommandIDs()
         Self.persistServerToken(storedServerToken)
         Self.clearDeprecatedLocalConnectionInfo()
+        if let cachedSyncData = Self.loadCachedServerSyncData(for: serverURL) {
+            _ = apply(cachedSyncData, persistCache: false)
+            syncDataNeedsRefresh = true
+        }
         rebuildDashboardDerivedState()
         rebuildVisibleCalendarChanges()
     }
@@ -1192,6 +1203,99 @@ final class CompanionModel: ObservableObject {
         remoteSettings = settings.sorted { $0.key < $1.key }
     }
 
+    private func applyServerDisplayItemActionLocally(_ actionKind: ServerRelayItemActionKind, itemID: String) {
+        guard actionKind.isServerDisplayOnlyAction,
+              !itemID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        let updatedAt = ServerRelaySyncItem.isoTimestamp()
+        var didChange = false
+
+        func mutate(_ item: inout ServerRelaySyncItem) {
+            item.updatedAt = updatedAt
+            switch actionKind {
+            case .assignmentComplete:
+                item.kind = "completedAssignment"
+                item.status = "완료"
+                item.isHidden = false
+            case .assignmentRestore, .assignmentUnhide:
+                if item.kind == "completedAssignment" {
+                    item.kind = "assignment"
+                }
+                item.status = ""
+                item.isHidden = false
+            case .assignmentHide:
+                item.status = "숨김"
+                item.isHidden = true
+            case .examPromote:
+                item.kind = "exam"
+                item.status = "시험"
+                item.isHidden = false
+            case .examIgnore:
+                item.status = "시험 아님"
+                item.isHidden = true
+            case .examRestore:
+                item.status = ""
+                item.isHidden = false
+            case .noticeRead:
+                item.isRead = true
+            case .noticeUnread:
+                item.isRead = false
+            case .noticeImportant:
+                item.isImportant = true
+            case .noticeUnimportant:
+                item.isImportant = false
+            case .noticeHide, .fileHide:
+                item.isHidden = true
+            case .noticeUnhide, .fileUnhide:
+                item.isHidden = false
+            case .mailDashboardRemove:
+                break
+            case .mailDashboardAdd:
+                item.isHidden = false
+            case .fileTrash,
+                 .calendarVerify,
+                 .calendarApply,
+                 .calendarCreate,
+                 .calendarEdit,
+                 .calendarDelete:
+                break
+            }
+        }
+
+        var nextSyncItems = syncItems
+        for index in nextSyncItems.indices where nextSyncItems[index].id == itemID {
+            let previous = nextSyncItems[index]
+            mutate(&nextSyncItems[index])
+            didChange = didChange || previous != nextSyncItems[index]
+        }
+        if didChange {
+            syncItems = nextSyncItems.companionSorted(by: .recent)
+            syncItemsSignature = Self.signature(for: syncItems)
+        }
+
+        if actionKind == .mailDashboardRemove {
+            let before = mailDashboardItems
+            mailDashboardItems.removeAll { $0.id == itemID }
+            if before != mailDashboardItems {
+                didChange = true
+                persistMailDashboardItems()
+            }
+        }
+
+        guard didChange else { return }
+        persistCachedServerSyncData(ServerRelaySyncData(
+            generatedAt: updatedAt,
+            items: syncItems,
+            dryRunReports: dryRunReports,
+            calendarChanges: calendarChanges,
+            settings: remoteSettings,
+            sharedSettings: sharedSettings,
+            runLogs: sharedRunLogs,
+            verifySummary: verifySummary
+        ))
+    }
+
     func updateSharedAppearanceMode(_ rawValue: String) async {
         let normalized = KLMSAppearanceMode(rawValue: rawValue)?.rawValue ?? KLMSAppearanceMode.system.rawValue
         await updateSharedSetting(
@@ -1277,9 +1381,11 @@ final class CompanionModel: ObservableObject {
                 itemKind: item.kind,
                 itemTitle: item.title
             )
+            applyServerDisplayItemActionLocally(actionKind, itemID: item.id)
             recentItemActions.removeAll { $0.itemID == item.id }
             recentItemActions.insert(action, at: 0)
             let savedAction = try await serverRelayStore.createItemAction(action)
+            applyServerDisplayItemActionLocally(savedAction.action, itemID: savedAction.itemID)
             recentItemActions.removeAll { $0.id == action.id || $0.itemID == item.id }
             recentItemActions.insert(savedAction, at: 0)
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
@@ -1290,6 +1396,7 @@ final class CompanionModel: ObservableObject {
         } catch {
             guard !isCancellationError(error) else { return }
             recentItemActions.removeAll { $0.itemID == item.id && $0.action == actionKind && $0.status == .pending }
+            syncDataNeedsRefresh = true
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "요청 실패", message: message)
@@ -2025,11 +2132,17 @@ final class CompanionModel: ObservableObject {
             errorMessage = "붙여넣은 텍스트에서 서버 URL과 클라이언트 토큰을 찾지 못했습니다."
             return
         }
-        serverURL = connectionInfo.baseURL.absoluteString
-        serverToken = ServerRelayConnectionInfo.labeledToken(
+        let nextServerURL = connectionInfo.baseURL.absoluteString
+        let nextServerToken = ServerRelayConnectionInfo.labeledToken(
             in: text,
             labels: ServerRelayConnectionInfo.clientTokenLabels + ServerRelayConnectionInfo.legacyTokenLabels
         ) ?? connectionInfo.token
+        if nextServerURL != serverURL || nextServerToken != serverToken {
+            clearLoadedServerSyncData()
+            UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
+        }
+        serverURL = nextServerURL
+        serverToken = nextServerToken
         if UIPasteboard.general.string == text {
             UIPasteboard.general.string = ""
         }
@@ -2098,6 +2211,8 @@ final class CompanionModel: ObservableObject {
     func clearServerRelayConnectionInfo() {
         serverURL = ""
         serverToken = ""
+        clearLoadedServerSyncData()
+        UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
         connectionMessage = "서버 연결 정보를 지웠습니다."
         connectionSucceeded = nil
         errorMessage = ""
@@ -2323,7 +2438,7 @@ final class CompanionModel: ObservableObject {
     }
 
     @discardableResult
-    private func apply(_ syncData: ServerRelaySyncData) -> Bool {
+    private func apply(_ syncData: ServerRelaySyncData, persistCache: Bool = true) -> Bool {
         var didChange = false
         let nextSyncItemsSignature = Self.signature(for: syncData.items)
         if syncItemsSignature != nextSyncItemsSignature {
@@ -2368,7 +2483,56 @@ final class CompanionModel: ObservableObject {
         }
         lastSyncDataRefreshAt = Date()
         syncDataNeedsRefresh = false
+        if persistCache {
+            persistCachedServerSyncData(syncData)
+        }
         return didChange
+    }
+
+    private static func loadCachedServerSyncData(for serverURL: String) -> ServerRelaySyncData? {
+        let normalizedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedURL.isEmpty,
+              let data = UserDefaults.standard.data(forKey: cachedServerSyncDataKey),
+              let cached = try? JSONDecoder().decode(CachedServerSyncData.self, from: data),
+              cached.serverURL == normalizedURL else {
+            return nil
+        }
+        return cached.syncData
+    }
+
+    private func persistCachedServerSyncData(_ syncData: ServerRelaySyncData) {
+        let normalizedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedURL.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
+            return
+        }
+        let cached = CachedServerSyncData(
+            serverURL: normalizedURL,
+            storedAt: Date(),
+            syncData: syncData
+        )
+        if let data = try? JSONEncoder().encode(cached) {
+            UserDefaults.standard.set(data, forKey: Self.cachedServerSyncDataKey)
+        }
+    }
+
+    private func clearLoadedServerSyncData() {
+        syncItems = []
+        dryRunReports = []
+        calendarChanges = []
+        remoteSettings = []
+        sharedRunLogs = []
+        verifySummary = nil
+        syncItemsSignature = nil
+        calendarChangesSignature = nil
+        remoteSettingsSignature = nil
+        sharedRunLogsSignature = nil
+        verifySummarySignature = nil
+        hasLoadedServerSyncData = false
+        lastSyncDataRefreshAt = nil
+        syncDataNeedsRefresh = true
+        rebuildDashboardDerivedState()
+        rebuildVisibleCalendarChanges()
     }
 
     @discardableResult

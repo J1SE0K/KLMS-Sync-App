@@ -6085,6 +6085,45 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(localApply.contains("remoteSettings = settings.sorted { $0.key < $1.key }"))
     }
 
+    func testIOSServerDisplayItemActionsUpdateDashboardImmediately() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let createItemAction = try sourceBody(
+            after: "func createItemAction(_ actionKind: ServerRelayItemActionKind, item: ServerRelaySyncItem) async",
+            in: ios,
+            description: "iOS create item action"
+        )
+        let localApply = try sourceBody(
+            after: "private func applyServerDisplayItemActionLocally",
+            in: ios,
+            description: "iOS local display item action apply"
+        )
+
+        XCTAssertTrue(createItemAction.contains("applyServerDisplayItemActionLocally(actionKind, itemID: item.id)"))
+        XCTAssertTrue(createItemAction.contains("serverRelayStore.createItemAction(action)"))
+        XCTAssertTrue(createItemAction.contains("applyServerDisplayItemActionLocally(savedAction.action, itemID: savedAction.itemID)"))
+        let localApplyIndex = try XCTUnwrap(createItemAction.range(of: "applyServerDisplayItemActionLocally(actionKind, itemID: item.id)")?.lowerBound)
+        let serverRequestIndex = try XCTUnwrap(createItemAction.range(of: "serverRelayStore.createItemAction(action)")?.lowerBound)
+        XCTAssertLessThan(localApplyIndex, serverRequestIndex)
+        XCTAssertTrue(localApply.contains("guard actionKind.isServerDisplayOnlyAction"))
+        XCTAssertTrue(localApply.contains("case .assignmentComplete:"))
+        XCTAssertTrue(localApply.contains("item.kind = \"completedAssignment\""))
+        XCTAssertTrue(localApply.contains("case .examPromote:"))
+        XCTAssertTrue(localApply.contains("item.kind = \"exam\""))
+        XCTAssertTrue(localApply.contains("case .noticeRead:"))
+        XCTAssertTrue(localApply.contains("item.isRead = true"))
+        XCTAssertTrue(localApply.contains("case .noticeImportant:"))
+        XCTAssertTrue(localApply.contains("item.isImportant = true"))
+        XCTAssertTrue(localApply.contains("case .noticeHide, .fileHide:"))
+        XCTAssertTrue(localApply.contains("item.isHidden = true"))
+        XCTAssertTrue(localApply.contains("syncItems = nextSyncItems.companionSorted(by: .recent)"))
+        XCTAssertTrue(localApply.contains("persistCachedServerSyncData(ServerRelaySyncData("))
+    }
+
     func testIOSServerConnectionPasteImmediatelyRefreshesSummary() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -6105,11 +6144,56 @@ final class DashboardDataModelTests: XCTestCase {
         let loadingCard = try sourceStructBody(named: "CompanionDashboardDataLoadingCard", in: ios)
 
         XCTAssertTrue(pasteMethod.contains("refreshAfterServerRelayConnectionChange()"))
+        XCTAssertTrue(pasteMethod.contains("let nextServerURL = connectionInfo.baseURL.absoluteString"))
+        XCTAssertTrue(pasteMethod.contains("if nextServerURL != serverURL || nextServerToken != serverToken"))
+        XCTAssertTrue(pasteMethod.contains("clearLoadedServerSyncData()"))
+        XCTAssertTrue(pasteMethod.contains("UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)"))
+        XCTAssertTrue(pasteMethod.contains("serverURL = nextServerURL"))
+        XCTAssertTrue(pasteMethod.contains("serverToken = nextServerToken"))
         XCTAssertFalse(pasteMethod.contains("이제 서버 연결 확인을 눌러 주세요."))
         XCTAssertTrue(refreshMethod.contains("configureServerRelayEventStream()"))
         XCTAssertTrue(refreshMethod.contains("await self?.refreshRecent(includeSyncData: true, showsActivity: true)"))
         XCTAssertTrue(loadingCard.contains("서버 URL과 클라이언트 토큰을 넣으면 최신 요약을 바로 불러옵니다."))
         XCTAssertFalse(loadingCard.contains("연결 확인을 눌러 주세요."))
+    }
+
+    func testIOSCachesServerSummaryForFirstLaunchDashboard() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let initBody = try sourceBody(
+            after: "init()",
+            in: ios,
+            description: "iOS companion model init"
+        )
+        let applyBody = try sourceBody(
+            after: "private func apply(_ syncData: ServerRelaySyncData",
+            in: ios,
+            description: "iOS sync-data apply"
+        )
+        let clearConnection = try sourceBody(
+            after: "func clearServerRelayConnectionInfo()",
+            in: ios,
+            description: "iOS clear server relay connection"
+        )
+
+        XCTAssertTrue(ios.contains("private static let cachedServerSyncDataKey = \"KLMSCompanionCachedServerSyncData\""))
+        XCTAssertTrue(ios.contains("private struct CachedServerSyncData: Codable"))
+        XCTAssertTrue(initBody.contains("Self.loadCachedServerSyncData(for: serverURL)"))
+        XCTAssertTrue(initBody.contains("apply(cachedSyncData, persistCache: false)"))
+        XCTAssertTrue(initBody.contains("syncDataNeedsRefresh = true"))
+        XCTAssertTrue(ios.contains("private func apply(_ syncData: ServerRelaySyncData, persistCache: Bool = true) -> Bool"))
+        XCTAssertTrue(applyBody.contains("if persistCache"))
+        XCTAssertTrue(applyBody.contains("persistCachedServerSyncData(syncData)"))
+        XCTAssertTrue(ios.contains("private static func loadCachedServerSyncData(for serverURL: String) -> ServerRelaySyncData?"))
+        XCTAssertTrue(ios.contains("cached.serverURL == normalizedURL"))
+        XCTAssertTrue(ios.contains("private func persistCachedServerSyncData(_ syncData: ServerRelaySyncData)"))
+        XCTAssertTrue(ios.contains("private func clearLoadedServerSyncData()"))
+        XCTAssertTrue(clearConnection.contains("clearLoadedServerSyncData()"))
+        XCTAssertTrue(clearConnection.contains("UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)"))
     }
 
     func testIOSRefreshesServerSummaryWhenAppBecomesActive() throws {
