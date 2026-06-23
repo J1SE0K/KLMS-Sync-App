@@ -107,6 +107,14 @@ install_one_device() {
       continue
     fi
 
+    if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|RequestDenied|Security" "$LAUNCH_OUTPUT"; then
+      rm -f "$LAUNCH_OUTPUT"
+      print -ru2 -- "${device_label}: installed; launch was blocked because iOS has not trusted this developer profile, or the signing entitlements do not match this device. On the device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
+      if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
+        return "$MANUAL_LAUNCH_STATUS"
+      fi
+      exit "$MANUAL_LAUNCH_STATUS"
+    fi
     if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
       print -ru2 -- "${device_label}: installed; launch could not be verified because the device is locked or iOS is still refreshing app registration. The app is already on the device. Unlock it and open KLMS Sync manually, or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
@@ -159,10 +167,7 @@ for device in devices:
                 file=sys.stderr,
             )
         continue
-    launch_ready = (
-        tunnel_state == "connected"
-        and properties.get("ddiServicesAvailable") is not False
-    )
+    launch_ready = True
     identifier = device.get("identifier")
     if identifier:
         print(f"{identifier}\t{hardware.get('deviceType', 'device')}\t{1 if launch_ready else 0}")
