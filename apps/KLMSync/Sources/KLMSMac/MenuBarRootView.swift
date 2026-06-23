@@ -351,7 +351,11 @@ private struct MacWorkstationLayoutView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             case .settings:
-                DeferredMacWorkspacePanel(id: "workspace-settings", contentIdentifier: "workspace-content-settings") {
+                DeferredMacWorkspacePanel(
+                    id: "workspace-settings",
+                    contentIdentifier: "workspace-content-settings",
+                    contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds
+                ) {
                     SettingsView(model: model)
                 }
             }
@@ -2421,8 +2425,11 @@ private struct HeaderView: View {
                 Text(error)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(Color.klmsMacDangerBorder)
+                    .lineLimit(2)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+                    .help(error)
+                    .accessibilityLabel("오류. \(error)")
             }
             if let lock = model.sharedLockInfo {
                 Label("실행 잠금: 프로세스 \(lock.pid) · 명령 \(lock.command) · \(lock.acquiredAt)", systemImage: "lock.fill")

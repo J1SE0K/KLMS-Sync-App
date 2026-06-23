@@ -14549,6 +14549,7 @@ private struct ErrorBanner: View {
         Label(message, systemImage: "exclamationmark.triangle")
             .font(.subheadline)
             .foregroundStyle(Color.klmsDangerBorder)
+            .lineLimit(2)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
@@ -14558,6 +14559,7 @@ private struct ErrorBanner: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("오류. \(message)")
+            .accessibilityHint("전체 오류 내용은 로그 탭에서 확인할 수 있습니다.")
             .accessibilitySortPriority(95)
     }
 }
