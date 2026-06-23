@@ -180,6 +180,7 @@ final class CompanionModel: ObservableObject {
     @Published var connectionSucceeded: Bool?
     @Published var userAlert: UserAlert?
     @Published var isRefreshing = false
+    @Published private(set) var isLoadingServerSyncData = false
     @Published var isSubmitting = false
     @Published private(set) var pendingCancelCommandID: UUID?
     @Published private(set) var pendingCancelRequestedAt: Date?
@@ -1779,6 +1780,14 @@ final class CompanionModel: ObservableObject {
             if let serverRelayStore {
                 let shouldLoadSyncData = includeSyncData == true
                     || (scope.fetchesSyncData && shouldFetchSyncData(includeSyncData: includeSyncData))
+                if shouldLoadSyncData {
+                    isLoadingServerSyncData = true
+                }
+                defer {
+                    if shouldLoadSyncData {
+                        isLoadingServerSyncData = false
+                    }
+                }
                 async let responseTask = serverRelayStore.fetchStatusResponse()
                 async let commandsTask = Self.fetchRecentCommandsIfNeeded(scope.fetchesCommands, store: serverRelayStore, limit: 8)
                 async let syncDataTask = Self.fetchSyncDataResultIfNeeded(shouldLoadSyncData, store: serverRelayStore)
@@ -3369,6 +3378,9 @@ private struct CompanionStatusScreen: View {
                 status: model.dashboardStatus,
                 isDataLoaded: model.hasLoadedServerSyncData,
                 isServerConfigured: model.serverRelayConfigured,
+                isLoading: model.isLoadingServerSyncData,
+                didFail: model.connectionSucceeded == false,
+                failureMessage: model.errorMessage,
                 selectedCategory: effectiveDashboardSelection,
                 onCategoryTap: { category in
                     selectDashboardCategory(category)
@@ -3473,7 +3485,12 @@ private struct CompanionStatusScreen: View {
                         }
                     )
                 } else {
-                    CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                    CompanionDashboardDataLoadingCard(
+                        isServerConfigured: model.serverRelayConfigured,
+                        isLoading: model.isLoadingServerSyncData,
+                        didFail: model.connectionSucceeded == false,
+                        failureMessage: model.errorMessage
+                    )
                     WorkstationDashboardEmptyGuidePanel()
                 }
             }
@@ -3529,6 +3546,9 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
     var status: SanitizedRemoteStatus
     var isDataLoaded: Bool
     var isServerConfigured: Bool
+    var isLoading: Bool
+    var didFail: Bool
+    var failureMessage: String
     var selectedCategory: DashboardMetricCategory?
     var onCategoryTap: (DashboardMetricCategory) -> Void
 
@@ -3540,6 +3560,9 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
         lhs.status == rhs.status
             && lhs.isDataLoaded == rhs.isDataLoaded
             && lhs.isServerConfigured == rhs.isServerConfigured
+            && lhs.isLoading == rhs.isLoading
+            && lhs.didFail == rhs.didFail
+            && lhs.failureMessage == rhs.failureMessage
             && lhs.selectedCategory == rhs.selectedCategory
     }
 
@@ -3556,7 +3579,12 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
                     }
                 }
             } else {
-                CompanionDashboardDataLoadingCard(isServerConfigured: isServerConfigured)
+                CompanionDashboardDataLoadingCard(
+                    isServerConfigured: isServerConfigured,
+                    isLoading: isLoading,
+                    didFail: didFail,
+                    failureMessage: failureMessage
+                )
             }
         }
     }
@@ -3621,7 +3649,10 @@ private struct CompanionDashboardCategoryScreen: View {
             if !model.hasLoadedServerSyncData {
                 CompanionCategoryDataLoadingState(
                     category: category,
-                    isServerConfigured: model.serverRelayConfigured
+                    isServerConfigured: model.serverRelayConfigured,
+                    isLoading: model.isLoadingServerSyncData,
+                    didFail: model.connectionSucceeded == false,
+                    failureMessage: model.errorMessage
                 )
             } else if horizontalSizeClass == .regular && category == .calendar {
                 WorkstationCalendarWorkspace(model: model)
@@ -3676,7 +3707,10 @@ private struct CompanionTasksScreen: View {
             } else {
                 CompanionCategoryDataLoadingState(
                     category: selectedCompactTaskCategory,
-                    isServerConfigured: model.serverRelayConfigured
+                    isServerConfigured: model.serverRelayConfigured,
+                    isLoading: model.isLoadingServerSyncData,
+                    didFail: model.connectionSucceeded == false,
+                    failureMessage: model.errorMessage
                 )
             }
         }
@@ -5506,10 +5540,18 @@ private enum CompanionLargeList {
 private struct CompanionCategoryDataLoadingState: View {
     var category: DashboardMetricCategory
     var isServerConfigured: Bool
+    var isLoading: Bool = false
+    var didFail: Bool = false
+    var failureMessage: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            CompanionDashboardDataLoadingCard(isServerConfigured: isServerConfigured)
+            CompanionDashboardDataLoadingCard(
+                isServerConfigured: isServerConfigured,
+                isLoading: isLoading,
+                didFail: didFail,
+                failureMessage: failureMessage
+            )
             categoryGuide
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -6388,7 +6430,12 @@ private struct RemoteDashboardMetricOverview: View {
         VStack(alignment: .leading, spacing: 12) {
             if !isDataLoaded {
                 if showsLoadingPlaceholder {
-                    CompanionDashboardDataLoadingCard(isServerConfigured: model.serverRelayConfigured)
+                    CompanionDashboardDataLoadingCard(
+                        isServerConfigured: model.serverRelayConfigured,
+                        isLoading: model.isLoadingServerSyncData,
+                        didFail: model.connectionSucceeded == false,
+                        failureMessage: model.errorMessage
+                    )
                 }
             } else if metricSnapshot.shouldShowPrimaryMetricSection {
                 metricSection("주요 항목", categories: metricSnapshot.primaryMetricCategories)
@@ -6940,22 +6987,18 @@ private struct DeferredInteractionExpansion<Content: View>: View {
 
 private struct CompanionDashboardDataLoadingCard: View {
     var isServerConfigured: Bool
+    var isLoading: Bool = false
+    var didFail: Bool = false
+    var failureMessage: String = ""
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: isServerConfigured ? "arrow.down.circle" : "link.badge.plus")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(isServerConfigured ? Color.klmsCommandAccent : Color.klmsWarningBorder)
-                .frame(width: 28, height: 28)
-                .background(
-                    (isServerConfigured ? Color.klmsCommandAccent : Color.klmsWarningBorder).opacity(0.12),
-                    in: RoundedRectangle(cornerRadius: 8)
-                )
+            statusIcon
             VStack(alignment: .leading, spacing: 3) {
-                Text(isServerConfigured ? "서버 요약을 불러오는 중" : "서버 연결 필요")
+                Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
-                Text(isServerConfigured ? "Mac이 올린 파일, 과제, 공지, 캘린더 요약을 받은 뒤 숫자를 표시합니다." : "설정에서 서버 URL과 클라이언트 토큰을 넣으면 최신 요약을 바로 불러옵니다.")
+                Text(detail)
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -6969,6 +7012,63 @@ private struct CompanionDashboardDataLoadingCard: View {
             RoundedRectangle(cornerRadius: 13)
                 .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
         }
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        let tint = iconTint
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(tint.opacity(0.12))
+            if isServerConfigured && isLoading && !didFail {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(tint)
+            } else {
+                Image(systemName: iconName)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(tint)
+            }
+        }
+        .frame(width: 28, height: 28)
+    }
+
+    private var iconName: String {
+        if !isServerConfigured {
+            return "link.badge.plus"
+        }
+        if didFail {
+            return "exclamationmark.triangle"
+        }
+        return "arrow.down.circle"
+    }
+
+    private var iconTint: Color {
+        if !isServerConfigured || didFail {
+            return .klmsWarningBorder
+        }
+        return .klmsCommandAccent
+    }
+
+    private var title: String {
+        if !isServerConfigured {
+            return "서버 연결 필요"
+        }
+        if didFail {
+            return "서버 요약을 불러오지 못했습니다"
+        }
+        return isLoading ? "서버 요약을 불러오는 중" : "서버 요약 대기 중"
+    }
+
+    private var detail: String {
+        if !isServerConfigured {
+            return "설정에서 서버 URL과 클라이언트 토큰을 넣으면 최신 요약을 바로 불러옵니다."
+        }
+        if didFail {
+            let message = failureMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+            return message.isEmpty ? "서버 연결과 토큰을 확인한 뒤 새로고침해 주세요." : message
+        }
+        return "Mac이 올린 파일, 과제, 공지, 캘린더 요약을 받으면 바로 표시합니다."
     }
 }
 
@@ -7024,6 +7124,9 @@ private struct WorkstationDashboardOverviewData: Equatable {
     var status: SanitizedRemoteStatus
     var hasLoadedServerSyncData: Bool
     var isServerConfigured: Bool
+    var isLoadingServerSyncData: Bool
+    var didFailServerSyncDataLoad: Bool
+    var serverSyncDataFailureMessage: String
     var filePreviewItems: [ServerRelaySyncItem]
     var noticePreviewItems: [ServerRelaySyncItem]
     var previewTaskItems: [ServerRelaySyncItem]
@@ -7033,6 +7136,9 @@ private struct WorkstationDashboardOverviewData: Equatable {
         status = model.dashboardStatus
         hasLoadedServerSyncData = model.hasLoadedServerSyncData
         isServerConfigured = model.serverRelayConfigured
+        isLoadingServerSyncData = model.isLoadingServerSyncData
+        didFailServerSyncDataLoad = model.connectionSucceeded == false
+        serverSyncDataFailureMessage = model.errorMessage
         filePreviewItems = Array(model.cachedVisibleDashboardItems(for: DashboardMetricCategory.files.rawValue).prefix(2))
         noticePreviewItems = Array(model.cachedVisibleDashboardItems(for: DashboardMetricCategory.notices.rawValue).prefix(2))
         previewTaskItems = Array(
@@ -7079,7 +7185,12 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
             }
 
             if !data.hasLoadedServerSyncData {
-                CompanionDashboardDataLoadingCard(isServerConfigured: data.isServerConfigured)
+                CompanionDashboardDataLoadingCard(
+                    isServerConfigured: data.isServerConfigured,
+                    isLoading: data.isLoadingServerSyncData,
+                    didFail: data.didFailServerSyncDataLoad,
+                    failureMessage: data.serverSyncDataFailureMessage
+                )
             } else if showsMetrics {
                 if overviewMetrics.isEmpty {
                     Text("표시할 대시보드 항목이 없습니다.")
@@ -7724,7 +7835,10 @@ private struct DashboardCategoryInlineDetailPanel: View {
             } else {
                 CompanionCategoryDataLoadingState(
                     category: category,
-                    isServerConfigured: model.serverRelayConfigured
+                    isServerConfigured: model.serverRelayConfigured,
+                    isLoading: model.isLoadingServerSyncData,
+                    didFail: model.connectionSucceeded == false,
+                    failureMessage: model.errorMessage
                 )
             }
         }
@@ -8158,7 +8272,10 @@ private struct WorkstationTasksWorkspace: View {
             } else {
                 CompanionCategoryDataLoadingState(
                     category: selectedTaskCategory,
-                    isServerConfigured: model.serverRelayConfigured
+                    isServerConfigured: model.serverRelayConfigured,
+                    isLoading: model.isLoadingServerSyncData,
+                    didFail: model.connectionSucceeded == false,
+                    failureMessage: model.errorMessage
                 )
             }
         }
