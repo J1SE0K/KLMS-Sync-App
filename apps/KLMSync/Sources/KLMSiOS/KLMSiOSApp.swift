@@ -12799,7 +12799,7 @@ private struct RemoteSettingGroup: Identifiable, Equatable {
                 "공지 메모",
                 "checklist",
                 "공지 메모의 접기, 양식, 상태 반영 방식을 정합니다.",
-                true,
+                false,
                 [
                     "NOTICE_COLLAPSE_SECTIONS",
                     "NOTICE_COLLAPSE_COURSES",

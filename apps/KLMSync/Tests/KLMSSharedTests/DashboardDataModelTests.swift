@@ -3533,7 +3533,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("groups[advancedIndex].settings.append(contentsOf: extras)"))
         XCTAssertTrue(remoteSettingGroup.contains("var isCollapsible = false"))
         XCTAssertTrue(remoteSettingGroup.contains("isCollapsible: spec.isCollapsible"))
-        XCTAssertTrue(remoteSettingGroup.contains("\"공지 메모\",\n                \"checklist\",\n                \"공지 메모의 접기, 양식, 상태 반영 방식을 정합니다.\",\n                true"))
+        XCTAssertTrue(remoteSettingGroup.contains("\"공지 메모\",\n                \"checklist\",\n                \"공지 메모의 접기, 양식, 상태 반영 방식을 정합니다.\",\n                false"))
         XCTAssertTrue(remoteSettingGroup.contains("\"로그인\",\n                \"person.badge.key\",\n                \"인증번호 감지와 로그인 보조 방식을 정합니다.\",\n                false"))
         XCTAssertTrue(remoteSettingGroup.contains("\"동기화\",\n                \"arrow.triangle.2.circlepath\",\n                \"동기화 범위를 정합니다.\",\n                false"))
         XCTAssertTrue(remoteSettingGroup.contains("\"파일\",\n                \"folder\",\n                \"파일 탐색, 주차별 폴더, 보존 방식을 정합니다.\",\n                false"))
