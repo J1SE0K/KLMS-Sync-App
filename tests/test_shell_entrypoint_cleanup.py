@@ -48,10 +48,11 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('local device_label="${2:-device}"', script)
         self.assertIn('print -r -- "${device_label}: installed"', script)
         self.assertIn('print -r -- "${device_label}: installed-and-launched"', script)
-        self.assertIn('print -ru2 -- "${device_label}: installed, but launch was denied', script)
-        self.assertIn('print(f"{identifier}\\t{hardware.get(\'deviceType\', \'device\')}")', script)
+        self.assertIn('print -ru2 -- "${device_label}: installed; launch was denied because the device is locked', script)
+        self.assertIn('print(f"{identifier}\\t{hardware.get(\'deviceType\', \'device\')}\\t{1 if launch_ready else 0}")', script)
         self.assertIn('target_device="${device_entry%%$\'\\t\'*}"', script)
-        self.assertIn('device_label="${device_entry#*$\'\\t\'}"', script)
+        self.assertIn('device_rest="${device_entry#*$\'\\t\'}"', script)
+        self.assertIn('device_label="${device_rest%%$\'\\t\'*}"', script)
         self.assertNotIn("properties.get(\"name\")", script)
         self.assertIn("prints a generic `iPhone` or `iPad` label for each result", readme)
 
@@ -626,8 +627,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             ios_view.index("private struct CompanionScreenContainer")
             : ios_view.index("private struct CompanionScreenHeader")
         ]
-        self.assertLess(container.index("RemoteAttentionStack(model: model)"), container.index("CompanionScreenHeader(title: title, model: model)"))
-        self.assertEqual(ios_view.count("RemoteAttentionStack(model: model)"), 1)
+        self.assertLess(container.index("RemoteAttentionStack("), container.index("CompanionScreenHeader(title: title, model: model)"))
+        self.assertEqual(ios_view.count("RemoteAttentionStack(\n"), 1)
 
     def test_mac_settings_are_grouped_by_tabs_without_duplicate_file_controls(self) -> None:
         settings = (
@@ -754,13 +755,24 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('@AppStorage("KLMSMacIntegrationStatusExpanded") private var isExpanded = false', menu)
-        self.assertIn('isExpanded.toggle()', menu)
-        self.assertIn('help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")', menu)
-        self.assertIn("if !isExpanded", menu)
-        self.assertIn("IntegrationStatusCompactStrip(statuses: statuses)", menu)
-        self.assertIn("if isExpanded", menu)
-        self.assertIn("IntegrationStatusTile(status: status)", menu)
+        external_status = menu[
+            menu.index("private struct ExternalIntegrationStatusView")
+            : menu.index("private enum IntegrationHealth")
+        ]
+        sidebar_status = menu[
+            menu.index("private struct DashboardRuntimePanelView")
+            : menu.index("private struct MacRailStatusLine")
+        ]
+        self.assertIn("@State private var isExpanded = false", external_status)
+        self.assertNotIn("@AppStorage", external_status)
+        self.assertIn("isExpanded.toggle()", external_status)
+        self.assertIn('help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")', external_status)
+        self.assertIn("if !isExpanded", external_status)
+        self.assertIn("IntegrationStatusCompactStrip(statuses: statuses)", external_status)
+        self.assertIn("if isExpanded", external_status)
+        self.assertIn("IntegrationStatusTile(status: status)", external_status)
+        self.assertIn("@State private var isExpanded = false", sidebar_status)
+        self.assertIn('Label("연동 상태", systemImage: "link")', sidebar_status)
 
     def test_mac_app_hides_zero_dashboard_metrics_and_detail(self) -> None:
         menu = (
@@ -1407,11 +1419,13 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("ConnectionNoticeBanner", ios_app)
         self.assertIn("diagnosticButton(.verify)", ios_app)
         self.assertIn("diagnosticButton(.v2BuildState)", ios_app)
-        self.assertIn('requestGroupTitle("원격 실행")', ios_app)
+        self.assertIn("private struct RemoteDashboardSyncCardContent", ios_app)
         self.assertIn("private let secondaryCommands: [RemoteCommandKind] = [.filesSync, .coreSync, .noticeSync]", ios_app)
         self.assertIn("private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 7), count: 3)", ios_app)
         self.assertIn("dashboardPrimaryButton", ios_app)
         self.assertIn("dashboardSecondaryButton(command)", ios_app)
+        self.assertIn('.accessibilityLabel(isRunning ? "전체 동기화 중단" : "전체 동기화 실행")', ios_app)
+        self.assertIn('if isRunning { return "전체 동기화 중단" }', ios_app)
         self.assertIn("RemotePrivacyNote", ios_app)
         self.assertIn("@State private var selectedDashboardPreview", ios_app)
         self.assertIn("DashboardCategoryInlineDetailPanel(", ios_app)
