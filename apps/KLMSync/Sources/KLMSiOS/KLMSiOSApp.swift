@@ -8643,7 +8643,7 @@ private struct CompanionShowMoreRowsButton: View {
             .foregroundStyle(Color.klmsPrimaryText)
             .padding(.horizontal, 12)
             .padding(.vertical, 11)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
@@ -8653,6 +8653,7 @@ private struct CompanionShowMoreRowsButton: View {
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel("\(context) 더 보기")
         .accessibilityValue("\(remainingCount)개 남음")
+        .accessibilityHint("\(context) 목록을 \(remainingCount)개 더 펼칩니다.")
     }
 }
 
