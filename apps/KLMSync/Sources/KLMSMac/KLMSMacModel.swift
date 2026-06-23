@@ -1026,6 +1026,9 @@ final class KLMSMacModel: ObservableObject {
         guard let reason = Self.serverRelayEventReason(message) else {
             return true
         }
+        if Self.serverRelayEventShouldRefreshSyncData(reason) {
+            serverRelayLastSyncDataFetchAt = nil
+        }
         if reason == "sync-data:run-logs-clear" {
             clearLocalStoredLogs()
         }
@@ -1046,6 +1049,9 @@ final class KLMSMacModel: ObservableObject {
         if reason == "cancel:requested" || reason == "shared-settings" {
             return true
         }
+        if reason == "sync-data" || reason.hasPrefix("sync-data:") {
+            return true
+        }
         if reason == "commands:pending"
             || reason.hasPrefix("item-actions:")
             || reason.hasPrefix("setting-actions:")
@@ -1053,6 +1059,14 @@ final class KLMSMacModel: ObservableObject {
             return true
         }
         return false
+    }
+
+    private static func serverRelayEventShouldRefreshSyncData(_ reason: String) -> Bool {
+        reason == "shared-settings"
+            || reason == "sync-data"
+            || reason.hasPrefix("sync-data:")
+            || reason.hasPrefix("item-actions:")
+            || reason.hasPrefix("setting-actions:")
     }
 
     private static func serverRelayEventReason(_ message: URLSessionWebSocketTask.Message) -> String? {
