@@ -1180,6 +1180,8 @@ final class CompanionModel: ObservableObject {
             message: "서버에 저장하는 중입니다."
         )
         applyRemoteSettingActionLocally(optimisticAction, fallbackSetting: setting)
+        recentSettingActions.removeAll { $0.key == setting.key }
+        recentSettingActions.insert(optimisticAction, at: 0)
         connectionMessage = "\(setting.title) 설정을 저장하는 중입니다."
         connectionSucceeded = true
         errorMessage = ""
@@ -1199,6 +1201,7 @@ final class CompanionModel: ObservableObject {
             if savedAction.status != .completed {
                 userAlert = UserAlert(title: "설정 요청 완료", message: connectionMessage)
             }
+            schedulePostActionRefresh(scope: .settingActions)
         } catch {
             guard !isCancellationError(error) else { return }
             let rollbackAction = ServerRelaySettingAction(
@@ -1209,6 +1212,7 @@ final class CompanionModel: ObservableObject {
                 message: "저장 실패로 이전 값으로 되돌렸습니다."
             )
             applyRemoteSettingActionLocally(rollbackAction, fallbackSetting: setting)
+            recentSettingActions.removeAll { $0.key == setting.key }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "설정 요청 실패", message: message)
@@ -1539,6 +1543,7 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: calendarActionRequestMessage(for: actionKind))
+            schedulePostActionRefresh(scope: .itemActions)
         } catch {
             guard !isCancellationError(error) else { return }
             if actionKind.resolvesCalendarChange {
@@ -1583,6 +1588,7 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: "Mac 앱이 Apple Calendar에 새 일정을 등록합니다.")
+            schedulePostActionRefresh(scope: .itemActions)
         } catch {
             guard !isCancellationError(error) else { return }
             recentItemActions.removeAll { $0.itemID == requestItemID && $0.status == .pending }
