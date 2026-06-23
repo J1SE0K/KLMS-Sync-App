@@ -8907,6 +8907,7 @@ private struct MailPasteAnalyzerPanel: View {
     @State private var mailText = ""
     @State private var analysis = MailPasteAnalysis.empty
     @State private var deferredAnalysisTask: Task<Void, Never>?
+    @State private var latestAnalysisInputKey = ""
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -9020,16 +9021,30 @@ private struct MailPasteAnalyzerPanel: View {
     }
 
     private func runAnalysis() {
-        startAnalysis()
+        startAnalysis(force: true)
     }
 
     private func scheduleAnalysis() {
+        guard !mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            deferredAnalysisTask?.cancel()
+            latestAnalysisInputKey = ""
+            if !analysis.isEmpty {
+                analysis = .empty
+            }
+            return
+        }
         startAnalysis(debounceNanos: 280_000_000)
     }
 
-    private func startAnalysis(debounceNanos: UInt64? = nil) {
-        deferredAnalysisTask?.cancel()
+    private func startAnalysis(debounceNanos: UInt64? = nil, force: Bool = false) {
         let text = mailText
+        let revision = model.dashboardSyncItemsRevision
+        let inputKey = "\(revision):\(text.count):\(text.hashValue)"
+        if !force && inputKey == latestAnalysisInputKey {
+            return
+        }
+        deferredAnalysisTask?.cancel()
+        latestAnalysisInputKey = inputKey
         let items = model.dashboardSyncItems
         deferredAnalysisTask = Task { @MainActor in
             if let debounceNanos {

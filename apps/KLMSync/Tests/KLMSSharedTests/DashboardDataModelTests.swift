@@ -5259,6 +5259,11 @@ final class DashboardDataModelTests: XCTestCase {
         )
         let mailPasteResultContent = try sourceStructBody(named: "MailPasteAnalysisResultContent", in: ios)
         let mailAnalysisProcess = try sourceStructBody(named: "MailAnalysisProcessView", in: ios)
+        let mailPasteStartAnalysis = try sourceBody(
+            after: "private func startAnalysis(debounceNanos: UInt64? = nil, force: Bool = false)",
+            in: mailPastePanel,
+            description: "iOS mail paste startAnalysis"
+        )
         let mailPasteAnalyzer = try sourceBody(
             after: "private enum MailPasteAnalyzer",
             in: ios,
@@ -5317,8 +5322,17 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("CompanionDateParsingCache.isoFormatter(fractionalSeconds: true)"))
         XCTAssertTrue(companionDateParsingCache.contains("Thread.current.threadDictionary"))
         XCTAssertTrue(mailPastePanel.contains("@State private var deferredAnalysisTask"))
+        XCTAssertTrue(mailPastePanel.contains("@State private var latestAnalysisInputKey"))
         XCTAssertTrue(mailPastePanel.contains("scheduleAnalysis()"))
-        XCTAssertTrue(mailPastePanel.contains("private func startAnalysis(debounceNanos: UInt64? = nil)"))
+        XCTAssertTrue(mailPastePanel.contains("guard !mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else"))
+        XCTAssertTrue(mailPastePanel.contains("latestAnalysisInputKey = \"\""))
+        XCTAssertTrue(mailPastePanel.contains("private func startAnalysis(debounceNanos: UInt64? = nil, force: Bool = false)"))
+        XCTAssertTrue(mailPastePanel.contains("startAnalysis(force: true)"))
+        XCTAssertTrue(mailPastePanel.contains("let inputKey = \"\\(revision):\\(text.count):\\(text.hashValue)\""))
+        XCTAssertTrue(mailPastePanel.contains("if !force && inputKey == latestAnalysisInputKey"))
+        let duplicateGuardIndex = try XCTUnwrap(mailPasteStartAnalysis.range(of: "if !force && inputKey == latestAnalysisInputKey")?.lowerBound)
+        let startCancelIndex = try XCTUnwrap(mailPasteStartAnalysis.range(of: "deferredAnalysisTask?.cancel()")?.lowerBound)
+        XCTAssertLessThan(duplicateGuardIndex, startCancelIndex)
         XCTAssertTrue(mailPastePanel.contains("let nextAnalysis = await Task.detached(priority: .userInitiated)"))
         XCTAssertFalse(mailPastePanel.contains("analysis = MailPasteAnalyzer.analyze(mailText, syncItems: model.dashboardSyncItems)"))
         XCTAssertFalse(mailPastePanel.contains("analysis = MailPasteAnalyzer.analyze(text, syncItems: items)"))
