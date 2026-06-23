@@ -429,8 +429,10 @@ final class CompanionModel: ObservableObject {
         trackedReportNotificationCommandIDs = Self.loadTrackedReportNotificationCommandIDs()
         Self.clearDeprecatedLocalConnectionInfo()
         if let cachedSyncData = Self.loadCachedServerSyncData(for: serverURL, tokenFingerprint: Self.serverRelayBootstrapTokenFingerprint(serverToken)) {
-            _ = apply(cachedSyncData, persistCache: false, markLoaded: false)
+            _ = apply(cachedSyncData, persistCache: false, markLoaded: true)
             syncDataNeedsRefresh = true
+            connectionMessage = "저장된 서버 요약을 먼저 보여주고, 최신 상태를 다시 불러옵니다."
+            connectionSucceeded = nil
         }
         rebuildDashboardDerivedState()
         rebuildVisibleCalendarChanges()
