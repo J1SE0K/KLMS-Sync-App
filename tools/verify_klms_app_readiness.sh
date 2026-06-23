@@ -57,6 +57,18 @@ record_step() {
   return 0
 }
 
+print_failure_hint() {
+  local failed_step="$1"
+  case "$failed_step" in
+    ios-device-launch:4)
+      print -ru2 -- "hint: iOS launch is pending. Unlock every connected iPhone/iPad, keep USB connected, wait a few seconds if the app was just installed, then rerun the readiness check."
+      ;;
+    ios-device-launch:5)
+      print -ru2 -- "hint: iOS build and signing are ready, but device trust is blocked. On each iPhone/iPad, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun the readiness check."
+      ;;
+  esac
+}
+
 relaunch_mac_app() {
   /usr/bin/osascript -e 'tell application "KLMS Sync" to quit' >/dev/null 2>&1 || true
   /bin/sleep 1
@@ -131,6 +143,10 @@ if (( ${#failed_steps[@]} == 0 )); then
   print -r -- "readiness-summary status=ok swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"
   exit 0
 fi
+
+for failed_step in "${failed_steps[@]}"; do
+  print_failure_hint "$failed_step"
+done
 
 print -ru2 -- "readiness-summary status=fail swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state} failed=${(j:,:)failed_steps}"
 exit 1

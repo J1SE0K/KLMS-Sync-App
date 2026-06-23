@@ -1132,6 +1132,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(readinessScript.contains("record_step \"ios-signed-build\""))
         XCTAssertTrue(readinessScript.contains("record_step \"ios-device-launch\""))
         XCTAssertTrue(readinessScript.contains("IOS_DEVICE_REQUIRE_TYPES=iPhone,iPad"))
+        XCTAssertTrue(readinessScript.contains("print_failure_hint()"))
+        XCTAssertTrue(readinessScript.contains("ios-device-launch:4"))
+        XCTAssertTrue(readinessScript.contains("ios-device-launch:5"))
+        XCTAssertTrue(readinessScript.contains("iOS build and signing are ready, but device trust is blocked"))
         XCTAssertTrue(readinessScript.contains("return 0"))
         XCTAssertTrue(readinessScript.contains("readiness-summary status=ok swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"))
         XCTAssertTrue(readinessScript.contains("readiness-summary status=fail swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"))
@@ -1174,6 +1178,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(readme.contains("signed iOS build"))
         XCTAssertTrue(readme.contains("tools/verify_klms_ios_device_launch.sh"))
         XCTAssertTrue(readme.contains("launch-check-summary launched=... pending=... blocked=... manual_launch_needed=... failed=..."))
+        XCTAssertTrue(readme.contains("Xcode account login and iOS device trust are separate"))
         XCTAssertTrue(readme.contains("IOS_DEVICE_REQUIRE_TYPES=iPhone,iPad"))
         XCTAssertTrue(readme.contains("redacts that identifier from error output"))
     }
