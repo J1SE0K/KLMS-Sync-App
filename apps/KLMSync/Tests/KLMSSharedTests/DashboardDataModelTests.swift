@@ -6300,6 +6300,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS shared setting update"
         )
+        let createManualCalendarAction = try sourceBody(
+            after: "func createManualCalendarAction(",
+            in: ios,
+            description: "iOS manual calendar action"
+        )
         let createCalendarAction = try sourceBody(
             after: "func createCalendarAction(",
             in: ios,
@@ -6324,6 +6329,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(submitMail.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)"))
         XCTAssertFalse(removeMail.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)"))
         XCTAssertFalse(updateSharedSetting.contains("await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false, scope: .settings)"))
+        XCTAssertFalse(updateSharedSetting.contains("isSubmitting = true"))
+        XCTAssertTrue(updateSharedSetting.contains("let previousSharedSettings = sharedSettings"))
+        XCTAssertTrue(updateSharedSetting.contains("sharedSettings = previousSharedSettings"))
+        XCTAssertFalse(createManualCalendarAction.contains("isSubmitting = true"))
+        XCTAssertTrue(createManualCalendarAction.contains("let requestItemID = \"mail-calendar-\\(UUID().uuidString)\""))
+        XCTAssertTrue(createManualCalendarAction.contains("rebuildItemActionLookups()"))
+        XCTAssertTrue(createManualCalendarAction.contains("recentItemActions.removeAll { $0.itemID == requestItemID && $0.status == .pending }"))
         XCTAssertTrue(createCalendarAction.contains("markCalendarChangeResolvedLocally(change)"))
         XCTAssertTrue(createCalendarAction.contains("rebuildItemActionLookups()"))
         XCTAssertFalse(createCalendarAction.contains("isSubmitting = true"))

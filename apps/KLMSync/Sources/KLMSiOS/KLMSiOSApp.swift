@@ -1392,15 +1392,13 @@ final class CompanionModel: ObservableObject {
             editable: true,
             updatedAt: updatedAt
         )
+        let previousSharedSettings = sharedSettings
+        let previousSharedSettingsSignature = sharedSettingsSignature
         _ = applySharedSettings([setting], merge: true)
         guard let serverRelayStore else {
             connectionMessage = "서버 연결 정보가 없어 이 기기에만 적용했습니다."
             connectionSucceeded = false
             return
-        }
-        isSubmitting = true
-        defer {
-            isSubmitting = false
         }
         do {
             let saved = try await serverRelayStore.updateSharedSetting(setting)
@@ -1410,6 +1408,9 @@ final class CompanionModel: ObservableObject {
             errorMessage = ""
         } catch {
             guard !isCancellationError(error) else { return }
+            sharedSettings = previousSharedSettings
+            sharedSettingsSignature = previousSharedSettingsSignature
+            rebuildRemoteSettingGroups()
             let message = userFacingMessage(for: error)
             errorMessage = message
             connectionMessage = "설정 저장 실패"
@@ -1536,29 +1537,30 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
-        isSubmitting = true
-        defer {
-            isSubmitting = false
-        }
+        let requestItemID = "mail-calendar-\(UUID().uuidString)"
         do {
             let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
             let action = ServerRelayItemAction(
                 action: .calendarCreate,
-                itemID: "mail-calendar-\(UUID().uuidString)",
+                itemID: requestItemID,
                 itemKind: "calendar",
                 itemTitle: title.isEmpty ? "메일 일정" : title,
                 message: try edit.encodedMessage()
             )
             recentItemActions.insert(action, at: 0)
+            rebuildItemActionLookups()
             let savedAction = try await serverRelayStore.createItemAction(action)
             recentItemActions.removeAll { $0.id == action.id }
             recentItemActions.insert(savedAction, at: 0)
+            rebuildItemActionLookups()
             connectionMessage = savedAction.message.nilIfBlank ?? "\(ServerRelayItemActionKind.calendarCreate.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: "Mac 앱이 Apple Calendar에 새 일정을 등록합니다.")
         } catch {
             guard !isCancellationError(error) else { return }
+            recentItemActions.removeAll { $0.itemID == requestItemID && $0.status == .pending }
+            rebuildItemActionLookups()
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "요청 실패", message: message)
