@@ -2466,6 +2466,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(compactTabBar.contains("isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.38)"))
         XCTAssertFalse(compactTabBar.contains(".shadow(color: isSelected ? Color.klmsSelectedBorder.opacity(0.10) : Color.clear"))
         XCTAssertTrue(compactTabBar.contains(".buttonStyle(KLMSCardButtonStyle())"))
+        XCTAssertTrue(remoteDiagnosticPanel.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertFalse(compactTabBar.contains("Label(section.compactTitle, systemImage:"))
         XCTAssertTrue(compactTabBar.contains(".padding(6)"))
         XCTAssertFalse(compactTabBar.contains(".padding(.horizontal, 6)"))
@@ -5495,6 +5496,7 @@ final class DashboardDataModelTests: XCTestCase {
         let remoteCalendarPanel = try sourceStructBody(named: "RemoteCalendarActionPanel", in: ios)
 
         XCTAssertTrue(mailPastePanel.contains(".accessibilityLabel(\"메일·캘린더 분석 \\(analysis.isEmpty ? \"입력 대기\" : analysis.kind.title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(mailPastePanel.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertTrue(statusScreen.contains("selectedChangeSummary"))
         XCTAssertTrue(statusScreen.contains("@State private var displayedDashboardPreview"))
         XCTAssertFalse(statusScreen.contains("@State private var displayedChangeSummary"))

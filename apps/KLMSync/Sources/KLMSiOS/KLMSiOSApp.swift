@@ -9430,7 +9430,7 @@ private struct MailPasteAnalyzerPanel: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 9)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .background(Color.klmsCommandButtonBackground.opacity(colorScheme == .dark ? 0.82 : 0.92), in: RoundedRectangle(cornerRadius: 10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
@@ -13033,6 +13033,7 @@ private struct RemoteDiagnosticPanel: View {
                     Spacer(minLength: 0)
                     CompanionExpansionBadge(isExpanded: isPanelExpanded)
                 }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
