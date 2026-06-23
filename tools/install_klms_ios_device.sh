@@ -77,7 +77,7 @@ install_one_device() {
   fi
 
   if [[ "$launch_ready" != "1" ]]; then
-    print -ru2 -- "${device_label}: installed; launch was skipped because the device is locked or not ready for developer launch. The app is already on the device. Unlock it and open KLMS Sync manually, or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
+    print -ru2 -- "${device_label}: installed; launch-check skipped. The device is locked or not ready for developer launch. Unlock it, open KLMS Sync manually, or rerun this install command after unlocking."
     if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
       return "$MANUAL_LAUNCH_STATUS"
     fi
@@ -109,7 +109,7 @@ install_one_device() {
 
     if /usr/bin/grep -Eiq "invalid code signature|inadequate entitlements|profile has not been explicitly trusted|RequestDenied|Security" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
-      print -ru2 -- "${device_label}: installed; launch was blocked because iOS has not trusted this developer profile, or the signing entitlements do not match this device. On the device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
+      print -ru2 -- "${device_label}: installed; launch-check blocked. On this device, open Settings > General > VPN & Device Management, trust the developer app, then open KLMS Sync or rerun this install command to verify launch."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
         return "$MANUAL_LAUNCH_STATUS"
       fi
@@ -117,7 +117,7 @@ install_one_device() {
     fi
     if /usr/bin/grep -Eiq "locked|could not be, unlocked|unable to launch|LaunchServicesDataMismatch|LaunchServices GUID" "$LAUNCH_OUTPUT"; then
       rm -f "$LAUNCH_OUTPUT"
-      print -ru2 -- "${device_label}: installed; launch could not be verified because the device is locked or iOS is still refreshing app registration. The app is already on the device. Unlock it and open KLMS Sync manually, or rerun with IOS_DEVICE_BUILD_FIRST=0 IOS_APP_PATH=\"$APP_PATH\"."
+      print -ru2 -- "${device_label}: installed; launch-check pending. The device is locked or iOS is still refreshing app registration. Unlock it, open KLMS Sync manually, or rerun this install command after a few seconds."
       if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
         return "$MANUAL_LAUNCH_STATUS"
       fi

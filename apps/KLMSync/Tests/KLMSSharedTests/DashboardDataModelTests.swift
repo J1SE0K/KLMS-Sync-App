@@ -1075,10 +1075,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(installScript.contains("launch verification is waiting for iOS app registration"))
         XCTAssertTrue(installScript.contains("profile has not been explicitly trusted"))
         XCTAssertTrue(installScript.contains("Settings > General > VPN & Device Management"))
-        XCTAssertTrue(installScript.contains("installed; launch was skipped because the device is locked or not ready for developer launch"))
-        XCTAssertTrue(installScript.contains("installed; launch could not be verified because the device is locked or iOS is still refreshing app registration"))
-        XCTAssertTrue(installScript.contains("installed; launch was blocked because iOS has not trusted this developer profile"))
-        XCTAssertTrue(installScript.contains("The app is already on the device"))
+        XCTAssertTrue(installScript.contains("installed; launch-check skipped"))
+        XCTAssertTrue(installScript.contains("installed; launch-check pending"))
+        XCTAssertTrue(installScript.contains("installed; launch-check blocked"))
+        XCTAssertTrue(installScript.contains("rerun this install command"))
         XCTAssertFalse(installScript.contains("EPOCHSECONDS"))
         XCTAssertFalse(installScript.contains("klms-ios-devices.XXXXXX.json"))
 
@@ -1096,11 +1096,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(readme.contains("IOS_DEVICE_LAUNCH_RETRIES"))
         XCTAssertTrue(readme.contains("IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS"))
         XCTAssertTrue(readme.contains("It still exits non-zero when a requested launch could not be verified."))
-        XCTAssertTrue(readme.contains("installed; launch was skipped because the device is locked or not ready for developer launch"))
+        XCTAssertTrue(readme.contains("installed; launch-check skipped"))
+        XCTAssertTrue(readme.contains("installed; launch-check pending"))
+        XCTAssertTrue(readme.contains("installed; launch-check blocked"))
         XCTAssertTrue(readme.contains("iOS is still refreshing app registration"))
         XCTAssertTrue(readme.contains("Settings > General > VPN & Device Management"))
         XCTAssertTrue(readme.contains("trust the developer app"))
         XCTAssertTrue(readme.contains("the app is already installed"))
+        XCTAssertTrue(readme.contains("rerun the same install command"))
     }
 
     func testMacDashboardWindowFollowsApprovedWorkstationMockup() throws {
