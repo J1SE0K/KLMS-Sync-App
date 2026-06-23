@@ -71,7 +71,7 @@ private struct WorkspaceSmokeTarget {
     var buttonIdentifier: String { "workspace-\(rawValue)" }
     var scrollIdentifier: String { "workspace-scroll-\(rawValue)" }
     var panelIdentifier: String { "workspace-panel-workspace-\(rawValue)" }
-    var renderedIdentifier: String { "workspace-container-\(rawValue)" }
+    var renderedIdentifier: String { "workspace-container-marker-\(rawValue)" }
 }
 
 private struct SettingsSmokeTarget {

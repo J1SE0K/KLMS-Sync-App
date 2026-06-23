@@ -252,6 +252,7 @@ final class CompanionModel: ObservableObject {
     private static let mailDashboardItemsKey = "KLMSCompanionMailDashboardItems"
     private static let resolvedCalendarChangeIDsKey = "KLMSResolvedCalendarChangeIDs"
     private static let cachedServerSyncDataKey = "KLMSCompanionCachedServerSyncData"
+    private static let cachedServerSyncDataMaxAge: TimeInterval = 10 * 60
 
     private struct CachedServerSyncData: Codable {
         var serverURL: String
@@ -2589,6 +2590,10 @@ final class CompanionModel: ObservableObject {
               let data = UserDefaults.standard.data(forKey: cachedServerSyncDataKey),
               let cached = try? JSONDecoder().decode(CachedServerSyncData.self, from: data),
               cached.serverURL == normalizedURL else {
+            return nil
+        }
+        guard Date().timeIntervalSince(cached.storedAt) <= cachedServerSyncDataMaxAge else {
+            UserDefaults.standard.removeObject(forKey: cachedServerSyncDataKey)
             return nil
         }
         return cached.syncData
@@ -7035,6 +7040,7 @@ private struct DeferredInteractionExpansion<Content: View>: View {
     var isExpanded: Bool
     private let content: () -> Content
     @State private var shouldRender: Bool
+    @State private var renderTask: Task<Void, Never>?
 
     init(
         isExpanded: Bool,
@@ -7052,13 +7058,33 @@ private struct DeferredInteractionExpansion<Content: View>: View {
             }
         }
         .onAppear {
-            shouldRender = isExpanded
+            scheduleRender(isExpanded)
         }
         .onChange(of: isExpanded) { _, expanded in
-            shouldRender = expanded
+            scheduleRender(expanded)
+        }
+        .onDisappear {
+            renderTask?.cancel()
+            renderTask = nil
         }
         .transaction { transaction in
             transaction.animation = nil
+        }
+    }
+
+    private func scheduleRender(_ expanded: Bool) {
+        renderTask?.cancel()
+        renderTask = nil
+        guard expanded else {
+            shouldRender = false
+            return
+        }
+        shouldRender = false
+        renderTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled, isExpanded else { return }
+            shouldRender = true
+            renderTask = nil
         }
     }
 }

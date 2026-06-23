@@ -915,7 +915,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(script.contains("for target in workspaceTargets"))
         XCTAssertTrue(script.contains("var scrollIdentifier: String { \"workspace-scroll-\\(rawValue)\" }"))
         XCTAssertTrue(script.contains("var panelIdentifier: String { \"workspace-panel-workspace-\\(rawValue)\" }"))
-        XCTAssertTrue(script.contains("var renderedIdentifier: String { \"workspace-container-\\(rawValue)\" }"))
+        XCTAssertTrue(script.contains("var renderedIdentifier: String { \"workspace-container-marker-\\(rawValue)\" }"))
         XCTAssertTrue(script.contains("try verifyWorkspaceContentLayout(appElement: appElement, target: target)"))
         XCTAssertTrue(script.contains("private func verifyWorkspaceContentLayout("))
         XCTAssertTrue(script.contains("scrollFrame.width >= 420"))
@@ -1928,13 +1928,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macDeferredExpansion.contains("await Task.yield()"))
         XCTAssertTrue(macDeferredExpansion.contains("transaction.animation = nil"))
         XCTAssertTrue(iosDeferredInteractionExpansion.contains("@State private var shouldRender: Bool"))
+        XCTAssertTrue(iosDeferredInteractionExpansion.contains("@State private var renderTask: Task<Void, Never>?"))
         XCTAssertTrue(iosDeferredInteractionExpansion.contains("_shouldRender = State(initialValue: isExpanded)"))
         XCTAssertTrue(iosDeferredInteractionExpansion.contains(".onAppear"))
-        XCTAssertTrue(iosDeferredInteractionExpansion.contains("shouldRender = isExpanded"))
+        XCTAssertTrue(iosDeferredInteractionExpansion.contains("scheduleRender(isExpanded)"))
         XCTAssertTrue(iosDeferredInteractionExpansion.contains(".onChange(of: isExpanded)"))
-        XCTAssertTrue(iosDeferredInteractionExpansion.contains("shouldRender = expanded"))
+        XCTAssertTrue(iosDeferredInteractionExpansion.contains("scheduleRender(expanded)"))
         XCTAssertFalse(iosDeferredInteractionExpansion.contains(".task(id: isExpanded)"))
-        XCTAssertFalse(iosDeferredInteractionExpansion.contains("await Task.yield()"))
+        XCTAssertTrue(iosDeferredInteractionExpansion.contains("await Task.yield()"))
         XCTAssertTrue(iosDeferredInteractionExpansion.contains("transaction.animation = nil"))
         XCTAssertTrue(iosDeferredItemDetailPanel.contains("@State private var renderedItemID: String?"))
         XCTAssertTrue(iosDeferredItemDetailPanel.contains("if renderedItemID == item.id"))
@@ -5937,7 +5938,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(ios.contains("sectionRenderDelayNanoseconds"))
         XCTAssertFalse(ios.contains("try? await Task.sleep(nanoseconds: sectionRenderDelayNanoseconds)"))
         XCTAssertFalse(ios.contains("renderedSection"))
-        XCTAssertFalse(ios.contains("renderTask"))
+        XCTAssertFalse(ios.contains("sectionRenderTask"))
         XCTAssertTrue(ios.contains("guard selectedSection != section else { return }"))
         XCTAssertFalse(ios.contains("guard displayedSection != section else"))
         XCTAssertFalse(ios.contains("guard displayedDashboardPreview != category || displayedChangeSummary != nil else"))
@@ -6227,6 +6228,7 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(ios.contains("private static let cachedServerSyncDataKey = \"KLMSCompanionCachedServerSyncData\""))
         XCTAssertTrue(ios.contains("private struct CachedServerSyncData: Codable"))
+        XCTAssertTrue(ios.contains("private static let cachedServerSyncDataMaxAge: TimeInterval = 10 * 60"))
         XCTAssertTrue(initBody.contains("Self.loadCachedServerSyncData(for: serverURL)"))
         XCTAssertTrue(initBody.contains("apply(cachedSyncData, persistCache: false)"))
         XCTAssertTrue(initBody.contains("syncDataNeedsRefresh = true"))
@@ -6235,6 +6237,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(applyBody.contains("persistCachedServerSyncData(syncData)"))
         XCTAssertTrue(ios.contains("private static func loadCachedServerSyncData(for serverURL: String) -> ServerRelaySyncData?"))
         XCTAssertTrue(ios.contains("cached.serverURL == normalizedURL"))
+        XCTAssertTrue(ios.contains("Date().timeIntervalSince(cached.storedAt) <= cachedServerSyncDataMaxAge"))
+        XCTAssertTrue(ios.contains("UserDefaults.standard.removeObject(forKey: cachedServerSyncDataKey)"))
         XCTAssertTrue(ios.contains("private func persistCachedServerSyncData(_ syncData: ServerRelaySyncData)"))
         XCTAssertTrue(ios.contains("private func clearLoadedServerSyncData()"))
         XCTAssertTrue(clearConnection.contains("clearLoadedServerSyncData()"))
@@ -6258,6 +6262,27 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(rootView.contains(".onChange(of: scenePhase)"))
         XCTAssertTrue(rootView.contains("guard newPhase == .active else { return }"))
         XCTAssertTrue(rootView.contains("await model.startServerRelayRealtime()"))
+    }
+
+    func testIOSDeferredExpansionYieldsBeforeRenderingHeavyContent() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let expansion = try sourceBody(
+            after: "private struct DeferredInteractionExpansion<Content: View>: View",
+            in: ios,
+            description: "iOS deferred interaction expansion"
+        )
+
+        XCTAssertTrue(expansion.contains("@State private var renderTask: Task<Void, Never>?"))
+        XCTAssertTrue(expansion.contains("scheduleRender(isExpanded)"))
+        XCTAssertTrue(expansion.contains("await Task.yield()"))
+        XCTAssertTrue(expansion.contains("guard !Task.isCancelled, isExpanded else { return }"))
+        XCTAssertTrue(expansion.contains(".onDisappear"))
+        XCTAssertTrue(expansion.contains("renderTask?.cancel()"))
     }
 
     func testIOSServerTokenPersistenceDoesNotBlockTyping() throws {
