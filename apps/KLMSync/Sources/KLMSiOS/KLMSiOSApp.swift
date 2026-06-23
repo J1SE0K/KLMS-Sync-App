@@ -1487,10 +1487,6 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
-        isSubmitting = true
-        defer {
-            isSubmitting = false
-        }
         let actionItemID = serverRelayCalendarChange(change).id
         let candidateIDs = calendarChangeResolvedIDs(for: change)
         let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
@@ -1507,12 +1503,14 @@ final class CompanionModel: ObservableObject {
             )
             recentItemActions.removeAll { candidateIDs.contains($0.itemID) }
             recentItemActions.insert(action, at: 0)
+            rebuildItemActionLookups()
             let savedAction = try await serverRelayStore.createItemAction(action)
             if savedAction.action.resolvesCalendarChange, !savedAction.status.isFailedLike {
                 markCalendarChangeResolvedLocally(change)
             }
             recentItemActions.removeAll { $0.id == action.id || candidateIDs.contains($0.itemID) }
             recentItemActions.insert(savedAction, at: 0)
+            rebuildItemActionLookups()
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
@@ -1525,6 +1523,7 @@ final class CompanionModel: ObservableObject {
                 rebuildVisibleCalendarChanges()
             }
             recentItemActions.removeAll { candidateIDs.contains($0.itemID) && $0.action == actionKind && $0.status == .pending }
+            rebuildItemActionLookups()
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "요청 실패", message: message)

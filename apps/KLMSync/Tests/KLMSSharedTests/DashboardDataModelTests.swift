@@ -6325,6 +6325,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(removeMail.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .itemActions)"))
         XCTAssertFalse(updateSharedSetting.contains("await refreshRecent(silentErrors: true, includeSyncData: false, showsActivity: false, scope: .settings)"))
         XCTAssertTrue(createCalendarAction.contains("markCalendarChangeResolvedLocally(change)"))
+        XCTAssertTrue(createCalendarAction.contains("rebuildItemActionLookups()"))
+        XCTAssertFalse(createCalendarAction.contains("isSubmitting = true"))
         XCTAssertFalse(createCalendarAction.contains("await refreshRecent("))
         XCTAssertTrue(createCommand.contains("recentCommands.insert(command, at: 0)"))
         XCTAssertTrue(createCommand.contains("rebuildRemoteLogDerivedState()"))
