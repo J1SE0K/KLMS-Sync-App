@@ -446,6 +446,53 @@ async function runSmoke() {
     assert.equal(payload.actions.length, 0);
   }
 
+  await expectJSON("/v1/sync-data", {
+    generatedAt: "2026-05-31T00:00:30Z",
+    items: [
+      {
+        id: "exam-1",
+        kind: "exam",
+        course: "영미 단편소설",
+        title: "기말고사",
+        timestamp: "2026-06-12 10:00",
+        status: "예정",
+        detail: "범위: 전체",
+        attachmentCount: 0,
+        updatedAt: "2026-05-31T00:00:30Z",
+      },
+    ],
+    calendarChanges: [
+      {
+        action: "created",
+        calendar: "KLMS 시험",
+        bucket: "exam",
+        title: "추가 시험",
+        start_at: "2026-06-18 09:00",
+        due_at: "2026-06-18 10:00",
+        changes: ["새 일정"],
+      },
+    ],
+  }, { method: "POST", role: "worker" });
+  const calendarApplyAction = await expectJSON("/v1/item-actions", {
+    action: "calendarApply",
+    itemID: calendarChangeID,
+    itemKind: "calendar",
+    itemTitle: "추가 시험",
+  }, { method: "POST", status: 201 });
+  assert.equal(calendarApplyAction.status, "pending");
+  {
+    const payload = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(payload.calendarChanges.length, 0);
+    const status = await expectJSON("/v1/status");
+    assert.equal(status.status.calendarCreated, 0);
+  }
+  await expectJSON(`/v1/item-actions/${calendarApplyAction.id}`, {
+    ...calendarApplyAction,
+    status: "completed",
+    updatedAt: new Date().toISOString(),
+    message: "calendar apply done",
+  }, { method: "PUT", role: "worker" });
+
   const settingAction = await expectJSON("/v1/setting-actions", {
     key: "FILE_REFRESH_MODE",
     title: "파일 탐색 모드",

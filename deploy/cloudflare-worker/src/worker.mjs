@@ -2934,7 +2934,7 @@ function isServerDisplayOnlyItemAction(action) {
 }
 
 function mutateCalendarChangesForItemAction(inputChanges, action) {
-  if (!["calendarCreate", "calendarEdit", "calendarDelete"].includes(action.action)) {
+  if (!["calendarApply", "calendarCreate", "calendarEdit", "calendarDelete"].includes(action.action)) {
     return { calendarChanges: inputChanges, changed: false };
   }
   const calendarChanges = inputChanges.filter((change) => !calendarChangeMatchesItemAction(change, action));
