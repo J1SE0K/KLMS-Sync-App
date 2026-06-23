@@ -742,16 +742,16 @@ final class CompanionModel: ObservableObject {
 
     var hasActiveServerWork: Bool {
         hasInFlightRequest
-            || recentItemActions.contains { $0.status == .pending || $0.status == .running }
-            || recentSettingActions.contains { $0.status == .pending || $0.status == .running }
+            || recentItemActions.contains(where: \.isActiveForCompanionDisplay)
+            || recentSettingActions.contains(where: \.isActiveForCompanionDisplay)
     }
 
     var activeItemAction: ServerRelayItemAction? {
-        recentItemActions.first { $0.status == .pending || $0.status == .running }
+        recentItemActions.first(where: \.isActiveForCompanionDisplay)
     }
 
     var activeSettingAction: ServerRelaySettingAction? {
-        recentSettingActions.first { $0.status == .pending || $0.status == .running }
+        recentSettingActions.first(where: \.isActiveForCompanionDisplay)
     }
 
     var hasActiveNonCommandWork: Bool {
@@ -784,8 +784,8 @@ final class CompanionModel: ObservableObject {
         let nextHasClearableRemoteLogs = nextHasClearableCommandLogs
             || nextHasClearableRequestLogs
             || nextHasClearableFileAccessLogs
-            || recentItemActions.contains { $0.status != .pending && $0.status != .running }
-            || recentSettingActions.contains { $0.status != .pending && $0.status != .running }
+            || recentItemActions.contains { !$0.isActiveForCompanionDisplay }
+            || recentSettingActions.contains { !$0.isActiveForCompanionDisplay }
             || !sharedRunLogs.isEmpty
 
         if currentRemoteLogCommand != nextCurrentCommand {
@@ -1561,7 +1561,7 @@ final class CompanionModel: ObservableObject {
         var itemActions: [String: ServerRelayItemAction] = [:]
         var calendarActions: [String: ServerRelayItemAction] = [:]
         for action in recentItemActions {
-            if !action.itemID.isEmpty, !action.status.isFailedLike {
+            if !action.itemID.isEmpty, !action.status.isFailedLike, action.isActiveForCompanionDisplay {
                 if itemActions[action.itemID]?.updatedAt ?? .distantPast < action.updatedAt {
                     itemActions[action.itemID] = action
                 }
@@ -1879,13 +1879,13 @@ final class CompanionModel: ObservableObject {
             locallyHiddenCommandIDs.formUnion(recentCommands.filter { !$0.status.isInFlight }.map(\.id))
             locallyHiddenRequestLogIDs.formUnion(recentRequestLog.map(\.id))
             locallyHiddenFileAccessRequestIDs.formUnion(recentFileAccessRequests.filter { !$0.status.isInFlight }.map(\.id))
-            locallyHiddenItemActionIDs.formUnion(recentItemActions.filter { $0.status != .pending && $0.status != .running }.map(\.id))
-            locallyHiddenSettingActionIDs.formUnion(recentSettingActions.filter { $0.status != .pending && $0.status != .running }.map(\.id))
+            locallyHiddenItemActionIDs.formUnion(recentItemActions.filter { !$0.isActiveForCompanionDisplay }.map(\.id))
+            locallyHiddenSettingActionIDs.formUnion(recentSettingActions.filter { !$0.isActiveForCompanionDisplay }.map(\.id))
             recentCommands = recentCommands.filter { $0.status.isInFlight }
             recentRequestLog = []
             recentFileAccessRequests = recentFileAccessRequests.filter { $0.status.isInFlight }
-            recentItemActions = recentItemActions.filter { $0.status == .pending || $0.status == .running }
-            recentSettingActions = recentSettingActions.filter { $0.status == .pending || $0.status == .running }
+            recentItemActions = recentItemActions.filter(\.isActiveForCompanionDisplay)
+            recentSettingActions = recentSettingActions.filter(\.isActiveForCompanionDisplay)
             lastTerminalCommandID = nil
         case .command:
             locallyHiddenCommandIDs.formUnion(recentCommands.filter { !$0.status.isInFlight }.map(\.id))
@@ -11811,7 +11811,65 @@ private extension ServerRelayItemActionStatus {
     }
 }
 
+private extension ServerRelayItemAction {
+    var isServerAppliedForCompanionDisplay: Bool {
+        status == .pending
+            && action.isServerDisplayOnlyAction
+            && message.localizedStandardContains("서버 화면에 바로 반영")
+    }
+
+    var isActiveForCompanionDisplay: Bool {
+        status.isInFlight && !isServerAppliedForCompanionDisplay
+    }
+}
+
+private extension ServerRelaySettingAction {
+    var isServerAppliedForCompanionDisplay: Bool {
+        status == .pending
+            && message.localizedStandardContains("서버 설정에 바로 반영")
+    }
+
+    var isActiveForCompanionDisplay: Bool {
+        switch status {
+        case .pending, .running:
+            return !isServerAppliedForCompanionDisplay
+        case .completed, .failed, .macUnavailable:
+            return false
+        }
+    }
+}
+
 private extension ServerRelayItemActionKind {
+    var isServerDisplayOnlyAction: Bool {
+        switch self {
+        case .assignmentComplete,
+             .assignmentRestore,
+             .assignmentHide,
+             .assignmentUnhide,
+             .examPromote,
+             .examIgnore,
+             .examRestore,
+             .noticeRead,
+             .noticeUnread,
+             .noticeImportant,
+             .noticeUnimportant,
+             .noticeHide,
+             .noticeUnhide,
+             .fileHide,
+             .fileUnhide,
+             .mailDashboardAdd,
+             .mailDashboardRemove:
+            true
+        case .fileTrash,
+             .calendarVerify,
+             .calendarApply,
+             .calendarCreate,
+             .calendarEdit,
+             .calendarDelete:
+            false
+        }
+    }
+
     var companionActionTitle: String {
         switch self {
         case .assignmentComplete:
