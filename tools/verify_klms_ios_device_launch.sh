@@ -116,7 +116,8 @@ for device in devices:
         continue
     if properties.get("developerModeStatus") == "disabled":
         continue
-    if connection.get("tunnelState") == "unavailable":
+    tunnel_state = connection.get("tunnelState") or ""
+    if tunnel_state == "unavailable":
         if not quiet_unavailable:
             print(
                 f"Skipping {hardware.get('deviceType', 'device')}: device is paired but unavailable. "
@@ -126,7 +127,8 @@ for device in devices:
         continue
     identifier = device.get("identifier")
     if identifier:
-        print(f"{identifier}\t{hardware.get('deviceType', 'device')}")
+        launch_ready = 1 if tunnel_state == "connected" else 0
+        print(f"{identifier}\t{hardware.get('deviceType', 'device')}\t{launch_ready}\t{tunnel_state}")
 PY
   rm -f "$devices_json"
 }
@@ -187,11 +189,29 @@ if [[ "$DEVICE_IDENTIFIER" == "all" ]]; then
   launched_device_types=()
   for device_entry in "${device_entries[@]}"; do
     target_device="${device_entry%%$'\t'*}"
-    device_label="${device_entry#*$'\t'}"
+    device_rest="${device_entry#*$'\t'}"
+    device_label="${device_rest%%$'\t'*}"
+    launch_rest="${device_rest#*$'\t'}"
+    launch_ready="${launch_rest%%$'\t'*}"
+    tunnel_state="${launch_rest#*$'\t'}"
     if [[ "$device_label" == "$device_entry" || -z "$device_label" ]]; then
       device_label="device"
     fi
+    if [[ "$launch_ready" == "$device_rest" || -z "$launch_ready" ]]; then
+      launch_ready="1"
+    fi
+    if [[ "$tunnel_state" == "$launch_rest" ]]; then
+      tunnel_state=""
+    fi
     seen_device_types+=("$device_label")
+    if [[ "$launch_ready" != "1" ]]; then
+      print -ru2 -- "${device_label}: launch-check pending. CoreDevice tunnel is ${tunnel_state:-not connected}. Unlock the device, keep USB connected, accept Trust if shown, then rerun this launch check."
+      manual_launch_count=$(( manual_launch_count + 1 ))
+      if (( overall_status == 0 )); then
+        overall_status="$MANUAL_LAUNCH_STATUS"
+      fi
+      continue
+    fi
     set +e
     launch_one_device "$target_device" "$device_label"
     device_status=$?

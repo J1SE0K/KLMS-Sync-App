@@ -77,7 +77,7 @@ install_one_device() {
   fi
 
   if [[ "$launch_ready" != "1" ]]; then
-    print -ru2 -- "${device_label}: installed; launch-check skipped. The device is locked or not ready for developer launch. Unlock it, open KLMS Sync manually, or rerun this install command after unlocking."
+    print -ru2 -- "${device_label}: installed; launch-check skipped. CoreDevice tunnel is not connected. Unlock the device, keep USB connected, accept Trust if shown, then open KLMS Sync manually or rerun this install command."
     if [[ "$INSTALL_ALL_MODE" == "1" ]]; then
       return "$MANUAL_LAUNCH_STATUS"
     fi
@@ -158,7 +158,7 @@ for device in devices:
         continue
     if properties.get("developerModeStatus") == "disabled":
         continue
-    tunnel_state = connection.get("tunnelState")
+    tunnel_state = connection.get("tunnelState") or ""
     if tunnel_state == "unavailable":
         if not quiet_unavailable:
             print(
@@ -167,7 +167,7 @@ for device in devices:
                 file=sys.stderr,
             )
         continue
-    launch_ready = True
+    launch_ready = tunnel_state == "connected"
     identifier = device.get("identifier")
     if identifier:
         print(f"{identifier}\t{hardware.get('deviceType', 'device')}\t{1 if launch_ready else 0}")

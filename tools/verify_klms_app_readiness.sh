@@ -7,6 +7,8 @@ RUN_SWIFT_TESTS="${KLMS_READINESS_SWIFT_TESTS:-1}"
 RUN_MAC_CHECKS="${KLMS_READINESS_MAC:-1}"
 RUN_IOS_BUILD="${KLMS_READINESS_IOS_BUILD:-1}"
 RUN_IOS_LAUNCH="${KLMS_READINESS_IOS_LAUNCH:-1}"
+MAC_APP_PATH="${KLMS_MAC_APP_PATH:-$HOME/Applications/KLMS Sync.app}"
+MAC_RELAUNCH_DELAY_SECONDS="${KLMS_READINESS_MAC_RELAUNCH_DELAY_SECONDS:-2}"
 
 sanitize_output() {
   KLMS_REPO_ROOT="$ROOT_DIR" /usr/bin/perl -pe '
@@ -55,6 +57,14 @@ record_step() {
   return 0
 }
 
+relaunch_mac_app() {
+  /usr/bin/osascript -e 'tell application "KLMS Sync" to quit' >/dev/null 2>&1 || true
+  /bin/sleep 1
+  /usr/bin/open -a "$MAC_APP_PATH"
+  /bin/sleep "$MAC_RELAUNCH_DELAY_SECONDS"
+  print -r -- "$MAC_APP_PATH"
+}
+
 print -r -- "KLMS Sync readiness check"
 
 if [[ "$RUN_SWIFT_TESTS" == "1" ]]; then
@@ -63,6 +73,7 @@ fi
 
 if [[ "$RUN_MAC_CHECKS" == "1" ]]; then
   record_step "mac-build" "$ROOT_DIR/tools/build_klms_mac_app.sh"
+  record_step "mac-relaunch" relaunch_mac_app
   record_step "mac-accessibility-smoke" swift "$ROOT_DIR/tools/smoke_klms_mac_accessibility.swift"
   record_step "mac-tab-response" /usr/bin/env \
     KLMS_MAC_TAB_PROBE_RUNS=3 \
@@ -104,7 +115,7 @@ for failed_step in "${failed_steps[@]}"; do
     swift-tests)
       swift_state="failed"
       ;;
-    mac-build|mac-accessibility-smoke|mac-tab-response)
+    mac-build|mac-relaunch|mac-accessibility-smoke|mac-tab-response)
       mac_state="failed"
       ;;
     ios-signed-build)
