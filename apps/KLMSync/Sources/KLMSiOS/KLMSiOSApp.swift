@@ -1658,7 +1658,7 @@ final class CompanionModel: ObservableObject {
                     || (scope.fetchesSyncData && shouldFetchSyncData(includeSyncData: includeSyncData))
                 async let responseTask = serverRelayStore.fetchStatusResponse()
                 async let commandsTask = Self.fetchRecentCommandsIfNeeded(scope.fetchesCommands, store: serverRelayStore, limit: 8)
-                async let syncDataTask = Self.fetchSyncDataIfNeeded(shouldLoadSyncData, store: serverRelayStore)
+                async let syncDataTask = Self.fetchSyncDataResultIfNeeded(shouldLoadSyncData, store: serverRelayStore)
                 async let fileRequestsTask = Self.fetchRecentFileAccessRequestsIfNeeded(scope.fetchesFileRequests, store: serverRelayStore, limit: 20)
                 async let itemActionsTask = Self.fetchRecentItemActionsIfNeeded(scope.fetchesItemActions, store: serverRelayStore, limit: 40)
                 async let requestLogTask = Self.fetchRecentRequestLogIfNeeded(scope.fetchesRequestLog, store: serverRelayStore, limit: 30)
@@ -1675,10 +1675,17 @@ final class CompanionModel: ObservableObject {
                     clearFinishedCancelRequestIfNeeded(commands)
                     handleReportNotificationUpdates(commands)
                 }
-                if let syncData = await syncDataTask {
+                switch await syncDataTask {
+                case let .success(syncData?):
                     didChange = apply(syncData) || didChange
-                } else if shouldLoadSyncData && !hasLoadedServerSyncData {
-                    didChange = markInitialSyncDataLoadFailure(silentErrors: silentErrors) || didChange
+                case .success(nil):
+                    if shouldLoadSyncData && !hasLoadedServerSyncData {
+                        didChange = markInitialSyncDataLoadFailure(silentErrors: silentErrors) || didChange
+                    }
+                case let .failure(error):
+                    if shouldLoadSyncData {
+                        didChange = markSyncDataLoadFailure(error, silentErrors: silentErrors) || didChange
+                    }
                 }
                 if let fileRequests = await fileRequestsTask {
                     let visibleFileRequests = visibleFileAccessRequests(fileRequests)
@@ -1737,14 +1744,18 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    private static func fetchSyncDataIfNeeded(
+    private static func fetchSyncDataResultIfNeeded(
         _ shouldFetch: Bool,
         store: ServerRelayCommandStore
-    ) async -> ServerRelaySyncData? {
+    ) async -> Result<ServerRelaySyncData?, Error> {
         guard shouldFetch else {
-            return nil
+            return .success(nil)
         }
-        return try? await store.fetchSyncData(limit: 2000)
+        do {
+            return .success(try await store.fetchSyncData(limit: 2000))
+        } catch {
+            return .failure(error)
+        }
     }
 
     private static func fetchRecentCommandsIfNeeded(
@@ -2628,8 +2639,35 @@ final class CompanionModel: ObservableObject {
 
     @discardableResult
     private func markInitialSyncDataLoadFailure(silentErrors: Bool) -> Bool {
-        let message = "서버 요약을 불러오지 못했습니다. 연결을 확인한 뒤 새로고침해 주세요."
+        markSyncDataLoadFailureMessage(
+            "서버 요약을 불러오지 못했습니다. 연결을 확인한 뒤 새로고침해 주세요.",
+            alertTitle: "요약 갱신 실패",
+            silentErrors: silentErrors
+        )
+    }
+
+    @discardableResult
+    private func markSyncDataLoadFailure(_ error: Error, silentErrors: Bool) -> Bool {
+        let reason = userFacingMessage(for: error)
+        let message = "서버 요약을 불러오지 못했습니다. \(reason)"
+        return markSyncDataLoadFailureMessage(
+            message,
+            alertTitle: "요약 갱신 실패",
+            silentErrors: silentErrors
+        )
+    }
+
+    @discardableResult
+    private func markSyncDataLoadFailureMessage(
+        _ message: String,
+        alertTitle: String,
+        silentErrors: Bool
+    ) -> Bool {
         var didChange = false
+        if !syncDataNeedsRefresh {
+            syncDataNeedsRefresh = true
+            didChange = true
+        }
         if connectionMessage != message {
             connectionMessage = message
             didChange = true
@@ -2643,7 +2681,7 @@ final class CompanionModel: ObservableObject {
             didChange = true
         }
         if !silentErrors {
-            userAlert = UserAlert(title: "요약 갱신 실패", message: message)
+            userAlert = UserAlert(title: alertTitle, message: message)
             didChange = true
         }
         return didChange
