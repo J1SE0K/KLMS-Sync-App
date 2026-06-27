@@ -2923,6 +2923,13 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertTrue(updateSharedAppearanceMode.contains("UserDefaults.standard.set(normalized, forKey: \"KLMSAppearanceMode\")"))
         XCTAssertFalse(updateSharedAppearanceMode.contains("await updateSharedSetting"))
+        let applySharedSettingLocally = try sourceBody(
+            after: "private func applySharedSettingLocally(_ setting: ServerRelaySetting)",
+            in: ios,
+            description: "iOS shared setting local apply"
+        )
+        XCTAssertTrue(applySharedSettingLocally.contains("case Self.sharedAppearanceModeKey:\n            break"))
+        XCTAssertFalse(applySharedSettingLocally.contains("UserDefaults.standard.set(rawValue, forKey: \"KLMSAppearanceMode\")"))
         let updateSharedNoticeNotes = try sourceBody(
             after: "func updateSharedNoticeNotes(_ enabled: Bool) async",
             in: ios,
@@ -3553,6 +3560,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("title: \"저장 위치\""))
         XCTAssertTrue(macSettings.contains("title: \"문제 분석용 보관\""))
         XCTAssertTrue(macSettings.contains("title: \"바로 반영되는 설정\""))
+        XCTAssertTrue(macSettings.contains("화면 모드는 이 기기에 바로 적용하고, 원격 실행 옵션은 서버에 바로 저장합니다."))
+        XCTAssertTrue(macSettings.contains("화면 모드는 기기마다 따로 저장됩니다. 이 Mac에서 고르면 바로 이 앱에만 적용됩니다."))
+        XCTAssertFalse(macSettings.contains("화면 모드는 서버에 바로 저장됩니다."))
+        XCTAssertFalse(macSettings.contains("iPhone/iPad/Windows도 같은 모드를 따라갑니다."))
         XCTAssertTrue(macSettings.contains("title: \"설치와 백업\""))
         XCTAssertTrue(macSettings.contains("SettingsDisclosureLabel("))
         XCTAssertTrue(macSettings.contains("badge: badge"))
@@ -3609,6 +3620,21 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(macModel.contains("공지 메모에 원문 양식으로 붙여넣기"))
         XCTAssertTrue(macModel.contains("\"NOTICE_NATIVE_PREFORMATTED_PASTE_ONLY\": \"0\""))
         XCTAssertTrue(macModel.contains("\"FILE_FORCE_DOWNLOAD\": \"0\""))
+        let macAppearanceValue = try sourceBody(
+            after: "var serverRelaySharedAppearanceModeValue: String",
+            in: macModel,
+            description: "Mac local appearance value"
+        )
+        XCTAssertTrue(macAppearanceValue.contains("UserDefaults.standard.string(forKey: \"KLMSAppearanceMode\")"))
+        XCTAssertFalse(macAppearanceValue.contains("serverRelaySharedSettings"))
+        let macAppearanceUpdate = try sourceBody(
+            after: "func updateServerRelaySharedAppearanceMode(_ rawValue: String) async",
+            in: macModel,
+            description: "Mac local appearance update"
+        )
+        XCTAssertTrue(macAppearanceUpdate.contains("UserDefaults.standard.set(normalized, forKey: \"KLMSAppearanceMode\")"))
+        XCTAssertTrue(macAppearanceUpdate.contains("화면 모드는 이 기기에 바로 적용됩니다."))
+        XCTAssertFalse(macAppearanceUpdate.contains("await updateServerRelaySharedSetting"))
 
         XCTAssertTrue(ios.contains("private struct RemoteSettingGroup"))
         XCTAssertTrue(ios.contains("RemoteSettingGroupSection"))

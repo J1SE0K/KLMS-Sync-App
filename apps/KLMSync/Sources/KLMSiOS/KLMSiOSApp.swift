@@ -2864,8 +2864,7 @@ final class CompanionModel: ObservableObject {
     private func applySharedSettingLocally(_ setting: ServerRelaySetting) {
         switch setting.key {
         case Self.sharedAppearanceModeKey:
-            let rawValue = KLMSAppearanceMode(rawValue: setting.value)?.rawValue ?? KLMSAppearanceMode.system.rawValue
-            UserDefaults.standard.set(rawValue, forKey: "KLMSAppearanceMode")
+            break
         case Self.sharedNoticeUpdateNotesKey:
             shouldUpdateNoticeNotes = setting.boolValue
         default:

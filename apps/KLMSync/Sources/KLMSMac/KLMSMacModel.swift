@@ -1368,13 +1368,6 @@ final class KLMSMacModel: ObservableObject {
     }
 
     var serverRelaySharedAppearanceModeValue: String {
-        let value = serverRelaySharedSettings
-            .first { $0.key == Self.sharedAppearanceModeKey }?
-            .value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let value, KLMSAppearanceMode(rawValue: value) != nil {
-            return value
-        }
         let local = UserDefaults.standard.string(forKey: "KLMSAppearanceMode") ?? KLMSAppearanceMode.system.rawValue
         return KLMSAppearanceMode(rawValue: local)?.rawValue ?? KLMSAppearanceMode.system.rawValue
     }
@@ -1389,14 +1382,7 @@ final class KLMSMacModel: ObservableObject {
     func updateServerRelaySharedAppearanceMode(_ rawValue: String) async {
         let normalized = KLMSAppearanceMode(rawValue: rawValue)?.rawValue ?? KLMSAppearanceMode.system.rawValue
         UserDefaults.standard.set(normalized, forKey: "KLMSAppearanceMode")
-        await updateServerRelaySharedSetting(
-            key: Self.sharedAppearanceModeKey,
-            title: "화면 모드",
-            value: normalized,
-            valueKind: .choice,
-            options: KLMSAppearanceMode.allCases.map(\.rawValue),
-            successMessage: "화면 모드를 저장했습니다."
-        )
+        serverRelayStatusMessage = "화면 모드는 이 기기에 바로 적용됩니다."
     }
 
     func updateServerRelaySharedNoticeUpdateNotes(_ enabled: Bool) async {
@@ -1455,17 +1441,6 @@ final class KLMSMacModel: ObservableObject {
         }
         serverRelaySharedSettings = sorted
         serverRelaySharedSettingsSignature = signature
-        for setting in sorted {
-            switch setting.key {
-            case Self.sharedAppearanceModeKey:
-                let rawValue = KLMSAppearanceMode(rawValue: setting.value)?.rawValue ?? KLMSAppearanceMode.system.rawValue
-                UserDefaults.standard.set(rawValue, forKey: "KLMSAppearanceMode")
-            case Self.sharedNoticeUpdateNotesKey:
-                break
-            default:
-                break
-            }
-        }
         return true
     }
 

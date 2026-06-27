@@ -503,7 +503,7 @@ struct SettingsView: View {
         settingsForm {
             SettingsGroupBox(
                 title: "바로 반영되는 설정",
-                detail: "화면 모드와 원격 실행 옵션을 모든 기기에 바로 맞춥니다.",
+                detail: "화면 모드는 이 기기에 바로 적용하고, 원격 실행 옵션은 서버에 바로 저장합니다.",
                 systemImage: "slider.horizontal.3",
                 badge: "바로 반영",
                 defaultExpanded: true
@@ -511,7 +511,7 @@ struct SettingsView: View {
                 described(
                     "색상 모드",
                     summary: KLMSAppearanceMode(rawValue: model.serverRelaySharedAppearanceModeValue)?.title ?? "시스템",
-                    "화면 모드는 서버에 바로 저장됩니다. 서버가 연결되어 있으면 iPhone/iPad/Windows도 같은 모드를 따라갑니다."
+                    "화면 모드는 기기마다 따로 저장됩니다. 이 Mac에서 고르면 바로 이 앱에만 적용됩니다."
                 ) {
                     Picker("색상 모드", selection: Binding(
                         get: { model.serverRelaySharedAppearanceModeValue },
