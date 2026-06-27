@@ -4159,6 +4159,7 @@ private struct CompanionImmediateSettingsPanel: View {
     var noticeNotesEnabled: Bool
     var updateAppearanceMode: (KLMSAppearanceMode) async -> Void
     var updateNoticeNotes: (Bool) async -> Void
+    @AppStorage("KLMSAppearanceMode") private var localAppearanceModeRaw = KLMSAppearanceMode.system.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -4171,7 +4172,7 @@ private struct CompanionImmediateSettingsPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("바로 반영되는 설정")
                         .font(.headline)
-                    Text("저장하면 모든 기기에 바로 적용됩니다.")
+                    Text("화면 모드는 이 기기에 바로 적용되고, 공지 메모 설정은 서버에 저장됩니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -4182,11 +4183,11 @@ private struct CompanionImmediateSettingsPanel: View {
             VStack(alignment: .leading, spacing: 10) {
                 CompanionImmediateSettingRow(
                     title: "화면 모드",
-                    statusText: selectedAppearanceMode.title,
+                    statusText: effectiveAppearanceMode.title,
                     detail: "기기 설정을 따르거나, KLMS Sync에서만 라이트/다크 모드를 고정합니다."
                 ) {
                     CompanionAppearanceModeSelector(
-                        selectedMode: selectedAppearanceMode,
+                        selectedMode: effectiveAppearanceMode,
                         updateAppearanceMode: updateAppearanceMode
                     )
                 }
@@ -4229,22 +4230,31 @@ private struct CompanionImmediateSettingsPanel: View {
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
+
+    private var effectiveAppearanceMode: KLMSAppearanceMode {
+        KLMSAppearanceMode(rawValue: localAppearanceModeRaw)
+            ?? selectedAppearanceMode
+    }
 }
 
 private struct CompanionAppearanceModeSelector: View {
     var selectedMode: KLMSAppearanceMode
     var updateAppearanceMode: (KLMSAppearanceMode) async -> Void
+    @AppStorage("KLMSAppearanceMode") private var localAppearanceModeRaw = KLMSAppearanceMode.system.rawValue
 
     var body: some View {
         HStack(spacing: 7) {
             ForEach(KLMSAppearanceMode.allCases) { mode in
                 Button {
-                    guard selectedMode != mode else { return }
+                    guard effectiveSelectedMode != mode else { return }
+                    companionPerformWithoutAnimation {
+                        localAppearanceModeRaw = mode.rawValue
+                    }
                     Task {
                         await updateAppearanceMode(mode)
                     }
                 } label: {
-                    let isSelected = selectedMode == mode
+                    let isSelected = effectiveSelectedMode == mode
                     HStack(spacing: 7) {
                         Image(systemName: iconName(for: mode))
                             .font(.caption.weight(.bold))
@@ -4252,11 +4262,11 @@ private struct CompanionAppearanceModeSelector: View {
                             .font(.caption.weight(.bold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.82)
-                        if isSelected {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.caption.weight(.bold))
-                                .accessibilityHidden(true)
-                        }
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption.weight(.bold))
+                            .opacity(isSelected ? 1.0 : 0.0)
+                            .frame(width: 14)
+                            .accessibilityHidden(true)
                     }
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -4272,11 +4282,16 @@ private struct CompanionAppearanceModeSelector: View {
                 }
                 .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
                 .accessibilityLabel("화면 모드 \(mode.title)")
-                .accessibilityValue(selectedMode == mode ? "선택됨" : "선택 안 됨")
+                .accessibilityValue(effectiveSelectedMode == mode ? "선택됨" : "선택 안 됨")
                 .accessibilityHint("KLMS Sync 화면 모드를 \(mode.title)으로 바꿉니다.")
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var effectiveSelectedMode: KLMSAppearanceMode {
+        KLMSAppearanceMode(rawValue: localAppearanceModeRaw)
+            ?? selectedMode
     }
 
     private func iconName(for mode: KLMSAppearanceMode) -> String {
