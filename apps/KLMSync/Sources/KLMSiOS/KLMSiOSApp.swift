@@ -4160,6 +4160,7 @@ private struct CompanionImmediateSettingsPanel: View {
     var updateAppearanceMode: (KLMSAppearanceMode) async -> Void
     var updateNoticeNotes: (Bool) async -> Void
     @AppStorage("KLMSAppearanceMode") private var localAppearanceModeRaw = KLMSAppearanceMode.system.rawValue
+    @AppStorage("KLMSShouldUpdateNoticeNotes") private var localNoticeNotesEnabled = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -4194,11 +4195,14 @@ private struct CompanionImmediateSettingsPanel: View {
 
                 CompanionImmediateSettingRow(
                     title: "공지 메모",
-                    statusText: noticeNotesEnabled ? "켜짐" : "꺼짐",
+                    statusText: effectiveNoticeNotesEnabled ? "켜짐" : "꺼짐",
                     detail: "끄면 원격 동기화에서 Notes 공지 메모만 건너뜁니다."
                 ) {
                     Button {
-                        let enabled = !noticeNotesEnabled
+                        let enabled = !effectiveNoticeNotesEnabled
+                        companionPerformWithoutAnimation {
+                            localNoticeNotesEnabled = enabled
+                        }
                         Task {
                             await updateNoticeNotes(enabled)
                         }
@@ -4206,18 +4210,18 @@ private struct CompanionImmediateSettingsPanel: View {
                         HStack(spacing: 8) {
                             Label(
                                 "원격 실행에서 공지 메모도 갱신",
-                                systemImage: noticeNotesEnabled ? "checkmark.circle.fill" : "circle"
+                                systemImage: effectiveNoticeNotesEnabled ? "checkmark.circle.fill" : "circle"
                             )
                             Spacer(minLength: 8)
-                            Text(noticeNotesEnabled ? "켜짐" : "꺼짐")
+                            Text(effectiveNoticeNotesEnabled ? "켜짐" : "꺼짐")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color.klmsSecondaryText)
                         }
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
-                    .buttonStyle(KLMSActionButtonStyle(tone: noticeNotesEnabled ? .success : .soft))
+                    .buttonStyle(KLMSActionButtonStyle(tone: effectiveNoticeNotesEnabled ? .success : .soft))
                     .accessibilityLabel("공지 메모 갱신")
-                    .accessibilityValue(noticeNotesEnabled ? "켜짐" : "꺼짐")
+                    .accessibilityValue(effectiveNoticeNotesEnabled ? "켜짐" : "꺼짐")
                     .accessibilityHint("원격 동기화에서 Notes 공지 메모를 쓸지 정합니다.")
                 }
             }
@@ -4234,6 +4238,10 @@ private struct CompanionImmediateSettingsPanel: View {
     private var effectiveAppearanceMode: KLMSAppearanceMode {
         KLMSAppearanceMode(rawValue: localAppearanceModeRaw)
             ?? selectedAppearanceMode
+    }
+
+    private var effectiveNoticeNotesEnabled: Bool {
+        localNoticeNotesEnabled
     }
 }
 
@@ -4901,13 +4909,17 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            content
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .contentShape(Rectangle())
-                .padding(.bottom, bottomScrollInset)
+        GeometryReader { proxy in
+            ScrollView(.vertical, showsIndicators: true) {
+                content
+                    .frame(width: proxy.size.width, alignment: .topLeading)
+                    .contentShape(Rectangle())
+                    .padding(.bottom, bottomScrollInset)
+            }
+            .scrollIndicators(.visible)
+            .background(Color.klmsScreenBackground)
+            .clipped()
         }
-        .scrollIndicators(.visible)
         .background(Color.klmsScreenBackground)
         .clipped()
     }
@@ -6110,6 +6122,7 @@ private enum CompanionItemListPreloadStore {
 }
 
 private struct CompanionItemListControls: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var sortOption: CompanionItemSortOption
     @Binding var visibilityFilter: CompanionItemVisibilityFilter
     @Binding var statusFilter: CompanionItemStatusFilter
@@ -6127,7 +6140,12 @@ private struct CompanionItemListControls: View {
     var defaultStatusFilter: CompanionItemStatusFilter
     var totalCount: Int
     var filteredCount: Int
-    private let chipColumns = [GridItem(.adaptive(minimum: 92), spacing: 8, alignment: .leading)]
+    private var chipColumns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
+            count: horizontalSizeClass == .regular ? 3 : 2
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -13584,6 +13602,7 @@ private struct RemoteSettingsPanelContent: View, Equatable {
     var isSubmitting: Bool
     var usesWideGrid = false
     var createSettingAction: (ServerRelaySetting, String) async -> Void
+    @State private var selectedGroupID: String?
 
     nonisolated static func == (lhs: RemoteSettingsPanelContent, rhs: RemoteSettingsPanelContent) -> Bool {
         lhs.settingGroups == rhs.settingGroups
@@ -13626,13 +13645,19 @@ private struct RemoteSettingsPanelContent: View, Equatable {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
                         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
+                } else {
+                    settingGroupNavigation
+                }
+
+                if settingGroups.isEmpty {
+                    EmptyView()
                 } else if usesWideGrid {
                     LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 260), spacing: 10, alignment: .top)],
+                        columns: settingGridColumns,
                         alignment: .leading,
                         spacing: 10
                     ) {
-                        ForEach(settingGroups) { group in
+                        ForEach(visibleSettingGroups) { group in
                             RemoteSettingGroupSection(
                                 group: group,
                                 isSubmitting: isSubmitting,
@@ -13641,7 +13666,7 @@ private struct RemoteSettingsPanelContent: View, Equatable {
                         }
                     }
                 } else {
-                    ForEach(settingGroups) { group in
+                    ForEach(visibleSettingGroups) { group in
                         RemoteSettingGroupSection(
                             group: group,
                             isSubmitting: isSubmitting,
@@ -13652,10 +13677,100 @@ private struct RemoteSettingsPanelContent: View, Equatable {
             }
         }
         .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
+        }
+    }
+
+    private var visibleSettingGroups: [RemoteSettingGroup] {
+        guard let selectedGroupID,
+              settingGroups.contains(where: { $0.id == selectedGroupID })
+        else {
+            return settingGroups
+        }
+        return settingGroups.filter { $0.id == selectedGroupID }
+    }
+
+    private var settingGridColumns: [GridItem] {
+        [
+            GridItem(.flexible(minimum: 0), spacing: 10, alignment: .top),
+            GridItem(.flexible(minimum: 0), spacing: 10, alignment: .top),
+        ]
+    }
+
+    private var settingGroupNavigation: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("설정 섹션")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+            LazyVGrid(columns: navigationColumns, alignment: .leading, spacing: 7) {
+                settingGroupNavigationButton(
+                    title: "전체",
+                    systemImage: "square.grid.2x2",
+                    isSelected: selectedGroupID == nil
+                ) {
+                    selectedGroupID = nil
+                }
+                ForEach(settingGroups) { group in
+                    settingGroupNavigationButton(
+                        title: group.title,
+                        systemImage: group.systemImage,
+                        isSelected: selectedGroupID == group.id
+                    ) {
+                        selectedGroupID = group.id
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var navigationColumns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: 7, alignment: .leading),
+            count: usesWideGrid ? 4 : 2
+        )
+    }
+
+    private func settingGroupNavigationButton(
+        title: String,
+        systemImage: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            companionPerformWithoutAnimation(action)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
+                .padding(.horizontal, 8)
+                .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
+        .accessibilityLabel("\(title) 설정")
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+        .transaction { transaction in
+            transaction.animation = nil
         }
     }
 }
