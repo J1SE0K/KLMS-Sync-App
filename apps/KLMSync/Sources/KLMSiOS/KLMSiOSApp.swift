@@ -6277,7 +6277,7 @@ private struct CompanionItemListControls: View {
                 }
                 .contentShape(Capsule())
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 999))
+        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 999))
         .accessibilityLabel(title)
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .transaction { transaction in
@@ -6408,6 +6408,7 @@ private struct CompanionSearchFilterPanel<Controls: View>: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -6452,6 +6453,7 @@ private struct CompanionControlBox<Content: View>: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -7277,7 +7279,27 @@ private struct KLMSCardButtonStyle: ButtonStyle {
                     .fill(Color.klmsCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
                     .allowsHitTesting(false)
             }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .opacity(isEnabled ? 1.0 : disabledOpacity)
+            .transaction { transaction in
+                transaction.animation = nil
+            }
+    }
+}
+
+private struct KLMSStableSelectionButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat = 10
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.94 : 1.0) : 0.54)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .transaction { transaction in
+                transaction.animation = nil
+            }
     }
 }
 
@@ -7837,7 +7859,7 @@ private struct WorkstationDashboardPreviewSection: View {
                         ServerSyncDataRow(item: item, isSelected: false)
                             .equatable()
                     }
-                    .buttonStyle(KLMSCardButtonStyle())
+                    .buttonStyle(KLMSStableSelectionButtonStyle())
                     .accessibilityLabel("\(title) \(item.title.nilIfEmpty ?? "항목") 상세 열기")
                     .accessibilityHint("\(title) 상세를 엽니다.")
                 }
@@ -8833,7 +8855,7 @@ private struct WorkstationTaskCategorySelector: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 10))
         .accessibilityLabel("\(category.title) \(value)개")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(category.title) 목록을 작업 영역에 표시합니다.")
@@ -9174,7 +9196,7 @@ private struct CompanionInlineItemRowsView: View {
                         )
                         .equatable()
                     }
-                    .buttonStyle(KLMSCardButtonStyle())
+                    .buttonStyle(KLMSStableSelectionButtonStyle())
                     .accessibilityValue(presentation == .inlineDetail ? (isSelected ? "펼쳐짐" : "접힘") : (isSelected ? "선택됨" : "선택 안 됨"))
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "상세 패널에 항목을 표시합니다.")
 
@@ -9322,7 +9344,7 @@ private struct CompanionSelectableItemListRows: View {
                     ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
                         .equatable()
                 }
-                .buttonStyle(KLMSCardButtonStyle())
+                .buttonStyle(KLMSStableSelectionButtonStyle())
                 .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
                 .accessibilityHint("항목 상세를 엽니다.")
             }

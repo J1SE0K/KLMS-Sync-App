@@ -1894,6 +1894,22 @@ final class DashboardDataModelTests: XCTestCase {
             description: "iPhone/iPad deferred interaction expansion"
         )
         let iosDeferredItemDetailPanel = try sourceStructBody(named: "DeferredServerSyncItemDetailPanel", in: ios)
+        let iosCardButtonStyle = try sourceBody(
+            after: "private struct KLMSCardButtonStyle: ButtonStyle",
+            in: ios,
+            description: "iOS card button style"
+        )
+        let iosStableSelectionButtonStyle = try sourceBody(
+            after: "private struct KLMSStableSelectionButtonStyle: ButtonStyle",
+            in: ios,
+            description: "iOS stable selection button style"
+        )
+        let iosItemListControls = try sourceStructBody(named: "CompanionItemListControls", in: ios)
+        let iosControlBox = try sourceAnyStructBody(named: "CompanionControlBox", in: ios)
+        let iosSearchFilterPanel = try sourceAnyStructBody(named: "CompanionSearchFilterPanel", in: ios)
+        let iosInlineItemRows = try sourceStructBody(named: "CompanionInlineItemRowsView", in: ios)
+        let iosSelectableItemRows = try sourceStructBody(named: "CompanionSelectableItemListRows", in: ios)
+        let iosTaskCategorySelector = try sourceStructBody(named: "WorkstationTaskCategorySelector", in: ios)
 
         XCTAssertFalse(sources.contains("duration: 0.04"))
         XCTAssertFalse(sources.contains("withAnimation(.easeInOut(duration: 0.08))"))
@@ -1972,6 +1988,18 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(iosDeferredItemDetailPanel.contains("await Task.yield()"))
         XCTAssertTrue(iosDeferredItemDetailPanel.contains("ServerSyncItemInlineDetailPanel(item: item, model: model)"))
         XCTAssertTrue(iosDeferredItemDetailPanel.contains(".id(item.id)"))
+        XCTAssertTrue(iosCardButtonStyle.contains(".clipShape(RoundedRectangle(cornerRadius: cornerRadius))"))
+        XCTAssertTrue(iosCardButtonStyle.contains("transaction.animation = nil"))
+        XCTAssertTrue(ios.contains("private struct KLMSStableSelectionButtonStyle: ButtonStyle"))
+        XCTAssertFalse(iosStableSelectionButtonStyle.contains("klmsCommandButtonPressedOverlay"))
+        XCTAssertTrue(iosStableSelectionButtonStyle.contains(".clipShape(RoundedRectangle(cornerRadius: cornerRadius))"))
+        XCTAssertTrue(iosStableSelectionButtonStyle.contains("transaction.animation = nil"))
+        XCTAssertTrue(iosItemListControls.contains(".buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 999))"))
+        XCTAssertTrue(iosInlineItemRows.contains(".buttonStyle(KLMSStableSelectionButtonStyle())"))
+        XCTAssertTrue(iosSelectableItemRows.contains(".buttonStyle(KLMSStableSelectionButtonStyle())"))
+        XCTAssertTrue(iosTaskCategorySelector.contains(".buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 10))"))
+        XCTAssertTrue(iosControlBox.contains(".clipShape(RoundedRectangle(cornerRadius: 8))"))
+        XCTAssertTrue(iosSearchFilterPanel.contains(".clipShape(RoundedRectangle(cornerRadius: 8))"))
         XCTAssertFalse(sources.contains("dashboardDetailExpansionDelayNanoseconds"))
         XCTAssertFalse(sources.contains("private let klmsMacInteractionDetailDelayNanoseconds"))
         XCTAssertFalse(sources.contains("private let klmsIOSInteractionDetailDelayNanoseconds"))
@@ -5266,7 +5294,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("context: \"파일 요청 기록\""))
         XCTAssertTrue(ios.contains("context: \"서버 요청 기록\""))
         XCTAssertTrue(selectableRows.contains("ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)"))
-        XCTAssertTrue(selectableRows.contains(".buttonStyle(KLMSCardButtonStyle())"))
+        XCTAssertTrue(selectableRows.contains(".buttonStyle(KLMSStableSelectionButtonStyle())"))
         XCTAssertTrue(selectableRows.contains("companionPerformWithoutAnimation {\n            selectedItemID = itemID\n            onSelect(item)\n        }"))
         XCTAssertFalse(selectableRows.contains("Task.sleep"))
         XCTAssertFalse(selectableRows.contains("guard !Task.isCancelled, selectedItemID == itemID else { return }"))
@@ -5337,7 +5365,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(inlineRows.contains("guard !Task.isCancelled, optimisticExternalSelectedItemID == itemID else { return }"))
         XCTAssertTrue(inlineRows.contains("onSelectItem(item)"))
         XCTAssertTrue(inlineRows.contains("accessorySystemImage(isSelected: isSelected)"))
-        XCTAssertTrue(inlineRows.contains(".buttonStyle(KLMSCardButtonStyle())"))
+        XCTAssertTrue(inlineRows.contains(".buttonStyle(KLMSStableSelectionButtonStyle())"))
         XCTAssertFalse(inlineRows.contains("@State private var detailItemID"))
         XCTAssertTrue(inlineRows.contains("@State private var visibleLimit = CompanionLargeList.initialVisibleLimit"))
         XCTAssertTrue(inlineRows.contains("@Environment(\\.horizontalSizeClass) private var horizontalSizeClass"))
@@ -5561,7 +5589,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(workstationPreviewSection.contains("var category: DashboardMetricCategory"))
         XCTAssertTrue(workstationPreviewSection.contains("var onOpenCategory: (DashboardMetricCategory) -> Void"))
         XCTAssertTrue(workstationPreviewSection.contains("Button {\n                        onOpenCategory(category)"))
-        XCTAssertTrue(workstationPreviewSection.contains(".buttonStyle(KLMSCardButtonStyle())"))
+        XCTAssertTrue(workstationPreviewSection.contains(".buttonStyle(KLMSStableSelectionButtonStyle())"))
         XCTAssertTrue(workstationPreviewSection.contains(".accessibilityLabel(\"\\(title) \\(item.title.nilIfEmpty ?? \"항목\") 상세 열기\")"))
         XCTAssertTrue(workstationChangeSummary.contains("var status: SanitizedRemoteStatus"))
         XCTAssertFalse(workstationChangeSummary.contains("@ObservedObject var model"))
