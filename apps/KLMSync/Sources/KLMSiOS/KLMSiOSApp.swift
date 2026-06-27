@@ -3862,7 +3862,8 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
     var onCategoryTap: (DashboardMetricCategory) -> Void
 
     private let columns = [
-        GridItem(.adaptive(minimum: 104), spacing: 8),
+        GridItem(.flexible(minimum: 0), spacing: 8),
+        GridItem(.flexible(minimum: 0), spacing: 8),
     ]
 
     nonisolated static func == (lhs: CompanionDashboardQuickAccessGrid, rhs: CompanionDashboardQuickAccessGrid) -> Bool {
@@ -3940,7 +3941,7 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
             )
             .contentShape(RoundedRectangle(cornerRadius: 13))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
+        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 13))
         .accessibilityLabel("\(category.title) \(value)개 바로 보기")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(category.title) 상세를 바로 아래에 표시합니다.")
@@ -5851,9 +5852,9 @@ private struct CompanionItemListInputKey: Hashable {
     var recentOnly: Bool
 
     func shouldDebounceComparedTo(_ previous: CompanionItemListInputKey?) -> Bool {
-        guard var previous else { return false }
-        previous.query = query
-        return previous == self
+        guard let previous else { return false }
+        return previous.itemsRevision == itemsRevision
+            && previous.category == category
     }
 }
 
@@ -5866,7 +5867,7 @@ private enum CompanionLargeList {
     static let regularCalendarVisibleLimit = 10
     static let logVisibleLimit = 10
     static let increment = 10
-    static let filterRebuildDelayNanoseconds: UInt64 = 8_000_000
+    static let filterRebuildDelayNanoseconds: UInt64 = 80_000_000
 
     static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
         horizontalSizeClass == .regular ? regularInitialVisibleLimit : initialVisibleLimit
@@ -6295,7 +6296,7 @@ private struct CompanionItemListControls: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .frame(minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: 44)
                 .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground, in: Capsule())
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 .overlay {
@@ -7219,8 +7220,13 @@ private struct FlowChipLayout: View {
     var selectedKind: RemoteChangeSummaryKind?
     var onSelect: (RemoteChangeSummaryKind) -> Void
 
+    private let columns = [
+        GridItem(.flexible(minimum: 0), spacing: 7),
+        GridItem(.flexible(minimum: 0), spacing: 7),
+    ]
+
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 7)], alignment: .leading, spacing: 7) {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 7) {
             ForEach(entries) { entry in
                 Button {
                     onSelect(entry.kind)
@@ -7258,7 +7264,7 @@ private struct FlowChipLayout: View {
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .buttonStyle(KLMSCardButtonStyle())
+                .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
                 .accessibilityLabel("\(entry.kind.title) \(entry.value)개 \(selectedKind == entry.kind ? "펼쳐짐" : "접힘")")
                 .accessibilityHint("변경된 항목 목록을 펼칩니다.")
             }
@@ -7322,7 +7328,7 @@ private struct RemoteMetricTile: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 14))
+        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 14))
         .accessibilityLabel("\(label) \(value)개")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(label) 상세를 아래에 엽니다.")
@@ -7567,7 +7573,7 @@ private struct WorkstationMetricCard: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 13))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
+        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 13))
         .accessibilityLabel("\(category.title) \(value)개")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(category.title) 상세와 처리 버튼을 오른쪽 패널에 표시합니다.")
