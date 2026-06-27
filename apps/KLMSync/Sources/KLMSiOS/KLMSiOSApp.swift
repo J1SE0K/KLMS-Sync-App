@@ -1260,7 +1260,6 @@ final class CompanionModel: ObservableObject {
         )
         applyRemoteSettingActionLocally(optimisticAction, fallbackSetting: setting)
         replaceRecentSettingAction(optimisticAction) { $0.key == setting.key }
-        connectionMessage = "\(setting.title) 설정을 저장하는 중입니다."
         connectionSucceeded = true
         errorMessage = ""
         do {
@@ -1272,12 +1271,8 @@ final class CompanionModel: ObservableObject {
             let savedAction = try await serverRelayStore.createSettingAction(action)
             replaceRecentSettingAction(savedAction) { $0.id == savedAction.id || $0.key == savedAction.key }
             applyRemoteSettingActionLocally(savedAction, fallbackSetting: setting)
-            connectionMessage = savedAction.message.nilIfBlank ?? "\(setting.title) 설정 변경 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
-            if savedAction.status != .completed {
-                userAlert = UserAlert(title: "설정 요청 완료", message: connectionMessage)
-            }
             schedulePostActionRefresh(scope: .settingActions)
         } catch {
             guard !isCancellationError(error) else { return }
@@ -1505,7 +1500,6 @@ final class CompanionModel: ObservableObject {
         do {
             let saved = try await serverRelayStore.updateSharedSetting(setting)
             _ = applySharedSettings([saved], merge: true)
-            connectionMessage = successMessage
             connectionSucceeded = true
             errorMessage = ""
         } catch {
@@ -4260,6 +4254,7 @@ private struct CompanionAppearanceModeSelector: View {
                         await updateAppearanceMode(mode)
                     }
                 } label: {
+                    let isSelected = selectedMode == mode
                     HStack(spacing: 7) {
                         Image(systemName: iconName(for: mode))
                             .font(.caption.weight(.bold))
@@ -4267,16 +4262,21 @@ private struct CompanionAppearanceModeSelector: View {
                             .font(.caption.weight(.bold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.82)
+                        if isSelected {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption.weight(.bold))
+                                .accessibilityHidden(true)
+                        }
                     }
-                    .foregroundStyle(selectedMode == mode ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .background(
-                        selectedMode == mode ? Color.klmsSelectedBackground : Color.klmsSubtleCardBackground.opacity(0.72),
+                        isSelected ? Color.klmsSelectedBackground : Color.klmsSubtleCardBackground.opacity(0.72),
                         in: RoundedRectangle(cornerRadius: 12)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(selectedMode == mode ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.72), lineWidth: selectedMode == mode ? 1.3 : 1)
+                            .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.72), lineWidth: isSelected ? 1.6 : 1)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                 }
@@ -4892,6 +4892,7 @@ private struct CompanionHeaderStatusPillContent: View, Equatable {
 }
 
 private struct WholeScreenVerticalScrollView<Content: View>: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -4899,10 +4900,15 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .contentShape(Rectangle())
+                .padding(.bottom, bottomScrollInset)
         }
         .scrollIndicators(.visible)
         .background(Color.klmsScreenBackground)
         .clipped()
+    }
+
+    private var bottomScrollInset: CGFloat {
+        horizontalSizeClass == .compact ? 86 : 24
     }
 }
 
@@ -6116,6 +6122,7 @@ private struct CompanionItemListControls: View {
     var defaultStatusFilter: CompanionItemStatusFilter
     var totalCount: Int
     var filteredCount: Int
+    private let chipColumns = [GridItem(.adaptive(minimum: 92), spacing: 8, alignment: .leading)]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -6135,13 +6142,13 @@ private struct CompanionItemListControls: View {
             }
 
             CompanionControlBox(title: "정렬", systemImage: "arrow.up.arrow.down") {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(CompanionItemSortOption.allCases) { option in
-                            companionChoiceChip(
-                                title: option.title,
-                                isSelected: sortOption == option
-                            ) {
+                LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 8) {
+                    ForEach(CompanionItemSortOption.allCases) { option in
+                        companionChoiceChip(
+                            title: option.title,
+                            isSelected: sortOption == option
+                        ) {
+                            companionPerformWithoutAnimation {
                                 sortOption = option
                             }
                         }
@@ -6196,13 +6203,13 @@ private struct CompanionItemListControls: View {
 
             if availableStatusFilters.count > 1 {
                 CompanionControlBox(title: "상태", systemImage: "checklist") {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(availableStatusFilters) { filter in
-                                companionChoiceChip(
-                                    title: filter.title,
-                                    isSelected: statusFilter == filter
-                                ) {
+                    LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 8) {
+                        ForEach(availableStatusFilters) { filter in
+                            companionChoiceChip(
+                                title: filter.title,
+                                isSelected: statusFilter == filter
+                            ) {
+                                companionPerformWithoutAnimation {
                                     statusFilter = filter
                                 }
                             }
@@ -6213,13 +6220,13 @@ private struct CompanionItemListControls: View {
 
             CompanionControlBox(title: "표시", systemImage: "slider.horizontal.3") {
                 VStack(alignment: .leading, spacing: 8) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(CompanionItemVisibilityFilter.allCases) { option in
-                                companionChoiceChip(
-                                    title: option.title,
-                                    isSelected: visibilityFilter == option
-                                ) {
+                    LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 8) {
+                        ForEach(CompanionItemVisibilityFilter.allCases) { option in
+                            companionChoiceChip(
+                                title: option.title,
+                                isSelected: visibilityFilter == option
+                            ) {
+                                companionPerformWithoutAnimation {
                                     visibilityFilter = option
                                 }
                             }
@@ -6253,7 +6260,9 @@ private struct CompanionItemListControls: View {
 
     private func filterToggle(_ title: String, isOn: Binding<Bool>) -> some View {
         companionChoiceChip(title: title, isSelected: isOn.wrappedValue) {
-            isOn.wrappedValue.toggle()
+            companionPerformWithoutAnimation {
+                isOn.wrappedValue.toggle()
+            }
         }
     }
 
@@ -6281,6 +6290,9 @@ private struct CompanionItemListControls: View {
         .buttonStyle(KLMSCardButtonStyle(cornerRadius: 999))
         .accessibilityLabel(title)
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+        .transaction { transaction in
+            transaction.animation = nil
+        }
     }
 
     private func companionPickerField<Content: View>(
@@ -8021,6 +8033,43 @@ private struct KLMSActionButtonStyle: ButtonStyle {
     }
 }
 
+private struct KLMSCompactTrashButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .foregroundStyle(isEnabled ? Color.klmsDangerCommandButtonForeground : Color.klmsSecondaryText.opacity(0.64))
+            .frame(width: 34, height: 34)
+            .background {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(compactTrashBackground(isPressed: configuration.isPressed))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(isEnabled ? Color.klmsDangerBorder.opacity(configuration.isPressed ? 0.92 : 0.76) : Color.klmsCommandButtonBorder.opacity(0.38), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 9))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.52)
+    }
+
+    private func compactTrashBackground(isPressed: Bool) -> AnyShapeStyle {
+        guard isEnabled else {
+            return AnyShapeStyle(Color.klmsCommandButtonBackground.opacity(0.38))
+        }
+        return AnyShapeStyle(
+            LinearGradient(
+                colors: [
+                    Color.klmsDangerBorder.opacity(isPressed ? 0.76 : 0.90),
+                    Color.klmsDangerBorder.opacity(isPressed ? 0.54 : 0.66),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
+}
+
 private struct KLMSToolbarButtonStyle: ButtonStyle {
     var tone: KLMSButtonTone = .soft
     @Environment(\.isEnabled) private var isEnabled
@@ -9288,6 +9337,9 @@ private struct CompanionSelectableItemListRows: View {
         .onAppear {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
             clearStaleSelectionIfNeeded()
+        }
+        .transaction { transaction in
+            transaction.animation = nil
         }
     }
 
@@ -13825,9 +13877,8 @@ private struct RemoteLogSummaryPanel: View {
                 }
                 Button(action: clearRemoteLogs) {
                     Image(systemName: "trash")
-                        .frame(width: 44, height: 44)
                 }
-                .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                .buttonStyle(KLMSCompactTrashButtonStyle())
                 .disabled(snapshot.clearDisabled)
                 .accessibilityLabel("전체 기록 지우기")
             }
@@ -14166,10 +14217,8 @@ private struct SharedRunLogsView: View {
                 if let clearAction {
                     Button(action: clearAction) {
                         Image(systemName: "trash")
-                            .frame(width: 44, height: 44)
                     }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                    .buttonStyle(KLMSCompactTrashButtonStyle())
                     .accessibilityLabel("동기화 단계 기록 지우기")
                     .disabled(clearDisabled)
                 }
@@ -14333,10 +14382,8 @@ private struct RecentFileAccessRequestsView: View {
                 if let clearAction {
                     Button(action: clearAction) {
                         Image(systemName: "trash")
-                            .frame(width: 44, height: 44)
                     }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                    .buttonStyle(KLMSCompactTrashButtonStyle())
                     .accessibilityLabel("파일 요청 기록 지우기")
                     .disabled(clearDisabled)
                 }
@@ -14395,10 +14442,8 @@ private struct RecentServerRequestLogView: View {
                 if let clearAction {
                     Button(action: clearAction) {
                         Image(systemName: "trash")
-                            .frame(width: 44, height: 44)
                     }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                    .buttonStyle(KLMSCompactTrashButtonStyle())
                     .accessibilityLabel("서버 요청 기록 지우기")
                     .disabled(clearDisabled)
                 }
@@ -15025,10 +15070,8 @@ private struct RecentRemoteCommandsView: View {
                 if let clearAction {
                     Button(action: clearAction) {
                         Image(systemName: "trash")
-                            .frame(width: 44, height: 44)
                     }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+                    .buttonStyle(KLMSCompactTrashButtonStyle())
                     .accessibilityLabel("최근 요청 기록 지우기")
                     .disabled(clearDisabled)
                 }
