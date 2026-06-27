@@ -3749,7 +3749,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteSettingGroup.contains("groups[index].isCollapsible = true"))
         XCTAssertEqual(remoteSettingGroup.components(separatedBy: ".isCollapsible = true").count - 1, 1)
         let remoteSettingGroupSection = try sourceStructBody(named: "RemoteSettingGroupSection", in: ios)
-        XCTAssertTrue(remoteSettingGroupSection.contains("@State private var isExpanded = true"))
+        XCTAssertTrue(remoteSettingGroupSection.contains("@State private var isExpanded = false"))
         XCTAssertTrue(remoteSettingGroupSection.contains("if group.isCollapsible"))
         XCTAssertTrue(remoteSettingGroupSection.contains("CompanionStableExpansion(isExpanded: isExpanded)"))
         XCTAssertTrue(ios.contains("private struct CompanionStableExpansion"))
