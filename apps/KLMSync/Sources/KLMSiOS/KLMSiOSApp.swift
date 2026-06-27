@@ -6150,37 +6150,31 @@ private struct CompanionItemListControls: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         if yearOptions.count > 1 {
-                            companionPickerField(title: "연도", systemImage: "calendar") {
-                                Picker("연도", selection: $selectedYear) {
-                                    ForEach(yearOptions, id: \.self) { year in
-                                        Text(year).tag(year)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                            }
+                            companionMenuPickerField(
+                                title: "연도",
+                                systemImage: "calendar",
+                                selection: $selectedYear,
+                                options: yearOptions
+                            )
                         }
 
                         if semesterOptions.count > 1 {
-                            companionPickerField(title: "학기", systemImage: "calendar.badge.clock") {
-                                Picker("학기", selection: $selectedSemester) {
-                                    ForEach(semesterOptions, id: \.self) { semester in
-                                        Text(semester).tag(semester)
-                                    }
-                                }
-                                .pickerStyle(.menu)
-                            }
+                            companionMenuPickerField(
+                                title: "학기",
+                                systemImage: "calendar.badge.clock",
+                                selection: $selectedSemester,
+                                options: semesterOptions
+                            )
                         }
                     }
 
                     if courseOptions.count > 1 {
-                        companionPickerField(title: "과목", systemImage: "book.closed") {
-                            Picker("과목", selection: $selectedCourse) {
-                                ForEach(courseOptions, id: \.self) { course in
-                                    Text(course).tag(course)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                        }
+                        companionMenuPickerField(
+                            title: "과목",
+                            systemImage: "book.closed",
+                            selection: $selectedCourse,
+                            options: courseOptions
+                        )
                     }
 
                     if courseOptions.count <= 1 && yearOptions.count <= 1 && semesterOptions.count <= 1 {
@@ -6285,16 +6279,52 @@ private struct CompanionItemListControls: View {
         }
     }
 
-    private func companionPickerField<Content: View>(
+    private func companionMenuPickerField(
         title: String,
         systemImage: String,
-        @ViewBuilder content: () -> Content
+        selection: Binding<String>,
+        options: [String]
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: systemImage)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
-            content()
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        companionPerformWithoutAnimation {
+                            selection.wrappedValue = option
+                        }
+                    } label: {
+                        Label(option, systemImage: selection.wrappedValue == option ? "checkmark" : "")
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(selection.wrappedValue)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsPrimaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                }
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.klmsBorder, lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
+            .transaction { transaction in
+                transaction.animation = nil
+            }
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         }
         .padding(10)
@@ -6304,6 +6334,7 @@ private struct CompanionItemListControls: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func resetFilters() {
@@ -12887,6 +12918,10 @@ private struct ServerSyncDataRow: View, Equatable {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .transaction { transaction in
+            transaction.animation = nil
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(snapshot.accessibilityLabel)
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
