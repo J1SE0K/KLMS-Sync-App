@@ -6398,16 +6398,18 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(createItemAction.contains("replaceRecentItemAction(localAction) { $0.itemID == item.id }"))
         XCTAssertTrue(createItemAction.contains("serverRelayStore.createItemAction(action)"))
         XCTAssertTrue(createItemAction.contains("applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)"))
-        XCTAssertTrue(createItemAction.contains("let requiresMac = !actionKind.isServerDisplayOnlyAction"))
-        XCTAssertTrue(createItemAction.contains("if requiresMac {\n            isSubmitting = true\n        }"))
-        XCTAssertFalse(createItemAction.contains("isSubmitting = true\n        defer {\n            isSubmitting = false\n        }"))
+        XCTAssertFalse(createItemAction.contains("let requiresMac = !actionKind.isServerDisplayOnlyAction"))
+        XCTAssertFalse(createItemAction.contains("isSubmitting = true"))
         let inlineItemDetail = try sourceStructBody(named: "ServerSyncItemInlineDetailPanel", in: ios)
         let remoteItemToggleButton = try sourceStructBody(named: "RemoteItemToggleButton", in: ios)
+        XCTAssertTrue(inlineItemDetail.contains("if let activeAction = model.activeItemAction(for: item),\n               !activeAction.action.isServerDisplayOnlyAction"))
         XCTAssertTrue(inlineItemDetail.contains(".disabled(!model.serverRelayConfigured || (requiresMac && (model.isSubmitting || model.hasInFlightRequest)))"))
         XCTAssertFalse(inlineItemDetail.contains(".disabled(!model.serverRelayConfigured || model.isSubmitting || (model.hasInFlightRequest && requiresMac))"))
+        XCTAssertTrue(inlineItemDetail.contains("GridItem(.flexible(minimum: 0), spacing: 8)"))
         XCTAssertTrue(remoteItemToggleButton.contains(".disabled(!model.serverRelayConfigured || (!action.isServerDisplayOnlyAction && (model.isSubmitting || model.hasInFlightRequest)))"))
+        XCTAssertTrue(remoteItemToggleButton.contains(".buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))"))
         XCTAssertFalse(remoteItemToggleButton.contains(".disabled(!model.serverRelayConfigured || model.isSubmitting)"))
-        XCTAssertTrue(createItemAction.contains("if !savedAction.action.isServerDisplayOnlyAction"))
+        XCTAssertFalse(createItemAction.contains("userAlert = UserAlert(title: \"요청 완료\""))
         XCTAssertFalse(createItemAction.contains("includeSyncData: !savedAction.action.isServerDisplayOnlyAction"))
         XCTAssertTrue(createItemAction.contains("schedulePostActionRefresh(scope: .itemActions)"))
         XCTAssertTrue(ios.contains("private func schedulePostActionRefresh(scope: RelayRefreshScope, delayNanoseconds: UInt64 = 80_000_000)"))
@@ -6856,6 +6858,26 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS applyLogClear"
         )
+        let iosClearRemoteLogs = try sourceBody(
+            after: "func clearRemoteLogs(scope: ServerRelayLogClearScope = .all) async",
+            in: ios,
+            description: "iOS clear remote logs"
+        )
+        let iosClearSharedRunLogs = try sourceBody(
+            after: "func clearSharedRunLogs() async",
+            in: ios,
+            description: "iOS clear shared run logs"
+        )
+        XCTAssertTrue(iosClearRemoteLogs.contains("applyLogClear(scope: scope)"))
+        XCTAssertTrue(iosClearRemoteLogs.contains("let previousCommands = recentCommands"))
+        XCTAssertTrue(iosClearRemoteLogs.contains("schedulePostActionRefresh(scope: .displayLogs)"))
+        let localClearIndex = try XCTUnwrap(iosClearRemoteLogs.range(of: "applyLogClear(scope: scope)")?.lowerBound)
+        let serverClearIndex = try XCTUnwrap(iosClearRemoteLogs.range(of: "serverRelayStore.clearDisplayLogs(scope: scope)")?.lowerBound)
+        XCTAssertLessThan(localClearIndex, serverClearIndex)
+        XCTAssertTrue(iosClearSharedRunLogs.contains("sharedRunLogs = []"))
+        let localSharedClearIndex = try XCTUnwrap(iosClearSharedRunLogs.range(of: "sharedRunLogs = []")?.lowerBound)
+        let serverSharedClearIndex = try XCTUnwrap(iosClearSharedRunLogs.range(of: "serverRelayStore.clearSharedRunLogs()")?.lowerBound)
+        XCTAssertLessThan(localSharedClearIndex, serverSharedClearIndex)
         XCTAssertTrue(iosApplyLogClear.contains("recentCommands = recentCommands.filter { $0.status.isInFlight }"))
         XCTAssertTrue(iosApplyLogClear.contains("recentFileAccessRequests = recentFileAccessRequests.filter { $0.status.isInFlight }"))
         XCTAssertFalse(iosApplyLogClear.contains("pendingCancelCommandID = nil"))

@@ -1512,16 +1512,7 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
-        let requiresMac = !actionKind.isServerDisplayOnlyAction
         let updatesServerVisibleState = actionKind.isCompanionImmediateDisplayAction
-        if requiresMac {
-            isSubmitting = true
-        }
-        defer {
-            if requiresMac {
-                isSubmitting = false
-            }
-        }
         let previousSyncItems = syncItems
         let previousSyncItemsSignature = syncItemsSignature
         let previousMailDashboardItems = mailDashboardItems
@@ -1544,9 +1535,6 @@ final class CompanionModel: ObservableObject {
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
-            if !savedAction.action.isServerDisplayOnlyAction {
-                userAlert = UserAlert(title: "요청 완료", message: connectionMessage)
-            }
             schedulePostActionRefresh(scope: .itemActions)
         } catch {
             guard !isCancellationError(error) else { return }
@@ -2201,23 +2189,51 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "로그 지우기 보류", message: message)
             return
         }
+        let previousCommands = recentCommands
+        let previousRequestLog = recentRequestLog
+        let previousFileAccessRequests = recentFileAccessRequests
+        let previousItemActions = recentItemActions
+        let previousSettingActions = recentSettingActions
+        let previousSharedRunLogs = sharedRunLogs
+        let previousSharedRunLogsSignature = sharedRunLogsSignature
+        let previousLastTerminalCommandID = lastTerminalCommandID
+
+        applyLogClear(scope: scope)
+        if scope == .all {
+            sharedRunLogs = []
+            sharedRunLogsSignature = nil
+            syncDataNeedsRefresh = true
+        }
+        connectionMessage = scope == .all ? "화면 기록과 공유 실행 로그를 지우는 중입니다." : "화면 기록을 지우는 중입니다."
+        connectionSucceeded = true
+        errorMessage = ""
+
         var remoteClearError: String?
         if let serverRelayStore {
             do {
                 _ = try await serverRelayStore.clearDisplayLogs(scope: scope)
                 if scope == .all {
                     _ = try await serverRelayStore.clearSharedRunLogs()
-                    sharedRunLogs = []
-                    sharedRunLogsSignature = nil
                     syncDataNeedsRefresh = true
                 }
             } catch {
                 remoteClearError = "서버 표시 기록 지우기 실패: \(error.localizedDescription)"
             }
         }
-        applyLogClear(scope: scope)
+        if remoteClearError != nil {
+            recentCommands = previousCommands
+            recentRequestLog = previousRequestLog
+            recentFileAccessRequests = previousFileAccessRequests
+            recentItemActions = previousItemActions
+            recentSettingActions = previousSettingActions
+            sharedRunLogs = previousSharedRunLogs
+            sharedRunLogsSignature = previousSharedRunLogsSignature
+            lastTerminalCommandID = previousLastTerminalCommandID
+            rebuildRemoteLogDerivedState()
+            schedulePostActionRefresh(scope: .displayLogs)
+        }
         connectionMessage = remoteClearError ?? (scope == .all ? "화면 기록과 공유 실행 로그를 지웠습니다." : "화면 기록을 지웠습니다.")
-        connectionSucceeded = true
+        connectionSucceeded = remoteClearError == nil
         errorMessage = remoteClearError ?? ""
         userAlert = UserAlert(
             title: remoteClearError == nil ? "\(scope.clearTitle) 완료" : "일부 로그 지우기 실패",
@@ -2232,18 +2248,27 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "공유 실행 로그 지우기 실패", message: message)
             return
         }
+        let previousSharedRunLogs = sharedRunLogs
+        let previousSharedRunLogsSignature = sharedRunLogsSignature
+        sharedRunLogs = []
+        sharedRunLogsSignature = nil
+        syncDataNeedsRefresh = true
+        connectionMessage = "공유 실행 로그를 지우는 중입니다."
+        connectionSucceeded = true
+        errorMessage = ""
         do {
             let result = try await serverRelayStore.clearSharedRunLogs()
-            sharedRunLogs = []
-            sharedRunLogsSignature = nil
             syncDataNeedsRefresh = true
             connectionMessage = "공유 실행 로그 \(result.runLogs)개를 지웠습니다."
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "공유 실행 로그 지움", message: "모든 기기에서 공유 실행 로그가 비워집니다.")
         } catch {
+            sharedRunLogs = previousSharedRunLogs
+            sharedRunLogsSignature = previousSharedRunLogsSignature
             let message = "공유 실행 로그 지우기 실패: \(error.localizedDescription)"
             errorMessage = message
+            connectionSucceeded = false
             userAlert = UserAlert(title: "공유 실행 로그 지우기 실패", message: message)
         }
     }
@@ -12014,7 +12039,8 @@ private struct ServerSyncItemInlineDetailPanel: View {
             if item.kind == "file" {
                 fileAccessPanel
             }
-            if let activeAction = model.activeItemAction(for: item) {
+            if let activeAction = model.activeItemAction(for: item),
+               !activeAction.action.isServerDisplayOnlyAction {
                 RemoteItemRequestPendingView(
                     title: "요청 전송됨",
                     message: "\(activeAction.action.companionActionTitle) · \(activeAction.status.displayName)"
@@ -12110,7 +12136,10 @@ private struct ServerSyncItemInlineDetailPanel: View {
                     }
                 }
                 if !regularItemActions.isEmpty {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 8)], spacing: 8) {
+                    LazyVGrid(columns: [
+                        GridItem(.flexible(minimum: 0), spacing: 8),
+                        GridItem(.flexible(minimum: 0), spacing: 8),
+                    ], spacing: 8) {
                         ForEach(regularItemActions) { action in
                             let requiresMac = !action.isServerDisplayOnlyAction
                             Button {
@@ -12482,7 +12511,7 @@ private struct RemoteItemToggleButton: View {
             .frame(maxWidth: .infinity, minHeight: 50)
             .contentShape(Rectangle())
         }
-        .buttonStyle(KLMSCardButtonStyle())
+        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
         .padding(10)
         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
