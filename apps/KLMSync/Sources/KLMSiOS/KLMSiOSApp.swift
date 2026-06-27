@@ -3421,7 +3421,7 @@ private struct CompanionCompactTabBar: View {
                 Image(systemName: section.systemImage)
                     .font(.caption.weight(.bold))
                 Text(section.compactTitle)
-                    .font(.system(size: 11, weight: isSelected ? .bold : .semibold, design: .rounded))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
             }
@@ -3435,7 +3435,7 @@ private struct CompanionCompactTabBar: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.38), lineWidth: isSelected ? 1.35 : 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.38), lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
@@ -3541,13 +3541,13 @@ private struct CompanionSidebarButton: View {
                                     : Color.klmsSubtleCardBackground.opacity(0.72)
                             )
                         Image(systemName: section.systemImage)
-                            .font((isCompact ? Font.subheadline : Font.body).weight(isSelected ? .bold : .semibold))
+                            .font((isCompact ? Font.subheadline : Font.body).weight(.semibold))
                             .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.84))
                     }
                     .frame(width: isCompact ? 28 : 30, height: isCompact ? 28 : 30)
                 }
                 Text(section.title)
-                    .font(.system(size: isCompact ? 12 : 13, weight: isSelected ? .bold : .semibold, design: .rounded))
+                    .font(.system(size: isCompact ? 12 : 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 Spacer(minLength: 0)
                 if showsArrow {
@@ -3569,12 +3569,12 @@ private struct CompanionSidebarButton: View {
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(isSelected ? Color.klmsSelectedBorder : Color.clear)
-                    .frame(width: isSelected ? 4 : 0)
+                    .frame(width: 4)
                     .padding(.vertical, 9)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.40), lineWidth: isSelected ? 1.35 : 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.40), lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
@@ -3936,7 +3936,7 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
             .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
             .overlay(
                 RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.86), lineWidth: isSelected ? 1.2 : 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 13))
         }
@@ -4266,7 +4266,7 @@ private struct CompanionAppearanceModeSelector: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.72), lineWidth: isSelected ? 1.6 : 1)
+                            .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.72), lineWidth: 1)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                 }
@@ -6267,7 +6267,7 @@ private struct CompanionItemListControls: View {
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 .overlay {
                     Capsule()
-                        .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
+                        .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
                 }
                 .contentShape(Capsule())
         }
@@ -7221,7 +7221,7 @@ private struct FlowChipLayout: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : entry.kind.chipBorder, lineWidth: isSelected ? 1.2 : 1)
+                            .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : entry.kind.chipBorder, lineWidth: 1)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
@@ -7285,7 +7285,7 @@ private struct RemoteMetricTile: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
@@ -7326,7 +7326,7 @@ private struct KLMSStableSelectionButtonStyle: ButtonStyle {
         configuration.label
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.94 : 1.0) : 0.54)
+            .opacity(isEnabled ? 1.0 : 0.54)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .transaction { transaction in
                 transaction.animation = nil
@@ -7502,7 +7502,7 @@ private struct WorkstationMetricCard: View {
             .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
             .overlay(
                 RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 13))
         }
@@ -8037,7 +8037,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
+            .opacity(isEnabled ? 1.0 : 0.54)
     }
 
     private var foreground: Color {
@@ -8115,7 +8115,7 @@ private struct KLMSCompactTrashButtonStyle: ButtonStyle {
                     .stroke(isEnabled ? Color.klmsDangerBorder.opacity(configuration.isPressed ? 0.92 : 0.76) : Color.klmsCommandButtonBorder.opacity(0.38), lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 9))
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.52)
+            .opacity(isEnabled ? 1.0 : 0.52)
     }
 
     private func compactTrashBackground(isPressed: Bool) -> AnyShapeStyle {
@@ -8154,7 +8154,7 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 9)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
             }
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.54)
+            .opacity(isEnabled ? 1.0 : 0.54)
     }
 
     private var foreground: Color {
@@ -8882,7 +8882,7 @@ private struct WorkstationTaskCategorySelector: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.62), lineWidth: isSelected ? 1.2 : 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.62), lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
@@ -9085,7 +9085,7 @@ private struct WorkstationCalendarWorkspace: View {
             .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.74), lineWidth: isSelected ? 1.2 : 1)
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.74), lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
@@ -12916,7 +12916,7 @@ private struct ServerSyncDataRow: View, Equatable {
         }
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: isSelected ? 1.2 : 1)
+                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .transaction { transaction in
