@@ -1986,7 +1986,7 @@ final class KLMSMacModel: ObservableObject {
             try applyServerRelayMailDashboardAddAction(action)
         case .mailDashboardRemove:
             applyServerRelayMailDashboardRemoveAction(action)
-        case .calendarVerify, .calendarApply, .calendarCreate, .calendarEdit, .calendarDelete:
+        case .calendarVerify, .calendarApply, .calendarCreate, .calendarEdit, .calendarDelete, .calendarOpen:
             throw serverRelayItemActionError("캘린더 요청은 실행 큐에서 처리해야 합니다.")
         }
         reloadSnapshot()
@@ -2052,6 +2052,7 @@ final class KLMSMacModel: ObservableObject {
              .calendarCreate,
              .calendarEdit,
              .calendarDelete,
+             .calendarOpen,
              .mailDashboardAdd:
             return nil
         }
@@ -2063,7 +2064,7 @@ final class KLMSMacModel: ObservableObject {
             .verify
         case .calendarApply:
             .coreSync
-        case .calendarCreate, .calendarEdit, .calendarDelete:
+        case .calendarCreate, .calendarEdit, .calendarDelete, .calendarOpen:
             nil
         case .mailDashboardAdd, .mailDashboardRemove:
             nil
@@ -2192,6 +2193,12 @@ final class KLMSMacModel: ObservableObject {
         }
         reloadSnapshot()
         return "캘린더 일정 등록 완료"
+    }
+
+    private func applyServerRelayCalendarOpenAction(_ action: ServerRelayItemAction) async throws -> String {
+        let change = try serverRelayCalendarChange(for: action)
+        try await openCalendarEventInCalendar(change: change)
+        return "캘린더에서 일정 열기 완료"
     }
 
     private func serverRelayCalendarChange(for action: ServerRelayItemAction) throws -> CalendarChange {
@@ -3228,6 +3235,11 @@ final class KLMSMacModel: ObservableObject {
                         serverRelayStatusMessage = "서버 요청 처리 중: \(runningAction.action.displayName)"
                         remoteProcessingStatusMessage = serverRelayStatusMessage
                         completedAction.message = try await applyServerRelayCalendarDeleteAction(runningAction)
+                        completedAction.status = .completed
+                    } else if runningAction.action == .calendarOpen {
+                        serverRelayStatusMessage = "서버 요청 처리 중: \(runningAction.action.displayName)"
+                        remoteProcessingStatusMessage = serverRelayStatusMessage
+                        completedAction.message = try await applyServerRelayCalendarOpenAction(runningAction)
                         completedAction.status = .completed
                     } else if let commandKind = serverRelayCalendarCommand(for: runningAction.action) {
                         serverRelayStatusMessage = "서버 요청 처리 중: \(runningAction.action.displayName)"

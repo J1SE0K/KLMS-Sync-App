@@ -465,13 +465,6 @@ final class CompanionModel: ObservableObject {
     }
 
     var sharedAppearanceModeValue: String {
-        let remoteValue = sharedSettings
-            .first { $0.key == Self.sharedAppearanceModeKey }?
-            .value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        if let remoteValue, KLMSAppearanceMode(rawValue: remoteValue) != nil {
-            return remoteValue
-        }
         let localValue = UserDefaults.standard.string(forKey: "KLMSAppearanceMode") ?? KLMSAppearanceMode.system.rawValue
         return KLMSAppearanceMode(rawValue: localValue)?.rawValue ?? KLMSAppearanceMode.system.rawValue
     }
@@ -1378,6 +1371,8 @@ final class CompanionModel: ObservableObject {
                 item.status = "삭제 요청"
                 item.isHidden = true
                 break
+            case .calendarOpen:
+                break
             }
         }
 
@@ -1450,17 +1445,13 @@ final class CompanionModel: ObservableObject {
 
     func updateSharedAppearanceMode(_ rawValue: String) async {
         let normalized = KLMSAppearanceMode(rawValue: rawValue)?.rawValue ?? KLMSAppearanceMode.system.rawValue
-        await updateSharedSetting(
-            key: Self.sharedAppearanceModeKey,
-            title: "화면 모드",
-            value: normalized,
-            valueKind: .choice,
-            options: KLMSAppearanceMode.allCases.map(\.rawValue),
-            successMessage: "화면 모드를 저장했습니다."
-        )
+        UserDefaults.standard.set(normalized, forKey: "KLMSAppearanceMode")
+        connectionSucceeded = true
+        errorMessage = ""
     }
 
     func updateSharedNoticeNotes(_ enabled: Bool) async {
+        shouldUpdateNoticeNotes = enabled
         await updateSharedSetting(
             key: Self.sharedNoticeUpdateNotesKey,
             title: "공지 메모 업데이트",
@@ -6425,13 +6416,35 @@ private struct CompanionControlBox<Content: View>: View {
     var title: String
     var systemImage: String
     @ViewBuilder var content: Content
+    @State private var isExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: systemImage)
-                .font(.caption2.weight(.semibold))
+            Button {
+                companionPerformWithoutAnimation {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Label(title, systemImage: systemImage)
+                        .font(.caption2.weight(.semibold))
+                    Spacer(minLength: 8)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.bold))
+                }
                 .foregroundStyle(Color.klmsSecondaryText)
-            content
+                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                .contentShape(RoundedRectangle(cornerRadius: 7))
+            }
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 7))
+            .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
+            if isExpanded {
+                content
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -11396,7 +11409,13 @@ private struct DashboardCalendarChangeDetailRow: View {
                         .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     }
                     Button {
-                        openSystemCalendar()
+                        Task {
+                            if let onAction {
+                                await onAction(.calendarOpen, nil)
+                            } else {
+                                openSystemCalendar()
+                            }
+                        }
                     } label: {
                         Label("캘린더에서 열기", systemImage: "calendar")
                             .frame(maxWidth: .infinity, minHeight: 44)
@@ -12599,7 +12618,8 @@ private extension ServerRelayItemActionKind {
              .calendarApply,
              .calendarCreate,
              .calendarEdit,
-             .calendarDelete:
+             .calendarDelete,
+             .calendarOpen:
             false
         }
     }
@@ -12646,6 +12666,8 @@ private extension ServerRelayItemActionKind {
             "캘린더 내용 수정"
         case .calendarDelete:
             "캘린더 일정 삭제"
+        case .calendarOpen:
+            "캘린더에서 열기"
         case .mailDashboardAdd:
             "항목 반영"
         case .mailDashboardRemove:
@@ -12673,6 +12695,8 @@ private extension ServerRelayItemActionKind {
             "pencil"
         case .calendarDelete:
             "calendar.badge.minus"
+        case .calendarOpen:
+            "calendar"
         case .mailDashboardAdd:
             "envelope.badge"
         case .mailDashboardRemove:
@@ -12703,6 +12727,7 @@ private extension ServerRelayItemActionKind {
              .noticeUnhide,
              .fileUnhide,
              .calendarVerify,
+             .calendarOpen,
              .calendarEdit:
             .soft
         case .examPromote,
@@ -12726,6 +12751,8 @@ private extension ServerRelayItemActionKind {
         switch self {
         case .calendarCreate, .calendarEdit, .calendarApply, .calendarDelete:
             true
+        case .calendarOpen:
+            false
         case .calendarVerify:
             false
         default:
@@ -12758,6 +12785,7 @@ private extension ServerRelayItemActionKind {
              .calendarCreate,
              .calendarEdit,
              .calendarDelete,
+             .calendarOpen,
              .mailDashboardAdd:
             false
         }

@@ -2909,6 +2909,27 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(settingsScreen.contains("noticeNotesEnabled: model.sharedNoticeUpdateNotesEnabled"))
         XCTAssertTrue(settingsScreen.contains("await model.updateSharedAppearanceMode(mode.rawValue)"))
         XCTAssertTrue(settingsScreen.contains("await model.updateSharedNoticeNotes(enabled)"))
+        let sharedAppearanceModeValue = try sourceBody(
+            after: "var sharedAppearanceModeValue: String",
+            in: ios,
+            description: "iOS shared appearance mode value"
+        )
+        XCTAssertTrue(sharedAppearanceModeValue.contains("UserDefaults.standard.string(forKey: \"KLMSAppearanceMode\")"))
+        XCTAssertFalse(sharedAppearanceModeValue.contains("sharedSettings"))
+        let updateSharedAppearanceMode = try sourceBody(
+            after: "func updateSharedAppearanceMode(_ rawValue: String) async",
+            in: ios,
+            description: "iOS local appearance update"
+        )
+        XCTAssertTrue(updateSharedAppearanceMode.contains("UserDefaults.standard.set(normalized, forKey: \"KLMSAppearanceMode\")"))
+        XCTAssertFalse(updateSharedAppearanceMode.contains("await updateSharedSetting"))
+        let updateSharedNoticeNotes = try sourceBody(
+            after: "func updateSharedNoticeNotes(_ enabled: Bool) async",
+            in: ios,
+            description: "iOS notice notes update"
+        )
+        XCTAssertTrue(updateSharedNoticeNotes.contains("shouldUpdateNoticeNotes = enabled"))
+        XCTAssertTrue(updateSharedNoticeNotes.contains("await updateSharedSetting"))
         XCTAssertTrue(settingsScreen.contains("RemoteSettingsPanel(model: model, usesWideGrid: horizontalSizeClass == .regular)"))
         XCTAssertTrue(settingsScreen.contains("HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing)"))
         XCTAssertTrue(settingsScreen.contains("settingsRegularWorkspace"))
@@ -3675,7 +3696,7 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS companion settings subsection card"
         )
-        XCTAssertFalse(ios.contains("@State private var isExpanded = true"))
+        XCTAssertFalse(companionSettingsSubsectionCard.contains("@State private var isExpanded = true"))
         XCTAssertTrue(ios.contains("@State private var isExpanded = false"))
         XCTAssertFalse(ios.contains("var isDefaultExpanded: Bool"))
         XCTAssertFalse(ios.contains("defaultExpanded:"))
@@ -5785,6 +5806,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(calendarRow.contains("editStatusText = ok ? nil : \"캘린더 일정 삭제 실패\""))
         XCTAssertFalse(calendarRow.contains("editStatusText = ok ? \"캘린더 일정 등록 완료\""))
         XCTAssertFalse(calendarRow.contains("editStatusText = ok ? \"캘린더 일정 삭제 완료\""))
+        XCTAssertTrue(model.contains("case .calendarVerify, .calendarApply, .calendarCreate, .calendarEdit, .calendarDelete, .calendarOpen"))
+        XCTAssertTrue(model.contains("private func applyServerRelayCalendarOpenAction(_ action: ServerRelayItemAction) async throws -> String"))
+        XCTAssertTrue(model.contains("try await openCalendarEventInCalendar(change: change)"))
+        XCTAssertTrue(model.contains("runningAction.action == .calendarOpen"))
         XCTAssertTrue(calendarActionButton.contains("Color.klmsMacCommandButtonBackground.opacity(0.92)"))
         XCTAssertTrue(calendarActionButton.contains("Color.klmsMacCommandButtonBorder.opacity(0.95)"))
         XCTAssertFalse(calendarActionButton.contains("tint.opacity(0.10)"))
@@ -6765,6 +6790,37 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macModel.contains("reason == \"sync-data:run-logs-clear\""))
         XCTAssertTrue(macView.contains("await model.clearVisibleLogsAndServerRelayLogs()"))
         XCTAssertTrue(macView.contains("DashboardTopBarView(model: model, selectedSection: $selectedSection)"))
+    }
+
+    func testCalendarOpenActionIsSupportedAcrossRelaySurfaces() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let repoRoot = packageRoot
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let sharedRoot = packageRoot.appendingPathComponent("Sources/KLMSShared/RemoteCommandModels.swift")
+        let workerRoot = repoRoot.appendingPathComponent("deploy/cloudflare-worker/src/worker.mjs")
+        let localRelayRoot = repoRoot.appendingPathComponent("tools/klms_relay_server.mjs")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let shared = try String(contentsOf: sharedRoot, encoding: .utf8)
+        let worker = try String(contentsOf: workerRoot, encoding: .utf8)
+        let localRelay = try String(contentsOf: localRelayRoot, encoding: .utf8)
+
+        let calendarDetailRow = try sourceStructBody(named: "DashboardCalendarChangeDetailRow", in: ios)
+        XCTAssertTrue(calendarDetailRow.contains("await onAction(.calendarOpen, nil)"))
+        XCTAssertTrue(calendarDetailRow.contains("openSystemCalendar()"))
+        XCTAssertTrue(ios.contains("case .calendarOpen:\n                break"))
+        XCTAssertTrue(ios.contains("case .calendarOpen:\n            \"캘린더에서 열기\""))
+        XCTAssertTrue(ios.contains("case .calendarOpen:\n            \"calendar\""))
+        XCTAssertTrue(shared.contains("case calendarOpen"))
+        XCTAssertTrue(shared.contains("case .calendarOpen:\n            \"캘린더에서 열기\""))
+        XCTAssertTrue(worker.contains("\"calendarOpen\""))
+        XCTAssertTrue(worker.contains("case \"calendarOpen\":\n      return \"캘린더에서 열기\""))
+        XCTAssertTrue(localRelay.contains("\"calendarOpen\""))
+        XCTAssertTrue(localRelay.contains("case \"calendarOpen\":\n      return \"캘린더에서 열기\""))
     }
 
     func testIOSRefreshAndDisplayClearShowImmediateFeedback() throws {

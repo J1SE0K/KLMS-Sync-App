@@ -2949,6 +2949,7 @@ function itemActionUpdatesServerVisibleState(action) {
     "calendarCreate",
     "calendarEdit",
     "calendarDelete",
+    "calendarOpen",
   ].includes(String(action || ""));
 }
 
@@ -3693,6 +3694,8 @@ function displayItemActionName(action) {
       return "캘린더 내용 수정";
     case "calendarDelete":
       return "캘린더 일정 삭제";
+    case "calendarOpen":
+      return "캘린더에서 열기";
     case "mailDashboardAdd":
       return "메일 항목 반영";
     case "mailDashboardRemove":

@@ -1879,6 +1879,7 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
     case calendarCreate
     case calendarEdit
     case calendarDelete
+    case calendarOpen
     case mailDashboardAdd
     case mailDashboardRemove
 
@@ -1928,6 +1929,8 @@ public enum ServerRelayItemActionKind: String, Codable, CaseIterable, Sendable, 
             "캘린더 내용 수정"
         case .calendarDelete:
             "캘린더 일정 삭제"
+        case .calendarOpen:
+            "캘린더에서 열기"
         case .mailDashboardAdd:
             "항목 반영"
         case .mailDashboardRemove:
