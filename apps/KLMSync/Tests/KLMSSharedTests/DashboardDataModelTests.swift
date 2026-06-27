@@ -1893,6 +1893,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iPhone/iPad deferred interaction expansion"
         )
+        let iosDeferredSelectionDetail = try sourceBody(
+            after: "private struct DeferredSelectionDetail<Content: View>: View",
+            in: ios,
+            description: "iPhone/iPad deferred selection detail"
+        )
         let iosDeferredItemDetailPanel = try sourceStructBody(named: "DeferredServerSyncItemDetailPanel", in: ios)
         let iosCardButtonStyle = try sourceBody(
             after: "private struct KLMSCardButtonStyle: ButtonStyle",
@@ -1998,6 +2003,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosInlineItemRows.contains(".buttonStyle(KLMSStableSelectionButtonStyle())"))
         XCTAssertTrue(iosSelectableItemRows.contains(".buttonStyle(KLMSStableSelectionButtonStyle())"))
         XCTAssertTrue(iosTaskCategorySelector.contains(".buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 10))"))
+        XCTAssertTrue(iosDeferredSelectionDetail.contains("try? await Task.sleep(nanoseconds: 120_000_000)"))
+        XCTAssertTrue(iosDeferredSelectionDetail.contains("transaction.disablesAnimations = true"))
+        XCTAssertTrue(iosInlineItemRows.contains("DeferredSelectionDetail(isExpanded: presentation == .inlineDetail && selectedItemID == item.id)"))
+        XCTAssertTrue(iosInlineItemRows.contains(".buttonStyle(KLMSStableSelectionButtonStyle())"))
         XCTAssertTrue(iosControlBox.contains(".clipShape(RoundedRectangle(cornerRadius: 8))"))
         XCTAssertTrue(iosSearchFilterPanel.contains(".clipShape(RoundedRectangle(cornerRadius: 8))"))
         XCTAssertFalse(sources.contains("dashboardDetailExpansionDelayNanoseconds"))
@@ -5753,7 +5762,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(mailPasteResult.contains("isSubmitting: model.isSubmitting"))
         XCTAssertFalse(mailPasteResultContent.contains("var isSubmitting: Bool"))
         XCTAssertFalse(mailPasteResultContent.contains(".disabled(isSubmitting)"))
-        XCTAssertTrue(mailPasteResult.contains(".buttonStyle(KLMSCardButtonStyle())"))
+        XCTAssertTrue(mailPasteResultContent.contains(".buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))"))
+        XCTAssertTrue(mailPasteResultContent.contains("DeferredSelectionDetail(isExpanded: selectedItemID == item.id)"))
         XCTAssertGreaterThanOrEqual(mailPasteResultContent.components(separatedBy: "minHeight: 44").count - 1, 5)
         XCTAssertTrue(mailPasteResultContent.contains(".accessibilityHint(\"판독한 항목을 서버 대시보드에 바로 반영합니다.\")"))
         XCTAssertFalse(mailAnalysisProcess.contains("DisclosureGroup"))
@@ -6918,6 +6928,8 @@ final class DashboardDataModelTests: XCTestCase {
         let calendarDetailRow = try sourceStructBody(named: "DashboardCalendarChangeDetailRow", in: ios)
         XCTAssertTrue(calendarDetailRow.contains("await onAction(.calendarOpen, nil)"))
         XCTAssertTrue(calendarDetailRow.contains("openSystemCalendar()"))
+        XCTAssertTrue(calendarDetailRow.contains("GridItem(.flexible(minimum: 0), spacing: 8)"))
+        XCTAssertFalse(calendarDetailRow.contains("GridItem(.adaptive(minimum: 96), spacing: 8)"))
         XCTAssertTrue(ios.contains("case .calendarOpen:\n                break"))
         XCTAssertTrue(ios.contains("case .calendarOpen:\n            \"캘린더에서 열기\""))
         XCTAssertTrue(ios.contains("case .calendarOpen:\n            \"calendar\""))

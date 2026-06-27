@@ -7442,6 +7442,59 @@ private struct DeferredInteractionExpansion<Content: View>: View {
     }
 }
 
+private struct DeferredSelectionDetail<Content: View>: View {
+    var isExpanded: Bool
+    private let content: () -> Content
+    @State private var shouldRender = false
+    @State private var renderTask: Task<Void, Never>?
+
+    init(
+        isExpanded: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.isExpanded = isExpanded
+        self.content = content
+    }
+
+    var body: some View {
+        Group {
+            if isExpanded && shouldRender {
+                content()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .clipped()
+        .onAppear {
+            scheduleRender(isExpanded)
+        }
+        .onDisappear {
+            renderTask?.cancel()
+            renderTask = nil
+        }
+        .onChange(of: isExpanded) { _, expanded in
+            scheduleRender(expanded)
+        }
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+    }
+
+    private func scheduleRender(_ expanded: Bool) {
+        renderTask?.cancel()
+        if !expanded {
+            shouldRender = false
+            return
+        }
+        renderTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+            shouldRender = true
+        }
+    }
+}
+
 private struct CompanionStableExpansion<Content: View>: View {
     var isExpanded: Bool
     private let content: () -> Content
@@ -7720,7 +7773,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                                 )
                                 .contentShape(RoundedRectangle(cornerRadius: 13))
                             }
-                            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 13))
+                            .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 13))
                             .accessibilityLabel("\(metric.title) \(metric.value)개")
                             .accessibilityHint("\(metric.title) 목록을 가운데 작업 영역에 표시합니다.")
                         }
@@ -8068,12 +8121,12 @@ private struct CompactDashboardSelectedRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 14))
             }
-            .buttonStyle(KLMSCardButtonStyle())
+            .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 14))
             .accessibilityLabel("\(rowBadge) \(item.title.nilIfEmpty ?? "제목 없음")")
             .accessibilityValue(expanded ? "펼쳐짐" : "접힘")
             .accessibilityHint("항목 상세와 처리 버튼을 \(expanded ? "접습니다" : "펼칩니다").")
 
-            if expanded {
+            DeferredSelectionDetail(isExpanded: expanded) {
                 DeferredServerSyncItemDetailPanel(item: item, model: model)
             }
         }
@@ -9181,7 +9234,7 @@ private struct WorkstationCalendarWorkspace: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 10))
         .accessibilityLabel("\(change.title.nilIfBlank ?? "캘린더 변경") \(change.actionDisplayName)")
         .accessibilityHint("상세 패널에 일정 상세와 처리 버튼을 표시합니다.")
     }
@@ -9323,7 +9376,7 @@ private struct CompanionInlineItemRowsView: View {
                     .accessibilityValue(presentation == .inlineDetail ? (isSelected ? "펼쳐짐" : "접힘") : (isSelected ? "선택됨" : "선택 안 됨"))
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "상세 패널에 항목을 표시합니다.")
 
-                    if presentation == .inlineDetail && selectedItemID == item.id {
+                    DeferredSelectionDetail(isExpanded: presentation == .inlineDetail && selectedItemID == item.id) {
                         DeferredServerSyncItemDetailPanel(item: item, model: model)
                     }
                 }
@@ -9722,11 +9775,11 @@ private struct RemoteChangeSummaryDetailPanel: View {
                             )
                             .equatable()
                         }
-                        .buttonStyle(KLMSCardButtonStyle())
+                        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
                         .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
                         .accessibilityHint(selectedItemID == item.id ? "변경 항목 상세와 처리 버튼을 접습니다." : "변경 항목 상세와 처리 버튼을 펼칩니다.")
 
-                        if selectedItemID == item.id {
+                        DeferredSelectionDetail(isExpanded: selectedItemID == item.id) {
                             DeferredServerSyncItemDetailPanel(item: item, model: model)
                         }
                     }
@@ -10210,11 +10263,11 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                     )
                                     .equatable()
                                 }
-                                .buttonStyle(KLMSCardButtonStyle())
+                                .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
                                 .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
                                 .accessibilityHint(selectedItemID == item.id ? "관련 KLMS 항목 상세와 처리 버튼을 접습니다." : "관련 KLMS 항목 상세와 처리 버튼을 펼칩니다.")
 
-                                if selectedItemID == item.id {
+                                DeferredSelectionDetail(isExpanded: selectedItemID == item.id) {
                                     detailPanel(item)
                                 }
                             }
@@ -11512,7 +11565,10 @@ private struct DashboardCalendarChangeDetailRow: View {
                     message: "Mac 앱에서 \(activeAction.status.displayName) 중입니다."
                 )
             } else if onAction != nil {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
+                LazyVGrid(columns: [
+                    GridItem(.flexible(minimum: 0), spacing: 8),
+                    GridItem(.flexible(minimum: 0), spacing: 8),
+                ], spacing: 8) {
                     Button {
                         calendarSheetAction = .calendarCreate
                     } label: {
