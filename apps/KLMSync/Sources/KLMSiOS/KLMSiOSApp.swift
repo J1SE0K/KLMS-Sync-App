@@ -7411,6 +7411,34 @@ private struct DeferredInteractionExpansion<Content: View>: View {
     }
 }
 
+private struct CompanionStableExpansion<Content: View>: View {
+    var isExpanded: Bool
+    private let content: () -> Content
+
+    init(
+        isExpanded: Bool,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.isExpanded = isExpanded
+        self.content = content
+    }
+
+    var body: some View {
+        Group {
+            if isExpanded {
+                content()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .clipped()
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+    }
+}
+
 private struct CompanionDashboardDataLoadingCard: View {
     var isServerConfigured: Bool
     var isLoading: Bool = false
@@ -13834,7 +13862,7 @@ private struct RemoteSettingGroupSection: View {
             }
 
             if group.isCollapsible {
-                DeferredInteractionExpansion(isExpanded: isExpanded) {
+                CompanionStableExpansion(isExpanded: isExpanded) {
                     groupSettingsRows
                 }
             } else {
@@ -13843,13 +13871,17 @@ private struct RemoteSettingGroupSection: View {
         }
         .padding(11)
         .background(
-            (!group.isCollapsible || isExpanded) ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
+            Color.klmsSubtleCardBackground.opacity(0.86),
             in: RoundedRectangle(cornerRadius: 12)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke((!group.isCollapsible || isExpanded) ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
+                .stroke(Color.klmsBorder.opacity(0.86), lineWidth: 1)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .transaction { transaction in
+            transaction.animation = nil
+        }
     }
 
     private var groupSettingsRows: some View {
