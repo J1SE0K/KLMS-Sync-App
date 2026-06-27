@@ -13602,7 +13602,6 @@ private struct RemoteSettingsPanelContent: View, Equatable {
     var isSubmitting: Bool
     var usesWideGrid = false
     var createSettingAction: (ServerRelaySetting, String) async -> Void
-    @State private var selectedGroupID: String?
 
     nonisolated static func == (lhs: RemoteSettingsPanelContent, rhs: RemoteSettingsPanelContent) -> Bool {
         lhs.settingGroups == rhs.settingGroups
@@ -13645,8 +13644,6 @@ private struct RemoteSettingsPanelContent: View, Equatable {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
                         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
-                } else {
-                    settingGroupNavigation
                 }
 
                 if settingGroups.isEmpty {
@@ -13657,7 +13654,7 @@ private struct RemoteSettingsPanelContent: View, Equatable {
                         alignment: .leading,
                         spacing: 10
                     ) {
-                        ForEach(visibleSettingGroups) { group in
+                        ForEach(settingGroups) { group in
                             RemoteSettingGroupSection(
                                 group: group,
                                 isSubmitting: isSubmitting,
@@ -13666,7 +13663,7 @@ private struct RemoteSettingsPanelContent: View, Equatable {
                         }
                     }
                 } else {
-                    ForEach(visibleSettingGroups) { group in
+                    ForEach(settingGroups) { group in
                         RemoteSettingGroupSection(
                             group: group,
                             isSubmitting: isSubmitting,
@@ -13685,93 +13682,11 @@ private struct RemoteSettingsPanelContent: View, Equatable {
         }
     }
 
-    private var visibleSettingGroups: [RemoteSettingGroup] {
-        guard let selectedGroupID,
-              settingGroups.contains(where: { $0.id == selectedGroupID })
-        else {
-            return settingGroups
-        }
-        return settingGroups.filter { $0.id == selectedGroupID }
-    }
-
     private var settingGridColumns: [GridItem] {
         [
             GridItem(.flexible(minimum: 0), spacing: 10, alignment: .top),
             GridItem(.flexible(minimum: 0), spacing: 10, alignment: .top),
         ]
-    }
-
-    private var settingGroupNavigation: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("설정 섹션")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.klmsSecondaryText)
-            LazyVGrid(columns: navigationColumns, alignment: .leading, spacing: 7) {
-                settingGroupNavigationButton(
-                    title: "전체",
-                    systemImage: "square.grid.2x2",
-                    isSelected: selectedGroupID == nil
-                ) {
-                    selectedGroupID = nil
-                }
-                ForEach(settingGroups) { group in
-                    settingGroupNavigationButton(
-                        title: group.title,
-                        systemImage: group.systemImage,
-                        isSelected: selectedGroupID == group.id
-                    ) {
-                        selectedGroupID = group.id
-                    }
-                }
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private var navigationColumns: [GridItem] {
-        Array(
-            repeating: GridItem(.flexible(minimum: 0), spacing: 7, alignment: .leading),
-            count: usesWideGrid ? 4 : 2
-        )
-    }
-
-    private func settingGroupNavigationButton(
-        title: String,
-        systemImage: String,
-        isSelected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            companionPerformWithoutAnimation(action)
-        } label: {
-            Label(title, systemImage: systemImage)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
-                .padding(.horizontal, 8)
-                .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .contentShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
-        .accessibilityLabel("\(title) 설정")
-        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
-        .transaction { transaction in
-            transaction.animation = nil
-        }
     }
 }
 
@@ -13793,21 +13708,21 @@ private struct RemoteSettingGroup: Identifiable, Equatable {
                 "로그인",
                 "person.badge.key",
                 "인증번호 감지와 로그인 보조 방식을 정합니다.",
-                false,
+                true,
                 ["KLMS_LOGIN_ASSIST_ENABLED", "KLMS_LOGIN_ASSIST_MODE", "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE"]
             ),
             (
                 "동기화",
                 "arrow.triangle.2.circlepath",
                 "동기화 범위를 정합니다.",
-                false,
+                true,
                 ["SYNC_MODE"]
             ),
             (
                 "파일",
                 "folder",
                 "파일 탐색, 주차별 폴더, 보존 방식을 정합니다.",
-                false,
+                true,
                 [
                     "FILE_REFRESH_MODE",
                     "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY",
@@ -13820,7 +13735,7 @@ private struct RemoteSettingGroup: Identifiable, Equatable {
                 "공지 메모",
                 "checklist",
                 "공지 메모의 접기, 양식, 상태 반영 방식을 정합니다.",
-                false,
+                true,
                 [
                     "NOTICE_COLLAPSE_SECTIONS",
                     "NOTICE_COLLAPSE_COURSES",
@@ -13837,7 +13752,7 @@ private struct RemoteSettingGroup: Identifiable, Equatable {
                 "캘린더",
                 "calendar",
                 "같은 일정은 건너뛰고 변경이 있을 때만 반영합니다.",
-                false,
+                true,
                 ["CALENDAR_SKIP_UNCHANGED_DESIRED"]
             ),
             (
@@ -13896,7 +13811,7 @@ private struct RemoteSettingGroupSection: View {
     var group: RemoteSettingGroup
     var isSubmitting: Bool
     var createSettingAction: (ServerRelaySetting, String) async -> Void
-    @State private var isExpanded = false
+    @State private var isExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
