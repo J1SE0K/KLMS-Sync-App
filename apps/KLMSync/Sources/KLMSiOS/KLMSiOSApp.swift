@@ -5872,9 +5872,7 @@ private struct CompanionItemListInputKey: Hashable {
     var recentOnly: Bool
 
     func shouldDebounceComparedTo(_ previous: CompanionItemListInputKey?) -> Bool {
-        guard let previous else { return false }
-        return previous.itemsRevision == itemsRevision
-            && previous.category == category
+        false
     }
 }
 
@@ -5887,7 +5885,6 @@ private enum CompanionLargeList {
     static let regularCalendarVisibleLimit = 10
     static let logVisibleLimit = 10
     static let increment = 10
-    static let filterRebuildDelayNanoseconds: UInt64 = 80_000_000
 
     static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
         horizontalSizeClass == .regular ? regularInitialVisibleLimit : initialVisibleLimit
@@ -7450,7 +7447,6 @@ private struct DeferredSelectionDetail<Content: View>: View {
     var isExpanded: Bool
     private let content: () -> Content
     @State private var shouldRender = false
-    @State private var renderTask: Task<Void, Never>?
 
     init(
         isExpanded: Bool,
@@ -7473,8 +7469,7 @@ private struct DeferredSelectionDetail<Content: View>: View {
             scheduleRender(isExpanded)
         }
         .onDisappear {
-            renderTask?.cancel()
-            renderTask = nil
+            shouldRender = false
         }
         .onChange(of: isExpanded) { _, expanded in
             scheduleRender(expanded)
@@ -7486,16 +7481,7 @@ private struct DeferredSelectionDetail<Content: View>: View {
     }
 
     private func scheduleRender(_ expanded: Bool) {
-        renderTask?.cancel()
-        if !expanded {
-            shouldRender = false
-            return
-        }
-        renderTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            guard !Task.isCancelled else { return }
-            shouldRender = true
-        }
+        shouldRender = expanded
     }
 }
 
@@ -8600,10 +8586,6 @@ private struct DashboardCategoryInlineDetailPanel: View {
             cachedListData = preloadedData
             cachedListInputKey = currentKey
             return
-        }
-        if cachedListData != nil, currentKey.shouldDebounceComparedTo(cachedListInputKey) {
-            try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
-            guard !Task.isCancelled, currentKey == listInputKey else { return }
         }
         await rebuildCachedListData(for: currentKey)
     }
@@ -11993,10 +11975,6 @@ private struct ServerSyncDataPanel: View {
             cachedListData = preloadedData
             cachedListInputKey = currentKey
             return
-        }
-        if cachedListData != nil, currentKey.shouldDebounceComparedTo(cachedListInputKey) {
-            try? await Task.sleep(nanoseconds: CompanionLargeList.filterRebuildDelayNanoseconds)
-            guard !Task.isCancelled, currentKey == listInputKey else { return }
         }
         await rebuildCachedListData(for: currentKey)
     }
