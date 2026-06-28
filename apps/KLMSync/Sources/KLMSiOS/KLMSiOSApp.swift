@@ -3931,42 +3931,37 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
     private func quickButton(for category: DashboardMetricCategory) -> some View {
         let isSelected = selectedCategory == category
         let value = category.value(from: status)
-        return Button {
-            companionPerformWithoutAnimation {
-                onCategoryTap(category)
+        return HStack(alignment: .center, spacing: 8) {
+            Image(systemName: category.systemImage)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
+                .frame(width: 26, height: 26)
+                .background(
+                    (isSelected ? Color.klmsSelectedForeground.opacity(0.16) : category.tint.opacity(0.12)),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(category.title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .lineLimit(1)
+                Text("\(value)개")
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.84) : Color.klmsSecondaryText)
             }
-        } label: {
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: category.systemImage)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
-                    .frame(width: 26, height: 26)
-                    .background(
-                        (isSelected ? Color.klmsSelectedForeground.opacity(0.16) : category.tint.opacity(0.12)),
-                        in: RoundedRectangle(cornerRadius: 8)
-                    )
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(category.title)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                        .lineLimit(1)
-                    Text("\(value)개")
-                        .font(.caption2.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.84) : Color.klmsSecondaryText)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
-            .overlay(
-                RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 13))
+            Spacer(minLength: 0)
         }
-        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 13))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
+        )
+        .companionStableTap(cornerRadius: 13) {
+            onCategoryTap(category)
+        }
         .accessibilityLabel("\(category.title) \(value)개 바로 보기")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(category.title) 상세를 바로 아래에 표시합니다.")
@@ -6314,23 +6309,18 @@ private struct CompanionItemListControls: View {
         isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button {
-            action()
-        } label: {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground, in: Capsule())
-                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                .overlay {
-                    Capsule()
-                        .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
-                }
-                .contentShape(Capsule())
-        }
-        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 999))
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground, in: Capsule())
+            .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+            .overlay {
+                Capsule()
+                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
+            }
+            .companionStableTap(cornerRadius: 999, action: action)
         .accessibilityLabel(title)
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .transaction { transaction in
@@ -6381,7 +6371,7 @@ private struct CompanionItemListControls: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .contentShape(RoundedRectangle(cornerRadius: 8))
             }
-            .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
+            .buttonStyle(.plain)
             .transaction { transaction in
                 transaction.animation = nil
             }
@@ -7254,43 +7244,40 @@ private struct FlowChipLayout: View {
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 7) {
             ForEach(entries) { entry in
-                Button {
-                    onSelect(entry.kind)
-                } label: {
-                    let isSelected = selectedKind == entry.kind
-                    HStack(spacing: 5) {
-                        Image(systemName: entry.kind.systemImage)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(isSelected ? Color.klmsSelectedForeground : entry.kind.tint)
-                        Text("\(entry.value)")
-                            .font(.caption.monospacedDigit().weight(.bold))
-                            .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                        Text(entry.kind.title)
-                            .font(.caption2.weight(.semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                            .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                        Spacer(minLength: 0)
-                        Image(systemName: isSelected ? "chevron.up" : "chevron.down")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.86) : Color.klmsSecondaryText)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .background(
-                        isSelected
-                            ? Color.klmsSelectedBackground.opacity(0.96)
-                            : entry.kind.chipBackground,
-                        in: RoundedRectangle(cornerRadius: 8)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : entry.kind.chipBorder, lineWidth: 1)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                let isSelected = selectedKind == entry.kind
+                HStack(spacing: 5) {
+                    Image(systemName: entry.kind.systemImage)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : entry.kind.tint)
+                    Text("\(entry.value)")
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    Text(entry.kind.title)
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    Spacer(minLength: 0)
+                    Image(systemName: isSelected ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.86) : Color.klmsSecondaryText)
                 }
-                .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .background(
+                    isSelected
+                        ? Color.klmsSelectedBackground.opacity(0.96)
+                        : entry.kind.chipBackground,
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : entry.kind.chipBorder, lineWidth: 1)
+                )
+                .companionStableTap(cornerRadius: 8) {
+                    onSelect(entry.kind)
+                }
                 .accessibilityLabel("\(entry.kind.title) \(entry.value)개 \(selectedKind == entry.kind ? "펼쳐짐" : "접힘")")
                 .accessibilityHint("변경된 항목 목록을 펼칩니다.")
             }
@@ -7320,41 +7307,38 @@ private struct RemoteMetricTile: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .center, spacing: 7) {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.9) : Color.klmsCommandAccent)
-                        .frame(width: 26, height: 26)
-                        .background(
-                            isSelected
-                                ? Color.klmsSelectedForeground.opacity(0.12)
-                                : Color.klmsCommandAccent.opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: 8)
-                        )
-                    Spacer(minLength: 0)
-                    Text("\(value)")
-                        .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                }
-                Text(label)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.82) : Color.klmsSecondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .center, spacing: 7) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.9) : Color.klmsCommandAccent)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        isSelected
+                            ? Color.klmsSelectedForeground.opacity(0.12)
+                            : Color.klmsCommandAccent.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 8)
+                    )
+                Spacer(minLength: 0)
+                Text("\(value)")
+                    .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
             }
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .padding(11)
-            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            Text(label)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.82) : Color.klmsSecondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
         }
-        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 14))
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+        .padding(11)
+        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
+        )
+        .companionStableTap(cornerRadius: 14, action: action)
         .accessibilityLabel("\(label) \(value)개")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(label) 상세를 아래에 엽니다.")
@@ -7404,6 +7388,25 @@ private func companionPerformWithoutAnimation(_ updates: () -> Void) {
     transaction.animation = nil
     withTransaction(transaction) {
         updates()
+    }
+}
+
+private extension View {
+    func companionStableTap(
+        cornerRadius: CGFloat = 10,
+        action: @escaping () -> Void
+    ) -> some View {
+        self
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .onTapGesture {
+                companionPerformWithoutAnimation(action)
+            }
+            .accessibilityAddTraits(.isButton)
+            .transaction { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
     }
 }
 
@@ -7618,41 +7621,38 @@ private struct WorkstationMetricCard: View {
     var action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: category.systemImage)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.9) : Color.klmsCommandAccent)
-                        .frame(width: 26, height: 26)
-                        .background(
-                            isSelected
-                                ? Color.klmsSelectedForeground.opacity(0.12)
-                                : Color.klmsCommandAccent.opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: 8)
-                        )
-                    Text("\(category.title) \(value)개")
-                        .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                }
-                Text(category.workstationDescription)
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.78) : Color.klmsSecondaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: category.systemImage)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.9) : Color.klmsCommandAccent)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        isSelected
+                            ? Color.klmsSelectedForeground.opacity(0.12)
+                            : Color.klmsCommandAccent.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 8)
+                    )
+                Text("\(category.title) \(value)개")
+                    .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
-            .padding(11)
-            .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
-            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
-            .overlay(
-                RoundedRectangle(cornerRadius: 13)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 13))
+            Text(category.workstationDescription)
+                .font(.system(size: 11, weight: .regular, design: .rounded))
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.78) : Color.klmsSecondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 13))
+        .padding(11)
+        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
+        )
+        .companionStableTap(cornerRadius: 13, action: action)
         .accessibilityLabel("\(category.title) \(value)개")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(category.title) 상세와 처리 버튼을 오른쪽 패널에 표시합니다.")
@@ -7745,36 +7745,33 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 } else {
                     LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
                         ForEach(overviewMetrics) { metric in
-                            Button {
-                                onOpenCategory(metric.category)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack(alignment: .center, spacing: 8) {
-                                        Image(systemName: metric.systemImage)
-                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                            .foregroundStyle(metric.tint)
-                                            .frame(width: 26, height: 26)
-                                            .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                                        Spacer(minLength: 0)
-                                        Text("\(metric.value)")
-                                            .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                                            .foregroundStyle(Color.klmsPrimaryText)
-                                    }
-                                    Text(metric.title)
-                                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                                        .foregroundStyle(Color.klmsSecondaryText)
-                                        .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(alignment: .center, spacing: 8) {
+                                    Image(systemName: metric.systemImage)
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(metric.tint)
+                                        .frame(width: 26, height: 26)
+                                        .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                    Spacer(minLength: 0)
+                                    Text("\(metric.value)")
+                                        .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                                        .foregroundStyle(Color.klmsPrimaryText)
                                 }
-                                .padding(11)
-                                .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
-                                .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 13)
-                                        .stroke(Color.klmsBorder, lineWidth: 1)
-                                )
-                                .contentShape(RoundedRectangle(cornerRadius: 13))
+                                Text(metric.title)
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Color.klmsSecondaryText)
+                                    .lineLimit(1)
                             }
-                            .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 13))
+                            .padding(11)
+                            .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+                            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 13)
+                                    .stroke(Color.klmsBorder, lineWidth: 1)
+                            )
+                            .companionStableTap(cornerRadius: 13) {
+                                onOpenCategory(metric.category)
+                            }
                             .accessibilityLabel("\(metric.title) \(metric.value)개")
                             .accessibilityHint("\(metric.title) 목록을 가운데 작업 영역에 표시합니다.")
                         }
@@ -8030,13 +8027,11 @@ private struct WorkstationDashboardPreviewSection: View {
                     }
             } else {
                 ForEach(items) { item in
-                    Button {
+                    ServerSyncDataRow(item: item, isSelected: false)
+                        .equatable()
+                        .companionStableTap {
                         onOpenCategory(category)
-                    } label: {
-                        ServerSyncDataRow(item: item, isSelected: false)
-                            .equatable()
                     }
-                    .buttonStyle(KLMSStableSelectionButtonStyle())
                     .accessibilityLabel("\(title) \(item.title.nilIfEmpty ?? "항목") 상세 열기")
                     .accessibilityHint("\(title) 상세를 엽니다.")
                 }
@@ -8091,38 +8086,34 @@ private struct CompactDashboardSelectedRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                companionPerformWithoutAnimation {
-                    expanded.toggle()
-                }
-            } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title.isEmpty ? "제목 없음" : item.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.klmsPrimaryText)
-                            .lineLimit(2)
-                        Text(rowSubtitle)
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 8)
-                    Text(rowBadge)
-                        .font(.caption2.weight(.bold))
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title.isEmpty ? "제목 없음" : item.title)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.klmsPrimaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(Color.klmsCardBackground, in: Capsule())
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
+                        .lineLimit(2)
+                    Text(rowSubtitle)
+                        .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
+                        .lineLimit(1)
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 14))
+                Spacer(minLength: 8)
+                Text(rowBadge)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.klmsCardBackground, in: Capsule())
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
             }
-            .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 14))
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 14))
+            .companionStableTap(cornerRadius: 14) {
+                expanded.toggle()
+            }
             .accessibilityLabel("\(rowBadge) \(item.title.nilIfEmpty ?? "제목 없음")")
             .accessibilityValue(expanded ? "펼쳐짐" : "접힘")
             .accessibilityHint("항목 상세와 처리 버튼을 \(expanded ? "접습니다" : "펼칩니다").")
@@ -8993,46 +8984,41 @@ private struct WorkstationTaskCategorySelector: View {
     private func categoryButton(_ category: DashboardMetricCategory) -> some View {
         let isSelected = selectedCategory == category
         let value = category.value(from: status)
-        return Button {
-            guard selectedCategory != category else { return }
-            companionPerformWithoutAnimation {
-                selectedCategory = category
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: category.systemImage)
+        return HStack(spacing: 8) {
+            Image(systemName: category.systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
+                .frame(width: 26, height: 26)
+                .background(
+                    isSelected ? Color.klmsSelectedForeground.opacity(0.13) : category.tint.opacity(0.11),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(category.title)
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
-                    .frame(width: 26, height: 26)
-                    .background(
-                        isSelected ? Color.klmsSelectedForeground.opacity(0.13) : category.tint.opacity(0.11),
-                        in: RoundedRectangle(cornerRadius: 8)
-                    )
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(category.title)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                        .lineLimit(1)
-                    Text("\(value)개")
-                        .font(.caption2.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.78) : Color.klmsSecondaryText)
-                }
-                Spacer(minLength: 0)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .lineLimit(1)
+                Text("\(value)개")
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.78) : Color.klmsSecondaryText)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(
-                isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground.opacity(0.82),
-                in: RoundedRectangle(cornerRadius: 10)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.62), lineWidth: 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            Spacer(minLength: 0)
         }
-        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 10))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .background(
+            isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground.opacity(0.82),
+            in: RoundedRectangle(cornerRadius: 10)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.62), lineWidth: 1)
+        }
+        .companionStableTap(cornerRadius: 10) {
+            guard selectedCategory != category else { return }
+            selectedCategory = category
+        }
         .accessibilityLabel("\(category.title) \(value)개")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(category.title) 목록을 작업 영역에 표시합니다.")
@@ -9195,47 +9181,44 @@ private struct WorkstationCalendarWorkspace: View {
 
     private func calendarChangeButton(_ change: CalendarChange) -> some View {
         let isSelected = activeSelectedChangeID == change.id
-        return Button {
-            selectChange(change)
-        } label: {
-            HStack(alignment: .top, spacing: 9) {
-                Text(change.actionDisplayName)
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : calendarActionTint(change))
-                    .background(
-                        isSelected
-                            ? Color.klmsSelectedForeground.opacity(0.12)
-                            : calendarActionTint(change).opacity(0.13),
-                        in: Capsule()
-                    )
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(change.title.nilIfEmpty ?? "제목 없음")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-                        .lineLimit(2)
-                    Text(calendarChangeSubtitle(change))
-                        .font(.caption)
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.76) : Color.klmsSecondaryText)
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.76))
-                    .padding(.top, 2)
+        return HStack(alignment: .top, spacing: 9) {
+            Text(change.actionDisplayName)
+                .font(.caption2.weight(.bold))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : calendarActionTint(change))
+                .background(
+                    isSelected
+                        ? Color.klmsSelectedForeground.opacity(0.12)
+                        : calendarActionTint(change).opacity(0.13),
+                    in: Capsule()
+                )
+            VStack(alignment: .leading, spacing: 3) {
+                Text(change.title.nilIfEmpty ?? "제목 없음")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .lineLimit(2)
+                Text(calendarChangeSubtitle(change))
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.76) : Color.klmsSecondaryText)
+                    .lineLimit(2)
             }
-            .padding(11)
-            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
-            .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.74), lineWidth: 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            Spacer(minLength: 0)
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.76))
+                .padding(.top, 2)
         }
-        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 10))
+        .padding(11)
+        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.74), lineWidth: 1)
+        }
+        .companionStableTap(cornerRadius: 10) {
+            selectChange(change)
+        }
         .accessibilityLabel("\(change.title.nilIfBlank ?? "캘린더 변경") \(change.actionDisplayName)")
         .accessibilityHint("상세 패널에 일정 상세와 처리 버튼을 표시합니다.")
     }
@@ -9363,17 +9346,13 @@ private struct CompanionInlineItemRowsView: View {
             ForEach(visibleItems) { item in
                 let isSelected = activeSelectedItemID == item.id
                 VStack(alignment: .leading, spacing: 8) {
-                    Button {
-                        select(item)
-                    } label: {
-                        ServerSyncDataRow(
-                            item: item,
-                            isSelected: isSelected,
-                            accessorySystemImage: accessorySystemImage(isSelected: isSelected)
-                        )
-                        .equatable()
-                    }
-                    .buttonStyle(KLMSStableSelectionButtonStyle())
+                    ServerSyncDataRow(
+                        item: item,
+                        isSelected: isSelected,
+                        accessorySystemImage: accessorySystemImage(isSelected: isSelected)
+                    )
+                    .equatable()
+                    .companionStableTap(action: { select(item) })
                     .accessibilityValue(presentation == .inlineDetail ? (isSelected ? "펼쳐짐" : "접힘") : (isSelected ? "선택됨" : "선택 안 됨"))
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "상세 패널에 항목을 표시합니다.")
 
@@ -9514,13 +9493,9 @@ private struct CompanionSelectableItemListRows: View {
         let visibleItems = items.prefix(visibleLimit)
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(visibleItems) { item in
-                Button {
-                    select(item)
-                } label: {
-                    ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
-                        .equatable()
-                }
-                .buttonStyle(KLMSStableSelectionButtonStyle())
+                ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
+                    .equatable()
+                    .companionStableTap(action: { select(item) })
                 .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
                 .accessibilityHint("항목 상세를 엽니다.")
             }
@@ -9757,25 +9732,21 @@ private struct RemoteChangeSummaryDetailPanel: View {
         } else if changedItems.isEmpty {
             emptyState
         } else {
-            let visibleChangedItems = changedItems.prefix(visibleItemLimit)
-            LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(visibleChangedItems) { item in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Button {
-                            companionPerformWithoutAnimation {
-                                selectedItemID = selectedItemID == item.id ? nil : item.id
-                            }
-                        } label: {
+                let visibleChangedItems = changedItems.prefix(visibleItemLimit)
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(visibleChangedItems) { item in
+                        VStack(alignment: .leading, spacing: 8) {
                             ServerSyncDataRow(
                                 item: item,
                                 isSelected: selectedItemID == item.id,
                                 accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
                             )
                             .equatable()
-                        }
-                        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
-                        .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
-                        .accessibilityHint(selectedItemID == item.id ? "변경 항목 상세와 처리 버튼을 접습니다." : "변경 항목 상세와 처리 버튼을 펼칩니다.")
+                            .companionStableTap(cornerRadius: 8) {
+                                selectedItemID = selectedItemID == item.id ? nil : item.id
+                            }
+                            .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
+                            .accessibilityHint(selectedItemID == item.id ? "변경 항목 상세와 처리 버튼을 접습니다." : "변경 항목 상세와 처리 버튼을 펼칩니다.")
 
                         DeferredSelectionDetail(isExpanded: selectedItemID == item.id) {
                             DeferredServerSyncItemDetailPanel(item: item, model: model)
@@ -10249,19 +10220,15 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                             .foregroundStyle(Color.klmsSecondaryText)
                         ForEach(analysis.matchedItems.prefix(5)) { item in
                             VStack(alignment: .leading, spacing: 8) {
-                                Button {
-                                    companionPerformWithoutAnimation {
-                                        selectedItemID = selectedItemID == item.id ? nil : item.id
-                                    }
-                                } label: {
-                                    ServerSyncDataRow(
-                                        item: item,
-                                        isSelected: selectedItemID == item.id,
-                                        accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
-                                    )
-                                    .equatable()
+                                ServerSyncDataRow(
+                                    item: item,
+                                    isSelected: selectedItemID == item.id,
+                                    accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
+                                )
+                                .equatable()
+                                .companionStableTap(cornerRadius: 8) {
+                                    selectedItemID = selectedItemID == item.id ? nil : item.id
                                 }
-                                .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
                                 .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
                                 .accessibilityHint(selectedItemID == item.id ? "관련 KLMS 항목 상세와 처리 버튼을 접습니다." : "관련 KLMS 항목 상세와 처리 버튼을 펼칩니다.")
 
@@ -12534,46 +12501,48 @@ private struct RemoteItemToggleButton: View {
     let model: CompanionModel
 
     var body: some View {
-        Button {
-            Task {
-                await model.createItemAction(action, item: item)
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(isOn ? Color.klmsCommandAccent : Color.klmsSecondaryText)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Text(isOn ? onText : offText)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsSecondaryText)
             }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(isOn ? Color.klmsCommandAccent : Color.klmsSecondaryText)
-                    .frame(width: 28)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.klmsPrimaryText)
-                    Text(isOn ? onText : offText)
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                }
-                Spacer(minLength: 0)
-                Text(isOn ? "ON" : "OFF")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(isOn ? Color.klmsCommandAccent : Color.klmsSecondaryText)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(isOn ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground)
-                    .clipShape(Capsule())
-            }
-            .frame(maxWidth: .infinity, minHeight: 50)
-            .contentShape(Rectangle())
+            Spacer(minLength: 0)
+            Text(isOn ? "ON" : "OFF")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(isOn ? Color.klmsCommandAccent : Color.klmsSecondaryText)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(isOn ? Color.klmsCommandBackground : Color.klmsSubtleCardBackground)
+                .clipShape(Capsule())
         }
-        .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
+        .frame(maxWidth: .infinity, minHeight: 50)
         .padding(10)
         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isOn ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
         }
-        .disabled(!model.serverRelayConfigured || (!action.isServerDisplayOnlyAction && (model.isSubmitting || model.hasInFlightRequest)))
+        .opacity(isDisabled ? 0.54 : 1.0)
+        .companionStableTap(cornerRadius: 8) {
+            guard !isDisabled else { return }
+            Task {
+                await model.createItemAction(action, item: item)
+            }
+        }
         .accessibilityLabel("\(title) \(isOn ? "켜짐" : "꺼짐")")
         .accessibilityHint("누르면 \(action.displayName) 요청을 보냅니다.")
+    }
+
+    private var isDisabled: Bool {
+        !model.serverRelayConfigured || (!action.isServerDisplayOnlyAction && (model.isSubmitting || model.hasInFlightRequest))
     }
 }
 
