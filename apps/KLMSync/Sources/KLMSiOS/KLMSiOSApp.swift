@@ -3452,15 +3452,16 @@ private struct CompanionCompactTabBar: View {
             }
             .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .background(
-                isSelected
-                    ? Color.klmsSelectedBackground
-                    : Color.klmsSubtleCardBackground.opacity(0.54),
-                in: RoundedRectangle(cornerRadius: 12)
-            )
+            .background(Color.klmsSubtleCardBackground.opacity(0.54), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(alignment: .top) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
+                    .frame(height: 3)
+                    .padding(.horizontal, 12)
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.38), lineWidth: 1)
+                    .stroke(Color.klmsBorder.opacity(0.38), lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
@@ -3560,11 +3561,7 @@ private struct CompanionSidebarButton: View {
                 if showsIcon {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(
-                                isSelected
-                                    ? Color.klmsSelectedBorder.opacity(0.24)
-                                    : Color.klmsSubtleCardBackground.opacity(0.72)
-                            )
+                            .fill(Color.klmsSubtleCardBackground.opacity(0.72))
                         Image(systemName: section.systemImage)
                             .font((isCompact ? Font.subheadline : Font.body).weight(.semibold))
                             .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.84))
@@ -3585,21 +3582,16 @@ private struct CompanionSidebarButton: View {
             .padding(.trailing, isCompact ? 8 : 9)
             .padding(.vertical, isCompact ? 8 : 9)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(
-                isSelected
-                    ? Color.klmsSelectedBackground
-                    : Color.klmsSubtleCardBackground.opacity(0.30),
-                in: RoundedRectangle(cornerRadius: 12)
-            )
+            .background(Color.klmsSubtleCardBackground.opacity(0.30), in: RoundedRectangle(cornerRadius: 12))
             .overlay(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(isSelected ? Color.klmsSelectedBorder : Color.clear)
+                    .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
                     .frame(width: 4)
                     .padding(.vertical, 9)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.40), lineWidth: 1)
+                    .stroke(Color.klmsBorder.opacity(0.40), lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
@@ -3937,27 +3929,33 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
                 .frame(width: 26, height: 26)
                 .background(
-                    (isSelected ? Color.klmsSelectedForeground.opacity(0.16) : category.tint.opacity(0.12)),
+                    category.tint.opacity(0.12),
                     in: RoundedRectangle(cornerRadius: 8)
                 )
             VStack(alignment: .leading, spacing: 2) {
                 Text(category.title)
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(Color.klmsPrimaryText)
                     .lineLimit(1)
                 Text("\(value)개")
                     .font(.caption2.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.84) : Color.klmsSecondaryText)
+                    .foregroundStyle(Color.klmsSecondaryText)
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isSelected ? Color.klmsSelectedForeground : category.tint.opacity(0.26))
+                .frame(width: 3)
+                .padding(.vertical, 9)
+        }
         .overlay(
             RoundedRectangle(cornerRadius: 13)
-                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
+                .stroke(Color.klmsBorder.opacity(0.86), lineWidth: 1)
         )
         .companionStableTap(cornerRadius: 13) {
             onCategoryTap(category)
@@ -4297,15 +4295,18 @@ private struct CompanionAppearanceModeSelector: View {
                             .frame(width: 14)
                             .accessibilityHidden(true)
                     }
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(Color.klmsPrimaryText)
                     .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(
-                        isSelected ? Color.klmsSelectedBackground : Color.klmsSubtleCardBackground.opacity(0.72),
-                        in: RoundedRectangle(cornerRadius: 12)
-                    )
+                    .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
+                            .frame(width: 3)
+                            .padding(.vertical, 9)
+                    }
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(isSelected ? Color.klmsSelectedBorder : Color.klmsBorder.opacity(0.72), lineWidth: 1)
+                            .stroke(Color.klmsBorder.opacity(0.72), lineWidth: 1)
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                 }
@@ -8991,30 +8992,33 @@ private struct WorkstationTaskCategorySelector: View {
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
                 .frame(width: 26, height: 26)
                 .background(
-                    isSelected ? Color.klmsSelectedForeground.opacity(0.13) : category.tint.opacity(0.11),
+                    category.tint.opacity(0.11),
                     in: RoundedRectangle(cornerRadius: 8)
                 )
             VStack(alignment: .leading, spacing: 2) {
                 Text(category.title)
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(Color.klmsPrimaryText)
                     .lineLimit(1)
                 Text("\(value)개")
                     .font(.caption2.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.78) : Color.klmsSecondaryText)
+                    .foregroundStyle(Color.klmsSecondaryText)
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .background(
-            isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground.opacity(0.82),
-            in: RoundedRectangle(cornerRadius: 10)
-        )
+        .background(Color.klmsCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isSelected ? Color.klmsSelectedForeground : category.tint.opacity(0.25))
+                .frame(width: 3)
+                .padding(.vertical, 8)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.62), lineWidth: 1)
+                .stroke(Color.klmsBorder.opacity(0.62), lineWidth: 1)
         }
         .companionStableTap(cornerRadius: 10) {
             guard selectedCategory != category else { return }
@@ -9187,21 +9191,19 @@ private struct WorkstationCalendarWorkspace: View {
                 .font(.caption2.weight(.bold))
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
-                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : calendarActionTint(change))
+                .foregroundStyle(calendarActionTint(change))
                 .background(
-                    isSelected
-                        ? Color.klmsSelectedForeground.opacity(0.12)
-                        : calendarActionTint(change).opacity(0.13),
+                    calendarActionTint(change).opacity(0.13),
                     in: Capsule()
                 )
             VStack(alignment: .leading, spacing: 3) {
                 Text(change.title.nilIfEmpty ?? "제목 없음")
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(Color.klmsPrimaryText)
                     .lineLimit(2)
                 Text(calendarChangeSubtitle(change))
                     .font(.caption)
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.76) : Color.klmsSecondaryText)
+                    .foregroundStyle(Color.klmsSecondaryText)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
@@ -9212,10 +9214,16 @@ private struct WorkstationCalendarWorkspace: View {
         }
         .padding(11)
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isSelected ? Color.klmsSelectedForeground : calendarActionTint(change).opacity(0.24))
+                .frame(width: 3)
+                .padding(.vertical, 9)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 10)
-                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder.opacity(0.74), lineWidth: 1)
+                .stroke(Color.klmsBorder.opacity(0.74), lineWidth: 1)
         }
         .companionStableTap(cornerRadius: 10) {
             selectChange(change)
