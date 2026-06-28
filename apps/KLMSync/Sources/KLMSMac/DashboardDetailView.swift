@@ -3299,12 +3299,12 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
             .frame(minWidth: 40, minHeight: 40)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 10))
+            .background(background, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
+                    .stroke(border, lineWidth: 1)
             }
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .opacity(isEnabled ? 1.0 : 0.46)
     }
 
     private var foreground: Color {
@@ -3322,29 +3322,29 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         }
     }
 
-    private func background(isPressed: Bool) -> Color {
+    private var background: Color {
         switch tone {
         case .soft:
-            return isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+            return Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .primary:
-            return isPressed ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
+            return Color.klmsMacPrimaryCommandButtonBackground
         case .destructive:
-            return isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+            return Color.klmsMacCommandButtonBackground.opacity(0.90)
         case .success:
-            return isPressed ? Color.klmsMacSuccessBorder.opacity(0.20) : Color.klmsMacSuccessBackground
+            return Color.klmsMacSuccessBackground
         case .accent(let color):
-            return color.opacity(isPressed ? 0.18 : 0.10)
+            return color.opacity(0.10)
         }
     }
 
-    private func border(isPressed: Bool) -> Color {
+    private var border: Color {
         switch tone {
         case .soft:
             return Color.klmsMacCommandButtonBorder.opacity(0.92)
         case .primary:
-            return Color.klmsMacPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)
+            return Color.klmsMacPrimaryCommandButtonBorder.opacity(1.0)
         case .destructive:
-            return Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
+            return Color.klmsMacDangerBorder.opacity(0.48)
         case .success:
             return Color.klmsMacSuccessBorder
         case .accent(let color):
@@ -3361,7 +3361,7 @@ private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle {
         configuration.label
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed ? 1.0 : 0.0))
+                    .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(0.0))
                     .allowsHitTesting(false)
             }
             .opacity(isEnabled ? 1.0 : 0.48)
@@ -3377,17 +3377,13 @@ private struct KLMSMacIconButtonStyle: ButtonStyle {
             .foregroundStyle(Color.klmsMacSecondaryCommandButtonForeground)
             .frame(width: 44, height: 44)
             .background(
-                configuration.isPressed
-                    ? Color.klmsMacCommandButtonPressedBackground
-                    : Color.klmsMacCommandButtonBackground.opacity(0.88),
+                Color.klmsMacCommandButtonBackground.opacity(0.88),
                 in: RoundedRectangle(cornerRadius: 10)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        configuration.isPressed
-                            ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46)
-                            : Color.klmsMacCommandButtonBorder.opacity(0.84),
+                        Color.klmsMacCommandButtonBorder.opacity(0.84),
                         lineWidth: 1
                     )
             }
