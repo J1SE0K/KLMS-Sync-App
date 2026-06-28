@@ -6313,6 +6313,7 @@ private struct CompanionItemListControls: View {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.62))
+                .frame(width: 14, height: 14)
             Text(title)
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
@@ -6390,7 +6391,6 @@ private struct CompanionItemListControls: View {
                         ) {
                             companionPerformWithoutAnimation {
                                 selection.wrappedValue = option
-                                expandedPickerID = nil
                             }
                         }
                     }
@@ -15217,6 +15217,7 @@ private struct RemoteSettingRow: View {
     var isSubmitting: Bool
     var createSettingAction: (ServerRelaySetting, String) async -> Void
     @State private var draftValue = ""
+    @State private var isChoiceExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -15277,31 +15278,58 @@ private struct RemoteSettingRow: View {
                     await createSettingAction(setting, setting.boolValue ? "0" : "1")
                 }
             } label: {
-                Label(setting.boolValue ? "켜짐" : "꺼짐", systemImage: setting.boolValue ? "checkmark.circle.fill" : "circle")
+                HStack(spacing: 8) {
+                    Image(systemName: setting.boolValue ? "checkmark.circle.fill" : "circle")
+                        .font(.subheadline.weight(.bold))
+                        .frame(width: 18, height: 18)
+                    Text(setting.boolValue ? "켜짐" : "꺼짐")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 0)
+                }
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(KLMSActionButtonStyle(tone: setting.boolValue ? .success : .soft))
             .disabled(!setting.editable)
         case .choice:
-            Menu {
-                ForEach(setting.options, id: \.self) { option in
-                    Button(settingChoiceTitle(option)) {
-                        Task {
-                            await createSettingAction(setting, option)
+            VStack(alignment: .leading, spacing: 8) {
+                Button {
+                    companionPerformWithoutAnimation {
+                        isChoiceExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "list.bullet")
+                            .font(.subheadline.weight(.bold))
+                            .frame(width: 18, height: 18)
+                    Text(settingChoiceTitle(setting.value.nilIfEmpty ?? ""))
+                            .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                    Spacer(minLength: 8)
+                        Image(systemName: isChoiceExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.bold))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(KLMSActionButtonStyle())
+                .disabled(!setting.editable)
+
+                if isChoiceExpanded {
+                    LazyVGrid(columns: settingChoiceColumns, alignment: .leading, spacing: 8) {
+                        ForEach(setting.options, id: \.self) { option in
+                            settingChoiceChip(option)
                         }
                     }
+                    .transaction { transaction in
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
+                    }
                 }
-            } label: {
-                HStack {
-                    Text(settingChoiceTitle(setting.value.nilIfEmpty ?? ""))
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.up.chevron.down")
-                }
-                .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .buttonStyle(KLMSActionButtonStyle())
-            .disabled(!setting.editable)
+            .transaction { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
         case .number, .text:
             HStack(spacing: 6) {
                 TextField("값", text: $draftValue)
@@ -15317,6 +15345,47 @@ private struct RemoteSettingRow: View {
                 .disabled(!setting.editable || draftValue == setting.value)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var settingChoiceColumns: [GridItem] {
+        [
+            GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
+            GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
+        ]
+    }
+
+    private func settingChoiceChip(_ option: String) -> some View {
+        let isSelected = setting.value == option
+        return HStack(spacing: 6) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.62))
+                .frame(width: 14, height: 14)
+            Text(settingChoiceTitle(option))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsPrimaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(Color.klmsSubtleCardBackground, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(Color.klmsBorder, lineWidth: 1)
+        }
+        .companionStableTap(cornerRadius: 999) {
+            Task {
+                await createSettingAction(setting, option)
+            }
+        }
+        .accessibilityLabel(settingChoiceTitle(option))
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
         }
     }
 
