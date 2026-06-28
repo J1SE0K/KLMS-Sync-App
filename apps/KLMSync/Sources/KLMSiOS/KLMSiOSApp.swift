@@ -6319,16 +6319,23 @@ private struct CompanionItemListControls: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.86)
                 .foregroundStyle(Color.klmsPrimaryText)
+            Spacer(minLength: 0)
         }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(Color.klmsSubtleCardBackground, in: Capsule())
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 9))
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
+                    .frame(width: 3)
+                    .padding(.vertical, 8)
+            }
             .overlay {
-                Capsule()
+                RoundedRectangle(cornerRadius: 9)
                     .stroke(Color.klmsBorder, lineWidth: 1)
             }
-            .companionStableTap(cornerRadius: 999, action: action)
+            .companionStableTap(cornerRadius: 9, action: action)
         .accessibilityLabel(title)
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .transaction { transaction in
@@ -15367,16 +15374,23 @@ private struct RemoteSettingRow: View {
                 .foregroundStyle(Color.klmsPrimaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, minHeight: 44)
-        .background(Color.klmsSubtleCardBackground, in: Capsule())
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
+                .frame(width: 3)
+                .padding(.vertical, 8)
+        }
         .overlay {
-            Capsule()
+            RoundedRectangle(cornerRadius: 9)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
-        .companionStableTap(cornerRadius: 999) {
+        .companionStableTap(cornerRadius: 9) {
             Task {
                 await createSettingAction(setting, option)
             }
