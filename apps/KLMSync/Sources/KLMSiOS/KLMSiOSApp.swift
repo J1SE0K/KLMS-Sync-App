@@ -9327,21 +9327,15 @@ private struct CompanionInlineItemRowsView: View {
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(visibleItems) { item in
                 let isSelected = activeSelectedItemID == item.id
-                VStack(alignment: .leading, spacing: 8) {
-                    ServerSyncDataRow(
-                        item: item,
-                        isSelected: isSelected,
-                        accessorySystemImage: accessorySystemImage(isSelected: isSelected)
-                    )
-                    .equatable()
-                    .companionStableTap(action: { select(item) })
-                    .accessibilityValue(presentation == .inlineDetail ? (isSelected ? "펼쳐짐" : "접힘") : (isSelected ? "선택됨" : "선택 안 됨"))
-                    .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "상세 패널에 항목을 표시합니다.")
-
-                    DeferredSelectionDetail(isExpanded: presentation == .inlineDetail && selectedItemID == item.id) {
-                        DeferredServerSyncItemDetailPanel(item: item, model: model)
-                    }
-                }
+                ServerSyncDataRow(
+                    item: item,
+                    isSelected: isSelected,
+                    accessorySystemImage: accessorySystemImage(isSelected: isSelected)
+                )
+                .equatable()
+                .companionStableTap(action: { select(item) })
+                .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+                .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 화면 아래 고정 패널에 표시합니다." : "상세 패널에 항목을 표시합니다.")
             }
             if items.count > visibleItems.count {
                 CompanionShowMoreRowsButton(
@@ -9350,6 +9344,18 @@ private struct CompanionInlineItemRowsView: View {
                 ) {
                     visibleLimit += CompanionLargeList.increment
                 }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if presentation == .inlineDetail,
+               let selectedItem {
+                CompanionFloatingItemDetailOverlay(item: selectedItem, model: model) {
+                    companionPerformWithoutAnimation {
+                        selectedItemID = nil
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.bottom, 2)
             }
         }
         .onChange(of: visibleItemsResetKey) { _, _ in
@@ -9383,6 +9389,14 @@ private struct CompanionInlineItemRowsView: View {
         presentation == .externalDetail ? (optimisticExternalSelectedItemID ?? externalSelectedItemID) : selectedItemID
     }
 
+    private var selectedItem: ServerRelaySyncItem? {
+        guard presentation == .inlineDetail,
+              let selectedItemID else {
+            return nil
+        }
+        return items.first { $0.id == selectedItemID }
+    }
+
     private var currentInitialVisibleLimit: Int {
         CompanionLargeList.initialVisibleLimit(horizontalSizeClass: horizontalSizeClass)
     }
@@ -9408,7 +9422,7 @@ private struct CompanionInlineItemRowsView: View {
     private func accessorySystemImage(isSelected: Bool) -> String {
         switch presentation {
         case .inlineDetail:
-            return isSelected ? "chevron.up" : "chevron.down"
+            return isSelected ? "checkmark.circle.fill" : "info.circle"
         case .externalDetail:
             return isSelected ? "checkmark.circle.fill" : "chevron.right"
         }
@@ -9450,6 +9464,94 @@ private struct CompanionInlineItemRowsView: View {
 
     private func containsItemID(_ itemID: String) -> Bool {
         return itemIDs.contains(itemID)
+    }
+}
+
+private struct CompanionFloatingItemDetailOverlay: View {
+    var item: ServerRelaySyncItem
+    let model: CompanionModel
+    var onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label("선택한 항목", systemImage: "rectangle.on.rectangle")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Spacer(minLength: 0)
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("상세 닫기")
+            }
+
+            ScrollView(.vertical, showsIndicators: true) {
+                DeferredServerSyncItemDetailPanel(item: item, model: model)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: 360)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.klmsBorder.opacity(0.92), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.16), radius: 18, x: 0, y: 10)
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+    }
+}
+
+private struct CompanionFloatingMailDetailOverlay: View {
+    var item: ServerRelaySyncItem
+    var detailPanel: (ServerRelaySyncItem) -> AnyView
+    var onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label("관련 항목", systemImage: "rectangle.on.rectangle")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Spacer(minLength: 0)
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("상세 닫기")
+            }
+
+            ScrollView(.vertical, showsIndicators: true) {
+                detailPanel(item)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxHeight: 360)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.klmsBorder.opacity(0.92), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.16), radius: 18, x: 0, y: 10)
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
     }
 }
 
@@ -9605,6 +9707,17 @@ private struct RemoteChangeSummaryDetailPanel: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
+        .overlay(alignment: .bottom) {
+            if let selectedChangedItem {
+                CompanionFloatingItemDetailOverlay(item: selectedChangedItem, model: model) {
+                    companionPerformWithoutAnimation {
+                        selectedItemID = nil
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.bottom, 2)
+            }
+        }
         .onChange(of: visibleContentResetKey) { _, _ in
             resetVisibleLimits()
         }
@@ -9647,6 +9760,13 @@ private struct RemoteChangeSummaryDetailPanel: View {
             return true
         }
         return changedItems.contains(where: { $0.id == selectedItemID })
+    }
+
+    private var selectedChangedItem: ServerRelaySyncItem? {
+        guard let selectedItemID else {
+            return nil
+        }
+        return changedItems.first { $0.id == selectedItemID }
     }
 
     private func clearStaleSelectedItemIfNeeded() {
@@ -9717,22 +9837,17 @@ private struct RemoteChangeSummaryDetailPanel: View {
                 let visibleChangedItems = changedItems.prefix(visibleItemLimit)
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(visibleChangedItems) { item in
-                        VStack(alignment: .leading, spacing: 8) {
-                            ServerSyncDataRow(
-                                item: item,
-                                isSelected: selectedItemID == item.id,
-                                accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
-                            )
-                            .equatable()
-                            .companionStableTap(cornerRadius: 8) {
-                                selectedItemID = selectedItemID == item.id ? nil : item.id
-                            }
-                            .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
-                            .accessibilityHint(selectedItemID == item.id ? "변경 항목 상세와 처리 버튼을 접습니다." : "변경 항목 상세와 처리 버튼을 펼칩니다.")
-
-                        DeferredSelectionDetail(isExpanded: selectedItemID == item.id) {
-                            DeferredServerSyncItemDetailPanel(item: item, model: model)
+                        ServerSyncDataRow(
+                            item: item,
+                            isSelected: selectedItemID == item.id,
+                            accessorySystemImage: selectedItemID == item.id ? "checkmark.circle.fill" : "info.circle"
+                        )
+                        .equatable()
+                        .companionStableTap(cornerRadius: 8) {
+                            selectedItemID = selectedItemID == item.id ? nil : item.id
                         }
+                        .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
+                        .accessibilityHint("변경 항목 상세와 처리 버튼을 화면 아래 고정 패널에 표시합니다.")
                     }
                 }
                 if changedItems.count > visibleChangedItems.count {
@@ -9745,7 +9860,6 @@ private struct RemoteChangeSummaryDetailPanel: View {
                 }
             }
         }
-    }
 
     @ViewBuilder
     private var fileCleanupContent: some View {
@@ -10201,23 +10315,17 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.klmsSecondaryText)
                         ForEach(analysis.matchedItems.prefix(5)) { item in
-                            VStack(alignment: .leading, spacing: 8) {
-                                ServerSyncDataRow(
-                                    item: item,
-                                    isSelected: selectedItemID == item.id,
-                                    accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
-                                )
-                                .equatable()
-                                .companionStableTap(cornerRadius: 8) {
-                                    selectedItemID = selectedItemID == item.id ? nil : item.id
-                                }
-                                .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
-                                .accessibilityHint(selectedItemID == item.id ? "관련 KLMS 항목 상세와 처리 버튼을 접습니다." : "관련 KLMS 항목 상세와 처리 버튼을 펼칩니다.")
-
-                                DeferredSelectionDetail(isExpanded: selectedItemID == item.id) {
-                                    detailPanel(item)
-                                }
+                            ServerSyncDataRow(
+                                item: item,
+                                isSelected: selectedItemID == item.id,
+                                accessorySystemImage: selectedItemID == item.id ? "checkmark.circle.fill" : "info.circle"
+                            )
+                            .equatable()
+                            .companionStableTap(cornerRadius: 8) {
+                                selectedItemID = selectedItemID == item.id ? nil : item.id
                             }
+                            .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
+                            .accessibilityHint("관련 KLMS 항목 상세와 처리 버튼을 화면 아래 고정 패널에 표시합니다.")
                         }
                     }
                 }
@@ -10294,6 +10402,17 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(analysis.kind.tint.opacity(0.22), lineWidth: 1)
             )
+            .overlay(alignment: .bottom) {
+                if let selectedMatchedItem {
+                    CompanionFloatingMailDetailOverlay(item: selectedMatchedItem, detailPanel: detailPanel) {
+                        companionPerformWithoutAnimation {
+                            selectedItemID = nil
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                    .padding(.bottom, 2)
+                }
+            }
             .sheet(isPresented: $isShowingCreateSheet) {
                 MailCalendarCreateForm(analysis: analysis) { edit in
                     Task {
@@ -10323,6 +10442,13 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
             return true
         }
         return analysis.matchedItems.contains(where: { $0.id == selectedItemID })
+    }
+
+    private var selectedMatchedItem: ServerRelaySyncItem? {
+        guard let selectedItemID else {
+            return nil
+        }
+        return analysis.matchedItems.first { $0.id == selectedItemID }
     }
 
     private func clearStaleMatchedSelectionIfNeeded() {
