@@ -6159,6 +6159,8 @@ private struct CompanionItemListControls: View {
     var defaultStatusFilter: CompanionItemStatusFilter
     var totalCount: Int
     var filteredCount: Int
+    @State private var expandedPickerID: String?
+
     private var chipColumns: [GridItem] {
         Array(
             repeating: GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
@@ -6202,7 +6204,7 @@ private struct CompanionItemListControls: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         if yearOptions.count > 1 {
-                            companionMenuPickerField(
+                            companionInlinePickerField(
                                 title: "연도",
                                 systemImage: "calendar",
                                 selection: $selectedYear,
@@ -6211,7 +6213,7 @@ private struct CompanionItemListControls: View {
                         }
 
                         if semesterOptions.count > 1 {
-                            companionMenuPickerField(
+                            companionInlinePickerField(
                                 title: "학기",
                                 systemImage: "calendar.badge.clock",
                                 selection: $selectedSemester,
@@ -6221,7 +6223,7 @@ private struct CompanionItemListControls: View {
                     }
 
                     if courseOptions.count > 1 {
-                        companionMenuPickerField(
+                        companionInlinePickerField(
                             title: "과목",
                             systemImage: "book.closed",
                             selection: $selectedCourse,
@@ -6334,25 +6336,21 @@ private struct CompanionItemListControls: View {
         }
     }
 
-    private func companionMenuPickerField(
+    private func companionInlinePickerField(
         title: String,
         systemImage: String,
         selection: Binding<String>,
         options: [String]
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let isExpanded = expandedPickerID == title
+        return VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: systemImage)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
-            Menu {
-                ForEach(options, id: \.self) { option in
-                    Button {
-                        companionPerformWithoutAnimation {
-                            selection.wrappedValue = option
-                        }
-                    } label: {
-                        Label(option, systemImage: selection.wrappedValue == option ? "checkmark" : "")
-                    }
+
+            Button {
+                companionPerformWithoutAnimation {
+                    expandedPickerID = isExpanded ? nil : title
                 }
             } label: {
                 HStack(spacing: 8) {
@@ -6362,7 +6360,7 @@ private struct CompanionItemListControls: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 8)
-                    Image(systemName: "chevron.down")
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
@@ -6376,11 +6374,32 @@ private struct CompanionItemListControls: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .contentShape(RoundedRectangle(cornerRadius: 8))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
             .transaction { transaction in
                 transaction.animation = nil
+                transaction.disablesAnimations = true
             }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+
+            if isExpanded {
+                LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 8) {
+                    ForEach(options, id: \.self) { option in
+                        companionChoiceChip(
+                            title: option,
+                            isSelected: selection.wrappedValue == option
+                        ) {
+                            companionPerformWithoutAnimation {
+                                selection.wrappedValue = option
+                                expandedPickerID = nil
+                            }
+                        }
+                    }
+                }
+                .transaction { transaction in
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -6390,6 +6409,10 @@ private struct CompanionItemListControls: View {
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
     }
 
     private func resetFilters() {
