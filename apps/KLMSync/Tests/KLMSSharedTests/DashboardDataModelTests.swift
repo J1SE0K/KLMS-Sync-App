@@ -2854,7 +2854,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mailAnalysisResult.contains(".companionStableTap(cornerRadius: 8)"))
         XCTAssertFalse(mailAnalysisResult.contains(".transition(.opacity)"))
         XCTAssertTrue(mailAnalysisResult.contains(".accessibilityValue(selectedItemID == item.id ? \"선택됨\" : \"선택 안 됨\")"))
-        XCTAssertTrue(mailAnalysisResult.contains(".accessibilityHint(\"관련 KLMS 항목 상세와 처리 버튼을 화면 아래 고정 패널에 표시합니다.\")"))
+        XCTAssertTrue(mailAnalysisResult.contains(".accessibilityHint(\"관련 KLMS 항목 상세와 처리 버튼을 목록 아래에 표시합니다.\")"))
         XCTAssertTrue(mailAnalysisResult.contains("matchedSelectionStillVisible"))
         XCTAssertTrue(mailAnalysisResult.contains("clearStaleMatchedSelectionIfNeeded()"))
         XCTAssertTrue(mailAnalysisResult.contains(".onChange(of: matchedSelectionStillVisible)"))

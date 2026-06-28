@@ -9351,38 +9351,30 @@ private struct CompanionInlineItemRowsView: View {
 
     var body: some View {
         let visibleItems = items.prefix(visibleLimit)
-        LazyVStack(alignment: .leading, spacing: 8) {
-            ForEach(visibleItems) { item in
-                let isSelected = activeSelectedItemID == item.id
-                ServerSyncDataRow(
-                    item: item,
-                    isSelected: isSelected,
-                    accessorySystemImage: accessorySystemImage(isSelected: isSelected)
-                )
-                .equatable()
-                .companionStableTap(action: { select(item) })
-                .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
-                .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 화면 아래 고정 패널에 표시합니다." : "상세 패널에 항목을 표시합니다.")
-            }
-            if items.count > visibleItems.count {
-                CompanionShowMoreRowsButton(
-                    remainingCount: items.count - visibleItems.count,
-                    context: category.title
-                ) {
-                    visibleLimit += CompanionLargeList.increment
+        VStack(alignment: .leading, spacing: 8) {
+            inlineSelectedDetail
+
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(visibleItems) { item in
+                    let isSelected = activeSelectedItemID == item.id
+                    ServerSyncDataRow(
+                        item: item,
+                        isSelected: isSelected,
+                        accessorySystemImage: accessorySystemImage(isSelected: isSelected)
+                    )
+                    .equatable()
+                    .companionStableTap(action: { select(item) })
+                    .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+                    .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 목록 위에 표시합니다." : "상세 패널에 항목을 표시합니다.")
                 }
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if presentation == .inlineDetail,
-               let selectedItem {
-                CompanionFloatingItemDetailOverlay(item: selectedItem, model: model) {
-                    companionPerformWithoutAnimation {
-                        selectedItemID = nil
+                if items.count > visibleItems.count {
+                    CompanionShowMoreRowsButton(
+                        remainingCount: items.count - visibleItems.count,
+                        context: category.title
+                    ) {
+                        visibleLimit += CompanionLargeList.increment
                     }
                 }
-                .padding(.horizontal, 2)
-                .padding(.bottom, 2)
             }
         }
         .onChange(of: visibleItemsResetKey) { _, _ in
@@ -9409,6 +9401,18 @@ private struct CompanionInlineItemRowsView: View {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
             clearStaleInlineSelectionIfNeeded()
             clearStaleExternalSelectionIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var inlineSelectedDetail: some View {
+        if presentation == .inlineDetail,
+           let selectedItem {
+            CompanionFloatingItemDetailOverlay(item: selectedItem, model: model) {
+                companionPerformWithoutAnimation {
+                    selectedItemID = nil
+                }
+            }
         }
     }
 
@@ -9724,6 +9728,13 @@ private struct RemoteChangeSummaryDetailPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+            if let selectedChangedItem {
+                CompanionFloatingItemDetailOverlay(item: selectedChangedItem, model: model) {
+                    companionPerformWithoutAnimation {
+                        selectedItemID = nil
+                    }
+                }
+            }
             detailContent
         }
         .padding(14)
@@ -9734,17 +9745,6 @@ private struct RemoteChangeSummaryDetailPanel: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
-        .overlay(alignment: .bottom) {
-            if let selectedChangedItem {
-                CompanionFloatingItemDetailOverlay(item: selectedChangedItem, model: model) {
-                    companionPerformWithoutAnimation {
-                        selectedItemID = nil
-                    }
-                }
-                .padding(.horizontal, 2)
-                .padding(.bottom, 2)
-            }
-        }
         .onChange(of: visibleContentResetKey) { _, _ in
             resetVisibleLimits()
         }
@@ -10352,7 +10352,14 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                 selectedItemID = selectedItemID == item.id ? nil : item.id
                             }
                             .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
-                            .accessibilityHint("관련 KLMS 항목 상세와 처리 버튼을 화면 아래 고정 패널에 표시합니다.")
+                            .accessibilityHint("관련 KLMS 항목 상세와 처리 버튼을 목록 아래에 표시합니다.")
+                        }
+                        if let selectedMatchedItem {
+                            CompanionFloatingMailDetailOverlay(item: selectedMatchedItem, detailPanel: detailPanel) {
+                                companionPerformWithoutAnimation {
+                                    selectedItemID = nil
+                                }
+                            }
                         }
                     }
                 }
@@ -10429,17 +10436,6 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(analysis.kind.tint.opacity(0.22), lineWidth: 1)
             )
-            .overlay(alignment: .bottom) {
-                if let selectedMatchedItem {
-                    CompanionFloatingMailDetailOverlay(item: selectedMatchedItem, detailPanel: detailPanel) {
-                        companionPerformWithoutAnimation {
-                            selectedItemID = nil
-                        }
-                    }
-                    .padding(.horizontal, 2)
-                    .padding(.bottom, 2)
-                }
-            }
             .sheet(isPresented: $isShowingCreateSheet) {
                 MailCalendarCreateForm(analysis: analysis) { edit in
                     Task {
