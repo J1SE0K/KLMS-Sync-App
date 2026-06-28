@@ -6306,16 +6306,23 @@ private struct CompanionItemListControls: View {
         isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
+        HStack(spacing: 6) {
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.62))
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.86)
+                .foregroundStyle(Color.klmsPrimaryText)
+        }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground, in: Capsule())
-            .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+            .background(Color.klmsSubtleCardBackground, in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
+                    .stroke(Color.klmsBorder, lineWidth: 1)
             }
             .companionStableTap(cornerRadius: 999, action: action)
         .accessibilityLabel(title)
@@ -7245,32 +7252,36 @@ private struct FlowChipLayout: View {
                 HStack(spacing: 5) {
                     Image(systemName: entry.kind.systemImage)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : entry.kind.tint)
+                        .foregroundStyle(entry.kind.tint)
                     Text("\(entry.value)")
                         .font(.caption.monospacedDigit().weight(.bold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                        .foregroundStyle(Color.klmsPrimaryText)
                     Text(entry.kind.title)
                         .font(.caption2.weight(.semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                        .foregroundStyle(Color.klmsPrimaryText)
                     Spacer(minLength: 0)
                     Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.86) : Color.klmsSecondaryText)
+                        .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .background(
-                    isSelected
-                        ? Color.klmsSelectedBackground.opacity(0.96)
-                        : entry.kind.chipBackground,
+                    entry.kind.chipBackground,
                     in: RoundedRectangle(cornerRadius: 8)
                 )
+                .overlay(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(isSelected ? Color.klmsSelectedForeground : entry.kind.tint.opacity(0.26))
+                        .frame(width: 3)
+                        .padding(.vertical, 8)
+                }
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : entry.kind.chipBorder, lineWidth: 1)
+                        .stroke(entry.kind.chipBorder, lineWidth: 1)
                 )
                 .companionStableTap(cornerRadius: 8) {
                     onSelect(entry.kind)
@@ -7308,32 +7319,36 @@ private struct RemoteMetricTile: View {
             HStack(alignment: .center, spacing: 7) {
                 Image(systemName: systemImage)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.9) : Color.klmsCommandAccent)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent)
                     .frame(width: 26, height: 26)
                     .background(
-                        isSelected
-                            ? Color.klmsSelectedForeground.opacity(0.12)
-                            : Color.klmsCommandAccent.opacity(0.12),
+                        Color.klmsCommandAccent.opacity(0.12),
                         in: RoundedRectangle(cornerRadius: 8)
                     )
                 Spacer(minLength: 0)
                 Text("\(value)")
                     .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(Color.klmsPrimaryText)
             }
             Text(label)
                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.82) : Color.klmsSecondaryText)
+                .foregroundStyle(Color.klmsSecondaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
         }
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
         .padding(11)
-        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground)
+        .background(Color.klmsCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent.opacity(0.28))
+                .frame(width: 3)
+                .padding(.vertical, 10)
+        }
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
+                .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .companionStableTap(cornerRadius: 14, action: action)
         .accessibilityLabel("\(label) \(value)개")
@@ -7611,32 +7626,36 @@ private struct WorkstationMetricCard: View {
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: category.systemImage)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.9) : Color.klmsCommandAccent)
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent)
                     .frame(width: 26, height: 26)
                     .background(
-                        isSelected
-                            ? Color.klmsSelectedForeground.opacity(0.12)
-                            : Color.klmsCommandAccent.opacity(0.12),
+                        Color.klmsCommandAccent.opacity(0.12),
                         in: RoundedRectangle(cornerRadius: 8)
                     )
                 Text("\(category.title) \(value)개")
                     .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(Color.klmsPrimaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
             Text(category.workstationDescription)
                 .font(.system(size: 11, weight: .regular, design: .rounded))
-                .foregroundStyle(isSelected ? Color.klmsSelectedForeground.opacity(0.78) : Color.klmsSecondaryText)
+                .foregroundStyle(Color.klmsSecondaryText)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(11)
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
-        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent.opacity(0.28))
+                .frame(width: 3)
+                .padding(.vertical, 10)
+        }
         .overlay(
             RoundedRectangle(cornerRadius: 13)
-                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
+                .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .companionStableTap(cornerRadius: 13, action: action)
         .accessibilityLabel("\(category.title) \(value)개")
@@ -13110,7 +13129,7 @@ private struct ServerSyncDataRow: View, Equatable {
                 }
                 Text(snapshot.title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                    .foregroundStyle(Color.klmsPrimaryText)
                     .lineLimit(2)
                 Text(snapshot.metadata)
                     .font(.caption)
@@ -13127,18 +13146,18 @@ private struct ServerSyncDataRow: View, Equatable {
         }
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-        .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground)
+        .background(Color.klmsSubtleCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .contentShape(RoundedRectangle(cornerRadius: 8))
         .overlay(alignment: .leading) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(isSelected ? Color.klmsSelectedBorder : tint.opacity(0.30))
+                .fill(isSelected ? Color.klmsSelectedForeground : tint.opacity(0.30))
                 .frame(width: 3)
                 .padding(.vertical, 9)
         }
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
+                .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .transaction { transaction in
