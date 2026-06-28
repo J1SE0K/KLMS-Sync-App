@@ -6141,7 +6141,6 @@ private enum CompanionItemListPreloadStore {
 }
 
 private struct CompanionItemListControls: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var sortOption: CompanionItemSortOption
     @Binding var visibilityFilter: CompanionItemVisibilityFilter
     @Binding var statusFilter: CompanionItemStatusFilter
@@ -6161,13 +6160,6 @@ private struct CompanionItemListControls: View {
     var filteredCount: Int
     @State private var expandedPickerID: String?
 
-    private var chipColumns: [GridItem] {
-        Array(
-            repeating: GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
-            count: horizontalSizeClass == .regular ? 3 : 2
-        )
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
@@ -6186,7 +6178,7 @@ private struct CompanionItemListControls: View {
             }
 
             CompanionControlBox(title: "정렬", systemImage: "arrow.up.arrow.down") {
-                LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(CompanionItemSortOption.allCases) { option in
                         companionChoiceChip(
                             title: option.title,
@@ -6202,7 +6194,7 @@ private struct CompanionItemListControls: View {
 
             CompanionControlBox(title: "범위", systemImage: "line.3.horizontal.decrease.circle") {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 8) {
                         if yearOptions.count > 1 {
                             companionInlinePickerField(
                                 title: "연도",
@@ -6241,7 +6233,7 @@ private struct CompanionItemListControls: View {
 
             if availableStatusFilters.count > 1 {
                 CompanionControlBox(title: "상태", systemImage: "checklist") {
-                    LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(availableStatusFilters) { filter in
                             companionChoiceChip(
                                 title: filter.title,
@@ -6258,7 +6250,7 @@ private struct CompanionItemListControls: View {
 
             CompanionControlBox(title: "표시", systemImage: "slider.horizontal.3") {
                 VStack(alignment: .leading, spacing: 8) {
-                    LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(CompanionItemVisibilityFilter.allCases) { option in
                             companionChoiceChip(
                                 title: option.title,
@@ -6271,14 +6263,13 @@ private struct CompanionItemListControls: View {
                         }
                     }
 
-                    HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 8) {
                         if supportsNewOnly {
                             filterToggle("새 항목만", isOn: $newOnly)
                         }
                         if supportsRecentOnly {
                             filterToggle("최근 변경만", isOn: $recentOnly)
                         }
-                        Spacer(minLength: 0)
                     }
                 }
             }
@@ -6390,7 +6381,7 @@ private struct CompanionItemListControls: View {
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
 
             if isExpanded {
-                LazyVGrid(columns: chipColumns, alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(options, id: \.self) { option in
                         companionChoiceChip(
                             title: option,
@@ -15322,7 +15313,7 @@ private struct RemoteSettingRow: View {
                 .disabled(!setting.editable)
 
                 if isChoiceExpanded {
-                    LazyVGrid(columns: settingChoiceColumns, alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 8) {
                         ForEach(setting.options, id: \.self) { option in
                             settingChoiceChip(option)
                         }
@@ -15353,13 +15344,6 @@ private struct RemoteSettingRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private var settingChoiceColumns: [GridItem] {
-        [
-            GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
-            GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
-        ]
     }
 
     private func settingChoiceChip(_ option: String) -> some View {
