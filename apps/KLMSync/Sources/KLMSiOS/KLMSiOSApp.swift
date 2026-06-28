@@ -6166,6 +6166,7 @@ private struct CompanionItemListControls: View {
     var defaultStatusFilter: CompanionItemStatusFilter
     var totalCount: Int
     var filteredCount: Int
+    @State private var pressedChoiceKey: String?
     private var chipColumns: [GridItem] {
         Array(
             repeating: GridItem(.flexible(minimum: 0), spacing: 8, alignment: .leading),
@@ -6314,7 +6315,8 @@ private struct CompanionItemListControls: View {
         isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button {
+        let isVisuallySelected = isSelected || pressedChoiceKey == title
+        return Button {
             action()
         } label: {
             Text(title)
@@ -6322,19 +6324,23 @@ private struct CompanionItemListControls: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .background(isSelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground, in: Capsule())
-                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
+                .background(isVisuallySelected ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground, in: Capsule())
+                .foregroundStyle(isVisuallySelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 .overlay {
                     Capsule()
-                        .stroke(isSelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
+                        .stroke(isVisuallySelected ? Color.klmsSelectedBorder.opacity(0.92) : Color.klmsBorder, lineWidth: 1)
                 }
                 .contentShape(Capsule())
         }
         .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 999))
+        .companionPressPreview { isPressed in
+            pressedChoiceKey = isPressed ? title : nil
+        }
         .accessibilityLabel(title)
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .transaction { transaction in
             transaction.animation = nil
+            transaction.disablesAnimations = true
         }
     }
 
@@ -7403,6 +7409,49 @@ private func companionPerformWithoutAnimation(_ updates: () -> Void) {
     transaction.animation = nil
     withTransaction(transaction) {
         updates()
+    }
+}
+
+private struct CompanionPressPreviewModifier: ViewModifier {
+    var onPressChanged: (Bool) -> Void
+    @State private var isPressing = false
+
+    func body(content: Content) -> some View {
+        content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard !isPressing else { return }
+                        isPressing = true
+                        companionPerformWithoutAnimation {
+                            onPressChanged(true)
+                        }
+                    }
+                    .onEnded { _ in
+                        guard isPressing else { return }
+                        isPressing = false
+                        companionPerformWithoutAnimation {
+                            onPressChanged(false)
+                        }
+                    }
+            )
+            .onDisappear {
+                guard isPressing else { return }
+                isPressing = false
+                companionPerformWithoutAnimation {
+                    onPressChanged(false)
+                }
+            }
+            .transaction { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+    }
+}
+
+private extension View {
+    func companionPressPreview(_ onPressChanged: @escaping (Bool) -> Void) -> some View {
+        modifier(CompanionPressPreviewModifier(onPressChanged: onPressChanged))
     }
 }
 
@@ -9336,6 +9385,7 @@ private struct CompanionInlineItemRowsView: View {
     var onSelectItem: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
     @State private var optimisticExternalSelectedItemID: String?
+    @State private var pressedItemID: String?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
@@ -9360,7 +9410,7 @@ private struct CompanionInlineItemRowsView: View {
         let visibleItems = items.prefix(visibleLimit)
         LazyVStack(alignment: .leading, spacing: 8) {
             ForEach(visibleItems) { item in
-                let isSelected = activeSelectedItemID == item.id
+                let isSelected = visualSelectedItemID == item.id
                 VStack(alignment: .leading, spacing: 8) {
                     Button {
                         select(item)
@@ -9373,6 +9423,9 @@ private struct CompanionInlineItemRowsView: View {
                         .equatable()
                     }
                     .buttonStyle(KLMSStableSelectionButtonStyle())
+                    .companionPressPreview { isPressed in
+                        pressedItemID = isPressed ? item.id : nil
+                    }
                     .accessibilityValue(presentation == .inlineDetail ? (isSelected ? "펼쳐짐" : "접힘") : (isSelected ? "선택됨" : "선택 안 됨"))
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 같은 화면에서 펼칩니다." : "상세 패널에 항목을 표시합니다.")
 
@@ -9419,6 +9472,10 @@ private struct CompanionInlineItemRowsView: View {
 
     private var activeSelectedItemID: String? {
         presentation == .externalDetail ? (optimisticExternalSelectedItemID ?? externalSelectedItemID) : selectedItemID
+    }
+
+    private var visualSelectedItemID: String? {
+        pressedItemID ?? activeSelectedItemID
     }
 
     private var currentInitialVisibleLimit: Int {
@@ -9471,11 +9528,18 @@ private struct CompanionInlineItemRowsView: View {
     }
 
     private func clearStaleInlineSelectionIfNeeded() {
-        guard let selectedItemID,
-              !containsItemID(selectedItemID) else {
-            return
+        if let selectedItemID,
+           !containsItemID(selectedItemID) {
+            self.selectedItemID = nil
         }
-        self.selectedItemID = nil
+        clearStalePressedSelectionIfNeeded()
+    }
+
+    private func clearStalePressedSelectionIfNeeded() {
+        if let pressedItemID,
+           !containsItemID(pressedItemID) {
+            self.pressedItemID = nil
+        }
     }
 
     private func clearStaleExternalSelectionIfNeeded() {
@@ -9485,6 +9549,7 @@ private struct CompanionInlineItemRowsView: View {
             return
         }
         self.optimisticExternalSelectedItemID = externalSelectedItemID
+        clearStalePressedSelectionIfNeeded()
     }
 
     private func containsItemID(_ itemID: String) -> Bool {
@@ -9498,6 +9563,7 @@ private struct CompanionSelectableItemListRows: View {
     var itemIDs: Set<String>
     var onSelect: (ServerRelaySyncItem) -> Void
     @State private var selectedItemID: String?
+    @State private var pressedItemID: String?
     @State private var visibleLimit = CompanionLargeList.initialVisibleLimit
 
     init(
@@ -9517,11 +9583,14 @@ private struct CompanionSelectableItemListRows: View {
                 Button {
                     select(item)
                 } label: {
-                    ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
+                    ServerSyncDataRow(item: item, isSelected: visualSelectedItemID == item.id)
                         .equatable()
                 }
                 .buttonStyle(KLMSStableSelectionButtonStyle())
-                .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
+                .companionPressPreview { isPressed in
+                    pressedItemID = isPressed ? item.id : nil
+                }
+                .accessibilityValue(visualSelectedItemID == item.id ? "선택됨" : "선택 안 됨")
                 .accessibilityHint("항목 상세를 엽니다.")
             }
             if items.count > visibleItems.count {
@@ -9568,6 +9637,10 @@ private struct CompanionSelectableItemListRows: View {
         return containsItemID(selectedItemID)
     }
 
+    private var visualSelectedItemID: String? {
+        pressedItemID ?? selectedItemID
+    }
+
     private func select(_ item: ServerRelaySyncItem) {
         let itemID = item.id
         companionPerformWithoutAnimation {
@@ -9577,11 +9650,14 @@ private struct CompanionSelectableItemListRows: View {
     }
 
     private func clearStaleSelectionIfNeeded() {
-        guard let selectedItemID,
-              !containsItemID(selectedItemID) else {
-            return
+        if let selectedItemID,
+           !containsItemID(selectedItemID) {
+            self.selectedItemID = nil
         }
-        self.selectedItemID = nil
+        if let pressedItemID,
+           !containsItemID(pressedItemID) {
+            self.pressedItemID = nil
+        }
     }
 
     private func containsItemID(_ itemID: String) -> Bool {
@@ -9632,6 +9708,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
     var fileCleanupReports: [DryRunReport]
     let model: CompanionModel
     @State private var selectedItemID: String?
+    @State private var pressedItemID: String?
     @State private var visibleItemLimit = CompanionLargeList.initialVisibleLimit
     @State private var calendarVisibleLimit = CompanionLargeList.calendarVisibleLimit
     @State private var cleanupVisibleLimit = CompanionLargeList.previewVisibleLimit
@@ -9681,6 +9758,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
 
     private func resetVisibleLimits() {
         selectedItemID = nil
+        pressedItemID = nil
         visibleItemLimit = currentInitialVisibleLimit
         calendarVisibleLimit = currentCalendarVisibleLimit
         cleanupVisibleLimit = currentPreviewVisibleLimit
@@ -9694,11 +9772,14 @@ private struct RemoteChangeSummaryDetailPanel: View {
     }
 
     private func clearStaleSelectedItemIfNeeded() {
-        guard let selectedItemID,
-              !changedItems.contains(where: { $0.id == selectedItemID }) else {
-            return
+        if let selectedItemID,
+           !changedItems.contains(where: { $0.id == selectedItemID }) {
+            self.selectedItemID = nil
         }
-        self.selectedItemID = nil
+        if let pressedItemID,
+           !changedItems.contains(where: { $0.id == pressedItemID }) {
+            self.pressedItemID = nil
+        }
     }
 
     private var header: some View {
@@ -9768,16 +9849,20 @@ private struct RemoteChangeSummaryDetailPanel: View {
                                 selectedItemID = selectedItemID == item.id ? nil : item.id
                             }
                         } label: {
+                            let isVisuallySelected = (pressedItemID ?? selectedItemID) == item.id
                             ServerSyncDataRow(
                                 item: item,
-                                isSelected: selectedItemID == item.id,
-                                accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
+                                isSelected: isVisuallySelected,
+                                accessorySystemImage: isVisuallySelected ? "chevron.up" : "chevron.down"
                             )
                             .equatable()
                         }
                         .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
-                        .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
-                        .accessibilityHint(selectedItemID == item.id ? "변경 항목 상세와 처리 버튼을 접습니다." : "변경 항목 상세와 처리 버튼을 펼칩니다.")
+                        .companionPressPreview { isPressed in
+                            pressedItemID = isPressed ? item.id : nil
+                        }
+                        .accessibilityValue((pressedItemID ?? selectedItemID) == item.id ? "펼쳐짐" : "접힘")
+                        .accessibilityHint((pressedItemID ?? selectedItemID) == item.id ? "변경 항목 상세와 처리 버튼을 접습니다." : "변경 항목 상세와 처리 버튼을 펼칩니다.")
 
                         DeferredSelectionDetail(isExpanded: selectedItemID == item.id) {
                             DeferredServerSyncItemDetailPanel(item: item, model: model)
@@ -10157,6 +10242,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
     var submitDashboardItem: (ServerRelaySyncItem) async -> Void
     var removeDashboardItem: (ServerRelaySyncItem) async -> Void
     @State private var selectedItemID: String?
+    @State private var pressedItemID: String?
     @State private var isShowingCreateSheet = false
     @State private var dashboardEditItem: ServerRelaySyncItem?
 
@@ -10256,16 +10342,20 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                         selectedItemID = selectedItemID == item.id ? nil : item.id
                                     }
                                 } label: {
+                                    let isVisuallySelected = (pressedItemID ?? selectedItemID) == item.id
                                     ServerSyncDataRow(
                                         item: item,
-                                        isSelected: selectedItemID == item.id,
-                                        accessorySystemImage: selectedItemID == item.id ? "chevron.up" : "chevron.down"
+                                        isSelected: isVisuallySelected,
+                                        accessorySystemImage: isVisuallySelected ? "chevron.up" : "chevron.down"
                                     )
                                     .equatable()
                                 }
                                 .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: 8))
-                                .accessibilityValue(selectedItemID == item.id ? "펼쳐짐" : "접힘")
-                                .accessibilityHint(selectedItemID == item.id ? "관련 KLMS 항목 상세와 처리 버튼을 접습니다." : "관련 KLMS 항목 상세와 처리 버튼을 펼칩니다.")
+                                .companionPressPreview { isPressed in
+                                    pressedItemID = isPressed ? item.id : nil
+                                }
+                                .accessibilityValue((pressedItemID ?? selectedItemID) == item.id ? "펼쳐짐" : "접힘")
+                                .accessibilityHint((pressedItemID ?? selectedItemID) == item.id ? "관련 KLMS 항목 상세와 처리 버튼을 접습니다." : "관련 KLMS 항목 상세와 처리 버튼을 펼칩니다.")
 
                                 DeferredSelectionDetail(isExpanded: selectedItemID == item.id) {
                                     detailPanel(item)
@@ -10379,11 +10469,14 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
     }
 
     private func clearStaleMatchedSelectionIfNeeded() {
-        guard let selectedItemID,
-              !analysis.matchedItems.contains(where: { $0.id == selectedItemID }) else {
-            return
+        if let selectedItemID,
+           !analysis.matchedItems.contains(where: { $0.id == selectedItemID }) {
+            self.selectedItemID = nil
         }
-        self.selectedItemID = nil
+        if let pressedItemID,
+           !analysis.matchedItems.contains(where: { $0.id == pressedItemID }) {
+            self.pressedItemID = nil
+        }
     }
 }
 
