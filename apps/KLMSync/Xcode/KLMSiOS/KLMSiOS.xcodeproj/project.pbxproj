@@ -296,6 +296,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "KLMS Sync가 이 기기 Calendar에서 KLMS 일정 등록, 수정, 삭제, 열기를 바로 처리하기 위해 Calendar 접근 권한을 사용합니다.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "KLMS Sync가 이 기기 Calendar에서 KLMS 일정 등록, 수정, 삭제, 열기를 바로 처리하기 위해 Calendar 접근 권한을 사용합니다.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KLMS Sync가 같은 Wi-Fi 또는 개인 VPN의 Mac 앱에 동기화 실행 요청을 보내기 위해 로컬 네트워크를 사용합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -330,6 +332,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "KLMS Sync가 이 기기 Calendar에서 KLMS 일정 등록, 수정, 삭제, 열기를 바로 처리하기 위해 Calendar 접근 권한을 사용합니다.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "KLMS Sync가 이 기기 Calendar에서 KLMS 일정 등록, 수정, 삭제, 열기를 바로 처리하기 위해 Calendar 접근 권한을 사용합니다.";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "KLMS Sync가 같은 Wi-Fi 또는 개인 VPN의 Mac 앱에 동기화 실행 요청을 보내기 위해 로컬 네트워크를 사용합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

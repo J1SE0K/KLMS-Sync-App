@@ -1,5 +1,8 @@
 import SwiftUI
 
+#if canImport(EventKit)
+import EventKit
+#endif
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -1642,37 +1645,61 @@ final class CompanionModel: ObservableObject {
     }
 
     func createManualCalendarAction(title: String, edit: CalendarEventEdit) async {
-        guard let serverRelayStore else {
-            errorMessage = "서버 연결이 필요합니다. 연결 정보를 먼저 확인해 주세요."
-            userAlert = UserAlert(title: "요청 실패", message: errorMessage)
-            return
-        }
-        let requestItemID = "mail-calendar-\(UUID().uuidString)"
+        await createCalendarEventOnDevice(title: title, edit: edit, change: nil)
+    }
+
+    @discardableResult
+    func createCalendarEventOnDevice(change: CalendarChange, edit: CalendarEventEdit) async -> Bool {
+        await createCalendarEventOnDevice(title: change.title, edit: edit, change: change)
+    }
+
+    @discardableResult
+    func editCalendarEventOnDevice(change: CalendarChange, edit: CalendarEventEdit) async -> Bool {
+        let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
+        markCalendarChangeResolvedLocally(change)
         do {
-            let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            let action = ServerRelayItemAction(
-                action: .calendarCreate,
-                itemID: requestItemID,
-                itemKind: "calendar",
-                itemTitle: title.isEmpty ? "메일 일정" : title,
-                message: try edit.encodedMessage()
-            )
-            replaceRecentItemAction(action) { $0.id == action.id }
-            connectionMessage = "\(ServerRelayItemActionKind.calendarCreate.displayName) 요청을 보내는 중입니다."
+            try await updateLocalCalendarEvent(change: change, edit: edit)
+            connectionMessage = "이 기기 Calendar 일정을 수정했습니다."
             connectionSucceeded = true
             errorMessage = ""
-            let savedAction = try await serverRelayStore.createItemAction(action)
-            replaceRecentItemAction(savedAction) { $0.id == action.id }
-            connectionMessage = savedAction.message.nilIfBlank ?? "\(ServerRelayItemActionKind.calendarCreate.displayName) 요청을 보냈습니다."
-            connectionSucceeded = true
-            errorMessage = ""
-            userAlert = UserAlert(title: "요청 완료", message: "Mac 앱이 Apple Calendar에 새 일정을 등록합니다.")
+            return true
         } catch {
-            guard !isCancellationError(error) else { return }
-            removeRecentItemActions { $0.itemID == requestItemID && $0.status == .pending }
+            guard !isCancellationError(error) else { return false }
+            resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
+            persistResolvedCalendarChangeIDs()
+            rebuildVisibleCalendarChanges()
             let message = userFacingMessage(for: error)
             errorMessage = message
-            userAlert = UserAlert(title: "요청 실패", message: message)
+            userAlert = UserAlert(title: "캘린더 수정 실패", message: message)
+            return false
+        }
+    }
+
+    @discardableResult
+    func deleteCalendarEventOnDevice(change: CalendarChange) async -> Bool {
+        let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
+        markCalendarChangeResolvedLocally(change)
+        if change.isDeletedAction {
+            connectionMessage = "삭제된 캘린더 항목을 목록에서 정리했습니다."
+            connectionSucceeded = true
+            errorMessage = ""
+            return true
+        }
+        do {
+            try await deleteLocalCalendarEvent(change: change)
+            connectionMessage = "이 기기 Calendar 일정을 삭제했습니다."
+            connectionSucceeded = true
+            errorMessage = ""
+            return true
+        } catch {
+            guard !isCancellationError(error) else { return false }
+            resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
+            persistResolvedCalendarChangeIDs()
+            rebuildVisibleCalendarChanges()
+            let message = userFacingMessage(for: error)
+            errorMessage = message
+            userAlert = UserAlert(title: "캘린더 삭제 실패", message: message)
+            return false
         }
     }
 
@@ -1692,6 +1719,205 @@ final class CompanionModel: ObservableObject {
             return "Mac 앱이 캘린더 요청을 처리합니다."
         }
     }
+
+    @discardableResult
+    private func createCalendarEventOnDevice(
+        title: String,
+        edit: CalendarEventEdit,
+        change: CalendarChange?
+    ) async -> Bool {
+        let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
+        if let change {
+            markCalendarChangeResolvedLocally(change)
+        }
+        do {
+            try await createLocalCalendarEvent(title: title, edit: edit, change: change)
+            connectionMessage = "이 기기 Calendar에 일정을 등록했습니다."
+            connectionSucceeded = true
+            errorMessage = ""
+            return true
+        } catch {
+            guard !isCancellationError(error) else { return false }
+            if change != nil {
+                resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
+                persistResolvedCalendarChangeIDs()
+                rebuildVisibleCalendarChanges()
+            }
+            let message = userFacingMessage(for: error)
+            errorMessage = message
+            userAlert = UserAlert(title: "캘린더 등록 실패", message: message)
+            return false
+        }
+    }
+
+    #if canImport(EventKit)
+    private func ensureLocalCalendarAccess() async throws {
+        switch EKEventStore.authorizationStatus(for: .event) {
+        case .fullAccess, .authorized:
+            return
+        case .notDetermined:
+            let granted = try await EKEventStore().requestFullAccessToEvents()
+            guard granted else {
+                throw companionCalendarError("Calendar 권한이 필요합니다. 설정에서 KLMS Sync의 Calendar 접근을 허용해 주세요.")
+            }
+        default:
+            throw companionCalendarError("Calendar 권한이 필요합니다. 설정에서 KLMS Sync의 Calendar 접근을 허용해 주세요.")
+        }
+    }
+
+    private func createLocalCalendarEvent(title: String, edit: CalendarEventEdit, change: CalendarChange?) async throws {
+        try await ensureLocalCalendarAccess()
+        let store = EKEventStore()
+        let trimmedTitle = edit.title.nilIfBlank ?? title.nilIfBlank ?? change?.title.nilIfBlank ?? "KLMS 일정"
+        guard let startDate = parseCalendarEditInputDate(edit.startAt) else {
+            throw companionCalendarError("시작 시간을 해석할 수 없습니다. 예: 2026-06-17 13:00")
+        }
+        let endDate: Date
+        if edit.dueAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            endDate = startDate.addingTimeInterval(60 * 60)
+        } else {
+            guard let parsedEndDate = parseCalendarEditInputDate(edit.dueAt) else {
+                throw companionCalendarError("종료 시간을 해석할 수 없습니다. 예: 2026-06-17 14:00")
+            }
+            endDate = parsedEndDate
+        }
+        guard endDate >= startDate else {
+            throw companionCalendarError("종료 시간이 시작 시간보다 빠릅니다.")
+        }
+        guard let calendar = store.defaultCalendarForNewEvents
+            ?? store.calendars(for: .event).first(where: { $0.allowsContentModifications }) else {
+            throw companionCalendarError("일정을 추가할 수 있는 Calendar를 찾지 못했습니다.")
+        }
+        let event = EKEvent(eventStore: store)
+        event.calendar = calendar
+        event.title = trimmedTitle
+        event.startDate = startDate
+        event.endDate = endDate
+        if let location = edit.location.nilIfBlank ?? change?.location.nilIfBlank {
+            event.location = location
+        }
+        event.notes = localCalendarNotes(change: change)
+        try store.save(event, span: .thisEvent, commit: true)
+    }
+
+    private func updateLocalCalendarEvent(change: CalendarChange, edit: CalendarEventEdit) async throws {
+        try await ensureLocalCalendarAccess()
+        let store = EKEventStore()
+        let event = try findLocalCalendarEvent(change: change, store: store)
+        if let title = edit.title.nilIfBlank {
+            event.title = title
+        }
+        if let startText = edit.startAt.nilIfBlank {
+            guard let startDate = parseCalendarEditInputDate(startText) else {
+                throw companionCalendarError("시작 시간을 해석할 수 없습니다: \(startText)")
+            }
+            event.startDate = startDate
+        }
+        if let dueText = edit.dueAt.nilIfBlank {
+            guard let endDate = parseCalendarEditInputDate(dueText) else {
+                throw companionCalendarError("종료 시간을 해석할 수 없습니다: \(dueText)")
+            }
+            event.endDate = endDate
+        }
+        guard event.endDate >= event.startDate else {
+            throw companionCalendarError("종료 시간이 시작 시간보다 빠릅니다.")
+        }
+        if let location = edit.location.nilIfBlank {
+            event.location = location
+        }
+        try store.save(event, span: .thisEvent, commit: true)
+    }
+
+    private func deleteLocalCalendarEvent(change: CalendarChange) async throws {
+        try await ensureLocalCalendarAccess()
+        let store = EKEventStore()
+        let event = try findLocalCalendarEvent(change: change, store: store)
+        try store.remove(event, span: .thisEvent, commit: true)
+    }
+
+    private func findLocalCalendarEvent(change: CalendarChange, store: EKEventStore) throws -> EKEvent {
+        if let identifier = change.identifier.nilIfBlank,
+           let event = store.event(withIdentifier: identifier) {
+            return event
+        }
+
+        let calendars = store.calendars(for: .event)
+        let scopedCalendars = calendars.filter { calendar in
+            change.calendar.nilIfBlank.map { calendar.title == $0 } ?? true
+        }
+        let searchCalendars = scopedCalendars.isEmpty ? nil : scopedCalendars
+        let parsedDates = [change.startAt, change.dueAt].compactMap(parseCalendarEditInputDate)
+        let startWindow = (parsedDates.min() ?? Date()).addingTimeInterval(-60 * 60 * 24 * 45)
+        let endWindow = (parsedDates.max() ?? Date()).addingTimeInterval(60 * 60 * 24 * 365 * 3)
+        let predicate = store.predicateForEvents(withStart: startWindow, end: endWindow, calendars: searchCalendars)
+        let events = store.events(matching: predicate)
+
+        if let identifier = change.identifier.nilIfBlank {
+            let markers = ["KLMS_SYNC_ITEM_ID:\(identifier)", "KLMS_ASSIGN_ID:\(identifier)"]
+            if let event = events.first(where: { event in
+                let notes = event.notes ?? ""
+                return markers.contains { notes.contains($0) }
+            }) {
+                return event
+            }
+        }
+
+        let normalizedTitle = normalizeLocalCalendarLookupText(change.title)
+        let targetStart = parseCalendarEditInputDate(change.startAt)
+        if !normalizedTitle.isEmpty,
+           let event = events.first(where: { event in
+               normalizeLocalCalendarLookupText(event.title) == normalizedTitle
+                   && localCalendarDate(event.startDate, isCloseTo: targetStart)
+           }) {
+            return event
+        }
+
+        let normalizedCourse = normalizeLocalCalendarLookupText(change.course)
+        if !normalizedCourse.isEmpty,
+           let event = events.first(where: { event in
+               normalizeLocalCalendarLookupText([event.title, event.notes, event.location].compactMap { $0 }.joined(separator: " "))
+                   .contains(normalizedCourse)
+                   && localCalendarDate(event.startDate, isCloseTo: targetStart)
+           }) {
+            return event
+        }
+
+        throw companionCalendarError("이 기기 Calendar에서 해당 일정을 찾지 못했습니다.")
+    }
+
+    private func localCalendarNotes(change: CalendarChange?) -> String {
+        guard let change else {
+            return "KLMS Sync 메일 붙여넣기에서 이 기기에 등록"
+        }
+        return [
+            "KLMS Sync iOS/iPadOS에서 등록",
+            change.course.nilIfBlank.map { "과목: \($0)" },
+            change.url.nilIfBlank.map { "URL: \($0)" },
+            change.identifier.nilIfBlank.map { "KLMS_SYNC_ITEM_ID:\($0)" },
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n")
+    }
+
+    private func localCalendarDate(_ lhs: Date?, isCloseTo rhs: Date?) -> Bool {
+        guard let lhs, let rhs else {
+            return true
+        }
+        return abs(lhs.timeIntervalSince(rhs)) <= 60 * 10
+    }
+
+    private func normalizeLocalCalendarLookupText(_ text: String?) -> String {
+        (text ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .lowercased()
+    }
+    #else
+    private func createCalendarEventOnDevice(title: String, edit: CalendarEventEdit, change: CalendarChange?) async -> Bool {
+        errorMessage = "이 빌드는 Calendar 직접 수정을 지원하지 않습니다."
+        return false
+    }
+    #endif
 
     func createFileAccessRequest(item: ServerRelaySyncItem) async {
         guard item.kind == "file" else {
@@ -8939,10 +9165,10 @@ private struct DashboardCategoryInlineDetailPanel: View {
                     ForEach(visibleChanges) { change in
                         DashboardCalendarChangeDetailRow(
                             change: change,
-                            activeAction: model.activeCalendarAction(for: change)
-                        ) { action, edit in
-                            await model.createCalendarAction(action, change: change, edit: edit)
-                        }
+                            onCreate: { edit in await model.createCalendarEventOnDevice(change: change, edit: edit) },
+                            onEdit: { edit in await model.editCalendarEventOnDevice(change: change, edit: edit) },
+                            onDelete: { await model.deleteCalendarEventOnDevice(change: change) }
+                        )
                     }
                     if calendarChanges.count > visibleChanges.count {
                         CompanionShowMoreRowsButton(
@@ -9614,10 +9840,10 @@ private struct WorkstationCalendarWorkspace: View {
             if let selectedChange {
                 DashboardCalendarChangeDetailRow(
                     change: selectedChange,
-                    activeAction: model.activeCalendarAction(for: selectedChange)
-                ) { action, edit in
-                    await model.createCalendarAction(action, change: selectedChange, edit: edit)
-                }
+                    onCreate: { edit in await model.createCalendarEventOnDevice(change: selectedChange, edit: edit) },
+                    onEdit: { edit in await model.editCalendarEventOnDevice(change: selectedChange, edit: edit) },
+                    onDelete: { await model.deleteCalendarEventOnDevice(change: selectedChange) }
+                )
             } else {
                 Text("캘린더 변경 목록에서 항목을 선택해 주세요.")
                     .font(.subheadline)
@@ -10293,10 +10519,10 @@ private struct RemoteChangeSummaryDetailPanel: View {
                     ForEach(visibleCalendarItems) { change in
                         DashboardCalendarChangeDetailRow(
                             change: change,
-                            activeAction: model.activeCalendarAction(for: change)
-                        ) { action, edit in
-                            await model.createCalendarAction(action, change: change, edit: edit)
-                        }
+                            onCreate: { edit in await model.createCalendarEventOnDevice(change: change, edit: edit) },
+                            onEdit: { edit in await model.editCalendarEventOnDevice(change: change, edit: edit) },
+                            onDelete: { await model.deleteCalendarEventOnDevice(change: change) }
+                        )
                     }
                     if changedCalendarItems.count > visibleCalendarItems.count {
                         CompanionShowMoreRowsButton(
@@ -10824,11 +11050,11 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                     Button {
                         isShowingCreateSheet = true
                     } label: {
-                        Label("Mac 캘린더에 등록", systemImage: "calendar.badge.plus")
+                        Label("이 기기 Calendar에 등록", systemImage: "calendar.badge.plus")
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .buttonStyle(KLMSActionButtonStyle(tone: .success))
-                    .accessibilityHint("판독한 일정을 확인한 뒤 Mac Calendar 등록 요청을 보냅니다.")
+                    .accessibilityHint("판독한 일정을 확인한 뒤 이 기기 Calendar에 바로 등록합니다.")
                 }
 
                 if let dashboardItem = analysis.dashboardItem {
@@ -10963,7 +11189,7 @@ private struct MailCalendarCreateForm: View {
                 } header: {
                     Text("캘린더 일정")
                 } footer: {
-                    Text("Mac 앱이 Apple Calendar에 새 일정을 등록합니다. 시간은 2026-06-17 13:00 형식으로 확인해 주세요.")
+                    Text("이 기기 Calendar에 새 일정을 바로 등록합니다. 시간은 2026-06-17 13:00 형식으로 확인해 주세요.")
                 }
             }
             .navigationTitle("메일 일정 등록")
@@ -11397,7 +11623,7 @@ private struct MailPasteAnalysis: Equatable, Sendable {
             lines.append("분류가 애매합니다. 제목, 과목명, 날짜가 들어간 메일 본문 전체를 붙여넣어 주세요.")
         }
         if canCreateCalendarEvent {
-            lines.append("필요하면 Mac 캘린더에 직접 등록하도록 요청할 수 있습니다.")
+            lines.append("필요하면 이 기기 Calendar에 바로 등록할 수 있습니다.")
         }
         var seen = Set<String>()
         return lines.filter { seen.insert($0).inserted }
@@ -12068,17 +12294,23 @@ private struct RemoteCalendarActionPanel: View {
 private struct DashboardCalendarChangeDetailRow: View {
     var change: CalendarChange
     var activeAction: ServerRelayItemAction?
-    var onAction: ((ServerRelayItemActionKind, CalendarEventEdit?) async -> Void)?
+    var onCreate: ((CalendarEventEdit) async -> Bool)?
+    var onEdit: ((CalendarEventEdit) async -> Bool)?
+    var onDelete: (() async -> Bool)?
     @State private var calendarSheetAction: ServerRelayItemActionKind?
 
     init(
         change: CalendarChange,
         activeAction: ServerRelayItemAction? = nil,
-        onAction: ((ServerRelayItemActionKind, CalendarEventEdit?) async -> Void)? = nil
+        onCreate: ((CalendarEventEdit) async -> Bool)? = nil,
+        onEdit: ((CalendarEventEdit) async -> Bool)? = nil,
+        onDelete: (() async -> Bool)? = nil
     ) {
         self.change = change
         self.activeAction = activeAction
-        self.onAction = onAction
+        self.onCreate = onCreate
+        self.onEdit = onEdit
+        self.onDelete = onDelete
     }
 
     var body: some View {
@@ -12105,21 +12337,21 @@ private struct DashboardCalendarChangeDetailRow: View {
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            CalendarChangeExplanationPanel(change: change, showsActionHelp: onAction != nil)
+            CalendarChangeExplanationPanel(change: change, showsActionHelp: hasLocalActions)
             if let activeAction {
                 RemoteItemRequestPendingView(
                     title: activeAction.action.displayName,
                     message: "Mac 앱에서 \(activeAction.status.displayName) 중입니다."
                 )
-            } else if onAction != nil {
+            } else if hasLocalActions {
                 LazyVGrid(columns: [
                     GridItem(.flexible(minimum: 0), spacing: 8),
                     GridItem(.flexible(minimum: 0), spacing: 8),
                 ], spacing: 8) {
                     Button {
                         Task {
-                            if let onAction {
-                                await onAction(.calendarCreate, change.editDefaults)
+                            if let onCreate {
+                                _ = await onCreate(change.editDefaults)
                             }
                         }
                     } label: {
@@ -12137,8 +12369,8 @@ private struct DashboardCalendarChangeDetailRow: View {
                     if change.isDeletedAction {
                         Button {
                             Task {
-                                if let onAction {
-                                    await onAction(.calendarDelete, nil)
+                                if let onDelete {
+                                    _ = await onDelete()
                                 }
                             }
                         } label: {
@@ -12149,8 +12381,8 @@ private struct DashboardCalendarChangeDetailRow: View {
                     } else {
                         Button(role: .destructive) {
                             Task {
-                                if let onAction {
-                                    await onAction(.calendarDelete, nil)
+                                if let onDelete {
+                                    _ = await onDelete()
                                 }
                             }
                         } label: {
@@ -12181,12 +12413,16 @@ private struct DashboardCalendarChangeDetailRow: View {
             let action = calendarSheetAction ?? .calendarEdit
             CalendarEventEditForm(change: change, action: action) { edit in
                 Task {
-                    if let onAction {
-                        await onAction(action, edit)
+                    if let onEdit {
+                        _ = await onEdit(edit)
                     }
                 }
             }
         }
+    }
+
+    private var hasLocalActions: Bool {
+        onCreate != nil || onEdit != nil || onDelete != nil
     }
 
     private var tint: Color {
@@ -12249,8 +12485,8 @@ private struct CalendarEventEditForm: View {
                     TextField("장소", text: $location)
                 } footer: {
                     Text(action == .calendarCreate
-                        ? "Mac 앱에서 Apple Calendar에 새 일정을 등록합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있습니다."
-                        : "Mac 앱에서 Apple Calendar 일정을 찾아 직접 수정합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있고, 비워 둔 항목은 그대로 둡니다.")
+                        ? "이 기기 Calendar에 새 일정을 바로 등록합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있습니다."
+                        : "이 기기 Calendar에서 일정을 찾아 바로 수정합니다. 시간은 2026-06-17 13:00 형식으로 입력할 수 있고, 비워 둔 항목은 그대로 둡니다.")
                 }
             }
             .navigationTitle(action == .calendarCreate ? "캘린더 일정 등록" : "캘린더 내용 수정")
@@ -12281,7 +12517,23 @@ private func parseCalendarEditInputDate(_ text: String) -> Date? {
         return date
     }
     let formatter = CompanionDateParsingCache.isoFormatter(fractionalSeconds: false)
-    return formatter.date(from: trimmed)
+    if let date = formatter.date(from: trimmed) {
+        return date
+    }
+    for format in ["yyyy-MM-dd HH:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd'T'HH:mm:ss"] {
+        if let date = CompanionDateParsingCache.calendarEditFormatter(format: format).date(from: trimmed) {
+            return date
+        }
+    }
+    return nil
+}
+
+private func companionCalendarError(_ message: String) -> NSError {
+    NSError(
+        domain: "KLMSync.CompanionCalendar",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: message]
+    )
 }
 
 private enum CompanionDateParsingCache {
@@ -12310,6 +12562,14 @@ private enum CompanionDateParsingCache {
         formatter.formatOptions = fractionalSeconds ? [.withInternetDateTime, .withFractionalSeconds] : [.withInternetDateTime]
         Thread.current.threadDictionary[key] = formatter
         return formatter
+    }
+
+    static func calendarEditFormatter(format: String) -> DateFormatter {
+        cachedDateFormatter(key: "KLMSSync.iOS.calendarEditFormatter.\(format)") { formatter in
+            formatter.locale = Locale(identifier: "ko_KR")
+            formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+            formatter.dateFormat = format
+        }
     }
 
     private static func cachedDateFormatter(
