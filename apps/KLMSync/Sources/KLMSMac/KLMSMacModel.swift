@@ -210,6 +210,7 @@ final class KLMSMacModel: ObservableObject {
     private let locator = EnginePayloadLocator()
     private var isBootstrapping = false
     private var serverRelayEventStreamTask: Task<Void, Never>?
+    private var serverRelayImmediateFollowUpTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
     private var serverRelayEventStreamKey: String?
     private var passiveSnapshotRefreshTask: Task<Void, Never>?
@@ -259,7 +260,8 @@ final class KLMSMacModel: ObservableObject {
     private static let serverRelayIdleSyncDataPublishMinimumInterval: TimeInterval = 300
     private static let serverRelayActiveSyncDataPublishMinimumInterval: TimeInterval = 20
     private static let serverRelaySyncDataFetchMinimumInterval: TimeInterval = 30
-    private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 120_000_000_000
+    private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 15_000_000_000
+    private static let serverRelayImmediateFollowUpDelayNanoseconds: UInt64 = 200_000_000
     private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 3_000_000_000
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 60_000_000_000
     private static let passiveAuxiliaryRefreshMinimumInterval: TimeInterval = 300
@@ -337,6 +339,7 @@ final class KLMSMacModel: ObservableObject {
     deinit {
         serverRelayEventWebSocketTask?.cancel(with: .goingAway, reason: nil)
         serverRelayEventStreamTask?.cancel()
+        serverRelayImmediateFollowUpTask?.cancel()
         passiveSnapshotRefreshTask?.cancel()
         pasteboardClearTask?.cancel()
         runningCommandStatusPollTask?.cancel()
@@ -978,6 +981,8 @@ final class KLMSMacModel: ObservableObject {
         serverRelayEventWebSocketTask = nil
         serverRelayEventStreamTask?.cancel()
         serverRelayEventStreamTask = nil
+        serverRelayImmediateFollowUpTask?.cancel()
+        serverRelayImmediateFollowUpTask = nil
         serverRelayEventStreamKey = nil
         guard serverRelayEnabled, serverRelayConfigured else {
             return
@@ -1019,6 +1024,18 @@ final class KLMSMacModel: ObservableObject {
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                 }
             }
+        }
+    }
+
+    private func scheduleServerRelayImmediateFollowUp() {
+        guard serverRelayEnabled, serverRelayConfigured else {
+            return
+        }
+        serverRelayImmediateFollowUpTask?.cancel()
+        serverRelayImmediateFollowUpTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.serverRelayImmediateFollowUpDelayNanoseconds)
+            guard !Task.isCancelled else { return }
+            await self?.processServerRelayCommands(silent: true)
         }
     }
 
@@ -3147,6 +3164,7 @@ final class KLMSMacModel: ObservableObject {
                         errorMessage = failedRequest.message
                     }
                 }
+                scheduleServerRelayImmediateFollowUp()
                 return
             }
             let pendingSettingActions = inbox.pendingSettingActions
@@ -3182,6 +3200,7 @@ final class KLMSMacModel: ObservableObject {
                 if !silent, completedAction.status == .failed {
                     errorMessage = completedAction.message
                 }
+                scheduleServerRelayImmediateFollowUp()
                 return
             }
             let pendingActions = inbox.pendingItemActions
@@ -3249,6 +3268,7 @@ final class KLMSMacModel: ObservableObject {
                 if !silent, completedAction.status == .failed {
                     errorMessage = completedAction.message
                 }
+                scheduleServerRelayImmediateFollowUp()
                 return
             }
             let pending = inbox.pendingCommands
@@ -3260,6 +3280,7 @@ final class KLMSMacModel: ObservableObject {
                 pending: pending,
                 now: now
             ) {
+                scheduleServerRelayImmediateFollowUp()
                 return
             }
             var commandToRun: RemoteRunCommand?
@@ -3326,6 +3347,7 @@ final class KLMSMacModel: ObservableObject {
                 running: false,
                 message: serverRelayStatusMessage ?? ""
             )
+            scheduleServerRelayImmediateFollowUp()
         } catch {
             serverRelayStatusMessage = "서버 요청 확인 실패: \(error.localizedDescription)"
             if !silent {

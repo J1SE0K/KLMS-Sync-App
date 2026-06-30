@@ -239,6 +239,7 @@ final class CompanionModel: ObservableObject {
     private var sharedSettingsSignature: Int?
     private var sharedRunLogsSignature: Int?
     private var verifySummarySignature: Int?
+    private var pendingRemoteSettingActionsByKey: [String: ServerRelaySettingAction] = [:]
     private var lastTerminalCommandID: UUID?
     private let syncDataStaleInterval: TimeInterval = 45
     private var latestFileAccessRequestByItemID: [String: ServerRelayFileAccessRequest] = [:]
@@ -1251,6 +1252,7 @@ final class CompanionModel: ObservableObject {
             status: .running,
             message: "서버에 저장하는 중입니다."
         )
+        rememberPendingRemoteSettingAction(optimisticAction)
         applyRemoteSettingActionLocally(optimisticAction, fallbackSetting: setting)
         replaceRecentSettingAction(optimisticAction) { $0.key == setting.key }
         connectionSucceeded = true
@@ -1262,6 +1264,7 @@ final class CompanionModel: ObservableObject {
                 title: setting.title
             )
             let savedAction = try await serverRelayStore.createSettingAction(action)
+            rememberPendingRemoteSettingAction(savedAction)
             replaceRecentSettingAction(savedAction) { $0.id == savedAction.id || $0.key == savedAction.key }
             applyRemoteSettingActionLocally(savedAction, fallbackSetting: setting)
             connectionSucceeded = true
@@ -1276,6 +1279,7 @@ final class CompanionModel: ObservableObject {
                 status: .failed,
                 message: "저장 실패로 이전 값으로 되돌렸습니다."
             )
+            pendingRemoteSettingActionsByKey.removeValue(forKey: setting.key)
             applyRemoteSettingActionLocally(rollbackAction, fallbackSetting: setting)
             removeRecentSettingActions { $0.key == setting.key }
             let message = userFacingMessage(for: error)
@@ -1310,6 +1314,41 @@ final class CompanionModel: ObservableObject {
             settings.insert(next, at: 0)
         }
         remoteSettings = settings.sorted { $0.key < $1.key }
+    }
+
+    private func rememberPendingRemoteSettingAction(_ action: ServerRelaySettingAction) {
+        let key = action.key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        switch action.status {
+        case .pending, .running:
+            pendingRemoteSettingActionsByKey[key] = action
+        case .completed, .failed, .macUnavailable:
+            pendingRemoteSettingActionsByKey.removeValue(forKey: key)
+        }
+    }
+
+    private func applyRemoteSettingActionsFromServer(_ actions: [ServerRelaySettingAction]) -> Bool {
+        var didChange = false
+        for action in actions.sorted(by: { $0.updatedAt < $1.updatedAt }) {
+            let key = action.key.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty else { continue }
+            switch action.status {
+            case .pending, .running:
+                rememberPendingRemoteSettingAction(action)
+                let fallback = remoteSettings.first { $0.key == key } ?? ServerRelaySetting(
+                    key: key,
+                    title: action.title.nilIfBlank ?? key,
+                    value: action.value,
+                    updatedAt: ServerRelaySyncItem.isoTimestamp(date: action.updatedAt)
+                )
+                let beforeSignature = Self.signature(for: remoteSettings)
+                applyRemoteSettingActionLocally(action, fallbackSetting: fallback)
+                didChange = didChange || beforeSignature != Self.signature(for: remoteSettings)
+            case .completed, .failed, .macUnavailable:
+                pendingRemoteSettingActionsByKey.removeValue(forKey: key)
+            }
+        }
+        return didChange
     }
 
     private func applyServerVisibleItemActionLocally(_ actionKind: ServerRelayItemActionKind, itemID: String) {
@@ -2020,6 +2059,7 @@ final class CompanionModel: ObservableObject {
                     }
                 }
                 if let settingActions = await settingActionsTask {
+                    didChange = applyRemoteSettingActionsFromServer(settingActions) || didChange
                     let visibleSettingActions = visibleSettingActions(settingActions)
                     if recentSettingActions != visibleSettingActions {
                         recentSettingActions = visibleSettingActions
@@ -2738,9 +2778,10 @@ final class CompanionModel: ObservableObject {
             calendarChangesSignature = nextCalendarChangesSignature
             didChange = true
         }
-        let nextRemoteSettingsSignature = Self.signature(for: syncData.settings)
+        let incomingRemoteSettings = remoteSettingsOverlayingPendingActions(syncData.settings)
+        let nextRemoteSettingsSignature = Self.signature(for: incomingRemoteSettings)
         if remoteSettingsSignature != nextRemoteSettingsSignature {
-            remoteSettings = syncData.settings
+            remoteSettings = incomingRemoteSettings
             remoteSettingsSignature = nextRemoteSettingsSignature
             didChange = true
         }
@@ -2776,6 +2817,40 @@ final class CompanionModel: ObservableObject {
             rebuildDerivedStateAfterServerSyncDataApply()
         }
         return didChange
+    }
+
+    private func remoteSettingsOverlayingPendingActions(_ incomingSettings: [ServerRelaySetting]) -> [ServerRelaySetting] {
+        guard !pendingRemoteSettingActionsByKey.isEmpty else {
+            return incomingSettings
+        }
+        var settingsByKey = Dictionary(uniqueKeysWithValues: incomingSettings.map { ($0.key, $0) })
+        var keysToClear = [String]()
+        for (key, action) in pendingRemoteSettingActionsByKey {
+            let incoming = settingsByKey[key]
+            if incoming?.value == action.value {
+                keysToClear.append(key)
+                continue
+            }
+            switch action.status {
+            case .pending, .running:
+                let fallback = incoming ?? remoteSettings.first { $0.key == key }
+                settingsByKey[key] = ServerRelaySetting(
+                    key: key,
+                    title: action.title.nilIfBlank ?? fallback?.title ?? key,
+                    value: action.value,
+                    valueKind: fallback?.valueKind ?? .text,
+                    options: fallback?.options ?? [],
+                    editable: fallback?.editable ?? true,
+                    updatedAt: ServerRelaySyncItem.isoTimestamp(date: action.updatedAt)
+                )
+            case .completed, .failed, .macUnavailable:
+                keysToClear.append(key)
+            }
+        }
+        for key in keysToClear {
+            pendingRemoteSettingActionsByKey.removeValue(forKey: key)
+        }
+        return settingsByKey.values.sorted { $0.key < $1.key }
     }
 
     private func rebuildDerivedStateAfterServerSyncDataApply() {

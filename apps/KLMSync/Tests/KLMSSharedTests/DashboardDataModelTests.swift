@@ -6317,7 +6317,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macModel.contains("if reason == \"sync-data\" || reason.hasPrefix(\"sync-data:\")"))
         XCTAssertTrue(macModel.contains("reason.hasPrefix(\"item-actions:\")"))
         XCTAssertTrue(macModel.contains("reason.hasPrefix(\"setting-actions:\")"))
-        XCTAssertTrue(macModel.contains("private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 120_000_000_000"))
+        XCTAssertTrue(macModel.contains("private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 15_000_000_000"))
+        XCTAssertTrue(macModel.contains("private static let serverRelayImmediateFollowUpDelayNanoseconds: UInt64 = 200_000_000"))
+        XCTAssertTrue(macModel.contains("private func scheduleServerRelayImmediateFollowUp()"))
+        XCTAssertGreaterThanOrEqual(macModel.components(separatedBy: "scheduleServerRelayImmediateFollowUp()").count - 1, 5)
         XCTAssertTrue(macModel.contains("private static let serverRelayActiveSyncDataPublishMinimumInterval: TimeInterval = 20"))
         XCTAssertTrue(macModel.contains("private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 1.0"))
         XCTAssertFalse(macModel.contains("await processServerRelayCommands(silent: true)\n                }\n            } catch"))
@@ -6405,6 +6408,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(createSettingAction.contains("applyRemoteSettingActionLocally(savedAction, fallbackSetting: setting)"))
         XCTAssertTrue(createSettingAction.contains("let optimisticAction = ServerRelaySettingAction("))
         XCTAssertTrue(createSettingAction.contains("status: .running"))
+        XCTAssertTrue(createSettingAction.contains("rememberPendingRemoteSettingAction(optimisticAction)"))
+        XCTAssertTrue(createSettingAction.contains("rememberPendingRemoteSettingAction(savedAction)"))
         XCTAssertTrue(createSettingAction.contains("applyRemoteSettingActionLocally(optimisticAction, fallbackSetting: setting)"))
         XCTAssertTrue(createSettingAction.contains("replaceRecentSettingAction(optimisticAction) { $0.key == setting.key }"))
         XCTAssertTrue(createSettingAction.contains("let rollbackAction = ServerRelaySettingAction("))
@@ -6425,6 +6430,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(localApply.contains("ServerRelaySetting("))
         XCTAssertTrue(localApply.contains("value: action.value"))
         XCTAssertTrue(localApply.contains("remoteSettings = settings.sorted { $0.key < $1.key }"))
+        XCTAssertTrue(ios.contains("private var pendingRemoteSettingActionsByKey: [String: ServerRelaySettingAction] = [:]"))
+        XCTAssertTrue(ios.contains("private func remoteSettingsOverlayingPendingActions(_ incomingSettings: [ServerRelaySetting]) -> [ServerRelaySetting]"))
+        XCTAssertTrue(ios.contains("let incomingRemoteSettings = remoteSettingsOverlayingPendingActions(syncData.settings)"))
+        XCTAssertTrue(ios.contains("private func applyRemoteSettingActionsFromServer(_ actions: [ServerRelaySettingAction]) -> Bool"))
+        XCTAssertTrue(ios.contains("didChange = applyRemoteSettingActionsFromServer(settingActions) || didChange"))
         let settingActionDisplay = try sourceBody(
             after: "private extension ServerRelaySettingAction",
             in: ios,
