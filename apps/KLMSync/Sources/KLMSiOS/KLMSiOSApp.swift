@@ -2758,9 +2758,10 @@ final class CompanionModel: ObservableObject {
         defer {
             isApplyingServerSyncData = wasApplyingServerSyncData
         }
-        let nextSyncItemsSignature = Self.signature(for: syncData.items)
+        let incomingSyncItems = syncItemsOverlayingRecentDisplayActions(syncData.items)
+        let nextSyncItemsSignature = Self.signature(for: incomingSyncItems)
         if syncItemsSignature != nextSyncItemsSignature {
-            syncItems = syncData.items
+            syncItems = incomingSyncItems
             syncItemsSignature = nextSyncItemsSignature
             didChange = true
         }
@@ -2847,6 +2848,87 @@ final class CompanionModel: ObservableObject {
             pendingRemoteSettingActionsByKey.removeValue(forKey: key)
         }
         return settingsByKey.values.sorted { $0.key < $1.key }
+    }
+
+    private func syncItemsOverlayingRecentDisplayActions(_ incomingItems: [ServerRelaySyncItem]) -> [ServerRelaySyncItem] {
+        let actions = recentItemActions
+            .filter {
+                $0.action.isCompanionImmediateDisplayAction
+                    && !$0.status.isFailedLike
+                    && !$0.itemID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            .sorted { $0.updatedAt < $1.updatedAt }
+        guard !actions.isEmpty else {
+            return incomingItems
+        }
+
+        var nextItems = incomingItems
+        var didChange = false
+
+        func mutate(_ item: inout ServerRelaySyncItem, action: ServerRelayItemAction) {
+            item.updatedAt = ServerRelaySyncItem.isoTimestamp(date: action.updatedAt)
+            switch action.action {
+            case .assignmentComplete:
+                item.kind = "completedAssignment"
+                item.status = "완료"
+                item.isHidden = false
+            case .assignmentRestore, .assignmentUnhide:
+                if item.kind == "completedAssignment" {
+                    item.kind = "assignment"
+                }
+                item.status = ""
+                item.isHidden = false
+            case .assignmentHide:
+                item.status = "숨김"
+                item.isHidden = true
+            case .examPromote:
+                item.kind = "exam"
+                item.status = "시험"
+                item.isHidden = false
+            case .examIgnore:
+                item.status = "시험 아님"
+                item.isHidden = true
+            case .examRestore:
+                item.status = ""
+                item.isHidden = false
+            case .noticeRead:
+                item.isRead = true
+            case .noticeUnread:
+                item.isRead = false
+            case .noticeImportant:
+                item.isImportant = true
+            case .noticeUnimportant:
+                item.isImportant = false
+            case .noticeHide, .fileHide:
+                item.isHidden = true
+            case .noticeUnhide, .fileUnhide:
+                item.isHidden = false
+            case .mailDashboardRemove:
+                break
+            case .mailDashboardAdd:
+                item.isHidden = false
+            case .fileTrash,
+                 .calendarVerify,
+                 .calendarApply,
+                 .calendarCreate,
+                 .calendarEdit,
+                 .calendarDelete:
+                item.status = "삭제 요청"
+                item.isHidden = true
+            case .calendarOpen:
+                break
+            }
+        }
+
+        for action in actions {
+            for index in nextItems.indices where nextItems[index].id == action.itemID {
+                let previous = nextItems[index]
+                mutate(&nextItems[index], action: action)
+                didChange = didChange || previous != nextItems[index]
+            }
+        }
+
+        return didChange ? nextItems.companionSorted(by: .recent) : incomingItems
     }
 
     private func rebuildDerivedStateAfterServerSyncDataApply() {
