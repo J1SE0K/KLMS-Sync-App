@@ -887,7 +887,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         ).read_text(encoding="utf-8")
 
         self.assertIn("].filter { $0.value > 0 }", menu)
-        self.assertIn("presentation.activeDetail(", menu)
+        self.assertIn("scopedPresentation.activeDetail(", menu)
         self.assertIn('Text("표시할 대시보드 항목이 없습니다.")', menu)
         self.assertIn("DashboardDetailPanelView(\n            kind: kind,\n            model: model,", menu)
         self.assertRegex(

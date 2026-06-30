@@ -3013,17 +3013,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(settingsScreen.contains("idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth"))
         let settingsRelayIndex = try XCTUnwrap(settingsScreen.range(of: "ServerRelayConnectionPanel(")?.lowerBound)
         let settingsDiagnosticIndex = try XCTUnwrap(settingsScreen.range(of: "RemoteDiagnosticPanel(")?.lowerBound)
-        let settingsPrivacyIndex = try XCTUnwrap(settingsScreen.range(of: "RemotePrivacyNote()")?.lowerBound)
         XCTAssertLessThan(
             settingsScreen.distance(from: settingsScreen.startIndex, to: settingsDiagnosticIndex),
-            settingsScreen.distance(from: settingsScreen.startIndex, to: settingsPrivacyIndex),
-            "iPad settings should show diagnostics before the privacy note."
-        )
-        XCTAssertLessThan(
-            settingsScreen.distance(from: settingsScreen.startIndex, to: settingsPrivacyIndex),
             settingsScreen.distance(from: settingsScreen.startIndex, to: settingsRelayIndex),
-            "Server relay setup should stay at the bottom because it is needed less often after pairing."
+            "iPad settings should show diagnostics before the server relay setup."
         )
+        XCTAssertFalse(settingsScreen.contains("RemotePrivacyNote()"))
         XCTAssertFalse(settingsScreen.contains("RemoteLogSummaryPanel"))
         XCTAssertFalse(settingsScreen.contains("RecentRemoteCommandsView"))
         XCTAssertTrue(immediateSettingsPanel.contains("화면 모드는 이 기기에 바로 적용되고, 공지 메모 설정은 서버에 저장됩니다."))
@@ -3085,6 +3080,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(serverRelayConnectionPanel.contains("@Binding var serverToken: String"))
         XCTAssertTrue(serverRelayConnectionPanel.contains("var checkConnection: () async -> Void"))
         XCTAssertTrue(serverRelayConnectionPanel.contains("var refreshSummary: () async -> Void"))
+        XCTAssertTrue(serverRelayConnectionPanel.contains("RemotePrivacyNote()"))
         XCTAssertTrue(settingsScreen.contains("isConfigured: model.serverRelayConfigured"))
         XCTAssertTrue(settingsScreen.contains("serverURL: serverURLBinding"))
         XCTAssertTrue(settingsScreen.contains("serverToken: serverTokenBinding"))
@@ -3180,9 +3176,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(remotePrivacyNote.contains("if isExpanded"))
         XCTAssertFalse(remotePrivacyNote.contains(".accessibilityHint(isExpanded ?"))
         XCTAssertTrue(remotePrivacyNote.contains(".accessibilityElement(children: .combine)"))
-        XCTAssertTrue(remotePrivacyNote.contains(".accessibilityLabel(\"개인정보와 서버 보관. 서버에는 실행 요청과 요약 상태만 저장됩니다. 파일 열기 요청 때만 Mac이 임시 링크를 만듭니다.\")"))
-        XCTAssertTrue(remotePrivacyNote.contains("서버에는 실행 요청과 요약 상태만 저장됩니다."))
-        XCTAssertTrue(remotePrivacyNote.contains("파일 열기를 요청할 때만 Mac이 임시 링크를 만들고, 만료되면 정리합니다."))
+        XCTAssertTrue(remotePrivacyNote.contains(".accessibilityLabel(\"개인정보와 서버 보관. 서버에는 실행 요청, 요약 상태, 설정값, 요청 기록만 저장됩니다. 원본 로그, KLMS URL, 설정 파일, 로컬 파일 경로는 올리지 않습니다.\")"))
+        XCTAssertTrue(remotePrivacyNote.contains("서버에는 실행 요청, 요약 상태, 설정값, 요청 기록만 저장됩니다."))
+        XCTAssertTrue(remotePrivacyNote.contains("파일 열기 요청 때만 Mac이 임시 링크를 만들고, 만료되면 정리합니다."))
         XCTAssertFalse(remotePrivacyNote.contains("파일은 사용자가 열기를 요청할 때만 Mac 앱에서 임시로 올리고"))
         XCTAssertTrue(remotePrivacyNote.contains("RoundedRectangle(cornerRadius: 14)"))
         XCTAssertTrue(dashboardSyncCard.contains("primaryCommandTitle(isRunning: isRunning, isDisabled: isDisabled)"))
@@ -6424,7 +6420,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(createSettingAction.contains("if savedAction.status != .completed"))
         XCTAssertFalse(createSettingAction.contains("설정 요청 완료"))
         XCTAssertFalse(createSettingAction.contains("설정 변경 요청을 보냈습니다."))
-        XCTAssertTrue(createSettingAction.contains("schedulePostActionRefresh(scope: .settingActions)"))
+        XCTAssertFalse(createSettingAction.contains("schedulePostActionRefresh(scope: .settingActions)"))
         XCTAssertFalse(createSettingAction.contains("await refreshRecent(includeSyncData: false, showsActivity: false, scope: .settingActions)"))
         XCTAssertTrue(ios.contains("private func replaceRecentSettingAction("))
         XCTAssertTrue(ios.contains("private func removeRecentSettingActions(where shouldRemove:"))

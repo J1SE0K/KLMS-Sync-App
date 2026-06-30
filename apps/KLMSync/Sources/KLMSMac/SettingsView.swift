@@ -785,7 +785,14 @@ struct SettingsView: View {
                     }
                 }
 
-                SettingsHelpText("복사된 토큰은 보안을 위해 잠시 뒤 클립보드에서 자동으로 지워집니다. 서버에는 실행 요청과 요약 숫자만 저장하고, 원본 로그, KLMS URL, config.env, 파일 경로는 올리지 않습니다.")
+                SettingsActionGroupBox(
+                    title: "개인정보와 서버 보관",
+                    detail: "서버에 남는 정보와 남지 않는 정보를 확인합니다.",
+                    systemImage: "lock"
+                ) {
+                    SettingsHelpText("서버에는 실행 요청, 요약 상태, 설정값, 요청 기록만 저장됩니다. 원본 로그, KLMS URL, config.env, Kaikey 상태, 로컬 파일 경로는 올리지 않습니다.")
+                    SettingsHelpText("파일 열기를 요청할 때만 Mac이 임시 링크를 만들고, 만료되면 서버 파일도 정리합니다. 복사된 토큰은 보안을 위해 잠시 뒤 클립보드에서 자동으로 지워집니다.")
+                }
             }
         }
     }

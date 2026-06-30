@@ -1269,7 +1269,6 @@ final class CompanionModel: ObservableObject {
             applyRemoteSettingActionLocally(savedAction, fallbackSetting: setting)
             connectionSucceeded = true
             errorMessage = ""
-            schedulePostActionRefresh(scope: .settingActions)
         } catch {
             guard !isCancellationError(error) else { return }
             let rollbackAction = ServerRelaySettingAction(
@@ -4426,7 +4425,6 @@ private struct CompanionSettingsScreen: View {
             ) { kind, dryRun in
                 await model.createCommand(kind, dryRun: dryRun)
             }
-            RemotePrivacyNote()
             ServerRelayConnectionPanel(
                 isConfigured: model.serverRelayConfigured,
                 connectionMessage: model.connectionMessage,
@@ -4590,7 +4588,12 @@ private struct CompanionAppearanceModeSelector: View {
                     }
                     .foregroundStyle(Color.klmsPrimaryText)
                     .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
+                    .background(
+                        isSelected
+                            ? Color.klmsSelectedBackground.opacity(0.96)
+                            : Color.klmsSubtleCardBackground.opacity(0.72),
+                        in: RoundedRectangle(cornerRadius: 12)
+                    )
                     .overlay(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
@@ -4599,7 +4602,10 @@ private struct CompanionAppearanceModeSelector: View {
                     }
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.klmsBorder.opacity(0.72), lineWidth: 1)
+                            .stroke(
+                                isSelected ? Color.klmsSelectedBorder.opacity(0.86) : Color.klmsBorder.opacity(0.72),
+                                lineWidth: 1
+                            )
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 12))
                 }
@@ -5551,6 +5557,8 @@ private struct ServerRelayConnectionPanel: View {
                         .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                         .disabled(!isConfigured && serverURL.isEmpty && serverToken.isEmpty)
                     }
+
+                    RemotePrivacyNote()
                 }
             }
         }
@@ -16036,11 +16044,11 @@ private struct RemotePrivacyNote: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("개인정보와 서버 보관")
                     .font(.subheadline.weight(.semibold))
-                Text("서버에는 실행 요청과 요약 상태만 저장됩니다.")
+                Text("서버에는 실행 요청, 요약 상태, 설정값, 요청 기록만 저장됩니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("파일 열기를 요청할 때만 Mac이 임시 링크를 만들고, 만료되면 정리합니다.")
+                Text("원본 로그, KLMS URL, config.env, 로컬 파일 경로는 올리지 않습니다. 파일 열기 요청 때만 Mac이 임시 링크를 만들고, 만료되면 정리합니다.")
                     .font(.caption2)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -16049,7 +16057,7 @@ private struct RemotePrivacyNote: View {
         }
         .padding(12)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("개인정보와 서버 보관. 서버에는 실행 요청과 요약 상태만 저장됩니다. 파일 열기 요청 때만 Mac이 임시 링크를 만듭니다.")
+        .accessibilityLabel("개인정보와 서버 보관. 서버에는 실행 요청, 요약 상태, 설정값, 요청 기록만 저장됩니다. 원본 로그, KLMS URL, 설정 파일, 로컬 파일 경로는 올리지 않습니다.")
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
         .overlay {
