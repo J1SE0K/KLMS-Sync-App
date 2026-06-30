@@ -2,14 +2,20 @@ import Foundation
 
 public enum AcademicSemester: String, Sendable, Codable, Hashable, Comparable {
     case spring
+    case summer
     case fall
+    case winter
 
     public var displayName: String {
         switch self {
         case .spring:
             "봄학기"
+        case .summer:
+            "여름학기"
         case .fall:
             "가을학기"
+        case .winter:
+            "겨울학기"
         }
     }
 
@@ -17,8 +23,12 @@ public enum AcademicSemester: String, Sendable, Codable, Hashable, Comparable {
         switch self {
         case .spring:
             0
-        case .fall:
+        case .summer:
             1
+        case .fall:
+            2
+        case .winter:
+            3
         }
     }
 
@@ -83,13 +93,16 @@ public struct AcademicTerm: Sendable, Codable, Hashable, Comparable, Identifiabl
         guard (1...12).contains(month), (2000...2099).contains(year) else {
             return nil
         }
-        if (3...8).contains(month) {
+        if (3...6).contains(month) {
             return AcademicTerm(year: year, semester: .spring)
+        }
+        if (7...8).contains(month) {
+            return AcademicTerm(year: year, semester: .summer)
         }
         if month >= 9 {
             return AcademicTerm(year: year, semester: .fall)
         }
-        return AcademicTerm(year: year - 1, semester: .fall)
+        return AcademicTerm(year: year - 1, semester: .winter)
     }
 
     private static func explicitTerm(in text: String) -> AcademicTerm? {
@@ -99,7 +112,9 @@ public struct AcademicTerm: Sendable, Codable, Hashable, Comparable, Identifiabl
 
         let yearFirstPatterns: [(String, AcademicSemester)] = [
             (#"(20\d{2}).{0,18}(?:spring|spr|봄|1\s*학기|1st\s*semester|first\s*semester)"#, .spring),
+            (#"(20\d{2}).{0,18}(?:summer|sum|여름|하계|summer\s*semester)"#, .summer),
             (#"(20\d{2}).{0,18}(?:fall|autumn|가을|2\s*학기|2nd\s*semester|second\s*semester)"#, .fall),
+            (#"(20\d{2}).{0,18}(?:winter|win|겨울|동계|winter\s*semester)"#, .winter),
             (#"(20\d{2})\s*[sS]\b"#, .spring),
             (#"(20\d{2})\s*[fF]\b"#, .fall),
         ]
@@ -111,7 +126,9 @@ public struct AcademicTerm: Sendable, Codable, Hashable, Comparable, Identifiabl
 
         let semesterFirstPatterns: [(String, AcademicSemester)] = [
             (#"(?:spring|spr|봄|1\s*학기|1st\s*semester|first\s*semester).{0,18}(20\d{2})"#, .spring),
+            (#"(?:summer|sum|여름|하계|summer\s*semester).{0,18}(20\d{2})"#, .summer),
             (#"(?:fall|autumn|가을|2\s*학기|2nd\s*semester|second\s*semester).{0,18}(20\d{2})"#, .fall),
+            (#"(?:winter|win|겨울|동계|winter\s*semester).{0,18}(20\d{2})"#, .winter),
         ]
         for (pattern, semester) in semesterFirstPatterns {
             if let year = firstCapturedYear(pattern: pattern, in: normalized) {
@@ -180,6 +197,147 @@ public struct AcademicTerm: Sendable, Codable, Hashable, Comparable, Identifiabl
             return Int(text[monthRange])
         }
         return nil
+    }
+}
+
+public struct AcademicTermCatalog: Codable, Sendable, Equatable {
+    public var version: Int
+    public var generatedAt: String
+    public var selectedYear: Int?
+    public var selectedSemesterCode: String
+    public var selectedSemester: String
+    public var years: [AcademicYearCatalogOption]
+    public var semesters: [AcademicSemesterCatalogOption]
+    public var terms: [AcademicTermCatalogOption]
+    public var courses: [AcademicCourseCatalogOption]
+
+    enum CodingKeys: String, CodingKey {
+        case version
+        case generatedAt = "generated_at"
+        case selectedYear = "selected_year"
+        case selectedSemesterCode = "selected_semester_code"
+        case selectedSemester = "selected_semester"
+        case years
+        case semesters
+        case terms
+        case courses
+    }
+
+    public var selectedAcademicTerm: AcademicTerm? {
+        guard let selectedYear,
+              let semester = AcademicSemester(displayName: selectedSemester)
+        else {
+            return nil
+        }
+        return AcademicTerm(year: selectedYear, semester: semester)
+    }
+
+    public var academicTerms: [AcademicTerm] {
+        terms.compactMap { item in
+            guard let semester = AcademicSemester(displayName: item.semester) else {
+                return nil
+            }
+            return AcademicTerm(year: item.year, semester: semester)
+        }
+    }
+
+    public func selectedTermApplies(to course: String) -> Bool {
+        let needle = course.klmsCourseKey
+        guard !needle.isEmpty else {
+            return false
+        }
+        return courses.contains { item in
+            item.title.klmsCourseKey == needle || item.code.klmsCourseKey == needle
+        }
+    }
+}
+
+public struct AcademicYearCatalogOption: Codable, Sendable, Equatable, Identifiable {
+    public var year: Int
+    public var label: String
+    public var selected: Bool
+
+    public var id: Int { year }
+}
+
+public struct AcademicSemesterCatalogOption: Codable, Sendable, Equatable, Identifiable {
+    public var code: String
+    public var label: String
+    public var displayName: String
+    public var selected: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case code
+        case label
+        case displayName = "display_name"
+        case selected
+    }
+
+    public var id: String { code.isEmpty ? displayName : code }
+}
+
+public struct AcademicTermCatalogOption: Codable, Sendable, Equatable, Identifiable {
+    public var year: Int
+    public var semesterCode: String
+    public var semester: String
+    public var displayName: String
+    public var selected: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case year
+        case semesterCode = "semester_code"
+        case semester
+        case displayName = "display_name"
+        case selected
+    }
+
+    public var id: String { "\(year)-\(semesterCode)-\(semester)" }
+}
+
+public struct AcademicCourseCatalogOption: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var code: String
+    public var title: String
+    public var url: String
+    public var year: Int?
+    public var semesterCode: String
+    public var semester: String
+    public var term: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case code
+        case title
+        case url
+        case year
+        case semesterCode = "semester_code"
+        case semester
+        case term
+    }
+}
+
+public extension AcademicSemester {
+    init?(displayName: String) {
+        let normalized = displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.contains("봄") || normalized.contains("spring") {
+            self = .spring
+        } else if normalized.contains("여름") || normalized.contains("summer") {
+            self = .summer
+        } else if normalized.contains("가을") || normalized.contains("fall") || normalized.contains("autumn") {
+            self = .fall
+        } else if normalized.contains("겨울") || normalized.contains("winter") {
+            self = .winter
+        } else {
+            return nil
+        }
+    }
+}
+
+private extension String {
+    var klmsCourseKey: String {
+        trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .replacingOccurrences(of: #"\s+"#, with: "", options: .regularExpression)
     }
 }
 

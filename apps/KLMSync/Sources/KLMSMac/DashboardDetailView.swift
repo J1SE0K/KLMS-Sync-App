@@ -638,6 +638,8 @@ private struct DashboardFilterOptionSource: Sendable {
         case .newFiles:
             self = Self(courses: [], terms: [])
         }
+        courses += snapshot.academicTermCatalog?.courses.map(\.title) ?? []
+        terms += snapshot.academicTermCatalog?.academicTerms ?? []
     }
 
     private init(courses: [String], terms: [AcademicTerm?]) {

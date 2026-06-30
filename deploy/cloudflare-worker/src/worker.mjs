@@ -290,6 +290,7 @@ async function route(request, env, ctx = null) {
     await replaceSyncItems(db, items, body.generatedAt, {
       dryRunReports: normalizeDryRunReports(body.dryRunReports),
       calendarChanges: normalizeCalendarChanges(body.calendarChanges),
+      termCatalog: normalizeTermCatalog(body.termCatalog),
       settings: normalizeSettings(body.settings),
       runLogs: normalizeRunLogs(body.runLogs),
       verifySummary: normalizeVerifySummary(body.verifySummary),
@@ -2603,6 +2604,54 @@ function normalizeSyncItem(raw) {
   };
 }
 
+function normalizeTermCatalog(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const selectedYear = Number.isFinite(Number(raw.selected_year ?? raw.selectedYear))
+    ? Number(raw.selected_year ?? raw.selectedYear)
+    : null;
+  const years = Array.isArray(raw.years) ? raw.years : [];
+  const semesters = Array.isArray(raw.semesters) ? raw.semesters : [];
+  const terms = Array.isArray(raw.terms) ? raw.terms : [];
+  const courses = Array.isArray(raw.courses) ? raw.courses : [];
+  return {
+    version: boundedInt(raw.version, 1, 1, 100),
+    generated_at: sanitizePublicText(raw.generated_at ?? raw.generatedAt),
+    selected_year: selectedYear,
+    selected_semester_code: sanitizePublicText(raw.selected_semester_code ?? raw.selectedSemesterCode),
+    selected_semester: sanitizePublicText(raw.selected_semester ?? raw.selectedSemester),
+    years: years.slice(0, 30).map((item) => ({
+      year: boundedInt(item?.year, 0, 2000, 2099),
+      label: sanitizePublicText(item?.label),
+      selected: normalizeBoolean(item?.selected),
+    })).filter((item) => item.year > 0),
+    semesters: semesters.slice(0, 12).map((item) => ({
+      code: sanitizePublicText(item?.code),
+      label: sanitizePublicText(item?.label),
+      display_name: sanitizePublicText(item?.display_name ?? item?.displayName),
+      selected: normalizeBoolean(item?.selected),
+    })).filter((item) => item.display_name || item.label || item.code),
+    terms: terms.slice(0, 120).map((item) => ({
+      year: boundedInt(item?.year, 0, 2000, 2099),
+      semester_code: sanitizePublicText(item?.semester_code ?? item?.semesterCode),
+      semester: sanitizePublicText(item?.semester),
+      display_name: sanitizePublicText(item?.display_name ?? item?.displayName),
+      selected: normalizeBoolean(item?.selected),
+    })).filter((item) => item.year > 0 && item.semester),
+    courses: courses.slice(0, 300).map((item) => ({
+      id: sanitizePublicText(item?.id),
+      code: sanitizePublicText(item?.code),
+      title: sanitizePublicText(item?.title),
+      url: "",
+      year: Number.isFinite(Number(item?.year)) ? Number(item.year) : null,
+      semester_code: sanitizePublicText(item?.semester_code ?? item?.semesterCode),
+      semester: sanitizePublicText(item?.semester),
+      term: sanitizePublicText(item?.term),
+    })).filter((item) => item.title || item.code),
+  };
+}
+
 function sanitizePublicText(value) {
   const text = String(value || "").trim();
   if (!text) {
@@ -2696,6 +2745,7 @@ async function replaceSyncItems(db, items, generatedAt, extras = {}) {
     setMetaStatement(db, "syncDataItems", JSON.stringify(itemOverlay.items.slice(0, MAX_SYNC_ITEMS))),
     setMetaStatement(db, "syncDataDryRunReports", JSON.stringify(extras.dryRunReports || [])),
     setMetaStatement(db, "syncDataCalendarChanges", JSON.stringify(itemOverlay.calendarChanges)),
+    setMetaStatement(db, "syncDataTermCatalog", JSON.stringify(extras.termCatalog || null)),
     setMetaStatement(db, "syncDataSettings", JSON.stringify(settings)),
     setMetaStatement(db, "syncDataRunLogs", JSON.stringify(runLogs)),
     setMetaStatement(db, "syncDataVerifySummary", JSON.stringify(extras.verifySummary || null)),
@@ -3031,6 +3081,7 @@ async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {
   const items = parseJSON(await getMeta(db, "syncDataItems"), []);
   const dryRunReports = parseJSON(await getMeta(db, "syncDataDryRunReports"), []);
   const calendarChanges = parseJSON(await getMeta(db, "syncDataCalendarChanges"), []);
+  const termCatalog = parseJSON(await getMeta(db, "syncDataTermCatalog"), null);
   const visibleCalendarChanges = normalizeCalendarChanges(calendarChanges).filter(isUserVisibleCalendarChange);
   const settings = parseJSON(await getMeta(db, "syncDataSettings"), []);
   const sharedSettings = await loadSharedSettings(db);
@@ -3050,6 +3101,7 @@ async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {
     items: filtered,
     dryRunReports: normalizeDryRunReports(dryRunReports),
     calendarChanges: visibleCalendarChanges,
+    termCatalog: normalizeTermCatalog(termCatalog),
     settings: normalizeSettings(settings),
     sharedSettings,
     runLogs: normalizeRunLogs(runLogs, runLogsClearedAt),

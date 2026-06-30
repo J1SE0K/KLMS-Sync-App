@@ -5115,12 +5115,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(listData.contains("var filteredItemIDs: Set<String>"))
         XCTAssertTrue(listData.contains("Set(sortedFiltered.map(\\.id))"))
         XCTAssertTrue(ios.contains("private struct CompanionItemFilterOptions: Equatable, Sendable"))
-        XCTAssertTrue(companionItemListFilter.contains("static func options(for items: [ServerRelaySyncItem])"))
+        XCTAssertTrue(companionItemListFilter.contains("static func options(for items: [ServerRelaySyncItem], termCatalog: AcademicTermCatalog? = nil)"))
         XCTAssertTrue(companionItemListFilter.contains("for item in items"))
         XCTAssertTrue(companionItemListFilter.contains("courses.insert(course)"))
         XCTAssertTrue(companionItemListFilter.contains("years.insert(year)"))
         XCTAssertTrue(companionItemListFilter.contains("semesters.insert(semester)"))
-        XCTAssertTrue(companionItemFilterOptions.contains("let listOptions = CompanionItemListFilter.options(for: items)"))
+        XCTAssertTrue(companionItemFilterOptions.contains("let listOptions = CompanionItemListFilter.options(for: items, termCatalog: termCatalog)"))
         XCTAssertTrue(companionItemFilterOptions.contains("courseOptions = listOptions.courses"))
         XCTAssertTrue(companionItemFilterOptions.contains("yearOptions = listOptions.years"))
         XCTAssertTrue(companionItemFilterOptions.contains("semesterOptions = listOptions.semesters"))
@@ -5227,7 +5227,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(companionModel.contains(".filter { category.includes($0) }\n                .companionSorted(by: .recent)"))
         XCTAssertTrue(companionModel.contains("nextVisibleLookup[category.rawValue] = Dictionary(visibleItems.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })"))
         XCTAssertTrue(companionModel.contains("visibleCalendarChangeByID = Dictionary(next.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })"))
-        XCTAssertTrue(companionModel.contains("let filterOptions = CompanionItemFilterOptions(items: categoryItems, category: category)"))
+        XCTAssertTrue(companionModel.contains("let filterOptions = CompanionItemFilterOptions(items: categoryItems, category: category, termCatalog: termCatalog)"))
         XCTAssertTrue(companionModel.contains("nextFilterOptions[category.rawValue] = filterOptions"))
         XCTAssertTrue(companionModel.contains("nextDefaultListData[category.rawValue] = CompanionItemListData("))
         XCTAssertTrue(companionModel.contains("func cachedVisibleDashboardItem(for itemID: String, categoryID: String) -> ServerRelaySyncItem?"))
@@ -7093,9 +7093,12 @@ final class DashboardDataModelTests: XCTestCase {
 
     func testAcademicTermInferenceUsesExplicitCourseNameAndDates() throws {
         XCTAssertEqual(AcademicTerm.infer(course: "Algorithms_2026_Spring")?.displayName, "2026년 봄학기")
+        XCTAssertEqual(AcademicTerm.infer(course: "Algorithms_2026_Summer")?.displayName, "2026년 여름학기")
         XCTAssertEqual(AcademicTerm.infer(course: "Data 2026년 2학기")?.displayName, "2026년 가을학기")
+        XCTAssertEqual(AcademicTerm.infer(course: "Winter 2026")?.displayName, "2026년 겨울학기")
         XCTAssertEqual(AcademicTerm.infer(dateTexts: ["2026-05-23T08:55:35Z"])?.displayName, "2026년 봄학기")
-        XCTAssertEqual(AcademicTerm.infer(dateTexts: ["2026년 1월 10일"])?.displayName, "2025년 가을학기")
+        XCTAssertEqual(AcademicTerm.infer(dateTexts: ["2026-07-10T08:55:35Z"])?.displayName, "2026년 여름학기")
+        XCTAssertEqual(AcademicTerm.infer(dateTexts: ["2026년 1월 10일"])?.displayName, "2025년 겨울학기")
         XCTAssertEqual(
             AcademicTerm.infer(dateTexts: ["5월 23일"], generatedAt: "2026-05-23T08:55:35Z")?.displayName,
             "2026년 봄학기"

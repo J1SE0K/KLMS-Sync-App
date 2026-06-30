@@ -149,6 +149,10 @@ public struct KLMSPaths: Sendable, Equatable {
         cacheURL.appendingPathComponent("course_file_manifest.json")
     }
 
+    public var academicTermCatalogURL: URL {
+        cacheURL.appendingPathComponent("academic_terms.json")
+    }
+
     public func dryRunReportURL(scope: KLMSSyncScope) -> URL {
         cacheURL
             .appendingPathComponent(scope.cacheNamespace, isDirectory: true)

@@ -36,6 +36,25 @@ function runStandaloneNoticeSummary(
     dashboardPages
   );
 
+  if (paths.academicTermCatalogJson) {
+    beginStage(steps, stageTelemetry, "notice-term-catalog");
+    runCommand(
+      [
+        "/usr/bin/env",
+        `PYTHONPATH=${pythonPath}`,
+        "python3",
+        "-m",
+        "klms_sync_v2.cli",
+        "build-term-catalog",
+        "--dashboard-json",
+        paths.dashboardJson,
+        "--output-json",
+        paths.academicTermCatalogJson,
+      ],
+      scriptDir
+    );
+  }
+
   beginStage(steps, stageTelemetry, "notice-course-list");
   const courseUrlsOutput = runCommand(
     [

@@ -1311,6 +1311,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
     public var items: [ServerRelaySyncItem]
     public var dryRunReports: [DryRunReport]
     public var calendarChanges: [CalendarChange]
+    public var termCatalog: AcademicTermCatalog?
     public var settings: [ServerRelaySetting]
     public var sharedSettings: [ServerRelaySetting]
     public var runLogs: [ServerRelayRunLog]
@@ -1321,6 +1322,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         case items
         case dryRunReports
         case calendarChanges
+        case termCatalog
         case settings
         case sharedSettings
         case runLogs
@@ -1332,6 +1334,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         items: [ServerRelaySyncItem] = [],
         dryRunReports: [DryRunReport] = [],
         calendarChanges: [CalendarChange] = [],
+        termCatalog: AcademicTermCatalog? = nil,
         settings: [ServerRelaySetting] = [],
         sharedSettings: [ServerRelaySetting] = [],
         runLogs: [ServerRelayRunLog] = [],
@@ -1341,6 +1344,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         self.items = items
         self.dryRunReports = dryRunReports
         self.calendarChanges = calendarChanges
+        self.termCatalog = termCatalog
         self.settings = settings
         self.sharedSettings = sharedSettings
         self.runLogs = runLogs
@@ -1353,6 +1357,7 @@ public struct ServerRelaySyncData: Codable, Sendable, Equatable {
         items = try container.decodeIfPresent([ServerRelaySyncItem].self, forKey: .items) ?? []
         dryRunReports = try container.decodeIfPresent([DryRunReport].self, forKey: .dryRunReports) ?? []
         calendarChanges = try container.decodeIfPresent([CalendarChange].self, forKey: .calendarChanges) ?? []
+        termCatalog = try container.decodeIfPresent(AcademicTermCatalog.self, forKey: .termCatalog)
         settings = try container.decodeIfPresent([ServerRelaySetting].self, forKey: .settings) ?? []
         sharedSettings = try container.decodeIfPresent([ServerRelaySetting].self, forKey: .sharedSettings) ?? []
         runLogs = try container.decodeIfPresent([ServerRelayRunLog].self, forKey: .runLogs) ?? []

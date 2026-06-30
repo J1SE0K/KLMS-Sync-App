@@ -75,6 +75,7 @@ COURSE_URLS_TXT="$WORK_CACHE_DIR/course_urls.txt"
 COURSE_PAGES_JSON="$WORK_CACHE_DIR/course_pages.json"
 ALL_WEEK_COURSE_URLS_TXT="$WORK_CACHE_DIR/all_week_course_urls.txt"
 ALL_WEEK_COURSE_PAGES_JSON="$WORK_CACHE_DIR/all_week_course_pages.json"
+ACADEMIC_TERM_CATALOG_JSON="$CACHE_DIR/academic_terms.json"
 FILE_PRIMARY_SUPPLEMENTAL_URLS_TXT="$WORK_CACHE_DIR/file_primary_supplemental_urls.txt"
 FILE_SEED_URLS_TXT="$WORK_CACHE_DIR/file_seed_urls.txt"
 FILE_SEED_PAGES_JSON="$WORK_CACHE_DIR/file_seed_pages.json"
@@ -814,6 +815,10 @@ fi
 klms_check_login_pages \
   "$DASHBOARD_JSON" \
   "KLMS login required before file refresh. Open Safari and sign in again."
+
+python3 -m klms_sync_v2.cli build-term-catalog \
+  --dashboard-json "$DASHBOARD_JSON" \
+  --output-json "$ACADEMIC_TERM_CATALOG_JSON"
 
 python3 -m klms_sync_v2.cli list-course-urls --dashboard-json "$DASHBOARD_JSON" > "$COURSE_URLS_TXT"
 run_fetch_backend \

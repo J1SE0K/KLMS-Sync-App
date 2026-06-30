@@ -3117,6 +3117,7 @@ private struct DashboardMainScopeOptions: Equatable {
         terms += DashboardTermFilter.terms(for: .files, snapshot: snapshot)
         terms += DashboardTermFilter.terms(for: .newFiles, snapshot: snapshot)
         terms += DashboardTermFilter.terms(for: .calendar, snapshot: snapshot)
+        terms += snapshot.academicTermCatalog?.academicTerms ?? []
         let options = DashboardTermFilter.options(from: terms)
         years = options.years
         semesters = options.semesters

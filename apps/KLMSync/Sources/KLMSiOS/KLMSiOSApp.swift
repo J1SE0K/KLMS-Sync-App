@@ -153,6 +153,12 @@ final class CompanionModel: ObservableObject {
             rebuildVisibleCalendarChanges()
         }
     }
+    @Published var termCatalog: AcademicTermCatalog? {
+        didSet {
+            guard !isApplyingServerSyncData else { return }
+            rebuildDashboardDerivedState()
+        }
+    }
     @Published var remoteSettings: [ServerRelaySetting] = [] {
         didSet {
             guard !isApplyingServerSyncData else { return }
@@ -542,7 +548,7 @@ final class CompanionModel: ObservableObject {
                     defaultVisibleCount += 1
                 }
             }
-            let filterOptions = CompanionItemFilterOptions(items: categoryItems, category: category)
+            let filterOptions = CompanionItemFilterOptions(items: categoryItems, category: category, termCatalog: termCatalog)
             next[category.rawValue] = categoryItems
             nextVisible[category.rawValue] = visibleItems
             nextVisibleLookup[category.rawValue] = Dictionary(visibleItems.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -3021,6 +3027,10 @@ final class CompanionModel: ObservableObject {
             calendarChangesSignature = nextCalendarChangesSignature
             didChange = true
         }
+        if termCatalog != syncData.termCatalog {
+            termCatalog = syncData.termCatalog
+            didChange = true
+        }
         let incomingRemoteSettings = remoteSettingsOverlayingPendingActions(syncData.settings)
         let nextRemoteSettingsSignature = Self.signature(for: incomingRemoteSettings)
         if remoteSettingsSignature != nextRemoteSettingsSignature {
@@ -4308,7 +4318,7 @@ private struct CompanionDashboardScopeOptions: Equatable {
         for category in DashboardMetricCategory.allCases where category != .calendar && category != .quarantine {
             items += model.cachedDashboardItems(for: category.rawValue)
         }
-        let options = CompanionItemListFilter.options(for: items)
+        let options = CompanionItemListFilter.options(for: items, termCatalog: model.termCatalog)
         years = options.years
         semesters = options.semesters
     }
@@ -6427,19 +6437,19 @@ private enum CompanionItemListFilter {
     static let allYears = "전체 연도"
     static let allSemesters = "전체 학기"
 
-    static func courseOptions(for items: [ServerRelaySyncItem]) -> [String] {
-        options(for: items).courses
+    static func courseOptions(for items: [ServerRelaySyncItem], termCatalog: AcademicTermCatalog? = nil) -> [String] {
+        options(for: items, termCatalog: termCatalog).courses
     }
 
-    static func yearOptions(for items: [ServerRelaySyncItem]) -> [String] {
-        options(for: items).years
+    static func yearOptions(for items: [ServerRelaySyncItem], termCatalog: AcademicTermCatalog? = nil) -> [String] {
+        options(for: items, termCatalog: termCatalog).years
     }
 
-    static func semesterOptions(for items: [ServerRelaySyncItem]) -> [String] {
-        options(for: items).semesters
+    static func semesterOptions(for items: [ServerRelaySyncItem], termCatalog: AcademicTermCatalog? = nil) -> [String] {
+        options(for: items, termCatalog: termCatalog).semesters
     }
 
-    static func options(for items: [ServerRelaySyncItem]) -> (
+    static func options(for items: [ServerRelaySyncItem], termCatalog: AcademicTermCatalog? = nil) -> (
         courses: [String],
         years: [String],
         semesters: [String]
@@ -6461,6 +6471,30 @@ private enum CompanionItemListFilter {
             let semester = item.academicSemester.trimmingCharacters(in: .whitespacesAndNewlines)
             if !semester.isEmpty {
                 semesters.insert(semester)
+            }
+        }
+        if let termCatalog {
+            for course in termCatalog.courses {
+                let title = course.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !title.isEmpty {
+                    courses.insert(title)
+                }
+            }
+            for year in termCatalog.years {
+                years.insert(year.year)
+            }
+            for term in termCatalog.terms {
+                years.insert(term.year)
+                let semester = term.semester.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !semester.isEmpty {
+                    semesters.insert(semester)
+                }
+            }
+            for semester in termCatalog.semesters {
+                let displayName = semester.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !displayName.isEmpty {
+                    semesters.insert(displayName)
+                }
             }
         }
         return (
@@ -6506,7 +6540,7 @@ private enum CompanionItemListFilter {
     }
 
     private static func semesterOptions(from semesters: Set<String>) -> [String] {
-        let ordered = ["봄학기", "가을학기"].filter { semesters.contains($0) }
+        let ordered = ["봄학기", "여름학기", "가을학기", "겨울학기"].filter { semesters.contains($0) }
         let rest = semesters.subtracting(ordered).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         return [allSemesters] + ordered + rest
     }
@@ -6645,8 +6679,8 @@ private struct CompanionItemFilterOptions: Equatable, Sendable {
     var semesterOptions: [String]
     var availableStatusFilters: [CompanionItemStatusFilter]
 
-    init(items: [ServerRelaySyncItem], category: DashboardMetricCategory?) {
-        let listOptions = CompanionItemListFilter.options(for: items)
+    init(items: [ServerRelaySyncItem], category: DashboardMetricCategory?, termCatalog: AcademicTermCatalog? = nil) {
+        let listOptions = CompanionItemListFilter.options(for: items, termCatalog: termCatalog)
         courseOptions = listOptions.courses
         yearOptions = listOptions.years
         semesterOptions = listOptions.semesters

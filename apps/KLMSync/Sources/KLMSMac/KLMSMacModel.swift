@@ -1237,29 +1237,30 @@ final class KLMSMacModel: ObservableObject {
 
         if let content = snapshot.legacyState?.content ?? snapshot.rawLegacyState?.content {
             items += content.assignments.map {
-                serverRelaySyncItem(kind: "assignment", item: $0, status: $0.recordStatus.nilIfBlank ?? "진행 중", updatedAt: updatedAt)
+                serverRelaySyncItem(kind: "assignment", item: $0, status: $0.recordStatus.nilIfBlank ?? "진행 중", updatedAt: updatedAt, snapshot: snapshot)
             }
             items += content.completedAssignments.map {
-                serverRelaySyncItem(kind: "completedAssignment", item: $0, status: "완료", updatedAt: updatedAt)
+                serverRelaySyncItem(kind: "completedAssignment", item: $0, status: "완료", updatedAt: updatedAt, snapshot: snapshot)
             }
             items += content.assignmentCandidates.map {
-                serverRelaySyncItem(kind: "assignmentCandidate", item: $0, status: "과제 후보", updatedAt: updatedAt)
+                serverRelaySyncItem(kind: "assignmentCandidate", item: $0, status: "과제 후보", updatedAt: updatedAt, snapshot: snapshot)
             }
             items += content.examItems.filter { !isPastExam($0) }.map {
-                serverRelaySyncItem(kind: "exam", item: $0, status: "시험", updatedAt: updatedAt)
+                serverRelaySyncItem(kind: "exam", item: $0, status: "시험", updatedAt: updatedAt, snapshot: snapshot)
             }
             items += content.examCandidates.filter { !isPastExam($0) }.map {
-                serverRelaySyncItem(kind: "examCandidate", item: $0, status: "시험 후보", updatedAt: updatedAt)
+                serverRelaySyncItem(kind: "examCandidate", item: $0, status: "시험 후보", updatedAt: updatedAt, snapshot: snapshot)
             }
             items += content.helpDeskItems.map {
-                serverRelaySyncItem(kind: "helpDesk", item: $0, status: "헬프데스크", updatedAt: updatedAt)
+                serverRelaySyncItem(kind: "helpDesk", item: $0, status: "헬프데스크", updatedAt: updatedAt, snapshot: snapshot)
             }
         }
 
         let noticeUserState = snapshot.noticeUserState?.notices ?? [:]
         items += snapshot.noticeDigest?.notices.map {
             let interaction = noticeUserState[$0.noticeIdentifier]
-            let term = $0.academicTerm(generatedAt: snapshot.noticeDigest?.generatedAt ?? generatedAt)
+            let inferredTerm = $0.academicTerm(generatedAt: snapshot.noticeDigest?.generatedAt ?? generatedAt)
+            let term = academicTermForServerRelay(course: $0.course, inferred: inferredTerm, snapshot: snapshot)
             return ServerRelaySyncItem(
                 id: serverRelayNoticeSyncItemID($0),
                 kind: "notice",
@@ -1280,7 +1281,7 @@ final class KLMSMacModel: ObservableObject {
         } ?? []
 
         items += snapshot.courseFileManifest.map {
-            let term = $0.academicTerm
+            let term = academicTermForServerRelay(course: $0.course, inferred: $0.academicTerm, snapshot: snapshot)
             return ServerRelaySyncItem(
                 id: serverRelayFileSyncItemID($0),
                 kind: "file",
@@ -1316,6 +1317,7 @@ final class KLMSMacModel: ObservableObject {
             items: items,
             dryRunReports: serverRelayDryRunReports(from: snapshot),
             calendarChanges: calendarChanges.dedupedForCalendarDisplay(),
+            termCatalog: snapshot.academicTermCatalog,
             settings: serverRelaySettings(updatedAt: updatedAt),
             runLogs: serverRelayRunLogs(),
             verifySummary: snapshot.verifyResult.map { ServerRelayVerifySummary(result: $0, updatedAt: updatedAt) }
@@ -1530,9 +1532,10 @@ final class KLMSMacModel: ObservableObject {
         kind: String,
         item: StateItem,
         status: String,
-        updatedAt: String
+        updatedAt: String,
+        snapshot: EngineSnapshot
     ) -> ServerRelaySyncItem {
-        let term = item.academicTerm
+        let term = academicTermForServerRelay(course: item.course, inferred: item.academicTerm, snapshot: snapshot)
         return ServerRelaySyncItem(
             id: serverRelayStateSyncItemID(kind: kind, item: item),
             kind: kind,
@@ -1546,6 +1549,19 @@ final class KLMSMacModel: ObservableObject {
             detail: serverRelayPublicText(item.coverageSummary.nilIfBlank),
             updatedAt: updatedAt
         )
+    }
+
+    private func academicTermForServerRelay(
+        course: String,
+        inferred: AcademicTerm?,
+        snapshot: EngineSnapshot
+    ) -> AcademicTerm? {
+        if let catalog = snapshot.academicTermCatalog,
+           let selected = catalog.selectedAcademicTerm,
+           catalog.selectedTermApplies(to: course) {
+            return selected
+        }
+        return inferred
     }
 
     func addMailDashboardItem(_ item: ServerRelaySyncItem) {

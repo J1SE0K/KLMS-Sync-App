@@ -16,6 +16,7 @@ public struct EngineSnapshot: Sendable, Equatable {
     public var noticeDigest: NoticeDigest?
     public var noticeUserState: NoticeUserStateFile?
     public var appUserState: AppUserStateFile?
+    public var academicTermCatalog: AcademicTermCatalog?
     public var filePreview: FileSyncPreview?
     public var downloadResult: CourseFileDownloadResult?
     public var courseFileManifest: [CourseFileManifestEntry]
@@ -40,6 +41,7 @@ public struct EngineSnapshot: Sendable, Equatable {
         noticeDigest: NoticeDigest? = nil,
         noticeUserState: NoticeUserStateFile? = nil,
         appUserState: AppUserStateFile? = nil,
+        academicTermCatalog: AcademicTermCatalog? = nil,
         filePreview: FileSyncPreview? = nil,
         downloadResult: CourseFileDownloadResult? = nil,
         courseFileManifest: [CourseFileManifestEntry] = [],
@@ -63,6 +65,7 @@ public struct EngineSnapshot: Sendable, Equatable {
         self.noticeDigest = noticeDigest
         self.noticeUserState = noticeUserState
         self.appUserState = appUserState
+        self.academicTermCatalog = academicTermCatalog
         self.filePreview = filePreview
         self.downloadResult = downloadResult
         self.courseFileManifest = courseFileManifest
@@ -474,6 +477,10 @@ public struct EngineSnapshotStore: Sendable {
             noticeDigest: noticeDigest,
             noticeUserState: noticeUserState,
             appUserState: try? AppUserStateStore(url: paths.appUserStateURL).load(),
+            academicTermCatalog: JSONFileLoader.loadIfExists(
+                AcademicTermCatalog.self,
+                from: paths.academicTermCatalogURL
+            ),
             filePreview: JSONFileLoader.loadIfExists(FileSyncPreview.self, from: paths.filePreviewURL),
             downloadResult: JSONFileLoader.loadIfExists(CourseFileDownloadResult.self, from: paths.downloadResultURL),
             courseFileManifest: courseFileManifest,

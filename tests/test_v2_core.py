@@ -9,6 +9,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR / "src" / "python"))
 
+import klms_sync  # noqa: E402
 from klms_sync_v2.classifiers import classify_detail_page, classify_notice  # noqa: E402
 from klms_sync_v2.dates import is_past, parse_due_date_only, parse_due_datetime  # noqa: E402
 from klms_sync_v2.models import Assignment, Event, Notice, Page  # noqa: E402
@@ -16,6 +17,48 @@ from klms_sync_v2.pipeline import build_sync_state  # noqa: E402
 
 
 class V2CoreTests(unittest.TestCase):
+    def test_academic_term_catalog_reads_dashboard_selectors(self) -> None:
+        page = {
+            "html": """
+            <html><body>
+              <div class="select-course">
+                <select name="year">
+                  <option value="2026" selected>2026년도</option>
+                  <option value="2025">2025년도</option>
+                  <option value="2024">2024년도</option>
+                </select>
+                <select name="semester">
+                  <option value="10">봄</option>
+                  <option value="11" selected>여름</option>
+                </select>
+              </div>
+              <ul class="main-course-list student">
+                <li>
+                  <a href="/course/view.php?id=1001">알고리즘 개론</a>
+                  <span class="course_cd">CS300</span>
+                </li>
+                <li>
+                  <a href="https://klms.kaist.ac.kr/course/view.php?id=1002">데이터베이스 개론</a>
+                  <span class="course_cd">CS360</span>
+                </li>
+              </ul>
+            </body></html>
+            """,
+            "title": "강의 현황",
+        }
+
+        catalog = klms_sync.parse_academic_term_catalog_from_dashboard(page).to_json()
+
+        self.assertEqual([item["year"] for item in catalog["years"]], [2026, 2025, 2024])
+        self.assertEqual(catalog["selected_year"], 2026)
+        self.assertEqual(catalog["selected_semester"], "여름학기")
+        self.assertIn(
+            {"year": 2026, "semester_code": "11", "semester": "여름학기", "display_name": "2026년 여름학기", "selected": True},
+            catalog["terms"],
+        )
+        self.assertEqual(len(catalog["courses"]), 2)
+        self.assertEqual(catalog["courses"][0]["term"], "2026년 여름학기")
+
     def test_korean_due_datetime_parses_to_kst_iso(self) -> None:
         parsed = parse_due_datetime("마감 일시 2026년 5월 18일(월요일) 오후 6:30")
 

@@ -541,6 +541,11 @@ def command_list_course_urls(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_build_term_catalog(args: argparse.Namespace) -> int:
+    legacy().build_academic_term_catalog(args.dashboard_json, args.output_json)
+    return 0
+
+
 def command_list_detail_urls(args: argparse.Namespace) -> int:
     legacy().print_lines(
         legacy().list_detail_urls(args.dashboard_json, args.course_pages_json)
@@ -674,6 +679,11 @@ def build_parser() -> argparse.ArgumentParser:
     course_urls = subparsers.add_parser("list-course-urls")
     course_urls.add_argument("--dashboard-json", required=True)
     course_urls.set_defaults(func=command_list_course_urls)
+
+    term_catalog = subparsers.add_parser("build-term-catalog")
+    term_catalog.add_argument("--dashboard-json", required=True)
+    term_catalog.add_argument("--output-json", required=True)
+    term_catalog.set_defaults(func=command_build_term_catalog)
 
     detail_urls = subparsers.add_parser("list-detail-urls")
     detail_urls.add_argument("--dashboard-json", required=True)

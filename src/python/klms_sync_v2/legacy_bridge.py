@@ -31,6 +31,13 @@ def list_course_urls(dashboard_json: str) -> list[str]:
     return legacy.parse_course_urls_from_dashboard(legacy.load_single_page(Path(dashboard_json)))
 
 
+def build_academic_term_catalog(dashboard_json: str, output_json: str) -> None:
+    catalog = legacy.parse_academic_term_catalog_from_dashboard(
+        legacy.load_single_page(Path(dashboard_json))
+    )
+    legacy.write_json(Path(output_json), catalog.to_json())
+
+
 def list_detail_urls(dashboard_json: str, course_pages_json: str | None = None) -> list[str]:
     dashboard_page = legacy.load_single_page(Path(dashboard_json))
     course_pages = load_pages(course_pages_json)

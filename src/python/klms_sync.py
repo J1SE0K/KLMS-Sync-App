@@ -856,6 +856,97 @@ class DashboardParseResult:
     error_message: str | None = None
 
 
+@dataclass(frozen=True)
+class AcademicYearOption:
+    year: int
+    label: str
+    selected: bool = False
+
+
+@dataclass(frozen=True)
+class AcademicSemesterOption:
+    code: str
+    label: str
+    display_name: str
+    selected: bool = False
+
+
+@dataclass(frozen=True)
+class AcademicCourseOption:
+    id: str
+    code: str
+    title: str
+    url: str
+    year: int | None
+    semester_code: str
+    semester: str
+
+
+@dataclass(frozen=True)
+class AcademicTermCatalog:
+    generated_at: str
+    selected_year: int | None
+    selected_semester_code: str
+    selected_semester: str
+    years: list[AcademicYearOption]
+    semesters: list[AcademicSemesterOption]
+    courses: list[AcademicCourseOption]
+
+    def to_json(self) -> dict[str, Any]:
+        years = [
+            {"year": item.year, "label": item.label, "selected": item.selected}
+            for item in self.years
+        ]
+        semesters = [
+            {
+                "code": item.code,
+                "label": item.label,
+                "display_name": item.display_name,
+                "selected": item.selected,
+            }
+            for item in self.semesters
+        ]
+        terms = [
+            {
+                "year": year.year,
+                "semester_code": semester.code,
+                "semester": semester.display_name,
+                "display_name": f"{year.year}년 {semester.display_name}",
+                "selected": year.selected and semester.selected,
+            }
+            for year in self.years
+            for semester in self.semesters
+        ]
+        courses = [
+            {
+                "id": item.id,
+                "code": item.code,
+                "title": item.title,
+                "url": item.url,
+                "year": item.year,
+                "semester_code": item.semester_code,
+                "semester": item.semester,
+                "term": (
+                    f"{item.year}년 {item.semester}"
+                    if item.year is not None and item.semester
+                    else ""
+                ),
+            }
+            for item in self.courses
+        ]
+        return {
+            "version": 1,
+            "generated_at": self.generated_at,
+            "selected_year": self.selected_year,
+            "selected_semester_code": self.selected_semester_code,
+            "selected_semester": self.selected_semester,
+            "years": years,
+            "semesters": semesters,
+            "terms": terms,
+            "courses": courses,
+        }
+
+
 @dataclass
 class CourseActivity:
     url: str
@@ -2437,6 +2528,155 @@ def parse_dashboard_page(page: dict[str, Any]) -> DashboardParseResult:
         )
 
     return DashboardParseResult(status="ok", items=items)
+
+
+def semester_display_name(label: str, code: str = "") -> str:
+    text = normalize_whitespace(label)
+    lowered = text.lower()
+    if "봄" in text or lowered in {"spring", "spr"} or code == "10":
+        return "봄학기"
+    if "여름" in text or lowered in {"summer", "sum"} or code == "11":
+        return "여름학기"
+    if "가을" in text or "2학기" in text or lowered in {"fall", "autumn"} or code == "20":
+        return "가을학기"
+    if "겨울" in text or lowered in {"winter", "win"} or code == "21":
+        return "겨울학기"
+    return text if text.endswith("학기") else f"{text}학기" if text else ""
+
+
+def selected_option_value(select: Any) -> str:
+    if select is None:
+        return ""
+    selected = select.select_one("option[selected]")
+    if selected is None:
+        selected = select.select_one("option")
+    return normalize_whitespace(selected.get("value", "")) if selected else ""
+
+
+def selected_option_label(select: Any) -> str:
+    if select is None:
+        return ""
+    selected = select.select_one("option[selected]")
+    if selected is None:
+        selected = select.select_one("option")
+    return normalize_whitespace(selected.get_text(" ", strip=True)) if selected else ""
+
+
+def parse_academic_term_catalog_from_dashboard(page: dict[str, Any]) -> AcademicTermCatalog:
+    html = page.get("html", "")
+    generated_at = datetime.now(SEOUL).isoformat(timespec="seconds")
+    if not html or looks_like_login_page(page):
+        return AcademicTermCatalog(
+            generated_at=generated_at,
+            selected_year=None,
+            selected_semester_code="",
+            selected_semester="",
+            years=[],
+            semesters=[],
+            courses=[],
+        )
+
+    soup = BeautifulSoup(html, "html.parser")
+    year_select = soup.select_one(".select-course select[name='year']") or soup.select_one("select[name='year']")
+    semester_select = soup.select_one(".select-course select[name='semester']") or soup.select_one("select[name='semester']")
+
+    years: list[AcademicYearOption] = []
+    seen_years: set[int] = set()
+    for option in year_select.select("option") if year_select else []:
+        raw_value = normalize_whitespace(option.get("value", ""))
+        raw_label = normalize_whitespace(option.get_text(" ", strip=True))
+        match = re.search(r"(20\d{2})", raw_value) or re.search(r"(20\d{2})", raw_label)
+        if not match:
+            continue
+        year = int(match.group(1))
+        if year in seen_years:
+            continue
+        seen_years.add(year)
+        years.append(
+            AcademicYearOption(
+                year=year,
+                label=raw_label or f"{year}년도",
+                selected=option.has_attr("selected"),
+            )
+        )
+
+    selected_year_text = selected_option_value(year_select) or selected_option_label(year_select)
+    selected_year_match = re.search(r"(20\d{2})", selected_year_text)
+    selected_year = int(selected_year_match.group(1)) if selected_year_match else None
+    if selected_year is not None and years and not any(item.selected for item in years):
+        years = [
+            AcademicYearOption(year=item.year, label=item.label, selected=item.year == selected_year)
+            for item in years
+        ]
+
+    semesters: list[AcademicSemesterOption] = []
+    seen_semesters: set[tuple[str, str]] = set()
+    for option in semester_select.select("option") if semester_select else []:
+        code = normalize_whitespace(option.get("value", ""))
+        label = normalize_whitespace(option.get_text(" ", strip=True))
+        display_name = semester_display_name(label, code)
+        key = (code, display_name)
+        if not display_name or key in seen_semesters:
+            continue
+        seen_semesters.add(key)
+        semesters.append(
+            AcademicSemesterOption(
+                code=code,
+                label=label,
+                display_name=display_name,
+                selected=option.has_attr("selected"),
+            )
+        )
+
+    selected_semester_code = selected_option_value(semester_select)
+    selected_semester_label = selected_option_label(semester_select)
+    selected_semester = semester_display_name(selected_semester_label, selected_semester_code)
+    if selected_semester and semesters and not any(item.selected for item in semesters):
+        semesters = [
+            AcademicSemesterOption(
+                code=item.code,
+                label=item.label,
+                display_name=item.display_name,
+                selected=(item.code == selected_semester_code or item.display_name == selected_semester),
+            )
+            for item in semesters
+        ]
+
+    courses: list[AcademicCourseOption] = []
+    seen_course_ids: set[str] = set()
+    for item in soup.select("ul.main-course-list.student li"):
+        link = item.select_one("a[href*='/course/view.php?id=']")
+        if not link:
+            continue
+        url = normalize_url(link.get("href", ""))
+        course_id = url_query_id(url)
+        title = normalize_whitespace(link.get_text(" ", strip=True))
+        code_node = item.select_one(".course_cd")
+        code = normalize_whitespace(code_node.get_text(" ", strip=True)) if code_node else ""
+        if not url or not course_id or course_id in seen_course_ids or should_ignore_course_name(title):
+            continue
+        seen_course_ids.add(course_id)
+        courses.append(
+            AcademicCourseOption(
+                id=course_id,
+                code=code,
+                title=title,
+                url=url,
+                year=selected_year,
+                semester_code=selected_semester_code,
+                semester=selected_semester,
+            )
+        )
+
+    return AcademicTermCatalog(
+        generated_at=generated_at,
+        selected_year=selected_year,
+        selected_semester_code=selected_semester_code,
+        selected_semester=selected_semester,
+        years=years,
+        semesters=semesters,
+        courses=courses,
+    )
 
 
 def parse_course_urls_from_dashboard(page: dict[str, Any]) -> list[str]:

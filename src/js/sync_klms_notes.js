@@ -367,6 +367,7 @@ function run(argv) {
     const noticeDigestErrorTxt = `${cacheDir}/notice_digest_error.txt`;
     const noticeNoteRenderWarningTxt = `${cacheDir}/notice_note_render_warning.txt`;
     const noticeRenderErrorSummaryJson = `${cacheDir}/notice_render_error_summary.json`;
+    const academicTermCatalogJson = `${cacheDir}/academic_terms.json`;
     const noticeNoteName = config.NOTICE_NOTE_NAME || "KLMS 공지";
     const noticeArchiveNoteName = config.NOTICE_ARCHIVE_NOTE_NAME || "KLMS 확인한 공지";
     const sharedCoursePagesJson =
@@ -392,6 +393,7 @@ function run(argv) {
       coursePagesJson,
       courseFetchSummaryJson,
       courseUrlsTxt,
+      academicTermCatalogJson,
       allWeekCoursePagesJson,
       allWeekCourseFetchSummaryJson,
       allWeekCourseUrlsTxt,
@@ -539,6 +541,25 @@ function run(argv) {
       dashboardPages
     );
     debugStderr("after dashboard-fetch");
+
+    beginStage(steps, stageTelemetry, "term-catalog");
+    debugStderr("before term-catalog");
+    runCommand(
+      [
+        "/usr/bin/env",
+        `PYTHONPATH=${pythonPath}`,
+        "python3",
+        "-m",
+        "klms_sync_v2.cli",
+        "build-term-catalog",
+        "--dashboard-json",
+        dashboardJson,
+        "--output-json",
+        academicTermCatalogJson,
+      ],
+      scriptDir
+    );
+    debugStderr("after term-catalog");
 
     beginStage(steps, stageTelemetry, "course-list");
     debugStderr("before course-list");
