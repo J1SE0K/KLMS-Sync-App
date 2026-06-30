@@ -1687,8 +1687,13 @@ private struct DashboardControlBox<Content: View>: View {
             }
             content
         }
-        .padding(.horizontal, 2)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Color.klmsMacSubtleCardBackground.opacity(0.50), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder.opacity(0.72), lineWidth: 1)
+        }
     }
 }
 
@@ -1711,6 +1716,10 @@ private struct DashboardRangeField<Content: View>: View {
         .padding(.vertical, 5)
         .frame(minWidth: minWidth, minHeight: 34, maxHeight: 40, alignment: .leading)
         .background(Color.klmsMacSubtleCardBackground.opacity(disabled ? 0.38 : 0.54), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder.opacity(disabled ? 0.36 : 0.68), lineWidth: 1)
+        }
         .opacity(disabled ? 0.58 : 1)
     }
 }
