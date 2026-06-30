@@ -1484,7 +1484,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSummaryContent.contains(".frame(width: 285, alignment: .topLeading)"))
         XCTAssertTrue(dashboardSummaryContent.contains("@State private var renderedDetail: DashboardDetailKind?"))
         XCTAssertTrue(dashboardSummaryContent.contains("@State private var detailRenderTask: Task<Void, Never>?"))
-        XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(renderedDetail: currentRenderedDetail)"))
+        XCTAssertTrue(dashboardSummaryContent.contains("@State private var selectedYear = DashboardTermFilter.allYears"))
+        XCTAssertTrue(dashboardSummaryContent.contains("@State private var selectedSemester = DashboardTermFilter.allSemesters"))
+        XCTAssertTrue(dashboardSummaryContent.contains("DashboardMainScopeBarView("))
+        XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(renderedDetail: currentRenderedDetail(in: scopedPresentation))"))
         XCTAssertFalse(dashboardSummaryContent.contains("@State private var displayedDetail"))
         XCTAssertFalse(dashboardSummaryContent.contains("@State private var detailDisplayTask"))
         XCTAssertTrue(dashboardSummaryContent.contains("private func selectDashboardDetail"))
@@ -1624,7 +1627,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardSummaryContent.contains("await Task.yield()"))
         XCTAssertFalse(dashboardSummaryContent.contains("detailDisplayTask?.cancel()"))
         XCTAssertTrue(dashboardSummaryContent.contains("detailRenderTask?.cancel()"))
-        XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(renderedDetail: currentRenderedDetail)"))
+        XCTAssertTrue(dashboardSummaryContent.contains("dashboardDetailContent(renderedDetail: currentRenderedDetail(in: scopedPresentation))"))
         XCTAssertFalse(view.contains("@Environment(\\.openSettings)"))
         XCTAssertFalse(view.contains("openSettings()"))
         XCTAssertFalse(view.contains("KLMSDiagnosticWindowCoordinator.shared.showDiagnosticsWindow()"))
@@ -2262,7 +2265,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(newFileCourseOptions.contains("manifestLookup.byRelativePath[item.relativePath]"))
         XCTAssertFalse(newFileCourseOptions.contains("snapshot.courseFileManifest.map(\\.course)"))
         let dashboardTermFilter = try sourceBody(
-            after: "private enum DashboardTermFilter",
+            after: "enum DashboardTermFilter",
             in: detail,
             description: "dashboard term filter"
         )
@@ -2681,7 +2684,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(statusScreen.contains("statusRegularWorkspace"))
         XCTAssertFalse(statusScreen.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(statusScreen.contains("VStack(alignment: .leading, spacing: 12)"))
-        XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel(category: category, model: model)"))
+        XCTAssertTrue(statusScreen.contains("CompanionDashboardScopeBar("))
+        XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel(\n                    category: category,\n                    model: model,\n                    initialSelectedYear: selectedYear,\n                    initialSelectedSemester: selectedSemester"))
         XCTAssertTrue(statusScreen.contains("if model.hasLoadedServerSyncData"))
         XCTAssertTrue(statusScreen.contains("WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)"))
         XCTAssertTrue(statusDetailColumn.contains("CompanionDashboardDataLoadingCard("))
@@ -2802,7 +2806,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(statusScreen.contains("compactDashboardDetail"))
         XCTAssertTrue(statusScreen.contains("if let kind = selectedChangeSummary"))
         XCTAssertTrue(statusScreen.contains("let category = displayedDashboardPreview"))
-        XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel(category: category, model: model)"))
+        XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel(\n                    category: category,\n                    model: model,\n                    initialSelectedYear: selectedYear,\n                    initialSelectedSemester: selectedSemester"))
         XCTAssertFalse(metricOverview.contains("if displayedCategory == category"))
         XCTAssertTrue(metricOverview.contains("private func selectCategory(_ category: DashboardMetricCategory)"))
         XCTAssertTrue(metricOverview.contains("companionPerformWithoutAnimation {\n            selectedCategory = category\n            onCategoryTap(category)"))
@@ -4846,7 +4850,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosStatusScreen.contains("statusRegularWorkspace"))
         XCTAssertFalse(iosStatusScreen.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(iosStatusScreen.contains("VStack(alignment: .leading, spacing: 12)"))
-        XCTAssertTrue(iosStatusScreen.contains("DashboardCategoryInlineDetailPanel(category: category, model: model)"))
+        XCTAssertTrue(iosStatusScreen.contains("CompanionDashboardScopeBar("))
+        XCTAssertTrue(iosStatusScreen.contains("DashboardCategoryInlineDetailPanel(\n                    category: category,\n                    model: model,\n                    initialSelectedYear: selectedYear,\n                    initialSelectedSemester: selectedSemester"))
         XCTAssertTrue(iosStatusScreen.contains("if model.hasLoadedServerSyncData"))
         XCTAssertTrue(iosStatusScreen.contains("WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)"))
         XCTAssertTrue(iosStatusScreen.contains("CompanionDashboardDataLoadingCard("))

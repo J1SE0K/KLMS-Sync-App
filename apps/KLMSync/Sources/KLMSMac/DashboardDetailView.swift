@@ -253,6 +253,8 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     private var fileDataRenderSignature: DashboardFileRenderSignature?
     private var filterOptions: DashboardFilterOptions
     private var hiddenCount: Int
+    private var initialSelectedYear: String
+    private var initialSelectedSemester: String
     @State private var searchText = ""
     @State private var selectedCourse = DashboardCourseFilter.all
     @State private var selectedYear = DashboardTermFilter.allYears
@@ -270,7 +272,9 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         snapshot: EngineSnapshot? = nil,
         renderSignature: DashboardRenderSignature? = nil,
         fileRenderSignature: DashboardFileRenderSignature? = nil,
-        filterOptions: DashboardFilterOptions? = nil
+        filterOptions: DashboardFilterOptions? = nil,
+        initialSelectedYear: String = DashboardTermFilter.allYears,
+        initialSelectedSemester: String = DashboardTermFilter.allSemesters
     ) {
         let resolvedSnapshot = snapshot ?? model.snapshot
         self.kind = kind
@@ -285,6 +289,10 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             ?? model.dashboardFilterOptions(for: kind)
             ?? DashboardFilterOptions(kind: kind, snapshot: resolvedSnapshot)
         self.hiddenCount = resolvedSnapshot.hiddenSummary.total
+        self.initialSelectedYear = initialSelectedYear
+        self.initialSelectedSemester = initialSelectedSemester
+        _selectedYear = State(initialValue: initialSelectedYear)
+        _selectedSemester = State(initialValue: initialSelectedSemester)
         _fileData = State(initialValue: nil)
         _fileDataSignature = State(initialValue: nil)
     }
@@ -293,6 +301,8 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         lhs.kind == rhs.kind
             && lhs.renderSignature == rhs.renderSignature
             && lhs.fileDataRenderSignature == rhs.fileDataRenderSignature
+            && lhs.initialSelectedYear == rhs.initialSelectedYear
+            && lhs.initialSelectedSemester == rhs.initialSelectedSemester
     }
 
     var body: some View {
@@ -430,7 +440,14 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             rebuildFileDataIfNeeded(signature)
         }
         .onAppear {
+            applyInitialScopeIfNeeded()
             rebuildFileDataIfNeeded(fileDataRenderSignature)
+        }
+        .onChange(of: initialSelectedYear) { _, _ in
+            applyInitialScopeIfNeeded()
+        }
+        .onChange(of: initialSelectedSemester) { _, _ in
+            applyInitialScopeIfNeeded()
         }
         .onDisappear {
             fileDataTask?.cancel()
@@ -499,6 +516,15 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
+    }
+
+    private func applyInitialScopeIfNeeded() {
+        if selectedYear != initialSelectedYear {
+            selectedYear = initialSelectedYear
+        }
+        if selectedSemester != initialSelectedSemester {
+            selectedSemester = initialSelectedSemester
         }
     }
 }
@@ -1221,7 +1247,7 @@ private enum DashboardCourseFilter {
     }
 }
 
-private enum DashboardTermFilter {
+enum DashboardTermFilter {
     static let allYears = "전체 연도"
     static let allSemesters = "전체 학기"
     static let unknown = "학기 미확인"
@@ -1282,7 +1308,7 @@ private enum DashboardTermFilter {
         return [allSemesters] + known + unknowns
     }
 
-    private static func terms(for kind: DashboardDetailKind, snapshot: EngineSnapshot) -> [AcademicTerm?] {
+    static func terms(for kind: DashboardDetailKind, snapshot: EngineSnapshot) -> [AcademicTerm?] {
         let terms: [AcademicTerm?]
         switch kind {
         case .assignments:

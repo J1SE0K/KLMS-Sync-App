@@ -2903,7 +2903,10 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     @State private var renderedDetail: DashboardDetailKind?
     @State private var detailRenderTask: Task<Void, Never>?
     @State private var isArchiveMetricsExpanded = false
+    @State private var selectedYear = DashboardTermFilter.allYears
+    @State private var selectedSemester = DashboardTermFilter.allSemesters
 
+    @MainActor
     init(
         model: KLMSMacModel,
         snapshot: EngineSnapshot,
@@ -2921,24 +2924,36 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     }
 
     var body: some View {
+        let scopedPresentation = DashboardSummaryPresentation(
+            model: model,
+            snapshot: snapshot,
+            summary: model.dashboardSummaryCache,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        )
         VStack(alignment: .leading, spacing: 12) {
             IssueSummaryView(issues: model.cachedIssues)
-            if !presentation.hasAnyMetrics {
+            DashboardMainScopeBarView(
+                selectedYear: $selectedYear,
+                selectedSemester: $selectedSemester,
+                options: DashboardMainScopeOptions(model: model, snapshot: snapshot)
+            )
+            if !scopedPresentation.hasAnyMetrics {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     metricColumn(
-                        primaryMetrics: presentation.primaryMetrics,
-                        attentionMetrics: presentation.attentionMetrics,
-                        archiveMetrics: presentation.archiveMetrics,
+                        primaryMetrics: scopedPresentation.primaryMetrics,
+                        attentionMetrics: scopedPresentation.attentionMetrics,
+                        archiveMetrics: scopedPresentation.archiveMetrics,
                         isArchiveExpanded: isArchiveMetricsExpanded,
-                        activeDetail: currentActiveDetail
+                        activeDetail: currentActiveDetail(in: scopedPresentation)
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                    dashboardDetailContent(renderedDetail: currentRenderedDetail)
+                    dashboardDetailContent(renderedDetail: currentRenderedDetail(in: scopedPresentation))
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
@@ -2950,15 +2965,15 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
         }
     }
 
-    private var currentActiveDetail: DashboardDetailKind? {
-        presentation.activeDetail(
+    private func currentActiveDetail(in scopedPresentation: DashboardSummaryPresentation) -> DashboardDetailKind? {
+        scopedPresentation.activeDetail(
             selectedDetail,
             archiveExpanded: isArchiveMetricsExpanded
         )
     }
 
-    private var currentRenderedDetail: DashboardDetailKind? {
-        presentation.renderedDetail(
+    private func currentRenderedDetail(in scopedPresentation: DashboardSummaryPresentation) -> DashboardDetailKind? {
+        scopedPresentation.renderedDetail(
             renderedDetail,
             archiveExpanded: isArchiveMetricsExpanded
         )
@@ -3042,7 +3057,9 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             snapshot: snapshot,
             renderSignature: renderSignature,
             fileRenderSignature: model.dashboardFileRenderSignature,
-            filterOptions: model.dashboardFilterOptions(for: kind)
+            filterOptions: model.dashboardFilterOptions(for: kind),
+            initialSelectedYear: selectedYear,
+            initialSelectedSemester: selectedSemester
         )
             .equatable()
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -3086,6 +3103,100 @@ private struct DashboardDetailHint: View {
     }
 }
 
+private struct DashboardMainScopeOptions: Equatable {
+    var years: [String]
+    var semesters: [String]
+
+    @MainActor
+    init(model: KLMSMacModel, snapshot: EngineSnapshot) {
+        var terms: [AcademicTerm?] = []
+        terms += model.dashboardStateItems(for: .assignments).map(\.academicTerm)
+        terms += model.dashboardStateItems(for: .exams).map(\.academicTerm)
+        terms += DashboardTermFilter.terms(for: .helpDesk, snapshot: snapshot)
+        terms += DashboardTermFilter.terms(for: .notices, snapshot: snapshot)
+        terms += DashboardTermFilter.terms(for: .files, snapshot: snapshot)
+        terms += DashboardTermFilter.terms(for: .newFiles, snapshot: snapshot)
+        terms += DashboardTermFilter.terms(for: .calendar, snapshot: snapshot)
+        let options = DashboardTermFilter.options(from: terms)
+        years = options.years
+        semesters = options.semesters
+    }
+}
+
+private struct DashboardMainScopeBarView: View {
+    @Binding var selectedYear: String
+    @Binding var selectedSemester: String
+    var options: DashboardMainScopeOptions
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Label("동기화 범위", systemImage: "calendar.badge.clock")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsMacPrimaryText)
+            Spacer(minLength: 4)
+            scopePicker("연도", selection: normalizedYearBinding, values: options.years)
+                .frame(width: 132)
+            scopePicker("학기", selection: normalizedSemesterBinding, values: options.semesters)
+                .frame(width: 150)
+            if hasActiveScope {
+                Button {
+                    selectedYear = DashboardTermFilter.allYears
+                    selectedSemester = DashboardTermFilter.allSemesters
+                } label: {
+                    Label("범위 초기화", systemImage: "arrow.counterclockwise")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("연도와 학기 범위를 전체로 되돌립니다.")
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func scopePicker(_ title: String, selection: Binding<String>, values: [String]) -> some View {
+        Picker(title, selection: selection) {
+            ForEach(values, id: \.self) { value in
+                Text(value).tag(value)
+            }
+        }
+        .labelsHidden()
+        .disabled(values.count <= 1)
+    }
+
+    private var normalizedYearBinding: Binding<String> {
+        Binding(
+            get: { options.years.contains(selectedYear) ? selectedYear : DashboardTermFilter.allYears },
+            set: { selectedYear = $0 }
+        )
+    }
+
+    private var normalizedSemesterBinding: Binding<String> {
+        Binding(
+            get: { options.semesters.contains(selectedSemester) ? selectedSemester : DashboardTermFilter.allSemesters },
+            set: { selectedSemester = $0 }
+        )
+    }
+
+    private var hasActiveScope: Bool {
+        selectedYear != DashboardTermFilter.allYears || selectedSemester != DashboardTermFilter.allSemesters
+    }
+
+    private var accessibilityLabel: String {
+        if hasActiveScope {
+            return "동기화 범위 \(selectedYear), \(selectedSemester)"
+        }
+        return "동기화 범위 전체 연도, 전체 학기"
+    }
+}
+
 struct DashboardSummaryPresentation {
     var primaryMetrics: [Metric]
     var attentionMetrics: [Metric]
@@ -3108,6 +3219,50 @@ struct DashboardSummaryPresentation {
             Metric("시험 후보", summary.examCandidateCount, detail: .examCandidates),
             Metric("누락 파일", summary.localMissingFileCount, detail: .missingFiles),
             Metric("정리된 파일", summary.prunedFileCount, detail: .pruned),
+        ].filter { $0.value > 0 }
+        archiveMetrics = [
+            Metric("보관함", summary.hiddenSummary.total, detail: .hidden),
+        ].filter { $0.value > 0 }
+    }
+
+    @MainActor
+    init(
+        model: KLMSMacModel,
+        snapshot: EngineSnapshot,
+        summary: KLMSMacDashboardSummaryCache,
+        selectedYear: String,
+        selectedSemester: String
+    ) {
+        if selectedYear == DashboardTermFilter.allYears,
+           selectedSemester == DashboardTermFilter.allSemesters {
+            let base = DashboardSummaryPresentation(snapshot: snapshot, summary: summary)
+            primaryMetrics = base.primaryMetrics
+            attentionMetrics = base.attentionMetrics
+            archiveMetrics = base.archiveMetrics
+            return
+        }
+        let counts = DashboardScopedMetricCounts(
+            model: model,
+            snapshot: snapshot,
+            summary: summary,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        )
+        primaryMetrics = [
+            Metric("파일", counts.files, detail: .files),
+            Metric("과제", counts.assignments, detail: .assignments),
+            Metric("공지", counts.notices, detail: .notices),
+            Metric("시험", counts.exams, detail: .exams),
+        ].filter { $0.value > 0 }
+        attentionMetrics = [
+            Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
+            Metric("새 파일", counts.newFiles, detail: .newFiles),
+            Metric("캘린더", counts.calendarAttention, detail: .calendar),
+            Metric("격리", counts.quarantine, detail: .quarantine),
+            Metric("과제 후보", counts.assignmentCandidates, detail: .assignmentCandidates),
+            Metric("시험 후보", counts.examCandidates, detail: .examCandidates),
+            Metric("누락 파일", counts.missingFiles, detail: .missingFiles),
+            Metric("정리된 파일", counts.prunedFiles, detail: .pruned),
         ].filter { $0.value > 0 }
         archiveMetrics = [
             Metric("보관함", summary.hiddenSummary.total, detail: .hidden),
@@ -3138,6 +3293,124 @@ struct DashboardSummaryPresentation {
             return detail
         }
         return nil
+    }
+}
+
+private struct DashboardScopedMetricCounts {
+    var assignments = 0
+    var exams = 0
+    var helpDesk = 0
+    var notices = 0
+    var files = 0
+    var newFiles = 0
+    var calendarAttention = 0
+    var quarantine = 0
+    var assignmentCandidates = 0
+    var examCandidates = 0
+    var missingFiles = 0
+    var prunedFiles = 0
+
+    @MainActor
+    init(
+        model: KLMSMacModel,
+        snapshot: EngineSnapshot,
+        summary: KLMSMacDashboardSummaryCache,
+        selectedYear: String,
+        selectedSemester: String
+    ) {
+        let content = snapshot.legacyState?.content
+        assignments = Self.visibleStateCount(
+            model.dashboardStateItems(for: .assignments),
+            editor: .assignment,
+            snapshot: snapshot,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        )
+        exams = Self.visibleStateCount(
+            model.dashboardStateItems(for: .exams),
+            editor: .exam,
+            snapshot: snapshot,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        )
+        helpDesk = Self.visibleStateCount(
+            content?.helpDeskItems ?? [],
+            editor: .assignment,
+            snapshot: snapshot,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        )
+        assignmentCandidates = Self.visibleStateCount(
+            content?.assignmentCandidates ?? [],
+            editor: .assignment,
+            snapshot: snapshot,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        )
+        examCandidates = Self.visibleStateCount(
+            content?.examCandidates ?? [],
+            editor: .exam,
+            snapshot: snapshot,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        )
+        let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
+        notices = (snapshot.noticeDigest?.notices ?? []).filter { notice in
+            snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden != true
+                && DashboardTermFilter.matches(
+                    notice.academicTerm(generatedAt: generatedAt),
+                    selectedYear: selectedYear,
+                    selectedSemester: selectedSemester
+                )
+        }.count
+        files = snapshot.courseFileManifest.filter {
+            DashboardTermFilter.matches($0.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        }.count
+        newFiles = DashboardTermFilter.terms(for: .newFiles, snapshot: snapshot).filter {
+            DashboardTermFilter.matches($0, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        }.count
+        calendarAttention = (
+            (snapshot.calendarSyncResult?.changes ?? []) + model.mailCalendarChanges()
+        )
+        .dedupedForCalendarDisplay()
+        .filter {
+            $0.isUserVisibleCalendarChange
+                && DashboardTermFilter.matches($0.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        }
+        .count
+        quarantine = summary.visibleCounts.quarantine
+        missingFiles = DashboardTermFilter.terms(for: .missingFiles, snapshot: snapshot).filter {
+            DashboardTermFilter.matches($0, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        }.count
+        prunedFiles = DashboardTermFilter.terms(for: .pruned, snapshot: snapshot).filter {
+            DashboardTermFilter.matches($0, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        }.count
+    }
+
+    private static func visibleStateCount(
+        _ items: [StateItem],
+        editor: StateItemEditorKind,
+        snapshot: EngineSnapshot,
+        selectedYear: String,
+        selectedSemester: String
+    ) -> Int {
+        items.filter { item in
+            !isHidden(item, editor: editor, snapshot: snapshot)
+                && DashboardTermFilter.matches(
+                    item.academicTerm,
+                    selectedYear: selectedYear,
+                    selectedSemester: selectedSemester
+                )
+        }.count
+    }
+
+    private static func isHidden(_ item: StateItem, editor: StateItemEditorKind, snapshot: EngineSnapshot) -> Bool {
+        switch editor {
+        case .assignment, .assignmentRecord:
+            snapshot.manualOverrides?.isAssignmentHidden(item) == true
+        case .exam:
+            snapshot.manualOverrides?.isExamHidden(item) == true
+        }
     }
 }
 

@@ -3727,6 +3727,8 @@ private struct CompanionStatusScreen: View {
     @State private var displayedDashboardPreview: DashboardMetricCategory?
     @State private var dashboardPreviewTask: Task<Void, Never>?
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
+    @State private var selectedYear = CompanionItemListFilter.allYears
+    @State private var selectedSemester = CompanionItemListFilter.allSemesters
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -3775,8 +3777,13 @@ private struct CompanionStatusScreen: View {
     private var statusSummaryColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
             RemoteDashboardSyncCard(model: model, compact: horizontalSizeClass != .regular)
+            CompanionDashboardScopeBar(
+                selectedYear: $selectedYear,
+                selectedSemester: $selectedSemester,
+                options: CompanionDashboardScopeOptions(model: model)
+            )
             CompanionDashboardQuickAccessGrid(
-                status: model.dashboardStatus,
+                status: scopedDashboardStatus,
                 isDataLoaded: model.hasLoadedServerSyncData,
                 isServerConfigured: model.serverRelayConfigured,
                 isLoading: model.isLoadingServerSyncData,
@@ -3789,7 +3796,7 @@ private struct CompanionStatusScreen: View {
             )
             RemoteDashboardMetricOverview(
                 model: model,
-                status: model.dashboardStatus,
+                status: scopedDashboardStatus,
                 isDataLoaded: model.hasLoadedServerSyncData,
                 hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
                 showsLoadingPlaceholder: false,
@@ -3825,7 +3832,12 @@ private struct CompanionStatusScreen: View {
                 )
                 .id(kind)
             } else if let category = displayedDashboardPreview {
-                DashboardCategoryInlineDetailPanel(category: category, model: model)
+                DashboardCategoryInlineDetailPanel(
+                    category: category,
+                    model: model,
+                    initialSelectedYear: selectedYear,
+                    initialSelectedSemester: selectedSemester
+                )
                     .id(category)
             }
         }
@@ -3834,6 +3846,11 @@ private struct CompanionStatusScreen: View {
     private var statusCommandColumn: some View {
         VStack(alignment: .leading, spacing: 12) {
             RemoteDashboardSyncCard(model: model, compact: false)
+            CompanionDashboardScopeBar(
+                selectedYear: $selectedYear,
+                selectedSemester: $selectedSemester,
+                options: CompanionDashboardScopeOptions(model: model)
+            )
         }
     }
 
@@ -3841,7 +3858,7 @@ private struct CompanionStatusScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             RemoteDashboardMetricOverview(
                 model: model,
-                status: model.dashboardStatus,
+                status: scopedDashboardStatus,
                 isDataLoaded: model.hasLoadedServerSyncData,
                 hasFileCleanupDetails: model.dashboardHasFileCleanupDetails,
                 showsLoadingPlaceholder: false,
@@ -3872,7 +3889,12 @@ private struct CompanionStatusScreen: View {
             )
                 .id(kind)
         } else if let category = displayedDashboardPreview {
-            DashboardCategoryInlineDetailPanel(category: category, model: model)
+            DashboardCategoryInlineDetailPanel(
+                category: category,
+                model: model,
+                initialSelectedYear: selectedYear,
+                initialSelectedSemester: selectedSemester
+            )
                 .id(category)
         } else if horizontalSizeClass == .regular {
             VStack(alignment: .leading, spacing: 12) {
@@ -3941,6 +3963,202 @@ private struct CompanionStatusScreen: View {
         return nil
     }
 
+    private var scopedDashboardStatus: SanitizedRemoteStatus {
+        CompanionDashboardScopedStatus(
+            model: model,
+            baseStatus: model.dashboardStatus,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        ).status
+    }
+
+}
+
+private struct CompanionDashboardScopeOptions: Equatable {
+    var years: [String]
+    var semesters: [String]
+
+    @MainActor
+    init(model: CompanionModel) {
+        var items: [ServerRelaySyncItem] = []
+        for category in DashboardMetricCategory.allCases where category != .calendar && category != .quarantine {
+            items += model.cachedDashboardItems(for: category.rawValue)
+        }
+        let options = CompanionItemListFilter.options(for: items)
+        years = options.years
+        semesters = options.semesters
+    }
+}
+
+private struct CompanionDashboardScopeBar: View {
+    @Binding var selectedYear: String
+    @Binding var selectedSemester: String
+    var options: CompanionDashboardScopeOptions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label("동기화 범위", systemImage: "calendar.badge.clock")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                Spacer(minLength: 0)
+                if hasActiveScope {
+                    Button {
+                        companionPerformWithoutAnimation {
+                            selectedYear = CompanionItemListFilter.allYears
+                            selectedSemester = CompanionItemListFilter.allSemesters
+                        }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.caption.weight(.bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .accessibilityLabel("동기화 범위 초기화")
+                }
+            }
+            HStack(spacing: 8) {
+                companionScopePicker("연도", selection: normalizedYearBinding, options: options.years)
+                companionScopePicker("학기", selection: normalizedSemesterBinding, options: options.semesters)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 13))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(Color.klmsBorder.opacity(0.84), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func companionScopePicker(_ title: String, selection: Binding<String>, options: [String]) -> some View {
+        Menu {
+            ForEach(options, id: \.self) { option in
+                Button {
+                    companionPerformWithoutAnimation {
+                        selection.wrappedValue = option
+                    }
+                } label: {
+                    Label(option, systemImage: selection.wrappedValue == option ? "checkmark" : "")
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                Spacer(minLength: 0)
+                Text(selection.wrappedValue)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 11))
+            .overlay {
+                RoundedRectangle(cornerRadius: 11)
+                    .stroke(Color.klmsBorder.opacity(0.88), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(options.count <= 1)
+    }
+
+    private var normalizedYearBinding: Binding<String> {
+        Binding(
+            get: { options.years.contains(selectedYear) ? selectedYear : CompanionItemListFilter.allYears },
+            set: { selectedYear = $0 }
+        )
+    }
+
+    private var normalizedSemesterBinding: Binding<String> {
+        Binding(
+            get: { options.semesters.contains(selectedSemester) ? selectedSemester : CompanionItemListFilter.allSemesters },
+            set: { selectedSemester = $0 }
+        )
+    }
+
+    private var hasActiveScope: Bool {
+        selectedYear != CompanionItemListFilter.allYears || selectedSemester != CompanionItemListFilter.allSemesters
+    }
+}
+
+private struct CompanionDashboardScopedStatus {
+    var status: SanitizedRemoteStatus
+
+    @MainActor
+    init(
+        model: CompanionModel,
+        baseStatus: SanitizedRemoteStatus,
+        selectedYear: String,
+        selectedSemester: String
+    ) {
+        guard selectedYear != CompanionItemListFilter.allYears || selectedSemester != CompanionItemListFilter.allSemesters else {
+            status = baseStatus
+            return
+        }
+        var next = baseStatus
+        next.assignments = Self.count(model: model, category: .assignments, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        next.exams = Self.count(model: model, category: .exams, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        next.helpDesk = Self.count(model: model, category: .helpDesk, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        next.notices = Self.count(model: model, category: .notices, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        next.fileTotal = Self.count(model: model, category: .files, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        let calendarCounts = Self.calendarCounts(model: model, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        next.calendarCreated = calendarCounts.created
+        next.calendarUpdated = calendarCounts.updated
+        next.calendarDeleted = calendarCounts.deleted
+        status = next
+    }
+
+    @MainActor
+    private static func count(
+        model: CompanionModel,
+        category: DashboardMetricCategory,
+        selectedYear: String,
+        selectedSemester: String
+    ) -> Int {
+        let defaultStatus = CompanionItemStatusFilter.defaultFilter(for: category)
+        return model.cachedVisibleDashboardItems(for: category.rawValue).filter { item in
+            defaultStatus.includes(item)
+                && CompanionItemListFilter.matches(item, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        }.count
+    }
+
+    private struct CalendarCounts {
+        var created = 0
+        var updated = 0
+        var deleted = 0
+    }
+
+    @MainActor
+    private static func calendarCounts(
+        model: CompanionModel,
+        selectedYear: String,
+        selectedSemester: String
+    ) -> CalendarCounts {
+        var counts = CalendarCounts()
+        for change in model.visibleCalendarChanges() {
+            guard CompanionItemListFilter.matches(change.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester) else {
+                continue
+            }
+            switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "created", "mail":
+                counts.created += 1
+            case "updated":
+                counts.updated += 1
+            case "deleted":
+                counts.deleted += 1
+            default:
+                continue
+            }
+        }
+        return counts
+    }
 }
 
 private struct CompanionDashboardQuickAccessGrid: View, Equatable {
@@ -5917,6 +6135,33 @@ private enum CompanionItemListFilter {
             yearOptions(from: years),
             semesterOptions(from: semesters)
         )
+    }
+
+    static func matches(_ item: ServerRelaySyncItem, selectedYear: String, selectedSemester: String) -> Bool {
+        if selectedYear != allYears {
+            guard item.academicYear.map(String.init) == selectedYear else {
+                return false
+            }
+        }
+        if selectedSemester != allSemesters,
+           item.academicSemester != selectedSemester {
+            return false
+        }
+        return true
+    }
+
+    static func matches(_ term: AcademicTerm?, selectedYear: String, selectedSemester: String) -> Bool {
+        if selectedYear != allYears {
+            guard let term, String(term.year) == selectedYear else {
+                return false
+            }
+        }
+        if selectedSemester != allSemesters {
+            guard let term, term.semester.displayName == selectedSemester else {
+                return false
+            }
+        }
+        return true
     }
 
     private static func courseOptions(from courses: Set<String>) -> [String] {
@@ -8459,6 +8704,8 @@ private struct DashboardCategoryInlineDetailPanel: View {
     var itemPresentation: CompanionInlineItemRowsPresentation
     var externallySelectedItemID: String?
     var onSelectItem: (ServerRelaySyncItem) -> Void
+    var initialSelectedYear: String
+    var initialSelectedSemester: String
     @State private var query = ""
     @State private var sortOption = CompanionItemSortOption.recent
     @State private var visibilityFilter = CompanionItemVisibilityFilter.visible
@@ -8477,6 +8724,8 @@ private struct DashboardCategoryInlineDetailPanel: View {
         model: CompanionModel,
         itemPresentation: CompanionInlineItemRowsPresentation = .inlineDetail,
         externallySelectedItemID: String? = nil,
+        initialSelectedYear: String = CompanionItemListFilter.allYears,
+        initialSelectedSemester: String = CompanionItemListFilter.allSemesters,
         onSelectItem: @escaping (ServerRelaySyncItem) -> Void = { _ in }
     ) {
         self.category = category
@@ -8484,8 +8733,12 @@ private struct DashboardCategoryInlineDetailPanel: View {
         self.itemPresentation = itemPresentation
         self.externallySelectedItemID = externallySelectedItemID
         self.onSelectItem = onSelectItem
+        self.initialSelectedYear = initialSelectedYear
+        self.initialSelectedSemester = initialSelectedSemester
         _sortOption = State(initialValue: CompanionItemSortOption.defaultSort(for: category))
         _statusFilter = State(initialValue: CompanionItemStatusFilter.defaultFilter(for: category))
+        _selectedYear = State(initialValue: initialSelectedYear)
+        _selectedSemester = State(initialValue: initialSelectedSemester)
     }
 
     private var status: SanitizedRemoteStatus {
@@ -8531,8 +8784,15 @@ private struct DashboardCategoryInlineDetailPanel: View {
             calendarVisibleLimit = currentCalendarVisibleLimit
         }
         .onAppear {
+            applyInitialScopeIfNeeded()
             calendarVisibleLimit = max(calendarVisibleLimit, currentCalendarVisibleLimit)
             seedDefaultListDataIfAvailable()
+        }
+        .onChange(of: initialSelectedYear) { _, _ in
+            applyInitialScopeIfNeeded()
+        }
+        .onChange(of: initialSelectedSemester) { _, _ in
+            applyInitialScopeIfNeeded()
         }
     }
 
@@ -8704,6 +8964,15 @@ private struct DashboardCategoryInlineDetailPanel: View {
             return
         }
         await rebuildCachedListData(for: currentKey)
+    }
+
+    private func applyInitialScopeIfNeeded() {
+        if selectedYear != initialSelectedYear {
+            selectedYear = initialSelectedYear
+        }
+        if selectedSemester != initialSelectedSemester {
+            selectedSemester = initialSelectedSemester
+        }
     }
 
     private func rebuildCachedListData(for inputKey: CompanionItemListInputKey) async {
