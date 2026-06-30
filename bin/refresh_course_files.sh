@@ -47,6 +47,8 @@ FILE_PRESERVE_DOWNLOAD_ARCHIVE="${FILE_PRESERVE_DOWNLOAD_ARCHIVE:-0}"
 FILE_DRY_RUN="${KLMS_DRY_RUN:-0}"
 FILE_PRUNE_BACKUP_ENABLED="${FILE_PRUNE_BACKUP_ENABLED:-1}"
 FILE_PRUNE_BACKUP_KEEP="${FILE_PRUNE_BACKUP_KEEP:-20}"
+FILE_MANIFEST_SHRINK_GUARD_PERCENT="${FILE_MANIFEST_SHRINK_GUARD_PERCENT:-80}"
+FILE_ALLOW_LARGE_MANIFEST_SHRINK="${FILE_ALLOW_LARGE_MANIFEST_SHRINK:-0}"
 FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS="${FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS:-21600}"
 FILE_WEEKLY_FOLDERS_ENABLED_RAW="${FILE_WEEKLY_FOLDERS_ENABLED:-1}"
 case "${FILE_WEEKLY_FOLDERS_ENABLED_RAW:l}" in
@@ -775,6 +777,15 @@ log_files_timing "refresh start output_root=$OUTPUT_ROOT download_work_root=$FIL
 
 PREVIOUS_MANIFEST_COUNT="$(count_manifest_entries "$MANIFEST_JSON")"
 EXISTING_TRACKED_FILE_COUNT="$(count_tracked_output_files "$OUTPUT_ROOT")"
+FILE_REFRESH_BASELINE_MANIFEST_COUNT="${FILE_REFRESH_BASELINE_MANIFEST_COUNT:-$PREVIOUS_MANIFEST_COUNT}"
+FILE_REFRESH_BASELINE_EXISTING_FILE_COUNT="${FILE_REFRESH_BASELINE_EXISTING_FILE_COUNT:-$EXISTING_TRACKED_FILE_COUNT}"
+FILE_REFRESH_PREVIOUS_MANIFEST_SNAPSHOT="${FILE_REFRESH_PREVIOUS_MANIFEST_SNAPSHOT:-$TMP_DIR/course_file_manifest.before_refresh.json}"
+export FILE_REFRESH_BASELINE_MANIFEST_COUNT
+export FILE_REFRESH_BASELINE_EXISTING_FILE_COUNT
+export FILE_REFRESH_PREVIOUS_MANIFEST_SNAPSHOT
+if [[ "${FILE_REFRESH_RECOVERY_REBUILD:-0}" != "1" && -s "$MANIFEST_JSON" ]]; then
+  cp -p "$MANIFEST_JSON" "$FILE_REFRESH_PREVIOUS_MANIFEST_SNAPSHOT"
+fi
 TRACKED_FILE_MISSING_COUNT=0
 if (( PREVIOUS_MANIFEST_COUNT > EXISTING_TRACKED_FILE_COUNT )); then
   TRACKED_FILE_MISSING_COUNT=$((PREVIOUS_MANIFEST_COUNT - EXISTING_TRACKED_FILE_COUNT))
@@ -1041,6 +1052,28 @@ else
 fi
 
 CURRENT_MANIFEST_COUNT="$(count_manifest_entries "$MANIFEST_JSON")"
+unsafe_manifest_shrink="$(
+  python3 - \
+    "$FILE_REFRESH_BASELINE_MANIFEST_COUNT" \
+    "$CURRENT_MANIFEST_COUNT" \
+    "$FILE_REFRESH_BASELINE_EXISTING_FILE_COUNT" \
+    "$FILE_MANIFEST_SHRINK_GUARD_PERCENT" <<'PY'
+import sys
+
+baseline = int(sys.argv[1])
+current = int(sys.argv[2])
+existing = int(sys.argv[3])
+guard_percent = int(sys.argv[4])
+
+if baseline <= 0 or existing <= 0:
+    raise SystemExit(0)
+if current >= baseline:
+    raise SystemExit(0)
+if current * 100 >= baseline * guard_percent:
+    raise SystemExit(0)
+print(f"large-shrink:{baseline}->{current}; existing={existing}; guard={guard_percent}%")
+PY
+)"
 if [[ "${FILE_REFRESH_RECOVERY_REBUILD:-0}" != "1" ]]; then
   rebuild_reason="$(
     python3 - "$PREVIOUS_MANIFEST_COUNT" "$CURRENT_MANIFEST_COUNT" "$EXISTING_TRACKED_FILE_COUNT" <<'PY'
@@ -1068,6 +1101,14 @@ PY
       exec /bin/zsh "$0" "$CONFIG_PATH"
     fi
   fi
+fi
+
+if [[ -n "$unsafe_manifest_shrink" ]] && ! is_truthy "$FILE_ALLOW_LARGE_MANIFEST_SHRINK"; then
+  if [[ -s "$FILE_REFRESH_PREVIOUS_MANIFEST_SNAPSHOT" ]]; then
+    cp -p "$FILE_REFRESH_PREVIOUS_MANIFEST_SNAPSHOT" "$MANIFEST_JSON"
+  fi
+  print -r -- "Refusing to continue file refresh because manifest shrank too much ($unsafe_manifest_shrink). Set FILE_ALLOW_LARGE_MANIFEST_SHRINK=1 only when intentionally pruning an old semester." >&2
+  exit 1
 fi
 
 python3 - "$MANIFEST_JSON" "$OUTPUT_ROOT" <<'PY'

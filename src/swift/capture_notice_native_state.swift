@@ -616,8 +616,13 @@ for rendered in renderState.renderedNotices {
         range: importantRange,
         expectedLabel: importantChecklistLabel
     ) {
-        state.important = importantChecked
-        state.importantAt = importantChecked ? digest.generatedAt : nil
+        if importantChecked {
+            state.important = true
+            state.importantAt = digest.generatedAt
+        } else if state.important != true {
+            state.important = false
+            state.importantAt = nil
+        }
     }
 
     userState.notices[rendered.noticeId] = state

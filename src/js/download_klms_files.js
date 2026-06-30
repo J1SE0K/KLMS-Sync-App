@@ -507,7 +507,8 @@ function run(argv) {
             targetUrl,
             backupRoot,
             index + 1,
-            manifestFilename || `attachment-${index + 1}`
+            manifestFilename || `attachment-${index + 1}`,
+            Math.min(perFileStartTimeoutSeconds, directFetchBatchTimeoutSeconds)
           );
           if (!downloadedPath) {
             const tab = safeValue(() => fileWindowRef.currentTab());
@@ -534,7 +535,8 @@ function run(argv) {
             redirectedDirectUrl,
             backupRoot,
             index + 1,
-            manifestFilename || `attachment-${index + 1}`
+            manifestFilename || `attachment-${index + 1}`,
+            Math.min(perFileStartTimeoutSeconds, directFetchBatchTimeoutSeconds)
           );
           if (!downloadedPath && tab) {
             navigateTabWithoutFocus(tab, redirectedDirectUrl, fileWindowRef);
@@ -1852,13 +1854,13 @@ function isIgnoredDownloadName(name) {
   return text === ".DS_Store" || text.startsWith("._") || text.startsWith(".");
 }
 
-function fetchKlmsFileViaSafari(windowRef, targetUrl, backupRoot, fileIndex, expectedFilename) {
+function fetchKlmsFileViaSafari(windowRef, targetUrl, backupRoot, fileIndex, expectedFilename, timeoutSeconds) {
   if (!windowRef || !targetUrl) {
     return "";
   }
 
   waitForHtmlDocumentReady(windowRef, 10);
-  const payload = fetchBinaryPayloadViaSafari(windowRef, targetUrl);
+  const payload = fetchBinaryPayloadViaSafari(windowRef, targetUrl, timeoutSeconds);
   if (!payload.ok || !payload.base64 || !fetchedPayloadCompatibleWithExpected(payload)) {
     return "";
   }
@@ -2249,73 +2251,23 @@ function getHtmlDocumentReadyState(windowRef) {
   }
 }
 
-function fetchBinaryPayloadViaSafari(windowRef, targetUrl) {
-  const script = [
-    "(function(){",
-    `  var targetUrl = ${JSON.stringify(targetUrl)};`,
-    "  function bytesToBase64(bytes) {",
-    "    var chunkSize = 0x8000;",
-    "    var parts = [];",
-    "    for (var offset = 0; offset < bytes.length; offset += chunkSize) {",
-    "      parts.push(String.fromCharCode.apply(null, bytes.subarray(offset, offset + chunkSize)));",
-    "    }",
-    "    return btoa(parts.join(''));",
-    "  }",
-    "  function bytesToAsciiPreview(bytes) {",
-    "    var length = Math.min(bytes.length, 128);",
-    "    var parts = [];",
-    "    for (var index = 0; index < length; index += 1) {",
-    "      var value = bytes[index];",
-    "      if ((value >= 32 && value <= 126) || value === 9 || value === 10 || value === 13) {",
-    "        parts.push(String.fromCharCode(value));",
-    "      } else {",
-    "        parts.push('.');",
-    "      }",
-    "    }",
-    "    return parts.join('');",
-    "  }",
-    "  try {",
-    "    var xhr = new XMLHttpRequest();",
-    "    xhr.open('GET', targetUrl, false);",
-    "    if (xhr.overrideMimeType) {",
-    "      xhr.overrideMimeType('text/plain; charset=x-user-defined');",
-    "    }",
-    "    xhr.send(null);",
-    "    var status = xhr.status || 0;",
-    "    if (status >= 400) {",
-    "      return JSON.stringify({ok:false,status:status,error:'http-'+status});",
-    "    }",
-    "    var responseText = xhr.responseText || '';",
-    "    var bytes = new Uint8Array(responseText.length);",
-    "    for (var byteIndex = 0; byteIndex < responseText.length; byteIndex += 1) {",
-    "      bytes[byteIndex] = responseText.charCodeAt(byteIndex) & 0xff;",
-    "    }",
-    "    if (!bytes.length) {",
-    "      return JSON.stringify({ok:false,status:status,error:'empty-body'});",
-    "    }",
-    "    return JSON.stringify({",
-    "      ok: true,",
-    "      status: status,",
-    "      responseUrl: xhr.responseURL || '',",
-    "      contentDisposition: xhr.getResponseHeader('Content-Disposition') || '',",
-    "      contentType: xhr.getResponseHeader('Content-Type') || '',",
-    "      headText: bytesToAsciiPreview(bytes),",
-    "      base64: bytesToBase64(bytes)",
-    "    });",
-    "  } catch (error) {",
-    "    return JSON.stringify({ok:false,error:String(error)});",
-    "  }",
-    "})()",
-  ].join("\n");
-  const result = runSafariJavaScript(windowRef, script);
-  if (result == null) {
-    return { ok: false, error: "empty-result" };
+function fetchBinaryPayloadViaSafari(windowRef, targetUrl, timeoutSeconds) {
+  const batchId = `klms-direct-single-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const startResult = startSafariDirectFetchBatch(
+    windowRef,
+    batchId,
+    [{ index: 0, url: targetUrl, expectedFilename: "attachment" }],
+    0
+  );
+  if (!startResult.ok) {
+    return { ok: false, error: startResult.error || "direct-fetch-start-failed" };
   }
-  try {
-    return JSON.parse(String(result));
-  } catch (error) {
-    return { ok: false, error: String(error) };
+  const state = waitForSafariDirectFetchBatch(windowRef, batchId, timeoutSeconds || 30);
+  clearSafariDirectFetchBatch(windowRef, batchId);
+  if (!state || state.status !== "done" || !Array.isArray(state.results)) {
+    return { ok: false, error: state && state.status ? state.status : "direct-fetch-timeout" };
   }
+  return state.results[0] || { ok: false, error: "empty-result" };
 }
 
 function recoverSynapViewerPdf(

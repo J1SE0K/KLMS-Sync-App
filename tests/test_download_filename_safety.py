@@ -222,9 +222,10 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         ]
 
         self.assertIn("fetchBinaryPayloadViaSafari", direct_fetch)
-        self.assertIn("overrideMimeType('text/plain; charset=x-user-defined')", binary_fetch)
-        self.assertIn("responseText.charCodeAt(byteIndex) & 0xff", binary_fetch)
-        self.assertNotIn("responseType = 'arraybuffer'", binary_fetch)
+        self.assertIn("startSafariDirectFetchBatch", binary_fetch)
+        self.assertIn("waitForSafariDirectFetchBatch", binary_fetch)
+        self.assertIn("clearSafariDirectFetchBatch", binary_fetch)
+        self.assertNotIn("xhr.open('GET', targetUrl, false)", binary_fetch)
         self.assertNotIn("\\.pdf$", direct_fetch)
         redirected_block = text[
             text.index("const redirectedDirectUrl")

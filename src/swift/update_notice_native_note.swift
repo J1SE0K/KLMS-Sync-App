@@ -3826,8 +3826,15 @@ func syncUserStateFromRenderedNote(
         if let importantChecked = block.importantEntry?.isChecked {
             debugLog("notice=\(rendered.title) importantChecked=\(importantChecked)")
             if displayMode == .primary || displayMode == .archive {
-                state.important = importantChecked
-                state.importantAt = importantChecked ? timestamp : nil
+                if importantChecked {
+                    state.important = true
+                    state.importantAt = timestamp
+                } else if state.important == true || rendered.shouldCheckImportant == true {
+                    debugLog("notice=\(rendered.title) preserving existing important state on unchecked capture")
+                } else {
+                    state.important = false
+                    state.importantAt = nil
+                }
             }
         } else {
             debugLog("notice=\(rendered.title) importantChecked=nil")

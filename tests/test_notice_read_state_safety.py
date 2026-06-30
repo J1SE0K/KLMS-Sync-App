@@ -281,13 +281,16 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertNotIn("state.readFingerprint = nil", text)
         self.assertNotIn("state.readAt = nil", text)
 
-    def test_archive_capture_can_create_important_state(self) -> None:
+    def test_archive_capture_can_create_and_preserve_important_state(self) -> None:
         text = (
             PROJECT_DIR / "src" / "swift" / "update_notice_native_note.swift"
         ).read_text(encoding="utf-8")
 
         self.assertIn("displayMode == .primary || displayMode == .archive", text)
-        self.assertIn("state.important = importantChecked", text)
+        self.assertIn("if importantChecked", text)
+        self.assertIn("state.important = true", text)
+        self.assertIn("preserving existing important state on unchecked capture", text)
+        self.assertNotIn("state.important = importantChecked", text)
         self.assertIn("suspiciousImportantThreshold", text)
         self.assertIn("importantTrueCount >= suspiciousImportantThreshold", text)
         self.assertIn("$0.rendered.shouldCheckImportant == true", text)
