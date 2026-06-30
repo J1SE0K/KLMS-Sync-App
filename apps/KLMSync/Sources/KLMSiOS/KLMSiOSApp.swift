@@ -491,11 +491,11 @@ final class CompanionModel: ObservableObject {
         let hiddenActionsChanged = dashboardActionHiddenItemIDsCache != nextHiddenByActionItemIDs
         if itemsChanged {
             dashboardSyncItems = nextItems
-            dashboardSyncItemsRevision &+= 1
             dashboardSortedSyncItems = nextItems.companionSorted(by: .recent)
             rebuildChangeSummaryItemLookup(sortedItems: dashboardSortedSyncItems)
         }
         if itemsChanged || hiddenActionsChanged {
+            dashboardSyncItemsRevision &+= 1
             dashboardActionHiddenItemIDsCache = nextHiddenByActionItemIDs
             rebuildDashboardItemLookup(
                 sortedDashboardItems: dashboardSortedSyncItems,
@@ -686,8 +686,8 @@ final class CompanionModel: ObservableObject {
     func removeMailDashboardItem(_ item: ServerRelaySyncItem) {
         mailDashboardItems.removeAll { $0.id == item.id }
         persistMailDashboardItems()
-        connectionSucceeded = true
-        connectionMessage = "\(item.kind.klmsMailDashboardKindName) 항목을 대시보드에서 제거했습니다."
+        connectionSucceeded = nil
+        connectionMessage = ""
     }
 
     func submitRemoveMailDashboardItem(_ item: ServerRelaySyncItem) async {
@@ -1554,6 +1554,7 @@ final class CompanionModel: ObservableObject {
             return
         }
         let updatesServerVisibleState = actionKind.isCompanionImmediateDisplayAction
+        let suppressSuccessFeedback = actionKind.suppressesImmediateSuccessFeedback
         let previousSyncItems = syncItems
         let previousSyncItemsSignature = syncItemsSignature
         let previousMailDashboardItems = mailDashboardItems
@@ -1567,14 +1568,23 @@ final class CompanionModel: ObservableObject {
             applyServerVisibleItemActionLocally(actionKind, itemID: item.id)
             let localAction = action.optimisticCompanionDisplayAction
             replaceRecentItemAction(localAction) { $0.itemID == item.id }
-            connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
+            if !suppressSuccessFeedback {
+                connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
+            } else {
+                connectionMessage = ""
+            }
             connectionSucceeded = true
             errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
             applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)
             replaceRecentItemAction(savedAction) { $0.id == action.id || $0.itemID == item.id }
-            connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
-            connectionSucceeded = true
+            if !suppressSuccessFeedback {
+                connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
+                connectionSucceeded = true
+            } else {
+                connectionMessage = ""
+                connectionSucceeded = nil
+            }
             errorMessage = ""
         } catch {
             guard !isCancellationError(error) else { return }
@@ -1629,7 +1639,6 @@ final class CompanionModel: ObservableObject {
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
-            userAlert = UserAlert(title: "요청 완료", message: calendarActionRequestMessage(for: actionKind))
         } catch {
             guard !isCancellationError(error) else { return }
             if actionKind.resolvesCalendarChange {
@@ -1657,10 +1666,13 @@ final class CompanionModel: ObservableObject {
     func editCalendarEventOnDevice(change: CalendarChange, edit: CalendarEventEdit) async -> Bool {
         let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
         markCalendarChangeResolvedLocally(change)
+        await Task.yield()
         do {
-            try await updateLocalCalendarEvent(change: change, edit: edit)
-            connectionMessage = "이 기기 Calendar 일정을 수정했습니다."
-            connectionSucceeded = true
+            try await Task.detached(priority: .userInitiated) {
+                try await Self.updateLocalCalendarEvent(change: change, edit: edit)
+            }.value
+            connectionMessage = ""
+            connectionSucceeded = nil
             errorMessage = ""
             return true
         } catch {
@@ -1679,16 +1691,19 @@ final class CompanionModel: ObservableObject {
     func deleteCalendarEventOnDevice(change: CalendarChange) async -> Bool {
         let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
         markCalendarChangeResolvedLocally(change)
+        await Task.yield()
         if change.isDeletedAction {
-            connectionMessage = "삭제된 캘린더 항목을 목록에서 정리했습니다."
-            connectionSucceeded = true
+            connectionMessage = ""
+            connectionSucceeded = nil
             errorMessage = ""
             return true
         }
         do {
-            try await deleteLocalCalendarEvent(change: change)
-            connectionMessage = "이 기기 Calendar 일정을 삭제했습니다."
-            connectionSucceeded = true
+            try await Task.detached(priority: .userInitiated) {
+                try await Self.deleteLocalCalendarEvent(change: change)
+            }.value
+            connectionMessage = ""
+            connectionSucceeded = nil
             errorMessage = ""
             return true
         } catch {
@@ -1729,11 +1744,14 @@ final class CompanionModel: ObservableObject {
         let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
         if let change {
             markCalendarChangeResolvedLocally(change)
+            await Task.yield()
         }
         do {
-            try await createLocalCalendarEvent(title: title, edit: edit, change: change)
-            connectionMessage = "이 기기 Calendar에 일정을 등록했습니다."
-            connectionSucceeded = true
+            try await Task.detached(priority: .userInitiated) {
+                try await Self.createLocalCalendarEvent(title: title, edit: edit, change: change)
+            }.value
+            connectionMessage = ""
+            connectionSucceeded = nil
             errorMessage = ""
             return true
         } catch {
@@ -1751,7 +1769,7 @@ final class CompanionModel: ObservableObject {
     }
 
     #if canImport(EventKit)
-    private func ensureLocalCalendarAccess() async throws {
+    private static func ensureLocalCalendarAccess() async throws {
         switch EKEventStore.authorizationStatus(for: .event) {
         case .fullAccess, .authorized:
             return
@@ -1765,8 +1783,8 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    private func createLocalCalendarEvent(title: String, edit: CalendarEventEdit, change: CalendarChange?) async throws {
-        try await ensureLocalCalendarAccess()
+    private static func createLocalCalendarEvent(title: String, edit: CalendarEventEdit, change: CalendarChange?) async throws {
+        try await Self.ensureLocalCalendarAccess()
         let store = EKEventStore()
         let trimmedTitle = edit.title.nilIfBlank ?? title.nilIfBlank ?? change?.title.nilIfBlank ?? "KLMS 일정"
         guard let startDate = parseCalendarEditInputDate(edit.startAt) else {
@@ -1796,14 +1814,14 @@ final class CompanionModel: ObservableObject {
         if let location = edit.location.nilIfBlank ?? change?.location.nilIfBlank {
             event.location = location
         }
-        event.notes = localCalendarNotes(change: change)
+        event.notes = Self.localCalendarNotes(change: change)
         try store.save(event, span: .thisEvent, commit: true)
     }
 
-    private func updateLocalCalendarEvent(change: CalendarChange, edit: CalendarEventEdit) async throws {
-        try await ensureLocalCalendarAccess()
+    private static func updateLocalCalendarEvent(change: CalendarChange, edit: CalendarEventEdit) async throws {
+        try await Self.ensureLocalCalendarAccess()
         let store = EKEventStore()
-        let event = try findLocalCalendarEvent(change: change, store: store)
+        let event = try Self.findLocalCalendarEvent(change: change, store: store)
         if let title = edit.title.nilIfBlank {
             event.title = title
         }
@@ -1828,14 +1846,14 @@ final class CompanionModel: ObservableObject {
         try store.save(event, span: .thisEvent, commit: true)
     }
 
-    private func deleteLocalCalendarEvent(change: CalendarChange) async throws {
-        try await ensureLocalCalendarAccess()
+    private static func deleteLocalCalendarEvent(change: CalendarChange) async throws {
+        try await Self.ensureLocalCalendarAccess()
         let store = EKEventStore()
-        let event = try findLocalCalendarEvent(change: change, store: store)
+        let event = try Self.findLocalCalendarEvent(change: change, store: store)
         try store.remove(event, span: .thisEvent, commit: true)
     }
 
-    private func findLocalCalendarEvent(change: CalendarChange, store: EKEventStore) throws -> EKEvent {
+    private static func findLocalCalendarEvent(change: CalendarChange, store: EKEventStore) throws -> EKEvent {
         if let identifier = change.identifier.nilIfBlank,
            let event = store.event(withIdentifier: identifier) {
             return event
@@ -1862,22 +1880,22 @@ final class CompanionModel: ObservableObject {
             }
         }
 
-        let normalizedTitle = normalizeLocalCalendarLookupText(change.title)
+        let normalizedTitle = Self.normalizeLocalCalendarLookupText(change.title)
         let targetStart = parseCalendarEditInputDate(change.startAt)
         if !normalizedTitle.isEmpty,
            let event = events.first(where: { event in
-               normalizeLocalCalendarLookupText(event.title) == normalizedTitle
-                   && localCalendarDate(event.startDate, isCloseTo: targetStart)
+               Self.normalizeLocalCalendarLookupText(event.title) == normalizedTitle
+                   && Self.localCalendarDate(event.startDate, isCloseTo: targetStart)
            }) {
             return event
         }
 
-        let normalizedCourse = normalizeLocalCalendarLookupText(change.course)
+        let normalizedCourse = Self.normalizeLocalCalendarLookupText(change.course)
         if !normalizedCourse.isEmpty,
            let event = events.first(where: { event in
-               normalizeLocalCalendarLookupText([event.title, event.notes, event.location].compactMap { $0 }.joined(separator: " "))
+               Self.normalizeLocalCalendarLookupText([event.title, event.notes, event.location].compactMap { $0 }.joined(separator: " "))
                    .contains(normalizedCourse)
-                   && localCalendarDate(event.startDate, isCloseTo: targetStart)
+                   && Self.localCalendarDate(event.startDate, isCloseTo: targetStart)
            }) {
             return event
         }
@@ -1885,7 +1903,7 @@ final class CompanionModel: ObservableObject {
         throw companionCalendarError("이 기기 Calendar에서 해당 일정을 찾지 못했습니다.")
     }
 
-    private func localCalendarNotes(change: CalendarChange?) -> String {
+    private static func localCalendarNotes(change: CalendarChange?) -> String {
         guard let change else {
             return "KLMS Sync 메일 붙여넣기에서 이 기기에 등록"
         }
@@ -1899,14 +1917,14 @@ final class CompanionModel: ObservableObject {
         .joined(separator: "\n")
     }
 
-    private func localCalendarDate(_ lhs: Date?, isCloseTo rhs: Date?) -> Bool {
+    private static func localCalendarDate(_ lhs: Date?, isCloseTo rhs: Date?) -> Bool {
         guard let lhs, let rhs else {
             return true
         }
         return abs(lhs.timeIntervalSince(rhs)) <= 60 * 10
     }
 
-    private func normalizeLocalCalendarLookupText(_ text: String?) -> String {
+    private static func normalizeLocalCalendarLookupText(_ text: String?) -> String {
         (text ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
@@ -2466,8 +2484,8 @@ final class CompanionModel: ObservableObject {
             sharedRunLogsSignature = nil
             syncDataNeedsRefresh = true
         }
-        connectionMessage = scope == .all ? "화면 기록과 공유 실행 로그를 지우는 중입니다." : "화면 기록을 지우는 중입니다."
-        connectionSucceeded = true
+        connectionMessage = ""
+        connectionSucceeded = nil
         errorMessage = ""
 
         var remoteClearError: String?
@@ -2494,13 +2512,16 @@ final class CompanionModel: ObservableObject {
             rebuildRemoteLogDerivedState()
             schedulePostActionRefresh(scope: .displayLogs)
         }
-        connectionMessage = remoteClearError ?? (scope == .all ? "화면 기록과 공유 실행 로그를 지웠습니다." : "화면 기록을 지웠습니다.")
-        connectionSucceeded = remoteClearError == nil
-        errorMessage = remoteClearError ?? ""
-        userAlert = UserAlert(
-            title: remoteClearError == nil ? "\(scope.clearTitle) 완료" : "일부 로그 지우기 실패",
-            message: remoteClearError ?? (scope == .all ? "실행, 서버 요청, 파일 요청, 항목 변경, 설정 변경, 공유 실행 로그를 정리했습니다. 진행 중인 요청은 유지됩니다." : "이 기록은 다른 기기 화면에서도 함께 숨겨집니다.")
-        )
+        if let remoteClearError {
+            connectionMessage = "로그 지우기 실패"
+            connectionSucceeded = false
+            errorMessage = remoteClearError
+            userAlert = UserAlert(title: "일부 로그 지우기 실패", message: remoteClearError)
+        } else {
+            connectionMessage = ""
+            connectionSucceeded = nil
+            errorMessage = ""
+        }
     }
 
     func clearSharedRunLogs() async {
@@ -2515,16 +2536,15 @@ final class CompanionModel: ObservableObject {
         sharedRunLogs = []
         sharedRunLogsSignature = nil
         syncDataNeedsRefresh = true
-        connectionMessage = "공유 실행 로그를 지우는 중입니다."
-        connectionSucceeded = true
+        connectionMessage = ""
+        connectionSucceeded = nil
         errorMessage = ""
         do {
-            let result = try await serverRelayStore.clearSharedRunLogs()
+            _ = try await serverRelayStore.clearSharedRunLogs()
             syncDataNeedsRefresh = true
-            connectionMessage = "공유 실행 로그 \(result.runLogs)개를 지웠습니다."
-            connectionSucceeded = true
+            connectionMessage = ""
+            connectionSucceeded = nil
             errorMessage = ""
-            userAlert = UserAlert(title: "공유 실행 로그 지움", message: "모든 기기에서 공유 실행 로그가 비워집니다.")
         } catch {
             sharedRunLogs = previousSharedRunLogs
             sharedRunLogsSignature = previousSharedRunLogsSignature
@@ -13598,6 +13618,37 @@ private extension ServerRelaySettingAction {
 private extension ServerRelayItemActionKind {
     var isCompanionImmediateDisplayAction: Bool {
         isServerDisplayOnlyAction || self == .fileTrash
+    }
+
+    var suppressesImmediateSuccessFeedback: Bool {
+        switch self {
+        case .assignmentComplete,
+             .assignmentHide,
+             .examIgnore,
+             .noticeHide,
+             .fileHide,
+             .fileTrash,
+             .mailDashboardRemove:
+            true
+        case .assignmentRestore,
+             .assignmentUnhide,
+             .examPromote,
+             .examRestore,
+             .noticeRead,
+             .noticeUnread,
+             .noticeImportant,
+             .noticeUnimportant,
+             .noticeUnhide,
+             .fileUnhide,
+             .calendarVerify,
+             .calendarApply,
+             .calendarCreate,
+             .calendarEdit,
+             .calendarDelete,
+             .calendarOpen,
+             .mailDashboardAdd:
+            false
+        }
     }
 
     var isServerDisplayOnlyAction: Bool {
