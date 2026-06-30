@@ -1573,7 +1573,6 @@ final class CompanionModel: ObservableObject {
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
-            schedulePostActionRefresh(scope: .itemActions)
         } catch {
             guard !isCancellationError(error) else { return }
             if updatesServerVisibleState {
@@ -1628,7 +1627,6 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: calendarActionRequestMessage(for: actionKind))
-            schedulePostActionRefresh(scope: .itemActions)
         } catch {
             guard !isCancellationError(error) else { return }
             if actionKind.resolvesCalendarChange {
@@ -1669,7 +1667,6 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "요청 완료", message: "Mac 앱이 Apple Calendar에 새 일정을 등록합니다.")
-            schedulePostActionRefresh(scope: .itemActions)
         } catch {
             guard !isCancellationError(error) else { return }
             removeRecentItemActions { $0.itemID == requestItemID && $0.status == .pending }
