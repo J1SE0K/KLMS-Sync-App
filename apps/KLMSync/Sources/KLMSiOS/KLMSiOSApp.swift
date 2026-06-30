@@ -12035,7 +12035,11 @@ private struct DashboardCalendarChangeDetailRow: View {
                     GridItem(.flexible(minimum: 0), spacing: 8),
                 ], spacing: 8) {
                     Button {
-                        calendarSheetAction = .calendarCreate
+                        Task {
+                            if let onAction {
+                                await onAction(.calendarCreate, change.editDefaults)
+                            }
+                        }
                     } label: {
                         Label("등록", systemImage: "calendar.badge.plus")
                             .frame(maxWidth: .infinity, minHeight: 44)
