@@ -6987,7 +6987,7 @@ final class DashboardDataModelTests: XCTestCase {
         let localRelay = try String(contentsOf: localRelayRoot, encoding: .utf8)
 
         let calendarDetailRow = try sourceStructBody(named: "DashboardCalendarChangeDetailRow", in: ios)
-        XCTAssertTrue(calendarDetailRow.contains("await onAction(.calendarOpen, nil)"))
+        XCTAssertFalse(calendarDetailRow.contains("await onAction(.calendarOpen, nil)"))
         XCTAssertTrue(calendarDetailRow.contains("openSystemCalendar()"))
         XCTAssertTrue(calendarDetailRow.contains("GridItem(.flexible(minimum: 0), spacing: 8)"))
         XCTAssertFalse(calendarDetailRow.contains("GridItem(.adaptive(minimum: 96), spacing: 8)"))

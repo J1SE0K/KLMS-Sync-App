@@ -12074,13 +12074,7 @@ private struct DashboardCalendarChangeDetailRow: View {
                         .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     }
                     Button {
-                        Task {
-                            if let onAction {
-                                await onAction(.calendarOpen, nil)
-                            } else {
-                                openSystemCalendar()
-                            }
-                        }
+                        openSystemCalendar()
                     } label: {
                         Label("캘린더에서 열기", systemImage: "calendar")
                             .frame(maxWidth: .infinity, minHeight: 44)
