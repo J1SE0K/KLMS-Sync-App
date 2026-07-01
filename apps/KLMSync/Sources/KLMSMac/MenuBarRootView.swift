@@ -3158,9 +3158,9 @@ private struct DashboardMainScopeBarView: View {
                 .foregroundStyle(Color.klmsMacPrimaryText)
             Spacer(minLength: 4)
             scopePicker("연도", selection: normalizedYearBinding, values: options.years)
-                .frame(width: 112)
+                .frame(width: 132)
             scopePicker("학기", selection: normalizedSemesterBinding, values: options.semesters)
-                .frame(width: 128)
+                .frame(width: 150)
             if hasActiveScope {
                 Button {
                     selectedYear = DashboardTermFilter.allYears
@@ -3173,7 +3173,7 @@ private struct DashboardMainScopeBarView: View {
                 .help("연도와 학기 범위를 전체로 되돌립니다.")
             }
         }
-        .padding(8)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
@@ -3191,7 +3191,6 @@ private struct DashboardMainScopeBarView: View {
             }
         }
         .labelsHidden()
-        .controlSize(.small)
         .disabled(values.count <= 1)
     }
 

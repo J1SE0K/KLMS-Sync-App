@@ -4374,13 +4374,10 @@ private struct CompanionDashboardScopeBar: View {
             }
             HStack(spacing: 8) {
                 companionScopePicker("연도", selection: normalizedYearBinding, options: options.years)
-                    .frame(width: 118)
                 companionScopePicker("학기", selection: normalizedSemesterBinding, options: options.semesters)
-                    .frame(width: 134)
-                Spacer(minLength: 0)
             }
         }
-        .padding(10)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 13))
         .overlay {
@@ -4396,8 +4393,10 @@ private struct CompanionDashboardScopeBar: View {
             selection: selection,
             options: options,
             titleForOption: { $0 },
-            minHeight: 36,
-            cornerRadius: 9
+            minHeight: 42,
+            cornerRadius: 11,
+            popupPreferredWidth: title == "연도" ? 176 : 196,
+            showsPopupTitle: false
         )
     }
 
@@ -4428,6 +4427,8 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
     var titleForOption: (Option) -> String
     var minHeight: CGFloat
     var cornerRadius: CGFloat
+    var popupPreferredWidth: CGFloat?
+    var showsPopupTitle: Bool
 
     init(
         title: String,
@@ -4436,7 +4437,9 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
         options: [Option],
         titleForOption: @escaping (Option) -> String,
         minHeight: CGFloat = 44,
-        cornerRadius: CGFloat = 11
+        cornerRadius: CGFloat = 11,
+        popupPreferredWidth: CGFloat? = nil,
+        showsPopupTitle: Bool = true
     ) {
         self.title = title
         self.systemImage = systemImage
@@ -4445,6 +4448,8 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
         self.titleForOption = titleForOption
         self.minHeight = minHeight
         self.cornerRadius = cornerRadius
+        self.popupPreferredWidth = popupPreferredWidth
+        self.showsPopupTitle = showsPopupTitle
     }
 
     var body: some View {
@@ -4464,7 +4469,9 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
                 title: title,
                 selection: $selection,
                 options: options,
-                titleForOption: titleForOption
+                titleForOption: titleForOption,
+                popupPreferredWidth: popupPreferredWidth,
+                showsPopupTitle: showsPopupTitle
             )
 #else
             Menu {
@@ -4552,6 +4559,8 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
     @Binding var selection: Option
     var options: [Option]
     var titleForOption: (Option) -> String
+    var popupPreferredWidth: CGFloat?
+    var showsPopupTitle: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(selection: $selection, titleForOption: titleForOption)
@@ -4574,6 +4583,8 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
         context.coordinator.title = title
         context.coordinator.options = options
         context.coordinator.titleForOption = titleForOption
+        context.coordinator.popupPreferredWidth = popupPreferredWidth
+        context.coordinator.showsPopupTitle = showsPopupTitle
         button.isEnabled = options.count > 1
         button.accessibilityLabel = "\(title): \(titleForOption(selection))"
     }
@@ -4583,6 +4594,8 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
         var title = ""
         var options: [Option] = []
         var titleForOption: (Option) -> String
+        var popupPreferredWidth: CGFloat?
+        var showsPopupTitle = true
         private weak var presentedController: UIAlertController?
 
         init(selection: Binding<Option>, titleForOption: @escaping (Option) -> String) {
@@ -4596,7 +4609,7 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
                 return
             }
 
-            let alert = UIAlertController(title: title, message: nil, preferredStyle: .actionSheet)
+            let alert = UIAlertController(title: showsPopupTitle ? title : nil, message: nil, preferredStyle: .actionSheet)
             for option in options {
                 let optionTitle = titleForOption(option)
                 let prefix = option == selection.wrappedValue ? "✓ " : ""
@@ -4605,6 +4618,10 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
                 })
             }
             alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+            if let popupPreferredWidth {
+                let rowCount = CGFloat(options.count + 1 + (showsPopupTitle ? 1 : 0))
+                alert.preferredContentSize = CGSize(width: popupPreferredWidth, height: min(320, max(96, rowCount * 44)))
+            }
             alert.presentationController?.delegate = self
 
             if let popover = alert.popoverPresentationController {
