@@ -4395,7 +4395,7 @@ private struct CompanionDashboardScopeBar: View {
             titleForOption: { $0 },
             minHeight: 42,
             cornerRadius: 11,
-            popupPreferredWidth: title == "연도" ? 176 : 196,
+            popupPreferredWidth: title == "연도" ? 148 : 164,
             showsPopupTitle: false
         )
     }
@@ -4620,7 +4620,7 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
             alert.addAction(UIAlertAction(title: "취소", style: .cancel))
             if let popupPreferredWidth {
                 let rowCount = CGFloat(options.count + 1 + (showsPopupTitle ? 1 : 0))
-                alert.preferredContentSize = CGSize(width: popupPreferredWidth, height: min(320, max(96, rowCount * 44)))
+                alert.preferredContentSize = CGSize(width: popupPreferredWidth, height: min(280, max(88, rowCount * 40)))
             }
             alert.presentationController?.delegate = self
 
