@@ -6895,56 +6895,40 @@ private struct CompanionItemListControls: View {
 
             CompanionControlBox(title: "범위", systemImage: "line.3.horizontal.decrease.circle") {
                 VStack(alignment: .leading, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if yearOptions.count > 1 {
-                            CompanionMenuPickerField(
-                                title: "연도",
-                                systemImage: "calendar",
-                                selection: $selectedYear,
-                                options: yearOptions,
-                                titleForOption: { $0 }
-                            )
-                        }
+                    CompanionMenuPickerField(
+                        title: "연도",
+                        systemImage: "calendar",
+                        selection: $selectedYear,
+                        options: yearOptions,
+                        titleForOption: { $0 }
+                    )
 
-                        if semesterOptions.count > 1 {
-                            CompanionMenuPickerField(
-                                title: "학기",
-                                systemImage: "calendar.badge.clock",
-                                selection: $selectedSemester,
-                                options: semesterOptions,
-                                titleForOption: { $0 }
-                            )
-                        }
-                    }
+                    CompanionMenuPickerField(
+                        title: "학기",
+                        systemImage: "calendar.badge.clock",
+                        selection: $selectedSemester,
+                        options: semesterOptions,
+                        titleForOption: { $0 }
+                    )
 
-                    if courseOptions.count > 1 {
-                        CompanionMenuPickerField(
-                            title: "과목",
-                            systemImage: "book.closed",
-                            selection: $selectedCourse,
-                            options: courseOptions,
-                            titleForOption: { $0 }
-                        )
-                    }
-
-                    if courseOptions.count <= 1 && yearOptions.count <= 1 && semesterOptions.count <= 1 {
-                        Text("전체 범위")
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsSecondaryText)
-                    }
+                    CompanionMenuPickerField(
+                        title: "과목",
+                        systemImage: "book.closed",
+                        selection: $selectedCourse,
+                        options: courseOptions,
+                        titleForOption: { $0 }
+                    )
                 }
             }
 
-            if availableStatusFilters.count > 1 {
-                CompanionControlBox(title: "상태", systemImage: "checklist") {
-                    CompanionMenuPickerField(
-                        title: "상태",
-                        systemImage: "checklist",
-                        selection: $statusFilter,
-                        options: availableStatusFilters,
-                        titleForOption: \.title
-                    )
-                }
+            CompanionControlBox(title: "상태", systemImage: "checklist") {
+                CompanionMenuPickerField(
+                    title: "상태",
+                    systemImage: "checklist",
+                    selection: $statusFilter,
+                    options: availableStatusFilters,
+                    titleForOption: \.title
+                )
             }
 
             CompanionControlBox(title: "표시", systemImage: "slider.horizontal.3") {
@@ -7030,6 +7014,10 @@ private struct CompanionItemListControls: View {
     }
 
     private struct CompanionMenuPickerField<Option: Hashable>: View {
+        private static var menuHeight: CGFloat { 44 }
+        private static var chevronWidth: CGFloat { 18 }
+        private static var checkmarkWidth: CGFloat { 18 }
+
         var title: String
         var systemImage: String
         @Binding var selection: Option
@@ -7045,11 +7033,18 @@ private struct CompanionItemListControls: View {
                 Menu {
                     ForEach(options, id: \.self) { option in
                         Button {
+                            guard selection != option else { return }
                             companionPerformWithoutAnimation {
                                 selection = option
                             }
                         } label: {
-                            Label(titleForOption(option), systemImage: selection == option ? "checkmark" : "")
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark")
+                                    .opacity(selection == option ? 1 : 0)
+                                    .frame(width: Self.checkmarkWidth, alignment: .center)
+                                Text(titleForOption(option))
+                                    .lineLimit(1)
+                            }
                         }
                     }
                 } label: {
@@ -7063,9 +7058,10 @@ private struct CompanionItemListControls: View {
                         Image(systemName: "chevron.down")
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(Color.klmsSecondaryText)
+                            .frame(width: Self.chevronWidth, alignment: .center)
                     }
                     .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight, alignment: .leading)
                     .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
@@ -7080,7 +7076,7 @@ private struct CompanionItemListControls: View {
                     transaction.animation = nil
                     transaction.disablesAnimations = true
                 }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight, alignment: .leading)
             }
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -9239,7 +9235,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
         } else if category == .quarantine {
             panelEmptyText(category.emptyMessage)
         } else {
-            LazyVStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
                 CompanionSearchFilterPanel(title: "검색과 필터", fieldPrompt: "\(category.title) 검색", query: $query) {
                     if let listData = cachedListData {
                         DeferredCompanionItemListControls(
@@ -9336,7 +9332,6 @@ private struct DashboardCategoryInlineDetailPanel: View {
     }
 
     private func invalidateCachedListData() {
-        cachedListData = nil
         cachedListInputKey = nil
     }
 
@@ -12906,7 +12901,6 @@ private struct ServerSyncDataPanel: View {
     }
 
     private func invalidateCachedListData() {
-        cachedListData = nil
         cachedListInputKey = nil
     }
 
