@@ -37,23 +37,25 @@ struct MenuBarRootView: View {
                         expandedLogSummaryKind: $expandedLogSummaryKind
                     )
 
-                    WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: selectedSection, nonce: scrollResetNonce)) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            DashboardTopBarView(model: model, selectedSection: $selectedSection)
-                            MacWorkstationLayoutView(
-                                model: model,
-                                selectedSection: selectedSection,
-                                expandedLogSummaryKind: $expandedLogSummaryKind
-                            )
+                    MacStableWorkspacePane(section: selectedSection) {
+                        WholeScreenVerticalScrollView(resetID: MacWorkspaceScrollResetKey(section: selectedSection, nonce: scrollResetNonce)) {
+                            VStack(alignment: .leading, spacing: 14) {
+                                DashboardTopBarView(model: model, selectedSection: $selectedSection)
+                                MacWorkstationLayoutView(
+                                    model: model,
+                                    selectedSection: selectedSection,
+                                    expandedLogSummaryKind: $expandedLogSummaryKind
+                                )
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 6)
+                            .padding(.bottom, 16)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 6)
-                        .padding(.bottom, 16)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("workspace-scroll-\(selectedSection.rawValue)")
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("workspace-scroll-\(selectedSection.rawValue)")
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
@@ -65,6 +67,26 @@ struct MenuBarRootView: View {
 
     private func resetCurrentSectionScroll() {
         scrollResetNonce &+= 1
+    }
+}
+
+private struct MacStableWorkspacePane<Content: View>: View {
+    var section: KLMSMacSection
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.klmsMacScreenBackground
+                .ignoresSafeArea()
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
     }
 }
 

@@ -2511,8 +2511,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
         XCTAssertTrue(compactRoot.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
         XCTAssertFalse(compactRoot.contains("CompanionCompactTabBar(selectedSection: $selectedSection)\n                .padding(.horizontal, 16)\n                .padding(.top, 7)\n                .padding(.bottom, 10)"))
+        XCTAssertTrue(compactRoot.contains("CompanionStableSectionPane(section: selectedSection, model: model)"))
+        XCTAssertFalse(compactRoot.contains("CompanionDeferredSectionContent(section: selectedSection, model: model)"))
         XCTAssertLessThan(
-            compactRoot.range(of: "CompanionDeferredSectionContent(section: selectedSection, model: model)")?.lowerBound ?? compactRoot.endIndex,
+            compactRoot.range(of: "CompanionStableSectionPane(section: selectedSection, model: model)")?.lowerBound ?? compactRoot.endIndex,
             compactRoot.range(of: "CompanionCompactTabBar(selectedSection: $selectedSection)")?.lowerBound ?? compactRoot.startIndex,
             "iPhone compact layout should keep content first and place the tab bar at the bottom, matching the design preview."
         )
@@ -3911,6 +3913,11 @@ final class DashboardDataModelTests: XCTestCase {
         let macAlertBannerView = try sourceStructBody(named: "MacAlertBannerView", in: mac)
         let macAlertBannerContent = try sourceStructBody(named: "MacAlertBannerContent", in: mac)
         let nextActionPanelView = try sourceStructBody(named: "NextActionPanelView", in: mac)
+        let macStableWorkspacePane = try sourceBody(
+            after: "private struct MacStableWorkspacePane<Content: View>: View",
+            in: mac,
+            description: "Mac stable workspace pane"
+        )
         let deferredMacWorkspacePanel = try sourceBody(
             after: "private struct DeferredMacWorkspacePanel<Content: View>: View",
             in: mac,
@@ -4076,8 +4083,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macRootBody.contains("MacWorkspaceSelectionAccessibilityMarker(section: selectedSection)"))
         XCTAssertTrue(macRootBody.contains("MacWorkspaceRenderedAccessibilityMarker(section: selectedSection)"))
         XCTAssertTrue(macRootBody.contains(".frame(maxWidth: .infinity, alignment: .topLeading)"))
+        XCTAssertTrue(macRootBody.contains("MacStableWorkspacePane(section: selectedSection)"))
         XCTAssertTrue(macRootBody.contains("MacWorkstationLayoutView("))
         XCTAssertTrue(macRootBody.contains(".accessibilityIdentifier(\"workspace-scroll-\\(selectedSection.rawValue)\")"))
+        XCTAssertTrue(macStableWorkspacePane.contains("Color.klmsMacScreenBackground"))
+        XCTAssertTrue(macStableWorkspacePane.contains("content"))
+        XCTAssertTrue(macStableWorkspacePane.contains(".clipped()"))
+        XCTAssertFalse(macStableWorkspacePane.contains(".accessibilityIdentifier(\"workspace-stable-pane-\\(section.rawValue)\")"))
+        XCTAssertTrue(macStableWorkspacePane.contains("transaction.disablesAnimations = true"))
         XCTAssertTrue(macSelectionMarker.contains(".accessibilityIdentifier(\"workspace-content-\\(section.rawValue)\")"))
         XCTAssertTrue(macSelectionMarker.contains(".accessibilityLabel(section.accessibilitySummary)"))
         XCTAssertTrue(macSelectionMarker.contains(".frame(width: 1, height: 1)"))
@@ -6261,7 +6274,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("private struct CompanionSectionContent"))
         XCTAssertTrue(ios.contains("CompanionSplitRootView(model: model, selectedSection: $selectedSection)"))
         XCTAssertTrue(ios.contains("CompanionTabRootView(model: model)"))
-        XCTAssertTrue(ios.contains("CompanionDeferredSectionContent(section: selectedSection, model: model)"))
+        XCTAssertTrue(ios.contains("CompanionStableSectionPane(section: selectedSection, model: model)"))
+        XCTAssertFalse(ios.contains("CompanionDeferredSectionContent(section: selectedSection, model: model)"))
         XCTAssertTrue(ios.contains("CompanionStableSectionPane(section: currentSection, model: model)"))
         XCTAssertTrue(stableSectionPane.contains("Color.klmsScreenBackground"))
         XCTAssertTrue(stableSectionPane.contains("CompanionDeferredSectionContent(section: section, model: model)"))

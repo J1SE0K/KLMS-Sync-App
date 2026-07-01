@@ -3820,7 +3820,7 @@ private struct CompanionTabRootView: View {
     @State private var selectedSection: CompanionAppSection = .status
 
     var body: some View {
-        CompanionDeferredSectionContent(section: selectedSection, model: model)
+        CompanionStableSectionPane(section: selectedSection, model: model)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 CompanionCompactTabBar(selectedSection: $selectedSection)
