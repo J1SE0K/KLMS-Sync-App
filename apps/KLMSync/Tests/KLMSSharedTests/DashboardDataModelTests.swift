@@ -4855,9 +4855,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosScreenContainer.contains("private var attentionSnapshot: RemoteAttentionSnapshot"))
         XCTAssertTrue(iosScreenContainer.contains(".accessibilitySortPriority(100)"))
         XCTAssertTrue(iosScreenContainer.contains(".zIndex(1)"))
+        XCTAssertTrue(iosScreenContainer.contains(".overlay(alignment: .top)"))
+        XCTAssertTrue(iosScreenContainer.contains(".allowsHitTesting(attentionSnapshot.hasAttention)"))
+        XCTAssertFalse(iosScreenContainer.contains("VStack(spacing: 0) {\n                RemoteAttentionStack("))
         XCTAssertLessThan(
-            try XCTUnwrap(iosScreenContainer.range(of: "RemoteAttentionStack(")).lowerBound,
-            try XCTUnwrap(iosScreenContainer.range(of: "WholeScreenVerticalScrollView")).lowerBound
+            try XCTUnwrap(iosScreenContainer.range(of: "WholeScreenVerticalScrollView")).lowerBound,
+            try XCTUnwrap(iosScreenContainer.range(of: "RemoteAttentionStack(")).lowerBound
         )
         XCTAssertTrue(iosScreenContainer.contains("Color.klmsScreenBackground"))
         XCTAssertFalse(iosScreenContainer.contains("Color.klmsScreenBackground.ignoresSafeArea()"))

@@ -5678,32 +5678,32 @@ private struct CompanionScreenContainer<Content: View>: View {
     private var screenContent: some View {
         ZStack {
             Color.klmsScreenBackground
-            VStack(spacing: 0) {
+            WholeScreenVerticalScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    CompanionScreenHeader(title: title, model: model)
+                    content()
+                }
+                .padding(
+                    .horizontal,
+                    horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16
+                )
+                .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
+                .padding(.bottom, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.bottomPadding : 20)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .overlay(alignment: .top) {
                 RemoteAttentionStack(
                     snapshot: attentionSnapshot,
                     onCancel: {
                         await model.cancelRunningCommand()
                     }
                 )
-                    .accessibilitySortPriority(100)
-                    .zIndex(1)
-                    .padding(.horizontal, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16)
-                    .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
-                    .padding(.bottom, 10)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                WholeScreenVerticalScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        CompanionScreenHeader(title: title, model: model)
-                        content()
-                    }
-                    .padding(
-                        .horizontal,
-                        horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16
-                    )
-                    .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
-                    .padding(.bottom, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.bottomPadding : 20)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
+                .accessibilitySortPriority(100)
+                .padding(.horizontal, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16)
+                .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .zIndex(1)
+                .allowsHitTesting(attentionSnapshot.hasAttention)
             }
         }
         .navigationTitle(title)
