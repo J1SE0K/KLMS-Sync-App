@@ -3816,7 +3816,7 @@ struct CompanionRootView: View {
 }
 
 private struct CompanionTabRootView: View {
-    let model: CompanionModel
+    @ObservedObject var model: CompanionModel
     @State private var selectedSection: CompanionAppSection = .status
 
     var body: some View {
@@ -3902,7 +3902,7 @@ private struct CompanionCompactTabBar: View {
 }
 
 private struct CompanionSplitRootView: View {
-    let model: CompanionModel
+    @ObservedObject var model: CompanionModel
     @Binding var selectedSection: CompanionAppSection?
 
     var body: some View {
@@ -4037,7 +4037,7 @@ private struct CompanionSidebarButton: View {
 
 private struct CompanionDeferredSectionContent: View {
     var section: CompanionAppSection
-    let model: CompanionModel
+    @ObservedObject var model: CompanionModel
 
     var body: some View {
         CompanionSectionContent(section: section, model: model)
@@ -4046,7 +4046,7 @@ private struct CompanionDeferredSectionContent: View {
 
 private struct CompanionSectionContent: View {
     var section: CompanionAppSection
-    let model: CompanionModel
+    @ObservedObject var model: CompanionModel
 
     var body: some View {
         Group {
@@ -4075,7 +4075,7 @@ private struct CompanionSectionContent: View {
 }
 
 private struct CompanionStatusScreen: View {
-    let model: CompanionModel
+    @ObservedObject var model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
     @State private var displayedDashboardPreview: DashboardMetricCategory?
     @State private var dashboardPreviewTask: Task<Void, Never>?
@@ -4615,7 +4615,7 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
 private struct CompanionDashboardCategoryScreen: View {
     var title: String
     var category: DashboardMetricCategory
-    let model: CompanionModel
+    @ObservedObject var model: CompanionModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -4640,7 +4640,7 @@ private struct CompanionDashboardCategoryScreen: View {
 }
 
 private struct CompanionTasksScreen: View {
-    let model: CompanionModel
+    @ObservedObject var model: CompanionModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedCompactTaskCategory = DashboardMetricCategory.assignments
 
@@ -4703,7 +4703,7 @@ private struct CompanionTasksScreen: View {
 }
 
 private struct CompanionSettingsScreen: View {
-    let model: CompanionModel
+    @ObservedObject var model: CompanionModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
@@ -5158,7 +5158,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
 }
 
 private struct CompanionHistoryScreen: View {
-    let model: CompanionModel
+    @ObservedObject var model: CompanionModel
     @State private var selectedLogSummaryKind: RemoteLogSummaryKind? = .status
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -9169,6 +9169,12 @@ private struct DashboardCategoryInlineDetailPanel: View {
         .onChange(of: horizontalSizeClass) { _, _ in
             calendarVisibleLimit = currentCalendarVisibleLimit
         }
+        .onChange(of: model.dashboardSyncItemsRevision) { _, _ in
+            invalidateCachedListData()
+            Task { @MainActor in
+                await rebuildCachedListDataAfterInputSettles()
+            }
+        }
         .onAppear {
             applyInitialScopeIfNeeded()
             calendarVisibleLimit = max(calendarVisibleLimit, currentCalendarVisibleLimit)
@@ -9350,6 +9356,11 @@ private struct DashboardCategoryInlineDetailPanel: View {
             return
         }
         await rebuildCachedListData(for: currentKey)
+    }
+
+    private func invalidateCachedListData() {
+        cachedListData = nil
+        cachedListInputKey = nil
     }
 
     private func applyInitialScopeIfNeeded() {
@@ -12879,6 +12890,12 @@ private struct ServerSyncDataPanel: View {
             .task(id: listInputKey) {
                 await rebuildCachedListDataAfterInputSettles()
             }
+            .onChange(of: itemsRevision) { _, _ in
+                invalidateCachedListData()
+                Task { @MainActor in
+                    await rebuildCachedListDataAfterInputSettles()
+                }
+            }
         }
     }
 
@@ -12909,6 +12926,11 @@ private struct ServerSyncDataPanel: View {
             return
         }
         await rebuildCachedListData(for: currentKey)
+    }
+
+    private func invalidateCachedListData() {
+        cachedListData = nil
+        cachedListInputKey = nil
     }
 
     private func rebuildCachedListData(for inputKey: CompanionItemListInputKey) async {
