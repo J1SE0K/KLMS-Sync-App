@@ -3919,8 +3919,7 @@ private struct CompanionSplitRootView: View {
             Rectangle()
                 .fill(Color.klmsBorder)
                 .frame(width: 1)
-            CompanionDeferredSectionContent(section: currentSection, model: model)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            CompanionStableSectionPane(section: currentSection, model: model)
                 .layoutPriority(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -4035,6 +4034,26 @@ private struct CompanionSidebarButton: View {
     }
 }
 
+private struct CompanionStableSectionPane: View {
+    var section: CompanionAppSection
+    @ObservedObject var model: CompanionModel
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.klmsScreenBackground
+                .ignoresSafeArea()
+            CompanionDeferredSectionContent(section: section, model: model)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+    }
+}
+
 private struct CompanionDeferredSectionContent: View {
     var section: CompanionAppSection
     @ObservedObject var model: CompanionModel
@@ -4083,7 +4102,6 @@ private struct CompanionStatusScreen: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedDashboardPreview: DashboardMetricCategory?
     @State private var displayedDashboardPreview: DashboardMetricCategory?
-    @State private var dashboardPreviewTask: Task<Void, Never>?
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
     @State private var selectedYear = CompanionItemListFilter.allYears
     @State private var selectedSemester = CompanionItemListFilter.allSemesters
@@ -4188,7 +4206,6 @@ private struct CompanionStatusScreen: View {
                     fileCleanupReports: model.cachedFileCleanupReportsForDashboard(),
                     model: model
                 )
-                .id(kind)
             } else if let category = displayedDashboardPreview {
                 DashboardCategoryInlineDetailPanel(
                     category: category,
@@ -4196,7 +4213,6 @@ private struct CompanionStatusScreen: View {
                     initialSelectedYear: selectedYear,
                     initialSelectedSemester: selectedSemester
                 )
-                    .id(category)
             }
         }
     }
@@ -4245,7 +4261,6 @@ private struct CompanionStatusScreen: View {
                 fileCleanupReports: model.cachedFileCleanupReportsForDashboard(),
                 model: model
             )
-                .id(kind)
         } else if let category = displayedDashboardPreview {
             DashboardCategoryInlineDetailPanel(
                 category: category,
@@ -4253,7 +4268,6 @@ private struct CompanionStatusScreen: View {
                 initialSelectedYear: selectedYear,
                 initialSelectedSemester: selectedSemester
             )
-                .id(category)
         } else if horizontalSizeClass == .regular {
             VStack(alignment: .leading, spacing: 12) {
                 if model.hasLoadedServerSyncData {
@@ -4282,32 +4296,15 @@ private struct CompanionStatusScreen: View {
         companionPerformWithoutAnimation {
             selectedChangeSummary = nil
             selectedDashboardPreview = category
-            displayedDashboardPreview = nil
+            displayedDashboardPreview = category
         }
-        deferDashboardPreview(category)
     }
 
     private func selectChangeSummary(_ kind: RemoteChangeSummaryKind) {
-        dashboardPreviewTask?.cancel()
-        dashboardPreviewTask = nil
         companionPerformWithoutAnimation {
             selectedDashboardPreview = nil
             displayedDashboardPreview = nil
             selectedChangeSummary = kind
-        }
-    }
-
-    private func deferDashboardPreview(_ category: DashboardMetricCategory) {
-        dashboardPreviewTask?.cancel()
-        dashboardPreviewTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else {
-                return
-            }
-            companionPerformWithoutAnimation {
-                displayedDashboardPreview = category
-            }
-            dashboardPreviewTask = nil
         }
     }
 
@@ -4682,7 +4679,6 @@ private struct CompanionTasksScreen: View {
                     selectedCategory: $selectedCompactTaskCategory
                 )
                 DashboardCategoryInlineDetailPanel(category: selectedCompactTaskCategory, model: model)
-                    .id(selectedCompactTaskCategory.rawValue)
             } else {
                 CompanionCategoryDataLoadingState(
                     category: selectedCompactTaskCategory,
@@ -7940,7 +7936,6 @@ private struct RemoteDashboardChangeSummary: View {
                 fileCleanupReports: model.cachedFileCleanupReportsForDashboard(),
                 model: model
             )
-                .id(kind)
         }
     }
 }
