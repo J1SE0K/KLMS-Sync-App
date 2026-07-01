@@ -4041,6 +4041,12 @@ private struct CompanionDeferredSectionContent: View {
 
     var body: some View {
         CompanionSectionContent(section: section, model: model)
+            .id(section.rawValue)
+            .background(Color.klmsScreenBackground)
+            .transaction { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
     }
 }
 
@@ -6864,7 +6870,6 @@ private struct CompanionItemListControls: View {
     var defaultStatusFilter: CompanionItemStatusFilter
     var totalCount: Int
     var filteredCount: Int
-    @State private var expandedPickerID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -6902,7 +6907,7 @@ private struct CompanionItemListControls: View {
                 VStack(alignment: .leading, spacing: 8) {
                     VStack(alignment: .leading, spacing: 8) {
                         if yearOptions.count > 1 {
-                            companionInlinePickerField(
+                            companionMenuPickerField(
                                 title: "연도",
                                 systemImage: "calendar",
                                 selection: $selectedYear,
@@ -6911,7 +6916,7 @@ private struct CompanionItemListControls: View {
                         }
 
                         if semesterOptions.count > 1 {
-                            companionInlinePickerField(
+                            companionMenuPickerField(
                                 title: "학기",
                                 systemImage: "calendar.badge.clock",
                                 selection: $selectedSemester,
@@ -6921,7 +6926,7 @@ private struct CompanionItemListControls: View {
                     }
 
                     if courseOptions.count > 1 {
-                        companionInlinePickerField(
+                        companionMenuPickerField(
                             title: "과목",
                             systemImage: "book.closed",
                             selection: $selectedCourse,
@@ -7041,21 +7046,26 @@ private struct CompanionItemListControls: View {
         }
     }
 
-    private func companionInlinePickerField(
+    private func companionMenuPickerField(
         title: String,
         systemImage: String,
         selection: Binding<String>,
         options: [String]
     ) -> some View {
-        let isExpanded = expandedPickerID == title
-        return VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: systemImage)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
 
-            Button {
-                companionPerformWithoutAnimation {
-                    expandedPickerID = isExpanded ? nil : title
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        companionPerformWithoutAnimation {
+                            selection.wrappedValue = option
+                        }
+                    } label: {
+                        Label(option, systemImage: selection.wrappedValue == option ? "checkmark" : "")
+                    }
                 }
             } label: {
                 HStack(spacing: 8) {
@@ -7065,7 +7075,7 @@ private struct CompanionItemListControls: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 8)
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    Image(systemName: "chevron.down")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
@@ -7079,31 +7089,13 @@ private struct CompanionItemListControls: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .contentShape(RoundedRectangle(cornerRadius: 8))
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
+            .buttonStyle(.plain)
+            .disabled(options.count <= 1)
             .transaction { transaction in
                 transaction.animation = nil
                 transaction.disablesAnimations = true
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(options, id: \.self) { option in
-                        companionChoiceChip(
-                            title: option,
-                            isSelected: selection.wrappedValue == option
-                        ) {
-                            companionPerformWithoutAnimation {
-                                selection.wrappedValue = option
-                            }
-                        }
-                    }
-                }
-                .transaction { transaction in
-                    transaction.animation = nil
-                    transaction.disablesAnimations = true
-                }
-            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
