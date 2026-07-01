@@ -4388,68 +4388,14 @@ private struct CompanionDashboardScopeBar: View {
     }
 
     private func companionScopePicker(_ title: String, selection: Binding<String>, options: [String]) -> some View {
-        ZStack {
-            companionScopePickerLabel(title, value: selection.wrappedValue)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-
-#if canImport(UIKit)
-            CompanionUIKitChoiceMenuButton(
-                title: title,
-                selection: selection,
-                options: options,
-                titleForOption: { $0 }
-            )
-#else
-            Menu {
-                ForEach(options, id: \.self) { option in
-                    Button {
-                        companionPerformWithoutAnimation {
-                            selection.wrappedValue = option
-                        }
-                    } label: {
-                        Label(option, systemImage: selection.wrappedValue == option ? "checkmark" : "")
-                    }
-                }
-            } label: {
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(maxWidth: .infinity, minHeight: 42)
-                    .contentShape(RoundedRectangle(cornerRadius: 11))
-            }
-            .buttonStyle(.plain)
-#endif
-        }
-        .frame(maxWidth: .infinity, minHeight: 42)
-        .disabled(options.count <= 1)
-        .accessibilityLabel("\(title): \(selection.wrappedValue)")
-        .transaction { transaction in
-            transaction.animation = nil
-            transaction.disablesAnimations = true
-        }
-    }
-
-    private func companionScopePickerLabel(_ title: String, value: String) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color.klmsSecondaryText)
-            Spacer(minLength: 0)
-            Text(value)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.klmsPrimaryText)
-                .lineLimit(1)
-            Image(systemName: "chevron.down")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(Color.klmsSecondaryText)
-        }
-        .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, minHeight: 42)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 11))
-        .overlay {
-            RoundedRectangle(cornerRadius: 11)
-                .stroke(Color.klmsBorder.opacity(0.88), lineWidth: 1)
-        }
+        CompanionNativeChoiceField(
+            title: title,
+            selection: selection,
+            options: options,
+            titleForOption: { $0 },
+            minHeight: 42,
+            cornerRadius: 11
+        )
     }
 
     private var normalizedYearBinding: Binding<String> {
@@ -4468,6 +4414,132 @@ private struct CompanionDashboardScopeBar: View {
 
     private var hasActiveScope: Bool {
         selectedYear != CompanionItemListFilter.allYears || selectedSemester != CompanionItemListFilter.allSemesters
+    }
+}
+
+private struct CompanionNativeChoiceField<Option: Hashable>: View {
+    var title: String
+    var systemImage: String?
+    @Binding var selection: Option
+    var options: [Option]
+    var titleForOption: (Option) -> String
+    var minHeight: CGFloat
+    var cornerRadius: CGFloat
+
+    init(
+        title: String,
+        systemImage: String? = nil,
+        selection: Binding<Option>,
+        options: [Option],
+        titleForOption: @escaping (Option) -> String,
+        minHeight: CGFloat = 44,
+        cornerRadius: CGFloat = 11
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        _selection = selection
+        self.options = options
+        self.titleForOption = titleForOption
+        self.minHeight = minHeight
+        self.cornerRadius = cornerRadius
+    }
+
+    var body: some View {
+        ZStack {
+            CompanionNativeChoiceFieldLabel(
+                title: title,
+                value: titleForOption(selection),
+                systemImage: systemImage,
+                minHeight: minHeight,
+                cornerRadius: cornerRadius
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+
+#if canImport(UIKit)
+            CompanionUIKitChoiceMenuButton(
+                title: title,
+                selection: $selection,
+                options: options,
+                titleForOption: titleForOption
+            )
+#else
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        guard selection != option else { return }
+                        companionPerformWithoutAnimation {
+                            selection = option
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark")
+                                .opacity(selection == option ? 1 : 0)
+                                .frame(width: 18, alignment: .center)
+                            Text(titleForOption(option))
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            } label: {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(maxWidth: .infinity, minHeight: minHeight)
+                    .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
+            }
+            .buttonStyle(.plain)
+#endif
+        }
+        .frame(maxWidth: .infinity, minHeight: minHeight)
+        .disabled(options.count <= 1)
+        .accessibilityLabel("\(title): \(titleForOption(selection))")
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+    }
+}
+
+private struct CompanionNativeChoiceFieldLabel: View {
+    var title: String
+    var value: String
+    var systemImage: String?
+    var minHeight: CGFloat
+    var cornerRadius: CGFloat
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .frame(width: 16, alignment: .center)
+            }
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.84)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsPrimaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Color.klmsSecondaryText)
+                .frame(width: 16, alignment: .center)
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: cornerRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .stroke(Color.klmsBorder.opacity(0.88), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 }
 
@@ -7146,8 +7218,6 @@ private struct CompanionItemListControls: View {
 
     private struct CompanionMenuPickerField<Option: Hashable>: View {
         private static var menuHeight: CGFloat { 44 }
-        private static var chevronWidth: CGFloat { 18 }
-        private static var checkmarkWidth: CGFloat { 18 }
 
         var title: String
         var systemImage: String
@@ -7156,98 +7226,15 @@ private struct CompanionItemListControls: View {
         var titleForOption: (Option) -> String
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 6) {
-                Label(title, systemImage: systemImage)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-
-                ZStack {
-                    menuVisualLabel
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-
-#if canImport(UIKit)
-                    CompanionUIKitChoiceMenuButton(
-                        title: title,
-                        selection: $selection,
-                        options: options,
-                        titleForOption: titleForOption
-                    )
-#else
-                    Menu {
-                        ForEach(options, id: \.self) { option in
-                            Button {
-                                guard selection != option else { return }
-                                companionPerformWithoutAnimation {
-                                    selection = option
-                                }
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checkmark")
-                                        .opacity(selection == option ? 1 : 0)
-                                        .frame(width: Self.checkmarkWidth, alignment: .center)
-                                    Text(titleForOption(option))
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                    } label: {
-                        Rectangle()
-                            .fill(Color.clear)
-                            .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight)
-                            .contentShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(options.count <= 1)
-                    .accessibilityLabel("\(title): \(titleForOption(selection))")
-                    .transaction { transaction in
-                        transaction.animation = nil
-                        transaction.disablesAnimations = true
-                    }
-#endif
-                }
-                .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight, alignment: .leading)
-            }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.klmsBorder, lineWidth: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .transaction { transaction in
-                transaction.animation = nil
-                transaction.disablesAnimations = true
-            }
-        }
-
-        private var menuVisualLabel: some View {
-            HStack(spacing: 8) {
-                Text(titleForOption(selection))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                    .frame(width: Self.chevronWidth, alignment: .center)
-            }
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight, alignment: .leading)
-            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.klmsBorder, lineWidth: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-            .transaction { transaction in
-                transaction.animation = nil
-                transaction.disablesAnimations = true
-            }
+            CompanionNativeChoiceField(
+                title: title,
+                systemImage: systemImage,
+                selection: $selection,
+                options: options,
+                titleForOption: titleForOption,
+                minHeight: Self.menuHeight,
+                cornerRadius: 11
+            )
         }
     }
 
@@ -11464,11 +11451,15 @@ private struct MailDashboardItemEditForm: View {
         NavigationStack {
             Form {
                 Section {
-                    Picker("분류", selection: $kind) {
-                        ForEach(Self.kindOptions, id: \.self) { value in
-                            Text(value.klmsMailDashboardKindName).tag(value)
-                        }
-                    }
+                    CompanionNativeChoiceField(
+                        title: "분류",
+                        systemImage: "tag",
+                        selection: $kind,
+                        options: Self.kindOptions,
+                        titleForOption: { $0.klmsMailDashboardKindName },
+                        minHeight: 44,
+                        cornerRadius: 11
+                    )
                     TextField("제목", text: $title)
                     TextField("과목", text: $course)
                     TextField("일시", text: $timestamp)
@@ -16167,7 +16158,7 @@ private struct RemoteSettingRow: View {
     var isSubmitting: Bool
     var createSettingAction: (ServerRelaySetting, String) async -> Void
     @State private var draftValue = ""
-    @State private var isChoiceExpanded = false
+    @State private var choiceValue = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -16213,9 +16204,13 @@ private struct RemoteSettingRow: View {
             if draftValue.isEmpty {
                 draftValue = setting.value
             }
+            if choiceValue.isEmpty {
+                choiceValue = setting.value
+            }
         }
         .onChange(of: setting.value) { _, newValue in
             draftValue = newValue
+            choiceValue = newValue
         }
     }
 
@@ -16241,45 +16236,16 @@ private struct RemoteSettingRow: View {
             .buttonStyle(KLMSActionButtonStyle(tone: setting.boolValue ? .success : .soft))
             .disabled(!setting.editable)
         case .choice:
-            VStack(alignment: .leading, spacing: 8) {
-                Button {
-                    companionPerformWithoutAnimation {
-                        isChoiceExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "list.bullet")
-                            .font(.subheadline.weight(.bold))
-                            .frame(width: 18, height: 18)
-                    Text(settingChoiceTitle(setting.value.nilIfEmpty ?? ""))
-                            .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                            .minimumScaleFactor(0.78)
-                    Spacer(minLength: 8)
-                        Image(systemName: isChoiceExpanded ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.bold))
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(KLMSActionButtonStyle())
-                .disabled(!setting.editable)
-
-                if isChoiceExpanded {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(setting.options, id: \.self) { option in
-                            settingChoiceChip(option)
-                        }
-                    }
-                    .transaction { transaction in
-                        transaction.animation = nil
-                        transaction.disablesAnimations = true
-                    }
-                }
-            }
-            .transaction { transaction in
-                transaction.animation = nil
-                transaction.disablesAnimations = true
-            }
+            CompanionNativeChoiceField(
+                title: "값",
+                systemImage: "list.bullet",
+                selection: settingChoiceBinding,
+                options: settingChoiceOptions,
+                titleForOption: settingChoiceTitle,
+                minHeight: 44,
+                cornerRadius: 11
+            )
+            .disabled(!setting.editable)
         case .number, .text:
             HStack(spacing: 6) {
                 TextField("값", text: $draftValue)
@@ -16298,45 +16264,34 @@ private struct RemoteSettingRow: View {
         }
     }
 
-    private func settingChoiceChip(_ option: String) -> some View {
-        let isSelected = setting.value == option
-        return HStack(spacing: 6) {
-            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.62))
-                .frame(width: 14, height: 14)
-            Text(settingChoiceTitle(option))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.klmsPrimaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.78)
-            Spacer(minLength: 0)
+    private var settingChoiceOptions: [String] {
+        if !setting.options.isEmpty {
+            return setting.options
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 9))
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
-                .frame(width: 3)
-                .padding(.vertical, 8)
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        }
-        .companionStableTap(cornerRadius: 9) {
-            Task {
-                await createSettingAction(setting, option)
+        return [setting.value].filter { !$0.isEmpty }
+    }
+
+    private var settingChoiceBinding: Binding<String> {
+        Binding(
+            get: {
+                if settingChoiceOptions.contains(choiceValue) {
+                    return choiceValue
+                }
+                if settingChoiceOptions.contains(setting.value) {
+                    return setting.value
+                }
+                return settingChoiceOptions.first ?? ""
+            },
+            set: { newValue in
+                guard newValue != choiceValue else { return }
+                companionPerformWithoutAnimation {
+                    choiceValue = newValue
+                }
+                Task {
+                    await createSettingAction(setting, newValue)
+                }
             }
-        }
-        .accessibilityLabel(settingChoiceTitle(option))
-        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
-        .transaction { transaction in
-            transaction.animation = nil
-            transaction.disablesAnimations = true
-        }
+        )
     }
 
     private var settingExplanation: String? {
