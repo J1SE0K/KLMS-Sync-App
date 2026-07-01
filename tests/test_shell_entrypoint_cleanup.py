@@ -739,7 +739,9 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             ios_view.index("private struct CompanionScreenContainer")
             : ios_view.index("private struct CompanionScreenHeader")
         ]
-        self.assertLess(container.index("RemoteAttentionStack("), container.index("CompanionScreenHeader(title: title, model: model)"))
+        self.assertIn(".overlay(alignment: .top)", container)
+        self.assertIn(".allowsHitTesting(attentionSnapshot.hasAttention)", container)
+        self.assertLess(container.index("CompanionScreenHeader(title: title, model: model)"), container.index("RemoteAttentionStack("))
         self.assertEqual(ios_view.count("RemoteAttentionStack(\n"), 1)
 
     def test_mac_settings_are_grouped_by_tabs_without_duplicate_file_controls(self) -> None:
@@ -1545,7 +1547,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("DashboardCategoryInlineDetailPanel(", ios_app)
         self.assertIn("ServerSyncItemInlineDetailPanel(item: item, model: model)", ios_app)
         self.assertIn("else if let category = displayedDashboardPreview", ios_app)
-        self.assertIn("deferDashboardPreview(category)", ios_app)
+        self.assertIn("displayedDashboardPreview = category", ios_app)
+        self.assertNotIn("deferDashboardPreview(category)", ios_app)
         self.assertNotIn('Label("상세 보기", systemImage: "arrow.right.circle")', ios_app)
         status_screen = ios_app.split("private struct CompanionStatusScreen", 1)[1].split(
             "private struct CompanionRunScreen",
@@ -1561,8 +1564,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         )[0]
         self.assertIn("selectDashboardCategory(category)", status_tap_block)
         self.assertIn("selectedDashboardPreview = category", select_category_block)
-        self.assertIn("displayedDashboardPreview = nil", select_category_block)
-        self.assertIn("deferDashboardPreview(category)", select_category_block)
+        self.assertIn("displayedDashboardPreview = category", select_category_block)
+        self.assertNotIn("deferDashboardPreview(category)", select_category_block)
         self.assertNotIn("selectedDashboardRoute = category", status_tap_block)
         self.assertNotIn("selectedSyncItem", status_screen)
         self.assertNotIn(".navigationDestination", status_screen)
