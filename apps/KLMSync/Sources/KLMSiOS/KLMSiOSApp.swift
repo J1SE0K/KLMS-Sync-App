@@ -7035,6 +7035,14 @@ private struct CompanionItemListControls: View {
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
 
+#if canImport(UIKit)
+                    CompanionUIKitMenuButton(
+                        title: title,
+                        selection: $selection,
+                        options: options,
+                        titleForOption: titleForOption
+                    )
+#else
                     Menu {
                         ForEach(options, id: \.self) { option in
                             Button {
@@ -7065,6 +7073,7 @@ private struct CompanionItemListControls: View {
                         transaction.animation = nil
                         transaction.disablesAnimations = true
                     }
+#endif
                 }
                 .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight, alignment: .leading)
             }
@@ -7110,6 +7119,62 @@ private struct CompanionItemListControls: View {
             }
         }
     }
+
+#if canImport(UIKit)
+    private struct CompanionUIKitMenuButton<Option: Hashable>: UIViewRepresentable {
+        var title: String
+        @Binding var selection: Option
+        var options: [Option]
+        var titleForOption: (Option) -> String
+
+        func makeCoordinator() -> Coordinator {
+            Coordinator(selection: $selection)
+        }
+
+        func makeUIView(context: Context) -> UIButton {
+            let button = UIButton(type: .system)
+            button.showsMenuAsPrimaryAction = true
+            button.changesSelectionAsPrimaryAction = false
+            button.backgroundColor = .clear
+            button.setTitle("", for: .normal)
+            button.setImage(nil, for: .normal)
+            button.contentHorizontalAlignment = .fill
+            button.contentVerticalAlignment = .fill
+            button.accessibilityTraits.insert(.button)
+            return button
+        }
+
+        func updateUIView(_ button: UIButton, context: Context) {
+            context.coordinator.selection = $selection
+            button.isEnabled = options.count > 1
+            button.accessibilityLabel = "\(title): \(titleForOption(selection))"
+            button.menu = UIMenu(children: options.map { option in
+                UIAction(
+                    title: titleForOption(option),
+                    image: option == selection ? UIImage(systemName: "checkmark") : nil,
+                    state: option == selection ? .on : .off
+                ) { _ in
+                    context.coordinator.select(option)
+                }
+            })
+        }
+
+        final class Coordinator {
+            var selection: Binding<Option>
+
+            init(selection: Binding<Option>) {
+                self.selection = selection
+            }
+
+            func select(_ option: Option) {
+                guard selection.wrappedValue != option else { return }
+                companionPerformWithoutAnimation {
+                    selection.wrappedValue = option
+                }
+            }
+        }
+    }
+#endif
 
     private func resetFilters() {
         sortOption = .recent
