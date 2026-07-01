@@ -2596,12 +2596,21 @@ function normalizeSyncItem(raw) {
   }
   const id = String(raw.id || "").trim() || crypto.randomUUID();
   const now = new Date().toISOString();
+  const rawAcademicYear = raw.academicYear;
+  const numericAcademicYear = Number(rawAcademicYear);
+  const academicYear = rawAcademicYear === null
+    || rawAcademicYear === undefined
+    || String(rawAcademicYear).trim() === ""
+    ? null
+    : (Number.isFinite(numericAcademicYear) && numericAcademicYear >= 2000 && numericAcademicYear <= 2099
+      ? numericAcademicYear
+      : null);
   return {
     id,
     kind,
     course: sanitizePublicText(raw.course),
     academicTerm: sanitizePublicText(raw.academicTerm),
-    academicYear: Number.isFinite(Number(raw.academicYear)) ? Number(raw.academicYear) : null,
+    academicYear,
     academicSemester: sanitizePublicText(raw.academicSemester),
     title: sanitizePublicText(raw.title),
     timestamp: sanitizePublicText(raw.timestamp),
@@ -2663,6 +2672,144 @@ function normalizeTermCatalog(raw) {
   };
 }
 
+function applyTermCatalogToSyncItems(inputItems, termCatalog) {
+  const catalog = normalizeTermCatalog(termCatalog);
+  const selectedYear = Number.isFinite(Number(catalog?.selected_year)) ? Number(catalog.selected_year) : null;
+  const selectedSemester = sanitizePublicText(catalog?.selected_semester);
+  const selectedTerm = selectedYear && selectedSemester
+    ? { year: selectedYear, semester: selectedSemester }
+    : null;
+  const selectedCourseKeys = new Set();
+  for (const course of catalog?.courses || []) {
+    for (const value of [course.title, course.code]) {
+      const key = normalizeCourseKey(value);
+      if (key) selectedCourseKeys.add(key);
+    }
+  }
+  return inputItems
+    .map(normalizeSyncItem)
+    .filter(Boolean)
+    .map((item) => {
+      if (selectedTerm && courseKeyMatchesAny(item.course, selectedCourseKeys)) {
+        return syncItemWithAcademicTerm(item, selectedTerm);
+      }
+      const inferred = inferAcademicTermForSyncItem(item, selectedYear);
+      if (inferred) {
+        return syncItemWithAcademicTerm(item, inferred);
+      }
+      if (selectedTerm
+          && item.academicYear === selectedTerm.year
+          && item.academicSemester === selectedTerm.semester
+          && selectedCourseKeys.size > 0) {
+        return syncItemWithAcademicTerm(item, null);
+      }
+      return item;
+    });
+}
+
+function syncItemWithAcademicTerm(item, term) {
+  if (!term) {
+    return {
+      ...item,
+      academicTerm: "",
+      academicYear: null,
+      academicSemester: "",
+    };
+  }
+  return {
+    ...item,
+    academicTerm: `${term.year}년 ${term.semester}`,
+    academicYear: term.year,
+    academicSemester: term.semester,
+  };
+}
+
+function inferAcademicTermForSyncItem(item, fallbackYear) {
+  const texts = [item.course, item.title, item.timestamp, item.status, item.detail]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  for (const text of texts) {
+    const explicit = explicitAcademicTerm(text);
+    if (explicit) return explicit;
+  }
+  for (const text of texts) {
+    const yearMonth = firstYearMonth(text);
+    if (yearMonth) return termFromYearMonth(yearMonth.year, yearMonth.month);
+    const month = firstMonthWithoutYear(text);
+    if (month && fallbackYear) return termFromYearMonth(fallbackYear, month);
+  }
+  return null;
+}
+
+function explicitAcademicTerm(text) {
+  const normalized = String(text || "").replace(/[_/-]/g, " ");
+  const rules = [
+    [/(20\d{2}).{0,18}(spring|spr|봄|1\s*학기|1st\s*semester|first\s*semester)/i, "봄학기"],
+    [/(20\d{2}).{0,18}(summer|sum|여름|하계|summer\s*semester)/i, "여름학기"],
+    [/(20\d{2}).{0,18}(fall|autumn|가을|2\s*학기|2nd\s*semester|second\s*semester)/i, "가을학기"],
+    [/(20\d{2}).{0,18}(winter|win|겨울|동계|winter\s*semester)/i, "겨울학기"],
+    [/(spring|spr|봄|1\s*학기|1st\s*semester|first\s*semester).{0,18}(20\d{2})/i, "봄학기", 2],
+    [/(summer|sum|여름|하계|summer\s*semester).{0,18}(20\d{2})/i, "여름학기", 2],
+    [/(fall|autumn|가을|2\s*학기|2nd\s*semester|second\s*semester).{0,18}(20\d{2})/i, "가을학기", 2],
+    [/(winter|win|겨울|동계|winter\s*semester).{0,18}(20\d{2})/i, "겨울학기", 2],
+  ];
+  for (const [regex, semester, yearIndex = 1] of rules) {
+    const match = normalized.match(regex);
+    const year = match ? Number(match[yearIndex]) : NaN;
+    if (Number.isFinite(year)) return { year, semester };
+  }
+  return null;
+}
+
+function firstYearMonth(text) {
+  const patterns = [
+    /(20\d{2})\s*년\s*(1[0-2]|0?[1-9])\s*월/,
+    /(20\d{2})[-./_](1[0-2]|0?[1-9])[-./_]\d{1,2}/,
+    /(20\d{2})[-./_](1[0-2]|0?[1-9])\b/,
+  ];
+  for (const regex of patterns) {
+    const match = String(text || "").match(regex);
+    if (match) return { year: Number(match[1]), month: Number(match[2]) };
+  }
+  return null;
+}
+
+function firstMonthWithoutYear(text) {
+  const match = String(text || "").match(/\b(1[0-2]|0?[1-9])(?:\s*월|[-./]\d{1,2}\b)/);
+  return match ? Number(match[1]) : null;
+}
+
+function termFromYearMonth(year, month) {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || year < 2000 || year > 2099 || month < 1 || month > 12) {
+    return null;
+  }
+  if (month >= 3 && month <= 6) return { year, semester: "봄학기" };
+  if (month >= 7 && month <= 8) return { year, semester: "여름학기" };
+  if (month >= 9) return { year, semester: "가을학기" };
+  return { year: year - 1, semester: "겨울학기" };
+}
+
+function courseKeyMatchesAny(course, keys) {
+  const needle = normalizeCourseKey(course);
+  if (!needle) return false;
+  for (const key of keys) {
+    if (needle === key) return true;
+    if (Math.min(needle.length, key.length) >= 4 && (needle.startsWith(key) || key.startsWith(needle))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizeCourseKey(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
 function normalizeBoolean(value) {
   if (typeof value === "boolean") {
     return value;
@@ -2680,8 +2827,10 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
   const now = new Date().toISOString();
   const runLogsClearedAt = getMeta("syncDataRunLogsClearedAt");
   const runLogs = normalizeRunLogs(extras.runLogs, runLogsClearedAt);
+  const normalizedTermCatalog = normalizeTermCatalog(extras.termCatalog);
+  const termItems = applyTermCatalogToSyncItems(items, normalizedTermCatalog);
   const itemOverlay = applyItemActionsToSyncDataSnapshot(
-    items,
+    termItems,
     extras.calendarChanges || [],
     state.itemActions || [],
     now
@@ -2719,7 +2868,7 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
     }
     setMeta("syncDataDryRunReports", JSON.stringify(extras.dryRunReports || []));
     setMeta("syncDataCalendarChanges", JSON.stringify(itemOverlay.calendarChanges));
-    setMeta("syncDataTermCatalog", JSON.stringify(extras.termCatalog || null));
+    setMeta("syncDataTermCatalog", JSON.stringify(normalizedTermCatalog || null));
     setMeta("syncDataSettings", JSON.stringify(settings));
     setMeta("syncDataRunLogs", JSON.stringify(runLogs));
     setMeta("syncDataVerifySummary", JSON.stringify(extras.verifySummary || null));
@@ -3131,6 +3280,7 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
   const dryRunReports = parseJSON(getMeta("syncDataDryRunReports"), []);
   const calendarChanges = parseJSON(getMeta("syncDataCalendarChanges"), []);
   const termCatalog = parseJSON(getMeta("syncDataTermCatalog"), null);
+  const normalizedTermCatalog = normalizeTermCatalog(termCatalog);
   const visibleCalendarChanges = normalizeCalendarChanges(calendarChanges).filter(isUserVisibleCalendarChange);
   const settings = parseJSON(getMeta("syncDataSettings"), []);
   const sharedSettings = loadSharedSettings();
@@ -3140,10 +3290,13 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
   return {
     generatedAt: getMeta("syncDataGeneratedAt") || "",
     updatedAt: getMeta("syncDataUpdatedAt") || "",
-    items: rows.map((row) => normalizeSyncItem(parseJSON(row.payload_json, null))).filter(Boolean),
+    items: applyTermCatalogToSyncItems(
+      rows.map((row) => parseJSON(row.payload_json, null)),
+      normalizedTermCatalog
+    ),
     dryRunReports: normalizeDryRunReports(dryRunReports),
     calendarChanges: visibleCalendarChanges,
-    termCatalog: normalizeTermCatalog(termCatalog),
+    termCatalog: normalizedTermCatalog,
     settings: normalizeSettings(settings),
     sharedSettings,
     runLogs: normalizeRunLogs(runLogs, runLogsClearedAt),

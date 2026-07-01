@@ -500,21 +500,24 @@ final class CompanionModel: ObservableObject {
             dashboardSortedSyncItems = nextItems.companionSorted(by: .recent)
             rebuildChangeSummaryItemLookup(sortedItems: dashboardSortedSyncItems)
         }
-        if itemsChanged || hiddenActionsChanged {
-            dashboardSyncItemsRevision &+= 1
+        let lookupChanged = rebuildDashboardItemLookup(
+            sortedDashboardItems: dashboardSortedSyncItems,
+            hiddenByActionItemIDs: nextHiddenByActionItemIDs
+        )
+        if hiddenActionsChanged {
             dashboardActionHiddenItemIDsCache = nextHiddenByActionItemIDs
-            rebuildDashboardItemLookup(
-                sortedDashboardItems: dashboardSortedSyncItems,
-                hiddenByActionItemIDs: nextHiddenByActionItemIDs
-            )
+        }
+        if itemsChanged || hiddenActionsChanged || lookupChanged {
+            dashboardSyncItemsRevision &+= 1
         }
         rebuildDashboardStatus()
     }
 
+    @discardableResult
     private func rebuildDashboardItemLookup(
         sortedDashboardItems: [ServerRelaySyncItem]? = nil,
         hiddenByActionItemIDs providedHiddenByActionItemIDs: Set<String>? = nil
-    ) {
+    ) -> Bool {
         var next: [String: [ServerRelaySyncItem]] = [:]
         var nextVisible: [String: [ServerRelaySyncItem]] = [:]
         var nextVisibleLookup: [String: [String: ServerRelaySyncItem]] = [:]
@@ -572,6 +575,12 @@ final class CompanionModel: ObservableObject {
                 )
             }
         }
+        let didChange = dashboardItemsByCategoryID != next
+            || visibleDashboardItemsByCategoryID != nextVisible
+            || visibleDashboardItemLookupByCategoryID != nextVisibleLookup
+            || dashboardVisibleCounts != nextVisibleCounts
+            || dashboardFilterOptionsByCategoryID != nextFilterOptions
+            || visibleDashboardTaskItems != nextVisibleTaskItems
         dashboardItemsByCategoryID = next
         visibleDashboardItemsByCategoryID = nextVisible
         visibleDashboardItemLookupByCategoryID = nextVisibleLookup
@@ -579,6 +588,7 @@ final class CompanionModel: ObservableObject {
         dashboardFilterOptionsByCategoryID = nextFilterOptions
         defaultDashboardListDataByCategoryID = nextDefaultListData
         visibleDashboardTaskItems = nextVisibleTaskItems
+        return didChange
     }
 
     private func dashboardActionHiddenItemIDs() -> Set<String> {
@@ -3253,6 +3263,7 @@ final class CompanionModel: ObservableObject {
         syncItems = []
         dryRunReports = []
         calendarChanges = []
+        termCatalog = nil
         remoteSettings = []
         sharedSettings = []
         sharedRunLogs = []
@@ -3312,7 +3323,15 @@ final class CompanionModel: ObservableObject {
         for item in items {
             hasher.combine(item.id)
             hasher.combine(item.kind)
+            hasher.combine(item.course)
+            hasher.combine(item.academicTerm)
+            hasher.combine(item.academicYear)
+            hasher.combine(item.academicSemester)
+            hasher.combine(item.title)
+            hasher.combine(item.timestamp)
             hasher.combine(item.status)
+            hasher.combine(item.detail)
+            hasher.combine(item.attachmentCount)
             hasher.combine(item.updatedAt)
             hasher.combine(item.isRead)
             hasher.combine(item.isImportant)

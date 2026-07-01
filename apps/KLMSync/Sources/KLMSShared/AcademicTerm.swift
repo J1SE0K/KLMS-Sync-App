@@ -247,8 +247,22 @@ public struct AcademicTermCatalog: Codable, Sendable, Equatable {
             return false
         }
         return courses.contains { item in
-            item.title.klmsCourseKey == needle || item.code.klmsCourseKey == needle
+            Self.courseKey(needle, matches: item.title.klmsCourseKey)
+                || Self.courseKey(needle, matches: item.code.klmsCourseKey)
         }
+    }
+
+    private static func courseKey(_ lhs: String, matches rhs: String) -> Bool {
+        guard !lhs.isEmpty, !rhs.isEmpty else {
+            return false
+        }
+        if lhs == rhs {
+            return true
+        }
+        guard min(lhs.count, rhs.count) >= 4 else {
+            return false
+        }
+        return lhs.hasPrefix(rhs) || rhs.hasPrefix(lhs)
     }
 }
 

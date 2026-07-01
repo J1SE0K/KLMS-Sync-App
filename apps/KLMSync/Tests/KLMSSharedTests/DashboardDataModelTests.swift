@@ -5200,7 +5200,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("@Published private(set) var changeSummaryCalendarChangesByKindID: [String: [CalendarChange]] = [:]"))
         XCTAssertTrue(ios.contains("@Published private(set) var fileCleanupReportsForDashboard: [DryRunReport] = []"))
         XCTAssertTrue(ios.contains("private func rebuildDashboardDerivedState()"))
-        XCTAssertTrue(ios.contains("if itemsChanged || hiddenActionsChanged {\n            dashboardSyncItemsRevision &+= 1"))
+        XCTAssertTrue(ios.contains("if itemsChanged || hiddenActionsChanged || lookupChanged {\n            dashboardSyncItemsRevision &+= 1"))
         XCTAssertTrue(companionModel.contains("guard !isApplyingServerSyncData else { return }\n            rebuildDashboardFileCleanupDetails()\n            rebuildFileCleanupReportCache()"))
         XCTAssertTrue(companionModel.contains("latestFileAccessRequestByItemID"))
         XCTAssertTrue(companionModel.contains("activeItemActionByItemID"))
@@ -5219,8 +5219,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionModel.contains("let nextHiddenByActionItemIDs = dashboardActionHiddenItemIDs()"))
         XCTAssertTrue(companionModel.contains("let hiddenActionsChanged = dashboardActionHiddenItemIDsCache != nextHiddenByActionItemIDs"))
         XCTAssertTrue(companionModel.contains("dashboardSortedSyncItems = nextItems.companionSorted(by: .recent)"))
-        XCTAssertTrue(companionModel.contains("if itemsChanged || hiddenActionsChanged"))
-        XCTAssertTrue(companionModel.contains("rebuildDashboardItemLookup(\n                sortedDashboardItems: dashboardSortedSyncItems,\n                hiddenByActionItemIDs: nextHiddenByActionItemIDs\n            )"))
+        XCTAssertTrue(companionModel.contains("let lookupChanged = rebuildDashboardItemLookup("))
+        XCTAssertTrue(companionModel.contains("if itemsChanged || hiddenActionsChanged || lookupChanged"))
+        XCTAssertTrue(companionModel.contains("sortedDashboardItems: dashboardSortedSyncItems,\n            hiddenByActionItemIDs: nextHiddenByActionItemIDs"))
         XCTAssertFalse(companionModel.contains("let sortedDashboardItems = dashboardSyncItems.companionSorted(by: .recent)"))
         XCTAssertTrue(companionModel.contains("DashboardMetricCategory.itemCategory(for: item)"))
         XCTAssertTrue(companionModel.contains("visibleDashboardTaskItems = nextVisibleTaskItems"))
@@ -7103,6 +7104,40 @@ final class DashboardDataModelTests: XCTestCase {
             AcademicTerm.infer(dateTexts: ["5월 23일"], generatedAt: "2026-05-23T08:55:35Z")?.displayName,
             "2026년 봄학기"
         )
+    }
+
+    func testAcademicTermCatalogMatchesAbbreviatedCourseTitles() throws {
+        let catalog = AcademicTermCatalog(
+            version: 1,
+            generatedAt: "2026-07-01T00:00:00Z",
+            selectedYear: 2026,
+            selectedSemesterCode: "summer",
+            selectedSemester: "여름학기",
+            years: [
+                AcademicYearCatalogOption(year: 2026, label: "2026년도", selected: true)
+            ],
+            semesters: [
+                AcademicSemesterCatalogOption(code: "summer", label: "여름", displayName: "여름학기", selected: true)
+            ],
+            terms: [
+                AcademicTermCatalogOption(year: 2026, semesterCode: "summer", semester: "여름학기", displayName: "2026년 여름학기", selected: true)
+            ],
+            courses: [
+                AcademicCourseCatalogOption(
+                    id: "1",
+                    code: "",
+                    title: "공공정책 특강<AI 안전, 정책 및 거버넌스>",
+                    url: "",
+                    year: 2026,
+                    semesterCode: "summer",
+                    semester: "여름학기",
+                    term: "2026년 여름학기"
+                )
+            ]
+        )
+
+        XCTAssertTrue(catalog.selectedTermApplies(to: "공공정책 특강"))
+        XCTAssertFalse(catalog.selectedTermApplies(to: "데이타베이스 개론"))
     }
 
     func testStateAndNoticeExposeAcademicTerm() throws {
