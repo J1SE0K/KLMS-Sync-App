@@ -4041,7 +4041,6 @@ private struct CompanionDeferredSectionContent: View {
 
     var body: some View {
         CompanionSectionContent(section: section, model: model)
-            .id(section.rawValue)
             .background(Color.klmsScreenBackground)
             .transaction { transaction in
                 transaction.animation = nil
@@ -6889,48 +6888,46 @@ private struct CompanionItemListControls: View {
             }
 
             CompanionControlBox(title: "정렬", systemImage: "arrow.up.arrow.down") {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(CompanionItemSortOption.allCases) { option in
-                        companionChoiceChip(
-                            title: option.title,
-                            isSelected: sortOption == option
-                        ) {
-                            companionPerformWithoutAnimation {
-                                sortOption = option
-                            }
-                        }
-                    }
-                }
+                CompanionMenuPickerField(
+                    title: "정렬 기준",
+                    systemImage: "arrow.up.arrow.down",
+                    selection: $sortOption,
+                    options: CompanionItemSortOption.allCases,
+                    titleForOption: \.title
+                )
             }
 
             CompanionControlBox(title: "범위", systemImage: "line.3.horizontal.decrease.circle") {
                 VStack(alignment: .leading, spacing: 8) {
                     VStack(alignment: .leading, spacing: 8) {
                         if yearOptions.count > 1 {
-                            companionMenuPickerField(
+                            CompanionMenuPickerField(
                                 title: "연도",
                                 systemImage: "calendar",
                                 selection: $selectedYear,
-                                options: yearOptions
+                                options: yearOptions,
+                                titleForOption: { $0 }
                             )
                         }
 
                         if semesterOptions.count > 1 {
-                            companionMenuPickerField(
+                            CompanionMenuPickerField(
                                 title: "학기",
                                 systemImage: "calendar.badge.clock",
                                 selection: $selectedSemester,
-                                options: semesterOptions
+                                options: semesterOptions,
+                                titleForOption: { $0 }
                             )
                         }
                     }
 
                     if courseOptions.count > 1 {
-                        companionMenuPickerField(
+                        CompanionMenuPickerField(
                             title: "과목",
                             systemImage: "book.closed",
                             selection: $selectedCourse,
-                            options: courseOptions
+                            options: courseOptions,
+                            titleForOption: { $0 }
                         )
                     }
 
@@ -6944,35 +6941,25 @@ private struct CompanionItemListControls: View {
 
             if availableStatusFilters.count > 1 {
                 CompanionControlBox(title: "상태", systemImage: "checklist") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(availableStatusFilters) { filter in
-                            companionChoiceChip(
-                                title: filter.title,
-                                isSelected: statusFilter == filter
-                            ) {
-                                companionPerformWithoutAnimation {
-                                    statusFilter = filter
-                                }
-                            }
-                        }
-                    }
+                    CompanionMenuPickerField(
+                        title: "상태",
+                        systemImage: "checklist",
+                        selection: $statusFilter,
+                        options: availableStatusFilters,
+                        titleForOption: \.title
+                    )
                 }
             }
 
             CompanionControlBox(title: "표시", systemImage: "slider.horizontal.3") {
                 VStack(alignment: .leading, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(CompanionItemVisibilityFilter.allCases) { option in
-                            companionChoiceChip(
-                                title: option.title,
-                                isSelected: visibilityFilter == option
-                            ) {
-                                companionPerformWithoutAnimation {
-                                    visibilityFilter = option
-                                }
-                            }
-                        }
-                    }
+                    CompanionMenuPickerField(
+                        title: "표시 범위",
+                        systemImage: "eye",
+                        selection: $visibilityFilter,
+                        options: CompanionItemVisibilityFilter.allCases,
+                        titleForOption: \.title
+                    )
 
                     VStack(alignment: .leading, spacing: 8) {
                         if supportsNewOnly {
@@ -7046,68 +7033,71 @@ private struct CompanionItemListControls: View {
         }
     }
 
-    private func companionMenuPickerField(
-        title: String,
-        systemImage: String,
-        selection: Binding<String>,
-        options: [String]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label(title, systemImage: systemImage)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color.klmsSecondaryText)
+    private struct CompanionMenuPickerField<Option: Hashable>: View {
+        var title: String
+        var systemImage: String
+        @Binding var selection: Option
+        var options: [Option]
+        var titleForOption: (Option) -> String
 
-            Menu {
-                ForEach(options, id: \.self) { option in
-                    Button {
-                        companionPerformWithoutAnimation {
-                            selection.wrappedValue = option
+        var body: some View {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(title, systemImage: systemImage)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+
+                Menu {
+                    ForEach(options, id: \.self) { option in
+                        Button {
+                            companionPerformWithoutAnimation {
+                                selection = option
+                            }
+                        } label: {
+                            Label(titleForOption(option), systemImage: selection == option ? "checkmark" : "")
                         }
-                    } label: {
-                        Label(option, systemImage: selection.wrappedValue == option ? "checkmark" : "")
                     }
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(titleForOption(selection))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsPrimaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(Color.klmsSecondaryText)
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.klmsBorder, lineWidth: 1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .contentShape(RoundedRectangle(cornerRadius: 8))
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Text(selection.wrappedValue)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsPrimaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(Color.klmsSecondaryText)
+                .buttonStyle(.plain)
+                .disabled(options.count <= 1)
+                .transaction { transaction in
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
                 }
-                .padding(.horizontal, 10)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.klmsBorder, lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .contentShape(RoundedRectangle(cornerRadius: 8))
             }
-            .buttonStyle(.plain)
-            .disabled(options.count <= 1)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsBorder, lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
             .transaction { transaction in
                 transaction.animation = nil
                 transaction.disablesAnimations = true
             }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .transaction { transaction in
-            transaction.animation = nil
-            transaction.disablesAnimations = true
         }
     }
 
