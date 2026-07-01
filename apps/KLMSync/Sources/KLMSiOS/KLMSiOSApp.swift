@@ -4388,40 +4388,68 @@ private struct CompanionDashboardScopeBar: View {
     }
 
     private func companionScopePicker(_ title: String, selection: Binding<String>, options: [String]) -> some View {
-        Menu {
-            ForEach(options, id: \.self) { option in
-                Button {
-                    companionPerformWithoutAnimation {
-                        selection.wrappedValue = option
+        ZStack {
+            companionScopePickerLabel(title, value: selection.wrappedValue)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+
+#if canImport(UIKit)
+            CompanionUIKitChoiceMenuButton(
+                title: title,
+                selection: selection,
+                options: options,
+                titleForOption: { $0 }
+            )
+#else
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button {
+                        companionPerformWithoutAnimation {
+                            selection.wrappedValue = option
+                        }
+                    } label: {
+                        Label(option, systemImage: selection.wrappedValue == option ? "checkmark" : "")
                     }
-                } label: {
-                    Label(option, systemImage: selection.wrappedValue == option ? "checkmark" : "")
                 }
+            } label: {
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(maxWidth: .infinity, minHeight: 42)
+                    .contentShape(RoundedRectangle(cornerRadius: 11))
             }
-        } label: {
-            HStack(spacing: 8) {
-                Text(title)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                Spacer(minLength: 0)
-                Text(selection.wrappedValue)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsPrimaryText)
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(Color.klmsSecondaryText)
-            }
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: 42)
-            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 11))
-            .overlay {
-                RoundedRectangle(cornerRadius: 11)
-                    .stroke(Color.klmsBorder.opacity(0.88), lineWidth: 1)
-            }
+            .buttonStyle(.plain)
+#endif
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, minHeight: 42)
         .disabled(options.count <= 1)
+        .accessibilityLabel("\(title): \(selection.wrappedValue)")
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+    }
+
+    private func companionScopePickerLabel(_ title: String, value: String) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.klmsSecondaryText)
+            Spacer(minLength: 0)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.klmsPrimaryText)
+                .lineLimit(1)
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(Color.klmsSecondaryText)
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 42)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 11))
+        .overlay {
+            RoundedRectangle(cornerRadius: 11)
+                .stroke(Color.klmsBorder.opacity(0.88), lineWidth: 1)
+        }
     }
 
     private var normalizedYearBinding: Binding<String> {
@@ -4442,6 +4470,109 @@ private struct CompanionDashboardScopeBar: View {
         selectedYear != CompanionItemListFilter.allYears || selectedSemester != CompanionItemListFilter.allSemesters
     }
 }
+
+#if canImport(UIKit)
+private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresentable {
+    var title: String
+    @Binding var selection: Option
+    var options: [Option]
+    var titleForOption: (Option) -> String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(selection: $selection, titleForOption: titleForOption)
+    }
+
+    func makeUIView(context: Context) -> UIButton {
+        let button = UIButton(type: .system)
+        button.backgroundColor = .clear
+        button.setTitle("", for: .normal)
+        button.setImage(nil, for: .normal)
+        button.contentHorizontalAlignment = .fill
+        button.contentVerticalAlignment = .fill
+        button.accessibilityTraits.insert(.button)
+        button.addTarget(context.coordinator, action: #selector(Coordinator.showMenu(_:)), for: .touchUpInside)
+        return button
+    }
+
+    func updateUIView(_ button: UIButton, context: Context) {
+        context.coordinator.selection = $selection
+        context.coordinator.title = title
+        context.coordinator.options = options
+        context.coordinator.titleForOption = titleForOption
+        button.isEnabled = options.count > 1
+        button.accessibilityLabel = "\(title): \(titleForOption(selection))"
+    }
+
+    final class Coordinator: NSObject, UIAdaptivePresentationControllerDelegate {
+        var selection: Binding<Option>
+        var title = ""
+        var options: [Option] = []
+        var titleForOption: (Option) -> String
+        private weak var presentedController: UIAlertController?
+
+        init(selection: Binding<Option>, titleForOption: @escaping (Option) -> String) {
+            self.selection = selection
+            self.titleForOption = titleForOption
+        }
+
+        @objc func showMenu(_ sender: UIButton) {
+            guard presentedController == nil,
+                  let presenter = sender.window?.rootViewController?.companionTopPresentedController else {
+                return
+            }
+
+            let alert = UIAlertController(title: title, message: nil, preferredStyle: .actionSheet)
+            for option in options {
+                let optionTitle = titleForOption(option)
+                let prefix = option == selection.wrappedValue ? "✓ " : ""
+                alert.addAction(UIAlertAction(title: prefix + optionTitle, style: .default) { [weak self] _ in
+                    self?.select(option)
+                })
+            }
+            alert.addAction(UIAlertAction(title: "취소", style: .cancel))
+            alert.presentationController?.delegate = self
+
+            if let popover = alert.popoverPresentationController {
+                popover.sourceView = sender
+                popover.sourceRect = sender.bounds
+                popover.permittedArrowDirections = [.up, .down]
+            }
+
+            presentedController = alert
+            presenter.present(alert, animated: true)
+        }
+
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            presentedController = nil
+        }
+
+        private func select(_ option: Option) {
+            presentedController = nil
+            guard selection.wrappedValue != option else { return }
+            companionPerformWithoutAnimation {
+                selection.wrappedValue = option
+            }
+        }
+    }
+}
+
+private extension UIViewController {
+    var companionTopPresentedController: UIViewController {
+        if let presentedViewController {
+            return presentedViewController.companionTopPresentedController
+        }
+        if let navigationController = self as? UINavigationController,
+           let visibleViewController = navigationController.visibleViewController {
+            return visibleViewController.companionTopPresentedController
+        }
+        if let tabBarController = self as? UITabBarController,
+           let selectedViewController = tabBarController.selectedViewController {
+            return selectedViewController.companionTopPresentedController
+        }
+        return self
+    }
+}
+#endif
 
 private struct CompanionDashboardScopedStatus {
     var status: SanitizedRemoteStatus
@@ -7036,7 +7167,7 @@ private struct CompanionItemListControls: View {
                         .accessibilityHidden(true)
 
 #if canImport(UIKit)
-                    CompanionUIKitMenuButton(
+                    CompanionUIKitChoiceMenuButton(
                         title: title,
                         selection: $selection,
                         options: options,
@@ -7119,62 +7250,6 @@ private struct CompanionItemListControls: View {
             }
         }
     }
-
-#if canImport(UIKit)
-    private struct CompanionUIKitMenuButton<Option: Hashable>: UIViewRepresentable {
-        var title: String
-        @Binding var selection: Option
-        var options: [Option]
-        var titleForOption: (Option) -> String
-
-        func makeCoordinator() -> Coordinator {
-            Coordinator(selection: $selection)
-        }
-
-        func makeUIView(context: Context) -> UIButton {
-            let button = UIButton(type: .system)
-            button.showsMenuAsPrimaryAction = true
-            button.changesSelectionAsPrimaryAction = false
-            button.backgroundColor = .clear
-            button.setTitle("", for: .normal)
-            button.setImage(nil, for: .normal)
-            button.contentHorizontalAlignment = .fill
-            button.contentVerticalAlignment = .fill
-            button.accessibilityTraits.insert(.button)
-            return button
-        }
-
-        func updateUIView(_ button: UIButton, context: Context) {
-            context.coordinator.selection = $selection
-            button.isEnabled = options.count > 1
-            button.accessibilityLabel = "\(title): \(titleForOption(selection))"
-            button.menu = UIMenu(children: options.map { option in
-                UIAction(
-                    title: titleForOption(option),
-                    image: option == selection ? UIImage(systemName: "checkmark") : nil,
-                    state: option == selection ? .on : .off
-                ) { _ in
-                    context.coordinator.select(option)
-                }
-            })
-        }
-
-        final class Coordinator {
-            var selection: Binding<Option>
-
-            init(selection: Binding<Option>) {
-                self.selection = selection
-            }
-
-            func select(_ option: Option) {
-                guard selection.wrappedValue != option else { return }
-                companionPerformWithoutAnimation {
-                    selection.wrappedValue = option
-                }
-            }
-        }
-    }
-#endif
 
     private func resetFilters() {
         sortOption = .recent
