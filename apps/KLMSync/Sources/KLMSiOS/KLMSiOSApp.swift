@@ -7104,6 +7104,10 @@ private struct CompanionItemListControls: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .contentShape(RoundedRectangle(cornerRadius: 8))
+            .transaction { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
         }
     }
 
@@ -7210,6 +7214,10 @@ private struct CompanionSearchFilterPanel<Controls: View>: View {
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
     }
 }
 
@@ -7255,6 +7263,10 @@ private struct CompanionControlBox<Content: View>: View {
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
     }
 }
 
