@@ -3243,6 +3243,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("#if canImport(UIKit)"))
         XCTAssertTrue(ios.contains("CompanionUIKitChoiceMenuButton("))
         XCTAssertTrue(ios.contains("private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresentable"))
+        XCTAssertTrue(ios.contains("usesSystemMenu: Bool = true"))
         XCTAssertTrue(ios.contains("UIAlertController(title: showsPopupTitle ? title : nil, message: nil, preferredStyle: .actionSheet)"))
         XCTAssertTrue(ios.contains("usesSystemMenu: true"))
         XCTAssertTrue(ios.contains("func systemMenu() -> UIMenu"))

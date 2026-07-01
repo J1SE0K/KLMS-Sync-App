@@ -4438,7 +4438,7 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
         titleForOption: @escaping (Option) -> String,
         minHeight: CGFloat = 44,
         cornerRadius: CGFloat = 11,
-        usesSystemMenu: Bool = false,
+        usesSystemMenu: Bool = true,
         showsPopupTitle: Bool = true
     ) {
         self.title = title
@@ -4602,7 +4602,7 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
         var title = ""
         var options: [Option] = []
         var titleForOption: (Option) -> String
-        var usesSystemMenu = false
+        var usesSystemMenu = true
         var showsPopupTitle = true
         private weak var presentedController: UIAlertController?
 
