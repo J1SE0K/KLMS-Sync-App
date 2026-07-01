@@ -4374,10 +4374,13 @@ private struct CompanionDashboardScopeBar: View {
             }
             HStack(spacing: 8) {
                 companionScopePicker("연도", selection: normalizedYearBinding, options: options.years)
+                    .frame(width: 118)
                 companionScopePicker("학기", selection: normalizedSemesterBinding, options: options.semesters)
+                    .frame(width: 134)
+                Spacer(minLength: 0)
             }
         }
-        .padding(12)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 13))
         .overlay {
@@ -4393,8 +4396,8 @@ private struct CompanionDashboardScopeBar: View {
             selection: selection,
             options: options,
             titleForOption: { $0 },
-            minHeight: 42,
-            cornerRadius: 11
+            minHeight: 36,
+            cornerRadius: 9
         )
     }
 
