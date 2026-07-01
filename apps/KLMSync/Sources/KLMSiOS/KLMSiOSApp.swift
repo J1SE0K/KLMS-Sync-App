@@ -7030,51 +7030,41 @@ private struct CompanionItemListControls: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
 
-                Menu {
-                    ForEach(options, id: \.self) { option in
-                        Button {
-                            guard selection != option else { return }
-                            companionPerformWithoutAnimation {
-                                selection = option
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "checkmark")
-                                    .opacity(selection == option ? 1 : 0)
-                                    .frame(width: Self.checkmarkWidth, alignment: .center)
-                                Text(titleForOption(option))
-                                    .lineLimit(1)
+                ZStack {
+                    menuVisualLabel
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+
+                    Menu {
+                        ForEach(options, id: \.self) { option in
+                            Button {
+                                guard selection != option else { return }
+                                companionPerformWithoutAnimation {
+                                    selection = option
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "checkmark")
+                                        .opacity(selection == option ? 1 : 0)
+                                        .frame(width: Self.checkmarkWidth, alignment: .center)
+                                    Text(titleForOption(option))
+                                        .lineLimit(1)
+                                }
                             }
                         }
+                    } label: {
+                        Rectangle()
+                            .fill(Color.clear)
+                            .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight)
+                            .contentShape(RoundedRectangle(cornerRadius: 8))
                     }
-                } label: {
-                    HStack(spacing: 8) {
-                        Text(titleForOption(selection))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.klmsPrimaryText)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                        Spacer(minLength: 8)
-                        Image(systemName: "chevron.down")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(Color.klmsSecondaryText)
-                            .frame(width: Self.chevronWidth, alignment: .center)
+                    .buttonStyle(.plain)
+                    .disabled(options.count <= 1)
+                    .accessibilityLabel("\(title): \(titleForOption(selection))")
+                    .transaction { transaction in
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
                     }
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight, alignment: .leading)
-                    .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.klmsBorder, lineWidth: 1)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .contentShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-                .disabled(options.count <= 1)
-                .transaction { transaction in
-                    transaction.animation = nil
-                    transaction.disablesAnimations = true
                 }
                 .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight, alignment: .leading)
             }
@@ -7090,6 +7080,30 @@ private struct CompanionItemListControls: View {
                 transaction.animation = nil
                 transaction.disablesAnimations = true
             }
+        }
+
+        private var menuVisualLabel: some View {
+            HStack(spacing: 8) {
+                Text(titleForOption(selection))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsPrimaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.klmsSecondaryText)
+                    .frame(width: Self.chevronWidth, alignment: .center)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: Self.menuHeight, maxHeight: Self.menuHeight, alignment: .leading)
+            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsBorder, lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 
