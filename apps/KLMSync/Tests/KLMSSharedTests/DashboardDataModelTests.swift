@@ -3249,6 +3249,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("func systemMenu() -> UIMenu"))
         XCTAssertTrue(ios.contains("button.showsMenuAsPrimaryAction = true"))
         XCTAssertTrue(ios.contains("button.menu = context.coordinator.systemMenu()"))
+        XCTAssertTrue(ios.contains("DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(45))"))
+        XCTAssertTrue(ios.contains("private func applySelection(_ option: Option)"))
         XCTAssertTrue(ios.contains("showsPopupTitle: false"))
         XCTAssertTrue(ios.contains("CompanionNativeChoiceFieldLabel("))
         XCTAssertTrue(ios.contains("Menu {"))

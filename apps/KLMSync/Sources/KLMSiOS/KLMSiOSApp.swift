@@ -4657,6 +4657,17 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
         private func select(_ option: Option) {
             presentedController = nil
             guard selection.wrappedValue != option else { return }
+            if usesSystemMenu {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(45)) { [weak self] in
+                    self?.applySelection(option)
+                }
+                return
+            }
+            applySelection(option)
+        }
+
+        private func applySelection(_ option: Option) {
+            guard selection.wrappedValue != option else { return }
             companionPerformWithoutAnimation {
                 selection.wrappedValue = option
             }
