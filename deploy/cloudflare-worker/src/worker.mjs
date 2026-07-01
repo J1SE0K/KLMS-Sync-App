@@ -287,7 +287,7 @@ async function route(request, env, ctx = null) {
     const items = Array.isArray(body.items)
       ? body.items.map(normalizeSyncItem).filter(Boolean).slice(0, MAX_SYNC_ITEMS)
       : [];
-    await replaceSyncItems(db, items, body.generatedAt, {
+    state = await replaceSyncItems(db, state, items, body.generatedAt, {
       dryRunReports: normalizeDryRunReports(body.dryRunReports),
       calendarChanges: normalizeCalendarChanges(body.calendarChanges),
       termCatalog: normalizeTermCatalog(body.termCatalog),
@@ -2675,7 +2675,7 @@ function applyTermCatalogToSyncItems(inputItems, termCatalog) {
       if (key) selectedCourseKeys.add(key);
     }
   }
-  return inputItems
+  const resolvedItems = inputItems
     .map(normalizeSyncItem)
     .filter(Boolean)
     .map((item) => {
@@ -2694,6 +2694,35 @@ function applyTermCatalogToSyncItems(inputItems, termCatalog) {
       }
       return item;
     });
+  return fillMissingTermsFromCourseMajority(resolvedItems);
+}
+
+function fillMissingTermsFromCourseMajority(items) {
+  const countsByCourse = new Map();
+  for (const item of items) {
+    const courseKey = normalizeCourseKey(item.course);
+    if (!courseKey || !item.academicYear || !item.academicSemester) continue;
+    const termKey = `${item.academicYear}\u001f${item.academicSemester}`;
+    const counts = countsByCourse.get(courseKey) || new Map();
+    counts.set(termKey, (counts.get(termKey) || 0) + 1);
+    countsByCourse.set(courseKey, counts);
+  }
+  const majorityByCourse = new Map();
+  for (const [courseKey, counts] of countsByCourse.entries()) {
+    const ranked = [...counts.entries()].sort((lhs, rhs) => rhs[1] - lhs[1] || lhs[0].localeCompare(rhs[0], "ko"));
+    const [termKey] = ranked[0] || [];
+    if (!termKey) continue;
+    const [yearText, semester] = termKey.split("\u001f");
+    const year = Number(yearText);
+    if (Number.isFinite(year) && semester) {
+      majorityByCourse.set(courseKey, { year, semester });
+    }
+  }
+  return items.map((item) => {
+    if (item.academicYear && item.academicSemester) return item;
+    const term = majorityByCourse.get(normalizeCourseKey(item.course));
+    return term ? syncItemWithAcademicTerm(item, term) : item;
+  });
 }
 
 function syncItemWithAcademicTerm(item, term) {
@@ -2873,7 +2902,7 @@ function normalizeBoolean(value) {
   return false;
 }
 
-async function replaceSyncItems(db, items, generatedAt, extras = {}) {
+async function replaceSyncItems(db, state, items, generatedAt, extras = {}) {
   const now = new Date().toISOString();
   const runLogsClearedAt = await getMeta(db, "syncDataRunLogsClearedAt");
   const runLogs = normalizeRunLogs(extras.runLogs, runLogsClearedAt);
@@ -2890,6 +2919,7 @@ async function replaceSyncItems(db, items, generatedAt, extras = {}) {
     await loadSettingActions(db),
     now
   );
+  const nextStatus = statusWithStoredSyncData(state.status, itemOverlay.items, itemOverlay.calendarChanges);
   await db.batch([
     setMetaStatement(db, "syncDataItems", JSON.stringify(itemOverlay.items.slice(0, MAX_SYNC_ITEMS))),
     setMetaStatement(db, "syncDataDryRunReports", JSON.stringify(extras.dryRunReports || [])),
@@ -2900,7 +2930,14 @@ async function replaceSyncItems(db, items, generatedAt, extras = {}) {
     setMetaStatement(db, "syncDataVerifySummary", JSON.stringify(extras.verifySummary || null)),
     setMetaStatement(db, "syncDataGeneratedAt", String(generatedAt || now)),
     setMetaStatement(db, "syncDataUpdatedAt", now),
+    setMetaStatement(db, "status", JSON.stringify(nextStatus)),
+    setMetaStatement(db, "updatedAt", now),
   ]);
+  return {
+    ...state,
+    status: nextStatus,
+    updatedAt: now,
+  };
 }
 
 function applyItemActionsToSyncDataSnapshot(inputItems, inputCalendarChanges, actions, now) {

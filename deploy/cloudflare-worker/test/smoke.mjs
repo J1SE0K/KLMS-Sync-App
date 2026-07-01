@@ -162,6 +162,28 @@ async function runSmoke() {
         attachmentCount: 1,
         updatedAt: "2026-05-31T00:00:01Z",
       },
+      {
+        id: "file-known-term",
+        kind: "file",
+        course: "영미 단편소설",
+        title: "강의자료 1.pdf",
+        timestamp: "2026-05-31 09:00",
+        status: "folders",
+        detail: "",
+        attachmentCount: 0,
+        updatedAt: "2026-05-31T00:00:02Z",
+      },
+      {
+        id: "file-missing-term",
+        kind: "file",
+        course: "영미 단편소설",
+        title: "강의자료 2.pdf",
+        timestamp: "KLMS 페이지에 시각 정보 없음",
+        status: "folders",
+        detail: "",
+        attachmentCount: 0,
+        updatedAt: "2026-05-31T00:00:03Z",
+      },
     ],
     dryRunReports: [
       {
@@ -252,6 +274,19 @@ async function runSmoke() {
     assert.doesNotMatch(payload.runLogs[0].outputTail, /Application Support/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /과목 폴더/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /\/var\/folders/);
+  }
+  {
+    const payload = await expectJSON("/v1/status");
+    assert.equal(payload.status.assignments, 0);
+    assert.equal(payload.status.exams, 1);
+    assert.equal(payload.status.notices, 1);
+    assert.equal(payload.status.fileTotal, 2);
+  }
+  {
+    const payload = await expectJSON("/v1/sync-data?kind=file&limit=10");
+    assert.equal(payload.items.length, 2);
+    assert.equal(payload.items.find((item) => item.id === "file-missing-term").academicYear, 2026);
+    assert.equal(payload.items.find((item) => item.id === "file-missing-term").academicSemester, "봄학기");
   }
 
   {

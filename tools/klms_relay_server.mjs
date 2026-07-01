@@ -2686,7 +2686,7 @@ function applyTermCatalogToSyncItems(inputItems, termCatalog) {
       if (key) selectedCourseKeys.add(key);
     }
   }
-  return inputItems
+  const resolvedItems = inputItems
     .map(normalizeSyncItem)
     .filter(Boolean)
     .map((item) => {
@@ -2705,6 +2705,35 @@ function applyTermCatalogToSyncItems(inputItems, termCatalog) {
       }
       return item;
     });
+  return fillMissingTermsFromCourseMajority(resolvedItems);
+}
+
+function fillMissingTermsFromCourseMajority(items) {
+  const countsByCourse = new Map();
+  for (const item of items) {
+    const courseKey = normalizeCourseKey(item.course);
+    if (!courseKey || !item.academicYear || !item.academicSemester) continue;
+    const termKey = `${item.academicYear}\u001f${item.academicSemester}`;
+    const counts = countsByCourse.get(courseKey) || new Map();
+    counts.set(termKey, (counts.get(termKey) || 0) + 1);
+    countsByCourse.set(courseKey, counts);
+  }
+  const majorityByCourse = new Map();
+  for (const [courseKey, counts] of countsByCourse.entries()) {
+    const ranked = [...counts.entries()].sort((lhs, rhs) => rhs[1] - lhs[1] || lhs[0].localeCompare(rhs[0], "ko"));
+    const [termKey] = ranked[0] || [];
+    if (!termKey) continue;
+    const [yearText, semester] = termKey.split("\u001f");
+    const year = Number(yearText);
+    if (Number.isFinite(year) && semester) {
+      majorityByCourse.set(courseKey, { year, semester });
+    }
+  }
+  return items.map((item) => {
+    if (item.academicYear && item.academicSemester) return item;
+    const term = majorityByCourse.get(normalizeCourseKey(item.course));
+    return term ? syncItemWithAcademicTerm(item, term) : item;
+  });
 }
 
 function syncItemWithAcademicTerm(item, term) {
@@ -2840,6 +2869,7 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
     state.settingActions || [],
     now
   );
+  const nextStatus = statusWithStoredSyncData(state.status, itemOverlay.items, itemOverlay.calendarChanges);
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare("DELETE FROM sync_items").run();
@@ -2874,7 +2904,11 @@ function replaceSyncItems(items, generatedAt, extras = {}) {
     setMeta("syncDataVerifySummary", JSON.stringify(extras.verifySummary || null));
     setMeta("syncDataGeneratedAt", String(generatedAt || now));
     setMeta("syncDataUpdatedAt", now);
+    setMeta("status", JSON.stringify(nextStatus));
+    setMeta("updatedAt", now);
     db.exec("COMMIT");
+    state.status = nextStatus;
+    state.updatedAt = now;
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
