@@ -423,7 +423,7 @@ async function route(request, response) {
       return;
     }
     const syncPatch = applyItemActionToStoredSyncData(action);
-    const serverApplied = isServerDisplayOnlyItemAction(action.action);
+    const serverApplied = isServerDisplayOnlyItemAction(action.action) || isClientCompletedCalendarAction(action);
     const serverSnapshotUpdated = serverApplied || syncPatch.changed || itemActionUpdatesServerVisibleState(action.action);
     if (serverApplied) {
       action.status = "completed";
@@ -2381,21 +2381,24 @@ function sendFileAccessPreviewPage(response, url, {
   const downloadCount = Number.isFinite(Number(fileRequest?.downloadCount)) ? Number(fileRequest.downloadCount) : 0;
   const viewerMarkup = filePreviewViewerMarkup(preview, rawURL);
   const isPDFPreview = preview?.kind === "pdf";
-  const pageControlsMarkup = isPDFPreview ? "" : `
+  const pageControlsMarkup = `
         <div class="tool-group">
           <button type="button" data-action="prev">이전</button>
           <button type="button" data-action="next">다음</button>
         </div>`;
-  const zoomControlsMarkup = isPDFPreview ? "" : `
+  const zoomControlsMarkup = `
         <div class="tool-group">
           <button type="button" data-action="zoom-out">축소</button>
           <button type="button" data-action="fit">맞춤</button>
           <button type="button" data-action="zoom-in">확대</button>
         </div>`;
-  const previewStatusText = isPDFPreview ? "PDF 미리보기" : "1 / 1 · 100%";
+  const previewStatusText = isPDFPreview ? "PDF 불러오는 중" : "1 / 1 · 100%";
   const previewNote = isPDFPreview
-    ? "PDF 쪽 이동과 확대/축소는 파일 안쪽의 PDF 뷰어 도구막대를 사용하세요. 앱은 실제 쪽수와 배율을 추정해서 표시하지 않습니다."
+    ? "위 도구막대로 PDF 쪽 이동과 확대/축소를 조절할 수 있습니다."
     : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다.";
+  const pdfScriptMarkup = isPDFPreview
+    ? `<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>`
+    : "";
   const html = `<!doctype html>
 <html lang="ko">
 <head>
@@ -2423,7 +2426,9 @@ function sendFileAccessPreviewPage(response, url, {
     button:disabled { color: var(--muted); cursor: not-allowed; opacity: .55; }
     .status { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 750; }
     .viewer { min-height: min(74vh, 760px); background: rgba(15,23,42,.05); }
-    .pdf-frame { width: 100%; height: min(74vh, 760px); border: 0; background: white; display: block; }
+    .pdf-stage { height: min(74vh, 760px); overflow: auto; display: grid; place-items: start center; padding: 18px; background: #334155; }
+    .pdf-stage canvas { max-width: none; background: white; border-radius: 6px; box-shadow: 0 16px 40px rgba(0,0,0,.28); }
+    .pdf-error { color: white; font-weight: 750; padding: 18px; text-align: center; }
     .image-stage { height: min(74vh, 760px); overflow: auto; display: grid; place-items: start center; padding: 18px; background: #0f172a; }
     .image-stage img { max-width: 100%; transform-origin: top center; transition: transform .12s ease; border-radius: 8px; background: white; box-shadow: 0 16px 40px rgba(0,0,0,.28); }
     .text-stage { height: min(74vh, 760px); overflow: auto; background: #fff; color: #111827; }
@@ -2433,7 +2438,7 @@ function sendFileAccessPreviewPage(response, url, {
     .empty { padding: 24px; color: var(--muted); }
     .note { padding: 12px 18px 18px; color: var(--muted); font-size: 12px; }
     @media (prefers-color-scheme: dark) { :root { --ink: #e5e7eb; --muted: #a3aebf; --panel: rgba(15,23,42,.86); --line: rgba(148,163,184,.22); --surface: rgba(15,23,42,.72); } body { background: radial-gradient(circle at 20% 0%, #1e3a8a 0, transparent 32%), linear-gradient(135deg, #020617, #111827 65%, #0f172a); } .chip { background: rgba(148,163,184,.16); color: #cbd5e1; } .toolbar { background: rgba(15,23,42,.92); } .tool-group { background: rgba(15,23,42,.74); } .text-stage { background: #111827; color: #e5e7eb; } }
-    @media (max-width: 700px) { main { width: 100%; padding: 0; } .shell { border-radius: 0; min-height: 100vh; } .top { padding: 14px; } .toolbar { gap: 7px; padding: 10px; } .tool-group { flex: 1 1 auto; } button, .button { flex: 1 1 auto; padding: 0 9px; } .status { width: 100%; margin-left: 0; text-align: center; } .viewer, .pdf-frame, .image-stage, .text-stage { height: calc(100vh - 270px); min-height: 420px; } }
+    @media (max-width: 700px) { main { width: 100%; padding: 0; } .shell { border-radius: 0; min-height: 100vh; } .top { padding: 14px; } .toolbar { gap: 7px; padding: 10px; } .tool-group { flex: 1 1 auto; } button, .button { flex: 1 1 auto; padding: 0 9px; } .status { width: 100%; margin-left: 0; text-align: center; } .viewer, .pdf-stage, .image-stage, .text-stage { height: calc(100vh - 270px); min-height: 420px; } }
   </style>
 </head>
 <body>
@@ -2456,6 +2461,7 @@ ${zoomControlsMarkup}
       <div class="note">${escapeHTML(previewNote)}</div>
     </section>
   </main>
+  ${pdfScriptMarkup}
   <script>
     const root = document.querySelector("main");
     const kind = root.dataset.kind;
@@ -2466,6 +2472,8 @@ ${zoomControlsMarkup}
     let page = 1;
     let zoom = 1;
     let pages = [""];
+    let pdfDoc = null;
+    let pdfRenderToken = 0;
     const bumpUsage = () => {
       if (!usageChip || usageBumped) return;
       usageBumped = true;
@@ -2477,7 +2485,8 @@ ${zoomControlsMarkup}
     const setStatus = () => {
       if (!status) return;
       if (kind === "pdf") {
-        status.textContent = "PDF 미리보기";
+        const max = Math.max(1, pages.length);
+        status.textContent = page + " / " + max + " · " + Math.round(zoom * 100) + "%";
         return;
       }
       const max = Math.max(1, pages.length);
@@ -2496,9 +2505,37 @@ ${zoomControlsMarkup}
         const img = document.querySelector("[data-image-preview]");
         if (img) img.style.transform = "scale(" + zoom + ")";
       } else if (kind === "pdf") {
-        // PDF 페이지/배율 상태는 브라우저 내장 뷰어가 관리한다.
+        renderPDF();
       }
       setStatus();
+    };
+    const renderPDF = async () => {
+      if (!pdfDoc) {
+        setStatus();
+        return;
+      }
+      const canvas = document.querySelector("[data-pdf-canvas]");
+      const errorBox = document.querySelector("[data-pdf-error]");
+      if (!canvas) return;
+      const token = ++pdfRenderToken;
+      try {
+        const pdfPage = await pdfDoc.getPage(page);
+        if (token !== pdfRenderToken) return;
+        const viewport = pdfPage.getViewport({ scale: zoom });
+        const context = canvas.getContext("2d");
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        canvas.style.width = Math.ceil(viewport.width) + "px";
+        canvas.style.height = Math.ceil(viewport.height) + "px";
+        await pdfPage.render({ canvasContext: context, viewport }).promise;
+        if (errorBox) errorBox.hidden = true;
+        setStatus();
+      } catch (error) {
+        if (errorBox) {
+          errorBox.hidden = false;
+          errorBox.textContent = "PDF 미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요.";
+        }
+      }
     };
     const splitTextPages = (text) => {
       const target = 3600;
@@ -2523,10 +2560,38 @@ ${zoomControlsMarkup}
         })
         .then((text) => { pages = splitTextPages(text); page = 1; render(); })
         .catch(() => { pages = ["미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요."]; render(); });
+    } else if (kind === "pdf") {
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+        window.pdfjsLib.getDocument({ url: rawURL }).promise
+          .then((doc) => {
+            pdfDoc = doc;
+            pages = Array.from({ length: Math.max(1, doc.numPages) }, (_, index) => String(index + 1));
+            page = 1;
+            bumpUsage();
+            render();
+          })
+          .catch(() => {
+            const errorBox = document.querySelector("[data-pdf-error]");
+            if (errorBox) {
+              errorBox.hidden = false;
+              errorBox.textContent = "PDF 미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요.";
+            }
+            pages = [""];
+            render();
+          });
+      } else {
+        const errorBox = document.querySelector("[data-pdf-error]");
+        if (errorBox) {
+          errorBox.hidden = false;
+          errorBox.textContent = "PDF 미리보기 모듈을 불러오지 못했습니다. 다운로드해서 확인해 주세요.";
+        }
+        render();
+      }
     } else {
       pages = [""];
       render();
-      const resource = document.querySelector("[data-image-preview], [data-pdf-preview], video, audio");
+      const resource = document.querySelector("[data-image-preview], video, audio");
       if (resource) {
         resource.addEventListener("load", bumpUsage, { once: true });
         resource.addEventListener("loadedmetadata", bumpUsage, { once: true });
@@ -2552,7 +2617,7 @@ ${zoomControlsMarkup}
   response.writeHead(status, {
     "Content-Type": "text/html; charset=utf-8",
     "Cache-Control": "no-store",
-    "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; frame-src 'self'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+    "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; connect-src 'self'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; worker-src blob: https://cdn.jsdelivr.net; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
     "Referrer-Policy": "no-referrer",
   });
   response.end(html);
@@ -2581,7 +2646,7 @@ function filePreviewViewerMarkup(preview, rawURL) {
     return `<div class="media-stage"><video controls src="${url}"></video></div>`;
   }
   if (preview.kind === "pdf") {
-    return `<iframe class="pdf-frame" data-pdf-preview title="파일 미리보기" src="${url}"></iframe>`;
+    return `<div class="pdf-stage"><canvas data-pdf-canvas aria-label="PDF 미리보기"></canvas><div class="pdf-error" data-pdf-error hidden></div></div>`;
   }
   return `<div class="empty">이 파일은 웹 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.</div>`;
 }
@@ -3192,6 +3257,12 @@ function isServerDisplayOnlyItemAction(action) {
     "mailDashboardAdd",
     "mailDashboardRemove",
   ].includes(String(action || ""));
+}
+
+function isClientCompletedCalendarAction(action) {
+  return action
+    && String(action.status || "") === "completed"
+    && ["calendarCreate", "calendarEdit", "calendarDelete"].includes(String(action.action || ""));
 }
 
 function itemActionUpdatesServerVisibleState(action) {

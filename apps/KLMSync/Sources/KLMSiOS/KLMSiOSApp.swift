@@ -1670,12 +1670,12 @@ final class CompanionModel: ObservableObject {
     }
 
     func createManualCalendarAction(title: String, edit: CalendarEventEdit) async {
-        await createCalendarEventOnDevice(title: title, edit: edit, change: nil)
+        await createCalendarEventOnDevice(title: title, edit: edit, change: nil, completedAction: nil)
     }
 
     @discardableResult
     func createCalendarEventOnDevice(change: CalendarChange, edit: CalendarEventEdit) async -> Bool {
-        await createCalendarEventOnDevice(title: change.title, edit: edit, change: change)
+        await createCalendarEventOnDevice(title: change.title, edit: edit, change: change, completedAction: .calendarCreate)
     }
 
     @discardableResult
@@ -1687,6 +1687,7 @@ final class CompanionModel: ObservableObject {
             try await Task.detached(priority: .userInitiated) {
                 try await Self.updateLocalCalendarEvent(change: change, edit: edit)
             }.value
+            await publishCompletedCalendarAction(.calendarEdit, change: change)
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
@@ -1709,6 +1710,7 @@ final class CompanionModel: ObservableObject {
         markCalendarChangeResolvedLocally(change)
         await Task.yield()
         if change.isDeletedAction {
+            await publishCompletedCalendarAction(.calendarDelete, change: change)
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
@@ -1718,6 +1720,7 @@ final class CompanionModel: ObservableObject {
             try await Task.detached(priority: .userInitiated) {
                 try await Self.deleteLocalCalendarEvent(change: change)
             }.value
+            await publishCompletedCalendarAction(.calendarDelete, change: change)
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
@@ -1755,7 +1758,8 @@ final class CompanionModel: ObservableObject {
     private func createCalendarEventOnDevice(
         title: String,
         edit: CalendarEventEdit,
-        change: CalendarChange?
+        change: CalendarChange?,
+        completedAction: ServerRelayItemActionKind?
     ) async -> Bool {
         let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
         if let change {
@@ -1766,6 +1770,9 @@ final class CompanionModel: ObservableObject {
             try await Task.detached(priority: .userInitiated) {
                 try await Self.createLocalCalendarEvent(title: title, edit: edit, change: change)
             }.value
+            if let change, let completedAction {
+                await publishCompletedCalendarAction(completedAction, change: change)
+            }
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
@@ -1781,6 +1788,32 @@ final class CompanionModel: ObservableObject {
             errorMessage = message
             userAlert = UserAlert(title: "캘린더 등록 실패", message: message)
             return false
+        }
+    }
+
+    private func publishCompletedCalendarAction(_ actionKind: ServerRelayItemActionKind, change: CalendarChange) async {
+        guard actionKind.resolvesCalendarChange,
+              let serverRelayStore else {
+            return
+        }
+        let publicChange = serverRelayCalendarChange(change)
+        let candidateIDs = calendarChangeResolvedIDs(for: change)
+        let action = ServerRelayItemAction(
+            action: actionKind,
+            itemID: publicChange.id,
+            itemKind: "calendar",
+            itemTitle: publicChange.title.nilIfEmpty ?? publicChange.course.nilIfEmpty ?? "캘린더 변경",
+            status: .completed,
+            message: "이 기기에서 처리했고 서버 화면에도 반영했습니다."
+        )
+        do {
+            let savedAction = try await serverRelayStore.createItemAction(action)
+            recordResolvedCalendarChanges([savedAction])
+            replaceRecentItemAction(savedAction) { $0.id == action.id || candidateIDs.contains($0.itemID) }
+            schedulePostActionRefresh(scope: .itemActionServerState)
+        } catch {
+            guard !isCancellationError(error) else { return }
+            errorMessage = "캘린더 처리는 끝났지만 서버 반영에 실패했습니다. \(userFacingMessage(for: error))"
         }
     }
 
@@ -4657,12 +4690,6 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
         private func select(_ option: Option) {
             presentedController = nil
             guard selection.wrappedValue != option else { return }
-            if usesSystemMenu {
-                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(45)) { [weak self] in
-                    self?.applySelection(option)
-                }
-                return
-            }
             applySelection(option)
         }
 

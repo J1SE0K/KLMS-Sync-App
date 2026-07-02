@@ -572,6 +572,52 @@ async function runSmoke() {
     message: "calendar apply done",
   }, { method: "PUT", role: "worker" });
 
+  await expectJSON("/v1/sync-data", {
+    generatedAt: "2026-05-31T00:00:45Z",
+    items: [
+      {
+        id: "exam-1",
+        kind: "exam",
+        course: "영미 단편소설",
+        title: "기말고사",
+        timestamp: "2026-06-12 10:00",
+        status: "예정",
+        detail: "범위: 전체",
+        attachmentCount: 0,
+        updatedAt: "2026-05-31T00:00:45Z",
+      },
+    ],
+    calendarChanges: [
+      {
+        action: "created",
+        calendar: "KLMS 시험",
+        bucket: "exam",
+        title: "추가 시험",
+        start_at: "2026-06-18 09:00",
+        due_at: "2026-06-18 10:00",
+        changes: ["새 일정"],
+      },
+    ],
+  }, { method: "POST", role: "worker" });
+  const directCalendarAction = await expectJSON("/v1/item-actions", {
+    action: "calendarCreate",
+    itemID: calendarChangeID,
+    itemKind: "calendar",
+    itemTitle: "추가 시험",
+    status: "completed",
+    message: "iPhone Calendar에 등록 완료",
+  }, { method: "POST", status: 201 });
+  assert.equal(directCalendarAction.status, "completed");
+  {
+    const payload = await expectJSON("/v1/sync-data?limit=10");
+    assert.equal(payload.calendarChanges.length, 0);
+    const pendingActions = await expectJSON("/relay/v1/item-actions/pending", undefined, { role: "worker" });
+    assert.equal(
+      pendingActions.actions.some((pendingAction) => pendingAction.id === directCalendarAction.id),
+      false
+    );
+  }
+
   const settingAction = await expectJSON("/v1/setting-actions", {
     key: "FILE_REFRESH_MODE",
     title: "파일 탐색 모드",
@@ -909,10 +955,11 @@ async function runSmoke() {
     const previewPageResponse = await worker.fetch(new Request(previewPageURL.toString()), env);
     assert.equal(previewPageResponse.status, 200);
     const previewPageHTML = await previewPageResponse.text();
-    assert.match(previewPageHTML, /PDF 쪽 이동과 확대\/축소는 파일 안쪽의 PDF 뷰어 도구막대/);
-    assert.doesNotMatch(previewPageHTML, /data-action="zoom-in"/);
-    assert.doesNotMatch(previewPageHTML, /data-action="next"/);
-    assert.doesNotMatch(previewPageHTML, /#page=1&amp;zoom=100/);
+    assert.match(previewPageHTML, /위 도구막대로 PDF 쪽 이동과 확대\/축소/);
+    assert.match(previewPageHTML, /data-action="zoom-in"/);
+    assert.match(previewPageHTML, /data-action="next"/);
+    assert.match(previewPageHTML, /pdfjs-dist/);
+    assert.match(previewPageHTML, /data-pdf-canvas/);
     assert.match(previewPageHTML, /data-status/);
 
     const previewURL = new URL(pdf.downloadURL);
