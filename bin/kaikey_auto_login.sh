@@ -265,6 +265,11 @@ while (( $(date +%s) <= deadline_epoch )); do
             sleep "$KAIKEY_POST_APPROVAL_WAIT_SECONDS"
           else
             reason="$(json_get "$approve_json" reason 2>/dev/null || true)"
+            if [[ "$reason" == "no-pending-request" ]]; then
+              print -r -- "status=waiting stage=manual-approval reason=no-pending-request"
+              sleep "$KAIKEY_AUTO_LOGIN_POLL_SECONDS"
+              continue
+            fi
             print -r -- "status=failed stage=approve reason=${reason:-unknown}"
             exit 1
           fi

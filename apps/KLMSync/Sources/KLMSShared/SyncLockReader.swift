@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public struct SyncLockInfo: Sendable, Equatable {
@@ -22,21 +23,43 @@ public struct SyncLockReader {
     }
 
     public func sharedLockInfo(scope: String) -> SyncLockInfo? {
-        let lockURL = paths.automationURL
-            .appendingPathComponent("shared-locks", isDirectory: true)
-            .appendingPathComponent("\(scope).lock", isDirectory: true)
-        guard fileManager.fileExists(atPath: lockURL.path) else {
-            return nil
+        for lockURL in lockURLs(scope: scope) {
+            guard fileManager.fileExists(atPath: lockURL.path) else {
+                continue
+            }
+            let info = SyncLockInfo(
+                pid: readTrimmed(lockURL.appendingPathComponent("pid")),
+                command: readTrimmed(lockURL.appendingPathComponent("command")),
+                acquiredAt: readTrimmed(lockURL.appendingPathComponent("acquired_at"))
+            )
+            if !info.pid.isEmpty, !isProcessRunning(pidString: info.pid) {
+                try? fileManager.removeItem(at: lockURL)
+                continue
+            }
+            return info
         }
-        return SyncLockInfo(
-            pid: readTrimmed(lockURL.appendingPathComponent("pid")),
-            command: readTrimmed(lockURL.appendingPathComponent("command")),
-            acquiredAt: readTrimmed(lockURL.appendingPathComponent("acquired_at"))
-        )
+        return nil
+    }
+
+    private func lockURLs(scope: String) -> [URL] {
+        [
+            paths.automationURL
+                .appendingPathComponent("\(scope).lock", isDirectory: true),
+            paths.automationURL
+                .appendingPathComponent("shared-locks", isDirectory: true)
+                .appendingPathComponent("\(scope).lock", isDirectory: true)
+        ]
     }
 
     private func readTrimmed(_ url: URL) -> String {
         (try? String(contentsOf: url, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)) ?? ""
+    }
+
+    private func isProcessRunning(pidString: String) -> Bool {
+        guard let pid = Int32(pidString) else {
+            return false
+        }
+        return kill(pid, 0) == 0 || errno == EPERM
     }
 }
