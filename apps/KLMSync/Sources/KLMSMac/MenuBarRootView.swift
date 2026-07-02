@@ -161,12 +161,14 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(0.0))
+                    .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(configuration.isPressed && isEnabled ? 0.18 : 0.0))
                     .allowsHitTesting(false)
             }
             .opacity(isEnabled ? 1.0 : disabledOpacity)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }
 
@@ -4185,7 +4187,7 @@ private struct FileAccessActivityRow: View {
 }
 
 private struct CommandPanelView: View {
-    let model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
     private let commands: [KLMSEngineCommand] = [.fullSync, .filesSync, .coreSync, .noticeSync]
     private let secondaryCommandColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
 
@@ -4213,32 +4215,31 @@ private struct CommandPanelView: View {
             }
 
             if let command = model.runningCommand {
-                HStack(spacing: 8) {
-                    Image(systemName: "stop.fill")
-                        .font(.caption.weight(.bold))
-                    Text(model.isCancellingCommand ? "중단 요청 중..." : "\(command.displayName) 중단")
-                        .font(.subheadline.weight(.semibold))
+                Button(role: .destructive) {
+                    Task {
+                        await model.cancelRunningCommand()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "stop.fill")
+                            .font(.caption.weight(.bold))
+                        Text(model.isCancellingCommand ? "중단 요청 중..." : "\(command.displayName) 중단")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(Color.klmsMacDangerBorder)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Color.klmsMacCommandButtonBackground.opacity(0.90), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.klmsMacDangerBorder.opacity(0.48), lineWidth: 1)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .foregroundStyle(Color.klmsMacDangerBorder)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(Color.klmsMacCommandButtonBackground.opacity(0.90), in: RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.klmsMacDangerBorder.opacity(0.48), lineWidth: 1)
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 10))
-                .opacity(model.isCancellingCommand ? 0.62 : 1.0)
-                .onTapGesture {
-                    cancelRunningCommandIfAvailable()
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isButton)
-                .accessibilityRespondsToUserInteraction(!model.isCancellingCommand)
+                .buttonStyle(MacPressFeedbackButtonStyle())
+                .disabled(model.isCancellingCommand)
                 .accessibilityLabel("\(command.displayName) 중단")
                 .accessibilityHint("현재 실행 중인 동기화를 중단합니다.")
-                .accessibilityAction {
-                    cancelRunningCommandIfAvailable()
-                }
+                .accessibilityIdentifier("command-cancel")
             }
         }
     }
@@ -4274,109 +4275,95 @@ private struct CommandPanelView: View {
     private func primaryCommandActionCard(_ command: KLMSEngineCommand) -> some View {
         let isRunning = model.runningCommand == command
         let isDisabled = model.runningCommand != nil && !isRunning
-        return HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(isRunning ? "전체 동기화 중단" : "전체 동기화")
-                    .font(.system(size: 18, weight: .black, design: .rounded))
-                if isRunning {
-                    Text(model.currentPhaseText ?? "진행 상황을 확인 중입니다.")
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                        .opacity(0.86)
+        return Button {
+            runOrCancel(command)
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(isRunning ? "전체 동기화 중단" : "전체 동기화")
+                        .font(.system(size: 18, weight: .black, design: .rounded))
+                    if isRunning {
+                        Text(model.currentPhaseText ?? "진행 상황을 확인 중입니다.")
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                            .opacity(0.86)
+                    }
                 }
+                Spacer(minLength: 0)
+                Image(systemName: primaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled))
+                    .font(.headline.weight(.black))
             }
-            Spacer(minLength: 0)
-            Image(systemName: primaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled))
-                .font(.headline.weight(.black))
+            .foregroundStyle(primaryCommandForeground(isDisabled: isDisabled))
+            .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 15)
+            .background(
+                primaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(primaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
-        .foregroundStyle(primaryCommandForeground(isDisabled: isDisabled))
-        .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 15)
-        .background(
-            primaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
-            in: RoundedRectangle(cornerRadius: 12)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(primaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled), lineWidth: 1)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 12))
-        .onTapGesture {
-            runOrCancelIfAvailable(command, isDisabled: isDisabled)
-        }
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12, disabledOpacity: 1.0))
+        .controlSize(.regular)
         .help(command.shortDescription)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityRespondsToUserInteraction(!isDisabled)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
-        .accessibilityAction {
-            runOrCancelIfAvailable(command, isDisabled: isDisabled)
-        }
+        .accessibilityIdentifier("command-\(command.rawValue)")
+        .disabled(isDisabled)
     }
 
     private func commandActionCard(_ command: KLMSEngineCommand) -> some View {
         let isRunning = model.runningCommand == command
         let isDisabled = model.runningCommand != nil && !isRunning
-        return HStack(spacing: 5) {
-            if let systemImage = secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 9, weight: .black, design: .rounded))
-            }
-            VStack(spacing: 2) {
-                Text(shortTitle(for: command))
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-                if isRunning {
-                    Text(model.currentPhaseText ?? "진행 중")
-                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .opacity(0.78)
+        return Button {
+            runOrCancel(command)
+        } label: {
+            HStack(spacing: 5) {
+                if let systemImage = secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 9, weight: .black, design: .rounded))
                 }
+                VStack(spacing: 2) {
+                    Text(shortTitle(for: command))
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    if isRunning {
+                        Text(model.currentPhaseText ?? "진행 중")
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .opacity(0.78)
+                    }
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
             }
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
+            .foregroundStyle(secondaryCommandForeground(isDisabled: isDisabled))
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 9)
+            .background(
+                secondaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(
+                        secondaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled),
+                        lineWidth: 1
+                    )
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .foregroundStyle(secondaryCommandForeground(isDisabled: isDisabled))
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 9)
-        .background(
-            secondaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
-            in: RoundedRectangle(cornerRadius: 10)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(
-                    secondaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled),
-                    lineWidth: 1
-                )
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-        .onTapGesture {
-            runOrCancelIfAvailable(command, isDisabled: isDisabled)
-        }
+        .buttonStyle(MacPressFeedbackButtonStyle(disabledOpacity: 1.0))
+        .controlSize(.small)
         .help(command.shortDescription)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityRespondsToUserInteraction(!isDisabled)
         .accessibilityLabel("\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
-        .accessibilityAction {
-            runOrCancelIfAvailable(command, isDisabled: isDisabled)
-        }
-    }
-
-    private func runOrCancelIfAvailable(_ command: KLMSEngineCommand, isDisabled: Bool) {
-        guard !isDisabled else { return }
-        runOrCancel(command)
-    }
-
-    private func cancelRunningCommandIfAvailable() {
-        guard !model.isCancellingCommand else { return }
-        Task {
-            await model.cancelRunningCommand()
-        }
+        .accessibilityIdentifier("command-\(command.rawValue)")
+        .disabled(isDisabled)
     }
 
     private func runOrCancel(_ command: KLMSEngineCommand) {
