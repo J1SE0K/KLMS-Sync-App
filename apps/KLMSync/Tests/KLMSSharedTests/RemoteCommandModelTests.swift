@@ -118,6 +118,14 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertTrue(RemoteCommandStatus.macUnavailable.isTerminal)
     }
 
+    func testServerRelayRequestLogStatusDisplayNamesAreLocalized() {
+        XCTAssertEqual(ServerRelayRequestLogEntry(status: "created").statusDisplayName, "생성됨")
+        XCTAssertEqual(ServerRelayRequestLogEntry(status: "updated").statusDisplayName, "갱신됨")
+        XCTAssertEqual(ServerRelayRequestLogEntry(status: "deleted").statusDisplayName, "삭제됨")
+        XCTAssertEqual(ServerRelayRequestLogEntry(status: "pending").statusDisplayName, "대기 중")
+        XCTAssertEqual(ServerRelayRequestLogEntry(status: "macUnavailable").statusDisplayName, "Mac 응답 없음")
+    }
+
     func testRemoteRunCommandOptionsRoundTrip() throws {
         let command = RemoteRunCommand(
             kind: .noticeSync,

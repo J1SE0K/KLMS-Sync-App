@@ -1165,6 +1165,8 @@ final class CompanionModel: ObservableObject {
             return
         }
         guard let serverRelayStore else {
+            connectionMessage = remoteAvailabilityMessage
+            connectionSucceeded = false
             errorMessage = remoteAvailabilityMessage
             return
         }
@@ -7495,6 +7497,27 @@ private struct RemoteDashboardSyncCard: View {
                 }
             )
             .equatable()
+
+            if !snapshot.isRemoteAvailable {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "link.badge.plus")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.klmsWarningBorder)
+                    Text("서버 URL과 클라이언트 토큰을 저장하면 동기화 요청과 대시보드 갱신을 사용할 수 있습니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.klmsSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.klmsWarningBorder.opacity(0.10), in: RoundedRectangle(cornerRadius: 11))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(Color.klmsWarningBorder.opacity(0.34), lineWidth: 1)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("서버 연결 필요. 서버 URL과 클라이언트 토큰을 저장하면 동기화 요청과 대시보드 갱신을 사용할 수 있습니다.")
+            }
         }
         .padding(11)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
@@ -7565,7 +7588,7 @@ private struct RemoteDashboardSyncSnapshot: Equatable {
     }
 
     func commandDisabled(for kind: RemoteCommandKind) -> Bool {
-        !isRemoteAvailable || (hasInFlightRequest && !isCommandActive(kind))
+        hasInFlightRequest && !isCommandActive(kind)
     }
 
     func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
@@ -17436,6 +17459,16 @@ private extension String {
             "완료"
         case "failed":
             "실패"
+        case "created":
+            "생성됨"
+        case "updated":
+            "갱신됨"
+        case "deleted", "removed", "cleared":
+            "삭제됨"
+        case "pending", "queued":
+            "대기 중"
+        case "cancelled", "canceled":
+            "취소됨"
         case "busy":
             "Mac 실행 중"
         case "idle":

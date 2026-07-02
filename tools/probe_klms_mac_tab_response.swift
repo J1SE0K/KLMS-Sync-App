@@ -51,6 +51,7 @@ private struct ProbeTarget {
 private let environment = ProcessInfo.processInfo.environment
 private let bundleID = environment["KLMS_MAC_BUNDLE_ID"] ?? "com.local.KLMSync"
 private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
+private let appPath = environment["KLMS_MAC_APP_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines)
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
 private let runCount = max(1, Int(environment["KLMS_MAC_TAB_PROBE_RUNS"] ?? "1") ?? 1)
 private let averageLimit = Double(environment["KLMS_MAC_TAB_AVERAGE_LIMIT_MS"] ?? "") ?? 0
@@ -80,11 +81,7 @@ private func runProbe() throws {
         throw ProbeFailure.accessibilityPermissionMissing
     }
 
-    let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-    let runningByName = NSWorkspace.shared.runningApplications.filter { app in
-        app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
-    }
-    guard let app = (runningByBundleID + runningByName).first(where: { !$0.isTerminated }) else {
+    guard let app = launchKLMSApplicationIfNeeded() else {
         throw ProbeFailure.appNotRunning(bundleID: bundleID, appName: appName)
     }
 
@@ -122,6 +119,29 @@ private func runProbe() throws {
     }
 }
 
+private func runningKLMSApplication() -> NSRunningApplication? {
+    let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+    let runningByName = NSWorkspace.shared.runningApplications.filter { app in
+        app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
+    }
+    return (runningByBundleID + runningByName).first(where: { !$0.isTerminated })
+}
+
+private func launchKLMSApplicationIfNeeded() -> NSRunningApplication? {
+    if let app = runningKLMSApplication() {
+        return app
+    }
+    activateApplicationBundle()
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let app = runningKLMSApplication() {
+            return app
+        }
+        Thread.sleep(forTimeInterval: 0.10)
+    } while Date() < deadline
+    return nil
+}
+
 private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElement) {
     activateApplicationBundle()
     app.unhide()
@@ -143,7 +163,11 @@ private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElem
 private func activateApplicationBundle() {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-b", bundleID]
+    if let appPath, !appPath.isEmpty {
+        process.arguments = [appPath]
+    } else {
+        process.arguments = ["-b", bundleID]
+    }
     process.standardOutput = Pipe()
     process.standardError = Pipe()
     try? process.run()

@@ -20,6 +20,18 @@ public extension String {
             "대기 중"
         case "running":
             "실행 중"
+        case "accepted":
+            "접수됨"
+        case "created":
+            "생성됨"
+        case "updated":
+            "갱신됨"
+        case "deleted", "removed", "cleared":
+            "삭제됨"
+        case "queued":
+            "대기 중"
+        case "cancelled", "canceled":
+            "취소됨"
         case "interrupted", "stale":
             "중단됨"
         case "completed":

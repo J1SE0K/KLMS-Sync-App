@@ -1225,10 +1225,22 @@ public struct ServerRelayRequestLogEntry: Codable, Sendable, Equatable, Identifi
 
     public var statusDisplayName: String {
         switch status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "accepted", "created", "queued", "ok", "completed":
+        case "accepted", "ok", "completed":
             return "기록됨"
+        case "created":
+            return "생성됨"
+        case "updated":
+            return "갱신됨"
+        case "deleted", "removed", "cleared":
+            return "삭제됨"
+        case "queued", "pending":
+            return "대기 중"
         case "running":
             return "처리 중"
+        case "cancelled", "canceled":
+            return "취소됨"
+        case "macunavailable", "mac_unavailable":
+            return "Mac 응답 없음"
         case "failed", "rejected", "error":
             return "실패"
         default:

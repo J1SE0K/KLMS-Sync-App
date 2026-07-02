@@ -6428,6 +6428,16 @@ private extension String {
             "완료"
         case "failed":
             "실패"
+        case "created":
+            "생성됨"
+        case "updated":
+            "갱신됨"
+        case "deleted", "removed", "cleared":
+            "삭제됨"
+        case "pending", "queued":
+            "대기 중"
+        case "cancelled", "canceled":
+            "취소됨"
         case "busy":
             "Mac 실행 중"
         case "idle":
