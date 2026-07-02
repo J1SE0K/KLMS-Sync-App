@@ -1,5 +1,6 @@
 import KLMSShared
 import AppKit
+import Combine
 import SwiftUI
 
 @main
@@ -151,10 +152,121 @@ private extension View {
     }
 }
 
+private enum KLMSMenuBarStatusIconState {
+    case ready
+    case running
+    case attention
+
+    @MainActor
+    init(model: KLMSMacModel) {
+        if model.runningCommand != nil {
+            self = .running
+        } else if model.needsAttention {
+            self = .attention
+        } else {
+            self = .ready
+        }
+    }
+
+    var tooltip: String {
+        switch self {
+        case .ready:
+            "KLMS Sync 준비됨"
+        case .running:
+            "KLMS Sync 실행 중"
+        case .attention:
+            "KLMS Sync 확인 필요"
+        }
+    }
+}
+
+private enum KLMSMenuBarStatusIcon {
+    static func image(for state: KLMSMenuBarStatusIconState) -> NSImage {
+        let size = NSSize(width: 19, height: 19)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSColor.clear.setFill()
+        NSRect(origin: .zero, size: size).fill()
+
+        let ink = NSColor.black.withAlphaComponent(0.92)
+        ink.setStroke()
+        ink.setFill()
+
+        let badge = NSBezierPath(
+            roundedRect: NSRect(x: 2.5, y: 2.5, width: 14, height: 14),
+            xRadius: 4.2,
+            yRadius: 4.2
+        )
+        badge.lineWidth = 1.55
+        badge.stroke()
+
+        let stem = NSBezierPath()
+        stem.lineWidth = 1.95
+        stem.lineCapStyle = .round
+        stem.lineJoinStyle = .round
+        stem.move(to: NSPoint(x: 6.4, y: 5.8))
+        stem.line(to: NSPoint(x: 6.4, y: 13.3))
+        stem.stroke()
+
+        let arm = NSBezierPath()
+        arm.lineWidth = 1.85
+        arm.lineCapStyle = .round
+        arm.lineJoinStyle = .round
+        arm.move(to: NSPoint(x: 7.6, y: 9.5))
+        arm.line(to: NSPoint(x: 12.3, y: 13.1))
+        arm.move(to: NSPoint(x: 7.6, y: 9.4))
+        arm.line(to: NSPoint(x: 12.7, y: 5.7))
+        arm.stroke()
+
+        drawStateBadge(state)
+        image.unlockFocus()
+        image.isTemplate = true
+        image.accessibilityDescription = state.tooltip
+        return image
+    }
+
+    private static func drawStateBadge(_ state: KLMSMenuBarStatusIconState) {
+        let ink = NSColor.black.withAlphaComponent(0.98)
+        ink.setStroke()
+        ink.setFill()
+        switch state {
+        case .ready:
+            let check = NSBezierPath()
+            check.lineWidth = 1.45
+            check.lineCapStyle = .round
+            check.lineJoinStyle = .round
+            check.move(to: NSPoint(x: 11.1, y: 7.1))
+            check.line(to: NSPoint(x: 12.8, y: 5.6))
+            check.line(to: NSPoint(x: 16.0, y: 9.7))
+            check.stroke()
+        case .running:
+            let ring = NSBezierPath(ovalIn: NSRect(x: 11.0, y: 10.7, width: 5.4, height: 5.4))
+            ring.lineWidth = 1.15
+            ring.stroke()
+            let arrow = NSBezierPath()
+            arrow.lineWidth = 1.15
+            arrow.lineCapStyle = .round
+            arrow.lineJoinStyle = .round
+            arrow.move(to: NSPoint(x: 15.5, y: 15.1))
+            arrow.line(to: NSPoint(x: 16.6, y: 15.3))
+            arrow.line(to: NSPoint(x: 16.1, y: 14.2))
+            arrow.stroke()
+        case .attention:
+            let triangle = NSBezierPath()
+            triangle.move(to: NSPoint(x: 13.6, y: 11.2))
+            triangle.line(to: NSPoint(x: 16.2, y: 5.9))
+            triangle.line(to: NSPoint(x: 11.0, y: 5.9))
+            triangle.close()
+            triangle.fill()
+        }
+    }
+}
+
 @MainActor
 final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     private var model: KLMSMacModel?
     private var statusItem: NSStatusItem?
+    private var statusIconCancellable: AnyCancellable?
     private var quitKeyMonitor: Any?
     private var terminationCleanupStarted = false
 
@@ -172,8 +284,8 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureStatusItem(for model: KLMSMacModel) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: model.menuBarSystemImage, accessibilityDescription: "KLMS Sync")
         item.button?.imagePosition = .imageOnly
+        item.button?.imageScaling = .scaleProportionallyDown
 
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "KLMS Sync 열기", action: #selector(openDashboardFromMenu), keyEquivalent: "o"))
@@ -185,6 +297,19 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         }
         item.menu = menu
         statusItem = item
+        updateStatusItemIcon(for: model)
+        statusIconCancellable = model.objectWillChange.sink { [weak self, weak model] _ in
+            DispatchQueue.main.async {
+                guard let model else { return }
+                self?.updateStatusItemIcon(for: model)
+            }
+        }
+    }
+
+    private func updateStatusItemIcon(for model: KLMSMacModel) {
+        let state = KLMSMenuBarStatusIconState(model: model)
+        statusItem?.button?.image = KLMSMenuBarStatusIcon.image(for: state)
+        statusItem?.button?.toolTip = state.tooltip
     }
 
     private func configureApplicationMenu() {

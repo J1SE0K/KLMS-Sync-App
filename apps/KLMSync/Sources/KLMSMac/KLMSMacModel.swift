@@ -345,16 +345,6 @@ final class KLMSMacModel: ObservableObject {
         runningCommandStatusPollTask?.cancel()
     }
 
-    var menuBarSystemImage: String {
-        if runningCommand != nil {
-            return "arrow.triangle.2.circlepath"
-        }
-        if needsAttention {
-            return "exclamationmark.triangle"
-        }
-        return "checkmark.circle"
-    }
-
     var needsAttention: Bool {
         !cachedIssues.isEmpty
     }
