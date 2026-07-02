@@ -188,41 +188,65 @@ private enum KLMSMenuBarStatusIcon {
         NSColor.clear.setFill()
         NSRect(origin: .zero, size: size).fill()
 
-        let ink = NSColor.black.withAlphaComponent(0.92)
+        let ink = NSColor.black.withAlphaComponent(0.94)
         ink.setStroke()
         ink.setFill()
 
-        let badge = NSBezierPath(
-            roundedRect: NSRect(x: 2.5, y: 2.5, width: 14, height: 14),
-            xRadius: 4.2,
-            yRadius: 4.2
-        )
-        badge.lineWidth = 1.55
-        badge.stroke()
-
-        let stem = NSBezierPath()
-        stem.lineWidth = 1.95
-        stem.lineCapStyle = .round
-        stem.lineJoinStyle = .round
-        stem.move(to: NSPoint(x: 6.4, y: 5.8))
-        stem.line(to: NSPoint(x: 6.4, y: 13.3))
-        stem.stroke()
-
-        let arm = NSBezierPath()
-        arm.lineWidth = 1.85
-        arm.lineCapStyle = .round
-        arm.lineJoinStyle = .round
-        arm.move(to: NSPoint(x: 7.6, y: 9.5))
-        arm.line(to: NSPoint(x: 12.3, y: 13.1))
-        arm.move(to: NSPoint(x: 7.6, y: 9.4))
-        arm.line(to: NSPoint(x: 12.7, y: 5.7))
-        arm.stroke()
-
+        drawSyncArc()
+        drawDocument()
         drawStateBadge(state)
         image.unlockFocus()
         image.isTemplate = true
         image.accessibilityDescription = state.tooltip
         return image
+    }
+
+    private static func drawDocument() {
+        let page = NSBezierPath(
+            roundedRect: NSRect(x: 4.6, y: 3.4, width: 9.9, height: 12.2),
+            xRadius: 2.2,
+            yRadius: 2.2
+        )
+        page.lineWidth = 1.35
+        page.stroke()
+
+        let title = NSBezierPath(roundedRect: NSRect(x: 6.8, y: 12.2, width: 5.5, height: 1.25), xRadius: 0.62, yRadius: 0.62)
+        title.fill()
+
+        for y in [9.2, 7.0] {
+            let box = NSBezierPath(roundedRect: NSRect(x: 6.2, y: y - 0.35, width: 1.05, height: 1.05), xRadius: 0.25, yRadius: 0.25)
+            box.lineWidth = 0.85
+            box.stroke()
+            let line = NSBezierPath()
+            line.lineWidth = 1.15
+            line.lineCapStyle = .round
+            line.move(to: NSPoint(x: 8.25, y: y + 0.15))
+            line.line(to: NSPoint(x: 12.3, y: y + 0.15))
+            line.stroke()
+        }
+    }
+
+    private static func drawSyncArc() {
+        let arc = NSBezierPath()
+        arc.lineWidth = 1.25
+        arc.lineCapStyle = .round
+        arc.appendArc(
+            withCenter: NSPoint(x: 9.5, y: 9.4),
+            radius: 6.65,
+            startAngle: 128,
+            endAngle: -42,
+            clockwise: true
+        )
+        arc.stroke()
+
+        let arrow = NSBezierPath()
+        arrow.lineWidth = 1.25
+        arrow.lineCapStyle = .round
+        arrow.lineJoinStyle = .round
+        arrow.move(to: NSPoint(x: 15.5, y: 7.8))
+        arrow.line(to: NSPoint(x: 16.8, y: 7.4))
+        arrow.line(to: NSPoint(x: 16.0, y: 6.3))
+        arrow.stroke()
     }
 
     private static func drawStateBadge(_ state: KLMSMenuBarStatusIconState) {
@@ -232,30 +256,37 @@ private enum KLMSMenuBarStatusIcon {
         switch state {
         case .ready:
             let check = NSBezierPath()
-            check.lineWidth = 1.45
+            check.lineWidth = 1.75
             check.lineCapStyle = .round
             check.lineJoinStyle = .round
-            check.move(to: NSPoint(x: 11.1, y: 7.1))
-            check.line(to: NSPoint(x: 12.8, y: 5.6))
-            check.line(to: NSPoint(x: 16.0, y: 9.7))
+            check.move(to: NSPoint(x: 8.3, y: 5.4))
+            check.line(to: NSPoint(x: 10.4, y: 3.6))
+            check.line(to: NSPoint(x: 15.4, y: 8.8))
             check.stroke()
         case .running:
-            let ring = NSBezierPath(ovalIn: NSRect(x: 11.0, y: 10.7, width: 5.4, height: 5.4))
-            ring.lineWidth = 1.15
+            let ring = NSBezierPath()
+            ring.lineWidth = 1.45
+            ring.lineCapStyle = .round
+            ring.appendArc(
+                withCenter: NSPoint(x: 12.3, y: 6.3),
+                radius: 2.9,
+                startAngle: 210,
+                endAngle: 515
+            )
             ring.stroke()
             let arrow = NSBezierPath()
-            arrow.lineWidth = 1.15
+            arrow.lineWidth = 1.25
             arrow.lineCapStyle = .round
             arrow.lineJoinStyle = .round
-            arrow.move(to: NSPoint(x: 15.5, y: 15.1))
-            arrow.line(to: NSPoint(x: 16.6, y: 15.3))
-            arrow.line(to: NSPoint(x: 16.1, y: 14.2))
+            arrow.move(to: NSPoint(x: 14.7, y: 8.2))
+            arrow.line(to: NSPoint(x: 15.7, y: 8.2))
+            arrow.line(to: NSPoint(x: 15.3, y: 7.2))
             arrow.stroke()
         case .attention:
             let triangle = NSBezierPath()
-            triangle.move(to: NSPoint(x: 13.6, y: 11.2))
-            triangle.line(to: NSPoint(x: 16.2, y: 5.9))
-            triangle.line(to: NSPoint(x: 11.0, y: 5.9))
+            triangle.move(to: NSPoint(x: 13.1, y: 9.4))
+            triangle.line(to: NSPoint(x: 16.2, y: 3.9))
+            triangle.line(to: NSPoint(x: 10.0, y: 3.9))
             triangle.close()
             triangle.fill()
         }
