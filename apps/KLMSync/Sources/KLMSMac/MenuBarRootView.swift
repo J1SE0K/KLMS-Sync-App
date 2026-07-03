@@ -797,40 +797,53 @@ private struct DashboardTopBarStatusContent: View, Equatable {
     var snapshot: DashboardTopBarSnapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(snapshot.title)
-                .font(.system(size: 26, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.klmsMacPrimaryText)
-            Text(snapshot.statusText)
-                .font(.caption)
-                .foregroundStyle(Color.klmsMacSecondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.84)
-                .truncationMode(.tail)
-            if let runningProgress = snapshot.runningProgress {
-                MacRunningProgressBarView(progress: runningProgress)
-                    .frame(maxWidth: 520)
+        HStack(alignment: snapshot.runningProgress == nil ? .center : .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(snapshot.title)
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text(snapshot.statusText)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.84)
+                    .truncationMode(.tail)
+                if let runningProgress = snapshot.runningProgress {
+                    MacRunningProgressBarView(progress: runningProgress)
+                        .frame(maxWidth: 520)
+                }
             }
-        }
-        Spacer(minLength: 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-        if let runningPhaseLabel = snapshot.runningPhaseLabel {
-            Label(runningPhaseLabel, systemImage: "arrow.triangle.2.circlepath")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(Color.klmsMacCommandAccent)
-                .lineLimit(1)
-                .minimumScaleFactor(0.76)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Color.klmsMacCommandAccent.opacity(0.12), in: Capsule())
-        }
+            HStack(spacing: 8) {
+                if let runningPhaseLabel = snapshot.runningPhaseLabel {
+                    Label(runningPhaseLabel, systemImage: "arrow.triangle.2.circlepath")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(Color.klmsMacCommandAccent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.klmsMacCommandAccent.opacity(0.12), in: Capsule())
+                }
 
-        Text(snapshot.statusBadgeText)
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .foregroundStyle(snapshot.tone.color)
-            .background(snapshot.tone.color.opacity(0.12), in: Capsule())
+                if shouldShowStatusBadge {
+                    Text(snapshot.statusBadgeText)
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(snapshot.tone.color)
+                        .background(snapshot.tone.color.opacity(0.12), in: Capsule())
+                }
+            }
+            .frame(minHeight: 28, alignment: .center)
+            .padding(.top, snapshot.runningProgress == nil ? 0 : 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var shouldShowStatusBadge: Bool {
+        snapshot.tone != .ready || snapshot.statusBadgeText != "준비됨"
     }
 }
 
