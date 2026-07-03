@@ -435,6 +435,7 @@ klms_open_login_page_if_enabled() {
 }
 
 klms_login_assist_enabled() {
+  [[ "${KLMS_APP_RUN:-0}" == "1" ]] && return 0
   [[ "${KLMS_LOGIN_ASSIST_ENABLED:-0}" == "1" ]]
 }
 
