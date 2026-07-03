@@ -280,7 +280,7 @@ function checkAuthenticatedWithoutLeavingTwofactor(targetUrl, sourceUrl, options
 }
 
 function authCheckMilliseconds(options = {}) {
-  const seconds = Number(options["auth-check-seconds"] || envValue("KAIKEY_AUTH_CHECK_SECONDS") || "1.2");
+  const seconds = Number(options["auth-check-seconds"] || envValue("KLMS_LOGIN_ASSIST_AUTH_CHECK_SECONDS") || "1.2");
   const bounded = Math.max(0.2, Math.min(3, Number.isFinite(seconds) ? seconds : 1.2));
   return bounded * 1000;
 }

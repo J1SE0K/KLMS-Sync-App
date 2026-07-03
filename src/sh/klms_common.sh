@@ -69,7 +69,7 @@ klms_init_context() {
     KLMS_FORCE_LOGIN_PREFLIGHT
     KLMS_LOGIN_STATUS_REUSE_SECONDS
     KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS
-    KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED
+    KLMS_LOGIN_ASSIST_REFRESH_PREEXISTING_TWOFACTOR_ENABLED
     OVERRIDES_JSON_PATH
     SYNC_MODE
     FILE_REFRESH_MODE
@@ -195,12 +195,9 @@ klms_init_context() {
     default_login_open_safari_on_failure=0
   fi
   KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE="${KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE:-$default_login_open_safari_on_failure}"
-  KLMS_LOGIN_ASSIST_ENABLED="${KLMS_LOGIN_ASSIST_ENABLED:-${KAIKEY_LOGIN_ASSIST_ENABLED:-${KAIKEY_AUTO_LOGIN_ENABLED:-0}}}"
+  KLMS_LOGIN_ASSIST_ENABLED="${KLMS_LOGIN_ASSIST_ENABLED:-0}"
   KLMS_LOGIN_ASSIST_EARLY_ENABLED="${KLMS_LOGIN_ASSIST_EARLY_ENABLED:-1}"
-  KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="${KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-${KAIKEY_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}}"
-  KAIKEY_AUTO_LOGIN_ENABLED="${KAIKEY_AUTO_LOGIN_ENABLED:-0}"
-  KAIKEY_AUTO_APPROVE_ENABLED="${KAIKEY_AUTO_APPROVE_ENABLED:-0}"
-  KAIKEY_STATE_PATH="${KAIKEY_STATE_PATH:-$HOME/Library/Application Support/KLMSNotesSync/kaikey_state.json}"
+  KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="${KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}"
   lock_name="${KLMS_SYNC_LOCK_NAME:-$runtime_namespace}"
   KLMS_SHARED_SYNC_LOCK_DIR="${KLMS_SHARED_SYNC_LOCK_DIR:-$KLMS_SHARED_SYNC_LOCK_ROOT/${lock_name}.lock}"
   KLMS_SHARED_SYNC_LOCK_WAIT_SECONDS="${KLMS_SHARED_SYNC_LOCK_WAIT_SECONDS:-900}"
@@ -438,27 +435,23 @@ klms_open_login_page_if_enabled() {
 }
 
 klms_login_assist_enabled() {
-  [[ "${KLMS_LOGIN_ASSIST_ENABLED:-${KAIKEY_LOGIN_ASSIST_ENABLED:-${KAIKEY_AUTO_LOGIN_ENABLED:-0}}}" == "1" ]]
+  [[ "${KLMS_LOGIN_ASSIST_ENABLED:-0}" == "1" ]]
 }
 
 klms_try_login_assist() {
   klms_login_assist_enabled || return 1
-  [[ -f "$SCRIPT_DIR/kaikey_auto_login.sh" ]] || return 1
-  if [[ "${KAIKEY_AUTO_APPROVE_ENABLED:-0}" != "1" && "${KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-${KAIKEY_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}}" != "1" && ! -t 1 ]]; then
+  [[ -f "$SCRIPT_DIR/klms_login_assist.sh" ]] || return 1
+  if [[ "${KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}" != "1" && ! -t 1 ]]; then
     return 1
   fi
 
-  if /bin/zsh "$SCRIPT_DIR/kaikey_auto_login.sh" "$CONFIG_PATH"; then
+  if /bin/zsh "$SCRIPT_DIR/klms_login_assist.sh" "$CONFIG_PATH"; then
     print -r -- "KLMS 로그인 보조 완료" >&2
     return 0
   else
     print -r -- "KLMS 로그인 보조 실패" >&2
     return 1
   fi
-}
-
-klms_try_kaikey_auto_login() {
-  klms_try_login_assist
 }
 
 klms_fast_tab_login_state() {

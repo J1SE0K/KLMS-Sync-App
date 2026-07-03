@@ -4798,12 +4798,10 @@ private struct LoginPanelView: View {
 
     private var loginAssistModeText: String {
         switch model.configValue(.loginAssistMode) {
-        case "kaikey-auto":
-            "Kaikey 자동"
         case "manual-digits", "":
             "수동 인증번호"
         case let value:
-            value
+            value.isEmpty ? "수동 인증번호" : "수동 인증번호"
         }
     }
 }

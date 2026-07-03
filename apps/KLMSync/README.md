@@ -29,11 +29,11 @@ The bundle is written to `~/Applications/KLMS Sync.app` by default. The build sc
 
 ## iPhone/iPad companion
 
-The iPhone/iPad app only creates remote requests and reads sanitized status counts. It does not scrape KLMS, does not receive raw logs, and does not store KLMS URLs, `config.env`, Kaikey state, or local file paths. When a user asks to open a file, the Mac worker uploads only that local `course_files` file to the server relay's temporary file store and the link expires automatically.
+The iPhone/iPad app only creates remote requests and reads sanitized status counts. It does not scrape KLMS, does not receive raw logs, and does not store KLMS URLs, `config.env`, authentication state files, or local file paths. When a user asks to open a file, the Mac worker uploads only that local `course_files` file to the server relay's temporary file store and the link expires automatically.
 
 The checked-in Xcode target is a universal iOS/iPadOS app. iPhone uses the compact tab layout, while iPad uses the adaptive split layout so the section list and selected detail can stay visible together. Do not create a separate iPad-only target unless the app needs a different bundle identifier or entitlement set.
 
-The supported remote path is the HTTPS server relay. Run the Cloudflare Workers + D1/R2 relay in `deploy/cloudflare-worker`, then enter the relay URL plus the client token in iPhone/iPad/Windows and the worker token in the Mac app. The relay stores command/status metadata plus sanitized assignment, exam, notice, and file list rows. KLMS scraping and macOS app integrations still run on the Mac, and raw logs, KLMS URLs, `config.env`, Kaikey state, and absolute local file paths are not uploaded. See [server-relay.md](../../docs/server-relay.md) for setup and API details.
+The supported remote path is the HTTPS server relay. Run the Cloudflare Workers + D1/R2 relay in `deploy/cloudflare-worker`, then enter the relay URL plus the client token in iPhone/iPad/Windows and the worker token in the Mac app. The relay stores command/status metadata plus sanitized assignment, exam, notice, and file list rows. KLMS scraping and macOS app integrations still run on the Mac, and raw logs, KLMS URLs, `config.env`, authentication state files, and absolute local file paths are not uploaded. See [server-relay.md](../../docs/server-relay.md) for setup and API details.
 
 The old same-Wi-Fi local remote control path is development-only fallback. Do not expose the raw local remote port to the public internet. CloudKit is not the default path for this app; the checked-in iOS entitlements stay empty so the app can build with a free Apple ID.
 

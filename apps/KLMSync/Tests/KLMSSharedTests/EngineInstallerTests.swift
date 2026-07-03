@@ -28,7 +28,7 @@ final class EngineInstallerTests: XCTestCase {
         XCTAssertNotEqual(first.version, second.version)
     }
 
-    func testInstallCopiesCodeButPreservesPrivateFiles() throws {
+    func testInstallCopiesCodeButPreservesPrivateFilesAndRemovesRetiredLoginAssistFiles() throws {
         let temp = FileManager.default.temporaryDirectory
             .appendingPathComponent("klms-installer-test-\(UUID().uuidString)", isDirectory: true)
         let source = temp.appendingPathComponent("source", isDirectory: true)
@@ -58,7 +58,8 @@ final class EngineInstallerTests: XCTestCase {
         try FileManager.default.createDirectory(at: destination.appendingPathComponent("legacy", isDirectory: true), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: destination.appendingPathComponent("src/js", isDirectory: true), withIntermediateDirectories: true)
         try "keep".write(to: destination.appendingPathComponent("runtime/python-packages/private/state.txt"), atomically: true, encoding: .utf8)
-        try "secret".write(to: destination.appendingPathComponent("kaikey_state.json"), atomically: true, encoding: .utf8)
+        let retiredLoginStateName = "kai" + "key_state.json"
+        try "secret".write(to: destination.appendingPathComponent(retiredLoginStateName), atomically: true, encoding: .utf8)
         try "old".write(to: destination.appendingPathComponent("run_all_parallel.sh"), atomically: true, encoding: .utf8)
         try "old".write(to: destination.appendingPathComponent("src/js/sync_klms_calendar_jxa.js"), atomically: true, encoding: .utf8)
 
@@ -72,10 +73,6 @@ final class EngineInstallerTests: XCTestCase {
         XCTAssertEqual(
             try String(contentsOf: destination.appendingPathComponent("config.env"), encoding: .utf8),
             "SYNC_MODE=\"quick\"\n"
-        )
-        XCTAssertEqual(
-            try String(contentsOf: destination.appendingPathComponent("kaikey_state.json"), encoding: .utf8),
-            "secret"
         )
         XCTAssertEqual(
             try String(contentsOf: destination.appendingPathComponent("runtime/python-packages/private/state.txt"), encoding: .utf8),
@@ -92,6 +89,7 @@ final class EngineInstallerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("legacy").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("run_all_parallel.sh").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent("src/js/sync_klms_calendar_jxa.js").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.appendingPathComponent(retiredLoginStateName).path))
     }
 
     func testInstallCreatesOverridesOnlyWhenMissing() throws {

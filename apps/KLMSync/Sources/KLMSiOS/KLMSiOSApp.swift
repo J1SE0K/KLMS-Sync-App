@@ -14980,9 +14980,9 @@ private struct RemoteSettingGroup: Identifiable, Equatable {
             (
                 "로그인",
                 "person.badge.key",
-                "인증번호 감지와 로그인 보조 방식을 정합니다.",
+                "인증번호 감지와 로그인 보조 동작을 정합니다.",
                 true,
-                ["KLMS_LOGIN_ASSIST_ENABLED", "KLMS_LOGIN_ASSIST_MODE", "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE"]
+                ["KLMS_LOGIN_ASSIST_ENABLED", "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE"]
             ),
             (
                 "동기화",
@@ -16396,7 +16396,7 @@ private struct RemoteSettingRow: View {
         case "KLMS_LOGIN_ASSIST_ENABLED":
             return "KLMS가 로그인을 요구하면 인증번호를 찾아 상단 알림으로 보여줍니다."
         case "KLMS_LOGIN_ASSIST_MODE":
-            return "직접 선택은 인증번호만 보여주고, 자동 보조는 가능한 범위에서 로그인 흐름을 도와줍니다."
+            return "현재는 앱에 인증번호를 보여주고 휴대폰에서 직접 선택하는 방식만 사용합니다."
         case "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE":
             return "앱 창이 앞에 없어도 로그인 상태 확인과 인증번호 감지를 시도합니다."
         case "SYNC_MODE":
@@ -16463,8 +16463,6 @@ private struct RemoteSettingRow: View {
             return "전체 다시 읽기"
         case "manual-digits":
             return "인증번호 직접 선택"
-        case "kaikey-auto":
-            return "Kaikey 자동 보조"
         case "minimize":
             return "창 최소화"
         case "none":

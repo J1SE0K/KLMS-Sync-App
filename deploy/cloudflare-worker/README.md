@@ -14,7 +14,7 @@ iPhone/iPad/Windows 파일 열기 요청 -> Mac worker -> R2 임시 업로드 ->
 
 - 저장함: 실행 요청, phase, exit code, 로그인 필요 여부, KAIST 인증 번호, 요약 숫자, sanitized 과제/시험/공지/파일 목록, 파일 열기 요청/만료 시간
 - 임시 저장함: 사용자가 파일 열기를 요청한 파일 원본만 R2에 10분 저장
-- 저장하지 않음: 원본 로그, KLMS URL, `config.env`, Kaikey state, 로컬 절대 경로, 요청하지 않은 다운로드 파일 본문
+- 저장하지 않음: 원본 로그, KLMS URL, `config.env`, 인증 상태 파일, 로컬 절대 경로, 요청하지 않은 다운로드 파일 본문
 
 ## 1. Cloudflare 로그인
 

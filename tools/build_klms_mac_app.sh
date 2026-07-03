@@ -125,9 +125,7 @@ if [[ -d "$ROOT_DIR/runtime/python-packages" ]]; then
 fi
 
 root_files=(
-  kaikey_auto_login.sh
-  kaikey_approve_number.sh
-  kaikey_setup.sh
+  klms_login_assist.sh
   sync_klms_core.sh
   sync_klms_notice.sh
   sync_klms_all.sh

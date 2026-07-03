@@ -301,13 +301,12 @@ struct SettingsView: View {
                 )
                 described(
                     "보조 모드",
-                    summary: binding(.loginAssistMode, defaultValue: "manual-digits").wrappedValue == "kaikey-auto" ? "Kaikey 자동" : "수동 인증번호",
-                    "수동 인증번호는 앱에 표시된 번호를 휴대폰에서 선택하는 방식입니다. Kaikey 자동은 가능한 경우 그 선택 과정까지 자동으로 처리합니다."
+                    summary: "수동 인증번호",
+                    "앱에 표시된 KAIST 인증번호를 휴대폰 인증 화면에서 직접 선택하는 방식입니다."
                 ) {
-                    Picker("보조 모드", selection: binding(.loginAssistMode, defaultValue: "manual-digits")) {
-                        Text("수동 인증번호").tag("manual-digits")
-                        Text("Kaikey 자동").tag("kaikey-auto")
-                    }
+                    Text("수동 인증번호만 사용")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacSecondaryText)
                 }
                 configToggle(
                     "앱이 앞에 없어도 로그인 보조",
@@ -790,7 +789,7 @@ struct SettingsView: View {
                     detail: "서버에 남는 정보와 남지 않는 정보를 확인합니다.",
                     systemImage: "lock"
                 ) {
-                    SettingsHelpText("서버에는 실행 요청, 요약 상태, 설정값, 요청 기록만 저장됩니다. 원본 로그, KLMS URL, config.env, Kaikey 상태, 로컬 파일 경로는 올리지 않습니다.")
+                    SettingsHelpText("서버에는 실행 요청, 요약 상태, 설정값, 요청 기록만 저장됩니다. 원본 로그, KLMS URL, config.env, 인증 상태 파일, 로컬 파일 경로는 올리지 않습니다.")
                     SettingsHelpText("파일 열기를 요청할 때만 Mac이 임시 링크를 만들고, 만료되면 서버 파일도 정리합니다. 복사된 토큰은 보안을 위해 잠시 뒤 클립보드에서 자동으로 지워집니다.")
                 }
             }

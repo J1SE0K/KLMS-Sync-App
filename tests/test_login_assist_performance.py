@@ -1,7 +1,7 @@
-import unittest
 import os
 import subprocess
 import tempfile
+import unittest
 from pathlib import Path
 
 
@@ -10,7 +10,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 
 class LoginAssistPerformanceTests(unittest.TestCase):
     def test_safari_step_advances_multiple_login_states_per_process(self) -> None:
-        text = (PROJECT_DIR / "src" / "js" / "kaikey_safari_step.js").read_text(
+        text = (PROJECT_DIR / "src" / "js" / "klms_login_safari_step.js").read_text(
             encoding="utf-8"
         )
 
@@ -54,40 +54,41 @@ class LoginAssistPerformanceTests(unittest.TestCase):
         self.assertNotIn("delay(0.5)", text)
         self.assertNotIn("delay(0.8)", text)
 
-    def test_shell_login_assist_uses_inner_safari_polling(self) -> None:
-        text = (PROJECT_DIR / "bin" / "kaikey_auto_login.sh").read_text(
+    def test_shell_login_assist_is_manual_digits_only(self) -> None:
+        text = (PROJECT_DIR / "bin" / "klms_login_assist.sh").read_text(
             encoding="utf-8"
         )
 
-        self.assertIn("KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS", text)
-        self.assertIn("KAIKEY_SAFARI_STEP_POLL_MS", text)
-        self.assertIn('KLMS_LOGIN_ASSIST_MODE="${KLMS_LOGIN_ASSIST_MODE:-manual-digits}"', text)
-        self.assertIn("manual-digits", text)
-        self.assertIn("kaikey-auto", text)
-        self.assertIn('KLMS_LOGIN_ASSIST_AUTO_APPROVE_ENABLED="${KLMS_LOGIN_ASSIST_AUTO_APPROVE_ENABLED:-0}"', text)
-        self.assertIn('if [[ "$KAIKEY_AUTO_APPROVE_ENABLED" == "1" && -n "$NODE_BIN" ]]', text)
+        self.assertIn("KLMS_LOGIN_ASSIST_STEP_TIMEOUT_SECONDS", text)
+        self.assertIn("KLMS_LOGIN_ASSIST_STEP_POLL_MS", text)
+        self.assertIn("KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS", text)
+        self.assertIn("KLMS_LOGIN_ASSIST_POLL_SECONDS", text)
+        self.assertIn("KLMS_LOGIN_ASSIST_OSASCRIPT_BIN", text)
         self.assertIn("KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED", text)
         self.assertIn("KLMS_SCRIPT_NOTIFICATIONS_ENABLED", text)
-        self.assertIn("KAIKEY_OSASCRIPT_BIN", text)
         self.assertIn("KLMS_APP_RUN", text)
         self.assertIn('KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED="0"', text)
         self.assertIn("KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS", text)
-        self.assertIn('KAIKEY_TWOFACTOR_REFRESH_SECONDS="${KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS:-${KAIKEY_TWOFACTOR_REFRESH_SECONDS:-0}}"', text)
-        self.assertIn("KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED", text)
+        self.assertIn("KLMS_LOGIN_ASSIST_REFRESH_PREEXISTING_TWOFACTOR_ENABLED", text)
         self.assertIn("preexisting_twofactor_refresh_attempted", text)
         self.assertNotIn("KLMS_LOGIN_ASSIST_FORCE_TWOFACTOR", text)
         self.assertNotIn("--force-twofactor", text)
         self.assertIn("--refresh-twofactor=1", text)
         self.assertIn("submitted_login_this_run", text)
-        self.assertIn('"$KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED" == "1"', text)
-        self.assertIn('submittedLogin', text)
-        self.assertIn("KAIKEY_AUTHENTICATED_RECHECK_SECONDS", text)
-        self.assertIn("KAIKEY_AUTH_CHECK_SECONDS", text)
+        self.assertIn('"$KLMS_LOGIN_ASSIST_REFRESH_PREEXISTING_TWOFACTOR_ENABLED" == "1"', text)
+        self.assertIn("KLMS_LOGIN_ASSIST_AUTHENTICATED_RECHECK_SECONDS", text)
+        self.assertIn("KLMS_LOGIN_ASSIST_AUTH_CHECK_SECONDS", text)
         self.assertIn("--check-authenticated=1", text)
-        self.assertIn('KAIKEY_AUTO_LOGIN_POLL_SECONDS="${KAIKEY_AUTO_LOGIN_POLL_SECONDS:-0.2}"', text)
-        self.assertIn('KAIKEY_SAFARI_STEP_POLL_MS="${KAIKEY_SAFARI_STEP_POLL_MS:-75}"', text)
-        self.assertIn("--max-seconds=$KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS", text)
-        self.assertIn("--poll-ms=$KAIKEY_SAFARI_STEP_POLL_MS", text)
+        self.assertIn('KLMS_LOGIN_ASSIST_POLL_SECONDS="${KLMS_LOGIN_ASSIST_POLL_SECONDS:-0.2}"', text)
+        self.assertIn('KLMS_LOGIN_ASSIST_STEP_POLL_MS="${KLMS_LOGIN_ASSIST_STEP_POLL_MS:-75}"', text)
+        self.assertIn("--max-seconds=$KLMS_LOGIN_ASSIST_STEP_TIMEOUT_SECONDS", text)
+        self.assertIn("--poll-ms=$KLMS_LOGIN_ASSIST_STEP_POLL_MS", text)
+        legacy_prefix = "kai" + "key"
+        self.assertNotIn(legacy_prefix + "_cli.mjs", text)
+        self.assertNotIn("KAI" + "KEY_STATE_PATH", text)
+        self.assertNotIn("KAI" + "KEY_AUTO_APPROVE_ENABLED", text)
+        self.assertNotIn("approve-if-match", text)
+        self.assertNotIn(legacy_prefix + "-auto", text)
 
     def test_shell_login_assist_reuses_preexisting_twofactor_without_refreshing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -123,19 +124,19 @@ print -- '{"status":"twofactor_digits","digits":"57","submittedLogin":false}'
                     [
                         'KLMS_SSO_LOGIN_ID="test-user"',
                         'KLMS_SCRIPT_NOTIFICATIONS_ENABLED="0"',
-                        'KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS="5"',
-                        'KAIKEY_AUTO_LOGIN_POLL_SECONDS="0.01"',
-                        'KAIKEY_AUTHENTICATED_RECHECK_SECONDS="1"',
-                        'KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS="5"',
+                        'KLMS_LOGIN_ASSIST_POLL_SECONDS="0.01"',
+                        'KLMS_LOGIN_ASSIST_AUTHENTICATED_RECHECK_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_STEP_TIMEOUT_SECONDS="1"',
                     ]
                 ),
                 encoding="utf-8",
             )
             env = os.environ.copy()
-            env["KAIKEY_OSASCRIPT_BIN"] = str(fake_osascript)
+            env["KLMS_LOGIN_ASSIST_OSASCRIPT_BIN"] = str(fake_osascript)
             env["FAKE_OSASCRIPT_STATE"] = str(state)
             result = subprocess.run(
-                ["/bin/zsh", str(PROJECT_DIR / "bin" / "kaikey_auto_login.sh"), str(config)],
+                ["/bin/zsh", str(PROJECT_DIR / "bin" / "klms_login_assist.sh"), str(config)],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -176,10 +177,11 @@ print -- '{"status":"twofactor_digits","digits":"57","submittedLogin":false}'
                         'KLMS_SSO_LOGIN_ID="test-user"',
                         'KLMS_SCRIPT_NOTIFICATIONS_ENABLED="1"',
                         'KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS="1"',
-                        'KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS="2"',
-                        'KAIKEY_AUTO_LOGIN_POLL_SECONDS="0.01"',
-                        'KAIKEY_AUTHENTICATED_RECHECK_SECONDS="99"',
-                        'KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_REFRESH_PREEXISTING_TWOFACTOR_ENABLED="1"',
+                        'KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS="2"',
+                        'KLMS_LOGIN_ASSIST_POLL_SECONDS="0.01"',
+                        'KLMS_LOGIN_ASSIST_AUTHENTICATED_RECHECK_SECONDS="99"',
+                        'KLMS_LOGIN_ASSIST_STEP_TIMEOUT_SECONDS="1"',
                     ]
                 ),
                 encoding="utf-8",
@@ -187,11 +189,11 @@ print -- '{"status":"twofactor_digits","digits":"57","submittedLogin":false}'
             env = os.environ.copy()
             env["KLMS_APP_RUN"] = "1"
             env["KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS"] = "0"
-            env["KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED"] = "0"
-            env["KAIKEY_OSASCRIPT_BIN"] = str(fake_osascript)
+            env["KLMS_LOGIN_ASSIST_REFRESH_PREEXISTING_TWOFACTOR_ENABLED"] = "0"
+            env["KLMS_LOGIN_ASSIST_OSASCRIPT_BIN"] = str(fake_osascript)
             env["FAKE_REFRESH_MARKER"] = str(refresh_marker)
             result = subprocess.run(
-                ["/bin/zsh", str(PROJECT_DIR / "bin" / "kaikey_auto_login.sh"), str(config)],
+                ["/bin/zsh", str(PROJECT_DIR / "bin" / "klms_login_assist.sh"), str(config)],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -232,20 +234,20 @@ print -- '{"status":"twofactor_digits","digits":"57","submittedLogin":false}'
                     [
                         'KLMS_SSO_LOGIN_ID="test-user"',
                         'KLMS_SCRIPT_NOTIFICATIONS_ENABLED="0"',
-                        'KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED="1"',
-                        'KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS="1"',
-                        'KAIKEY_AUTO_LOGIN_POLL_SECONDS="0.01"',
-                        'KAIKEY_AUTHENTICATED_RECHECK_SECONDS="0"',
-                        'KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_REFRESH_PREEXISTING_TWOFACTOR_ENABLED="1"',
+                        'KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_POLL_SECONDS="0.01"',
+                        'KLMS_LOGIN_ASSIST_AUTHENTICATED_RECHECK_SECONDS="0"',
+                        'KLMS_LOGIN_ASSIST_STEP_TIMEOUT_SECONDS="1"',
                     ]
                 ),
                 encoding="utf-8",
             )
             env = os.environ.copy()
-            env["KAIKEY_OSASCRIPT_BIN"] = str(fake_osascript)
+            env["KLMS_LOGIN_ASSIST_OSASCRIPT_BIN"] = str(fake_osascript)
             env["FAKE_REFRESH_COUNT"] = str(refresh_count)
             result = subprocess.run(
-                ["/bin/zsh", str(PROJECT_DIR / "bin" / "kaikey_auto_login.sh"), str(config)],
+                ["/bin/zsh", str(PROJECT_DIR / "bin" / "klms_login_assist.sh"), str(config)],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -287,19 +289,19 @@ print -- '{"status":"twofactor_digits","digits":"23","submittedLogin":true}'
                     [
                         'KLMS_SSO_LOGIN_ID="test-user"',
                         'KLMS_SCRIPT_NOTIFICATIONS_ENABLED="0"',
-                        'KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS="5"',
-                        'KAIKEY_AUTO_LOGIN_POLL_SECONDS="0.01"',
-                        'KAIKEY_AUTHENTICATED_RECHECK_SECONDS="1"',
-                        'KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS="5"',
+                        'KLMS_LOGIN_ASSIST_POLL_SECONDS="0.01"',
+                        'KLMS_LOGIN_ASSIST_AUTHENTICATED_RECHECK_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_STEP_TIMEOUT_SECONDS="1"',
                     ]
                 ),
                 encoding="utf-8",
             )
             env = os.environ.copy()
-            env["KAIKEY_OSASCRIPT_BIN"] = str(fake_osascript)
+            env["KLMS_LOGIN_ASSIST_OSASCRIPT_BIN"] = str(fake_osascript)
             env["FAKE_OSASCRIPT_STATE"] = str(state)
             result = subprocess.run(
-                ["/bin/zsh", str(PROJECT_DIR / "bin" / "kaikey_auto_login.sh"), str(config)],
+                ["/bin/zsh", str(PROJECT_DIR / "bin" / "klms_login_assist.sh"), str(config)],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -334,19 +336,19 @@ print -- '{"status":"twofactor_digits","digits":"42","submittedLogin":true}'
                     [
                         'KLMS_SSO_LOGIN_ID="test-user"',
                         'KLMS_SCRIPT_NOTIFICATIONS_ENABLED="0"',
-                        'KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS="1"',
-                        'KAIKEY_AUTO_LOGIN_POLL_SECONDS="0.01"',
-                        'KAIKEY_AUTHENTICATED_RECHECK_SECONDS="0"',
-                        'KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_POLL_SECONDS="0.01"',
+                        'KLMS_LOGIN_ASSIST_AUTHENTICATED_RECHECK_SECONDS="0"',
+                        'KLMS_LOGIN_ASSIST_STEP_TIMEOUT_SECONDS="1"',
                     ]
                 ),
                 encoding="utf-8",
             )
             env = os.environ.copy()
-            env["KAIKEY_OSASCRIPT_BIN"] = str(fake_osascript)
+            env["KLMS_LOGIN_ASSIST_OSASCRIPT_BIN"] = str(fake_osascript)
             env["FAKE_CHECK_MARKER"] = str(marker)
             result = subprocess.run(
-                ["/bin/zsh", str(PROJECT_DIR / "bin" / "kaikey_auto_login.sh"), str(config)],
+                ["/bin/zsh", str(PROJECT_DIR / "bin" / "klms_login_assist.sh"), str(config)],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -370,8 +372,10 @@ print -- '{"status":"twofactor_digits","digits":"42","submittedLogin":true}'
         self.assertIn("klms_recent_login_status_ok", text)
         self.assertIn("klms_try_login_assist", text)
         self.assertIn("klms_login_assist_enabled", text)
+        self.assertIn("klms_login_assist.sh", text)
         self.assertIn('"${KLMS_APP_RUN:-0}" == "1"', text)
         self.assertIn('"$fast_tab_state" == "unknown"', text)
+        self.assertNotIn("klms_try_" + "kai" + "key_auto_login", text)
 
 
 if __name__ == "__main__":

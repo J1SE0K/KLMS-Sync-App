@@ -8,7 +8,6 @@ The repository intentionally ignores:
 
 - `config.env`
 - `manual_assignment_overrides.json`
-- `kaikey_state.json`
 - `runtime/`
 - `course_files/`
 - `course_transcripts/`
@@ -18,17 +17,16 @@ The repository intentionally ignores:
 
 `examples/config.env.example` and `examples/manual_assignment_overrides.example.json` are safe templates. Real local values should stay outside git.
 
-## Kaikey/MFA Automation
+## Login Assist and MFA
 
-Kaikey auto-login uses a locally registered device key. Treat `kaikey_state.json` like an MFA device credential.
+Login assist does not register the Mac as a KAIST MFA device. It only opens the Safari SSO flow, reads the displayed two-digit KAIST challenge, and waits for the user to choose the same number on the phone.
 
-- Do not upload it to GitHub, paste it into an issue, or include it in logs.
-- If it may have leaked, remove/re-register the KAIST MFA device and delete the old state file.
-- Do not expose approval through a public HTTP endpoint.
-- For iPhone Shortcuts, prefer `Run Script over SSH` to the Mac or another access-controlled path.
-- Approval helpers must only approve when the displayed 2-digit challenge matches the server-derived challenge.
+- Do not paste screenshots or logs that include the two-digit challenge, cookies, account identifiers, or KLMS content into public issues.
+- Do not expose login assist through a public HTTP endpoint.
+- iPhone/iPad/Windows should use the server relay client token only. Mac worker tokens must stay on the Mac.
+- If a local credential or token may have leaked, rotate it before sharing a minimal reproduction.
 
-KAIST MFA may allow only one registered device. In that case choose either Mac auto-login or phone PASSNI as the single registered authenticator.
+KAIST MFA approval still happens on the user-owned phone. The Mac never performs hidden MFA approval.
 
 ## Reporting
 

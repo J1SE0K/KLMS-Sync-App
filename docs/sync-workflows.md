@@ -52,7 +52,7 @@ cp examples/config.env.example config.env
 Safari 수집은 `FETCH_MIN_WAIT_SECONDS`, `FETCH_STABLE_POLLS`를 써서 DOM이 빨리 안정화되면 고정 대기 시간을 끝까지 쓰지 않고 다음 페이지로 넘어간다.
 Safari XHR batch 상한은 20개라 fetch backend도 기본 batch를 20개로 맞춰, 대상 URL이 늘어도 페이지 이동 반복으로 떨어지지 않게 한다. 필요하면 `KLMS_FETCH_SAFARI_BATCH_SIZE`로 조정한다.
 
-## 로그인 보조와 Kaikey
+## 로그인 보조
 
 세 entrypoint는 실행 전에 공통 로그인 preflight를 거친다. Safari의 현재 KLMS 탭이 로그인 페이지면 로그인 보조가 켜져 있을 때 SSO 버튼 클릭, KAIST ID 제출, 2FA 번호 표시까지 자동으로 진행한다. 휴대폰에서 같은 번호를 선택해 승인이 끝나면 dashboard를 다시 확인하고 동기화를 이어간다.
 
@@ -65,33 +65,19 @@ KLMS_LOGIN_ASSIST_MODE="manual-digits"
 KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="1"
 KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED="1"
 KLMS_SSO_LOGIN_ID="your-kaist-id"
-KAIKEY_AUTO_LOGIN_ENABLED="0"
-KAIKEY_AUTO_APPROVE_ENABLED="0"
-KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS="300"
-KAIKEY_AUTO_LOGIN_POLL_SECONDS="0.2"
-KAIKEY_SAFARI_STEP_TIMEOUT_SECONDS="12"
-KAIKEY_SAFARI_STEP_POLL_MS="75"
+KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS="300"
+KLMS_LOGIN_ASSIST_POLL_SECONDS="0.2"
+KLMS_LOGIN_ASSIST_STEP_TIMEOUT_SECONDS="12"
+KLMS_LOGIN_ASSIST_STEP_POLL_MS="75"
+KLMS_LOGIN_ASSIST_AUTHENTICATED_RECHECK_SECONDS="6"
+KLMS_LOGIN_ASSIST_AUTH_CHECK_SECONDS="1.2"
 KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS="150"
+KLMS_LOGIN_ASSIST_REFRESH_PREEXISTING_TWOFACTOR_ENABLED="0"
 ```
 
-이 설정에서는 Mac이 인증 기기처럼 동작하지 않는다. Safari 2FA 화면에 표시된 값을 터미널에 `KAIST 인증 번호: NN` 형태로 보여주고, 사용자가 휴대폰 KAIST 인증 화면에서 같은 번호를 선택할 때까지 기다린다. `KLMS_LOGIN_ASSIST_EARLY_ENABLED=1`이면 KLMS 탭 상태가 애매할 때 dashboard preflight를 기다리지 않고 먼저 SSO 화면으로 진행해 번호를 더 빨리 보여준다. 번호가 오래 유지되면 `시간 연장`을 눌러 새 인증 요청을 만든다. `KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED=1`이면 LaunchAgent 같은 비대화 실행에서도 번호 알림을 띄운다. `KAIKEY_LOGIN_ASSIST_ENABLED`는 기존 설정 호환용이고 새 설정은 `KLMS_LOGIN_ASSIST_ENABLED`를 우선한다.
+이 설정에서는 Mac이 인증 기기처럼 동작하지 않는다. Safari 2FA 화면에 표시된 값을 터미널이나 앱 상단에 `KAIST 인증 번호: NN` 형태로 보여주고, 사용자가 휴대폰 KAIST 인증 화면에서 같은 번호를 선택할 때까지 기다린다. `KLMS_LOGIN_ASSIST_EARLY_ENABLED=1`이면 KLMS 탭 상태가 애매할 때 dashboard preflight를 기다리지 않고 먼저 SSO 화면으로 진행해 번호를 더 빨리 보여준다. 번호가 오래 유지되면 `시간 연장`을 눌러 새 인증 요청을 만든다. `KLMS_LOGIN_ASSIST_NOTIFY_DIGITS_ENABLED=1`이면 LaunchAgent 같은 비대화 실행에서도 번호 알림을 띄운다.
 
-Mac 자동 인증을 쓰려면 처음 한 번 QR 스크린샷으로 로컬 기기를 등록한다.
-
-```sh
-KLMS_LOGIN_ASSIST_MODE="kaikey-auto"
-./kaikey_setup.sh --qr-image /path/to/qr-screenshot.png
-node ./src/js/kaikey_cli.mjs status
-```
-
-기본 기기키 저장 위치는 `~/Library/Application Support/KLMSNotesSync/kaikey_state.json`이고 권한은 `0600`으로 맞춘다. 경로를 바꾸려면 `KAIKEY_STATE_PATH`를 설정한다.
-
-iPhone/iPad/Windows에서 원격 실행이나 인증 승인을 보낼 때 기본 경로는 서버 릴레이이다. 앱에는 HTTPS 릴레이 주소와 클라이언트 토큰만 넣고, Mac 앱은 worker 토큰으로 요청을 처리한다. 예전 단축어 방식으로 Mac 승인을 직접 호출해야 하는 개발/복구 상황에서는 공개 HTTP endpoint를 만들지 말고 SSH, 로컬 네트워크, VPN처럼 접근 제어가 있는 경로만 사용한다.
-
-```sh
-cd ~/Library/Application\ Support/KLMSNotesSync
-./kaikey_approve_number.sh "$SHORTCUT_INPUT"
-```
+iPhone/iPad/Windows에서 원격 실행을 보낼 때 기본 경로는 서버 릴레이이다. 앱에는 HTTPS 릴레이 주소와 클라이언트 토큰만 넣고, Mac 앱은 worker 토큰으로 요청을 처리한다. 인증 승인은 여전히 사용자의 휴대폰 KAIST 인증 화면에서 직접 선택해야 한다.
 
 ## 검증과 병목 확인
 

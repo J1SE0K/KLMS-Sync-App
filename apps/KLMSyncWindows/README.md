@@ -80,7 +80,7 @@ HTTP는 `localhost`, 사설 IP, `.local` 주소에서만 허용한다. 외부에
 
 - 클라이언트 토큰은 Electron main process에서만 읽고 renderer에는 저장하지 않는다.
 - Windows에서는 Electron `safeStorage`를 통해 OS 암호화 저장소를 사용하고, 암호화 저장소가 없으면 토큰을 저장하지 않는다.
-- 서버에는 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로를 올리지 않는다.
+- 서버에는 원본 로그, KLMS URL, `config.env`, 인증 상태 파일, 절대 파일 경로를 올리지 않는다.
 - 파일 원본은 사용자가 파일 열기를 요청한 경우에만 임시 업로드되며, 링크 만료 후 서버 기록과 임시 파일을 정리한다.
 - 미리보기와 다운로드 모두 서버 사용량 제한에 포함된다. Windows UI는 만료 시각과 남은 열람/다운로드 횟수를 같이 보여줘야 한다.
 

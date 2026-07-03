@@ -115,7 +115,7 @@ Windows 앱은 KLMS를 직접 읽지 않는다. Cloudflare 서버 릴레이의 s
 ## 데이터와 API
 
 - 상태 조회는 서버 릴레이의 sanitized `status`, `sync-data`, `commands`, `file-requests`만 사용한다.
-- Windows 앱은 KLMS HTML, raw log, `config.env`, Kaikey state, 로컬 절대 경로를 요청하거나 저장하지 않는다.
+- Windows 앱은 KLMS HTML, raw log, `config.env`, 인증 상태 파일, 로컬 절대 경로를 요청하거나 저장하지 않는다.
 - 항목 처리 요청은 서버에 action으로 남기고, Mac worker가 처리한 뒤 결과를 상태에 반영한다.
 - 화면 모드와 원격 실행의 공지 메모 업데이트 여부처럼 Mac 엔진을 직접 건드리지 않아도 되는 설정은 `/v1/shared-settings`에서 읽고 `PUT /v1/shared-settings/:key`로 바로 저장한다. Windows 로컬 체크박스만 바꾸지 말고 서버 값을 기준으로 렌더링한다.
 - 한 디바이스에서 로그/요청 기록을 지우면 다른 디바이스의 `로그` 화면에도 서버 상태 변경이 반영되어야 한다.

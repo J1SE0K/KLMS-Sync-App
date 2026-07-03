@@ -33,9 +33,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
             "sync_report.sh",
             "process_klms_assignments.sh",
             "klms_v2_build_state.sh",
-            "kaikey_auto_login.sh",
-            "kaikey_setup.sh",
-            "kaikey_approve_number.sh",
+            "klms_login_assist.sh",
         ]:
             with self.subTest(script=script_name):
                 text = (PROJECT_DIR / script_name).read_text(encoding="utf-8")
@@ -332,19 +330,19 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         app_entry = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacApp.swift"
         ).read_text(encoding="utf-8")
-        kaikey = (PROJECT_DIR / "bin" / "kaikey_auto_login.sh").read_text(encoding="utf-8")
+        login_assist = (PROJECT_DIR / "bin" / "klms_login_assist.sh").read_text(encoding="utf-8")
 
         self.assertIn('KLMS_LOGIN_ASSIST_ENABLED": runtimeBoolConfigValue(.loginAssistEnabled, default: true)', app_model)
         self.assertIn('KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": runtimeBoolConfigValue(.loginAssistAllowNoninteractive, default: true)', app_model)
-        self.assertIn('KLMS_LOGIN_ASSIST_MODE": runtimeConfigValue(.loginAssistMode, default: "manual-digits")', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_MODE": "manual-digits"', app_model)
         self.assertIn('KLMS_FORCE_LOGIN_PREFLIGHT": "1"', app_model)
         self.assertIn('KLMS_LOGIN_STATUS_REUSE_SECONDS": "21600"', app_model)
         self.assertIn('KLMS_LOGIN_ASSIST_TWOFACTOR_REFRESH_SECONDS": "0"', app_model)
-        self.assertIn('KAIKEY_REFRESH_PREEXISTING_TWOFACTOR_ENABLED": "1"', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_REFRESH_PREEXISTING_TWOFACTOR_ENABLED": "1"', app_model)
         self.assertIn('"OVERRIDES_JSON_PATH": paths.overridesURL.path', app_model)
-        self.assertIn('KAIKEY_AUTHENTICATED_RECHECK_SECONDS": "1"', app_model)
-        self.assertIn('KAIKEY_AUTH_CHECK_SECONDS": "1.2"', app_model)
-        self.assertIn('KAIKEY_MANUAL_APPROVAL_TIMEOUT_SECONDS": "60"', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_AUTHENTICATED_RECHECK_SECONDS": "1"', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_AUTH_CHECK_SECONDS": "1.2"', app_model)
+        self.assertIn('KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS": "60"', app_model)
         self.assertIn('FILE_DOWNLOAD_PARALLELISM": "3"', app_model)
         self.assertIn('FILE_DIRECT_FETCH_MAX_BYTES": "26214400"', app_model)
         self.assertIn('REMINDER_RECREATE_STAGE_ALERT_LIST": "0"', app_model)
@@ -357,7 +355,11 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("KLMS 이미 로그인되어 있습니다.", common)
         self.assertIn("outputIndicatesAlreadyAuthenticated", app_model)
         self.assertIn('showTransientAuthStatus("이미 로그인됨")', app_model)
-        self.assertIn("stage=already_authenticated source=kaikey-safari", kaikey)
+        self.assertIn("stage=already_authenticated source=login-assist-safari", login_assist)
+        legacy_prefix = "kai" + "key"
+        self.assertNotIn(legacy_prefix + "_cli.mjs", login_assist)
+        self.assertNotIn("KAI" + "KEY_STATE_PATH", login_assist)
+        self.assertNotIn(legacy_prefix + "-auto", login_assist)
         self.assertIn('klms_recent_login_status_ok', common)
         self.assertIn("KLMS_PARENT_LOGIN_ASSIST_READY", common)
         self.assertIn("KLMS_LOGIN_ASSIST_READY=1", common)
@@ -483,7 +485,7 @@ print(json.dumps({"status": "ok"}))
                 encoding="utf-8",
             )
             assist_marker = root / "assist-called"
-            helper = root / "kaikey_auto_login.sh"
+            helper = root / "klms_login_assist.sh"
             helper.write_text(
                 f"#!/bin/zsh\nprint -r -- called > {assist_marker}\nprint -- 'status=ok stage=authenticated'\n",
                 encoding="utf-8",
@@ -551,7 +553,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
 """.lstrip(),
                 encoding="utf-8",
             )
-            helper = root / "kaikey_auto_login.sh"
+            helper = root / "klms_login_assist.sh"
             helper.write_text(
                 "#!/bin/zsh\nprint -- 'KAIST 인증 번호: 42'\nprint -- 'status=timeout last_status=twofactor_digits digits=42'\nexit 1\n",
                 encoding="utf-8",
@@ -964,7 +966,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn('"KLMS_LOGIN_OPEN_SAFARI_ON_FAILURE": "0"', app_environment)
         self.assertIn('"LOGIN_PROMPT_OPEN_SAFARI": "0"', app_environment)
         self.assertIn('"KLMS_LOGIN_ASSIST_ENABLED": runtimeBoolConfigValue(.loginAssistEnabled, default: true)', app_environment)
-        self.assertIn('"KLMS_LOGIN_ASSIST_MODE": runtimeConfigValue(.loginAssistMode, default: "manual-digits")', app_environment)
+        self.assertIn('"KLMS_LOGIN_ASSIST_MODE": "manual-digits"', app_environment)
         self.assertIn('"KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE": runtimeBoolConfigValue(.loginAssistAllowNoninteractive, default: true)', app_environment)
         self.assertNotIn('"KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED": "1"', app_environment)
         self.assertIn('"KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED": runtimeBoolConfigValue(.safariReuseExistingWindowEnabled, default: true)', app_environment)

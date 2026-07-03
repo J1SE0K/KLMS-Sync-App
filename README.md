@@ -39,11 +39,11 @@ swift run --scratch-path /private/tmp/klmsync-swiftpm-build KLMSMac
 tools/build_klms_mac_app.sh
 ```
 
-빌드 결과는 기본적으로 `~/Applications/KLMS Sync.app`에 생성된다. 이 번들은 현재 레포의 엔진 코드를 앱 리소스 `EnginePayload`로 포함하고, 실행 시 설치본의 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`, `kaikey_state.json`은 덮어쓰지 않는다. `Documents`/iCloud-backed 폴더 안에서는 macOS File Provider 메타데이터 때문에 ad-hoc codesign이 실패할 수 있어 앱 번들은 사용자 Applications 폴더에 둔다. 다른 위치가 필요하면 `DIST_DIR=/path/to/output tools/build_klms_mac_app.sh`처럼 지정한다.
+빌드 결과는 기본적으로 `~/Applications/KLMS Sync.app`에 생성된다. 이 번들은 현재 레포의 엔진 코드를 앱 리소스 `EnginePayload`로 포함하고, 실행 시 설치본의 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`는 덮어쓰지 않는다. `Documents`/iCloud-backed 폴더 안에서는 macOS File Provider 메타데이터 때문에 ad-hoc codesign이 실패할 수 있어 앱 번들은 사용자 Applications 폴더에 둔다. 다른 위치가 필요하면 `DIST_DIR=/path/to/output tools/build_klms_mac_app.sh`처럼 지정한다.
 
 iPhone/iPad companion 타깃은 같은 package의 `KLMSiOS`에 있다. 이 타깃은 universal 앱으로 빌드되며 iPhone은 compact tab layout, iPad는 adaptive split layout을 쓴다. 기본 원격 구조는 Cloudflare Workers + D1 + R2 서버 릴레이다. iPhone/iPad는 서버 DB의 sanitized 상태, 항목 목록, 요청 기록을 읽고 실행/중단/항목 수정/파일 열기 요청을 서버에 남긴다. Mac 앱은 같은 서버를 보고 KLMS scraping, Notes, Calendar, Reminders, 로컬 파일 업로드처럼 macOS가 필요한 작업만 처리한다. 그래서 같은 Wi-Fi가 아니어도 앱을 열 수 있고, Mac이 꺼져 있으면 최근 서버 데이터는 보되 새 동기화와 파일 준비 요청은 Mac이 다시 켜질 때 처리된다.
 
-서버 릴레이에는 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로를 올리지 않는다. 파일 원본은 사용자가 파일 열기를 요청했을 때 Mac 앱이 R2에 임시 업로드하고, 만료 시간이 지나면 삭제한다. 같은 Wi-Fi의 Mac 앱에 직접 붙는 로컬 원격 제어는 개발/비상용 fallback으로만 남겨 둔다. 자세한 설정은 [docs/server-relay.md](./docs/server-relay.md)를 참고한다.
+서버 릴레이에는 원본 로그, KLMS URL, `config.env`, 인증 상태 파일, 절대 파일 경로를 올리지 않는다. 파일 원본은 사용자가 파일 열기를 요청했을 때 Mac 앱이 R2에 임시 업로드하고, 만료 시간이 지나면 삭제한다. 같은 Wi-Fi의 Mac 앱에 직접 붙는 로컬 원격 제어는 개발/비상용 fallback으로만 남겨 둔다. 자세한 설정은 [docs/server-relay.md](./docs/server-relay.md)를 참고한다.
 
 Windows companion 앱은 [apps/KLMSyncWindows](./apps/KLMSyncWindows)에 있다. Windows 앱도 iPhone/iPad와 같은 서버 릴레이를 사용한다. 상태와 항목 목록을 읽고, 공지 읽음/중요 토글, 원격 실행 요청, 파일 열기 요청을 서버에 남긴다. KLMS scraping과 macOS Notes/Calendar/Reminders 반영은 계속 Mac 앱이 담당한다. Windows 쪽 UI/UX와 기능 parity 작업 지시는 [windows-implementation-guide.md](./docs/windows-implementation-guide.md)에 둔다.
 
@@ -71,9 +71,7 @@ iPhone/iPad용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodepr
 | `./doctor.sh` | 실행 환경, 권한, cache/file 상태 점검 |
 | `./sync_report.sh` | 마지막 실행 결과와 병목 요약 |
 | `./process_klms_assignments.sh` | 최신 동기화 상태로 로컬 과제 브리프/체크리스트 생성 |
-| `./kaikey_setup.sh` | Kaikey 기기키 등록 |
-| `./kaikey_auto_login.sh` | Safari SSO 로그인 보조 및 2FA 번호 표시 |
-| `./kaikey_approve_number.sh` | 수동 2자리 번호 승인 helper |
+| `./klms_login_assist.sh` | Safari SSO 로그인 보조 및 2FA 번호 표시 |
 
 ## 레포 구조
 
@@ -84,7 +82,7 @@ iPhone/iPad용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodepr
 ├── docs/         # 사용법, 동작 정책, 공개 전 점검 문서
 ├── examples/     # 공개 가능한 설정/override 예시
 ├── src/
-│   ├── js/       # Safari/JXA 자동화, Reminders/Notes runner, Kaikey CLI
+│   ├── js/       # Safari/JXA 자동화, Reminders/Notes runner
 │   ├── python/   # KLMS HTML 파서, fetch backend, 파일 manifest/prune 도구
 │   ├── sh/       # 공통 shell helper, tmp cleanup
 │   └── swift/    # Calendar 동기화/검증, QR decode, native Notes renderer
@@ -118,7 +116,7 @@ iPhone/iPad용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodepr
 ## 상세 문서
 
 - [docs/README.md](./docs/README.md): 상세 문서 목차
-- [sync-workflows.md](./docs/sync-workflows.md): 실행 모드, 로그인 보조/Kaikey, 검증 절차
+- [sync-workflows.md](./docs/sync-workflows.md): 실행 모드, 로그인 보조, 검증 절차
 - [feature-behavior.md](./docs/feature-behavior.md): 공지 메모, 파일 정리, Reminders/Calendar/Notes 동작 정책
 - [repository-layout.md](./docs/repository-layout.md): 폴더 구조, wrapper/implementation 경계, ignored runtime 데이터
 - [windows-ui-ux-design.md](./docs/windows-ui-ux-design.md): Windows companion 앱 UI/UX, 색상, 화면 구조, 보안 기준
@@ -130,7 +128,7 @@ iPhone/iPad용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodepr
 ```sh
 python3 -B -m unittest discover -s tests
 zsh -n *.sh bin/*.sh src/sh/*.sh
-node --check src/js/kaikey_cli.mjs
+node --check src/js/klms_login_safari_step.js
 node --check src/js/sync_klms_notes.js
 node --check src/js/download_klms_files.js
 tools/verify_klms_app_readiness.sh
@@ -153,8 +151,8 @@ tools/verify_klms_app_readiness.sh
 
 ## 보안
 
-퍼블릭 레포에는 `config.env`, `manual_assignment_overrides.json`, `kaikey_state.json`, `runtime/`, `course_files/`, QR 스크린샷, 쿠키, 다운로드 파일을 올리지 않는다. 이 레포에는 예시 설정과 코드만 보관하고, 실제 인증 상태와 수업 데이터는 `.gitignore` 대상 또는 `~/Library/Application Support/KLMSNotesSync` 아래에 둔다.
+퍼블릭 레포에는 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`, QR 스크린샷, 쿠키, 다운로드 파일을 올리지 않는다. 이 레포에는 예시 설정과 코드만 보관하고, 실제 인증 상태와 수업 데이터는 `.gitignore` 대상 또는 `~/Library/Application Support/KLMSNotesSync` 아래에 둔다.
 
-Kaikey 자동 인증을 켜면 Mac에 저장되는 기기키가 KAIST MFA 등록 기기처럼 동작한다. `kaikey_state.json` 유출이 의심되면 즉시 KAIST 인증 기기 등록을 해제/재등록하고, 기존 state 파일은 폐기한다. iPhone에서 Mac 승인을 호출할 때도 공개 HTTP endpoint를 만들지 말고 SSH, 로컬 네트워크, VPN처럼 접근 제어가 있는 경로만 사용한다.
+로그인 보조는 Mac을 MFA 기기로 등록하지 않는다. Safari SSO 화면을 열고 KAIST 인증번호를 표시한 뒤, 사용자가 휴대폰 인증 화면에서 같은 번호를 직접 선택해야 한다.
 
-라이선스는 [MIT](./LICENSE)이며, Kaikey 프로토콜 구현에서 참고한 외부 코드 고지는 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)에 둔다.
+라이선스는 [MIT](./LICENSE)이다.

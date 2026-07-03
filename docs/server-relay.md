@@ -24,7 +24,7 @@ Cloudflare용 구현은 [deploy/cloudflare-worker](../deploy/cloudflare-worker)�
 - 사용자 표시 상태: 읽음, 중요, 숨김, 완료, 메일 분석으로 추가한 항목
 - 실행 phase, 마지막 exit code, 로그인 필요 여부, KAIST 인증 번호
 
-서버에는 원본 로그, KLMS URL, `config.env`, Kaikey state, 절대 파일 경로를 저장하지 않는다. 항목 ID도 원본 URL을 그대로 올리지 않고 앱에서 해시한 값만 보낸다. Mac이 꺼져 있어도 앱은 마지막 서버 데이터를 그대로 보여주고, 새 동기화/파일 준비/Notes·Calendar·Reminders 반영만 대기 상태가 된다.
+서버에는 원본 로그, KLMS URL, `config.env`, 인증 상태 파일, 절대 파일 경로를 저장하지 않는다. 항목 ID도 원본 URL을 그대로 올리지 않고 앱에서 해시한 값만 보낸다. Mac이 꺼져 있어도 앱은 마지막 서버 데이터를 그대로 보여주고, 새 동기화/파일 준비/Notes·Calendar·Reminders 반영만 대기 상태가 된다.
 
 ## 실행
 

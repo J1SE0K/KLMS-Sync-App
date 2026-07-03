@@ -363,9 +363,7 @@ public struct EngineInstaller {
     }
 
     public static let rootCodeFiles: [String] = [
-        "kaikey_auto_login.sh",
-        "kaikey_approve_number.sh",
-        "kaikey_setup.sh",
+        "klms_login_assist.sh",
         "sync_klms_core.sh",
         "sync_klms_notice.sh",
         "sync_klms_all.sh",
@@ -389,5 +387,14 @@ public struct EngineInstaller {
         "src/js/fetch_active_safari_page.js",
         "src/js/sync_klms_calendar_jxa.js",
         "src/swift/sync_klms_calendar.swift",
+        "kaikey_auto_login.sh",
+        "kaikey_approve_number.sh",
+        "kaikey_setup.sh",
+        "bin/kaikey_auto_login.sh",
+        "bin/kaikey_approve_number.sh",
+        "bin/kaikey_setup.sh",
+        "src/js/kaikey_cli.mjs",
+        "src/js/kaikey_safari_step.js",
+        "kaikey_state.json",
     ]
 }
