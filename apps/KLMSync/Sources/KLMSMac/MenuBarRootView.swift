@@ -4467,7 +4467,7 @@ private struct CommandPanelView: View {
                 Image(systemName: primaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled))
                     .font(.headline.weight(.black))
             }
-            .foregroundStyle(primaryCommandForeground(isRunning: isRunning, isDisabled: isDisabled))
+            .foregroundStyle(primaryCommandForeground(isDisabled: isDisabled))
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 15)
@@ -4568,20 +4568,18 @@ private struct CommandPanelView: View {
         return "play.fill"
     }
 
-    private func primaryCommandForeground(isRunning: Bool, isDisabled: Bool) -> Color {
-        if isDisabled { return Color.klmsMacSecondaryText.opacity(0.76) }
-        if isRunning { return Color.klmsMacDangerBorder }
-        return Color.klmsMacPrimaryCommandButtonForeground
+    private func primaryCommandForeground(isDisabled: Bool) -> Color {
+        isDisabled ? Color.klmsMacSecondaryText.opacity(0.76) : Color.klmsMacPrimaryCommandButtonForeground
     }
 
     private func primaryCommandBackground(isRunning: Bool, isDisabled: Bool) -> Color {
         if isDisabled { return Color.klmsMacSubtleCardBackground.opacity(0.86) }
-        return isRunning ? Color.klmsMacDangerBorder.opacity(0.10) : Color.klmsMacPrimaryCommandButtonBackground
+        return isRunning ? Color.klmsMacPrimaryCommandButtonPressedBackground : Color.klmsMacPrimaryCommandButtonBackground
     }
 
     private func primaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
         if isDisabled { return Color.klmsMacCommandButtonBorder.opacity(0.64) }
-        return isRunning ? Color.klmsMacDangerBorder.opacity(0.42) : Color.klmsMacPrimaryCommandButtonBorder
+        return isRunning ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.78) : Color.klmsMacPrimaryCommandButtonBorder
     }
 
     private func secondaryCommandSystemImage(isRunning: Bool, isDisabled: Bool) -> String? {

@@ -1832,7 +1832,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("static var klmsMacSecondaryText: Color"))
         XCTAssertTrue(mac.contains("static var klmsMacPrimaryCommandButtonForeground: Color"))
         XCTAssertTrue(mac.contains("static var klmsMacSecondaryCommandButtonForeground: Color"))
-        XCTAssertTrue(mac.contains(".foregroundStyle(primaryCommandForeground(isRunning: isRunning, isDisabled: isDisabled))"))
+        XCTAssertTrue(mac.contains(".foregroundStyle(primaryCommandForeground(isDisabled: isDisabled))"))
         XCTAssertTrue(macSettings.contains(".buttonStyle(KLMSMacSettingsButtonStyle())"))
         XCTAssertTrue(macSettings.contains(".buttonStyle(KLMSMacSettingsButtonStyle(tone: .destructive))"))
         XCTAssertTrue(macSettingsButtonStyle.contains("Color.klmsMacCommandButtonPressedBackground"))
