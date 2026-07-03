@@ -6,6 +6,7 @@ public enum KLMSLiveCommandPhase: String, Sendable, Equatable {
     case core
     case notice
     case files
+    case verify
     case cleanup
 
     public var displayName: String {
@@ -20,6 +21,8 @@ public enum KLMSLiveCommandPhase: String, Sendable, Equatable {
             "공지"
         case .files:
             "파일"
+        case .verify:
+            "상태 검사"
         case .cleanup:
             "정리"
         }
@@ -45,6 +48,12 @@ public enum KLMSLiveCommandPhase: String, Sendable, Equatable {
             || lowercased.contains("prune start")
             || line.contains("정리") {
             return .cleanup
+        }
+        if lowercased.contains("== 연동 상태 검사 start")
+            || lowercased.contains("verify_sync_state")
+            || lowercased.contains("scope=verify")
+            || line.contains("상태 검사") {
+            return .verify
         }
         if lowercased.contains("== files start")
             || lowercased.contains("[files ")

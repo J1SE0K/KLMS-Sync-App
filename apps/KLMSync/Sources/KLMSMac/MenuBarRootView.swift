@@ -594,6 +594,7 @@ private struct DashboardTopBarView: View {
                     title: selectedSection.title,
                     statusText: "\(command.displayName) 실행 중 · \(phase)",
                     runningPhaseLabel: phase,
+                    runningProgress: MacRunningProgressSnapshot(command: command, phaseText: phase),
                     statusBadgeText: "진행 중",
                     tone: .running
                 )
@@ -602,6 +603,7 @@ private struct DashboardTopBarView: View {
                 title: selectedSection.title,
                 statusText: "\(command.displayName) 실행 중",
                 runningPhaseLabel: "진행 중",
+                runningProgress: MacRunningProgressSnapshot(command: command, phaseText: nil),
                 statusBadgeText: "진행 중",
                 tone: .running
             )
@@ -611,6 +613,7 @@ private struct DashboardTopBarView: View {
                 title: selectedSection.title,
                 statusText: "확인이 필요합니다 · 진단 보기에서 원인을 확인하세요.",
                 runningPhaseLabel: nil,
+                runningProgress: nil,
                 statusBadgeText: "확인 필요",
                 tone: .attention
             )
@@ -620,6 +623,7 @@ private struct DashboardTopBarView: View {
                 title: selectedSection.title,
                 statusText: "준비됨 · 최근 상태 \(report.status.klmsLocalizedStatus)",
                 runningPhaseLabel: nil,
+                runningProgress: nil,
                 statusBadgeText: "준비됨",
                 tone: .ready
             )
@@ -628,6 +632,7 @@ private struct DashboardTopBarView: View {
             title: selectedSection.title,
             statusText: "첫 실행 전 · 전체 동기화나 진단을 실행하세요.",
             runningPhaseLabel: nil,
+            runningProgress: nil,
             statusBadgeText: "준비 필요",
             tone: .ready
         )
@@ -638,6 +643,7 @@ private struct DashboardTopBarSnapshot: Equatable {
     var title: String
     var statusText: String
     var runningPhaseLabel: String?
+    var runningProgress: MacRunningProgressSnapshot?
     var statusBadgeText: String
     var tone: DashboardTopBarTone
 }
@@ -659,6 +665,134 @@ private enum DashboardTopBarTone: Equatable {
     }
 }
 
+private struct MacRunningProgressSnapshot: Equatable {
+    var command: KLMSEngineCommand
+    var phaseText: String?
+    var stages: [String]
+    var currentIndex: Int
+
+    init(command: KLMSEngineCommand, phaseText: String?) {
+        self.command = command
+        self.phaseText = phaseText?.nilIfBlank
+        stages = Self.stages(for: command)
+        currentIndex = Self.currentIndex(phaseText: phaseText, stages: stages)
+    }
+
+    var fraction: Double {
+        guard !stages.isEmpty else { return 0.08 }
+        let raw = (Double(currentIndex) + 0.55) / Double(stages.count)
+        return min(max(raw, 0.08), 0.96)
+    }
+
+    var currentStageText: String {
+        guard stages.indices.contains(currentIndex) else {
+            return phaseText ?? "진행 중"
+        }
+        return stages[currentIndex]
+    }
+
+    var progressLabel: String {
+        "\(currentIndex + 1)/\(max(stages.count, 1)) · \(currentStageText)"
+    }
+
+    static func stages(for command: KLMSEngineCommand) -> [String] {
+        switch command {
+        case .fullSync:
+            return ["로그인", "파일", "과제/시험", "공지", "상태 검사", "정리"]
+        case .filesSync:
+            return ["로그인", "파일", "정리"]
+        case .coreSync:
+            return ["로그인", "과제/시험", "상태 검사"]
+        case .noticeSync:
+            return ["로그인", "공지", "상태 검사"]
+        case .verify:
+            return ["상태 검사"]
+        case .doctor:
+            return ["환경 진단"]
+        case .report:
+            return ["요약 갱신"]
+        case .v2BuildState:
+            return ["상태 파일"]
+        }
+    }
+
+    private static func currentIndex(phaseText: String?, stages: [String]) -> Int {
+        let normalized = (phaseText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !stages.isEmpty else { return 0 }
+        if normalized.contains("파일") {
+            return stages.firstIndex(of: "파일") ?? min(1, stages.count - 1)
+        }
+        if normalized.contains("과제") || normalized.contains("시험") {
+            return stages.firstIndex(of: "과제/시험") ?? min(1, stages.count - 1)
+        }
+        if normalized.contains("공지") {
+            return stages.firstIndex(of: "공지") ?? min(1, stages.count - 1)
+        }
+        if normalized.contains("상태") || normalized.contains("검사") {
+            return stages.firstIndex(of: "상태 검사") ?? min(stages.count - 1, 1)
+        }
+        if normalized.contains("정리") {
+            return stages.firstIndex(of: "정리") ?? stages.count - 1
+        }
+        if normalized.contains("로그인") || normalized.contains("준비") {
+            return 0
+        }
+        return 0
+    }
+}
+
+private struct MacRunningProgressBarView: View, Equatable {
+    var progress: MacRunningProgressSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ProgressView(value: progress.fraction)
+                .progressViewStyle(.linear)
+                .tint(Color.klmsMacCommandAccent)
+                .accessibilityLabel("동기화 진행률")
+                .accessibilityValue(progress.progressLabel)
+            HStack(spacing: 5) {
+                ForEach(progress.stages.indices, id: \.self) { index in
+                    let stage = progress.stages[index]
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(stageColor(index: index))
+                            .frame(width: 5, height: 5)
+                        Text(stage)
+                            .font(.system(size: 10, weight: index == progress.currentIndex ? .bold : .semibold, design: .rounded))
+                            .foregroundStyle(index == progress.currentIndex ? Color.klmsMacPrimaryText : Color.klmsMacSecondaryText)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                    }
+                    if index < progress.stages.count - 1 {
+                        Rectangle()
+                            .fill(index < progress.currentIndex ? Color.klmsMacCommandAccent.opacity(0.52) : Color.klmsMacBorder.opacity(0.52))
+                            .frame(width: 10, height: 1)
+                    }
+                }
+                Spacer(minLength: 0)
+                Text(progress.progressLabel)
+                    .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .lineLimit(1)
+                    .accessibilityIdentifier("running-progress")
+                    .accessibilityLabel("동기화 진행률")
+                    .accessibilityValue(progress.progressLabel)
+            }
+        }
+    }
+
+    private func stageColor(index: Int) -> Color {
+        if index < progress.currentIndex {
+            return .klmsMacSuccessBorder
+        }
+        if index == progress.currentIndex {
+            return .klmsMacCommandAccent
+        }
+        return .klmsMacBorder
+    }
+}
+
 private struct DashboardTopBarStatusContent: View, Equatable {
     var snapshot: DashboardTopBarSnapshot
 
@@ -673,6 +807,10 @@ private struct DashboardTopBarStatusContent: View, Equatable {
                 .lineLimit(1)
                 .minimumScaleFactor(0.84)
                 .truncationMode(.tail)
+            if let runningProgress = snapshot.runningProgress {
+                MacRunningProgressBarView(progress: runningProgress)
+                    .frame(maxWidth: 520)
+            }
         }
         Spacer(minLength: 12)
 
@@ -715,6 +853,9 @@ private struct MacAlertBannerView: View {
             runningCommandDisplayName: model.runningCommand?.displayName,
             currentPhaseText: model.currentPhaseText,
             liveProgressLine: model.liveProgressLine,
+            runningProgress: model.runningCommand.map {
+                MacRunningProgressSnapshot(command: $0, phaseText: model.currentPhaseText)
+            },
             needsAttention: model.needsAttention,
             hasSyncReport: model.snapshot.syncReport != nil,
             loggedIn: model.snapshot.loginStatus?.loggedIn == true
@@ -751,6 +892,7 @@ private struct MacAlertBannerSnapshot: Equatable {
     var runningCommandDisplayName: String?
     var currentPhaseText: String?
     var liveProgressLine: String?
+    var runningProgress: MacRunningProgressSnapshot?
     var needsAttention: Bool
     var hasSyncReport: Bool
     var loggedIn: Bool
@@ -905,31 +1047,36 @@ private struct MacAlertBannerContent: View, Equatable {
             Button {
                 performAction()
             } label: {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(snapshot.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacPrimaryText)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(snapshot.title)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.klmsMacPrimaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.86)
+                            Text(snapshot.detail)
+                                .font(.caption)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 10)
+                        Text(snapshot.chipText)
+                            .font(chipFont)
+                            .monospacedDigit()
+                            .foregroundStyle(chipForeground)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.86)
-                        Text(snapshot.detail)
-                            .font(.caption)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .lineLimit(1)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .minimumScaleFactor(snapshot.authDigits == nil ? 0.72 : 0.86)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: snapshot.authDigits == nil ? 92 : nil)
+                            .padding(.horizontal, snapshot.chipHorizontalPadding)
+                            .padding(.vertical, 8)
+                            .background(chipBackground, in: Capsule())
                     }
-                    Spacer(minLength: 10)
-                    Text(snapshot.chipText)
-                        .font(chipFont)
-                        .monospacedDigit()
-                        .foregroundStyle(chipForeground)
-                        .lineLimit(1)
-                        .minimumScaleFactor(snapshot.authDigits == nil ? 0.72 : 0.86)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: snapshot.authDigits == nil ? 92 : nil)
-                        .padding(.horizontal, snapshot.chipHorizontalPadding)
-                        .padding(.vertical, 8)
-                        .background(chipBackground, in: Capsule())
+                    if let runningProgress = snapshot.runningProgress {
+                        MacRunningProgressBarView(progress: runningProgress)
+                    }
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -4245,22 +4392,32 @@ private struct CommandPanelView: View {
     }
 
     private var commandStatusStrip: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Image(systemName: commandStatusImage)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(commandStatusColor)
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(commandStatusText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                    .lineLimit(1)
-                Text(commandStatusDetailText)
-                    .font(.caption2)
-                    .foregroundStyle(Color.klmsMacSecondaryText)
-                    .lineLimit(1)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: commandStatusImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(commandStatusColor)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(commandStatusText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                        .lineLimit(1)
+                    Text(commandStatusDetailText)
+                        .font(.caption2)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            if let command = model.runningCommand {
+                MacRunningProgressBarView(
+                    progress: MacRunningProgressSnapshot(
+                        command: command,
+                        phaseText: model.currentPhaseText
+                    )
+                )
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

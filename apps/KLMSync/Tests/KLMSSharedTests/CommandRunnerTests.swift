@@ -150,6 +150,16 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(KLMSLiveCommandPhase.currentPhase(in: log), .cleanup)
     }
 
+    func testLivePhaseDetectsPostSyncVerificationStage() {
+        let log = """
+        == notice finish 2026-05-20 22:22:22 KST status=0 duration_s=2 ==
+        == 연동 상태 검사 start ==
+        """
+
+        XCTAssertEqual(KLMSLiveCommandPhase.currentPhase(in: log), .verify)
+        XCTAssertEqual(KLMSLiveCommandPhase.verify.displayName, "상태 검사")
+    }
+
     func testExtractsManualDigitsAndIgnoresStatusDigitsField() {
         XCTAssertEqual(
             KLMSCommandRunner.extractAuthDigits(from: "KAIST 인증 번호: 42"),
