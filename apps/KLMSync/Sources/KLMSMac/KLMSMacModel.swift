@@ -4218,7 +4218,7 @@ final class KLMSMacModel: ObservableObject {
     private func handleLiveCommandOutput(_ chunk: String) async {
         let displayChunk = chunk.klmsDisplayText
         appendLiveCommandOutput(displayChunk)
-        appendLiveAuthObservation(displayChunk)
+        appendLiveAuthObservation(chunk)
         let authOutput = liveAuthObservationBuffer
         if let digits = KLMSCommandRunner.extractAuthDigits(from: authOutput) {
             liveAuthDigits = digits
