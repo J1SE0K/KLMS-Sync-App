@@ -144,28 +144,83 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
     const result = runPageScript(tab, `
 (() => {
   const displayName = ${JSON.stringify(displayName)};
-  const input = document.querySelector("#login_id_mfa");
-  if (!input) return JSON.stringify({ ok: false, reason: "missing-input" });
-  if (document.body && document.body.dataset.klmsLoginAssistMfaSubmitted === "1") {
-    return JSON.stringify({ ok: false, reason: "login-already-submitted" });
+  const submittedAt = Number(document.body?.dataset.klmsLoginAssistMfaSubmittedAt || "0");
+  const submittedName = String(document.body?.dataset.klmsLoginAssistMfaSubmittedName || "");
+  if (submittedName === displayName && Date.now() - submittedAt < 1600) {
+    return JSON.stringify({ ok: false, reason: "login-submit-cooling-down" });
   }
+  const inputSelectors = [
+    "#login_id_mfa",
+    "input[name='login_id_mfa']",
+    "input[name='login_id']",
+    "input[name='user_id']",
+    "input[name='userid']",
+    "input[type='text']",
+    "input:not([type])"
+  ];
+  const input = inputSelectors.map((selector) => document.querySelector(selector)).find(Boolean);
+  if (!input) return JSON.stringify({ ok: false, reason: "missing-input" });
   const proto = Object.getPrototypeOf(input);
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
   if (setter) setter.call(input, displayName);
   else input.value = displayName;
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
-  if (document.body) document.body.dataset.klmsLoginAssistMfaSubmitted = "1";
+  const markSubmitted = (method) => {
+    if (document.body) {
+      document.body.dataset.klmsLoginAssistMfaSubmittedAt = String(Date.now());
+      document.body.dataset.klmsLoginAssistMfaSubmittedName = displayName;
+    }
+    return JSON.stringify({ ok: true, method });
+  };
   if (typeof window.loginProcMfa === "function") {
     window.loginProcMfa();
-    return JSON.stringify({ ok: true, method: "loginProcMfa" });
+    return markSubmitted("loginProcMfa");
   }
-  const button = document.querySelector("a.btn_login");
+  const buttonSelectors = [
+    "a.btn_login",
+    "button.btn_login",
+    "input.btn_login",
+    "button[type='submit']",
+    "input[type='submit']",
+    "a[onclick*='loginProcMfa']",
+    "button[onclick*='loginProcMfa']",
+    "[role='button']"
+  ];
+  let button = buttonSelectors.map((selector) => document.querySelector(selector)).find(Boolean);
+  if (!button) {
+    const clickables = Array.from(document.querySelectorAll("a, button, input[type='button'], input[type='submit'], [role='button']"));
+    button = clickables.find((candidate) => {
+      const text = [
+        candidate.textContent || "",
+        candidate.value || "",
+        candidate.getAttribute("aria-label") || "",
+        candidate.getAttribute("title") || ""
+      ].join(" ").trim().toLowerCase();
+      return text.includes("로그인") || text.includes("login") || text.includes("sign in");
+    });
+  }
   if (button) {
+    if (button.disabled || button.getAttribute("aria-disabled") === "true") {
+      return JSON.stringify({ ok: false, reason: "login-action-disabled" });
+    }
     button.click();
-    return JSON.stringify({ ok: true, method: "button" });
+    return markSubmitted("button");
   }
-  return JSON.stringify({ ok: false, reason: "missing-login-action" });
+  const form = input.form || document.querySelector("form");
+  if (form) {
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit();
+      return markSubmitted("form.requestSubmit");
+    }
+    if (typeof form.submit === "function") {
+      form.submit();
+      return markSubmitted("form.submit");
+    }
+  }
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", code: "Enter", bubbles: true }));
+  return markSubmitted("enter-key");
 })();
 `);
     const payload = parseJson(result);

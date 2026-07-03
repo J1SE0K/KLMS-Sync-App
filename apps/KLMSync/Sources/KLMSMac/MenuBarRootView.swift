@@ -4359,7 +4359,6 @@ private struct CommandPanelView: View {
     var body: some View {
         SectionBox(title: "동기화") {
             VStack(alignment: .leading, spacing: 10) {
-                MacMailPasteAnalyzerPanel(model: model, snapshot: model.snapshot)
                 commandStatusStrip
 
                 primaryCommandActionCard(primaryCommand)
@@ -4369,6 +4368,8 @@ private struct CommandPanelView: View {
                         commandActionCard(command)
                     }
                 }
+
+                MacMailPasteAnalyzerPanel(model: model, snapshot: model.snapshot)
             }
 
             if let command = model.runningCommand {
