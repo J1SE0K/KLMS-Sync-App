@@ -220,6 +220,7 @@ final class KLMSMacModel: ObservableObject {
     private var lastAuthCompletionAt: Date?
     private var lastAuthStatusMessageForRemote: String?
     private var authStatusClearTask: Task<Void, Never>?
+    private var authDigitsClearTask: Task<Void, Never>?
     private var runningCommandStatusPollTask: Task<Void, Never>?
     private var pasteboardClearTask: Task<Void, Never>?
     private var liveCommandOutputBuffer = ""
@@ -268,6 +269,7 @@ final class KLMSMacModel: ObservableObject {
     private static let liveCommandOutputMaxCharacters = 8_000
     private static let lastCommandDisplayOutputMaxCharacters = 32_000
     private static let liveAuthObservationMaxCharacters = 4_000
+    private static let authDigitsDisplayTimeoutNanoseconds: UInt64 = 120_000_000_000
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
     init() {
@@ -342,6 +344,8 @@ final class KLMSMacModel: ObservableObject {
         passiveSnapshotRefreshTask?.cancel()
         pasteboardClearTask?.cancel()
         runningCommandStatusPollTask?.cancel()
+        authStatusClearTask?.cancel()
+        authDigitsClearTask?.cancel()
     }
 
     var needsAttention: Bool {
@@ -353,7 +357,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     var currentAuthDigits: String? {
-        guard runningCommand != nil, !authDigitsSuppressed else {
+        guard !authDigitsSuppressed else {
             return nil
         }
         return liveAuthDigits
@@ -548,6 +552,8 @@ final class KLMSMacModel: ObservableObject {
         lastAuthStatusMessageForRemote = nil
         authStatusClearTask?.cancel()
         authStatusClearTask = nil
+        authDigitsClearTask?.cancel()
+        authDigitsClearTask = nil
         runningCommandStatusPollTask?.cancel()
         runningCommandStatusPollTask = nil
         isCancellingCommand = false
@@ -2491,6 +2497,8 @@ final class KLMSMacModel: ObservableObject {
         lastAuthStatusMessageForRemote = nil
         authStatusClearTask?.cancel()
         authStatusClearTask = nil
+        authDigitsClearTask?.cancel()
+        authDigitsClearTask = nil
         authDigitsSuppressed = false
         notifiedAuthDigits.removeAll()
         notifiedAuthCompletionForCurrentRun = false
@@ -4227,6 +4235,7 @@ final class KLMSMacModel: ObservableObject {
             authStatusClearTask = nil
             authDigitsSuppressed = false
             authDigitsSeenForCurrentRun = true
+            scheduleAuthDigitsClear(digits)
             await notifyAuthDigitsIfNeeded(digits)
             await publishServerRelayStatusIfNeeded(force: true)
         }
@@ -4439,6 +4448,8 @@ final class KLMSMacModel: ObservableObject {
         showAuthenticatedMessage: Bool,
         confirmedAuthChallenge: Bool = false
     ) async {
+        authDigitsClearTask?.cancel()
+        authDigitsClearTask = nil
         liveAuthDigits = nil
         authDigitsSuppressed = true
         clearAuthNotifications()
@@ -4449,6 +4460,20 @@ final class KLMSMacModel: ObservableObject {
             lastAuthCompletionAt = Date()
             showTransientAuthStatus("인증 완료됨")
             await notifyAuthCompletionIfNeeded()
+        }
+    }
+
+    private func scheduleAuthDigitsClear(_ digits: String) {
+        authDigitsClearTask?.cancel()
+        authDigitsClearTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.authDigitsDisplayTimeoutNanoseconds)
+            guard !Task.isCancelled,
+                  let self,
+                  self.liveAuthDigits == digits else {
+                return
+            }
+            await self.clearAuthDigitsState(showAuthenticatedMessage: false)
+            self.authDigitsClearTask = nil
         }
     }
 
