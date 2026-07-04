@@ -234,7 +234,7 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
 
   if (urlLower.includes("sso.kaist.ac.kr/auth/twofactor/mfa/login2factor")) {
     if (String(options["check-authenticated"] || "") === "1") {
-      return checkAuthenticatedWithoutLeavingTwofactor(targetUrl, url, options);
+      return checkAuthenticatedWithoutLeavingTwofactor(windowRef, targetUrl, url, options);
     }
 
     if (String(options["refresh-twofactor"] || "") === "1") {
@@ -283,23 +283,17 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
   return { status: "waiting", url };
 }
 
-function checkAuthenticatedWithoutLeavingTwofactor(targetUrl, sourceUrl, options = {}) {
-  const safari = Application("/Applications/Safari.app");
+function checkAuthenticatedWithoutLeavingTwofactor(windowRef, targetUrl, sourceUrl, options = {}) {
   const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
-  let checkWindow = null;
+  const previousTab = resolveTab(windowRef);
+  let checkTab = null;
+  let keepCheckTab = false;
   try {
-    checkWindow = createSafariWindow(safari, true);
-    if (!checkWindow) {
-      return twofactorPending(sourceUrl, "no-check-window");
-    }
-    prepareBackgroundWindow(checkWindow);
-    const checkTab = resolveTab(checkWindow);
+    checkTab = createSafariTab(windowRef, targetUrl);
     if (!checkTab) {
       return twofactorPending(sourceUrl, "no-check-tab");
     }
-
-    checkTab.url = targetUrl;
-    prepareBackgroundWindow(checkWindow);
+    prepareBackgroundWindow(windowRef);
     const deadline = Date.now() + authCheckMilliseconds(options);
     let lastUrl = sourceUrl;
     let pendingReason = "phone-approval-pending";
@@ -309,9 +303,10 @@ function checkAuthenticatedWithoutLeavingTwofactor(targetUrl, sourceUrl, options
       if (looksLikeAuthenticatedKlmsUrl(lower)) {
         const page = readKlmsPageLoadState(checkTab);
         if (page.loaded) {
+          keepCheckTab = true;
           return {
             status: "authenticated",
-            method: "dashboard-check-window",
+            method: "dashboard-check-tab",
             url: page.href || lastUrl,
             title: page.title || readTitle(checkTab)
           };
@@ -329,7 +324,23 @@ function checkAuthenticatedWithoutLeavingTwofactor(targetUrl, sourceUrl, options
     }
     return twofactorPending(sourceUrl, pendingReason);
   } finally {
-    closeWindow(checkWindow);
+    if (keepCheckTab && checkTab) {
+      try {
+        windowRef.currentTab = checkTab;
+      } catch (_error) {
+        // Safari may already have selected the authenticated tab.
+      }
+    } else {
+      closeTab(checkTab);
+    }
+    if (!keepCheckTab && previousTab) {
+      try {
+        windowRef.currentTab = previousTab;
+      } catch (_error) {
+        // The original 2FA tab may have been closed by Safari after authentication.
+      }
+    }
+    prepareBackgroundWindow(windowRef);
     restoreFrontmostApplication(frontmostApp);
   }
 }
@@ -344,7 +355,7 @@ function twofactorPending(url, reason) {
   return {
     status: "twofactor_pending",
     reason: reason || "phone-approval-pending",
-    method: "dashboard-check-window",
+    method: "dashboard-check-tab",
     url
   };
 }
@@ -417,16 +428,50 @@ function parseOptions(argv) {
 function resolveWindow(safari, backgroundWindowEnabled, reuseExistingWindowEnabled) {
   if (reuseExistingWindowEnabled) {
     const windows = safeList(() => safari.windows());
-    for (let i = 0; i < windows.length; i += 1) {
-      const tab = safeValue(() => windows[i].currentTab());
-      const url = safeString(() => tab.url());
-      if (looksLikeKaistAuthUrl(url) && (!backgroundWindowEnabled || isBackgroundWindow(windows[i]))) {
-        return windows[i];
-      }
+    const authWindow = findReusableAuthWindow(windows, backgroundWindowEnabled);
+    if (authWindow) {
+      return authWindow;
     }
     if (!backgroundWindowEnabled && windows.length > 0) return windows[0];
   }
   return createSafariWindow(safari, backgroundWindowEnabled);
+}
+
+function findReusableAuthWindow(windows, backgroundWindowEnabled) {
+  for (let i = 0; i < windows.length; i += 1) {
+    const windowRef = windows[i];
+    const currentTab = safeValue(() => windowRef.currentTab());
+    const currentUrl = safeString(() => currentTab.url());
+    if (looksLikeKaistAuthUrl(currentUrl)) {
+      if (backgroundWindowEnabled) {
+        prepareBackgroundWindow(windowRef);
+      }
+      return windowRef;
+    }
+  }
+
+  for (let i = 0; i < windows.length; i += 1) {
+    const windowRef = windows[i];
+    const tabs = safeList(() => windowRef.tabs());
+    for (let j = 0; j < tabs.length; j += 1) {
+      const tab = tabs[j];
+      const url = safeString(() => tab.url());
+      if (!looksLikeKaistAuthUrl(url)) {
+        continue;
+      }
+      try {
+        windowRef.currentTab = tab;
+      } catch (_error) {
+        // Safari may refuse to select a tab while a window is transitioning.
+      }
+      if (backgroundWindowEnabled) {
+        prepareBackgroundWindow(windowRef);
+      }
+      return windowRef;
+    }
+  }
+
+  return null;
 }
 
 function createSafariWindow(safari, backgroundWindowEnabled) {
@@ -444,6 +489,31 @@ function createSafariWindow(safari, backgroundWindowEnabled) {
 
 function resolveTab(windowRef) {
   return safeValue(() => windowRef.currentTab());
+}
+
+function createSafariTab(windowRef, targetUrl) {
+  if (!windowRef) {
+    return null;
+  }
+  const safari = Application("/Applications/Safari.app");
+  try {
+    const tab = safari.Tab({ url: targetUrl });
+    windowRef.tabs.push(tab);
+    windowRef.currentTab = tab;
+    delay(0.1);
+    return safeValue(() => windowRef.currentTab()) || tab;
+  } catch (_error) {
+    try {
+      const tab = safari.Tab();
+      windowRef.tabs.push(tab);
+      windowRef.currentTab = tab;
+      tab.url = targetUrl;
+      delay(0.1);
+      return safeValue(() => windowRef.currentTab()) || tab;
+    } catch (_fallbackError) {
+      return null;
+    }
+  }
 }
 
 function looksLikeKaistAuthUrl(url) {
@@ -531,6 +601,17 @@ function closeWindow(windowRef) {
     windowRef.close();
   } catch (_error) {
     // A temporary auth-check window may already be gone if Safari redirects slowly.
+  }
+}
+
+function closeTab(tab) {
+  if (!tab) {
+    return;
+  }
+  try {
+    tab.close();
+  } catch (_error) {
+    // The temporary auth-check tab may already be gone after a redirect.
   }
 }
 
