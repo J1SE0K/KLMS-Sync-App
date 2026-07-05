@@ -1978,6 +1978,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(sources.contains("appendLiveCommandOutput(displayChunk)"))
         XCTAssertTrue(sources.contains("appendLiveAuthObservation(chunk)"))
         XCTAssertFalse(sources.contains("appendLiveAuthObservation(displayChunk)"))
+        XCTAssertTrue(sources.contains("if let resultDigits = result.authDigits"))
+        XCTAssertTrue(sources.contains("await recordAuthDigits(resultDigits)"))
         XCTAssertTrue(sources.contains("scheduleAuthDigitsClear(digits)"))
         XCTAssertFalse(sources.contains("guard runningCommand != nil, !authDigitsSuppressed"))
         XCTAssertFalse(sources.contains("let currentOutput = liveCommandOutputBuffer"))

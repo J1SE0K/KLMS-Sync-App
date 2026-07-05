@@ -81,6 +81,7 @@ DISPLAY_NAME="$(load_display_name)" || {
 
 deadline_epoch="$(( $(date +%s) + KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS ))"
 last_status=""
+last_reason=""
 last_digits=""
 last_digits_epoch=0
 last_auth_check_epoch=0
@@ -101,6 +102,10 @@ while (( $(date +%s) <= deadline_epoch )); do
 
   step_status="$(json_get "$step_json" status 2>/dev/null || true)"
   last_status="$step_status"
+  step_reason="$(json_get "$step_json" reason 2>/dev/null || true)"
+  if [[ -n "$step_reason" ]]; then
+    last_reason="$step_reason"
+  fi
   submitted_login="$(json_get "$step_json" submittedLogin 2>/dev/null || true)"
   if [[ "$submitted_login" == "True" || "$submitted_login" == "true" ]]; then
     submitted_login_this_run=1
@@ -204,9 +209,13 @@ while (( $(date +%s) <= deadline_epoch )); do
   sleep "$KLMS_LOGIN_ASSIST_POLL_SECONDS"
 done
 
+reason_suffix=""
+if [[ -n "$last_reason" ]]; then
+  reason_suffix=" reason=$last_reason"
+fi
 if [[ -n "$last_digits" ]]; then
-  print -r -- "status=timeout last_status=${last_status:-unknown} digits=$last_digits"
+  print -r -- "status=timeout last_status=${last_status:-unknown} digits=$last_digits$reason_suffix"
 else
-  print -r -- "status=timeout last_status=${last_status:-unknown}"
+  print -r -- "status=timeout last_status=${last_status:-unknown}$reason_suffix"
 fi
 exit 1

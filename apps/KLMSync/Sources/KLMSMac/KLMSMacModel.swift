@@ -2561,6 +2561,10 @@ final class KLMSMacModel: ObservableObject {
             flushLiveCommandOutput()
             lastCommandResult = result
             commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(result)) ?? commandHistory
+            if let resultDigits = result.authDigits,
+               !result.authChallengeCompleted {
+                await recordAuthDigits(resultDigits)
+            }
             if result.authChallengeCompleted {
                 await clearAuthDigitsState(showAuthenticatedMessage: true, confirmedAuthChallenge: true)
             }
@@ -4229,15 +4233,7 @@ final class KLMSMacModel: ObservableObject {
         appendLiveAuthObservation(chunk)
         let authOutput = liveAuthObservationBuffer
         if let digits = KLMSCommandRunner.extractAuthDigits(from: authOutput) {
-            liveAuthDigits = digits
-            authStatusMessage = nil
-            authStatusClearTask?.cancel()
-            authStatusClearTask = nil
-            authDigitsSuppressed = false
-            authDigitsSeenForCurrentRun = true
-            scheduleAuthDigitsClear(digits)
-            await notifyAuthDigitsIfNeeded(digits)
-            await publishServerRelayStatusIfNeeded(force: true)
+            await recordAuthDigits(digits)
         }
         if authDigitsSeenForCurrentRun,
            KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(authOutput) {
@@ -4250,6 +4246,18 @@ final class KLMSMacModel: ObservableObject {
             showAlreadyLoggedInStatusIfNeeded()
             await publishServerRelayStatusIfNeeded(force: true)
         }
+    }
+
+    private func recordAuthDigits(_ digits: String) async {
+        liveAuthDigits = digits
+        authStatusMessage = nil
+        authStatusClearTask?.cancel()
+        authStatusClearTask = nil
+        authDigitsSuppressed = false
+        authDigitsSeenForCurrentRun = true
+        scheduleAuthDigitsClear(digits)
+        await notifyAuthDigitsIfNeeded(digits)
+        await publishServerRelayStatusIfNeeded(force: true)
     }
 
     private func resetLiveCommandOutput() {

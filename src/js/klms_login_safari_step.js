@@ -252,23 +252,58 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
 
     const result = runPageScript(tab, `
 (() => {
-  const wrap = document.querySelector(".auth_number .nember_wrap");
-  if (wrap) {
-    const spans = wrap.querySelectorAll("span");
-    if (spans.length >= 2) {
-      const a = (spans[0].textContent || "").trim();
-      const b = (spans[1].textContent || "").trim();
-      if (/^\\d$/.test(a) && /^\\d$/.test(b)) {
-        return JSON.stringify({ ok: true, digits: a + b });
+  const normalizeDigits = (value) => String(value || "").replace(/[^0-9]/g, "");
+  const exactTwoDigits = (value) => {
+    const digits = normalizeDigits(value);
+    return /^\\d{2}$/.test(digits) ? digits : "";
+  };
+  const extractTwofactorDigits = () => {
+    const scopedSelectors = [
+      ".auth_number .nember_wrap",
+      ".auth_number .number_wrap",
+      ".auth_number",
+      "[class*='auth'][class*='number']",
+      "[class*='number'][class*='wrap']"
+    ];
+    const scopedNodes = Array.from(document.querySelectorAll(scopedSelectors.join(",")));
+    for (const node of scopedNodes) {
+      const spanDigits = Array.from(node.querySelectorAll("span"))
+        .map((span) => (span.textContent || "").trim())
+        .filter((text) => /^\\d$/.test(text))
+        .join("");
+      if (/^\\d{2}$/.test(spanDigits)) {
+        return { ok: true, digits: spanDigits, method: "span-digits" };
+      }
+      const directTextDigits = exactTwoDigits(node.textContent);
+      if (directTextDigits) {
+        return { ok: true, digits: directTextDigits, method: "node-text" };
+      }
+      const ariaDigits = exactTwoDigits(node.getAttribute("aria-label") || node.getAttribute("title"));
+      if (ariaDigits) {
+        return { ok: true, digits: ariaDigits, method: "node-aria" };
       }
     }
-  }
-  const sr = document.querySelector(".auth_number .sr-only");
-  if (sr) {
-    const text = (sr.textContent || "").trim();
-    if (/^\\d{2}$/.test(text)) return JSON.stringify({ ok: true, digits: text });
-  }
-  return JSON.stringify({ ok: false, reason: "digits-not-ready" });
+    const screenReaderNodes = Array.from(document.querySelectorAll(".auth_number .sr-only, .sr-only, [aria-live]"));
+    for (const node of screenReaderNodes) {
+      const digits = exactTwoDigits(node.textContent || node.getAttribute("aria-label"));
+      if (digits) {
+        return { ok: true, digits, method: "screen-reader" };
+      }
+    }
+    const bodyText = String(document.body?.innerText || "").replace(/\\s+/g, " ");
+    const authTextMatch = bodyText.match(/(?:인증\\s*번호|auth(?:entication)?\\s*(?:number|code))\\D*(\\d)\\D*(\\d)/i);
+    if (authTextMatch) {
+      return { ok: true, digits: authTextMatch[1] + authTextMatch[2], method: "body-auth-text" };
+    }
+    return {
+      ok: false,
+      reason: "digits-not-ready",
+      title: document.title || "",
+      url: location.href || "",
+      readyState: document.readyState || ""
+    };
+  };
+  return JSON.stringify(extractTwofactorDigits());
 })();
 `);
     const payload = parseJson(result);
@@ -276,6 +311,8 @@ function advanceOneStep(windowRef, tab, targetUrl, displayName, options = {}) {
       status: payload.ok ? "twofactor_digits" : "waiting",
       digits: payload.digits || "",
       reason: payload.reason || "",
+      method: payload.method || "",
+      title: payload.title || "",
       url
     };
   }
