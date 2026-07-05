@@ -36,6 +36,12 @@ private struct PermissionProbeResult: Sendable {
 
 @MainActor
 final class KLMSMacModel: ObservableObject {
+    private struct RecentRunFailureSummary {
+        var commandDisplayName: String
+        var statusText: String
+        var finishedAt: Date
+    }
+
     private struct RelayEventEnvelope: Decodable {
         var type: String?
         var reason: String?
@@ -353,21 +359,21 @@ final class KLMSMacModel: ObservableObject {
     }
 
     var hasRecentRunFailure: Bool {
-        latestRunFailureRecord != nil
+        latestRunFailureSummary != nil
     }
 
     var recentRunFailureTitle: String {
-        guard let record = latestRunFailureRecord else {
+        guard let summary = latestRunFailureSummary else {
             return "최근 실행 실패"
         }
-        return "\(record.command.displayName) 실패"
+        return "\(summary.commandDisplayName) 실패"
     }
 
     var recentRunFailureDetail: String {
-        guard let record = latestRunFailureRecord else {
+        guard let summary = latestRunFailureSummary else {
             return "실행 로그에서 마지막 오류를 확인하세요."
         }
-        return "\(record.statusText) · \(record.finishedAt.formatted(date: .numeric, time: .shortened))"
+        return "\(summary.statusText) · \(summary.finishedAt.formatted(date: .numeric, time: .shortened))"
     }
 
     var attentionSummary: String {
@@ -396,21 +402,22 @@ final class KLMSMacModel: ObservableObject {
         return cachedCurrentPhaseText
     }
 
-    private var latestRunFailureRecord: CommandRunRecord? {
+    private var latestRunFailureSummary: RecentRunFailureSummary? {
         if let result = lastCommandResult, !result.succeeded, !result.wasCancelled {
-            return CommandRunRecord(
-                command: result.invocation.command,
-                dryRun: result.invocation.dryRun,
-                startedAt: result.startedAt,
-                finishedAt: result.finishedAt,
-                exitCode: result.exitCode,
-                wasCancelled: result.wasCancelled,
-                authDigits: result.authDigits,
-                outputTail: Self.lastCommandDisplayOutput(from: result),
-                stageDurations: KLMSStageDurationParser.parse(from: result.combinedOutput)
+            return RecentRunFailureSummary(
+                commandDisplayName: result.invocation.command.displayName,
+                statusText: "실패 \(result.exitCode)",
+                finishedAt: result.finishedAt
             )
         }
-        return commandHistory.records.first { $0.needsAttention }
+        if let record = commandHistory.records.first(where: { $0.needsAttention }) {
+            return RecentRunFailureSummary(
+                commandDisplayName: record.command.displayName,
+                statusText: record.statusText,
+                finishedAt: record.finishedAt
+            )
+        }
+        return nil
     }
 
     var appRunEnvironment: [String: String] {

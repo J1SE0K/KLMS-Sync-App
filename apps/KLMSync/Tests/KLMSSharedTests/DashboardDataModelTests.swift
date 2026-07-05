@@ -4172,8 +4172,18 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(macModel.contains("@Published private(set) var cachedIssues"))
         XCTAssertTrue(macModel.contains("var needsAttention: Bool"))
         XCTAssertTrue(macModel.contains("var hasRecentRunFailure: Bool"))
-        XCTAssertTrue(macModel.contains("private var latestRunFailureRecord: CommandRunRecord?"))
-        XCTAssertTrue(macModel.contains("return commandHistory.records.first { $0.needsAttention }"))
+        XCTAssertTrue(macModel.contains("private struct RecentRunFailureSummary"))
+        XCTAssertTrue(macModel.contains("private var latestRunFailureSummary: RecentRunFailureSummary?"))
+        XCTAssertTrue(macModel.contains("if let record = commandHistory.records.first(where: { $0.needsAttention })"))
+        XCTAssertTrue(macModel.contains("return RecentRunFailureSummary("))
+        let runFailureSummaryBody = try sourceBody(
+            after: "private var latestRunFailureSummary: RecentRunFailureSummary?",
+            in: macModel,
+            description: "Mac recent run failure summary"
+        )
+        XCTAssertFalse(runFailureSummaryBody.contains("KLMSStageDurationParser.parse"))
+        XCTAssertFalse(runFailureSummaryBody.contains("lastCommandDisplayOutput"))
+        XCTAssertFalse(runFailureSummaryBody.contains("CommandRunRecord("))
         XCTAssertTrue(macModel.contains("var attentionSummary: String"))
         XCTAssertTrue(macModel.contains("let nextIssues = nextSnapshot.issues"))
         XCTAssertTrue(macModel.contains("private(set) var dashboardSummaryPresentation = DashboardSummaryPresentation"))
