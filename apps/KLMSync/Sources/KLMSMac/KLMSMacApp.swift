@@ -153,13 +153,16 @@ private extension View {
 }
 
 private enum KLMSMenuBarStatusIconState {
+    case authDigits(String)
     case ready
     case running
     case attention
 
     @MainActor
     init(model: KLMSMacModel) {
-        if model.runningCommand != nil {
+        if let digits = model.currentAuthDigits {
+            self = .authDigits(digits)
+        } else if model.runningCommand != nil {
             self = .running
         } else if model.needsAttention {
             self = .attention
@@ -170,12 +173,23 @@ private enum KLMSMenuBarStatusIconState {
 
     var tooltip: String {
         switch self {
+        case let .authDigits(digits):
+            "KLMS Sync 인증 번호 \(digits)"
         case .ready:
             "KLMS Sync 준비됨"
         case .running:
             "KLMS Sync 실행 중"
         case .attention:
             "KLMS Sync 확인 필요"
+        }
+    }
+
+    var menuBarTitle: String {
+        switch self {
+        case let .authDigits(digits):
+            "인증 \(digits)"
+        case .ready, .running, .attention:
+            ""
         }
     }
 }
@@ -254,6 +268,9 @@ private enum KLMSMenuBarStatusIcon {
         ink.setStroke()
         ink.setFill()
         switch state {
+        case .authDigits:
+            let badge = NSBezierPath(roundedRect: NSRect(x: 10.6, y: 3.9, width: 5.9, height: 5.9), xRadius: 2.95, yRadius: 2.95)
+            badge.fill()
         case .ready:
             let check = NSBezierPath()
             check.lineWidth = 1.75
@@ -339,8 +356,15 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateStatusItemIcon(for model: KLMSMacModel) {
         let state = KLMSMenuBarStatusIconState(model: model)
-        statusItem?.button?.image = KLMSMenuBarStatusIcon.image(for: state)
-        statusItem?.button?.toolTip = state.tooltip
+        guard let button = statusItem?.button else {
+            return
+        }
+        button.image = KLMSMenuBarStatusIcon.image(for: state)
+        button.toolTip = state.tooltip
+        button.title = state.menuBarTitle
+        button.imagePosition = state.menuBarTitle.isEmpty ? .imageOnly : .imageLeading
+        button.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        button.setAccessibilityLabel(state.tooltip)
     }
 
     private func configureApplicationMenu() {
