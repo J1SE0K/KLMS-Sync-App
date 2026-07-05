@@ -310,11 +310,57 @@ private enum KLMSMenuBarStatusIcon {
     }
 }
 
+private struct KLMSAuthDigitsOverlayView: View {
+    var digits: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "iphone.radiowaves.left.and.right")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.klmsMacWarningBorder)
+                .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("KAIST 인증 번호")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                Text(digits)
+                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+            }
+            Spacer(minLength: 8)
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(digits, forType: .string)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.headline.weight(.semibold))
+                    .frame(width: 34, height: 34)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.klmsMacWarningBorder)
+            .help("인증 번호 복사")
+            .accessibilityLabel("KAIST 인증 번호 복사")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(width: 348, height: 74)
+        .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.klmsMacWarningBorder.opacity(0.8), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("KAIST 인증 번호 \(digits)")
+    }
+}
+
 @MainActor
 final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     private var model: KLMSMacModel?
     private var statusItem: NSStatusItem?
     private var statusIconCancellable: AnyCancellable?
+    private var authDigitsOverlayWindow: NSPanel?
     private var quitKeyMonitor: Any?
     private var terminationCleanupStarted = false
 
@@ -365,6 +411,59 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         button.imagePosition = state.menuBarTitle.isEmpty ? .imageOnly : .imageLeading
         button.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
         button.setAccessibilityLabel(state.tooltip)
+        updateAuthDigitsOverlay(for: state)
+    }
+
+    private func updateAuthDigitsOverlay(for state: KLMSMenuBarStatusIconState) {
+        switch state {
+        case let .authDigits(digits):
+            showAuthDigitsOverlay(digits)
+        case .ready, .running, .attention:
+            hideAuthDigitsOverlay()
+        }
+    }
+
+    private func showAuthDigitsOverlay(_ digits: String) {
+        let panel = authDigitsOverlayWindow ?? makeAuthDigitsOverlayWindow()
+        panel.contentView = NSHostingView(rootView: KLMSAuthDigitsOverlayView(digits: digits))
+        positionAuthDigitsOverlay(panel)
+        if !panel.isVisible {
+            panel.orderFrontRegardless()
+        }
+        authDigitsOverlayWindow = panel
+    }
+
+    private func hideAuthDigitsOverlay() {
+        authDigitsOverlayWindow?.orderOut(nil)
+    }
+
+    private func makeAuthDigitsOverlayWindow() -> NSPanel {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 348, height: 74),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isReleasedWhenClosed = false
+        panel.level = .statusBar
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle]
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.hidesOnDeactivate = false
+        panel.setAccessibilityIdentifier("klms-auth-digits-overlay")
+        return panel
+    }
+
+    private func positionAuthDigitsOverlay(_ panel: NSPanel) {
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 900, height: 600)
+        let size = NSSize(width: 348, height: 74)
+        let origin = NSPoint(
+            x: visibleFrame.midX - size.width / 2,
+            y: visibleFrame.maxY - size.height - 10
+        )
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
     }
 
     private func configureApplicationMenu() {
