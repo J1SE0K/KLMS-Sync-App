@@ -44,7 +44,8 @@ struct MenuBarRootView: View {
                                 MacWorkstationLayoutView(
                                     model: model,
                                     selectedSection: selectedSection,
-                                    expandedLogSummaryKind: $expandedLogSummaryKind
+                                    expandedLogSummaryKind: $expandedLogSummaryKind,
+                                    openRunLog: openRunLog
                                 )
                             }
                             .padding(.horizontal, 16)
@@ -63,6 +64,13 @@ struct MenuBarRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
+    }
+
+    private func openRunLog() {
+        macPerformWithoutAnimation {
+            expandedLogSummaryKind = .run
+            selectedSection = .activityLogs
+        }
     }
 
     private func resetCurrentSectionScroll() {
@@ -310,6 +318,7 @@ private struct MacWorkstationLayoutView: View {
     let model: KLMSMacModel
     let selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
+    var openRunLog: () -> Void
 
     var body: some View {
         workspace
@@ -325,7 +334,7 @@ private struct MacWorkstationLayoutView: View {
             case .dashboard:
                 DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard", deferContent: false) {
                     VStack(alignment: .leading, spacing: 16) {
-                        CommandPanelView(model: model)
+                        CommandPanelView(model: model, openRunLog: openRunLog)
                         DashboardSummaryView(model: model)
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -869,6 +878,9 @@ private struct MacAlertBannerView: View {
             runningProgress: model.runningCommand.map {
                 MacRunningProgressSnapshot(command: $0, phaseText: model.currentPhaseText)
             },
+            hasRecentRunFailure: model.hasRecentRunFailure,
+            recentRunFailureTitle: model.recentRunFailureTitle,
+            recentRunFailureDetail: model.recentRunFailureDetail,
             needsAttention: model.needsAttention,
             hasSyncReport: model.snapshot.syncReport != nil,
             loggedIn: model.snapshot.loginStatus?.loggedIn == true
@@ -882,6 +894,11 @@ private struct MacAlertBannerView: View {
             return
         }
         if model.runningCommand != nil {
+            expandedLogSummaryKind = .run
+            selectedSection = .activityLogs
+            return
+        }
+        if model.hasRecentRunFailure {
             expandedLogSummaryKind = .run
             selectedSection = .activityLogs
             return
@@ -906,6 +923,9 @@ private struct MacAlertBannerSnapshot: Equatable {
     var currentPhaseText: String?
     var liveProgressLine: String?
     var runningProgress: MacRunningProgressSnapshot?
+    var hasRecentRunFailure: Bool
+    var recentRunFailureTitle: String
+    var recentRunFailureDetail: String
     var needsAttention: Bool
     var hasSyncReport: Bool
     var loggedIn: Bool
@@ -914,6 +934,7 @@ private struct MacAlertBannerSnapshot: Equatable {
         authDigits != nil
             || authStatusMessage != nil
             || runningCommandDisplayName != nil
+            || hasRecentRunFailure
             || needsAttention
             || !hasSyncReport
     }
@@ -930,6 +951,9 @@ private struct MacAlertBannerSnapshot: Equatable {
                 return "\(runningCommandDisplayName) · \(currentPhaseText)"
             }
             return "\(runningCommandDisplayName) 실행 중"
+        }
+        if hasRecentRunFailure {
+            return recentRunFailureTitle
         }
         if needsAttention {
             return "상태 검사 실패"
@@ -952,6 +976,9 @@ private struct MacAlertBannerSnapshot: Equatable {
                 ?? liveProgressLine
                 ?? "실시간 로그에서 진행 상황을 확인할 수 있습니다."
         }
+        if hasRecentRunFailure {
+            return "\(recentRunFailureDetail) · 실행 로그에서 원인을 바로 확인할 수 있습니다."
+        }
         if needsAttention {
             return "진단 보기에서 실패 원인과 다음 조치를 확인할 수 있습니다."
         }
@@ -967,6 +994,9 @@ private struct MacAlertBannerSnapshot: Equatable {
         }
         if runningCommandDisplayName != nil {
             return currentPhaseText ?? "LOG"
+        }
+        if hasRecentRunFailure {
+            return "로그"
         }
         if needsAttention {
             return "진단"
@@ -996,6 +1026,9 @@ private struct MacAlertBannerSnapshot: Equatable {
         }
         if runningCommandDisplayName != nil {
             return .running
+        }
+        if hasRecentRunFailure {
+            return .warning
         }
         if needsAttention || !hasSyncReport {
             return .warning
@@ -2483,6 +2516,17 @@ private struct NextActionPanelView: View {
         }
         if model.currentAuthDigits != nil {
             return nil
+        }
+        if model.hasRecentRunFailure {
+            return NextAction(
+                kind: .showRunningLog,
+                title: model.recentRunFailureTitle,
+                detail: "실행 로그에서 마지막 오류를 확인하세요.",
+                buttonTitle: "로그 보기",
+                buttonImage: "text.alignleft",
+                systemImage: "exclamationmark.triangle.fill",
+                color: .klmsMacWarningBorder
+            )
         }
         if model.needsAttention {
             return NextAction(
@@ -4345,6 +4389,7 @@ private struct FileAccessActivityRow: View {
 
 private struct CommandPanelView: View {
     @ObservedObject var model: KLMSMacModel
+    var openRunLog: () -> Void
     private let commands: [KLMSEngineCommand] = [.fullSync, .filesSync, .coreSync, .noticeSync]
     private let secondaryCommandColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
 
@@ -4409,41 +4454,58 @@ private struct CommandPanelView: View {
     }
 
     private var commandStatusStrip: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: commandStatusImage)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(commandStatusColor)
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(commandStatusText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacPrimaryText)
-                        .lineLimit(1)
-                    Text(commandStatusDetailText)
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                        .lineLimit(1)
+        Button {
+            if canOpenRunLog {
+                openRunLog()
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: commandStatusImage)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(commandStatusColor)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(commandStatusText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                            .lineLimit(1)
+                        Text(commandStatusDetailText)
+                            .font(.caption2)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    if canOpenRunLog {
+                        Image(systemName: "text.alignleft")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                    }
                 }
-                Spacer(minLength: 0)
-            }
-            if let command = model.runningCommand {
-                MacRunningProgressBarView(
-                    progress: MacRunningProgressSnapshot(
-                        command: command,
-                        phaseText: model.currentPhaseText
+                if let command = model.runningCommand {
+                    MacRunningProgressBarView(
+                        progress: MacRunningProgressSnapshot(
+                            command: command,
+                            phaseText: model.currentPhaseText
+                        )
                     )
-                )
+                }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(commandStatusColor.opacity(model.runningCommand == nil ? 0.18 : 0.36), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 9))
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
-        .overlay {
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(commandStatusColor.opacity(model.runningCommand == nil ? 0.18 : 0.36), lineWidth: 1)
-        }
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 9, disabledOpacity: 1.0))
+        .disabled(!canOpenRunLog)
+        .help(canOpenRunLog ? "최근 실행 로그 보기" : "실행 기록이 생기면 로그를 볼 수 있습니다.")
+        .accessibilityLabel(commandStatusText)
+        .accessibilityHint(canOpenRunLog ? "실행 로그 탭으로 이동합니다." : commandStatusDetailText)
     }
 
     private func primaryCommandActionCard(_ command: KLMSEngineCommand) -> some View {
@@ -4626,9 +4688,15 @@ private struct CommandPanelView: View {
             if result.wasCancelled {
                 return "중단된 실행은 로그 탭에서 다시 확인할 수 있습니다."
             }
-            return result.succeeded ? "필요하면 바로 다시 실행할 수 있습니다." : "진단 보기에서 마지막 오류를 확인하세요."
+            return result.succeeded ? "필요하면 바로 다시 실행할 수 있습니다." : "로그 탭에서 마지막 오류를 확인하세요."
         }
         return "전체 동기화 또는 개별 동기화를 실행하세요."
+    }
+
+    private var canOpenRunLog: Bool {
+        model.runningCommand != nil
+            || model.lastCommandResult != nil
+            || !model.commandHistory.records.isEmpty
     }
 
     private var commandStatusImage: String {

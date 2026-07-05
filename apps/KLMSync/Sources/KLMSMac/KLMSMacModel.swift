@@ -352,6 +352,24 @@ final class KLMSMacModel: ObservableObject {
         !cachedIssues.isEmpty
     }
 
+    var hasRecentRunFailure: Bool {
+        latestRunFailureRecord != nil
+    }
+
+    var recentRunFailureTitle: String {
+        guard let record = latestRunFailureRecord else {
+            return "최근 실행 실패"
+        }
+        return "\(record.command.displayName) 실패"
+    }
+
+    var recentRunFailureDetail: String {
+        guard let record = latestRunFailureRecord else {
+            return "실행 로그에서 마지막 오류를 확인하세요."
+        }
+        return "\(record.statusText) · \(record.finishedAt.formatted(date: .numeric, time: .shortened))"
+    }
+
     var attentionSummary: String {
         cachedIssues.first?.title ?? "준비됨"
     }
@@ -376,6 +394,23 @@ final class KLMSMacModel: ObservableObject {
             return nil
         }
         return cachedCurrentPhaseText
+    }
+
+    private var latestRunFailureRecord: CommandRunRecord? {
+        if let result = lastCommandResult, !result.succeeded, !result.wasCancelled {
+            return CommandRunRecord(
+                command: result.invocation.command,
+                dryRun: result.invocation.dryRun,
+                startedAt: result.startedAt,
+                finishedAt: result.finishedAt,
+                exitCode: result.exitCode,
+                wasCancelled: result.wasCancelled,
+                authDigits: result.authDigits,
+                outputTail: Self.lastCommandDisplayOutput(from: result),
+                stageDurations: KLMSStageDurationParser.parse(from: result.combinedOutput)
+            )
+        }
+        return commandHistory.records.first { $0.needsAttention }
     }
 
     var appRunEnvironment: [String: String] {
