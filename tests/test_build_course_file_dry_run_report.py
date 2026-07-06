@@ -24,6 +24,7 @@ class BuildCourseFileDryRunReportTests(unittest.TestCase):
                     {
                         "manifest_count": 68,
                         "fresh_download_candidate_count": 0,
+                        "timestamp_refresh_candidate_count": 1,
                         "moved_count": 1,
                         "type_mismatch_candidate_count": 2,
                     }
@@ -68,8 +69,8 @@ class BuildCourseFileDryRunReportTests(unittest.TestCase):
             )
 
             payload = json.loads(output_path.read_text(encoding="utf-8"))
-            self.assertEqual(payload["would_download"], 0)
-            self.assertEqual(payload["would_update"], 3)
+            self.assertEqual(payload["would_download"], 1)
+            self.assertEqual(payload["would_update"], 4)
             self.assertEqual(payload["would_delete"], 104)
             self.assertEqual(payload["would_prune"], 104)
             self.assertEqual(payload["would_prune_course_files"], 52)

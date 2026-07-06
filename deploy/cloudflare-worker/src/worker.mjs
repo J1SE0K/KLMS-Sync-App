@@ -25,6 +25,7 @@ const STALE_PENDING_FILE_ACCESS_MS = 10 * 60 * 1000;
 const STALE_RUNNING_FILE_ACCESS_MS = 6 * 60 * 60 * 1000;
 const CANCEL_REQUEST_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_FILE_ACCESS_TTL_MS = 5 * 60 * 1000;
+const AUTH_DIGITS_PUBLIC_TTL_MS = 120 * 1000;
 const WORKER_INBOX_LONG_POLL_MAX_MS = 25 * 1000;
 const WORKER_INBOX_LONG_POLL_INTERVAL_MS = 350;
 const SHARED_SETTING_DEFINITIONS = [
@@ -228,7 +229,7 @@ async function route(request, env, ctx = null) {
     if (!(await authorized(request, env, "client"))) {
       return sendJSON(401, { error: "unauthorized" });
     }
-    return sendJSON(200, relayResponse(state));
+    return sendJSON(200, relayResponse(state, { audience: "client" }));
   }
 
   if (request.method === "POST" && pathname === "/v1/status") {
@@ -247,7 +248,7 @@ async function route(request, env, ctx = null) {
     }
     state.updatedAt = now;
     await saveMetaState(db, state, env, "state", ctx);
-    return sendJSON(200, relayResponse(state));
+    return sendJSON(200, relayResponse(state, { audience: "worker" }));
   }
 
   if (request.method === "GET" && pathname === "/v1/sync-data") {
@@ -746,7 +747,7 @@ async function workerInboxResponse(db, request, env, state) {
     loadSharedSettings(db),
   ]);
   return {
-    statusResponse: relayResponse(state),
+    statusResponse: relayResponse(state, { audience: "worker" }),
     recentRequestLog: requestLog.entries,
     recentFileAccessRequests: fileAccessListResponse(
       filterDisplayFileAccess(recentFileAccess, clearTimes.fileAccess),
@@ -2240,7 +2241,7 @@ function fileAccessPreviewPage({
     ? "위 도구막대로 PDF 쪽 이동과 확대/축소를 조절할 수 있습니다."
     : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다.";
   const pdfScriptMarkup = isPDFPreview
-    ? `<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>`
+    ? `<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>`
     : "";
   const html = `<!doctype html>
 <html lang="ko">
@@ -2405,8 +2406,8 @@ ${zoomControlsMarkup}
         .catch(() => { pages = ["미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요."]; render(); });
     } else if (kind === "pdf") {
       if (window.pdfjsLib) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-        window.pdfjsLib.getDocument({ url: rawURL }).promise
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+        window.pdfjsLib.getDocument({ url: rawURL, disableWorker: true }).promise
           .then((doc) => {
             pdfDoc = doc;
             pages = Array.from({ length: Math.max(1, doc.numPages) }, (_, index) => String(index + 1));
@@ -2462,7 +2463,7 @@ ${zoomControlsMarkup}
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; connect-src 'self'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; worker-src blob: https://cdn.jsdelivr.net; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+      "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; connect-src 'self'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
       "Referrer-Policy": "no-referrer",
     },
   });
@@ -2496,17 +2497,46 @@ function filePreviewViewerMarkup(preview, rawURL) {
   return `<div class="empty">이 파일은 웹 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.</div>`;
 }
 
-function relayResponse(state) {
+function relayResponse(state, options = {}) {
+  const status = normalizeStatus(state.status, state.running ? "running" : undefined);
+  const exposeAuthDigits = shouldExposeAuthDigitsToAudience(state, status, options.audience || "client");
   return {
     ok: true,
     message: state.message || "",
-    status: normalizeStatus(state.status, state.running ? "running" : undefined),
-    latestCommand: state.latestCommand || null,
+    status: exposeAuthDigits ? status : redactAuthDigitsFromStatus(status),
+    latestCommand: redactAuthDigitsFromCommand(state.latestCommand || null, exposeAuthDigits),
     running: Boolean(state.running),
     updatedAt: state.updatedAt || null,
     requestNonce: null,
     responseIssuedAtEpochSeconds: null,
     signature: null,
+  };
+}
+
+function shouldExposeAuthDigitsToAudience(state, status, audience) {
+  if (audience === "worker") return true;
+  if (!status.authDigits) return false;
+  if (!state.running || status.phase !== "running") return false;
+  const reference = Date.parse(state.updatedAt || state.latestCommand?.updatedAt || "");
+  if (!Number.isFinite(reference)) return false;
+  return Date.now() - reference <= AUTH_DIGITS_PUBLIC_TTL_MS;
+}
+
+function redactAuthDigitsFromStatus(status) {
+  if (!status?.authDigits) return status;
+  return {
+    ...status,
+    authDigits: null,
+    loginRequired: true,
+    phaseDetail: status.phaseDetail || "KAIST 인증이 필요합니다.",
+  };
+}
+
+function redactAuthDigitsFromCommand(command, exposeAuthDigits) {
+  if (!command || exposeAuthDigits) return command;
+  return {
+    ...command,
+    summary: redactAuthDigitsFromStatus(command.summary || defaultStatus),
   };
 }
 

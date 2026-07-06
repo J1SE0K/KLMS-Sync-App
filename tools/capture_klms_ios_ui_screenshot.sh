@@ -127,17 +127,43 @@ if [[ -f "$ATTACHMENTS_DIR/manifest.json" ]] && /usr/bin/grep -q "klms-ipad" "$A
   for png in "$ATTACHMENTS_DIR"/*.png(N); do
     width="$(/usr/bin/sips -g pixelWidth "$png" 2>/dev/null | /usr/bin/awk '/pixelWidth/ { print $2; exit }')"
     height="$(/usr/bin/sips -g pixelHeight "$png" 2>/dev/null | /usr/bin/awk '/pixelHeight/ { print $2; exit }')"
-    if [[ -n "$width" && -n "$height" && "$height" -gt "$width" ]]; then
+    if [[ -n "$width" && -n "$height" ]]; then
       FINAL_SCREENSHOT="$ATTACHMENTS_DIR/klms-ipad-landscape.png"
-      /usr/bin/sips -r 90 "$png" --out "$FINAL_SCREENSHOT" >/dev/null
+      if [[ "$height" -gt "$width" ]]; then
+        /usr/bin/sips -r 90 "$png" --out "$FINAL_SCREENSHOT" >/dev/null
+      else
+        /bin/cp "$png" "$FINAL_SCREENSHOT"
+      fi
       break
     fi
   done
 elif [[ -f "$ATTACHMENTS_DIR/manifest.json" ]] && /usr/bin/grep -q "klms-iphone" "$ATTACHMENTS_DIR/manifest.json"; then
   for png in "$ATTACHMENTS_DIR"/*.png(N); do
-    FINAL_SCREENSHOT="$ATTACHMENTS_DIR/klms-iphone-portrait.png"
-    /bin/cp "$png" "$FINAL_SCREENSHOT"
-    break
+    width="$(/usr/bin/sips -g pixelWidth "$png" 2>/dev/null | /usr/bin/awk '/pixelWidth/ { print $2; exit }')"
+    height="$(/usr/bin/sips -g pixelHeight "$png" 2>/dev/null | /usr/bin/awk '/pixelHeight/ { print $2; exit }')"
+    if [[ -n "$width" && -n "$height" ]]; then
+      FINAL_SCREENSHOT="$ATTACHMENTS_DIR/klms-iphone-portrait.png"
+      if [[ "$width" -gt "$height" ]]; then
+        /usr/bin/sips -r 90 "$png" --out "$FINAL_SCREENSHOT" >/dev/null
+      else
+        /bin/cp "$png" "$FINAL_SCREENSHOT"
+      fi
+      break
+    fi
+  done
+elif [[ -f "$ATTACHMENTS_DIR/manifest.json" ]]; then
+  for png in "$ATTACHMENTS_DIR"/*.png(N); do
+    width="$(/usr/bin/sips -g pixelWidth "$png" 2>/dev/null | /usr/bin/awk '/pixelWidth/ { print $2; exit }')"
+    height="$(/usr/bin/sips -g pixelHeight "$png" 2>/dev/null | /usr/bin/awk '/pixelHeight/ { print $2; exit }')"
+    if [[ -n "$width" && -n "$height" ]]; then
+      if [[ "$width" -ge "$height" ]]; then
+        FINAL_SCREENSHOT="$ATTACHMENTS_DIR/klms-capture-landscape.png"
+      else
+        FINAL_SCREENSHOT="$ATTACHMENTS_DIR/klms-capture-portrait.png"
+      fi
+      /bin/cp "$png" "$FINAL_SCREENSHOT"
+      break
+    fi
   done
 fi
 

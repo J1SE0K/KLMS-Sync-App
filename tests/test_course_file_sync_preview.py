@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -209,6 +210,72 @@ class CourseFileSyncPreviewTests(unittest.TestCase):
         self.assertEqual(payload["new_url_count"], 0)
         self.assertEqual(payload["local_missing_count"], 0)
         self.assertEqual(payload["fresh_download_candidate_count"], 0)
+
+    def test_preview_marks_existing_file_for_refresh_when_klms_timestamp_is_newer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_root = root / "course_files"
+            archive_root = root / "archive"
+            existing_path = output_root / "Course" / "changed.pdf"
+            existing_path.parent.mkdir(parents=True)
+            existing_path.write_text("old content", encoding="utf-8")
+            old_epoch = 1_720_000_000
+            new_epoch = old_epoch + 3600
+            existing_path.touch()
+            existing_path.chmod(0o644)
+            os.utime(existing_path, (old_epoch, old_epoch))
+
+            manifest = [
+                {
+                    "course": "Course",
+                    "filename": "changed.pdf",
+                    "relative_path": "Course/changed.pdf",
+                    "url": "https://klms.kaist.ac.kr/mod/resource/view.php?id=1",
+                    "klms_timestamp_epoch": new_epoch,
+                }
+            ]
+            previous_log = {
+                "results": [
+                    {
+                        "filename": "changed.pdf",
+                        "relative_path": "Course/changed.pdf",
+                        "url": "https://klms.kaist.ac.kr/mod/resource/view.php?id=1",
+                        "klms_timestamp_epoch": old_epoch,
+                    }
+                ]
+            }
+            manifest_path = root / "manifest.json"
+            log_path = root / "download_log.json"
+            preview_path = root / "preview.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            log_path.write_text(json.dumps(previous_log), encoding="utf-8")
+
+            with redirect_stdout(StringIO()):
+                rc = build_course_file_sync_preview.main_with_args(
+                    [
+                        "--manifest-json",
+                        str(manifest_path),
+                        "--output-root",
+                        str(output_root),
+                        "--download-log-json",
+                        str(log_path),
+                        "--download-archive-root",
+                        str(archive_root),
+                        "--output-json",
+                        str(preview_path),
+                    ]
+                )
+
+            payload = json.loads(preview_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(payload["local_missing_count"], 0)
+        self.assertEqual(payload["fresh_download_candidate_count"], 0)
+        self.assertEqual(payload["timestamp_refresh_candidate_count"], 1)
+        self.assertEqual(
+            payload["timestamp_refresh_candidates"][0]["effective_relative_path"],
+            "Course/changed.pdf",
+        )
 
 
 if __name__ == "__main__":

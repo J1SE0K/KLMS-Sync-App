@@ -26,20 +26,29 @@ def main_with_args(argv: list[str] | None = None) -> int:
     course_prune_count = int(prune.get("deleted_file_count", 0) or 0)
     archive_prune_count = int(archive_prune.get("deleted_file_count", 0) or 0)
     total_prune_count = course_prune_count + archive_prune_count
-    would_download = int(
+    would_fresh_download = int(
         preview.get(
             "fresh_download_candidate_count",
             len(preview.get("fresh_download_candidates") or []),
         )
         or 0
     )
+    would_timestamp_refresh = int(
+        preview.get(
+            "timestamp_refresh_candidate_count",
+            len(preview.get("timestamp_refresh_candidates") or []),
+        )
+        or 0
+    )
+    would_download = would_fresh_download + would_timestamp_refresh
 
     payload = {
         "dry_run": True,
         "scope": "files",
         "would_create": 0,
         "would_update": int(preview.get("moved_count", 0) or 0)
-        + int(preview.get("type_mismatch_candidate_count", 0) or 0),
+        + int(preview.get("type_mismatch_candidate_count", 0) or 0)
+        + would_timestamp_refresh,
         "would_delete": total_prune_count,
         "would_download": would_download,
         "would_prune": total_prune_count,

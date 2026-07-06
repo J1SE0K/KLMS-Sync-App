@@ -46,6 +46,7 @@ def main_with_args(argv: list[str] | None = None) -> int:
     local_missing_entries: list[dict[str, Any]] = []
     recoverable_missing_entries: list[dict[str, Any]] = []
     fresh_download_candidates: list[dict[str, Any]] = []
+    timestamp_refresh_candidates: list[dict[str, Any]] = []
     type_mismatch_candidates: list[dict[str, Any]] = []
 
     for item in manifest:
@@ -112,6 +113,15 @@ def main_with_args(argv: list[str] | None = None) -> int:
                     recoverable_missing_entries.append(missing_entry)
                 else:
                     fresh_download_candidates.append(missing_entry)
+            elif existing_file_needs_timestamp_refresh(item, output_path_for_entry, previous):
+                timestamp_refresh_candidates.append(
+                    {
+                        **compact_entry(item, effective_relative_path),
+                        "expected_path": str(output_path_for_entry),
+                        "previous_klms_timestamp_epoch": str(normalized_epoch((previous or {}).get("klms_timestamp_epoch"))),
+                        "current_klms_timestamp_epoch": str(normalized_epoch(item.get("klms_timestamp_epoch"))),
+                    }
+                )
 
     prune_candidates = sorted(
         relative_path
@@ -131,6 +141,7 @@ def main_with_args(argv: list[str] | None = None) -> int:
         "local_missing_count": len(local_missing_entries),
         "recoverable_missing_count": len(recoverable_missing_entries),
         "fresh_download_candidate_count": len(fresh_download_candidates),
+        "timestamp_refresh_candidate_count": len(timestamp_refresh_candidates),
         "prune_candidate_count": len(prune_candidates),
         "type_mismatch_candidate_count": len(type_mismatch_candidates),
         "tracked_relative_paths": sorted(tracked_paths.values()),
@@ -139,6 +150,7 @@ def main_with_args(argv: list[str] | None = None) -> int:
         "local_missing_entries": local_missing_entries,
         "recoverable_missing_entries": recoverable_missing_entries,
         "fresh_download_candidates": fresh_download_candidates,
+        "timestamp_refresh_candidates": timestamp_refresh_candidates,
         "prune_candidates": prune_candidates,
         "type_mismatch_candidates": type_mismatch_candidates,
     }
@@ -153,6 +165,7 @@ def main_with_args(argv: list[str] | None = None) -> int:
         f"local_missing={payload['local_missing_count']} "
         f"recoverable_missing={payload['recoverable_missing_count']} "
         f"fresh_download_candidates={payload['fresh_download_candidate_count']} "
+        f"timestamp_refresh_candidates={payload['timestamp_refresh_candidate_count']} "
         f"prune_candidates={payload['prune_candidate_count']} "
         f"type_mismatch_candidates={payload['type_mismatch_candidate_count']}"
     )
@@ -186,6 +199,49 @@ def current_output_files(root: Path) -> dict[str, str]:
             continue
         files[canonical_relative_path(relative_path)] = relative_path
     return files
+
+
+def normalized_epoch(value: Any) -> int:
+    try:
+        epoch = int(float(value or 0))
+    except Exception:
+        return 0
+    return epoch if epoch > 0 else 0
+
+
+def file_mtime_epoch(path: Path) -> int:
+    try:
+        return int(path.stat().st_mtime)
+    except Exception:
+        return 0
+
+
+def epochs_match(left: int, right: int) -> bool:
+    return left > 0 and right > 0 and abs(left - right) <= 1
+
+
+def existing_file_needs_timestamp_refresh(
+    item: dict[str, Any],
+    output_path: Path,
+    previous: dict[str, Any] | None,
+) -> bool:
+    current_epoch = normalized_epoch(item.get("klms_timestamp_epoch"))
+    if current_epoch <= 0:
+        return False
+
+    previous_epoch = normalized_epoch((previous or {}).get("klms_timestamp_epoch"))
+    if epochs_match(current_epoch, previous_epoch):
+        return False
+
+    local_epoch = file_mtime_epoch(output_path)
+    if epochs_match(current_epoch, local_epoch):
+        return False
+
+    if previous_epoch > 0:
+        return current_epoch > previous_epoch + 1
+    if local_epoch > 0:
+        return current_epoch > local_epoch + 1
+    return False
 
 
 def compact_entry(item: dict[str, Any], effective_relative_path: str = "") -> dict[str, str]:

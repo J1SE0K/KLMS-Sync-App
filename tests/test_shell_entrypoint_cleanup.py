@@ -742,8 +742,10 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             ios_view.index("private struct CompanionScreenContainer")
             : ios_view.index("private struct CompanionScreenHeader")
         ]
-        self.assertIn(".overlay(alignment: .top)", container)
-        self.assertIn(".allowsHitTesting(attentionSnapshot.hasAttention)", container)
+        self.assertIn(".safeAreaInset(edge: .top, spacing: 0)", container)
+        self.assertIn("private var attentionInset: some View", container)
+        self.assertNotIn(".overlay(alignment: .top)", container)
+        self.assertNotIn(".allowsHitTesting(attentionSnapshot.hasAttention)", container)
         self.assertLess(container.index("CompanionScreenHeader(title: title, model: model)"), container.index("RemoteAttentionStack("))
         self.assertEqual(ios_view.count("RemoteAttentionStack(\n"), 1)
 

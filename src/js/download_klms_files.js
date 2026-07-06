@@ -1344,6 +1344,16 @@ function existingFileRefreshDecision(entry, destinationPath, previousDownloadSta
     };
   }
 
+  if (currentEpoch > 0 && fileModifiedEpoch > 0 && currentEpoch > fileModifiedEpoch + toleranceSeconds) {
+    return {
+      refresh: true,
+      reason: "klms-timestamp-newer-than-local-file",
+      current_klms_timestamp_epoch: currentEpoch,
+      previous_klms_timestamp_epoch: previousEpoch || null,
+      file_modified_epoch: fileModifiedEpoch,
+    };
+  }
+
   return {
     refresh: false,
     reason: "existing-file-current",

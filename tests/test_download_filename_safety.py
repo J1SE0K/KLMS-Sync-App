@@ -83,7 +83,7 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("local-file-mtime-matches-klms-timestamp", text)
         self.assertIn("klms-timestamp-newer-than-previous-record", text)
         self.assertIn("reusableRelativePathKey", text)
-        self.assertNotIn("klms-timestamp-newer-than-local-file", text)
+        self.assertIn("klms-timestamp-newer-than-local-file", text)
         self.assertIn("refreshed_existing_file", text)
         self.assertIn("dateValue instanceof Date", text)
         self.assertIn("previousDownloadResult", text)
@@ -96,7 +96,7 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("isServerTemporaryFilename", text)
         self.assertIn("canonicalFilenameForDownloadedName", text)
 
-    def test_existing_file_refresh_requires_previous_download_record(self) -> None:
+    def test_existing_file_refresh_uses_previous_record_or_local_mtime(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "download_klms_files.js").read_text(
             encoding="utf-8"
         )
@@ -137,8 +137,8 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         )
         payload = json.loads(result.stdout)
 
-        self.assertFalse(payload["staleWithoutPrevious"]["refresh"])
-        self.assertEqual(payload["staleWithoutPrevious"]["reason"], "existing-file-current")
+        self.assertTrue(payload["staleWithoutPrevious"]["refresh"])
+        self.assertEqual(payload["staleWithoutPrevious"]["reason"], "klms-timestamp-newer-than-local-file")
         self.assertFalse(payload["matchingPrevious"]["refresh"])
         self.assertEqual(payload["matchingPrevious"]["reason"], "local-klms-timestamp-current")
         self.assertFalse(payload["matchingRelativePrevious"]["refresh"])

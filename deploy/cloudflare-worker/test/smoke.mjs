@@ -43,6 +43,38 @@ async function runSmoke() {
   }, { method: "POST", role: "worker" });
 
   {
+    const authCommand = {
+      id: "00000000-0000-4000-8000-000000000057",
+      kind: "fullSync",
+      status: "running",
+      summary: { phase: "running", authDigits: "57", loginRequired: true },
+    };
+    await expectJSON("/v1/status", {
+      status: { phase: "running", authDigits: "57", loginRequired: true },
+      latestCommand: authCommand,
+      running: true,
+      message: "auth needed",
+    }, { method: "POST", role: "worker" });
+    const running = await expectJSON("/v1/status");
+    assert.equal(running.status.authDigits, "57");
+    assert.equal(running.latestCommand.summary.authDigits, "57");
+
+    await expectJSON("/v1/status", {
+      status: { phase: "idle", authDigits: "57", loginRequired: false },
+      latestCommand: {
+        ...authCommand,
+        status: "completed",
+        summary: { phase: "completed", authDigits: "57", loginRequired: false },
+      },
+      running: false,
+      message: "completed",
+    }, { method: "POST", role: "worker" });
+    const completed = await expectJSON("/v1/status");
+    assert.equal(completed.status.authDigits, null);
+    assert.equal(completed.latestCommand.summary.authDigits, null);
+  }
+
+  {
     const originalRealtime = env.RELAY_REALTIME;
     let waitUntilCalled = 0;
     let resolveBroadcast;
@@ -959,6 +991,9 @@ async function runSmoke() {
     assert.match(previewPageHTML, /data-action="zoom-in"/);
     assert.match(previewPageHTML, /data-action="next"/);
     assert.match(previewPageHTML, /pdfjs-dist/);
+    assert.match(previewPageHTML, /integrity="sha384-/);
+    assert.match(previewPageHTML, /disableWorker: true/);
+    assert.doesNotMatch(previewPageHTML, /pdf\.worker\.min\.js/);
     assert.match(previewPageHTML, /data-pdf-canvas/);
     assert.match(previewPageHTML, /data-status/);
 

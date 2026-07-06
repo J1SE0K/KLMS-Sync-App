@@ -2,6 +2,7 @@
 .env
 .env.*
 .gstack/
+design-qa.md
 
 # Local configuration and personal overrides
 config.env

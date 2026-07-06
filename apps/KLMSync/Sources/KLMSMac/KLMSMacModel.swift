@@ -249,6 +249,7 @@ final class KLMSMacModel: ObservableObject {
     private var cachedMailCalendarChanges: [CalendarChange] = []
     private var serverRelaySharedSettingsSignature: Int?
     private var lastPassiveAuxiliaryRefreshAt: Date?
+    private var suppressCurrentRunHistoryAfterLogClear = false
     private static let sharedAppearanceModeKey = "KLMS_APPEARANCE_MODE"
     private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
@@ -841,6 +842,7 @@ final class KLMSMacModel: ObservableObject {
         if runningCommand == nil {
             clearTransientRunState()
         } else {
+            suppressCurrentRunHistoryAfterLogClear = true
             clearLiveCommandDisplayOutputPreservingAuth()
             lastCommandResult = nil
             commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
@@ -861,6 +863,7 @@ final class KLMSMacModel: ObservableObject {
 
     func clearExecutionRunLogs() {
         guard runningCommand == nil else {
+            suppressCurrentRunHistoryAfterLogClear = true
             clearLiveCommandDisplayOutputPreservingAuth()
             lastCommandResult = nil
             commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
@@ -921,6 +924,14 @@ final class KLMSMacModel: ObservableObject {
                 errorMessage = "로컬 로그 파일 지우기 실패: \(error.localizedDescription)"
             }
         }
+    }
+
+    private func appendCommandRunHistoryIfVisible(_ result: KLMSCommandResult) {
+        guard !suppressCurrentRunHistoryAfterLogClear else {
+            commandHistory = CommandRunHistoryStore(url: paths.appHistoryURL).load()
+            return
+        }
+        commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(result)) ?? commandHistory
     }
 
     private func applyServerRelayLogClear(scope: ServerRelayLogClearScope) {
@@ -2549,6 +2560,7 @@ final class KLMSMacModel: ObservableObject {
         runningCommand = command
         isCancellingCommand = false
         pendingRunCancellationRequested = false
+        suppressCurrentRunHistoryAfterLogClear = false
         errorMessage = nil
         lastCommandResult = nil
         resetLiveCommandOutput()
@@ -2582,6 +2594,7 @@ final class KLMSMacModel: ObservableObject {
             runningCommand = nil
             isCancellingCommand = false
             pendingRunCancellationRequested = false
+            suppressCurrentRunHistoryAfterLogClear = false
             activeRemoteCommandID = nil
             Task { @MainActor [weak self] in
                 await self?.publishServerRelayStatusIfNeeded(force: true)
@@ -2604,7 +2617,7 @@ final class KLMSMacModel: ObservableObject {
                     wasCancelled: true
                 )
                 lastCommandResult = result
-                commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(result)) ?? commandHistory
+                appendCommandRunHistoryIfVisible(result)
                 await clearAuthDigitsState(showAuthenticatedMessage: false)
                 errorMessage = nil
                 return
@@ -2621,7 +2634,7 @@ final class KLMSMacModel: ObservableObject {
             }
             flushLiveCommandOutput()
             lastCommandResult = result
-            commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(result)) ?? commandHistory
+            appendCommandRunHistoryIfVisible(result)
             if let resultDigits = result.authDigits,
                !result.authChallengeCompleted {
                 await recordAuthDigits(resultDigits)
@@ -2652,7 +2665,7 @@ final class KLMSMacModel: ObservableObject {
                     }
                 }
                 flushLiveCommandOutput()
-                commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).append(verifyResult)) ?? commandHistory
+                appendCommandRunHistoryIfVisible(verifyResult)
                 appendLiveCommandOutput("== 연동 상태 검사 finish status=\(verifyResult.exitCode) ==\n", forcePublish: true)
                 if !verifyResult.succeeded {
                     errorMessage = "동기화는 끝났지만 메모/캘린더/미리 알림 상태 검사에 실패했습니다."

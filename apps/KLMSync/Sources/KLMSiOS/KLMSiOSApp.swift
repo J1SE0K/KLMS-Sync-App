@@ -236,6 +236,7 @@ final class CompanionModel: ObservableObject {
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
     private var serverRelayEventStreamKey = ""
+    private let usesUITestCaptureFixture: Bool
     private let usesUITestRunningFixture: Bool
     private var refreshInProgress = false
     private var pendingRefreshRequest: PendingRefreshRequest?
@@ -445,6 +446,7 @@ final class CompanionModel: ObservableObject {
     }
 
     init() {
+        usesUITestCaptureFixture = Self.shouldUseUITestCaptureFixture
         usesUITestRunningFixture = Self.shouldUseUITestRunningFixture
         #if canImport(UserNotifications)
         UNUserNotificationCenter.current().delegate = KLMSCompanionNotificationDelegate.shared
@@ -454,6 +456,13 @@ final class CompanionModel: ObservableObject {
             serverToken = ""
             shouldUpdateNoticeNotes = true
             applyUITestRunningFixture()
+            return
+        }
+        if usesUITestCaptureFixture {
+            serverURL = ""
+            serverToken = ""
+            shouldUpdateNoticeNotes = true
+            applyUITestCaptureFixture()
             return
         }
         let storedServerToken = Self.loadServerRelayTokenMigratingUserDefaults()
@@ -772,15 +781,19 @@ final class CompanionModel: ObservableObject {
     }
 
     var isRemoteAvailable: Bool {
-        usesUITestRunningFixture || serverRelayStore != nil
+        isUsingUITestFixture || serverRelayStore != nil
     }
 
     var serverRelayConfigured: Bool {
-        usesUITestRunningFixture || serverRelayStore != nil
+        isUsingUITestFixture || serverRelayStore != nil
     }
 
     var isUsingUITestRunningFixture: Bool {
         usesUITestRunningFixture
+    }
+
+    var isUsingUITestFixture: Bool {
+        usesUITestRunningFixture || usesUITestCaptureFixture
     }
 
     var serverRelayBootstrapKey: String {
@@ -821,6 +834,96 @@ final class CompanionModel: ObservableObject {
 
     private static var shouldUseUITestRunningFixture: Bool {
         ProcessInfo.processInfo.arguments.contains("KLMS_UI_TEST_RUNNING_STATE")
+    }
+
+    private static var shouldUseUITestCaptureFixture: Bool {
+        ProcessInfo.processInfo.arguments.contains("KLMS_UI_TEST_CAPTURE")
+    }
+
+    private func applyUITestCaptureFixture() {
+        let now = Date()
+        let generatedAt = ServerRelaySyncItem.isoTimestamp(date: now)
+        status = SanitizedRemoteStatus(
+            assignments: 1,
+            exams: 1,
+            helpDesk: 1,
+            notices: 1,
+            noticeNew: 1,
+            fileTotal: 1,
+            newFiles: 1,
+            calendarCreated: 1,
+            calendarUpdated: 1,
+            phase: "idle",
+            phaseDetail: "준비됨",
+            loginRequired: false
+        )
+        recentCommands = [
+            RemoteRunCommand(
+                id: UUID(uuidString: "00000000-0000-4000-8000-000000000024") ?? UUID(),
+                kind: .fullSync,
+                status: .completed,
+                createdAt: now.addingTimeInterval(-180),
+                updatedAt: now.addingTimeInterval(-60),
+                lastExitCode: 0,
+                summary: status
+            )
+        ]
+        recentRequestLog = [
+            ServerRelayRequestLogEntry(
+                source: "iPhone",
+                action: "run.fullSync",
+                method: "POST",
+                path: "/v1/commands",
+                status: "completed",
+                message: "전체 동기화 완료",
+                createdAt: now.addingTimeInterval(-180)
+            )
+        ]
+        recentFileAccessRequests = []
+        recentItemActions = []
+        recentSettingActions = []
+        _ = apply(
+            ServerRelaySyncData(
+                generatedAt: generatedAt,
+                items: Self.uiTestRunningFixtureItems(generatedAt: generatedAt),
+                runLogs: [
+                    ServerRelayRunLog(
+                        id: "ui-test-completed-full-sync",
+                        command: "fullSync",
+                        commandTitle: "전체 동기화",
+                        status: "completed",
+                        startedAt: now.addingTimeInterval(-180),
+                        finishedAt: now.addingTimeInterval(-60),
+                        updatedAt: now.addingTimeInterval(-60),
+                        duration: "120초",
+                        exitCode: 0,
+                        dryRun: false,
+                        wasCancelled: false,
+                        needsAttention: false,
+                        outputTail: """
+                        == files finish status=0 duration_s=11 ==
+                        == core finish status=0 duration_s=18 ==
+                        == notice finish status=0 duration_s=27 ==
+                        """
+                    )
+                ],
+                verifySummary: ServerRelayVerifySummary(
+                    status: "ok",
+                    updatedAt: generatedAt,
+                    checks: [
+                        VerifyCheck(name: "notice_render_complete", status: "ok", detail: "missing=0"),
+                        VerifyCheck(name: "calendar_access", status: "ok", detail: "available")
+                    ]
+                )
+            ),
+            persistCache: false,
+            markLoaded: true
+        )
+        lastRefreshAt = now
+        connectionMessage = "UI 테스트용 서버 요약입니다."
+        connectionSucceeded = true
+        errorMessage = ""
+        rebuildRemoteLogDerivedState()
     }
 
     private func applyUITestRunningFixture() {
@@ -4025,6 +4128,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
 }
 
 private enum CompanionWorkstationMetrics {
+    static let minimumSplitWidth: CGFloat = 1040
     static let sidebarWidth: CGFloat = 224
     static let horizontalPadding: CGFloat = 22
     static let topPadding: CGFloat = 14
@@ -4054,21 +4158,25 @@ struct CompanionRootView: View {
     @State private var selectedSection: CompanionAppSection? = .status
 
     var body: some View {
-        Group {
-            if horizontalSizeClass == .regular {
-                CompanionSplitRootView(model: model, selectedSection: $selectedSection)
-            } else {
-                CompanionTabRootView(model: model)
+        GeometryReader { proxy in
+            Group {
+                if horizontalSizeClass == .regular,
+                   proxy.size.width >= CompanionWorkstationMetrics.minimumSplitWidth {
+                    CompanionSplitRootView(model: model, selectedSection: $selectedSection)
+                } else {
+                    CompanionTabRootView(model: model)
+                }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .background(Color.klmsScreenBackground.ignoresSafeArea())
         .tint(.klmsCommandAccent)
         .task(id: model.serverRelayBootstrapKey) {
-            guard !model.isUsingUITestRunningFixture else { return }
+            guard !model.isUsingUITestFixture else { return }
             await model.bootstrapServerRelayFromLaunch()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active, !model.isUsingUITestRunningFixture else { return }
+            guard newPhase == .active, !model.isUsingUITestFixture else { return }
             Task {
                 await model.bootstrapServerRelayFromLaunch(silentInitialErrors: true, forceSyncData: false)
             }
@@ -6020,25 +6128,13 @@ private struct CompanionScreenContainer<Content: View>: View {
                     .horizontal,
                     horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16
                 )
-                .padding(.top, attentionTopReservedSpace)
                 .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
                 .padding(.bottom, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.bottomPadding : 20)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .overlay(alignment: .top) {
-                RemoteAttentionStack(
-                    snapshot: attentionSnapshot,
-                    onCancel: {
-                        await model.cancelRunningCommand()
-                    }
-                )
-                .accessibilitySortPriority(100)
-                .padding(.horizontal, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16)
-                .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .zIndex(1)
-                .allowsHitTesting(attentionSnapshot.hasAttention)
-            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            attentionInset
         }
         .navigationTitle(title)
         .klmsNavigationTitleMode()
@@ -6062,28 +6158,22 @@ private struct CompanionScreenContainer<Content: View>: View {
         )
     }
 
-    private var attentionTopReservedSpace: CGFloat {
-        guard attentionSnapshot.hasAttention else {
-            return 0
+    @ViewBuilder
+    private var attentionInset: some View {
+        if attentionSnapshot.hasAttention {
+            RemoteAttentionStack(
+                snapshot: attentionSnapshot,
+                onCancel: {
+                    await model.cancelRunningCommand()
+                }
+            )
+            .accessibilitySortPriority(100)
+            .padding(.horizontal, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16)
+            .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(Color.klmsScreenBackground)
         }
-        var height: CGFloat = 0
-        if attentionSnapshot.authDigits != nil {
-            height += horizontalSizeClass == .regular ? 96 : 92
-        }
-        if attentionSnapshot.shouldShowRunningStatus {
-            height += horizontalSizeClass == .regular ? 78 : 82
-        }
-        if !attentionSnapshot.errorMessage.isEmpty {
-            height += 58
-        }
-        if attentionSnapshot.loginAttentionMessage != nil {
-            height += 58
-        }
-        if attentionSnapshot.authSuccessMessage != nil {
-            height += 58
-        }
-        let compactSafetyPadding: CGFloat = horizontalSizeClass == .regular ? 28 : 36
-        return height + compactSafetyPadding
     }
 }
 

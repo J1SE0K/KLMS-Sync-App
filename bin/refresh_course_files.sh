@@ -477,6 +477,7 @@ keys = [
     "moved_count",
     "local_missing_count",
     "fresh_download_candidate_count",
+    "timestamp_refresh_candidate_count",
     "type_mismatch_candidate_count",
 ]
 try:
@@ -612,6 +613,10 @@ def existing_file_refresh_decision(entry: dict, destination_path: Path, previous
         if current_epoch > previous_epoch + 1:
             return True, "klms-timestamp-newer-than-previous-record"
         return False, "previous-klms-timestamp-newer-or-equal"
+    if local_epoch > 0:
+        if current_epoch > local_epoch + 1:
+            return True, "klms-timestamp-newer-than-local-file"
+        return False, "local-file-newer-or-equal"
     return False, "existing-file-current"
 
 results = []

@@ -17,6 +17,17 @@ def _identity_text(value: str) -> str:
     return one_line(str(value or "")).casefold()
 
 
+def _canonical_exam_title(value: str) -> str:
+    text = _identity_text(value)
+    if re.search(r"(final|final[-\s]*term|기말)", text, re.IGNORECASE):
+        return "final-exam"
+    if re.search(r"(midterm|mid[-\s]*term|중간)", text, re.IGNORECASE):
+        return "midterm-exam"
+    if re.search(r"(exam|시험|고사)", text, re.IGNORECASE):
+        return "exam"
+    return text
+
+
 def _canonical_url_identity(url: str) -> str:
     normalized = one_line(url)
     if not normalized:
@@ -123,7 +134,8 @@ def dedupe_assignment_state(state: SyncState) -> SyncState:
 def event_identity_key(item: Event) -> tuple[str, str, str, str, str]:
     category = "exam" if item.category in {"exam", "exam_candidate"} else _identity_text(item.category)
     course = _identity_text(item.course)
-    title = _identity_text(item.title)
+    title_source = " ".join([item.title, item.source_title, item.instructions])
+    title = _canonical_exam_title(title_source) if category == "exam" else _identity_text(item.title)
     due = _identity_text(item.sync_due or item.due)
     if category and course and title and due:
         return ("logical", category, course, title, due)

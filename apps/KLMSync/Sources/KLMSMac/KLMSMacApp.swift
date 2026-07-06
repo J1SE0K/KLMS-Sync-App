@@ -670,7 +670,7 @@ private final class KLMSDashboardWindowCoordinator {
 private enum KLMSWindowMetrics {
     static let initialWidth: CGFloat = 1080
     static let initialHeight: CGFloat = 760
-    static let minWidth: CGFloat = 540
+    static let minWidth: CGFloat = 900
     static let minHeight: CGFloat = 520
 
     private static var visibleFrame: CGRect {

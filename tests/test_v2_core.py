@@ -313,6 +313,41 @@ class V2CoreTests(unittest.TestCase):
         self.assertIn("SQL", state.exams[0].instructions)
         self.assertEqual(state.exams[0].location, "Auditorium")
 
+    def test_final_exam_events_with_different_title_forms_merge(self) -> None:
+        first = Event(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
+            course="데이타베이스 개론",
+            title="Final Exam Schedule",
+            due="2026년 6월 17일(수요일) 오후 1:00 - 오후 4:00",
+            sync_due="2026-06-17T16:00:00+09:00",
+            sync_start="2026-06-17T13:00:00+09:00",
+            source="notice",
+            source_title="Final Exam Schedule",
+            category="exam",
+        )
+        second = Event(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432002",
+            course="데이타베이스 개론",
+            title="기말고사",
+            due="2026년 6월 17일(수요일) 오후 1:00 - 오후 4:00",
+            sync_due="2026-06-17T16:00:00+09:00",
+            sync_start="2026-06-17T13:00:00+09:00",
+            source="notice",
+            source_title="기말고사 안내",
+            instructions="시험 범위: 전체 및 SQL",
+            category="exam",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-06-02 12:20 KST",
+            detail_pages=[],
+            notices=[],
+            source_events=[first, second],
+        )
+
+        self.assertEqual(len(state.exams), 1)
+        self.assertIn("SQL", state.exams[0].instructions)
+
     def test_approved_exam_removes_matching_exam_candidate(self) -> None:
         approved = Event(
             url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
@@ -555,6 +590,22 @@ class V2CoreTests(unittest.TestCase):
         )
 
         item, reason = classify_notice(notice, "2026-05-01 19:18 KST")
+
+        self.assertEqual(reason, "not-relevant")
+        self.assertIsNone(item)
+
+    def test_notice_assignment_claim_body_is_not_tracked_as_assignment(self) -> None:
+        notice = Notice(
+            url="https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1&bwid=11",
+            course="알고리즘 개론",
+            title="Written Assignment 4 claim session",
+            body_text=(
+                "Written Assignment 4 grading result is posted. If you have a claim, "
+                "please submit your inquiry by June 9th, 23:59."
+            ),
+        )
+
+        item, reason = classify_notice(notice, "2026-06-01 19:18 KST")
 
         self.assertEqual(reason, "not-relevant")
         self.assertIsNone(item)

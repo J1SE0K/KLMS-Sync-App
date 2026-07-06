@@ -31,6 +31,22 @@ ASSIGNMENT_RESULT_TITLE_RE = re.compile(
     r"성적|점수|채점|정답|해설|풀이|통계|이의\s*신청)",
     re.IGNORECASE,
 )
+ASSIGNMENT_RESULT_NOTICE_RE = re.compile(
+    r"("
+    r"(assignment|homework|hw\s*#?\s*\d*|wa\s*#?\s*\d+|pa\s*#?\s*\d+|"
+    r"project|nano\s+quiz|quiz\b|과제|쪽글|퀴즈|report|proposal)"
+    r".{0,100}"
+    r"(score|scores|grade|grades|grading|claim|inquiry|solution|answer|statistics|result|results|"
+    r"성적|점수|채점|정답|해설|풀이|통계|이의|문의|결과)"
+    r"|"
+    r"(score|scores|grade|grades|grading|claim|inquiry|solution|answer|statistics|result|results|"
+    r"성적|점수|채점|정답|해설|풀이|통계|이의|문의|결과)"
+    r".{0,100}"
+    r"(assignment|homework|hw\s*#?\s*\d*|wa\s*#?\s*\d+|pa\s*#?\s*\d+|"
+    r"project|nano\s+quiz|quiz\b|과제|쪽글|퀴즈|report|proposal)"
+    r")",
+    re.IGNORECASE,
+)
 EXAM_WORD_RE = re.compile(r"(midterm|final|exam|고사|시험)", re.IGNORECASE)
 EXAM_RESULT_TITLE_RE = re.compile(
     r"(score|scores|grade|grades|grading|claim|statistics|result|results|posted|uploaded|"
@@ -267,7 +283,7 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
         return None, "not-relevant"
 
     if EXAM_WORD_RE.search(text) and not ASSIGNMENT_WORD_RE.search(notice.title):
-        if EXAM_RESULT_TITLE_RE.search(notice.title):
+        if EXAM_RESULT_TITLE_RE.search(text):
             return None, "not-relevant"
         if not due:
             return None, "missing-due"
@@ -293,6 +309,7 @@ def classify_notice(notice: Notice, generated_at: str) -> tuple[Assignment | Eve
         ASSIGNMENT_WORD_RE.search(text)
         and DEADLINE_RE.search(text)
         and not ASSIGNMENT_RESULT_TITLE_RE.search(notice.title)
+        and not ASSIGNMENT_RESULT_NOTICE_RE.search(text)
     ):
         due = due or parse_due_date_only(text, generated_at)
         if not due:
