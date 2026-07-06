@@ -584,6 +584,11 @@ private enum DashboardLargeList {
     static let filterRebuildDelayNanoseconds: UInt64 = 8_000_000
 }
 
+private func dashboardAdjustedVisibleLimit(_ current: Int, resultCount: Int) -> Int {
+    let minimum = DashboardLargeList.initialVisibleLimit
+    return min(max(current, minimum), max(resultCount, minimum))
+}
+
 struct DashboardFilterOptions: Equatable, Sendable {
     var courses: [String]
     var years: [String]
@@ -1812,12 +1817,11 @@ private struct StateItemListView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
-        let shouldDelay = !isPreparingPresentation && filters.shouldDebounceComparedTo(renderedFilters)
+        let isInitialLoad = presentationSignature == nil
+        let shouldDelay = !isInitialLoad && filters.shouldDebounceComparedTo(renderedFilters)
         presentationTask?.cancel()
         presentationSignature = signature
-        visibleLimit = DashboardLargeList.initialVisibleLimit
-        if !shouldDelay {
-            presentation = DashboardStateItemListPresentation()
+        if isInitialLoad {
             isPreparingPresentation = true
         }
         let items = items
@@ -1835,6 +1839,7 @@ private struct StateItemListView: View {
             guard !Task.isCancelled else { return }
             presentation = nextPresentation
             renderedFilters = filters
+            visibleLimit = dashboardAdjustedVisibleLimit(visibleLimit, resultCount: nextPresentation.items.count)
             isPreparingPresentation = false
         }
     }
@@ -2431,12 +2436,11 @@ private struct NoticeListView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
-        let shouldDelay = !isPreparingPresentation && filters.shouldDebounceComparedTo(renderedFilters)
+        let isInitialLoad = presentationSignature == nil
+        let shouldDelay = !isInitialLoad && filters.shouldDebounceComparedTo(renderedFilters)
         presentationTask?.cancel()
         presentationSignature = signature
-        visibleLimit = DashboardLargeList.initialVisibleLimit
-        if !shouldDelay {
-            presentation = NoticeDashboardPresentation()
+        if isInitialLoad {
             isPreparingPresentation = true
         }
         let category = category
@@ -2453,6 +2457,7 @@ private struct NoticeListView: View {
             guard !Task.isCancelled else { return }
             presentation = nextPresentation
             renderedFilters = filters
+            visibleLimit = dashboardAdjustedVisibleLimit(visibleLimit, resultCount: nextPresentation.notices.count)
             isPreparingPresentation = false
         }
     }
@@ -3090,7 +3095,6 @@ private struct DashboardFileListContentView: View {
                             }
                         }
                     }
-                    .id(sortOption.rawValue)
                 }
             }
         }
@@ -3109,12 +3113,11 @@ private struct DashboardFileListContentView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
-        let shouldDelay = !isPreparingPresentation && filters.shouldDebounceComparedTo(renderedFilters)
+        let isInitialLoad = presentationSignature == nil
+        let shouldDelay = !isInitialLoad && filters.shouldDebounceComparedTo(renderedFilters)
         presentationTask?.cancel()
         presentationSignature = signature
-        visibleLimit = DashboardLargeList.initialVisibleLimit
-        if !shouldDelay {
-            presentation = DashboardFileListPresentation()
+        if isInitialLoad {
             isPreparingPresentation = true
         }
         let files = files
@@ -3131,6 +3134,7 @@ private struct DashboardFileListContentView: View {
             guard !Task.isCancelled else { return }
             presentation = nextPresentation
             renderedFilters = filters
+            visibleLimit = dashboardAdjustedVisibleLimit(visibleLimit, resultCount: nextPresentation.files.count)
             isPreparingPresentation = false
         }
     }
@@ -3194,7 +3198,12 @@ private struct DashboardFileItem: Identifiable, Sendable {
         courseSortKey = course.normalizedFileSortKey
         titleSortKey = title.normalizedFileSortKey
         pathSortKey = (sortPath.isEmpty ? title : sortPath).normalizedFileSortKey
-        let kind = DashboardFileKindStyle(bucket: bucket)
+        let kind = DashboardFileKindStyle(
+            bucket: bucket,
+            title: title,
+            path: sortPath.isEmpty ? path : sortPath,
+            url: url
+        )
         kindSortKey = kind.label.normalizedFileSortKey
         fileKindLabel = kind.label
         fileKindIcon = kind.icon
@@ -3753,7 +3762,6 @@ private struct PrunedListView: View {
                             }
                         }
                     }
-                    .id(sortOption.rawValue)
                 }
             }
         }
@@ -3772,12 +3780,11 @@ private struct PrunedListView: View {
         guard presentationSignature != signature || isPreparingPresentation else {
             return
         }
-        let shouldDelay = !isPreparingPresentation && filters.shouldDebounceComparedTo(renderedFilters)
+        let isInitialLoad = presentationSignature == nil
+        let shouldDelay = !isInitialLoad && filters.shouldDebounceComparedTo(renderedFilters)
         presentationTask?.cancel()
         presentationSignature = signature
-        visibleLimit = DashboardLargeList.initialVisibleLimit
-        if !shouldDelay {
-            presentation = DashboardPrunedListPresentation()
+        if isInitialLoad {
             isPreparingPresentation = true
         }
         let snapshot = snapshot
@@ -3794,6 +3801,7 @@ private struct PrunedListView: View {
             guard !Task.isCancelled else { return }
             presentation = nextPresentation
             renderedFilters = filters
+            visibleLimit = dashboardAdjustedVisibleLimit(visibleLimit, resultCount: nextPresentation.items.count)
             isPreparingPresentation = false
         }
     }
@@ -4061,8 +4069,25 @@ private struct DashboardFileKindStyle {
     var icon: String
     var color: Color
 
-    init(bucket: String) {
-        switch bucket.trimmingCharacters(in: .whitespacesAndNewlines) {
+    init(bucket: String, title: String = "", path: String = "", url: String = "") {
+        let normalizedBucket = bucket.trimmingCharacters(in: .whitespacesAndNewlines)
+        let context = Self.normalizedKindText(bucket: normalizedBucket, title: title, path: path, url: url)
+
+        if Self.hasAssignmentSignal(in: context) {
+            label = normalizedBucket == "assignment-attachments" ? "과제 첨부" : "과제 관련"
+            icon = "checklist"
+            color = Color.klmsMacSuccessBorder
+            return
+        }
+
+        if Self.hasExamSignal(in: context) {
+            label = "시험/퀴즈"
+            icon = "calendar.badge.clock"
+            color = Color.klmsMacCommandAccent
+            return
+        }
+
+        switch normalizedBucket {
         case "board-attachments":
             label = "공지 첨부"
             icon = "megaphone"
@@ -4099,6 +4124,60 @@ private struct DashboardFileKindStyle {
             label = bucket
             icon = "doc"
             color = Color.klmsMacSecondaryText
+        }
+    }
+
+    private static func normalizedKindText(bucket: String, title: String, path: String, url: String) -> String {
+        [bucket, title, path, url]
+            .joined(separator: " ")
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9가-힣]+", with: " ", options: .regularExpression)
+    }
+
+    private static func hasAssignmentSignal(in text: String) -> Bool {
+        containsPhrase(
+            in: text,
+            phrases: [
+                "assignment",
+                "written assignment",
+                "homework",
+                "project",
+                "proposal",
+                "과제",
+                "숙제",
+                "쪽글",
+                "프로젝트",
+            ]
+        ) || containsTokenPrefix(in: text, prefixes: ["hw", "wa", "pa"])
+    }
+
+    private static func hasExamSignal(in text: String) -> Bool {
+        containsPhrase(
+            in: text,
+            phrases: [
+                "exam",
+                "midterm",
+                "quiz",
+                "test",
+                "고사",
+                "시험",
+                "퀴즈",
+            ]
+        )
+    }
+
+    private static func containsPhrase(in text: String, phrases: [String]) -> Bool {
+        phrases.contains { text.contains($0) }
+    }
+
+    private static func containsTokenPrefix(in text: String, prefixes: [String]) -> Bool {
+        text.split(separator: " ").contains { token in
+            prefixes.contains { prefix in
+                guard token.hasPrefix(prefix) else { return false }
+                if token == prefix { return true }
+                return token.dropFirst(prefix.count).allSatisfy { $0.isNumber }
+            }
         }
     }
 }
