@@ -43,6 +43,10 @@ DEADLINE_RE = re.compile(
     r"(deadline|due|submit|submission|마감|기한|까지|제출)",
     re.IGNORECASE,
 )
+FORUM_POSTING_DUE_RE = re.compile(
+    r"(due\s+date\s+for\s+posting\s+to\s+this\s+forum|posting\s+deadline|포럼.*(?:마감|기한))",
+    re.IGNORECASE,
+)
 
 
 def submission_status(text: str) -> str:
@@ -56,6 +60,12 @@ def submission_status(text: str) -> str:
 def course_name_from_text(course: str, text: str) -> str:
     course = one_line(course)
     if not course:
+        course_code_match = re.search(
+            r"([^\s][^()]{2,180})\([A-Z]{2,}\.?\d[^)]*_2026_[^)]*\)",
+            text,
+        )
+        if course_code_match:
+            return clean_course_candidate(course_code_match.group(1))
         return ""
     course_patterns = [re.escape(course)]
     if "_2026_" in course:
@@ -183,7 +193,15 @@ def classify_detail_page(page: Page, generated_at: str) -> tuple[Assignment | Ev
             type="exam",
         ), "exam"
 
-    if re.search(r"/mod/(?:assign|quiz)/", page.url, re.IGNORECASE) or ASSIGNMENT_WORD_RE.search(title):
+    is_forum_assignment = bool(
+        re.search(r"/mod/forum/", page.url, re.IGNORECASE)
+        and FORUM_POSTING_DUE_RE.search(text)
+    )
+    if (
+        re.search(r"/mod/(?:assign|quiz)/", page.url, re.IGNORECASE)
+        or is_forum_assignment
+        or ASSIGNMENT_WORD_RE.search(title)
+    ):
         if status == "제출 완료":
             return Assignment(
                 url=page.url,
@@ -210,7 +228,7 @@ def classify_detail_page(page: Page, generated_at: str) -> tuple[Assignment | Ev
             source="detail",
             submission=status,
             instructions=clean_detail_instructions(text),
-            type="assign",
+            type="forum" if is_forum_assignment else "assign",
         ), "assignment"
 
     return None, "not-relevant"

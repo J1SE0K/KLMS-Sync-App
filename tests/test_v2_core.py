@@ -683,6 +683,45 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(item.sync_due, "2026-06-15T23:59:00+09:00")
         self.assertEqual(item.submission, "시도 하지 않음")
 
+    def test_forum_assignment_detail_uses_posting_due_time_over_course_list_date_only(self) -> None:
+        detail_page = Page(
+            url="https://klms.kaist.ac.kr/mod/forum/view.php?id=1243903",
+            title="2-1 Weekly Reading Response",
+            html="""
+            <div>공공정책 특강&lt;AI 안전, 정책 및 거버넌스&gt;(STP.49988_2026_2)</div>
+            <div class="alert alert-info">
+              The due date for posting to this forum is 2026년 7월 7일(화요일) 오전 12:00.
+            </div>
+            """,
+        )
+        source_assignment = Assignment(
+            url="https://klms.kaist.ac.kr/mod/forum/view.php?id=1243903",
+            course="공공정책 특강",
+            title="[포럼] 2-1 Weekly Reading Response",
+            due="~2026.07.07",
+            sync_due="2026-07-07T23:59:00+09:00",
+            source="forum",
+            source_title="[포럼] 2-1 Weekly Reading Response",
+            type="forum",
+        )
+
+        item, reason = classify_detail_page(detail_page, "2026-07-06 16:54 KST")
+        self.assertEqual(reason, "assignment")
+        self.assertIsNotNone(item)
+        self.assertEqual(item.sync_due, "2026-07-07T00:00:00+09:00")
+
+        state = build_sync_state(
+            generated_at="2026-07-06 16:54 KST",
+            detail_pages=[detail_page],
+            notices=[],
+            source_assignments=[source_assignment],
+        )
+
+        self.assertEqual(len(state.assignments), 1)
+        self.assertEqual(state.assignments[0].course, "공공정책 특강<AI 안전, 정책 및 거버넌스>")
+        self.assertEqual(state.assignments[0].sync_due, "2026-07-07T00:00:00+09:00")
+        self.assertIn("오전 12:00", state.assignments[0].due)
+
     def test_parenthesized_course_name_is_preserved(self) -> None:
         page = Page(
             url="https://klms.kaist.ac.kr/mod/assign/view.php?id=1231095",

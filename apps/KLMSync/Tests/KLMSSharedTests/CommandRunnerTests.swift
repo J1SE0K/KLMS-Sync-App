@@ -160,17 +160,20 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertEqual(KLMSLiveCommandPhase.verify.displayName, "상태 검사")
     }
 
-    func testExtractsManualDigitsAndIgnoresStatusDigitsField() {
+    func testExtractsManualDigitsAndLoginPromptMetadata() {
         XCTAssertEqual(
             KLMSCommandRunner.extractAuthDigits(from: "KAIST 인증 번호: 42"),
             "42"
         )
-        XCTAssertNil(KLMSCommandRunner.extractAuthDigits(from: "status=login digits=07"))
-        XCTAssertNil(KLMSCommandRunner.extractAuthDigits(from: "status=timeout last_status=twofactor_digits digits=07"))
+        XCTAssertEqual(KLMSCommandRunner.extractAuthDigits(from: "status=login digits=07"), "07")
+        XCTAssertEqual(
+            KLMSCommandRunner.extractAuthDigits(from: "status=timeout last_status=twofactor_digits digits=07"),
+            "07"
+        )
         XCTAssertNil(KLMSCommandRunner.extractAuthDigits(from: "no digits"))
     }
 
-    func testExtractsLatestManualAuthDigitsAndIgnoresLoggedPromptDigits() {
+    func testExtractsLatestAuthDigitsAcrossManualAndMetadataFormats() {
         let log = """
         KAIST 인증 번호: 05
         status=timeout last_status=twofactor_digits
@@ -178,7 +181,16 @@ final class CommandRunnerTests: XCTestCase {
         [next run] digits=17
         """
 
-        XCTAssertEqual(KLMSCommandRunner.extractAuthDigits(from: log), "05")
+        XCTAssertEqual(KLMSCommandRunner.extractAuthDigits(from: log), "17")
+    }
+
+    func testExtractsAuthDigitsFromLoginPromptMetadata() {
+        let log = """
+        KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘.
+        [2026-05-15 22:57:08 KST] login-prompt notified backend=safari open_safari=0 url=https://klms.kaist.ac.kr/my/ digits=42
+        """
+
+        XCTAssertEqual(KLMSCommandRunner.extractAuthDigits(from: log), "42")
     }
 
     func testAuthenticatedOutputClearsAuthDigits() {

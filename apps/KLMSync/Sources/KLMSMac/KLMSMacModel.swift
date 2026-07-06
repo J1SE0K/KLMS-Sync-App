@@ -227,6 +227,7 @@ final class KLMSMacModel: ObservableObject {
     private var lastAuthStatusMessageForRemote: String?
     private var authStatusClearTask: Task<Void, Never>?
     private var authDigitsClearTask: Task<Void, Never>?
+    private var lastAuthDigitsRecordedAt: Date?
     private var runningCommandStatusPollTask: Task<Void, Never>?
     private var pasteboardClearTask: Task<Void, Never>?
     private var liveCommandOutputBuffer = ""
@@ -275,7 +276,10 @@ final class KLMSMacModel: ObservableObject {
     private static let liveCommandOutputMaxCharacters = 8_000
     private static let lastCommandDisplayOutputMaxCharacters = 32_000
     private static let liveAuthObservationMaxCharacters = 4_000
+    private static let authDigitsMinimumVisibleNanoseconds: UInt64 = 6_000_000_000
     private static let authDigitsDisplayTimeoutNanoseconds: UInt64 = 120_000_000_000
+    private static let authStatusDisplayTimeoutNanoseconds: UInt64 = 120_000_000_000
+    private static let authStatusDisplayTimeoutSeconds: TimeInterval = 120
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
 
     init() {
@@ -596,6 +600,7 @@ final class KLMSMacModel: ObservableObject {
         authStatusClearTask = nil
         authDigitsClearTask?.cancel()
         authDigitsClearTask = nil
+        lastAuthDigitsRecordedAt = nil
         runningCommandStatusPollTask?.cancel()
         runningCommandStatusPollTask = nil
         isCancellingCommand = false
@@ -791,8 +796,7 @@ final class KLMSMacModel: ObservableObject {
         do {
             let store = try makeServerRelayStore()
             let result = try await store.clearSharedRunLogs()
-            serverRelaySharedRunLogs = []
-            sharedRunLogStageDurationsByID = [:]
+            clearSharedRunLogDisplayState()
             serverRelayStatusMessage = "공유 실행 로그 \(result.runLogs)개를 지웠습니다."
             remoteProcessingStatusMessage = nil
             errorMessage = nil
@@ -834,14 +838,19 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func clearVisibleLogsAndServerRelayLogs() async {
-        guard runningCommand == nil else {
-            serverRelayStatusMessage = "동기화가 끝난 뒤 로그를 지울 수 있습니다."
-            return
+        if runningCommand == nil {
+            clearTransientRunState()
+        } else {
+            clearLiveCommandDisplayOutputPreservingAuth()
+            lastCommandResult = nil
+            commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
+            snapshot.relayLogTail = ""
         }
-        clearTransientRunState()
         clearLocalStoredLogs()
         guard serverRelayConfigured else {
-            serverRelayStatusMessage = "로그를 지웠습니다."
+            serverRelayStatusMessage = runningCommand == nil
+                ? "로그를 지웠습니다."
+                : "화면 로그를 지웠습니다. 인증 감지는 계속 유지합니다."
             remoteProcessingStatusMessage = nil
             errorMessage = nil
             return
@@ -852,7 +861,12 @@ final class KLMSMacModel: ObservableObject {
 
     func clearExecutionRunLogs() {
         guard runningCommand == nil else {
-            serverRelayStatusMessage = "동기화가 끝난 뒤 실행 로그를 지울 수 있습니다."
+            clearLiveCommandDisplayOutputPreservingAuth()
+            lastCommandResult = nil
+            commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
+            serverRelayStatusMessage = "실행 로그를 지웠습니다. 인증 감지는 계속 유지합니다."
+            remoteProcessingStatusMessage = nil
+            errorMessage = nil
             return
         }
         clearTransientRunState()
@@ -917,8 +931,7 @@ final class KLMSMacModel: ObservableObject {
             }
             serverRelayRecentRequestLog = []
             serverRelayRecentFileAccessRequests = serverRelayRecentFileAccessRequests.filter { $0.status.isInFlight }
-            serverRelaySharedRunLogs = []
-            sharedRunLogStageDurationsByID = [:]
+            clearSharedRunLogDisplayState()
         case .command:
             if lastRemoteCommand?.status.isInFlight != true {
                 lastRemoteCommand = nil
@@ -928,6 +941,11 @@ final class KLMSMacModel: ObservableObject {
         case .fileAccess:
             serverRelayRecentFileAccessRequests = []
         }
+    }
+
+    private func clearSharedRunLogDisplayState() {
+        serverRelaySharedRunLogs = []
+        sharedRunLogStageDurationsByID = [:]
     }
 
     private func serverRelayLogClearMessage(
@@ -961,12 +979,11 @@ final class KLMSMacModel: ObservableObject {
         if phase == "running" {
             status.phaseDetail = currentPhaseText ?? runningCommand?.displayName ?? "실행 중"
         }
-        if phase == "running", let liveAuthDigits {
+        if let liveAuthDigits = currentAuthDigits {
             status.loginRequired = true
             status.authDigits = liveAuthDigits
             status.authStatusMessage = nil
-        } else if phase == "running",
-                  let authStatusMessage = currentAuthStatusMessageForRemote() {
+        } else if let authStatusMessage = currentAuthStatusMessageForRemote() {
             status.loginRequired = false
             status.authDigits = nil
             status.authStatusMessage = authStatusMessage
@@ -976,7 +993,7 @@ final class KLMSMacModel: ObservableObject {
 
     private func currentAuthStatusMessageForRemote(now: Date = Date()) -> String? {
         guard let lastAuthCompletionAt,
-              now.timeIntervalSince(lastAuthCompletionAt) <= 120 else {
+              now.timeIntervalSince(lastAuthCompletionAt) <= Self.authStatusDisplayTimeoutSeconds else {
             return nil
         }
         return authStatusMessage ?? lastAuthStatusMessageForRemote
@@ -1084,6 +1101,7 @@ final class KLMSMacModel: ObservableObject {
             serverRelayLastSyncDataFetchAt = nil
         }
         if reason == "sync-data:run-logs-clear" {
+            clearSharedRunLogDisplayState()
             clearLocalStoredLogs()
         }
         if reason == "logs-display:all" {
@@ -2541,6 +2559,7 @@ final class KLMSMacModel: ObservableObject {
         authStatusClearTask = nil
         authDigitsClearTask?.cancel()
         authDigitsClearTask = nil
+        lastAuthDigitsRecordedAt = nil
         authDigitsSuppressed = false
         notifiedAuthDigits.removeAll()
         notifiedAuthCompletionForCurrentRun = false
@@ -4274,8 +4293,10 @@ final class KLMSMacModel: ObservableObject {
         appendLiveCommandOutput(displayChunk)
         appendLiveAuthObservation(chunk)
         let authOutput = liveAuthObservationBuffer
-        if let digits = KLMSCommandRunner.extractAuthDigits(from: authOutput) {
+        if let digits = KLMSCommandRunner.extractAuthDigits(from: authOutput),
+           liveAuthDigits != digits || !authDigitsSeenForCurrentRun {
             await recordAuthDigits(digits)
+            return
         }
         if authDigitsSeenForCurrentRun,
            KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(authOutput) {
@@ -4297,6 +4318,7 @@ final class KLMSMacModel: ObservableObject {
         authStatusClearTask = nil
         authDigitsSuppressed = false
         authDigitsSeenForCurrentRun = true
+        lastAuthDigitsRecordedAt = Date()
         scheduleAuthDigitsClear(digits)
         await notifyAuthDigitsIfNeeded(digits)
         await publishServerRelayStatusIfNeeded(force: true)
@@ -4307,6 +4329,16 @@ final class KLMSMacModel: ObservableObject {
         liveCommandOutputPublishTask = nil
         liveCommandOutputBuffer = ""
         liveAuthObservationBuffer = ""
+        cachedLiveProgressLine = nil
+        cachedCurrentPhaseText = nil
+        liveStageDurations = []
+        liveCommandOutput = ""
+    }
+
+    private func clearLiveCommandDisplayOutputPreservingAuth() {
+        liveCommandOutputPublishTask?.cancel()
+        liveCommandOutputPublishTask = nil
+        liveCommandOutputBuffer = ""
         cachedLiveProgressLine = nil
         cachedCurrentPhaseText = nil
         liveStageDurations = []
@@ -4496,12 +4528,38 @@ final class KLMSMacModel: ObservableObject {
 
     private func clearAuthDigitsState(
         showAuthenticatedMessage: Bool,
-        confirmedAuthChallenge: Bool = false
+        confirmedAuthChallenge: Bool = false,
+        respectMinimumVisibleDuration: Bool = true
     ) async {
+        if respectMinimumVisibleDuration,
+           showAuthenticatedMessage,
+           liveAuthDigits != nil,
+           let lastAuthDigitsRecordedAt {
+            let elapsed = Date().timeIntervalSince(lastAuthDigitsRecordedAt)
+            let minimum = TimeInterval(Self.authDigitsMinimumVisibleNanoseconds) / 1_000_000_000
+            if elapsed < minimum {
+                let remainingNanoseconds = UInt64((minimum - elapsed) * 1_000_000_000)
+                authDigitsClearTask?.cancel()
+                authDigitsClearTask = Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: remainingNanoseconds)
+                    guard !Task.isCancelled, let self else {
+                        return
+                    }
+                    await self.clearAuthDigitsState(
+                        showAuthenticatedMessage: showAuthenticatedMessage,
+                        confirmedAuthChallenge: confirmedAuthChallenge,
+                        respectMinimumVisibleDuration: false
+                    )
+                    self.authDigitsClearTask = nil
+                }
+                return
+            }
+        }
         authDigitsClearTask?.cancel()
         authDigitsClearTask = nil
         liveAuthDigits = nil
         authDigitsSuppressed = true
+        lastAuthDigitsRecordedAt = nil
         clearAuthNotifications()
         notifiedAuthDigits.removeAll()
         let shouldShowAuthenticatedMessage = showAuthenticatedMessage
@@ -4532,7 +4590,7 @@ final class KLMSMacModel: ObservableObject {
         authStatusMessage = message
         lastAuthStatusMessageForRemote = message
         authStatusClearTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            try? await Task.sleep(nanoseconds: Self.authStatusDisplayTimeoutNanoseconds)
             guard !Task.isCancelled else {
                 return
             }

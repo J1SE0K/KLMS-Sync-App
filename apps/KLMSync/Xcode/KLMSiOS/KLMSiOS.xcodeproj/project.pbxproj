@@ -20,10 +20,22 @@
 		0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6709D4B7C4D5248C468873FD /* StateModels.swift */; };
 		FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C3A8268D3376FED887FD75 /* StatusModels.swift */; };
 		8C008ECF6427B421D48ABBC8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BD43412BD4EE806E31C12F0E /* Assets.xcassets */; };
+		61D7DEFE85216CE90511D61B /* KLMSiOSUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908E68E53E00995AEEE297DB /* KLMSiOSUITests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D6009375EA21560EA83A5947 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 98F54143AB4E86B28C3AFEE0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1AC0FC761C940DB652F96682;
+			remoteInfo = KLMSiOS;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		C3BEB3A18D594EEBF19A5C4E /* KLMSiOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KLMSiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B2C157E37042A5486F2FD152 /* KLMSiOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KLMSiOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KLMSiOSApp.swift"; path = "../../Sources/KLMSiOS/KLMSiOSApp.swift"; sourceTree = "<group>"; };
 		C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AcademicTerm.swift"; path = "../../Sources/KLMSShared/AcademicTerm.swift"; sourceTree = "<group>"; };
 		AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DashboardDataModels.swift"; path = "../../Sources/KLMSShared/DashboardDataModels.swift"; sourceTree = "<group>"; };
@@ -36,12 +48,14 @@
 		6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteCommandModels.swift"; path = "../../Sources/KLMSShared/RemoteCommandModels.swift"; sourceTree = "<group>"; };
 		6709D4B7C4D5248C468873FD /* StateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StateModels.swift"; path = "../../Sources/KLMSShared/StateModels.swift"; sourceTree = "<group>"; };
 		11C3A8268D3376FED887FD75 /* StatusModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StatusModels.swift"; path = "../../Sources/KLMSShared/StatusModels.swift"; sourceTree = "<group>"; };
+		908E68E53E00995AEEE297DB /* KLMSiOSUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KLMSiOSUITests.swift; path = "KLMSiOSUITests/KLMSiOSUITests.swift"; sourceTree = "<group>"; };
 		BD43412BD4EE806E31C12F0E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = KLMSiOS/Assets.xcassets; sourceTree = "<group>"; };
 		2D53DFCE95E91B1FE0160F53 /* KLMSiOS.defaults.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = KLMSiOS.defaults.xcconfig; path = "../../Config/KLMSiOS.defaults.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		CF5BDB0BEAFE176F9629192A /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		30DE61FEC0A925E047AA4739 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -50,6 +64,7 @@
 			children = (
 				A86258D10EACDD04E3CF9C24 /* KLMSiOS */,
 				0D56A8FBC26F5FF681C40D75 /* KLMSShared */,
+				712854370D444B5477AB2CC5 /* KLMSiOSUITests */,
 				00C45FD35CB0F9C5F764F070 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -82,10 +97,19 @@
 			name = KLMSShared;
 			sourceTree = "<group>";
 		};
+		712854370D444B5477AB2CC5 /* KLMSiOSUITests */ = {
+			isa = PBXGroup;
+			children = (
+				908E68E53E00995AEEE297DB /* KLMSiOSUITests.swift */,
+			);
+			name = KLMSiOSUITests;
+			sourceTree = "<group>";
+		};
 		00C45FD35CB0F9C5F764F070 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				C3BEB3A18D594EEBF19A5C4E /* KLMSiOS.app */,
+				B2C157E37042A5486F2FD152 /* KLMSiOSUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -108,6 +132,23 @@
 			productReference = C3BEB3A18D594EEBF19A5C4E /* KLMSiOS.app */;
 			productType = "com.apple.product-type.application";
 		};
+		9472E130152D0A013A768282 /* KLMSiOSUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E93D7BE007F10B1BD31EDB7A /* Build configuration list for PBXNativeTarget "KLMSiOSUITests" */;
+			buildPhases = (
+				B383F0E609AE5DE958DCB611 /* Sources */,
+				30DE61FEC0A925E047AA4739 /* Frameworks */,
+				E4632A5BD5C9C2C8F3088302 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = (
+				5A9676940ADA44D8A4546D24 /* PBXTargetDependency */,
+			);
+			name = KLMSiOSUITests;
+			productName = KLMSiOSUITests;
+			productReference = B2C157E37042A5486F2FD152 /* KLMSiOSUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -120,6 +161,10 @@
 				TargetAttributes = {
 					1AC0FC761C940DB652F96682 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					9472E130152D0A013A768282 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = 1AC0FC761C940DB652F96682;
 					};
 				};
 			};
@@ -138,12 +183,14 @@
 			projectRoot = "";
 			targets = (
 				1AC0FC761C940DB652F96682 /* KLMSiOS */,
+				9472E130152D0A013A768282 /* KLMSiOSUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		C02F1309AF4906C92F1EAD44 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (8C008ECF6427B421D48ABBC8 /* Assets.xcassets in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+		E4632A5BD5C9C2C8F3088302 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -166,7 +213,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B383F0E609AE5DE958DCB611 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				61D7DEFE85216CE90511D61B /* KLMSiOSUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5A9676940ADA44D8A4546D24 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1AC0FC761C940DB652F96682 /* KLMSiOS */;
+			targetProxy = D6009375EA21560EA83A5947 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		73BFC4993D558C2844970A56 /* Debug */ = {
@@ -354,6 +417,57 @@
 			};
 			name = Release;
 		};
+		6323001F750A062BE71D6724 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2D53DFCE95E91B1FE0160F53 /* KLMSiOS.defaults.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(KLMS_IOS_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync UI Tests";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KLMS_IOS_BUNDLE_IDENTIFIER).UITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = KLMSiOS;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+			};
+			name = Debug;
+		};
+		5C4756B205143746C7820C79 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2D53DFCE95E91B1FE0160F53 /* KLMSiOS.defaults.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(KLMS_IOS_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "KLMS Sync UI Tests";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(KLMS_IOS_BUNDLE_IDENTIFIER).UITests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = KLMSiOS;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -371,6 +485,15 @@
 			buildConfigurations = (
 				A45358D7F57D12409C956205 /* Debug */,
 				7A3CC3E65B4BE81911CE6871 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E93D7BE007F10B1BD31EDB7A /* Build configuration list for PBXNativeTarget "KLMSiOSUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6323001F750A062BE71D6724 /* Debug */,
+				5C4756B205143746C7820C79 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

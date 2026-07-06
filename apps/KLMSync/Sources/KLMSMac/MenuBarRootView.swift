@@ -333,11 +333,7 @@ private struct MacWorkstationLayoutView: View {
             switch selectedSection {
             case .dashboard:
                 DeferredMacWorkspacePanel(id: "workspace-dashboard", contentIdentifier: "workspace-content-dashboard", deferContent: false) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        CommandPanelView(model: model, openRunLog: openRunLog)
-                        DashboardSummaryView(model: model)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    MacDashboardCommandCenterView(model: model, openRunLog: openRunLog)
                 }
             case .files:
                 DeferredMacWorkspacePanel(
@@ -431,6 +427,130 @@ private struct MacWorkstationLayoutView: View {
             fileRenderSignature: model.dashboardFileRenderSignature,
             filterOptions: model.dashboardFilterOptions(for: kind)
         )
+    }
+}
+
+private struct MacDashboardCommandCenterView: View {
+    @ObservedObject var model: KLMSMacModel
+    var openRunLog: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            commandColumn
+                .frame(width: 320, alignment: .topLeading)
+                .layoutPriority(1)
+            dashboardColumn
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .layoutPriority(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("mac-dashboard-command-center")
+    }
+
+    private var commandColumn: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            CommandPanelView(model: model, openRunLog: openRunLog)
+            DashboardCommandCenterStatusCard(model: model, openRunLog: openRunLog)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var dashboardColumn: some View {
+        DashboardSummaryView(model: model)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct DashboardCommandCenterStatusCard: View {
+    @ObservedObject var model: KLMSMacModel
+    var openRunLog: () -> Void
+
+    var body: some View {
+        SectionBox(title: "현재 작업") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: statusImage)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(statusColor)
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(statusTitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.klmsMacPrimaryText)
+                        Text(statusDetail)
+                            .font(.caption)
+                            .foregroundStyle(Color.klmsMacSecondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                Button(action: openRunLog) {
+                    Label("실행 로그 보기", systemImage: "text.alignleft")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(KLMSMacRootActionButtonStyle())
+                .disabled(!canOpenRunLog)
+                .accessibilityLabel("실행 로그 보기")
+                .accessibilityHint("최근 실행 로그 탭으로 이동합니다.")
+            }
+        }
+    }
+
+    private var canOpenRunLog: Bool {
+        model.runningCommand != nil || model.lastCommandResult != nil || !model.commandHistory.records.isEmpty
+    }
+
+    private var statusTitle: String {
+        if let command = model.runningCommand {
+            return "\(command.displayName) 진행 중"
+        }
+        if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "마지막 실행이 중단됨"
+            }
+            return result.succeeded ? "마지막 실행 완료" : "마지막 실행 실패"
+        }
+        return "실행 대기 중"
+    }
+
+    private var statusDetail: String {
+        if model.runningCommand != nil {
+            let phase = (model.currentPhaseText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return phase.isEmpty ? "현재 단계를 확인하는 중입니다." : phase
+        }
+        if let result = model.lastCommandResult {
+            let duration = max(0, Int(result.finishedAt.timeIntervalSince(result.startedAt).rounded()))
+            let suffix = duration > 0 ? " · \(duration)초" : ""
+            return "\(result.finishedAt.formatted(date: .omitted, time: .shortened))\(suffix)"
+        }
+        return "전체 동기화를 시작하면 진행 상황과 단계별 로그가 여기에 표시됩니다."
+    }
+
+    private var statusImage: String {
+        if model.runningCommand != nil {
+            return "dot.radiowaves.left.and.right"
+        }
+        if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return "stop.circle"
+            }
+            return result.succeeded ? "checkmark.circle" : "exclamationmark.triangle"
+        }
+        return "clock"
+    }
+
+    private var statusColor: Color {
+        if model.runningCommand != nil {
+            return .klmsMacCommandAccent
+        }
+        if let result = model.lastCommandResult {
+            if result.wasCancelled {
+                return .klmsMacSecondaryText
+            }
+            return result.succeeded ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder
+        }
+        return .klmsMacSecondaryText
     }
 }
 
@@ -1810,9 +1930,12 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(border, lineWidth: 1)
+                    .stroke(border, lineWidth: isEnabled ? 1.15 : 1)
             }
-            .opacity(isEnabled ? 1.0 : 0.54)
+            .opacity(isEnabled ? 1.0 : 0.42)
+            .saturation(isEnabled ? 1.0 : 0.30)
+            .shadow(color: isEnabled ? activeShadowColor : .clear, radius: isEnabled ? 5 : 0, x: 0, y: isEnabled ? 1 : 0)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)
     }
 
     private var foreground: Color {
@@ -1833,12 +1956,12 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
     private var background: AnyShapeStyle {
         switch tone {
         case .soft:
-            return AnyShapeStyle(Color.klmsMacCommandButtonBackground.opacity(0.90))
+            return AnyShapeStyle(Color.klmsMacCommandButtonBackground.opacity(isEnabled ? 0.94 : 0.22))
         case .primary:
-            return AnyShapeStyle(Color.klmsMacPrimaryCommandButtonBackground)
+            return AnyShapeStyle(isEnabled ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacCommandButtonBackground.opacity(0.24))
         case .destructive:
             if !isEnabled {
-                return AnyShapeStyle(Color.klmsMacCommandButtonBackground.opacity(0.42))
+                return AnyShapeStyle(Color.klmsMacCommandButtonBackground.opacity(0.20))
             }
             return AnyShapeStyle(
                 LinearGradient(
@@ -1851,24 +1974,39 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
                 )
             )
         case .success:
-            return AnyShapeStyle(Color.klmsMacSuccessBackground)
+            return AnyShapeStyle(Color.klmsMacSuccessBackground.opacity(isEnabled ? 1.0 : 0.22))
         case .accent(let color):
-            return AnyShapeStyle(color.opacity(0.10))
+            return AnyShapeStyle(color.opacity(isEnabled ? 0.12 : 0.04))
         }
     }
 
     private var border: Color {
         switch tone {
         case .soft:
-            Color.klmsMacCommandButtonBorder.opacity(0.92)
+            Color.klmsMacCommandButtonBorder.opacity(isEnabled ? 0.96 : 0.24)
         case .primary:
-            Color.klmsMacPrimaryCommandButtonBorder.opacity(1.0)
+            Color.klmsMacPrimaryCommandButtonBorder.opacity(isEnabled ? 1.0 : 0.26)
         case .destructive:
-            isEnabled ? Color.klmsMacDangerBorder.opacity(0.84) : Color.klmsMacCommandButtonBorder.opacity(0.42)
+            isEnabled ? Color.klmsMacDangerBorder.opacity(0.84) : Color.klmsMacCommandButtonBorder.opacity(0.24)
         case .success:
-            Color.klmsMacSuccessBorder
+            Color.klmsMacSuccessBorder.opacity(isEnabled ? 1.0 : 0.26)
         case .accent(let color):
-            color.opacity(0.28)
+            color.opacity(isEnabled ? 0.32 : 0.12)
+        }
+    }
+
+    private var activeShadowColor: Color {
+        switch tone {
+        case .soft:
+            Color.klmsMacCommandButtonBorder.opacity(0.12)
+        case .primary:
+            Color.klmsMacPrimaryCommandButtonBorder.opacity(0.18)
+        case .destructive:
+            Color.klmsMacDangerBorder.opacity(0.18)
+        case .success:
+            Color.klmsMacSuccessBorder.opacity(0.16)
+        case .accent(let color):
+            color.opacity(0.14)
         }
     }
 }
@@ -1879,7 +2017,7 @@ private struct KLMSMacCompactDangerIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(isEnabled ? Color.klmsMacDangerBorder : Color.klmsMacSecondaryText.opacity(0.58))
+            .foregroundStyle(isEnabled ? Color.klmsMacDangerBorder : Color.klmsMacSecondaryText.opacity(0.42))
             .frame(width: 32, height: 32)
             .background {
                 RoundedRectangle(cornerRadius: 8)
@@ -1887,24 +2025,27 @@ private struct KLMSMacCompactDangerIconButtonStyle: ButtonStyle {
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(border, lineWidth: 1)
+                    .stroke(border, lineWidth: isEnabled ? 1.15 : 1)
             }
-            .opacity(isEnabled ? 1.0 : 0.54)
+            .opacity(isEnabled ? 1.0 : 0.40)
+            .saturation(isEnabled ? 1.0 : 0.22)
+            .shadow(color: isEnabled ? Color.klmsMacDangerBorder.opacity(0.14) : .clear, radius: isEnabled ? 4 : 0, x: 0, y: isEnabled ? 1 : 0)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.96 : 1.0)
             .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var background: Color {
         guard isEnabled else {
-            return Color.klmsMacCommandButtonBackground.opacity(0.36)
+            return Color.klmsMacCommandButtonBackground.opacity(0.18)
         }
-        return Color.klmsMacDangerBorder.opacity(0.10)
+        return Color.klmsMacDangerBorder.opacity(0.13)
     }
 
     private var border: Color {
         guard isEnabled else {
-            return Color.klmsMacCommandButtonBorder.opacity(0.38)
+            return Color.klmsMacCommandButtonBorder.opacity(0.22)
         }
-        return Color.klmsMacDangerBorder.opacity(0.42)
+        return Color.klmsMacDangerBorder.opacity(0.54)
     }
 }
 
@@ -2066,7 +2207,7 @@ private struct LogSummaryPanelView: View {
                 .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                 .help("화면의 실행 로그, 서버 요청, 파일 요청, 항목 변경, 설정 변경, 공유 실행 로그를 지웁니다. 진행 중인 요청은 유지됩니다.")
                 .accessibilityLabel("전체 기록 지우기")
-                .disabled(model.runningCommand != nil || !model.hasClearableVisibleLogs)
+                .disabled(!model.hasClearableVisibleLogs)
             }
 
             LazyVGrid(columns: tileColumns, alignment: .leading, spacing: 8) {
@@ -5556,7 +5697,7 @@ private struct RunLogArchivePanelView: View {
                     .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                     .help("실행 로그 지우기")
                     .accessibilityLabel("실행 로그 지우기")
-                    .disabled(model.runningCommand != nil || !model.hasClearableExecutionRunLogs)
+                    .disabled(!model.hasClearableExecutionRunLogs)
                 }
 
                 if isHistoryExpanded {
@@ -6239,11 +6380,9 @@ struct MetricGrid: View {
     @State private var hoveredMetricID: String?
 
     private var columns: [GridItem] {
-        let count = min(max(metrics.count, 1), 4)
-        return Array(
-            repeating: GridItem(.flexible(minimum: 128), spacing: 8),
-            count: count
-        )
+        [
+            GridItem(.adaptive(minimum: 118, maximum: 180), spacing: 8),
+        ]
     }
 
     init(

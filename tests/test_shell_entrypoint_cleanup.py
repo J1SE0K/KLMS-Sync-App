@@ -736,7 +736,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             mac_view.index("struct MenuBarRootView")
             : mac_view.index("private struct WholeScreenVerticalScrollView")
         ]
-        self.assertLess(mac_root.index("MacAlertBannerView("), mac_root.index("CommandPanelView(model: model)"))
+        self.assertLess(mac_root.index("MacAlertBannerView("), mac_root.index("MacStableWorkspacePane(section: selectedSection)"))
 
         container = ios_view[
             ios_view.index("private struct CompanionScreenContainer")

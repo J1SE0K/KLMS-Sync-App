@@ -3339,9 +3339,12 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
             .background(background, in: RoundedRectangle(cornerRadius: 10))
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(border, lineWidth: 1)
+                    .stroke(border, lineWidth: isEnabled ? 1.15 : 1)
             }
-            .opacity(isEnabled ? 1.0 : 0.46)
+            .opacity(isEnabled ? 1.0 : 0.40)
+            .saturation(isEnabled ? 1.0 : 0.28)
+            .shadow(color: isEnabled ? activeShadowColor : .clear, radius: isEnabled ? 5 : 0, x: 0, y: isEnabled ? 1 : 0)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)
     }
 
     private var foreground: Color {
@@ -3362,30 +3365,45 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
     private var background: Color {
         switch tone {
         case .soft:
-            return Color.klmsMacCommandButtonBackground.opacity(0.90)
+            return Color.klmsMacCommandButtonBackground.opacity(isEnabled ? 0.94 : 0.22)
         case .primary:
-            return Color.klmsMacPrimaryCommandButtonBackground
+            return isEnabled ? Color.klmsMacPrimaryCommandButtonBackground : Color.klmsMacCommandButtonBackground.opacity(0.24)
         case .destructive:
-            return Color.klmsMacCommandButtonBackground.opacity(0.90)
+            return Color.klmsMacCommandButtonBackground.opacity(isEnabled ? 0.94 : 0.20)
         case .success:
-            return Color.klmsMacSuccessBackground
+            return Color.klmsMacSuccessBackground.opacity(isEnabled ? 1.0 : 0.22)
         case .accent(let color):
-            return color.opacity(0.10)
+            return color.opacity(isEnabled ? 0.12 : 0.04)
         }
     }
 
     private var border: Color {
         switch tone {
         case .soft:
-            return Color.klmsMacCommandButtonBorder.opacity(0.92)
+            return Color.klmsMacCommandButtonBorder.opacity(isEnabled ? 0.96 : 0.24)
         case .primary:
-            return Color.klmsMacPrimaryCommandButtonBorder.opacity(1.0)
+            return Color.klmsMacPrimaryCommandButtonBorder.opacity(isEnabled ? 1.0 : 0.26)
         case .destructive:
-            return Color.klmsMacDangerBorder.opacity(0.48)
+            return Color.klmsMacDangerBorder.opacity(isEnabled ? 0.56 : 0.20)
         case .success:
-            return Color.klmsMacSuccessBorder
+            return Color.klmsMacSuccessBorder.opacity(isEnabled ? 1.0 : 0.26)
         case .accent(let color):
-            return color.opacity(0.28)
+            return color.opacity(isEnabled ? 0.32 : 0.12)
+        }
+    }
+
+    private var activeShadowColor: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsMacCommandButtonBorder.opacity(0.12)
+        case .primary:
+            return Color.klmsMacPrimaryCommandButtonBorder.opacity(0.18)
+        case .destructive:
+            return Color.klmsMacDangerBorder.opacity(0.16)
+        case .success:
+            return Color.klmsMacSuccessBorder.opacity(0.16)
+        case .accent(let color):
+            return color.opacity(0.14)
         }
     }
 }
@@ -3401,7 +3419,8 @@ private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle {
                     .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(0.0))
                     .allowsHitTesting(false)
             }
-            .opacity(isEnabled ? 1.0 : 0.48)
+            .opacity(isEnabled ? 1.0 : 0.40)
+            .saturation(isEnabled ? 1.0 : 0.30)
     }
 }
 
@@ -3420,11 +3439,14 @@ private struct KLMSMacIconButtonStyle: ButtonStyle {
             .overlay {
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        Color.klmsMacCommandButtonBorder.opacity(0.84),
-                        lineWidth: 1
+                        Color.klmsMacCommandButtonBorder.opacity(isEnabled ? 0.92 : 0.24),
+                        lineWidth: isEnabled ? 1.15 : 1
                     )
             }
-            .opacity(isEnabled ? 1.0 : 0.48)
+            .opacity(isEnabled ? 1.0 : 0.40)
+            .saturation(isEnabled ? 1.0 : 0.30)
+            .shadow(color: isEnabled ? Color.klmsMacCommandButtonBorder.opacity(0.12) : .clear, radius: isEnabled ? 4 : 0, x: 0, y: isEnabled ? 1 : 0)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.96 : 1.0)
     }
 }
 

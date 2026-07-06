@@ -22,6 +22,7 @@ PBXPROJ = PROJECT_DIR / "project.pbxproj"
 SCHEME = PROJECT_DIR / "xcshareddata" / "xcschemes" / "KLMSiOS.xcscheme"
 
 IOS_SOURCE = APP_ROOT / "Sources" / "KLMSiOS" / "KLMSiOSApp.swift"
+UITEST_SOURCE = PROJECT_ROOT / "KLMSiOSUITests" / "KLMSiOSUITests.swift"
 ASSET_CATALOG = PROJECT_ROOT / "KLMSiOS" / "Assets.xcassets"
 DEFAULT_XCCONFIG = APP_ROOT / "Config" / "KLMSiOS.defaults.xcconfig"
 SHARED_SOURCES = [
@@ -57,6 +58,8 @@ def main() -> int:
     missing = [path for path in source_paths if not path.exists()]
     if not ASSET_CATALOG.exists():
         missing.append(ASSET_CATALOG)
+    if not UITEST_SOURCE.exists():
+        missing.append(UITEST_SOURCE)
     if not DEFAULT_XCCONFIG.exists():
         missing.append(DEFAULT_XCCONFIG)
     if missing:
@@ -66,24 +69,38 @@ def main() -> int:
 
     project_id = oid("project")
     target_id = oid("target:KLMSiOS")
+    uitest_target_id = oid("target:KLMSiOSUITests")
     main_group_id = oid("group:main")
     ios_group_id = oid("group:KLMSiOS")
+    uitest_group_id = oid("group:KLMSiOSUITests")
     shared_group_id = oid("group:KLMSShared")
     product_group_id = oid("group:products")
     sources_phase_id = oid("phase:sources")
     frameworks_phase_id = oid("phase:frameworks")
     resources_phase_id = oid("phase:resources")
+    uitest_sources_phase_id = oid("phase:KLMSiOSUITests:sources")
+    uitest_frameworks_phase_id = oid("phase:KLMSiOSUITests:frameworks")
+    uitest_resources_phase_id = oid("phase:KLMSiOSUITests:resources")
     product_ref_id = oid("product:KLMSIPhone.app")
+    uitest_product_ref_id = oid("product:KLMSiOSUITests.xctest")
     asset_catalog_ref_id = oid("file:KLMSiOS/Assets.xcassets")
     asset_catalog_build_id = oid("build:KLMSiOS/Assets.xcassets")
     default_xcconfig_rel = Path(os.path.relpath(DEFAULT_XCCONFIG, PROJECT_ROOT))
     default_xcconfig_ref_id = oid(f"file:{default_xcconfig_rel}")
+    uitest_rel = Path(os.path.relpath(UITEST_SOURCE, PROJECT_ROOT))
+    uitest_ref_id = oid(f"file:{uitest_rel}")
+    uitest_build_id = oid(f"build:{uitest_rel}")
+    uitest_dependency_id = oid("dependency:KLMSiOSUITests:KLMSiOS")
+    uitest_proxy_id = oid("proxy:KLMSiOSUITests:KLMSiOS")
     project_config_list_id = oid("config-list:project")
     target_config_list_id = oid("config-list:target")
+    uitest_config_list_id = oid("config-list:KLMSiOSUITests")
     project_debug_id = oid("config:project:debug")
     project_release_id = oid("config:project:release")
     target_debug_id = oid("config:target:debug")
     target_release_id = oid("config:target:release")
+    uitest_debug_id = oid("config:KLMSiOSUITests:debug")
+    uitest_release_id = oid("config:KLMSiOSUITests:release")
 
     file_refs: list[tuple[Path, str, str, str]] = []
     for path in source_paths:
@@ -100,6 +117,7 @@ def main() -> int:
     ]
     ios_children.append(f"\t\t\t\t{asset_catalog_ref_id} /* Assets.xcassets */,")
     ios_children.append(f"\t\t\t\t{default_xcconfig_ref_id} /* KLMSiOS.defaults.xcconfig */,")
+    uitest_children = [f"\t\t\t\t{uitest_ref_id} /* KLMSiOSUITests.swift */,"]
     shared_children = [
         f"\t\t\t\t{ref_id} /* {name} */,"
         for rel, name, ref_id, _ in file_refs
@@ -122,7 +140,26 @@ def main() -> int:
         f"\t\t{asset_catalog_build_id} /* Assets.xcassets in Resources */ = "
         f"{{isa = PBXBuildFile; fileRef = {asset_catalog_ref_id} /* Assets.xcassets */; }};"
     )
+    objects.append(
+        f"\t\t{uitest_build_id} /* KLMSiOSUITests.swift in Sources */ = "
+        f"{{isa = PBXBuildFile; fileRef = {uitest_ref_id} /* KLMSiOSUITests.swift */; }};"
+    )
     objects.append("/* End PBXBuildFile section */")
+
+    objects.append("")
+    objects.append("/* Begin PBXContainerItemProxy section */")
+    objects.append(
+        f"\t\t{uitest_proxy_id} /* PBXContainerItemProxy */ = {{\n"
+        "\t\t\tisa = PBXContainerItemProxy;\n"
+        "\t\t\tcontainerPortal = "
+        f"{project_id} /* Project object */;\n"
+        "\t\t\tproxyType = 1;\n"
+        "\t\t\tremoteGlobalIDString = "
+        f"{target_id};\n"
+        "\t\t\tremoteInfo = KLMSiOS;\n"
+        "\t\t};"
+    )
+    objects.append("/* End PBXContainerItemProxy section */")
 
     objects.append("")
     objects.append("/* Begin PBXFileReference section */")
@@ -131,12 +168,23 @@ def main() -> int:
         "{isa = PBXFileReference; explicitFileType = wrapper.application; "
         "includeInIndex = 0; path = KLMSiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };"
     )
+    objects.append(
+        f"\t\t{uitest_product_ref_id} /* KLMSiOSUITests.xctest */ = "
+        "{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; "
+        "includeInIndex = 0; path = KLMSiOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };"
+    )
     for rel, name, ref_id, _ in file_refs:
         objects.append(
             f"\t\t{ref_id} /* {name} */ = "
             f"{{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
             f"name = {quote(name)}; path = {quote(rel.as_posix())}; sourceTree = \"<group>\"; }};"
         )
+    objects.append(
+        f"\t\t{uitest_ref_id} /* KLMSiOSUITests.swift */ = "
+        "{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; "
+        f"name = KLMSiOSUITests.swift; path = {quote(uitest_rel.as_posix())}; "
+        "sourceTree = \"<group>\"; };"
+    )
     objects.append(
         f"\t\t{asset_catalog_ref_id} /* Assets.xcassets */ = "
         "{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; "
@@ -157,6 +205,11 @@ def main() -> int:
         "{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); "
         "runOnlyForDeploymentPostprocessing = 0; };"
     )
+    objects.append(
+        f"\t\t{uitest_frameworks_phase_id} /* Frameworks */ = "
+        "{isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); "
+        "runOnlyForDeploymentPostprocessing = 0; };"
+    )
     objects.append("/* End PBXFrameworksBuildPhase section */")
 
     objects.append("")
@@ -167,6 +220,7 @@ def main() -> int:
         "\t\t\tchildren = (\n"
         f"\t\t\t\t{ios_group_id} /* KLMSiOS */,\n"
         f"\t\t\t\t{shared_group_id} /* KLMSShared */,\n"
+        f"\t\t\t\t{uitest_group_id} /* KLMSiOSUITests */,\n"
         f"\t\t\t\t{product_group_id} /* Products */,\n"
         "\t\t\t);\n"
         "\t\t\tsourceTree = \"<group>\";\n"
@@ -193,10 +247,21 @@ def main() -> int:
         "\t\t};"
     )
     objects.append(
+        f"\t\t{uitest_group_id} /* KLMSiOSUITests */ = {{\n"
+        "\t\t\tisa = PBXGroup;\n"
+        "\t\t\tchildren = (\n"
+        + "\n".join(uitest_children)
+        + "\n\t\t\t);\n"
+        "\t\t\tname = KLMSiOSUITests;\n"
+        "\t\t\tsourceTree = \"<group>\";\n"
+        "\t\t};"
+    )
+    objects.append(
         f"\t\t{product_group_id} /* Products */ = {{\n"
         "\t\t\tisa = PBXGroup;\n"
         "\t\t\tchildren = (\n"
         f"\t\t\t\t{product_ref_id} /* KLMSiOS.app */,\n"
+        f"\t\t\t\t{uitest_product_ref_id} /* KLMSiOSUITests.xctest */,\n"
         "\t\t\t);\n"
         "\t\t\tname = Products;\n"
         "\t\t\tsourceTree = \"<group>\";\n"
@@ -223,6 +288,25 @@ def main() -> int:
         "\t\t\tproductType = \"com.apple.product-type.application\";\n"
         "\t\t};"
     )
+    objects.append(
+        f"\t\t{uitest_target_id} /* KLMSiOSUITests */ = {{\n"
+        "\t\t\tisa = PBXNativeTarget;\n"
+        f"\t\t\tbuildConfigurationList = {uitest_config_list_id} /* Build configuration list for PBXNativeTarget \"KLMSiOSUITests\" */;\n"
+        "\t\t\tbuildPhases = (\n"
+        f"\t\t\t\t{uitest_sources_phase_id} /* Sources */,\n"
+        f"\t\t\t\t{uitest_frameworks_phase_id} /* Frameworks */,\n"
+        f"\t\t\t\t{uitest_resources_phase_id} /* Resources */,\n"
+        "\t\t\t);\n"
+        "\t\t\tbuildRules = ();\n"
+        "\t\t\tdependencies = (\n"
+        f"\t\t\t\t{uitest_dependency_id} /* PBXTargetDependency */,\n"
+        "\t\t\t);\n"
+        "\t\t\tname = KLMSiOSUITests;\n"
+        "\t\t\tproductName = KLMSiOSUITests;\n"
+        f"\t\t\tproductReference = {uitest_product_ref_id} /* KLMSiOSUITests.xctest */;\n"
+        "\t\t\tproductType = \"com.apple.product-type.bundle.ui-testing\";\n"
+        "\t\t};"
+    )
     objects.append("/* End PBXNativeTarget section */")
 
     objects.append("")
@@ -237,6 +321,10 @@ def main() -> int:
         "\t\t\t\tTargetAttributes = {\n"
         f"\t\t\t\t\t{target_id} = {{\n"
         "\t\t\t\t\t\tCreatedOnToolsVersion = 16.0;\n"
+        "\t\t\t\t\t};\n"
+        f"\t\t\t\t\t{uitest_target_id} = {{\n"
+        "\t\t\t\t\t\tCreatedOnToolsVersion = 16.0;\n"
+        f"\t\t\t\t\t\tTestTargetID = {target_id};\n"
         "\t\t\t\t\t};\n"
         "\t\t\t\t};\n"
         "\t\t\t};\n"
@@ -255,6 +343,7 @@ def main() -> int:
         "\t\t\tprojectRoot = \"\";\n"
         "\t\t\ttargets = (\n"
         f"\t\t\t\t{target_id} /* KLMSiOS */,\n"
+        f"\t\t\t\t{uitest_target_id} /* KLMSiOSUITests */,\n"
         "\t\t\t);\n"
         "\t\t};"
     )
@@ -266,6 +355,11 @@ def main() -> int:
         f"\t\t{resources_phase_id} /* Resources */ = "
         "{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = ("
         f"{asset_catalog_build_id} /* Assets.xcassets in Resources */,); "
+        "runOnlyForDeploymentPostprocessing = 0; };"
+    )
+    objects.append(
+        f"\t\t{uitest_resources_phase_id} /* Resources */ = "
+        "{isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); "
         "runOnlyForDeploymentPostprocessing = 0; };"
     )
     objects.append("/* End PBXResourcesBuildPhase section */")
@@ -282,7 +376,28 @@ def main() -> int:
         "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n"
         "\t\t};"
     )
+    objects.append(
+        f"\t\t{uitest_sources_phase_id} /* Sources */ = {{\n"
+        "\t\t\tisa = PBXSourcesBuildPhase;\n"
+        "\t\t\tbuildActionMask = 2147483647;\n"
+        "\t\t\tfiles = (\n"
+        f"\t\t\t\t{uitest_build_id} /* KLMSiOSUITests.swift in Sources */,\n"
+        "\t\t\t);\n"
+        "\t\t\trunOnlyForDeploymentPostprocessing = 0;\n"
+        "\t\t};"
+    )
     objects.append("/* End PBXSourcesBuildPhase section */")
+
+    objects.append("")
+    objects.append("/* Begin PBXTargetDependency section */")
+    objects.append(
+        f"\t\t{uitest_dependency_id} /* PBXTargetDependency */ = {{\n"
+        "\t\t\tisa = PBXTargetDependency;\n"
+        f"\t\t\ttarget = {target_id} /* KLMSiOS */;\n"
+        f"\t\t\ttargetProxy = {uitest_proxy_id} /* PBXContainerItemProxy */;\n"
+        "\t\t};"
+    )
+    objects.append("/* End PBXTargetDependency section */")
 
     project_settings = {
         "ALWAYS_SEARCH_USER_PATHS": "NO",
@@ -393,6 +508,29 @@ def main() -> int:
     target_debug = dict(target_common)
     target_debug.update({"SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG"})
     target_release = dict(target_common)
+    uitest_common = {
+        "ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES": "YES",
+        "CODE_SIGN_STYLE": "Automatic",
+        "CURRENT_PROJECT_VERSION": "1",
+        "DEVELOPMENT_TEAM": "\"$(KLMS_IOS_DEVELOPMENT_TEAM)\"",
+        "GENERATE_INFOPLIST_FILE": "YES",
+        "INFOPLIST_KEY_CFBundleDisplayName": "\"KLMS Sync UI Tests\"",
+        "IPHONEOS_DEPLOYMENT_TARGET": "17.0",
+        "LD_RUNPATH_SEARCH_PATHS": "\"$(inherited) @executable_path/Frameworks @loader_path/Frameworks\"",
+        "MARKETING_VERSION": "0.1.0",
+        "PRODUCT_BUNDLE_IDENTIFIER": "\"$(KLMS_IOS_BUNDLE_IDENTIFIER).UITests\"",
+        "PRODUCT_NAME": "\"$(TARGET_NAME)\"",
+        "SUPPORTED_PLATFORMS": "\"iphoneos iphonesimulator\"",
+        "SUPPORTS_MACCATALYST": "NO",
+        "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
+        "SWIFT_EMIT_LOC_STRINGS": "NO",
+        "SWIFT_VERSION": "6.0",
+        "TARGETED_DEVICE_FAMILY": "\"1,2\"",
+        "TEST_TARGET_NAME": "KLMSiOS",
+    }
+    uitest_debug = dict(uitest_common)
+    uitest_debug.update({"SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG"})
+    uitest_release = dict(uitest_common)
 
     objects.append("")
     objects.append("/* Begin XCBuildConfiguration section */")
@@ -401,10 +539,12 @@ def main() -> int:
         (project_release_id, "Release", project_release),
         (target_debug_id, "Debug", target_debug),
         (target_release_id, "Release", target_release),
+        (uitest_debug_id, "Debug", uitest_debug),
+        (uitest_release_id, "Release", uitest_release),
     ]:
         base_config = (
             f"\t\t\tbaseConfigurationReference = {default_xcconfig_ref_id} /* KLMSiOS.defaults.xcconfig */;\n"
-            if config_id in {target_debug_id, target_release_id}
+            if config_id in {target_debug_id, target_release_id, uitest_debug_id, uitest_release_id}
             else ""
         )
         objects.append(
@@ -438,6 +578,17 @@ def main() -> int:
         "\t\t\tbuildConfigurations = (\n"
         f"\t\t\t\t{target_debug_id} /* Debug */,\n"
         f"\t\t\t\t{target_release_id} /* Release */,\n"
+        "\t\t\t);\n"
+        "\t\t\tdefaultConfigurationIsVisible = 0;\n"
+        "\t\t\tdefaultConfigurationName = Release;\n"
+        "\t\t};"
+    )
+    objects.append(
+        f"\t\t{uitest_config_list_id} /* Build configuration list for PBXNativeTarget \"KLMSiOSUITests\" */ = {{\n"
+        "\t\t\tisa = XCConfigurationList;\n"
+        "\t\t\tbuildConfigurations = (\n"
+        f"\t\t\t\t{uitest_debug_id} /* Debug */,\n"
+        f"\t\t\t\t{uitest_release_id} /* Release */,\n"
         "\t\t\t);\n"
         "\t\t\tdefaultConfigurationIsVisible = 0;\n"
         "\t\t\tdefaultConfigurationName = Release;\n"
@@ -484,6 +635,20 @@ def main() -> int:
                ReferencedContainer = \"container:KLMSiOS.xcodeproj\">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = \"YES\"
+            buildForRunning = \"NO\"
+            buildForProfiling = \"NO\"
+            buildForArchiving = \"NO\"
+            buildForAnalyzing = \"NO\">
+            <BuildableReference
+               BuildableIdentifier = \"primary\"
+               BlueprintIdentifier = \"{uitest_target_id}\"
+               BuildableName = \"KLMSiOSUITests.xctest\"
+               BlueprintName = \"KLMSiOSUITests\"
+               ReferencedContainer = \"container:KLMSiOS.xcodeproj\">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -492,7 +657,27 @@ def main() -> int:
       selectedLauncherIdentifier = \"Xcode.DebuggerFoundation.Launcher.LLDB\"
       shouldUseLaunchSchemeArgsEnv = \"YES\">
       <Testables>
+         <TestableReference
+            skipped = \"NO\"
+            parallelizable = \"NO\">
+            <BuildableReference
+               BuildableIdentifier = \"primary\"
+               BlueprintIdentifier = \"{uitest_target_id}\"
+               BuildableName = \"KLMSiOSUITests.xctest\"
+               BlueprintName = \"KLMSiOSUITests\"
+               ReferencedContainer = \"container:KLMSiOS.xcodeproj\">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = \"primary\"
+            BlueprintIdentifier = \"{target_id}\"
+            BuildableName = \"KLMSiOS.app\"
+            BlueprintName = \"KLMSiOS\"
+            ReferencedContainer = \"container:KLMSiOS.xcodeproj\">
+         </BuildableReference>
+      </MacroExpansion>
    </TestAction>
    <LaunchAction
       buildConfiguration = \"Debug\"

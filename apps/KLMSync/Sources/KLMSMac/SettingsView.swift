@@ -1398,7 +1398,8 @@ private struct KLMSMacSettingsDisclosureButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .brightness(configuration.isPressed ? -0.018 : 0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.92 : 1.0) : 0.48)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.92 : 1.0) : 0.40)
+            .saturation(isEnabled ? 1.0 : 0.30)
     }
 }
 
@@ -1450,7 +1451,8 @@ private struct KLMSMacSettingsTabButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .brightness(configuration.isPressed ? -0.018 : 0)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.45)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.38)
+            .saturation(isEnabled ? 1.0 : 0.30)
     }
 }
 
@@ -1472,9 +1474,12 @@ private struct KLMSMacSettingsButtonStyle: ButtonStyle {
             .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(border(isPressed: configuration.isPressed), lineWidth: 1)
+                    .stroke(border(isPressed: configuration.isPressed), lineWidth: isEnabled ? 1.15 : 1)
             }
-            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.46)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.40)
+            .saturation(isEnabled ? 1.0 : 0.28)
+            .shadow(color: isEnabled ? activeShadowColor : .clear, radius: isEnabled ? 4 : 0, x: 0, y: isEnabled ? 1 : 0)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)
     }
 
     private var foreground: Color {
@@ -1487,15 +1492,30 @@ private struct KLMSMacSettingsButtonStyle: ButtonStyle {
     }
 
     private func background(isPressed: Bool) -> Color {
-        isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.90)
+        if !isEnabled {
+            return Color.klmsMacCommandButtonBackground.opacity(0.20)
+        }
+        return isPressed ? Color.klmsMacCommandButtonPressedBackground : Color.klmsMacCommandButtonBackground.opacity(0.94)
     }
 
     private func border(isPressed: Bool) -> Color {
         switch tone {
         case .soft:
-            return isPressed ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46) : Color.klmsMacCommandButtonBorder.opacity(0.92)
+            guard isEnabled else {
+                return Color.klmsMacCommandButtonBorder.opacity(0.24)
+            }
+            return isPressed ? Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46) : Color.klmsMacCommandButtonBorder.opacity(0.96)
         case .destructive:
-            return Color.klmsMacDangerBorder.opacity(isPressed ? 0.78 : 0.48)
+            return Color.klmsMacDangerBorder.opacity(isEnabled ? (isPressed ? 0.78 : 0.56) : 0.20)
+        }
+    }
+
+    private var activeShadowColor: Color {
+        switch tone {
+        case .soft:
+            return Color.klmsMacCommandButtonBorder.opacity(0.12)
+        case .destructive:
+            return Color.klmsMacDangerBorder.opacity(0.14)
         }
     }
 }

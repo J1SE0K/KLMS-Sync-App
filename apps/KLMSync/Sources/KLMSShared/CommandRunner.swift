@@ -203,6 +203,7 @@ public actor KLMSCommandRunner {
     private static func latestAuthDigitsMatch(in text: String) -> (location: Int, digits: String)? {
         let patterns = [
             #"KAIST 인증 번호:\s*([0-9][0-9])"#,
+            #"\bdigits=([0-9][0-9])\b"#,
         ]
         var latestMatch: (location: Int, digits: String)?
         for pattern in patterns {

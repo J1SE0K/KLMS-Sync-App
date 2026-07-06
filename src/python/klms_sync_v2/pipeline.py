@@ -268,6 +268,16 @@ def normalized_source_info(source_info: dict[str, str] | None) -> dict[str, str]
     }
 
 
+def merge_source_info(existing: dict[str, str] | None, fallback: dict[str, str] | None) -> dict[str, str]:
+    existing_info = normalized_source_info(existing)
+    fallback_info = normalized_source_info(fallback)
+    return {
+        "course": existing_info.get("course") or fallback_info.get("course", ""),
+        "title": existing_info.get("title") or fallback_info.get("title", ""),
+        "instructions": existing_info.get("instructions") or fallback_info.get("instructions", ""),
+    }
+
+
 def normalize_assignment_metadata(item: Assignment) -> Assignment:
     course = normalized_course_name(item.course)
     return replace(item, course=course) if course != item.course else item
@@ -345,27 +355,27 @@ def build_sync_state(
         })
 
     for item in materialized_source_assignments:
-        source_by_url.setdefault(
-            item.url,
-            normalized_source_info({
+        source_by_url[item.url] = merge_source_info(
+            source_by_url.get(item.url),
+            {
                 "course": item.course,
                 "title": item.title,
                 "instructions": clipped(item.instructions),
-            }),
+            },
         )
 
     for item in materialized_source_events:
-        source_by_url.setdefault(
-            item.url,
-            normalized_source_info({
+        source_by_url[item.url] = merge_source_info(
+            source_by_url.get(item.url),
+            {
                 "course": item.course,
                 "title": item.title,
                 "instructions": clipped(item.instructions),
-            }),
+            },
         )
 
     for url, source_info in source_metadata_by_url.items():
-        source_by_url.setdefault(url, normalized_source_info(source_info))
+        source_by_url[url] = merge_source_info(source_by_url.get(url), source_info)
 
     def enrich_assignment(item: Assignment) -> Assignment:
         item = normalize_assignment_metadata(item)
