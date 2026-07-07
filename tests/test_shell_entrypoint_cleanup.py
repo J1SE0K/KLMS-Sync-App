@@ -824,10 +824,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "DashboardDetailView.swift"
         ).read_text(encoding="utf-8")
 
-        self.assertIn(
-            'Metric("파일", snapshot.courseFileManifest.count, detail: .files)',
-            menu,
-        )
+        self.assertIn("let fileCount = summary.serverDashboardItemsLoaded ? summary.serverFileCount : snapshot.courseFileManifest.count", menu)
+        self.assertIn('Metric("파일", fileCount, detail: .files)', menu)
         self.assertIn("@State private var selectedDetail: DashboardDetailKind?", menu)
         self.assertIn("case files", detail)
         self.assertIn("FileManifestListView(files: fileData.manifestFiles, filters: filters, model: model)", detail)
@@ -872,7 +870,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("localizedStandardCompare(rightRecency) == .orderedDescending", detail)
         self.assertIn("fileSortPath(from:", detail)
 
-    def test_mac_app_integration_status_is_collapsible(self) -> None:
+    def test_mac_app_integration_status_is_always_expanded(self) -> None:
         menu = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
         ).read_text(encoding="utf-8")
@@ -885,15 +883,16 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             menu.index("private struct DashboardRuntimePanelView")
             : menu.index("private struct MacRailStatusLine")
         ]
-        self.assertIn("@State private var isExpanded = false", external_status)
+        self.assertNotIn("@State private var isExpanded = false", external_status)
         self.assertNotIn("@AppStorage", external_status)
-        self.assertIn("isExpanded.toggle()", external_status)
-        self.assertIn('help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")', external_status)
-        self.assertIn("if !isExpanded", external_status)
-        self.assertIn("IntegrationStatusCompactStrip(statuses: statuses)", external_status)
-        self.assertIn("if isExpanded", external_status)
+        self.assertNotIn("isExpanded.toggle()", external_status)
+        self.assertNotIn('help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")', external_status)
+        self.assertNotIn("if !isExpanded", external_status)
+        self.assertNotIn("IntegrationStatusCompactStrip(statuses: statuses)", external_status)
+        self.assertNotIn("if isExpanded", external_status)
         self.assertIn("IntegrationStatusTile(status: status)", external_status)
-        self.assertIn("@State private var isExpanded = false", sidebar_status)
+        self.assertNotIn("@State private var isExpanded = false", sidebar_status)
+        self.assertNotIn("if isExpanded", sidebar_status)
         self.assertIn('Label("연동 상태", systemImage: "link")', sidebar_status)
 
     def test_mac_app_hides_zero_dashboard_metrics_and_detail(self) -> None:

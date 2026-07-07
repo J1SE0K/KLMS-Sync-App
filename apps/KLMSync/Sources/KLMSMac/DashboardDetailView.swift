@@ -1602,9 +1602,9 @@ private struct DashboardFilterBarView: View {
                     Button {
                         resetFilters()
                     } label: {
-                        Label("필터 초기화", systemImage: "arrow.counterclockwise")
+                        Label("초기화", systemImage: "arrow.counterclockwise")
                     }
-                    .buttonStyle(KLMSMacActionButtonStyle())
+                    .buttonStyle(KLMSMacCompactResetButtonStyle())
                 }
             }
             .font(.caption)
@@ -3441,6 +3441,25 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         case .accent(let color):
             return color.opacity(0.14)
         }
+    }
+}
+
+private struct KLMSMacCompactResetButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Color.klmsMacSecondaryText)
+            .labelStyle(.titleAndIcon)
+            .padding(.horizontal, 8)
+            .frame(minHeight: 28)
+            .background(Color.klmsMacCommandButtonBackground.opacity(isEnabled ? 0.56 : 0.18), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.klmsMacCommandButtonBorder.opacity(isEnabled ? 0.58 : 0.20), lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1.0 : 0.44)
     }
 }
 

@@ -134,7 +134,18 @@ private func waitForCommandButton(
     in root: AXUIElement,
     timeout: TimeInterval
 ) -> AXUIElement? {
-    waitForElement(in: root, timeout: timeout) { element in
+    if let exact = waitForElement(in: root, timeout: timeout, where: { element in
+        guard stringAttribute(element, kAXRoleAttribute as CFString) == kAXButtonRole as String else {
+            return false
+        }
+        return elementOrDescendantMatches(element, maxDepth: 6) { candidate in
+            stringAttribute(candidate, "AXIdentifier" as CFString) == identifier
+        }
+    }) {
+        return exact
+    }
+
+    return waitForElement(in: root, timeout: timeout) { element in
         guard stringAttribute(element, kAXRoleAttribute as CFString) == kAXButtonRole as String else {
             return false
         }

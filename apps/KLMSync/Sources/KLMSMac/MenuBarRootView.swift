@@ -467,7 +467,6 @@ private struct MacDashboardCommandCenterView: View {
                 .layoutPriority(2)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .accessibilityIdentifier("mac-dashboard-command-center")
     }
 
     private var commandColumn: some View {
@@ -4597,6 +4596,7 @@ private struct CommandPanelView: View {
                     .help("\(command.displayName) 실행을 중단합니다.")
                     .accessibilityLabel("\(command.displayName) 중단")
                     .accessibilityHint("현재 실행 중인 동기화를 중단합니다.")
+                    .accessibilityIdentifier("command-cancel")
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -4705,9 +4705,9 @@ private struct CommandPanelView: View {
         .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12, disabledOpacity: 1.0))
         .controlSize(.regular)
         .help(command.shortDescription)
-        .accessibilityLabel("\(command.displayName) 실행")
+        .accessibilityLabel(isRunning ? "\(command.displayName) 중단" : "\(command.displayName) 실행")
         .accessibilityHint(command.shortDescription)
-        .accessibilityIdentifier("command-\(command.rawValue)")
+        .accessibilityIdentifier(isRunning ? "command-cancel" : "command-\(command.rawValue)")
         .disabled(isDisabled)
     }
 
@@ -5714,7 +5714,6 @@ private struct RunLogArchivePanelView: View {
                     .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                     .help("실행 로그 지우기")
                     .accessibilityLabel("실행 로그 지우기")
-                    .disabled(!model.hasClearableExecutionRunLogs)
                 }
 
                 if isHistoryExpanded {
@@ -5827,7 +5826,6 @@ private struct RunLogArchivePanelView: View {
                         .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                         .help("서버 로그 지우기")
                         .accessibilityLabel("서버 로그 지우기")
-                        .disabled(!model.hasClearableLocalRelayLogs)
                     }
 
                     if showingSystemLogs {

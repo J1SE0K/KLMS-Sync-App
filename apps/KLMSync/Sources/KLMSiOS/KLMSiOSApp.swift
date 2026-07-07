@@ -7578,9 +7578,9 @@ private struct CompanionItemListControls: View {
                     Button {
                         resetFilters()
                     } label: {
-                        Label("필터 지우기", systemImage: "arrow.counterclockwise")
+                        Label("초기화", systemImage: "arrow.counterclockwise")
                     }
-                    .buttonStyle(KLMSActionButtonStyle())
+                    .buttonStyle(KLMSCompactResetButtonStyle())
                 }
             }
 
@@ -9811,6 +9811,26 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         case .accent(let color):
             return color.opacity(0.14)
         }
+    }
+}
+
+private struct KLMSCompactResetButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(Color.klmsSecondaryText)
+            .labelStyle(.titleAndIcon)
+            .padding(.horizontal, 8)
+            .frame(minHeight: 30)
+            .background(Color.klmsCommandButtonBackground.opacity(isEnabled ? 0.54 : 0.18), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.klmsCommandButtonBorder.opacity(isEnabled ? 0.58 : 0.20), lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1.0 : 0.44)
+            .contentShape(Capsule())
     }
 }
 
