@@ -756,7 +756,7 @@ private struct DashboardTopBarView: View {
         if model.needsAttention {
             return DashboardTopBarSnapshot(
                 title: selectedSection.title,
-                statusText: "확인이 필요합니다 · 진단 보기에서 원인을 확인하세요.",
+                statusText: "확인이 필요합니다 · 로그 탭에서 실패 흐름을 확인하세요.",
                 runningPhaseLabel: nil,
                 runningProgress: nil,
                 statusBadgeText: "확인 필요",
@@ -1042,10 +1042,8 @@ private struct MacAlertBannerView: View {
             return
         }
         if model.needsAttention {
-            if model.snapshot.syncReport == nil {
-                firstRunReadinessCompleted = true
-            }
-            selectedSection = .diagnostics
+            expandedLogSummaryKind = .run
+            selectedSection = .activityLogs
             return
         }
         if model.snapshot.syncReport == nil {
@@ -1127,7 +1125,7 @@ private struct MacAlertBannerSnapshot: Equatable {
             return "\(recentRunFailureDetail) · 실행 로그에서 원인을 바로 확인할 수 있습니다."
         }
         if needsAttention {
-            return "진단 보기에서 실패 원인과 다음 조치를 확인할 수 있습니다."
+            return "로그 탭에서 실패 흐름과 마지막 메시지를 확인할 수 있습니다."
         }
         if shouldShowFirstRunReadiness {
             return "환경 진단을 실행하면 권한, 엔진, 메모/캘린더/미리 알림 상태를 확인합니다."
@@ -1146,7 +1144,7 @@ private struct MacAlertBannerSnapshot: Equatable {
             return "로그"
         }
         if needsAttention {
-            return "진단"
+            return "로그"
         }
         if shouldShowFirstRunReadiness {
             return "검사"
@@ -2350,7 +2348,7 @@ private struct LogSummaryPanelView: View {
             if result.wasCancelled {
                 return "사용자가 실행을 중단했습니다."
             }
-            return result.succeeded ? "종료 코드 \(result.exitCode)" : "마지막 오류는 진단 탭에서 확인하세요."
+            return result.succeeded ? "종료 코드 \(result.exitCode)" : "마지막 오류는 로그 탭에서 확인하세요."
         }
         return "동기화를 실행하면 마지막 실행 요약이 여기에 표시됩니다."
     }
@@ -2662,7 +2660,7 @@ private struct NextActionPanelView: View {
                 } label: {
                     Label(action.buttonTitle, systemImage: action.buttonImage)
                 }
-                .buttonStyle(KLMSMacRootActionButtonStyle(tone: action.kind == .openDiagnostics ? .accent(.klmsMacWarningBorder) : .soft))
+                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .soft))
                 .accessibilityLabel(action.buttonTitle)
                 .accessibilityHint(action.detail)
                 .disabled(model.runningCommand != nil && action.kind != .showRunningLog)
@@ -2701,11 +2699,11 @@ private struct NextActionPanelView: View {
         }
         if model.needsAttention {
             return NextAction(
-                kind: .openDiagnostics,
+                kind: .showRunningLog,
                 title: "상태 확인이 필요합니다",
-                detail: "진단 탭에서 실패 원인과 다음 조치를 확인하세요.",
-                buttonTitle: "진단 보기",
-                buttonImage: "wrench.and.screwdriver",
+                detail: "로그 탭에서 실패 흐름과 마지막 오류를 먼저 확인하세요.",
+                buttonTitle: "로그 보기",
+                buttonImage: "text.alignleft",
                 systemImage: "exclamationmark.triangle.fill",
                 color: .klmsMacWarningBorder
             )
@@ -2740,11 +2738,6 @@ private struct NextActionPanelView: View {
         case .showRunningLog:
             expandedLogSummaryKind = .run
             selectedSection = .activityLogs
-        case .openDiagnostics:
-            if model.snapshot.syncReport == nil {
-                firstRunReadinessCompleted = true
-            }
-            selectedSection = .diagnostics
         case .copyAuthDigits:
             if let digits = model.currentAuthDigits {
                 NSPasteboard.general.clearContents()
@@ -2768,7 +2761,6 @@ private struct NextAction {
     enum Kind {
         case showRunningLog
         case copyAuthDigits
-        case openDiagnostics
         case runDoctor
         case showSettings
     }
