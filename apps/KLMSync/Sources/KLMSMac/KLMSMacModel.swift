@@ -272,6 +272,8 @@ final class KLMSMacModel: ObservableObject {
     private static let deprecatedServerRelayTokenKey = "KLMSServerRelayToken"
     private static let mailDashboardItemsKey = "KLMSMailDashboardItems"
     private static let resolvedCalendarChangeIDsKey = "KLMSResolvedCalendarChangeIDs"
+    private static let cachedServerRelaySyncDataKey = "KLMSMacCachedServerRelaySyncData"
+    private static let cachedServerRelaySyncDataMaxAge: TimeInterval = 10 * 60
     private static let serverRelayIdleStatusPublishMinimumInterval: TimeInterval = 30
     private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 1.0
     private static let serverRelayIdleSyncDataPublishMinimumInterval: TimeInterval = 300
@@ -292,6 +294,13 @@ final class KLMSMacModel: ObservableObject {
     private static let authStatusDisplayTimeoutNanoseconds: UInt64 = 120_000_000_000
     private static let authStatusDisplayTimeoutSeconds: TimeInterval = 120
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
+
+    private struct CachedServerRelaySyncData: Codable {
+        var serverURL: String
+        var workerTokenFingerprint: String
+        var storedAt: Date
+        var syncData: ServerRelaySyncData
+    }
 
     init() {
         UserDefaults.standard.removeObject(forKey: Self.deprecatedRemoteProcessingEnabledKey)
@@ -321,6 +330,7 @@ final class KLMSMacModel: ObservableObject {
         resolvedCalendarChangeIDs = Self.loadResolvedCalendarChangeIDs()
         mailDashboardItems = Self.loadMailDashboardItems()
         rebuildMailDashboardCaches()
+        applyCachedServerRelaySyncDataForStartup()
         let clientTokenSaved = Self.persistRelayToken(
             serverRelayClientToken,
             account: "server-relay-client-mac",
@@ -356,6 +366,66 @@ final class KLMSMacModel: ObservableObject {
             UserDefaults.standard.removeObject(forKey: defaultsKey)
         }
         return saved
+    }
+
+    private static func relayTokenFingerprint(_ token: String) -> String {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return "missing-token"
+        }
+        var hash: UInt64 = 1_469_598_103_934_665_603
+        for byte in trimmed.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 1_099_511_628_211
+        }
+        return "token-\(trimmed.count)-\(String(hash, radix: 16))"
+    }
+
+    private static func loadCachedServerRelaySyncData(
+        serverURL: String,
+        workerTokenFingerprint: String
+    ) -> ServerRelaySyncData? {
+        let normalizedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedURL.isEmpty,
+              let data = UserDefaults.standard.data(forKey: cachedServerRelaySyncDataKey),
+              let cached = try? JSONDecoder().decode(CachedServerRelaySyncData.self, from: data),
+              cached.serverURL == normalizedURL,
+              cached.workerTokenFingerprint == workerTokenFingerprint else {
+            return nil
+        }
+        guard Date().timeIntervalSince(cached.storedAt) <= cachedServerRelaySyncDataMaxAge else {
+            UserDefaults.standard.removeObject(forKey: cachedServerRelaySyncDataKey)
+            return nil
+        }
+        return cached.syncData
+    }
+
+    private func persistCachedServerRelaySyncData(_ syncData: ServerRelaySyncData) {
+        let normalizedURL = serverRelayURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedURL.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: Self.cachedServerRelaySyncDataKey)
+            return
+        }
+        let cached = CachedServerRelaySyncData(
+            serverURL: normalizedURL,
+            workerTokenFingerprint: Self.relayTokenFingerprint(serverRelayWorkerToken),
+            storedAt: Date(),
+            syncData: syncData
+        )
+        if let data = try? JSONEncoder().encode(cached) {
+            UserDefaults.standard.set(data, forKey: Self.cachedServerRelaySyncDataKey)
+        }
+    }
+
+    private func applyCachedServerRelaySyncDataForStartup() {
+        guard let syncData = Self.loadCachedServerRelaySyncData(
+            serverURL: serverRelayURL,
+            workerTokenFingerprint: Self.relayTokenFingerprint(serverRelayWorkerToken)
+        ) else {
+            return
+        }
+        applyServerRelaySyncData(syncData)
+        serverRelayStatusMessage = "저장된 서버 데이터를 먼저 보여주고, 최신 상태를 다시 확인합니다."
     }
 
     deinit {
@@ -649,6 +719,7 @@ final class KLMSMacModel: ObservableObject {
     func setServerRelayURL(_ value: String) {
         serverRelayURL = value.trimmingCharacters(in: .whitespacesAndNewlines)
         UserDefaults.standard.set(serverRelayURL, forKey: Self.serverRelayURLKey)
+        UserDefaults.standard.removeObject(forKey: Self.cachedServerRelaySyncDataKey)
         if serverRelayEnabled {
             configureServerRelayRealtime()
         }
@@ -673,6 +744,7 @@ final class KLMSMacModel: ObservableObject {
             account: "server-relay-worker-mac",
             defaultsKey: Self.serverRelayWorkerTokenKey
         )
+        UserDefaults.standard.removeObject(forKey: Self.cachedServerRelaySyncDataKey)
         if serverRelayEnabled {
             configureServerRelayRealtime()
         }
@@ -747,7 +819,6 @@ final class KLMSMacModel: ObservableObject {
                 running: runningCommand != nil,
                 message: "Mac 앱 연결 확인 완료"
             )
-            try await store.publishSyncData(serverRelaySyncData(from: snapshot))
             if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8) {
                 if serverRelayRecentFileAccessRequests != recentFileRequests {
                     serverRelayRecentFileAccessRequests = recentFileRequests
@@ -1195,7 +1266,7 @@ final class KLMSMacModel: ObservableObject {
         try ServerRelayCommandStore(urlText: serverRelayURL, token: serverRelayWorkerToken)
     }
 
-    private func publishServerRelayStatusIfNeeded(force: Bool = false) async {
+    private func publishServerRelayStatusIfNeeded(force: Bool = false, publishSyncData: Bool = false) async {
         guard serverRelayEnabled else {
             return
         }
@@ -1240,7 +1311,7 @@ final class KLMSMacModel: ObservableObject {
             return
         }
 
-        guard shouldPublishServerRelaySyncData(now: now, force: force) else {
+        guard publishSyncData, shouldPublishServerRelaySyncData(now: now, force: force) else {
             return
         }
         do {
@@ -1287,6 +1358,7 @@ final class KLMSMacModel: ObservableObject {
         if applyServerRelaySyncDataDashboardState(syncData) {
             didChangeVisibleDashboardState = true
         }
+        persistCachedServerRelaySyncData(syncData)
         serverRelayLastSyncDataFetchAt = Date()
         if didChangeVisibleDashboardState {
             publishDashboardPresentationRefresh()
@@ -1940,7 +2012,7 @@ final class KLMSMacModel: ObservableObject {
         serverRelayStatusMessage = "\(normalizedItem.kind.klmsMailDashboardKindName) 대시보드에 반영됨"
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.publishServerRelayStatusIfNeeded(force: true)
+            await self.publishServerRelayStatusIfNeeded(force: true, publishSyncData: true)
         }
     }
 
@@ -1987,7 +2059,7 @@ final class KLMSMacModel: ObservableObject {
             : "\(label) 항목은 이미 대시보드에 없습니다."
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.publishServerRelayStatusIfNeeded(force: true)
+            await self.publishServerRelayStatusIfNeeded(force: true, publishSyncData: true)
         }
         return removed
     }

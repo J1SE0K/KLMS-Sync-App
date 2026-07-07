@@ -4244,9 +4244,28 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macModel.contains("dashboardSummaryPresentation = DashboardSummaryPresentation(snapshot: snapshot, summary: dashboardSummaryCache)"))
         XCTAssertTrue(macModel.contains("private var cachedServerRelayDashboardItems: [ServerRelaySyncItem] = []"))
         XCTAssertTrue(macModel.contains("private var hasLoadedServerRelayDashboardItems = false"))
+        XCTAssertTrue(macModel.contains("private static let cachedServerRelaySyncDataKey = \"KLMSMacCachedServerRelaySyncData\""))
+        XCTAssertTrue(macModel.contains("private struct CachedServerRelaySyncData: Codable"))
+        XCTAssertTrue(macModel.contains("applyCachedServerRelaySyncDataForStartup()"))
+        XCTAssertTrue(macModel.contains("private static func loadCachedServerRelaySyncData("))
+        XCTAssertTrue(macModel.contains("private func persistCachedServerRelaySyncData(_ syncData: ServerRelaySyncData)"))
+        XCTAssertTrue(macModel.contains("persistCachedServerRelaySyncData(syncData)"))
         XCTAssertTrue(macModel.contains("await refreshServerRelayDashboardNow(silent: true)"))
         XCTAssertTrue(macModel.contains("func refreshServerRelayDashboardNow(silent: Bool = true) async"))
         XCTAssertTrue(macModel.contains("if cachedServerRelayDashboardItems != dashboardItems"))
+        XCTAssertTrue(macModel.contains("private func publishServerRelayStatusIfNeeded(force: Bool = false, publishSyncData: Bool = false) async"))
+        let macConnectionBody = try sourceBody(
+            after: "func checkServerRelayConnection(enableOnSuccess: Bool = false) async",
+            in: macModel,
+            description: "Mac server relay connection check"
+        )
+        XCTAssertFalse(macConnectionBody.contains("publishSyncData(serverRelaySyncData(from: snapshot))"))
+        let macStatusPublishBody = try sourceBody(
+            after: "private func publishServerRelayStatusIfNeeded(force: Bool = false, publishSyncData: Bool = false) async",
+            in: macModel,
+            description: "Mac server relay status publish"
+        )
+        XCTAssertTrue(macStatusPublishBody.contains("guard publishSyncData, shouldPublishServerRelaySyncData(now: now, force: force) else"))
         XCTAssertTrue(macModel.contains("serverFileCount: serverFileCount"))
         XCTAssertTrue(macModel.contains("serverDashboardItemsLoaded: hasLoadedServerRelayDashboardItems"))
         XCTAssertTrue(macModel.contains("private static let serverRelayDashboardSyncDataFetchLimit = 2_000"))
