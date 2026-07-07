@@ -504,11 +504,14 @@ final class KLMSMacModel: ObservableObject {
             || !snapshot.relayLogTail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let hasCompletedRemoteCommand = lastRemoteCommand.map { !$0.displayStatus().isInFlight } ?? false
         let hasCompletedFileRequest = serverRelayRecentFileAccessRequests.contains { !$0.status.isInFlight }
+        let hasVisibleStatusMessage = remoteProcessingStatusMessage?.nilIfBlank != nil
+            || serverRelayStatusMessage?.nilIfBlank != nil
         return hasLocalRunLog
             || hasCompletedRemoteCommand
             || !serverRelayRecentRequestLog.isEmpty
             || hasCompletedFileRequest
             || !serverRelaySharedRunLogs.isEmpty
+            || hasVisibleStatusMessage
     }
 
     var hasClearableExecutionRunLogs: Bool {
@@ -762,18 +765,13 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func clearServerRelayLogs(scope: ServerRelayLogClearScope = .all) async {
-        if scope == .fileAccess,
-           serverRelayRecentFileAccessRequests.contains(where: { $0.status.isInFlight }) {
-            serverRelayStatusMessage = "파일 요청이 끝난 뒤 파일 요청 기록을 지울 수 있습니다."
-            return
-        }
+        applyServerRelayLogClear(scope: scope)
+        remoteProcessingStatusMessage = nil
+        serverRelayStatusMessage = nil
+        errorMessage = nil
         do {
             let store = try makeServerRelayStore()
-            let result = try await store.clearDisplayLogs(scope: scope)
-            applyServerRelayLogClear(scope: scope)
-            serverRelayStatusMessage = serverRelayLogClearMessage(scope: scope, result: result)
-            remoteProcessingStatusMessage = nil
-            errorMessage = nil
+            _ = try await store.clearDisplayLogs(scope: scope)
             if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8) {
                 if serverRelayRecentFileAccessRequests != recentFileRequests {
                     serverRelayRecentFileAccessRequests = recentFileRequests
@@ -794,13 +792,13 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func clearServerRelaySharedRunLogs() async {
+        clearSharedRunLogDisplayState()
+        remoteProcessingStatusMessage = nil
+        serverRelayStatusMessage = nil
+        errorMessage = nil
         do {
             let store = try makeServerRelayStore()
-            let result = try await store.clearSharedRunLogs()
-            clearSharedRunLogDisplayState()
-            serverRelayStatusMessage = "공유 실행 로그 \(result.runLogs)개를 지웠습니다."
-            remoteProcessingStatusMessage = nil
-            errorMessage = nil
+            _ = try await store.clearSharedRunLogs()
         } catch {
             serverRelayStatusMessage = "공유 실행 로그 지우기 실패: \(error.localizedDescription)"
             errorMessage = serverRelayStatusMessage
@@ -811,6 +809,7 @@ final class KLMSMacModel: ObservableObject {
         !serverRelaySharedRunLogs.isEmpty
             || !serverRelayRecentRequestLog.isEmpty
             || serverRelayRecentFileAccessRequests.contains { !$0.status.isInFlight }
+            || remoteProcessingStatusMessage?.nilIfBlank != nil
     }
 
     func clearServerRelayActivityLogs() async {
@@ -819,6 +818,11 @@ final class KLMSMacModel: ObservableObject {
             return
         }
         var didRequestClear = false
+        if remoteProcessingStatusMessage?.nilIfBlank != nil || serverRelayStatusMessage?.nilIfBlank != nil {
+            remoteProcessingStatusMessage = nil
+            serverRelayStatusMessage = nil
+            didRequestClear = true
+        }
         if !serverRelaySharedRunLogs.isEmpty {
             await clearServerRelaySharedRunLogs()
             didRequestClear = true
@@ -850,9 +854,7 @@ final class KLMSMacModel: ObservableObject {
         }
         clearLocalStoredLogs()
         guard serverRelayConfigured else {
-            serverRelayStatusMessage = runningCommand == nil
-                ? "로그를 지웠습니다."
-                : "화면 로그를 지웠습니다. 인증 감지는 계속 유지합니다."
+            serverRelayStatusMessage = nil
             remoteProcessingStatusMessage = nil
             errorMessage = nil
             return
@@ -867,14 +869,14 @@ final class KLMSMacModel: ObservableObject {
             clearLiveCommandDisplayOutputPreservingAuth()
             lastCommandResult = nil
             commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
-            serverRelayStatusMessage = "실행 로그를 지웠습니다. 인증 감지는 계속 유지합니다."
+            serverRelayStatusMessage = nil
             remoteProcessingStatusMessage = nil
             errorMessage = nil
             return
         }
         clearTransientRunState()
         commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
-        serverRelayStatusMessage = "실행 로그를 지웠습니다."
+        serverRelayStatusMessage = nil
         remoteProcessingStatusMessage = nil
         errorMessage = nil
     }
@@ -899,7 +901,7 @@ final class KLMSMacModel: ObservableObject {
                 return
             }
         }
-        serverRelayStatusMessage = "서버 로그를 지웠습니다."
+        serverRelayStatusMessage = nil
         remoteProcessingStatusMessage = nil
         errorMessage = nil
     }
@@ -935,6 +937,8 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func applyServerRelayLogClear(scope: ServerRelayLogClearScope) {
+        remoteProcessingStatusMessage = nil
+        serverRelayStatusMessage = nil
         switch scope {
         case .all:
             if lastRemoteCommand?.status.isInFlight != true {
@@ -950,29 +954,13 @@ final class KLMSMacModel: ObservableObject {
         case .requestLog:
             serverRelayRecentRequestLog = []
         case .fileAccess:
-            serverRelayRecentFileAccessRequests = []
+            serverRelayRecentFileAccessRequests = serverRelayRecentFileAccessRequests.filter { $0.status.isInFlight }
         }
     }
 
     private func clearSharedRunLogDisplayState() {
         serverRelaySharedRunLogs = []
         sharedRunLogStageDurationsByID = [:]
-    }
-
-    private func serverRelayLogClearMessage(
-        scope: ServerRelayLogClearScope,
-        result: ServerRelayLogClearResponse
-    ) -> String {
-        switch scope {
-        case .all:
-            return "전체 기록을 지웠습니다. 실행 \(result.commands)개, 서버 요청 \(result.requestLogEntries)개, 파일 요청 \(result.fileAccessRequests)개, 항목 변경 \(result.itemActions)개, 설정 변경 \(result.settingActions)개"
-        case .command:
-            return "최근 실행 요청 \(result.commands)개를 지웠습니다."
-        case .requestLog:
-            return "서버 요청 기록 \(result.requestLogEntries)개를 지웠습니다."
-        case .fileAccess:
-            return "파일 요청 기록 \(result.fileAccessRequests)개를 지웠습니다."
-        }
     }
 
     private func sanitizedRemoteStatus(snapshot: EngineSnapshot, phase: String) -> SanitizedRemoteStatus {

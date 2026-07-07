@@ -10,6 +10,7 @@ private enum SmokeFailure: Error, CustomStringConvertible {
     case appLaunchFailed(bundleID: String, appName: String)
     case dashboardOpenFailed
     case expectedControlMissing(String)
+    case expectedControlNotActionable(String)
     case commandQDidNotTerminate
     case appDidNotReopen
 
@@ -23,6 +24,8 @@ private enum SmokeFailure: Error, CustomStringConvertible {
             return "Could not open the KLMS dashboard window before verifying actions."
         case let .expectedControlMissing(label):
             return "Expected Mac action control is missing from the accessibility tree: \(label)."
+        case let .expectedControlNotActionable(label):
+            return "Expected Mac action control could not be pressed: \(label)."
         case .commandQDidNotTerminate:
             return "Command-Q did not terminate KLMS Sync within the timeout."
         case .appDidNotReopen:
@@ -153,6 +156,7 @@ private func verifyLogActions(appElement: AXUIElement) throws {
         guard waitForText(label, in: appElement, timeout: timeout) else {
             throw SmokeFailure.expectedControlMissing(label)
         }
+        try pressControl(label, appElement: appElement)
     }
     print("ok: log action controls")
 }
@@ -167,6 +171,17 @@ private func pressWorkspaceButton(_ identifier: String, appElement: AXUIElement)
     } else {
         Thread.sleep(forTimeInterval: 0.1)
     }
+}
+
+private func pressControl(_ label: String, appElement: AXUIElement) throws {
+    guard let button = waitForButton(containing: label, in: appElement, timeout: timeout) else {
+        throw SmokeFailure.expectedControlMissing(label)
+    }
+    let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
+    guard error == .success else {
+        throw SmokeFailure.expectedControlNotActionable(label)
+    }
+    Thread.sleep(forTimeInterval: 0.15)
 }
 
 private func workspaceContentIdentifier(for buttonIdentifier: String) -> String? {
@@ -256,6 +271,24 @@ private func waitForText(
         Thread.sleep(forTimeInterval: 0.05)
     } while Date() < deadline
     return false
+}
+
+private func waitForButton(
+    containing text: String,
+    in root: AXUIElement,
+    timeout: TimeInterval
+) -> AXUIElement? {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let element = findElement(in: root, maxDepth: 32, maxNodes: 35_000, where: { element in
+            stringAttribute(element, kAXRoleAttribute as CFString) == (kAXButtonRole as String)
+                && textAttributes(of: element).contains { $0.localizedCaseInsensitiveContains(text) }
+        }) {
+            return element
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+    return nil
 }
 
 private func identifierMatches(_ actual: String?, expected: String) -> Bool {
