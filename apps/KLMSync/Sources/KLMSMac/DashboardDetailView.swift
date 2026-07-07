@@ -938,6 +938,7 @@ private struct DashboardFileData: Sendable {
                 sortPath: entry.relativePath,
                 bucket: entry.bucket,
                 url: entry.url,
+                sourceURL: entry.sourceURL,
                 isRecent: recentKeys.contains(entry.url) || recentKeys.contains(entry.relativePath),
                 recencyText: entry.localDownloadedAt,
                 klmsTimestampEpoch: entry.klmsTimestampEpoch,
@@ -959,6 +960,7 @@ private struct DashboardFileData: Sendable {
                 sortPath: item.relativePath,
                 bucket: manifest?.bucket ?? fileBucket(from: item.relativePath),
                 url: item.url,
+                sourceURL: manifest?.sourceURL ?? "",
                 isRecent: true,
                 recencyText: manifest?.localDownloadedAt ?? "",
                 klmsTimestampEpoch: manifest?.klmsTimestampEpoch,
@@ -981,6 +983,7 @@ private struct DashboardFileData: Sendable {
                 sortPath: relativePath,
                 bucket: fileBucket(from: relativePath),
                 url: "",
+                sourceURL: "",
                 isRecent: true,
                 recencyText: "",
                 pathExists: false,
@@ -1002,6 +1005,7 @@ private struct DashboardFileData: Sendable {
                 sortPath: record.quarantineRelativePath,
                 bucket: "quarantine",
                 url: record.url,
+                sourceURL: record.url,
                 isRecent: true,
                 recencyText: "",
                 pathExists: !record.quarantinePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -1020,6 +1024,7 @@ private struct DashboardFileData: Sendable {
                 sortPath: fileSortPath(from: item.path),
                 bucket: fileBucket(from: item.path),
                 url: item.url,
+                sourceURL: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
                 pathExists: dashboardPathExists(path: item.path, missingPaths: missingPaths),
@@ -1038,6 +1043,7 @@ private struct DashboardFileData: Sendable {
                 sortPath: fileSortPath(from: item.path),
                 bucket: "quarantine",
                 url: item.url,
+                sourceURL: item.url,
                 isRecent: item.trashedAt != nil,
                 recencyText: item.updatedAt,
                 pathExists: !item.path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -3163,6 +3169,7 @@ private struct DashboardFileItem: Identifiable, Sendable {
     var sortPath: String
     var bucket: String
     var url: String
+    var sourceURL: String
     var isRecent: Bool
     var recencyText: String
     var klmsTimestampEpoch: Int? = nil
@@ -3188,6 +3195,7 @@ private struct DashboardFileItem: Identifiable, Sendable {
         sortPath: String,
         bucket: String,
         url: String,
+        sourceURL: String = "",
         isRecent: Bool,
         recencyText: String,
         klmsTimestampEpoch: Int? = nil,
@@ -3202,12 +3210,13 @@ private struct DashboardFileItem: Identifiable, Sendable {
         self.sortPath = sortPath
         self.bucket = bucket
         self.url = url
+        self.sourceURL = sourceURL
         self.isRecent = isRecent
         self.recencyText = recencyText
         self.klmsTimestampEpoch = klmsTimestampEpoch
         self.pathExists = pathExists
         self.interaction = interaction
-        searchBlob = [academicTerm?.displayName ?? "", title, course, path, url]
+        searchBlob = [academicTerm?.displayName ?? "", title, course, path, url, sourceURL]
             .joined(separator: " ")
         courseSortKey = course.normalizedFileSortKey
         titleSortKey = title.normalizedFileSortKey
@@ -3216,7 +3225,8 @@ private struct DashboardFileItem: Identifiable, Sendable {
             bucket: bucket,
             title: title,
             path: sortPath.isEmpty ? path : sortPath,
-            url: url
+            url: url,
+            sourceURL: sourceURL
         )
         kindSortKey = kind.label.normalizedFileSortKey
         fileKindLabel = kind.label
@@ -3232,10 +3242,13 @@ private struct DashboardFileItem: Identifiable, Sendable {
         hasher.combine(course)
         hasher.combine(academicTerm?.displayName ?? "")
         hasher.combine(path)
+        hasher.combine(bucket)
         hasher.combine(url)
+        hasher.combine(sourceURL)
         hasher.combine(isRecent)
         hasher.combine(pathExists)
         hasher.combine(klmsTimestampEpoch ?? -1)
+        hasher.combine(fileKindLabel)
         hasher.combine(interaction?.isHiddenLike == true)
         hasher.combine(interaction?.trashedAt ?? "")
         hasher.combine(interaction?.updatedAt ?? "")
@@ -3877,8 +3890,9 @@ private struct DashboardPrunedListPresentation: Sendable {
                     academicTerm: term,
                     path: action.path,
                     sortPath: fileSortPath(from: action.path),
-                    bucket: fileBucket(from: action.path),
+                    bucket: "deleted",
                     url: "",
+                    sourceURL: "",
                     isRecent: false,
                     recencyText: "",
                     interaction: nil
@@ -4083,26 +4097,24 @@ private struct DashboardFileKindStyle {
     var icon: String
     var color: Color
 
-    init(bucket: String, title: String = "", path: String = "", url: String = "") {
+    init(bucket: String, title: String = "", path: String = "", url: String = "", sourceURL: String = "") {
         let normalizedBucket = bucket.trimmingCharacters(in: .whitespacesAndNewlines)
-        let context = Self.normalizedKindText(bucket: normalizedBucket, title: title, path: path, url: url)
-
-        if Self.hasAssignmentSignal(in: context) {
-            label = normalizedBucket == "assignment-attachments" ? "과제 첨부" : "과제 관련"
-            icon = "checklist"
-            color = Color.klmsMacSuccessBorder
-            return
-        }
-
-        if Self.hasExamSignal(in: context) {
-            label = "시험/퀴즈"
-            icon = "calendar.badge.clock"
-            color = Color.klmsMacCommandAccent
-            return
-        }
+        let context = Self.normalizedKindText(bucket: normalizedBucket, title: title, path: path, url: url, sourceURL: sourceURL)
 
         switch normalizedBucket {
         case "board-attachments":
+            if Self.hasAssignmentSignal(in: context) {
+                label = "과제 공지 첨부"
+                icon = "checklist"
+                color = Color.klmsMacSuccessBorder
+                return
+            }
+            if Self.hasExamSignal(in: context) {
+                label = "시험/퀴즈 공지 첨부"
+                icon = "calendar.badge.clock"
+                color = Color.klmsMacCommandAccent
+                return
+            }
             label = "공지 첨부"
             icon = "megaphone"
             color = Color.klmsMacCommandAccent
@@ -4131,6 +4143,18 @@ private struct DashboardFileKindStyle {
             icon = "trash"
             color = Color.klmsMacSecondaryText
         case "":
+            if Self.hasAssignmentSignal(in: context) {
+                label = "과제 관련"
+                icon = "checklist"
+                color = Color.klmsMacSuccessBorder
+                return
+            }
+            if Self.hasExamSignal(in: context) {
+                label = "시험/퀴즈"
+                icon = "calendar.badge.clock"
+                color = Color.klmsMacCommandAccent
+                return
+            }
             label = "기타 파일"
             icon = "doc"
             color = Color.klmsMacSecondaryText
@@ -4141,8 +4165,8 @@ private struct DashboardFileKindStyle {
         }
     }
 
-    private static func normalizedKindText(bucket: String, title: String, path: String, url: String) -> String {
-        [bucket, title, path, url]
+    private static func normalizedKindText(bucket: String, title: String, path: String, url: String, sourceURL: String) -> String {
+        [bucket, title, path, url, sourceURL]
             .joined(separator: " ")
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             .lowercased()
