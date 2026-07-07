@@ -234,8 +234,10 @@ final class CompanionModel: ObservableObject {
     private var serverTokenPersistTask: Task<Void, Never>?
     private var cachedSyncDataPersistTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
+    private var serverRelayDashboardWatchdogTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
     private var serverRelayEventStreamKey = ""
+    private var serverRelayDashboardWatchdogKey = ""
     private let usesUITestCaptureFixture: Bool
     private let usesUITestRunningFixture: Bool
     private var refreshInProgress = false
@@ -253,6 +255,7 @@ final class CompanionModel: ObservableObject {
     private var pendingRemoteSettingActionsByKey: [String: ServerRelaySettingAction] = [:]
     private var lastTerminalCommandID: UUID?
     private let syncDataStaleInterval: TimeInterval = 45
+    private static let dashboardWatchdogIntervalNanoseconds: UInt64 = 2_000_000_000
     private var latestFileAccessRequestByItemID: [String: ServerRelayFileAccessRequest] = [:]
     private var activeItemActionByItemID: [String: ServerRelayItemAction] = [:]
     private var activeCalendarActionByID: [String: ServerRelayItemAction] = [:]
@@ -2336,6 +2339,7 @@ final class CompanionModel: ObservableObject {
     deinit {
         serverRelayEventWebSocketTask?.cancel(with: .goingAway, reason: nil)
         serverRelayEventStreamTask?.cancel()
+        serverRelayDashboardWatchdogTask?.cancel()
         pasteboardClearTask?.cancel()
         cancelFollowUpTask?.cancel()
         cachedSyncDataPersistTask?.cancel()
@@ -3148,10 +3152,12 @@ final class CompanionModel: ObservableObject {
     private func configureServerRelayEventStream() {
         guard let serverRelayStore else {
             stopServerRelayEventStream()
+            stopServerRelayDashboardWatchdog()
             return
         }
         let key = "\(serverURL)|\(serverToken)"
         guard key != serverRelayEventStreamKey || serverRelayEventStreamTask == nil else {
+            configureServerRelayDashboardWatchdog(key: key)
             return
         }
         stopServerRelayEventStream()
@@ -3159,6 +3165,7 @@ final class CompanionModel: ObservableObject {
         serverRelayEventStreamTask = Task { [weak self] in
             await self?.runServerRelayEventStream(key: key, store: serverRelayStore)
         }
+        configureServerRelayDashboardWatchdog(key: key)
     }
 
     private func stopServerRelayEventStream() {
@@ -3167,6 +3174,35 @@ final class CompanionModel: ObservableObject {
         serverRelayEventStreamTask?.cancel()
         serverRelayEventStreamTask = nil
         serverRelayEventStreamKey = ""
+    }
+
+    private func stopServerRelayDashboardWatchdog() {
+        serverRelayDashboardWatchdogTask?.cancel()
+        serverRelayDashboardWatchdogTask = nil
+        serverRelayDashboardWatchdogKey = ""
+    }
+
+    private func configureServerRelayDashboardWatchdog(key: String) {
+        guard key != serverRelayDashboardWatchdogKey || serverRelayDashboardWatchdogTask == nil else {
+            return
+        }
+        stopServerRelayDashboardWatchdog()
+        serverRelayDashboardWatchdogKey = key
+        serverRelayDashboardWatchdogTask = Task { [weak self] in
+            await self?.runServerRelayDashboardWatchdog(key: key)
+        }
+    }
+
+    private func runServerRelayDashboardWatchdog(key: String) async {
+        while !Task.isCancelled, serverRelayDashboardWatchdogKey == key {
+            await refreshRecent(
+                silentErrors: true,
+                includeSyncData: true,
+                showsActivity: false,
+                scope: .syncData
+            )
+            try? await Task.sleep(nanoseconds: Self.dashboardWatchdogIntervalNanoseconds)
+        }
     }
 
     private func runServerRelayEventStream(key: String, store: ServerRelayCommandStore) async {

@@ -223,8 +223,10 @@ final class KLMSMacModel: ObservableObject {
     private var isBootstrapping = false
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayImmediateFollowUpTask: Task<Void, Never>?
+    private var serverRelayDashboardWatchdogTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
     private var serverRelayEventStreamKey: String?
+    private var serverRelayDashboardWatchdogKey: String?
     private var passiveSnapshotRefreshTask: Task<Void, Never>?
     private var notifiedAuthDigits = Set<String>()
     private var notifiedAuthCompletionForCurrentRun = false
@@ -280,6 +282,7 @@ final class KLMSMacModel: ObservableObject {
     private static let serverRelayDashboardSyncDataFetchLimit = 2_000
     private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 15_000_000_000
     private static let serverRelayImmediateFollowUpDelayNanoseconds: UInt64 = 200_000_000
+    private static let serverRelayDashboardWatchdogIntervalNanoseconds: UInt64 = 2_000_000_000
     private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 3_000_000_000
     private static let passiveSnapshotRefreshIntervalNanoseconds: UInt64 = 60_000_000_000
     private static let passiveAuxiliaryRefreshMinimumInterval: TimeInterval = 300
@@ -362,6 +365,7 @@ final class KLMSMacModel: ObservableObject {
         serverRelayEventWebSocketTask?.cancel(with: .goingAway, reason: nil)
         serverRelayEventStreamTask?.cancel()
         serverRelayImmediateFollowUpTask?.cancel()
+        serverRelayDashboardWatchdogTask?.cancel()
         passiveSnapshotRefreshTask?.cancel()
         pasteboardClearTask?.cancel()
         runningCommandStatusPollTask?.cancel()
@@ -1054,6 +1058,7 @@ final class KLMSMacModel: ObservableObject {
 
     private func configureServerRelayRealtime() {
         configureServerRelayEventStream()
+        configureServerRelayDashboardWatchdog()
         guard serverRelayEnabled else {
             return
         }
@@ -1078,6 +1083,31 @@ final class KLMSMacModel: ObservableObject {
         serverRelayEventStreamKey = key
         serverRelayEventStreamTask = Task { [weak self] in
             await self?.runServerRelayEventStream(key: key)
+        }
+    }
+
+    private func configureServerRelayDashboardWatchdog() {
+        guard serverRelayEnabled, serverRelayConfigured else {
+            serverRelayDashboardWatchdogTask?.cancel()
+            serverRelayDashboardWatchdogTask = nil
+            serverRelayDashboardWatchdogKey = nil
+            return
+        }
+        let key = "\(serverRelayURL)|\(serverRelayWorkerToken)"
+        guard key != serverRelayDashboardWatchdogKey || serverRelayDashboardWatchdogTask == nil else {
+            return
+        }
+        serverRelayDashboardWatchdogTask?.cancel()
+        serverRelayDashboardWatchdogKey = key
+        serverRelayDashboardWatchdogTask = Task { @MainActor [weak self] in
+            await self?.runServerRelayDashboardWatchdog(key: key)
+        }
+    }
+
+    private func runServerRelayDashboardWatchdog(key: String) async {
+        while !Task.isCancelled, serverRelayDashboardWatchdogKey == key {
+            await refreshServerRelayDashboardNow(silent: true)
+            try? await Task.sleep(nanoseconds: Self.serverRelayDashboardWatchdogIntervalNanoseconds)
         }
     }
 
