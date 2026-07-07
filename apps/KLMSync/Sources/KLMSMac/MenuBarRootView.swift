@@ -8,6 +8,7 @@ struct MenuBarRootView: View {
     @State private var selectedSection = KLMSMacSection.dashboard
     @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
+    @State private var didRequestInitialServerRefresh = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -75,6 +76,11 @@ struct MenuBarRootView: View {
             if hasSyncReport {
                 firstRunReadinessCompleted = true
             }
+        }
+        .task {
+            guard !didRequestInitialServerRefresh else { return }
+            didRequestInitialServerRefresh = true
+            await model.refreshServerRelayDashboardNow(silent: true)
         }
     }
 
@@ -3608,14 +3614,19 @@ struct DashboardSummaryPresentation {
 
     init(snapshot: EngineSnapshot, summary: KLMSMacDashboardSummaryCache) {
         let counts = summary.visibleCounts
+        let fileCount = summary.serverFileCount > 0 ? summary.serverFileCount : snapshot.courseFileManifest.count
+        let assignmentCount = summary.serverAssignmentCount > 0 ? summary.serverAssignmentCount : counts.assignments + summary.mailAssignmentCount
+        let noticeCount = summary.serverNoticeCount > 0 ? summary.serverNoticeCount : counts.notices
+        let examCount = summary.serverExamCount > 0 ? summary.serverExamCount : counts.exams + summary.mailExamCount
+        let helpDeskCount = summary.serverHelpDeskCount > 0 ? summary.serverHelpDeskCount : counts.helpDesk
         primaryMetrics = [
-            Metric("파일", snapshot.courseFileManifest.count, detail: .files),
-            Metric("과제", counts.assignments + summary.mailAssignmentCount, detail: .assignments),
-            Metric("공지", counts.notices, detail: .notices),
-            Metric("시험", counts.exams + summary.mailExamCount, detail: .exams),
+            Metric("파일", fileCount, detail: .files),
+            Metric("과제", assignmentCount, detail: .assignments),
+            Metric("공지", noticeCount, detail: .notices),
+            Metric("시험", examCount, detail: .exams),
         ].filter { $0.value > 0 }
         attentionMetrics = [
-            Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
+            Metric("헬프데스크", helpDeskCount, detail: .helpDesk),
             Metric("새 파일", counts.newFiles, detail: .newFiles),
             Metric("캘린더", summary.calendarAttentionCount, detail: .calendar),
             Metric("격리", counts.quarantine, detail: .quarantine),

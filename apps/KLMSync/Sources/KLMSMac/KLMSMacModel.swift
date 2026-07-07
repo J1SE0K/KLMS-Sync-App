@@ -26,6 +26,11 @@ struct KLMSMacDashboardSummaryCache: Equatable {
     var calendarAttentionCount = 0
     var mailAssignmentCount = 0
     var mailExamCount = 0
+    var serverAssignmentCount = 0
+    var serverExamCount = 0
+    var serverHelpDeskCount = 0
+    var serverNoticeCount = 0
+    var serverFileCount = 0
 }
 
 private struct PermissionProbeResult: Sendable {
@@ -248,6 +253,7 @@ final class KLMSMacModel: ObservableObject {
     private var cachedDashboardStateItemsByKind: [DashboardDetailKind: [StateItem]] = [:]
     private var cachedDashboardStateItemSignaturesByKind: [DashboardDetailKind: Int] = [:]
     private var cachedMailCalendarChanges: [CalendarChange] = []
+    private var cachedServerRelayDashboardItems: [ServerRelaySyncItem] = []
     private var serverRelaySharedSettingsSignature: Int?
     private var lastPassiveAuxiliaryRefreshAt: Date?
     private var suppressCurrentRunHistoryAfterLogClear = false
@@ -559,6 +565,7 @@ final class KLMSMacModel: ObservableObject {
         await reloadEngineState()
         configurePassiveSnapshotRefresh()
         configureServerRelayRealtime()
+        await refreshServerRelayDashboardNow(silent: true)
     }
 
     var shouldRequestPermissionsAfterInstall: Bool {
@@ -761,6 +768,29 @@ final class KLMSMacModel: ObservableObject {
             errorMessage = nil
         } catch {
             serverRelayStatusMessage = "서버 연결 실패: \(error.localizedDescription)"
+            errorMessage = serverRelayStatusMessage
+        }
+    }
+
+    func refreshServerRelayDashboardNow(silent: Bool = true) async {
+        guard serverRelayEnabled, serverRelayConfigured else { return }
+        do {
+            let store = try makeServerRelayStore()
+            if let syncData = try? await store.fetchSyncData(limit: 1) {
+                applyServerRelaySyncData(syncData)
+            }
+            if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8),
+               serverRelayRecentFileAccessRequests != recentFileRequests {
+                serverRelayRecentFileAccessRequests = recentFileRequests
+            }
+            if let requestLog = try? await store.fetchRecentRequestLog(limit: 20),
+               serverRelayRecentRequestLog != requestLog {
+                serverRelayRecentRequestLog = requestLog
+            }
+            serverRelayLastSyncDataFetchAt = Date()
+        } catch {
+            guard !silent else { return }
+            serverRelayStatusMessage = "서버 데이터 새로고침 실패: \(error.localizedDescription)"
             errorMessage = serverRelayStatusMessage
         }
     }
@@ -1262,7 +1292,18 @@ final class KLMSMacModel: ObservableObject {
 
     @discardableResult
     private func applyServerRelaySyncDataDashboardState(_ syncData: ServerRelaySyncData) -> Bool {
-        var didChange = applyServerRelayMailDashboardItems(syncData.items)
+        let dashboardItems = syncData.items
+            .map(\.normalizedDashboardItem)
+            .dedupedForServerRelay()
+        var didChange = false
+        if cachedServerRelayDashboardItems != dashboardItems {
+            cachedServerRelayDashboardItems = dashboardItems
+            rebuildDashboardSummaryCache()
+            didChange = true
+        }
+        if applyServerRelayMailDashboardItems(syncData.items) {
+            didChange = true
+        }
         var nextSnapshot = snapshot
         if applyServerRelaySyncItems(syncData.items, to: &nextSnapshot) {
             didChange = true
@@ -2047,6 +2088,16 @@ final class KLMSMacModel: ObservableObject {
         .dedupedForCalendarDisplay()
         .filter { $0.isUserVisibleCalendarChange && !isCalendarChangeResolved($0) }
         .count
+        let serverVisibleItems = cachedServerRelayDashboardItems.filter { !$0.isHidden }
+        let serverAssignmentCount = serverVisibleItems.filter {
+            $0.kind == "assignment" || $0.kind == "assignmentCandidate" || $0.kind == "completedAssignment"
+        }.count
+        let serverExamCount = serverVisibleItems.filter {
+            $0.kind == "exam" || $0.kind == "examCandidate"
+        }.count
+        let serverHelpDeskCount = serverVisibleItems.filter { $0.kind == "helpDesk" }.count
+        let serverNoticeCount = serverVisibleItems.filter { $0.kind == "notice" }.count
+        let serverFileCount = serverVisibleItems.filter { $0.kind == "file" }.count
         dashboardSummaryCache = KLMSMacDashboardSummaryCache(
             visibleCounts: snapshot.visibleCounts,
             hiddenSummary: snapshot.hiddenSummary,
@@ -2057,7 +2108,12 @@ final class KLMSMacModel: ObservableObject {
             prunedFileCount: snapshot.cleanupResult?.actions.filter { $0.action == "deleted" }.count ?? 0,
             calendarAttentionCount: calendarAttentionCount,
             mailAssignmentCount: cachedMailDashboardItemsByKind["assignment"]?.count ?? 0,
-            mailExamCount: cachedMailDashboardItemsByKind["exam"]?.count ?? 0
+            mailExamCount: cachedMailDashboardItemsByKind["exam"]?.count ?? 0,
+            serverAssignmentCount: serverAssignmentCount,
+            serverExamCount: serverExamCount,
+            serverHelpDeskCount: serverHelpDeskCount,
+            serverNoticeCount: serverNoticeCount,
+            serverFileCount: serverFileCount
         )
         dashboardSummaryPresentation = DashboardSummaryPresentation(snapshot: snapshot, summary: dashboardSummaryCache)
         dashboardFilterOptionsByKind = Dictionary(
