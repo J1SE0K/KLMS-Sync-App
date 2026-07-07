@@ -3614,11 +3614,11 @@ struct DashboardSummaryPresentation {
 
     init(snapshot: EngineSnapshot, summary: KLMSMacDashboardSummaryCache) {
         let counts = summary.visibleCounts
-        let fileCount = summary.serverFileCount > 0 ? summary.serverFileCount : snapshot.courseFileManifest.count
-        let assignmentCount = summary.serverAssignmentCount > 0 ? summary.serverAssignmentCount : counts.assignments + summary.mailAssignmentCount
-        let noticeCount = summary.serverNoticeCount > 0 ? summary.serverNoticeCount : counts.notices
-        let examCount = summary.serverExamCount > 0 ? summary.serverExamCount : counts.exams + summary.mailExamCount
-        let helpDeskCount = summary.serverHelpDeskCount > 0 ? summary.serverHelpDeskCount : counts.helpDesk
+        let fileCount = summary.serverDashboardItemsLoaded ? summary.serverFileCount : snapshot.courseFileManifest.count
+        let assignmentCount = summary.serverDashboardItemsLoaded ? summary.serverAssignmentCount : counts.assignments + summary.mailAssignmentCount
+        let noticeCount = summary.serverDashboardItemsLoaded ? summary.serverNoticeCount : counts.notices
+        let examCount = summary.serverDashboardItemsLoaded ? summary.serverExamCount : counts.exams + summary.mailExamCount
+        let helpDeskCount = summary.serverDashboardItemsLoaded ? summary.serverHelpDeskCount : counts.helpDesk
         primaryMetrics = [
             Metric("파일", fileCount, detail: .files),
             Metric("과제", assignmentCount, detail: .assignments),

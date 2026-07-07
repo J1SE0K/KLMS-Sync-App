@@ -31,6 +31,7 @@ struct KLMSMacDashboardSummaryCache: Equatable {
     var serverHelpDeskCount = 0
     var serverNoticeCount = 0
     var serverFileCount = 0
+    var serverDashboardItemsLoaded = false
 }
 
 private struct PermissionProbeResult: Sendable {
@@ -254,6 +255,7 @@ final class KLMSMacModel: ObservableObject {
     private var cachedDashboardStateItemSignaturesByKind: [DashboardDetailKind: Int] = [:]
     private var cachedMailCalendarChanges: [CalendarChange] = []
     private var cachedServerRelayDashboardItems: [ServerRelaySyncItem] = []
+    private var hasLoadedServerRelayDashboardItems = false
     private var serverRelaySharedSettingsSignature: Int?
     private var lastPassiveAuxiliaryRefreshAt: Date?
     private var suppressCurrentRunHistoryAfterLogClear = false
@@ -275,6 +277,7 @@ final class KLMSMacModel: ObservableObject {
     private static let serverRelayIdleSyncDataPublishMinimumInterval: TimeInterval = 300
     private static let serverRelayActiveSyncDataPublishMinimumInterval: TimeInterval = 20
     private static let serverRelaySyncDataFetchMinimumInterval: TimeInterval = 30
+    private static let serverRelayDashboardSyncDataFetchLimit = 2_000
     private static let serverRelayFallbackPollIntervalNanoseconds: UInt64 = 15_000_000_000
     private static let serverRelayImmediateFollowUpDelayNanoseconds: UInt64 = 200_000_000
     private static let runningSnapshotRefreshIntervalNanoseconds: UInt64 = 3_000_000_000
@@ -755,7 +758,7 @@ final class KLMSMacModel: ObservableObject {
                     serverRelayRecentRequestLog = requestLog
                 }
             }
-            if let syncData = try? await store.fetchSyncData(limit: 1) {
+            if let syncData = try? await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit) {
                 applyServerRelaySyncData(syncData)
             }
             serverRelayLastStatusPublishAt = Date()
@@ -776,7 +779,7 @@ final class KLMSMacModel: ObservableObject {
         guard serverRelayEnabled, serverRelayConfigured else { return }
         do {
             let store = try makeServerRelayStore()
-            if let syncData = try? await store.fetchSyncData(limit: 1) {
+            if let syncData = try? await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit) {
                 applyServerRelaySyncData(syncData)
             }
             if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8),
@@ -813,7 +816,7 @@ final class KLMSMacModel: ObservableObject {
                     serverRelayRecentRequestLog = requestLog
                 }
             }
-            if let syncData = try? await store.fetchSyncData(limit: 1) {
+            if let syncData = try? await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit) {
                 applyServerRelaySyncData(syncData)
             }
         } catch {
@@ -1296,7 +1299,9 @@ final class KLMSMacModel: ObservableObject {
             .map(\.normalizedDashboardItem)
             .dedupedForServerRelay()
         var didChange = false
-        if cachedServerRelayDashboardItems != dashboardItems {
+        let didLoadServerDashboardItems = !hasLoadedServerRelayDashboardItems
+        hasLoadedServerRelayDashboardItems = true
+        if cachedServerRelayDashboardItems != dashboardItems || didLoadServerDashboardItems {
             cachedServerRelayDashboardItems = dashboardItems
             rebuildDashboardSummaryCache()
             didChange = true
@@ -2113,7 +2118,8 @@ final class KLMSMacModel: ObservableObject {
             serverExamCount: serverExamCount,
             serverHelpDeskCount: serverHelpDeskCount,
             serverNoticeCount: serverNoticeCount,
-            serverFileCount: serverFileCount
+            serverFileCount: serverFileCount,
+            serverDashboardItemsLoaded: hasLoadedServerRelayDashboardItems
         )
         dashboardSummaryPresentation = DashboardSummaryPresentation(snapshot: snapshot, summary: dashboardSummaryCache)
         dashboardFilterOptionsByKind = Dictionary(
@@ -3513,7 +3519,7 @@ final class KLMSMacModel: ObservableObject {
             }
             _ = applyServerRelaySharedSettings(inbox.sharedSettings, merge: false)
             if shouldFetchServerRelaySyncData(force: false),
-               let syncData = try? await store.fetchSyncData(limit: 1) {
+               let syncData = try? await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit) {
                 applyServerRelaySyncData(syncData)
             }
             let pendingFileRequests = inbox.pendingFileAccessRequests
