@@ -1222,16 +1222,21 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private static func serverRelayEventNeedsWorkerRefresh(_ reason: String) -> Bool {
-        if reason == "cancel:requested" || reason == "shared-settings" {
+        if reason == "state"
+            || reason == "updated"
+            || reason == "cancel:requested"
+            || reason == "shared-settings" {
             return true
         }
         if reason == "sync-data" || reason.hasPrefix("sync-data:") {
             return true
         }
-        if reason == "commands:pending"
+        if reason.hasPrefix("commands:")
             || reason.hasPrefix("item-actions:")
             || reason.hasPrefix("setting-actions:")
-            || reason == "file-access:pending" {
+            || reason.hasPrefix("file-access:")
+            || reason.hasPrefix("logs-display:")
+            || reason.hasPrefix("logs:") {
             return true
         }
         return false
@@ -1241,6 +1246,7 @@ final class KLMSMacModel: ObservableObject {
         reason == "shared-settings"
             || reason == "sync-data"
             || reason.hasPrefix("sync-data:")
+            || (reason.hasPrefix("commands:") && reason != "commands:pending")
             || reason.hasPrefix("item-actions:")
             || reason.hasPrefix("setting-actions:")
     }

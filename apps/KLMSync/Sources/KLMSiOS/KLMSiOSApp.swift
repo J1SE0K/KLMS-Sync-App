@@ -366,6 +366,15 @@ final class CompanionModel: ObservableObject {
             fetchesSettingActions: false
         )
 
+        static let commandUpdate = RelayRefreshScope(
+            fetchesCommands: true,
+            fetchesSyncData: true,
+            fetchesFileRequests: true,
+            fetchesItemActions: false,
+            fetchesRequestLog: true,
+            fetchesSettingActions: false
+        )
+
         static let syncData = RelayRefreshScope(
             fetchesCommands: false,
             fetchesSyncData: true,
@@ -386,7 +395,7 @@ final class CompanionModel: ObservableObject {
 
         static let itemActions = RelayRefreshScope(
             fetchesCommands: false,
-            fetchesSyncData: false,
+            fetchesSyncData: true,
             fetchesFileRequests: false,
             fetchesItemActions: true,
             fetchesRequestLog: true,
@@ -413,7 +422,7 @@ final class CompanionModel: ObservableObject {
 
         static let settingActions = RelayRefreshScope(
             fetchesCommands: false,
-            fetchesSyncData: false,
+            fetchesSyncData: true,
             fetchesFileRequests: false,
             fetchesItemActions: false,
             fetchesRequestLog: true,
@@ -3220,7 +3229,7 @@ final class CompanionModel: ObservableObject {
             return .state
         }
         if reason.hasPrefix("commands:") {
-            return reason == "commands:pending" ? .commandRequest : .state
+            return reason == "commands:pending" ? .commandRequest : .commandUpdate
         }
         if reason == "item-actions:server-state" {
             return .itemActionServerState
