@@ -7503,6 +7503,16 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertEqual(file.academicTerm?.displayName, "2026년 봄학기")
         XCTAssertEqual(file.resolvedAcademicTerm(catalog: catalog)?.displayName, "2026년 여름학기")
+
+        let fileWithoutKLMSDate = CourseFileManifestEntry(
+            filename: "reading.pdf",
+            relativePath: "영미 단편소설/folders/Course Material 폴더/reading.pdf",
+            course: "영미 단편소설",
+            localDownloadedAt: "2026-07-01 12:00 KST",
+            klmsTimestamp: "KLMS 페이지에 시각 정보 없음",
+            klmsTimestampText: "KLMS 페이지에 시각 정보 없음"
+        )
+        XCTAssertNil(fileWithoutKLMSDate.academicTerm)
     }
 
     func testStateAndNoticeExposeAcademicTerm() throws {

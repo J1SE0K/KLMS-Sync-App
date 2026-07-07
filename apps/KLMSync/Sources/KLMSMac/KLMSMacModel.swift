@@ -1732,7 +1732,7 @@ final class KLMSMacModel: ObservableObject {
                 academicYear: term?.year,
                 academicSemester: term?.semester.displayName ?? "",
                 title: $0.filename,
-                timestamp: $0.klmsTimestamp.nilIfBlank ?? $0.klmsTimestampText.nilIfBlank ?? $0.localDownloadedAt,
+                timestamp: $0.klmsTimestamp.nilIfBlank ?? $0.klmsTimestampText.nilIfBlank ?? "",
                 status: $0.bucket,
                 detail: $0.klmsTimestampText,
                 updatedAt: updatedAt,

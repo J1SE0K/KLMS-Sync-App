@@ -114,7 +114,7 @@ def main() -> int:
         )
 
     complete_reuse_seconds = max(0, int(args.complete_reuse_seconds or 0))
-    if complete_reuse_seconds > 0:
+    if complete_reuse_seconds > 0 and str(args.mode or "").strip().lower() != "full":
         reusable_pages = complete_recent_cached_pages(
             urls=urls,
             previous_lookup=previous_lookup,

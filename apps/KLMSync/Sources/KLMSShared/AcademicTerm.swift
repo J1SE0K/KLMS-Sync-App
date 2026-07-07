@@ -408,7 +408,7 @@ public extension CourseFileManifestEntry {
         AcademicTerm.infer(
             course: course,
             title: filename,
-            dateTexts: [relativePath, klmsTimestamp, klmsTimestampText, localDownloadedAt]
+            dateTexts: [relativePath, klmsTimestamp, klmsTimestampText]
         )
     }
 

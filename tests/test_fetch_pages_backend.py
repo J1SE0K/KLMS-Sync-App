@@ -276,6 +276,68 @@ class FetchPagesBackendTests(unittest.TestCase):
             self.assertTrue(fetch_mock.called)
             self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), [page])
 
+    def test_full_mode_does_not_skip_complete_fresh_cache(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/folder/view.php?id=1"
+        old_page = {"requestedUrl": url, "url": url, "title": "Folder", "html": "<html>old</html>"}
+        new_page = {"requestedUrl": url, "url": url, "title": "Folder", "html": "<html>new</html>"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out_path = root / "pages.json"
+            state_path = root / "fetch_state.json"
+            summary_path = root / "summary.json"
+            now = fetch_pages_backend.now_utc_iso()
+            out_path.write_text(json.dumps([old_page]), encoding="utf-8")
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "contexts": {
+                            "files-seed-pages": {
+                                "last_run_at": now,
+                                "urls": {
+                                    url: {
+                                        "last_fetched_at": now,
+                                        "fingerprint": fetch_pages_backend.page_fingerprint(old_page),
+                                    }
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                fetch_pages_backend,
+                "fetch_pages_with_safari",
+                return_value=[new_page],
+            ) as fetch_mock:
+                with mock.patch(
+                    "sys.argv",
+                    [
+                        "fetch_pages_backend.py",
+                        "--backend=safari",
+                        "--mode=full",
+                        "--context=files-seed-pages",
+                        "--out",
+                        str(out_path),
+                        "--cache-state",
+                        str(state_path),
+                        "--summary-out",
+                        str(summary_path),
+                        "--complete-reuse-seconds=900",
+                        url,
+                    ],
+                ):
+                    status = fetch_pages_backend.main()
+
+            self.assertEqual(status, 0)
+            self.assertTrue(fetch_mock.called)
+            self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), [new_page])
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(summary["effective_mode"], "full")
+            self.assertEqual(summary["selected_url_list"], [url])
+
     def test_fallback_page_replaces_stale_previous_output_when_reused(self) -> None:
         url = "https://klms.kaist.ac.kr/mod/courseboard/view.php?id=1"
         old_page = {"requestedUrl": url, "url": url, "title": "Board", "html": "<html>old</html>"}
