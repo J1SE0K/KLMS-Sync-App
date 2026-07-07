@@ -4242,6 +4242,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("renderSignature: model.dashboardRenderSignature"))
         XCTAssertTrue(mac.contains("presentation: model.dashboardSummaryPresentation"))
         XCTAssertTrue(mac.contains("fileRenderSignature: model.dashboardFileRenderSignature"))
+        XCTAssertTrue(mac.contains("viewRevision: model.dashboardViewRevision"))
         XCTAssertFalse(mac.contains("renderSignature: DashboardRenderSignature(snapshot: model.snapshot, summary: model.dashboardSummaryCache)"))
         XCTAssertTrue(macWorkstationLayoutView.contains("let model: KLMSMacModel"))
         XCTAssertFalse(mac.contains("@State private var renderedSection"))
@@ -6414,8 +6415,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(rebuildCache.contains("cachedMailDashboardStateItemsByKind = cachedMailDashboardItemsByKind"))
         XCTAssertTrue(rebuildCache.contains("items.compactMap(\\.mailStateItem)"))
         XCTAssertTrue(rebuildCache.contains("rebuildDashboardSummaryCache()"))
-        XCTAssertTrue(addMailItem.contains("rebuildMailDashboardCaches()"))
-        XCTAssertTrue(removeMailItem.contains("rebuildMailDashboardCaches()"))
+        XCTAssertTrue(addMailItem.contains("refreshDashboardPresentationCaches()"))
+        XCTAssertTrue(removeMailItem.contains("refreshDashboardPresentationCaches()"))
         XCTAssertTrue(applySnapshot.contains("replaceSnapshot(nextSnapshot)"))
         XCTAssertTrue(applySnapshot.contains("if runningCommand != nil"))
         XCTAssertTrue(model.contains("private struct SnapshotSourceSignature: Equatable"))
@@ -6427,6 +6428,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(model.contains("@Published private(set) var cachedIssues"))
         XCTAssertTrue(model.contains("private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]"))
         XCTAssertFalse(model.contains("@Published private(set) var dashboardFilterOptionsByKind"))
+        XCTAssertTrue(model.contains("@Published private(set) var dashboardViewRevision = 0"))
+        XCTAssertTrue(model.contains("private func refreshDashboardPresentationCaches()"))
+        XCTAssertTrue(model.contains("dashboardViewRevision &+= 1"))
     }
 
     func testIOSCompanionUsesAdaptiveIPadNavigation() throws {
@@ -6614,6 +6618,11 @@ final class DashboardDataModelTests: XCTestCase {
         )
 
         XCTAssertTrue(applySyncData.contains("syncData.settings + syncData.sharedSettings, merge: false"))
+        XCTAssertTrue(applySyncData.contains("applyServerRelaySyncDataDashboardState(syncData)"))
+        XCTAssertTrue(macModel.contains("private func applyServerRelaySyncItems("))
+        XCTAssertTrue(macModel.contains("private func applyServerRelayStateItemSnapshotOverlay("))
+        XCTAssertTrue(macModel.contains("private func applyServerRelayNoticeSnapshotOverlay("))
+        XCTAssertTrue(macModel.contains("private func applyServerRelayFileSnapshotOverlay("))
         XCTAssertTrue(configValue.contains("serverRelayRuntimeSettingValue(key)"))
         XCTAssertTrue(boolConfigValue.contains("serverRelayRuntimeSettingValue(key)"))
         XCTAssertTrue(runtimeConfigValue.contains("serverRelayRuntimeSettingValue(key)"))

@@ -441,7 +441,8 @@ private struct MacWorkstationLayoutView: View {
             snapshot: model.snapshot,
             renderSignature: model.dashboardRenderSignature,
             fileRenderSignature: model.dashboardFileRenderSignature,
-            filterOptions: model.dashboardFilterOptions(for: kind)
+            filterOptions: model.dashboardFilterOptions(for: kind),
+            viewRevision: model.dashboardViewRevision
         )
     }
 }
@@ -1570,7 +1571,8 @@ private struct TaskAndExamWorkspaceView: View {
             snapshot: model.snapshot,
             renderSignature: model.dashboardRenderSignature,
             fileRenderSignature: model.dashboardFileRenderSignature,
-            filterOptions: model.dashboardFilterOptions(for: kind)
+            filterOptions: model.dashboardFilterOptions(for: kind),
+            viewRevision: model.dashboardViewRevision
         )
     }
 }
@@ -3453,6 +3455,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             renderSignature: renderSignature,
             fileRenderSignature: model.dashboardFileRenderSignature,
             filterOptions: model.dashboardFilterOptions(for: kind),
+            viewRevision: model.dashboardViewRevision,
             initialSelectedYear: selectedYear,
             initialSelectedSemester: selectedSemester
         )

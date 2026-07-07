@@ -252,6 +252,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     private var renderSignature: DashboardRenderSignature
     private var fileDataRenderSignature: DashboardFileRenderSignature?
     private var filterOptions: DashboardFilterOptions
+    private var viewRevision: Int
     private var hiddenCount: Int
     private var initialSelectedYear: String
     private var initialSelectedSemester: String
@@ -273,6 +274,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         renderSignature: DashboardRenderSignature? = nil,
         fileRenderSignature: DashboardFileRenderSignature? = nil,
         filterOptions: DashboardFilterOptions? = nil,
+        viewRevision: Int = 0,
         initialSelectedYear: String = DashboardTermFilter.allYears,
         initialSelectedSemester: String = DashboardTermFilter.allSemesters
     ) {
@@ -288,6 +290,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         self.filterOptions = filterOptions
             ?? model.dashboardFilterOptions(for: kind)
             ?? DashboardFilterOptions(kind: kind, snapshot: resolvedSnapshot)
+        self.viewRevision = viewRevision
         self.hiddenCount = resolvedSnapshot.hiddenSummary.total
         self.initialSelectedYear = initialSelectedYear
         self.initialSelectedSemester = initialSelectedSemester
@@ -301,6 +304,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         lhs.kind == rhs.kind
             && lhs.renderSignature == rhs.renderSignature
             && lhs.fileDataRenderSignature == rhs.fileDataRenderSignature
+            && lhs.viewRevision == rhs.viewRevision
             && lhs.initialSelectedYear == rhs.initialSelectedYear
             && lhs.initialSelectedSemester == rhs.initialSelectedSemester
     }

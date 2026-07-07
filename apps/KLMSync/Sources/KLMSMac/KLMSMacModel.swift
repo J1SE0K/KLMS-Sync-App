@@ -177,6 +177,7 @@ final class KLMSMacModel: ObservableObject {
     @Published private(set) var sharedRunLogStageDurationsByID: [String: [KLMSStageDuration]] = [:]
     @Published var serverRelaySharedSettings: [ServerRelaySetting] = []
     @Published var mailDashboardItems: [ServerRelaySyncItem] = []
+    @Published private(set) var dashboardViewRevision = 0
     @Published var remoteProcessingStatusMessage: String?
     @Published var isCheckingRemoteCommands = false
     @Published var serverRelayEnabled: Bool
@@ -1241,12 +1242,268 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func applyServerRelaySyncData(_ syncData: ServerRelaySyncData) {
+        var didChangeVisibleDashboardState = false
         if serverRelaySharedRunLogs != syncData.runLogs {
             serverRelaySharedRunLogs = syncData.runLogs
             rebuildSharedRunLogStageDurationCache()
+            didChangeVisibleDashboardState = true
         }
-        _ = applyServerRelaySharedSettings(syncData.settings + syncData.sharedSettings, merge: false)
+        if applyServerRelaySharedSettings(syncData.settings + syncData.sharedSettings, merge: false) {
+            didChangeVisibleDashboardState = true
+        }
+        if applyServerRelaySyncDataDashboardState(syncData) {
+            didChangeVisibleDashboardState = true
+        }
         serverRelayLastSyncDataFetchAt = Date()
+        if didChangeVisibleDashboardState {
+            publishDashboardPresentationRefresh()
+        }
+    }
+
+    @discardableResult
+    private func applyServerRelaySyncDataDashboardState(_ syncData: ServerRelaySyncData) -> Bool {
+        var didChange = applyServerRelayMailDashboardItems(syncData.items)
+        var nextSnapshot = snapshot
+        if applyServerRelaySyncItems(syncData.items, to: &nextSnapshot) {
+            didChange = true
+        }
+        if nextSnapshot != snapshot {
+            replaceSnapshot(nextSnapshot)
+            didChange = true
+        }
+        return didChange
+    }
+
+    @discardableResult
+    private func applyServerRelayMailDashboardItems(_ items: [ServerRelaySyncItem]) -> Bool {
+        let baseItems = currentServerRelayBaseSyncItems()
+        let nextItems = items
+            .unmatchedMailDashboardItems(comparedTo: baseItems)
+            .map(\.normalizedDashboardItem)
+            .dedupedForServerRelay()
+            .prefix(80)
+            .map { $0 }
+        guard nextItems != mailDashboardItems else {
+            return false
+        }
+        mailDashboardItems = nextItems
+        rebuildMailDashboardCaches()
+        persistMailDashboardItems()
+        return true
+    }
+
+    @discardableResult
+    private func applyServerRelaySyncItems(
+        _ items: [ServerRelaySyncItem],
+        to snapshot: inout EngineSnapshot
+    ) -> Bool {
+        var itemsByID: [String: ServerRelaySyncItem] = [:]
+        for item in items {
+            itemsByID[item.id] = item.normalizedDashboardItem
+        }
+        guard !itemsByID.isEmpty else {
+            return false
+        }
+
+        var didChange = false
+        if applyServerRelayStateItemSnapshotOverlay(itemsByID, to: &snapshot) {
+            didChange = true
+        }
+        if applyServerRelayNoticeSnapshotOverlay(itemsByID, to: &snapshot) {
+            didChange = true
+        }
+        if applyServerRelayFileSnapshotOverlay(itemsByID, to: &snapshot) {
+            didChange = true
+        }
+        return didChange
+    }
+
+    @discardableResult
+    private func applyServerRelayStateItemSnapshotOverlay(
+        _ itemsByID: [String: ServerRelaySyncItem],
+        to snapshot: inout EngineSnapshot
+    ) -> Bool {
+        guard let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content else {
+            return false
+        }
+        var overrides = snapshot.manualOverrides ?? ManualOverridesSnapshot()
+        var didChange = false
+
+        func setAssignmentStatus(_ status: String, for item: StateItem) {
+            let currentKey = overrides.assignmentOverrideKey(for: item)
+            let key = currentKey ?? ManualOverridesSnapshot.preferredAssignmentOverrideKey(for: item)
+            let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized.isEmpty {
+                if let currentKey, overrides.assignments.removeValue(forKey: currentKey) != nil {
+                    didChange = true
+                } else if overrides.assignments.removeValue(forKey: key) != nil {
+                    didChange = true
+                }
+                return
+            }
+            if overrides.assignments[key] != normalized {
+                overrides.assignments[key] = normalized
+                didChange = true
+            }
+        }
+
+        func setExamStatus(_ status: String, for item: StateItem) {
+            let currentKey = overrides.examOverrideKey(for: item)
+            let key = currentKey ?? ManualOverridesSnapshot.preferredExamOverrideKey(for: item)
+            let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized.isEmpty {
+                if let currentKey, overrides.exams.removeValue(forKey: currentKey) != nil {
+                    didChange = true
+                } else if overrides.exams.removeValue(forKey: key) != nil {
+                    didChange = true
+                }
+                return
+            }
+            var override = overrides.examOverride(for: item)
+            override.status = normalized
+            if overrides.exams[key] != override {
+                overrides.exams[key] = override
+                didChange = true
+            }
+        }
+
+        func applyAssignment(_ item: StateItem, localKind: String) {
+            guard let serverItem = itemsByID[serverRelayStateSyncItemID(kind: localKind, item: item)] else {
+                return
+            }
+            if serverItem.isHidden {
+                setAssignmentStatus("ignored", for: item)
+            } else if serverItem.kind == "completedAssignment" || serverItem.status.localizedCaseInsensitiveContains("완료") {
+                setAssignmentStatus("completed", for: item)
+            } else {
+                setAssignmentStatus("", for: item)
+            }
+        }
+
+        func applyExam(_ item: StateItem, localKind: String) {
+            guard let serverItem = itemsByID[serverRelayStateSyncItemID(kind: localKind, item: item)] else {
+                return
+            }
+            if serverItem.isHidden {
+                setExamStatus("ignored", for: item)
+            } else if serverItem.kind == "exam" || serverItem.status.localizedCaseInsensitiveContains("시험") {
+                setExamStatus("approved", for: item)
+            } else {
+                setExamStatus("", for: item)
+            }
+        }
+
+        for item in content.assignments {
+            applyAssignment(item, localKind: "assignment")
+        }
+        for item in content.completedAssignments {
+            applyAssignment(item, localKind: "completedAssignment")
+        }
+        for item in content.assignmentCandidates {
+            applyAssignment(item, localKind: "assignmentCandidate")
+        }
+        for item in content.helpDeskItems {
+            applyAssignment(item, localKind: "helpDesk")
+        }
+        for item in content.examItems {
+            applyExam(item, localKind: "exam")
+        }
+        for item in content.examCandidates {
+            applyExam(item, localKind: "examCandidate")
+        }
+
+        guard didChange else {
+            return false
+        }
+        snapshot.manualOverrides = overrides
+        if let rawState = snapshot.rawLegacyState {
+            snapshot.legacyState = rawState.applyingManualOverrides(overrides)
+        } else if let legacyState = snapshot.legacyState {
+            snapshot.legacyState = legacyState.applyingManualOverrides(overrides)
+        }
+        return true
+    }
+
+    @discardableResult
+    private func applyServerRelayNoticeSnapshotOverlay(
+        _ itemsByID: [String: ServerRelaySyncItem],
+        to snapshot: inout EngineSnapshot
+    ) -> Bool {
+        guard let digest = snapshot.noticeDigest else {
+            return false
+        }
+        var state = snapshot.noticeUserState ?? NoticeUserStateFile()
+        var didChange = false
+        for notice in digest.notices {
+            guard let item = itemsByID[serverRelayNoticeSyncItemID(notice)], item.kind == "notice" else {
+                continue
+            }
+            let timestamp = item.updatedAt.nilIfBlank ?? ServerRelaySyncItem.isoTimestamp()
+            var interaction = state.notices[notice.noticeIdentifier] ?? NoticeInteractionState()
+            interaction.title = notice.title
+            interaction.course = notice.course
+            interaction.url = notice.url
+            interaction.fingerprint = notice.fingerprint
+            interaction.updatedAt = timestamp
+            interaction.readFingerprint = item.isRead ? notice.fingerprint : nil
+            interaction.readAt = item.isRead ? timestamp : nil
+            interaction.important = item.isImportant
+            interaction.importantAt = item.isImportant ? timestamp : nil
+            interaction.hidden = item.isHidden
+            interaction.hiddenAt = item.isHidden ? timestamp : nil
+            if state.notices[notice.noticeIdentifier] != interaction {
+                state.notices[notice.noticeIdentifier] = interaction
+                state.updatedAt = timestamp
+                didChange = true
+            }
+        }
+        guard didChange else {
+            return false
+        }
+        snapshot.noticeUserState = state
+        return true
+    }
+
+    @discardableResult
+    private func applyServerRelayFileSnapshotOverlay(
+        _ itemsByID: [String: ServerRelaySyncItem],
+        to snapshot: inout EngineSnapshot
+    ) -> Bool {
+        guard !snapshot.courseFileManifest.isEmpty else {
+            return false
+        }
+        var state = snapshot.appUserState ?? AppUserStateFile()
+        var didChange = false
+        for entry in snapshot.courseFileManifest {
+            guard let item = itemsByID[serverRelayFileSyncItemID(entry)], item.kind == "file" else {
+                continue
+            }
+            let key = serverRelayFileUserStateKey(entry)
+            let timestamp = item.updatedAt.nilIfBlank ?? ServerRelaySyncItem.isoTimestamp()
+            var interaction = state.files[key] ?? FileInteractionState()
+            interaction.title = entry.filename.nilIfBlank ?? entry.relativePath
+            interaction.course = entry.course
+            interaction.path = entry.absolutePath
+            interaction.url = entry.url.nilIfBlank ?? entry.sourceURL
+            interaction.hidden = item.isHidden
+            interaction.hiddenAt = item.isHidden ? timestamp : nil
+            if !item.isHidden {
+                interaction.ignored = false
+                interaction.ignoredAt = nil
+                interaction.trashedAt = nil
+            }
+            interaction.updatedAt = timestamp
+            if state.files[key] != interaction {
+                state.files[key] = interaction
+                state.updatedAt = timestamp
+                didChange = true
+            }
+        }
+        guard didChange else {
+            return false
+        }
+        snapshot.appUserState = state
+        return true
     }
 
     private func rebuildSharedRunLogStageDurationCache() {
@@ -1444,7 +1701,7 @@ final class KLMSMacModel: ObservableObject {
     private func markCalendarChangeResolved(_ change: CalendarChange) {
         resolvedCalendarChangeIDs.formUnion(calendarChangeResolvedIDs(for: change))
         persistResolvedCalendarChangeIDs()
-        rebuildMailDashboardCaches()
+        refreshDashboardPresentationCaches()
     }
 
     var serverRelaySharedAppearanceModeValue: String {
@@ -1632,7 +1889,7 @@ final class KLMSMacModel: ObservableObject {
             .dedupedForServerRelay()
             .prefix(80)
             .map { $0 }
-        rebuildMailDashboardCaches()
+        refreshDashboardPresentationCaches()
         persistMailDashboardItems()
         serverRelayStatusMessage = "\(normalizedItem.kind.klmsMailDashboardKindName) 대시보드에 반영됨"
         Task { @MainActor [weak self] in
@@ -1675,7 +1932,7 @@ final class KLMSMacModel: ObservableObject {
         mailDashboardItems.removeAll { $0.id == id }
         let removed = mailDashboardItems.count != previousCount
         if removed {
-            rebuildMailDashboardCaches()
+            refreshDashboardPresentationCaches()
         }
         persistMailDashboardItems()
         let label = kind.nilIfBlank?.klmsMailDashboardKindName ?? "항목"
@@ -1720,6 +1977,15 @@ final class KLMSMacModel: ObservableObject {
             generatedAt: generatedAt,
             updatedAt: ServerRelaySyncItem.isoTimestamp()
         )
+    }
+
+    private func refreshDashboardPresentationCaches() {
+        rebuildMailDashboardCaches()
+        publishDashboardPresentationRefresh()
+    }
+
+    private func publishDashboardPresentationRefresh() {
+        dashboardViewRevision &+= 1
     }
 
     private func rebuildMailDashboardCaches() {
@@ -2206,7 +2472,7 @@ final class KLMSMacModel: ObservableObject {
         } catch {
             resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
             persistResolvedCalendarChangeIDs()
-            rebuildMailDashboardCaches()
+            refreshDashboardPresentationCaches()
             reloadSnapshot()
             errorMessage = error.localizedDescription
             return false
@@ -4229,7 +4495,7 @@ final class KLMSMacModel: ObservableObject {
         if cachedIssues != nextIssues {
             cachedIssues = nextIssues
         }
-        rebuildMailDashboardCaches()
+        refreshDashboardPresentationCaches()
     }
 
     private func loadEngineSnapshot(force: Bool) -> EngineSnapshot? {
