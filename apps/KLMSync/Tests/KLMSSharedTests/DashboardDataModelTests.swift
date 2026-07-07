@@ -4243,6 +4243,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("presentation: model.dashboardSummaryPresentation"))
         XCTAssertTrue(mac.contains("fileRenderSignature: model.dashboardFileRenderSignature"))
         XCTAssertTrue(mac.contains("viewRevision: model.dashboardViewRevision"))
+        XCTAssertTrue(mac.contains("lhs.renderSignature == rhs.renderSignature\n            && lhs.viewRevision == rhs.viewRevision"))
         XCTAssertFalse(mac.contains("renderSignature: DashboardRenderSignature(snapshot: model.snapshot, summary: model.dashboardSummaryCache)"))
         XCTAssertTrue(macWorkstationLayoutView.contains("let model: KLMSMacModel"))
         XCTAssertFalse(mac.contains("@State private var renderedSection"))

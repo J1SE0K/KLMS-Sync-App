@@ -3285,7 +3285,8 @@ private struct DashboardSummaryView: View {
             model: model,
             snapshot: model.snapshot,
             presentation: model.dashboardSummaryPresentation,
-            renderSignature: model.dashboardRenderSignature
+            renderSignature: model.dashboardRenderSignature,
+            viewRevision: model.dashboardViewRevision
         )
         .equatable()
     }
@@ -3296,6 +3297,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     var snapshot: EngineSnapshot
     var presentation: DashboardSummaryPresentation
     var renderSignature: DashboardRenderSignature
+    var viewRevision: Int
     @State private var selectedDetail: DashboardDetailKind?
     @State private var renderedDetail: DashboardDetailKind?
     @State private var detailRenderTask: Task<Void, Never>?
@@ -3308,16 +3310,19 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
         model: KLMSMacModel,
         snapshot: EngineSnapshot,
         presentation: DashboardSummaryPresentation,
-        renderSignature: DashboardRenderSignature
+        renderSignature: DashboardRenderSignature,
+        viewRevision: Int
     ) {
         self.model = model
         self.snapshot = snapshot
         self.presentation = presentation
         self.renderSignature = renderSignature
+        self.viewRevision = viewRevision
     }
 
     static func == (lhs: DashboardSummaryContentView, rhs: DashboardSummaryContentView) -> Bool {
         lhs.renderSignature == rhs.renderSignature
+            && lhs.viewRevision == rhs.viewRevision
     }
 
     var body: some View {
