@@ -241,12 +241,36 @@ public struct AcademicTermCatalog: Codable, Sendable, Equatable {
         }
     }
 
+    public func academicTerm(for course: String) -> AcademicTerm? {
+        guard let option = courseOption(for: course) else {
+            return nil
+        }
+        if let year = option.year,
+           let semester = AcademicSemester(displayName: option.semester) {
+            return AcademicTerm(year: year, semester: semester)
+        }
+        if let year = option.year,
+           let semester = AcademicSemester(displayName: option.term) {
+            return AcademicTerm(year: year, semester: semester)
+        }
+        return AcademicTerm.infer(
+            course: option.title,
+            title: option.code,
+            dateTexts: [option.term, option.semester, option.semesterCode]
+        )
+    }
+
     public func selectedTermApplies(to course: String) -> Bool {
+        guard let selectedAcademicTerm else { return false }
+        return academicTerm(for: course) == selectedAcademicTerm
+    }
+
+    private func courseOption(for course: String) -> AcademicCourseCatalogOption? {
         let needle = course.klmsCourseKey
         guard !needle.isEmpty else {
-            return false
+            return nil
         }
-        return courses.contains { item in
+        return courses.first { item in
             Self.courseKey(needle, matches: item.title.klmsCourseKey)
                 || Self.courseKey(needle, matches: item.code.klmsCourseKey)
         }
@@ -366,8 +390,11 @@ public extension StateItem {
 }
 
 public extension NoticeDigestEntry {
-    func academicTerm(generatedAt: String = "") -> AcademicTerm? {
-        AcademicTerm.infer(
+    func academicTerm(generatedAt: String = "", catalog: AcademicTermCatalog? = nil) -> AcademicTerm? {
+        if let term = catalog?.academicTerm(for: course) {
+            return term
+        }
+        return AcademicTerm.infer(
             course: course,
             title: title,
             dateTexts: [postedAt, summary, excerpt],
@@ -381,8 +408,12 @@ public extension CourseFileManifestEntry {
         AcademicTerm.infer(
             course: course,
             title: filename,
-            dateTexts: [relativePath, localDownloadedAt]
+            dateTexts: [relativePath, klmsTimestamp, klmsTimestampText, localDownloadedAt]
         )
+    }
+
+    func resolvedAcademicTerm(catalog: AcademicTermCatalog?) -> AcademicTerm? {
+        catalog?.academicTerm(for: course) ?? academicTerm
     }
 }
 
@@ -393,6 +424,10 @@ public extension FileInteractionState {
             title: title,
             dateTexts: [path, updatedAt, hiddenAt ?? "", ignoredAt ?? "", trashedAt ?? ""]
         )
+    }
+
+    func resolvedAcademicTerm(catalog: AcademicTermCatalog?) -> AcademicTerm? {
+        catalog?.academicTerm(for: course) ?? academicTerm
     }
 }
 

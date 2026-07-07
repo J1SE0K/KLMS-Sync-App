@@ -629,7 +629,7 @@ private struct DashboardFilterOptionSource: Sendable {
         case .notices:
             self = Self.notices(snapshot: snapshot)
         case .files:
-            self = Self.courseFiles(snapshot.courseFileManifest)
+            self = Self.courseFiles(snapshot.courseFileManifest, catalog: snapshot.academicTermCatalog)
         case .missingFiles:
             self = Self.missingFiles(snapshot: snapshot)
         case .quarantine:
@@ -667,25 +667,26 @@ private struct DashboardFilterOptionSource: Sendable {
     private static func notices(snapshot: EngineSnapshot) -> Self {
         let notices = snapshot.noticeDigest?.notices ?? []
         let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
+        let catalog = snapshot.academicTermCatalog
         var courses: [String] = []
         var terms: [AcademicTerm?] = []
         courses.reserveCapacity(notices.count)
         terms.reserveCapacity(notices.count)
         for notice in notices {
             courses.append(notice.course)
-            terms.append(notice.academicTerm(generatedAt: generatedAt))
+            terms.append(notice.academicTerm(generatedAt: generatedAt, catalog: catalog))
         }
         return Self(courses: courses, terms: terms)
     }
 
-    private static func courseFiles(_ entries: [CourseFileManifestEntry]) -> Self {
+    private static func courseFiles(_ entries: [CourseFileManifestEntry], catalog: AcademicTermCatalog?) -> Self {
         var courses: [String] = []
         var terms: [AcademicTerm?] = []
         courses.reserveCapacity(entries.count)
         terms.reserveCapacity(entries.count)
         for entry in entries {
             courses.append(entry.course)
-            terms.append(entry.academicTerm)
+            terms.append(entry.resolvedAcademicTerm(catalog: catalog))
         }
         return Self(courses: courses, terms: terms)
     }
@@ -753,18 +754,18 @@ private struct DashboardFilterOptionSource: Sendable {
         let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
         for notice in snapshot.noticeDigest?.notices ?? [] where snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true {
             courses.append(notice.course)
-            terms.append(notice.academicTerm(generatedAt: generatedAt))
+            terms.append(notice.academicTerm(generatedAt: generatedAt, catalog: snapshot.academicTermCatalog))
         }
         if let fileStates = snapshot.appUserState?.files.values {
             for state in fileStates where state.isHiddenLike {
                 courses.append(state.course)
-                terms.append(state.academicTerm)
+                terms.append(state.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog))
             }
         }
         if let quarantineStates = snapshot.appUserState?.quarantine.values {
             for state in quarantineStates where state.isHiddenLike {
                 courses.append(state.course)
-                terms.append(state.academicTerm)
+                terms.append(state.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog))
             }
         }
         return Self(courses: courses, terms: terms)
@@ -800,7 +801,7 @@ private struct DashboardNewFileFilterOptions: Sendable {
             let manifest = (!item.url.isEmpty ? manifestLookup.byURL[item.url] : nil)
                 ?? manifestLookup.byRelativePath[item.relativePath]
             courses.append(manifest?.course ?? "")
-            terms.append(manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]))
+            terms.append(manifest?.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog) ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]))
         }
 
         self.courses = DashboardCourseFilter.optionLabels(from: courses)
@@ -928,7 +929,7 @@ private struct DashboardFileData: Sendable {
                 key: key,
                 title: fileDisplayTitle(filename: entry.filename, relativePath: entry.relativePath),
                 course: entry.course,
-                academicTerm: entry.academicTerm,
+                academicTerm: entry.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog),
                 path: entry.absolutePath,
                 sortPath: entry.relativePath,
                 bucket: entry.bucket,
@@ -949,7 +950,7 @@ private struct DashboardFileData: Sendable {
                 key: key,
                 title: item.relativePath,
                 course: manifest?.course ?? "",
-                academicTerm: manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]),
+                academicTerm: manifest?.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog) ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]),
                 path: manifest?.absolutePath ?? "",
                 sortPath: item.relativePath,
                 bucket: manifest?.bucket ?? fileBucket(from: item.relativePath),
@@ -1010,7 +1011,7 @@ private struct DashboardFileData: Sendable {
                 key: key,
                 title: item.title,
                 course: item.course,
-                academicTerm: item.academicTerm,
+                academicTerm: item.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog),
                 path: item.path,
                 sortPath: fileSortPath(from: item.path),
                 bucket: fileBucket(from: item.path),
@@ -1028,7 +1029,7 @@ private struct DashboardFileData: Sendable {
                 key: key,
                 title: item.title,
                 course: item.course,
-                academicTerm: item.academicTerm,
+                academicTerm: item.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog),
                 path: item.path,
                 sortPath: fileSortPath(from: item.path),
                 bucket: "quarantine",
@@ -1330,9 +1331,11 @@ enum DashboardTermFilter {
             terms = snapshot.legacyState?.content.helpDeskItems.map(\.academicTerm) ?? []
         case .notices:
             let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
-            terms = (snapshot.noticeDigest?.notices ?? []).map { $0.academicTerm(generatedAt: generatedAt) }
+            terms = (snapshot.noticeDigest?.notices ?? []).map {
+                $0.academicTerm(generatedAt: generatedAt, catalog: snapshot.academicTermCatalog)
+            }
         case .files:
-            terms = snapshot.courseFileManifest.map(\.academicTerm)
+            terms = snapshot.courseFileManifest.map { $0.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog) }
         case .missingFiles:
             terms = missingFileTerms(snapshot: snapshot)
         case .newFiles:
@@ -1355,7 +1358,8 @@ enum DashboardTermFilter {
         return downloadItems.map { item in
             let manifest = (!item.url.isEmpty ? manifestLookup.byURL[item.url] : nil)
                 ?? manifestLookup.byRelativePath[item.relativePath]
-            return manifest?.academicTerm ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath])
+            return manifest?.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog)
+                ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath])
         }
     }
 
@@ -1406,9 +1410,9 @@ enum DashboardTermFilter {
         let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
         terms += (snapshot.noticeDigest?.notices ?? [])
             .filter { snapshot.noticeUserState?.notices[$0.noticeIdentifier]?.hidden == true }
-            .map { $0.academicTerm(generatedAt: generatedAt) }
-        terms += snapshot.appUserState?.files.values.filter(\.isHiddenLike).map(\.academicTerm) ?? []
-        terms += snapshot.appUserState?.quarantine.values.filter(\.isHiddenLike).map(\.academicTerm) ?? []
+            .map { $0.academicTerm(generatedAt: generatedAt, catalog: snapshot.academicTermCatalog) }
+        terms += snapshot.appUserState?.files.values.filter(\.isHiddenLike).map { $0.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog) } ?? []
+        terms += snapshot.appUserState?.quarantine.values.filter(\.isHiddenLike).map { $0.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog) } ?? []
         return terms
     }
 
@@ -2539,6 +2543,7 @@ private struct NoticeDashboardPresentation: Sendable {
     init(category: NoticeListCategory, filters: DashboardDetailFilters, snapshot: EngineSnapshot) {
         let state = snapshot.noticeUserState?.notices ?? [:]
         let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
+        let catalog = snapshot.academicTermCatalog
         let normalizedQuery = filters.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         var counts: [NoticeListCategory: Int] = [:]
         var notices: [NoticeDigestEntry] = []
@@ -2552,6 +2557,7 @@ private struct NoticeDashboardPresentation: Sendable {
                 notice,
                 interaction: interaction,
                 generatedAt: generatedAt,
+                catalog: catalog,
                 filters: filters,
                 normalizedQuery: normalizedQuery
             ) else { continue }
@@ -2585,12 +2591,13 @@ private func noticeMatchesDashboardBaseFilters(
     _ notice: NoticeDigestEntry,
     interaction: NoticeInteractionState?,
     generatedAt: String,
+    catalog: AcademicTermCatalog?,
     filters: DashboardDetailFilters,
     normalizedQuery query: String
 ) -> Bool {
     let hidden = interaction?.hidden == true
     let fresh = notice.changeState == "new" || notice.changeState == "updated"
-    let term = notice.academicTerm(generatedAt: generatedAt)
+    let term = notice.academicTerm(generatedAt: generatedAt, catalog: catalog)
     guard filters.showHidden || !hidden else { return false }
     guard !filters.hiddenOnly || hidden else { return false }
     guard !filters.newOnly || fresh else { return false }
@@ -2709,7 +2716,10 @@ private struct NoticeRowView: View {
     var body: some View {
         let hidden = snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true
         let fresh = notice.changeState == "new" || notice.changeState == "updated"
-        let term = notice.academicTerm(generatedAt: snapshot.noticeDigest?.generatedAt ?? "")
+        let term = notice.academicTerm(
+            generatedAt: snapshot.noticeDigest?.generatedAt ?? "",
+            catalog: snapshot.academicTermCatalog
+        )
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Button {

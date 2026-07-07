@@ -1313,7 +1313,10 @@ final class KLMSMacModel: ObservableObject {
         let noticeUserState = snapshot.noticeUserState?.notices ?? [:]
         items += snapshot.noticeDigest?.notices.map {
             let interaction = noticeUserState[$0.noticeIdentifier]
-            let inferredTerm = $0.academicTerm(generatedAt: snapshot.noticeDigest?.generatedAt ?? generatedAt)
+            let inferredTerm = $0.academicTerm(
+                generatedAt: snapshot.noticeDigest?.generatedAt ?? generatedAt,
+                catalog: snapshot.academicTermCatalog
+            )
             let term = academicTermForServerRelay(course: $0.course, inferred: inferredTerm, snapshot: snapshot)
             return ServerRelaySyncItem(
                 id: serverRelayNoticeSyncItemID($0),
@@ -1335,7 +1338,11 @@ final class KLMSMacModel: ObservableObject {
         } ?? []
 
         items += snapshot.courseFileManifest.map {
-            let term = academicTermForServerRelay(course: $0.course, inferred: $0.academicTerm, snapshot: snapshot)
+            let term = academicTermForServerRelay(
+                course: $0.course,
+                inferred: $0.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog),
+                snapshot: snapshot
+            )
             return ServerRelaySyncItem(
                 id: serverRelayFileSyncItemID($0),
                 kind: "file",
@@ -1610,10 +1617,8 @@ final class KLMSMacModel: ObservableObject {
         inferred: AcademicTerm?,
         snapshot: EngineSnapshot
     ) -> AcademicTerm? {
-        if let catalog = snapshot.academicTermCatalog,
-           let selected = catalog.selectedAcademicTerm,
-           catalog.selectedTermApplies(to: course) {
-            return selected
+        if let catalogTerm = snapshot.academicTermCatalog?.academicTerm(for: course) {
+            return catalogTerm
         }
         return inferred
     }

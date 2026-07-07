@@ -3762,13 +3762,17 @@ private struct DashboardScopedMetricCounts {
         notices = (snapshot.noticeDigest?.notices ?? []).filter { notice in
             snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden != true
                 && DashboardTermFilter.matches(
-                    notice.academicTerm(generatedAt: generatedAt),
+                    notice.academicTerm(generatedAt: generatedAt, catalog: snapshot.academicTermCatalog),
                     selectedYear: selectedYear,
                     selectedSemester: selectedSemester
                 )
         }.count
         files = snapshot.courseFileManifest.filter {
-            DashboardTermFilter.matches($0.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester)
+            DashboardTermFilter.matches(
+                $0.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog),
+                selectedYear: selectedYear,
+                selectedSemester: selectedSemester
+            )
         }.count
         newFiles = DashboardTermFilter.terms(for: .newFiles, snapshot: snapshot).filter {
             DashboardTermFilter.matches($0, selectedYear: selectedYear, selectedSemester: selectedSemester)

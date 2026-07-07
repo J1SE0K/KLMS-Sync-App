@@ -2317,7 +2317,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardNewFileFilterOptions.contains("let manifestLookup = Self.manifestLookup(snapshot.courseFileManifest)"))
         XCTAssertTrue(dashboardNewFileFilterOptions.contains("for item in downloadItems"))
         XCTAssertTrue(dashboardNewFileFilterOptions.contains("courses.append(manifest?.course ?? \"\")"))
-        XCTAssertTrue(dashboardNewFileFilterOptions.contains("terms.append(manifest?.academicTerm ?? AcademicTerm.infer"))
+        XCTAssertTrue(dashboardNewFileFilterOptions.contains("terms.append(manifest?.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog) ?? AcademicTerm.infer"))
         XCTAssertTrue(dashboardNewFileFilterOptions.contains("self.courses = DashboardCourseFilter.optionLabels(from: courses)"))
         XCTAssertTrue(dashboardNewFileFilterOptions.contains("let termOptions = DashboardTermFilter.options(from: terms)"))
         XCTAssertTrue(macModel.contains("private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]"))
@@ -7411,6 +7411,30 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(catalog.selectedTermApplies(to: "공공정책 특강"))
         XCTAssertFalse(catalog.selectedTermApplies(to: "데이타베이스 개론"))
+        XCTAssertEqual(catalog.academicTerm(for: "공공정책 특강")?.displayName, "2026년 여름학기")
+
+        let notice = try JSONDecoder().decode(NoticeDigestEntry.self, from: Data("""
+        {
+          "url": "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=435776",
+          "course": "공공정책 특강",
+          "title": "여름학기 공지",
+          "posted_at": "2026-06-29",
+          "fingerprint": "summer-notice"
+        }
+        """.utf8))
+        XCTAssertEqual(notice.academicTerm(generatedAt: "2026-07-01T00:00:00Z")?.displayName, "2026년 봄학기")
+        XCTAssertEqual(notice.academicTerm(generatedAt: "2026-07-01T00:00:00Z", catalog: catalog)?.displayName, "2026년 여름학기")
+
+        let file = CourseFileManifestEntry(
+            filename: "강의자료.pdf",
+            relativePath: "공공정책 특강/1주차/강의자료.pdf",
+            course: "공공정책 특강",
+            localDownloadedAt: "2026-07-01 12:00 KST",
+            klmsTimestamp: "2026-06-29 09:00 KST",
+            klmsTimestampText: "2026년 6월 29일 오전 9:00"
+        )
+        XCTAssertEqual(file.academicTerm?.displayName, "2026년 봄학기")
+        XCTAssertEqual(file.resolvedAcademicTerm(catalog: catalog)?.displayName, "2026년 여름학기")
     }
 
     func testStateAndNoticeExposeAcademicTerm() throws {
