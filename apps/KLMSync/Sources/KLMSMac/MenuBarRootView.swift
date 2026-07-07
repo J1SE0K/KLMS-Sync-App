@@ -1663,7 +1663,6 @@ private struct StatusChipView: View {
 
 private struct ExternalIntegrationStatusView: View {
     let model: KLMSMacModel
-    @State private var isExpanded = false
     private let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
 
     var body: some View {
@@ -1671,37 +1670,20 @@ private struct ExternalIntegrationStatusView: View {
         let statuses = integrationStatuses(for: verify)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Button {
-                    macPerformWithoutAnimation {
-                        isExpanded.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Label("연동 상태", systemImage: "link")
-                            .font(.caption.weight(.semibold))
+                HStack(spacing: 8) {
+                    Label("연동 상태", systemImage: "link")
+                        .font(.caption.weight(.semibold))
 
-                        IntegrationSummaryBadge(
-                            text: summaryText(for: verify),
-                            color: summaryColor(for: verify)
-                        )
+                    IntegrationSummaryBadge(
+                        text: summaryText(for: verify),
+                        color: summaryColor(for: verify)
+                    )
 
-                        Spacer(minLength: 8)
-
-                        if !isExpanded {
-                            IntegrationStatusCompactStrip(statuses: statuses)
-                        }
-
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                    Spacer(minLength: 8)
                 }
-                .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
-                .help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
 
                 Button {
                     Task { await model.run(.verify) }
@@ -1712,16 +1694,14 @@ private struct ExternalIntegrationStatusView: View {
                 .buttonStyle(KLMSMacRootActionButtonStyle())
             }
 
-            if isExpanded {
-                LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(statuses) { status in
-                        IntegrationStatusTile(status: status)
-                    }
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(statuses) { status in
+                    IntegrationStatusTile(status: status)
                 }
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, isExpanded ? 10 : 8)
+        .padding(.vertical, 10)
         .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
     }
 
@@ -3835,44 +3815,29 @@ private struct DashboardScopedMetricCounts {
 
 private struct DashboardRuntimePanelView: View {
     let model: KLMSMacModel
-    @State private var isExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button {
-                macPerformWithoutAnimation {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Label("연동 상태", systemImage: "link")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacPrimaryText)
-                    Spacer(minLength: 6)
-                    Text(runtimeSummaryBadgeText)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(runtimeSummaryBadgeColor)
-                        .lineLimit(1)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(runtimeSummaryBadgeColor.opacity(0.11), in: Capsule())
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(RoundedRectangle(cornerRadius: 12))
+            HStack(spacing: 8) {
+                Label("연동 상태", systemImage: "link")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Spacer(minLength: 6)
+                Text(runtimeSummaryBadgeText)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(runtimeSummaryBadgeColor)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(runtimeSummaryBadgeColor.opacity(0.11), in: Capsule())
             }
-            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12))
-            .help(isExpanded ? "연동 상태 접기" : "연동 상태 펼치기")
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    MacRailStatusLine(text: integrationSummaryText)
-                    MacRailStatusLine(text: noticeMemoSummaryText)
-                    if let slowestSummaryText {
-                        MacRailStatusLine(text: slowestSummaryText)
-                    }
+            VStack(alignment: .leading, spacing: 8) {
+                MacRailStatusLine(text: integrationSummaryText)
+                MacRailStatusLine(text: noticeMemoSummaryText)
+                if let slowestSummaryText {
+                    MacRailStatusLine(text: slowestSummaryText)
                 }
             }
         }

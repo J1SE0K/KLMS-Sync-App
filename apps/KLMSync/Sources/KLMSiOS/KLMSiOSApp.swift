@@ -15912,6 +15912,11 @@ private struct RemoteLogSummaryPanel: View {
         selectedKind?.wrappedValue ?? localExpandedKind
     }
 
+    private var secondaryExpandedKind: RemoteLogSummaryKind? {
+        let kind = expandedKind
+        return kind == .status ? nil : kind
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -15938,17 +15943,16 @@ private struct RemoteLogSummaryPanel: View {
                     detail: snapshot.runningPhaseDetail ?? snapshot.phase.klmsRemotePhaseName,
                     systemImage: statusSystemImage,
                     tint: statusTint,
-                    isExpanded: expandedKind == .status
-                ) {
-                    toggle(.status)
-                }
+                    isExpanded: true,
+                    action: {}
+                )
                 RemoteLogSummaryRow(
                     title: "최근 실행 요청",
                     value: recentCommandValue,
                     detail: recentCommandDetail,
                     systemImage: recentCommandSystemImage,
                     tint: recentCommandTint,
-                    isExpanded: expandedKind == .command
+                    isExpanded: secondaryExpandedKind == .command
                 ) {
                     toggle(.command)
                 }
@@ -15959,21 +15963,19 @@ private struct RemoteLogSummaryPanel: View {
                         detail: fileRequestDetail,
                         systemImage: fileRequestSystemImage,
                         tint: fileRequestTint,
-                        isExpanded: expandedKind == .fileRequest
+                        isExpanded: secondaryExpandedKind == .fileRequest
                     ) {
                         toggle(.fileRequest)
                     }
                 }
 
-                if let expandedKind {
+                if showsInlineDetail {
+                    inlineDetail(.status)
+                }
+                if let expandedKind = secondaryExpandedKind {
                     if showsInlineDetail {
                         inlineDetail(expandedKind)
                     }
-                } else if showsInlineDetail || compact {
-                    Text("행을 누르면 펼쳐집니다.")
-                        .font(.caption2)
-                        .foregroundStyle(Color.klmsSecondaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
