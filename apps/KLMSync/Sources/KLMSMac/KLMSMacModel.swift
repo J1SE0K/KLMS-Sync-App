@@ -2684,6 +2684,7 @@ final class KLMSMacModel: ObservableObject {
         guard !isCancellingCommand else { return }
         isCancellingCommand = true
         pendingRunCancellationRequested = true
+        await clearAuthDigitsState(showAuthenticatedMessage: false, respectMinimumVisibleDuration: false)
         let requested = await runner.cancelCurrentCommand()
         if requested {
             appendLiveCommandOutput("\n== 사용자가 동기화 중단을 요청했습니다 ==\n", forcePublish: true)
@@ -2699,6 +2700,7 @@ final class KLMSMacModel: ObservableObject {
         pasteboardClearTask?.cancel()
         guard runningCommand != nil else { return }
         isCancellingCommand = true
+        await clearAuthDigitsState(showAuthenticatedMessage: false, respectMinimumVisibleDuration: false)
         _ = await runner.cancelCurrentCommand()
         try? await Task.sleep(nanoseconds: 2_300_000_000)
     }

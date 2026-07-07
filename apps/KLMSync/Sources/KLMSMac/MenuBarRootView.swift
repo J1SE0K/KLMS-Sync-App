@@ -4,6 +4,7 @@ import SwiftUI
 
 struct MenuBarRootView: View {
     @ObservedObject var model: KLMSMacModel
+    @AppStorage(MacFirstRunReadiness.storageKey) private var firstRunReadinessCompleted = false
     @State private var selectedSection = KLMSMacSection.dashboard
     @State private var scrollResetNonce = 0
     @State private var expandedLogSummaryKind: LogSummaryKind?
@@ -34,7 +35,8 @@ struct MenuBarRootView: View {
                     MacAlertBannerView(
                         model: model,
                         selectedSection: $selectedSection,
-                        expandedLogSummaryKind: $expandedLogSummaryKind
+                        expandedLogSummaryKind: $expandedLogSummaryKind,
+                        firstRunReadinessCompleted: $firstRunReadinessCompleted
                     )
 
                     MacStableWorkspacePane(section: selectedSection) {
@@ -64,6 +66,16 @@ struct MenuBarRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .tint(.klmsMacCommandAccent)
         .background(Color.klmsMacScreenBackground)
+        .onChange(of: selectedSection) { _, section in
+            if model.snapshot.syncReport == nil, (section == .diagnostics || section == .settings) {
+                firstRunReadinessCompleted = true
+            }
+        }
+        .onChange(of: model.snapshot.syncReport != nil) { _, hasSyncReport in
+            if hasSyncReport {
+                firstRunReadinessCompleted = true
+            }
+        }
     }
 
     private func openRunLog() {
@@ -76,6 +88,10 @@ struct MenuBarRootView: View {
     private func resetCurrentSectionScroll() {
         scrollResetNonce &+= 1
     }
+}
+
+private enum MacFirstRunReadiness {
+    static let storageKey = "KLMSMacFirstRunReadinessCompleted"
 }
 
 private struct MacStableWorkspacePane<Content: View>: View {
@@ -980,6 +996,7 @@ private struct MacAlertBannerView: View {
     let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
+    @Binding var firstRunReadinessCompleted: Bool
 
     var body: some View {
         MacAlertBannerContent(snapshot: snapshot) {
@@ -1003,6 +1020,7 @@ private struct MacAlertBannerView: View {
             recentRunFailureDetail: model.recentRunFailureDetail,
             needsAttention: model.needsAttention,
             hasSyncReport: model.snapshot.syncReport != nil,
+            firstRunReadinessCompleted: firstRunReadinessCompleted,
             loggedIn: model.snapshot.loginStatus?.loggedIn == true
         )
     }
@@ -1024,10 +1042,14 @@ private struct MacAlertBannerView: View {
             return
         }
         if model.needsAttention {
+            if model.snapshot.syncReport == nil {
+                firstRunReadinessCompleted = true
+            }
             selectedSection = .diagnostics
             return
         }
         if model.snapshot.syncReport == nil {
+            firstRunReadinessCompleted = true
             Task {
                 await model.run(.doctor)
             }
@@ -1048,7 +1070,12 @@ private struct MacAlertBannerSnapshot: Equatable {
     var recentRunFailureDetail: String
     var needsAttention: Bool
     var hasSyncReport: Bool
+    var firstRunReadinessCompleted: Bool
     var loggedIn: Bool
+
+    private var shouldShowFirstRunReadiness: Bool {
+        !hasSyncReport && !firstRunReadinessCompleted
+    }
 
     var shouldShow: Bool {
         authDigits != nil
@@ -1056,7 +1083,7 @@ private struct MacAlertBannerSnapshot: Equatable {
             || runningCommandDisplayName != nil
             || hasRecentRunFailure
             || needsAttention
-            || !hasSyncReport
+            || shouldShowFirstRunReadiness
     }
 
     var title: String {
@@ -1078,7 +1105,7 @@ private struct MacAlertBannerSnapshot: Equatable {
         if needsAttention {
             return "상태 검사 실패"
         }
-        if !hasSyncReport {
+        if shouldShowFirstRunReadiness {
             return "처음 실행 준비"
         }
         return loggedIn ? "이미 로그인됨" : "준비됨"
@@ -1102,7 +1129,7 @@ private struct MacAlertBannerSnapshot: Equatable {
         if needsAttention {
             return "진단 보기에서 실패 원인과 다음 조치를 확인할 수 있습니다."
         }
-        if !hasSyncReport {
+        if shouldShowFirstRunReadiness {
             return "환경 진단을 실행하면 권한, 엔진, 메모/캘린더/미리 알림 상태를 확인합니다."
         }
         return "동기화를 바로 실행할 수 있습니다. 인증번호가 필요하면 여기에 크게 고정됩니다."
@@ -1121,7 +1148,7 @@ private struct MacAlertBannerSnapshot: Equatable {
         if needsAttention {
             return "진단"
         }
-        if !hasSyncReport {
+        if shouldShowFirstRunReadiness {
             return "검사"
         }
         return "확인"
@@ -1150,7 +1177,7 @@ private struct MacAlertBannerSnapshot: Equatable {
         if hasRecentRunFailure {
             return .warning
         }
-        if needsAttention || !hasSyncReport {
+        if needsAttention || shouldShowFirstRunReadiness {
             return .warning
         }
         return .ready
@@ -2160,6 +2187,7 @@ private struct ImportantLogPanelView: View {
     let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
+    @Binding var firstRunReadinessCompleted: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -2167,7 +2195,8 @@ private struct ImportantLogPanelView: View {
             NextActionPanelView(
                 model: model,
                 selectedSection: $selectedSection,
-                expandedLogSummaryKind: $expandedLogSummaryKind
+                expandedLogSummaryKind: $expandedLogSummaryKind,
+                firstRunReadinessCompleted: $firstRunReadinessCompleted
             )
         }
     }
@@ -2609,6 +2638,7 @@ private struct NextActionPanelView: View {
     let model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
+    @Binding var firstRunReadinessCompleted: Bool
 
     var body: some View {
         if let action = nextAction {
@@ -2680,7 +2710,7 @@ private struct NextActionPanelView: View {
                 color: .klmsMacWarningBorder
             )
         }
-        if model.snapshot.syncReport == nil {
+        if model.snapshot.syncReport == nil, !firstRunReadinessCompleted {
             return NextAction(
                 kind: .runDoctor,
                 title: "처음 실행 준비",
@@ -2711,6 +2741,9 @@ private struct NextActionPanelView: View {
             expandedLogSummaryKind = .run
             selectedSection = .activityLogs
         case .openDiagnostics:
+            if model.snapshot.syncReport == nil {
+                firstRunReadinessCompleted = true
+            }
             selectedSection = .diagnostics
         case .copyAuthDigits:
             if let digits = model.currentAuthDigits {
@@ -2718,10 +2751,14 @@ private struct NextActionPanelView: View {
                 NSPasteboard.general.setString(digits, forType: .string)
             }
         case .runDoctor:
+            firstRunReadinessCompleted = true
             Task {
                 await model.run(.doctor)
             }
         case .showSettings:
+            if model.snapshot.syncReport == nil {
+                firstRunReadinessCompleted = true
+            }
             selectedSection = .settings
         }
     }
