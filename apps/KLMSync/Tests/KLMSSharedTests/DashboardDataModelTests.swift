@@ -6455,6 +6455,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(model.contains("@Published private(set) var dashboardFilterOptionsByKind"))
         XCTAssertTrue(model.contains("@Published private(set) var dashboardViewRevision = 0"))
         XCTAssertTrue(model.contains("private func refreshDashboardPresentationCaches()"))
+        XCTAssertTrue(model.contains("private func refreshLoadedServerRelayDashboardItemsFromSnapshot()"))
+        XCTAssertTrue(model.contains("guard hasLoadedServerRelayDashboardItems else"))
+        XCTAssertTrue(model.contains("let nextItems = (currentServerRelayBaseSyncItems() + mailDashboardItems)"))
         XCTAssertTrue(model.contains("dashboardViewRevision &+= 1"))
     }
 

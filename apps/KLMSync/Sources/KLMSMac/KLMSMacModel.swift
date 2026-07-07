@@ -2027,7 +2027,21 @@ final class KLMSMacModel: ObservableObject {
 
     private func refreshDashboardPresentationCaches() {
         rebuildMailDashboardCaches()
+        refreshLoadedServerRelayDashboardItemsFromSnapshot()
         publishDashboardPresentationRefresh()
+    }
+
+    private func refreshLoadedServerRelayDashboardItemsFromSnapshot() {
+        guard hasLoadedServerRelayDashboardItems else {
+            return
+        }
+        let nextItems = (currentServerRelayBaseSyncItems() + mailDashboardItems)
+            .map(\.normalizedDashboardItem)
+            .dedupedForServerRelay()
+        if cachedServerRelayDashboardItems != nextItems {
+            cachedServerRelayDashboardItems = nextItems
+            rebuildDashboardSummaryCache()
+        }
     }
 
     private func publishDashboardPresentationRefresh() {
