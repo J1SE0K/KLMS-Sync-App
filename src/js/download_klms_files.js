@@ -70,6 +70,9 @@ function run(argv) {
   const continueOnQuarantine = normalizeBoolean(
     options.continueOnQuarantine == null ? "1" : options.continueOnQuarantine
   );
+  const continueOnDownloadFailure = normalizeBoolean(
+    options.continueOnDownloadFailure == null ? "1" : options.continueOnDownloadFailure
+  );
   if (!Array.isArray(manifest)) {
     throw new Error(`Manifest must be a JSON array: ${manifestPath}`);
   }
@@ -448,6 +451,14 @@ function run(argv) {
         const perFileStallTimeoutSeconds = isMediaPluginDownload
           ? Math.max(downloadStallTimeoutSeconds, 900)
           : downloadStallTimeoutSeconds;
+        const isInlinePluginPdfDownload =
+          canDirectFetchKlmsFile(targetUrl) && /\.pdf$/i.test(manifestFilename || "");
+        const browserDownloadProbeSeconds = isInlinePluginPdfDownload
+          ? boundedDownloadProbeSeconds(perFileTimeoutSeconds, 20)
+          : perFileTimeoutSeconds;
+        const browserDownloadStartTimeoutSeconds = isInlinePluginPdfDownload
+          ? boundedDownloadProbeSeconds(perFileStartTimeoutSeconds, 10)
+          : perFileStartTimeoutSeconds;
         if (!targetUrl) {
           throw new Error(`Missing URL for ${manifestRelativePath}`);
         }
@@ -600,9 +611,9 @@ function run(argv) {
             beforeEntries,
             beforeEntrySignatures,
             manifestFilename,
-            perFileTimeoutSeconds,
+            browserDownloadProbeSeconds,
             allowAnyDownload,
-            perFileStartTimeoutSeconds,
+            browserDownloadStartTimeoutSeconds,
             perFileStallTimeoutSeconds
           );
         }
@@ -618,8 +629,8 @@ function run(argv) {
             beforeEntries,
             beforeEntrySignatures,
             manifestFilename,
-            perFileTimeoutSeconds,
-            perFileStartTimeoutSeconds,
+            browserDownloadProbeSeconds,
+            browserDownloadStartTimeoutSeconds,
             perFileStallTimeoutSeconds
           );
         }
@@ -817,6 +828,46 @@ function run(argv) {
           if (retryDelaySeconds > 0) {
             delay(retryDelaySeconds);
           }
+        } else if (
+          continueOnDownloadFailure &&
+          !isLoginRequiredDownloadError(String(error || ""))
+        ) {
+          const manifestRelativePath = String(entry.relative_path || entry.filename || "").trim();
+          const manifestFilename = String(entry.filename || baseName(manifestRelativePath) || "").trim();
+          const result = {
+            index: index + 1,
+            course: entry.course || "",
+            filename: manifestFilename,
+            relative_path: manifestRelativePath,
+            manifest_filename: manifestFilename,
+            manifest_relative_path: manifestRelativePath,
+            destination_path: "",
+            downloads_root: downloadArchiveRoot,
+            downloads_relative_path: "",
+            downloads_filename: "",
+            downloads_path: "",
+            bytes: 0,
+            source_url: entry.source_url || "",
+            url: entry.url || "",
+            failed: true,
+            download_failure: true,
+            error: String(lastError || error || ""),
+          };
+          addKlmsTimestampFields(result, entry);
+          results.push(result);
+          persistDownloadProgressIfUseful(
+            manifestPath,
+            manifest,
+            manifestStatePath,
+            manifestState,
+            downloadLogPath,
+            outputRoot,
+            results,
+            result,
+            manifest.length
+          );
+          completed = true;
+          break;
         } else {
           throw lastError;
         }
@@ -969,6 +1020,10 @@ function parseArgs(argv) {
     }
     if (arg.startsWith("--continue-on-quarantine=")) {
       options.continueOnQuarantine = arg.slice("--continue-on-quarantine=".length);
+      return;
+    }
+    if (arg.startsWith("--continue-on-download-failure=")) {
+      options.continueOnDownloadFailure = arg.slice("--continue-on-download-failure=".length);
       return;
     }
     if (arg.startsWith("--force-download=")) {
@@ -1140,6 +1195,10 @@ function shouldRetryDownloadError(message) {
     "empty-result",
     "http-",
   ].some((pattern) => text.includes(pattern));
+}
+
+function isLoginRequiredDownloadError(message) {
+  return String(message || "").toLowerCase().includes("login required");
 }
 
 function resetSafariForRetry(_existingSafari) {
@@ -2023,6 +2082,7 @@ function startSafariDirectFetchBatch(windowRef, batchId, items, maxBytes) {
     `  var batchId = ${JSON.stringify(batchId)};`,
     `  var items = ${JSON.stringify(items)};`,
     `  var maxBytes = ${Math.max(0, Number(maxBytes || 0))};`,
+    "  var fetchTimeoutMs = 20000;",
     "  window.__klmsDirectFetchBatches = window.__klmsDirectFetchBatches || {};",
     "  var state = {status:'running', startedAt:Date.now(), results:[], error:''};",
     "  window.__klmsDirectFetchBatches[batchId] = state;",
@@ -2048,7 +2108,17 @@ function startSafariDirectFetchBatch(windowRef, batchId, items, maxBytes) {
     "    return parts.join('');",
     "  }",
     "  function fetchOne(item) {",
-    "    return fetch(item.url, {credentials:'include'}).then(function(response) {",
+    "    var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;",
+    "    var timeoutId = null;",
+    "    var didTimeout = false;",
+    "    var timeoutPromise = new Promise(function(resolve) {",
+    "      timeoutId = setTimeout(function(){",
+    "        didTimeout = true;",
+    "        if (controller) { try { controller.abort(); } catch (_error) {} }",
+    "        resolve({index:item.index, ok:false, error:'direct-fetch-timeout'});",
+    "      }, fetchTimeoutMs);",
+    "    });",
+    "    var fetchPromise = fetch(item.url, {credentials:'include', signal: controller ? controller.signal : undefined}).then(function(response) {",
     "      var status = response.status || 0;",
     "      var contentLength = Number(response.headers.get('Content-Length') || '0');",
     "      if (status >= 400) {",
@@ -2077,6 +2147,13 @@ function startSafariDirectFetchBatch(windowRef, batchId, items, maxBytes) {
     "        };",
     "      });",
     "    }).catch(function(error) {",
+    "      return {index:item.index, ok:false, error:String(error)};",
+    "    });",
+    "    return Promise.race([fetchPromise, timeoutPromise]).then(function(result) {",
+    "      if (timeoutId && !didTimeout) { clearTimeout(timeoutId); }",
+    "      return result;",
+    "    }).catch(function(error) {",
+    "      if (timeoutId && !didTimeout) { clearTimeout(timeoutId); }",
     "      return {index:item.index, ok:false, error:String(error)};",
     "    });",
     "  }",

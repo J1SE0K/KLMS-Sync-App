@@ -44,7 +44,7 @@ cp examples/config.env.example config.env
 - `FETCH_AUTO_REQUIRE_LAST_FULL=0`
 - `FETCH_AUTO_FULL_ON_TTL_EXPIRE=0`
 
-파일 sync는 파일 seed URL 목록이 unchanged이고 기존 manifest가 `course_files`와 맞으면 seed 상세 페이지의 TTL을 `FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS`까지 늘린다. 이때도 resource/assignment index URL은 `FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS` 주기로 확인하므로, KLMS에서 같은 이름 파일이 교체되어 timestamp가 바뀌면 해당 파일만 다시 받는다.
+파일 sync는 seed URL 목록이 그대로여도 seed/nested 파일 페이지를 계속 검증한다. 앱 실행에서는 `FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS=0`, `FILE_*_UNCHANGED_*_STALE_SECONDS=1800`으로 넘겨 기존 KLMS 페이지에 새 첨부가 붙은 경우도 빠르게 잡는다. 다운로드 단계에서는 manifest의 KLMS 업로드 시각과 로컬 파일 시각이 같으면 다시 받지 않고, KLMS 쪽 시각이 더 최신일 때만 해당 파일을 갱신한다.
 
 `KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED=1`이면 Safari는 쿠키 세션과 `do JavaScript`를 위해 최소한의 탭만 만들고, 동기화용 창은 최소화한 상태로 사용한다. 로그인 보조도 같은 창에서 인증 번호만 긁어오므로 Safari가 전면에 떠 있을 필요가 없다.
 `KLMS_LOGIN_STATUS_REUSE_SECONDS=900`이면 최근 로그인 preflight 성공 후 15분 안의 후속 실행은 dashboard 재확인을 생략한다. Safari 탭이 명확히 로그인 화면이면 이 cache를 쓰지 않고 로그인 보조로 넘어간다.

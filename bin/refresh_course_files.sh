@@ -33,13 +33,13 @@ FILE_ALL_WEEK_COURSE_PAGE_STALE_SECONDS="${FILE_ALL_WEEK_COURSE_PAGE_STALE_SECON
 FILE_SEED_QUICK_LIMIT_RAW="${FILE_SEED_QUICK_LIMIT:-}"
 FILE_SEED_STALE_SECONDS="${FILE_SEED_STALE_SECONDS:-43200}"
 FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED="${FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED:-1}"
-FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS="${FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS:-$FILE_FULL_TTL_SECONDS}"
+FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS="${FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS:-$FILE_SEED_STALE_SECONDS}"
 FILE_NESTED_QUICK_LIMIT_RAW="${FILE_NESTED_QUICK_LIMIT:-}"
 FILE_NESTED_STALE_SECONDS="${FILE_NESTED_STALE_SECONDS:-86400}"
-FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS="${FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS:-$FILE_FULL_TTL_SECONDS}"
+FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS="${FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS:-$FILE_NESTED_STALE_SECONDS}"
 FILE_NESTED2_QUICK_LIMIT_RAW="${FILE_NESTED2_QUICK_LIMIT:-}"
 FILE_NESTED2_STALE_SECONDS="${FILE_NESTED2_STALE_SECONDS:-86400}"
-FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS="${FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS:-$FILE_FULL_TTL_SECONDS}"
+FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS="${FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS:-$FILE_NESTED2_STALE_SECONDS}"
 FILE_NESTED_BACKGROUND_QUICK_LIMIT_RAW="${FILE_NESTED_BACKGROUND_QUICK_LIMIT:-}"
 FILE_NESTED2_BACKGROUND_QUICK_LIMIT_RAW="${FILE_NESTED2_BACKGROUND_QUICK_LIMIT:-}"
 FILE_KEEP_FRESH_DOWNLOADS="${FILE_KEEP_FRESH_DOWNLOADS:-1}"
@@ -869,29 +869,18 @@ fi
 mv "$TMP_DIR/file_seed_urls.next" "$FILE_SEED_URLS_TXT"
 
 MANIFEST_LAYOUT_MATCHES="$(manifest_layout_matches)"
-FILE_DEEP_FETCH_SKIPPED=0
 if [[ -s "$MANIFEST_JSON" \
   && "$MANIFEST_LAYOUT_MATCHES" == "1" \
   && "${FILE_REFRESH_MODE:l}" != "full" \
   && "$FILE_SEED_URL_LIST_CHANGED" == "0" ]] \
   && (( PREVIOUS_MANIFEST_COUNT > 0 )); then
-  FILE_DEEP_FETCH_SKIPPED=1
-  SEED_CHANGED_COUNT=0
-  NESTED_CHANGED_COUNT=0
-  NESTED2_CHANGED_COUNT=0
-  if (( TRACKED_FILE_MISSING_COUNT > 0 )); then
-    log_files_timing "deep file page fetch skipped reason=restore-missing-files-from-manifest seed_urls_changed=$FILE_SEED_URL_LIST_CHANGED course_changed=$COURSE_CHANGED_COUNT all_week_changed=$ALL_WEEK_COURSE_CHANGED_COUNT manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT missing_files=$TRACKED_FILE_MISSING_COUNT"
-  else
-    log_files_timing "deep file page fetch skipped reason=seed-urls-unchanged seed_urls_changed=$FILE_SEED_URL_LIST_CHANGED course_changed=$COURSE_CHANGED_COUNT all_week_changed=$ALL_WEEK_COURSE_CHANGED_COUNT manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT"
-  fi
-else
+  log_files_timing "deep file page fetch continuing reason=seed-urls-unchanged seed_urls_changed=$FILE_SEED_URL_LIST_CHANGED course_changed=$COURSE_CHANGED_COUNT all_week_changed=$ALL_WEEK_COURSE_CHANGED_COUNT manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT missing_files=$TRACKED_FILE_MISSING_COUNT"
+fi
 if is_truthy "$FILE_TIMESTAMP_GATED_SEED_REFRESH_ENABLED" \
   && (( FILE_SEED_URL_LIST_CHANGED == 0 )) \
   && (( PREVIOUS_MANIFEST_COUNT > 0 )) \
   && (( EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then
-  if (( FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS > FILE_SEED_EFFECTIVE_STALE_SECONDS )); then
-    FILE_SEED_EFFECTIVE_STALE_SECONDS="$FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS"
-  fi
+  FILE_SEED_EFFECTIVE_STALE_SECONDS="$FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS"
   log_files_timing "seed timestamp gate active seed_urls_changed=$FILE_SEED_URL_LIST_CHANGED course_changed=$COURSE_CHANGED_COUNT all_week_changed=$ALL_WEEK_COURSE_CHANGED_COUNT previous_manifest=$PREVIOUS_MANIFEST_COUNT tracked_files=$EXISTING_TRACKED_FILE_COUNT seed_stale_seconds=$FILE_SEED_EFFECTIVE_STALE_SECONDS"
 fi
 
@@ -959,10 +948,8 @@ FILE_NESTED_EFFECTIVE_STALE_SECONDS="$FILE_NESTED_STALE_SECONDS"
 if (( SEED_CHANGED_COUNT == 0 )) \
   && (( PREVIOUS_MANIFEST_COUNT > 0 )) \
   && (( EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then
-  if (( FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS > FILE_NESTED_EFFECTIVE_STALE_SECONDS )); then
-    FILE_NESTED_EFFECTIVE_STALE_SECONDS="$FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS"
-    log_files_timing "nested timestamp gate active seed_changed=$SEED_CHANGED_COUNT nested_stale_seconds=$FILE_NESTED_EFFECTIVE_STALE_SECONDS"
-  fi
+  FILE_NESTED_EFFECTIVE_STALE_SECONDS="$FILE_NESTED_UNCHANGED_SEED_STALE_SECONDS"
+  log_files_timing "nested timestamp gate active seed_changed=$SEED_CHANGED_COUNT nested_stale_seconds=$FILE_NESTED_EFFECTIVE_STALE_SECONDS"
 fi
 run_fetch_backend \
   "files-nested-pages" \
@@ -1017,10 +1004,8 @@ FILE_NESTED2_EFFECTIVE_STALE_SECONDS="$FILE_NESTED2_STALE_SECONDS"
 if (( NESTED_CHANGED_COUNT == 0 )) \
   && (( PREVIOUS_MANIFEST_COUNT > 0 )) \
   && (( EXISTING_TRACKED_FILE_COUNT >= PREVIOUS_MANIFEST_COUNT )); then
-  if (( FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS > FILE_NESTED2_EFFECTIVE_STALE_SECONDS )); then
-    FILE_NESTED2_EFFECTIVE_STALE_SECONDS="$FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS"
-    log_files_timing "nested2 timestamp gate active nested_changed=$NESTED_CHANGED_COUNT nested2_stale_seconds=$FILE_NESTED2_EFFECTIVE_STALE_SECONDS"
-  fi
+  FILE_NESTED2_EFFECTIVE_STALE_SECONDS="$FILE_NESTED2_UNCHANGED_NESTED_STALE_SECONDS"
+  log_files_timing "nested2 timestamp gate active nested_changed=$NESTED_CHANGED_COUNT nested2_stale_seconds=$FILE_NESTED2_EFFECTIVE_STALE_SECONDS"
 fi
 run_fetch_backend \
   "files-nested-round2-pages" \
@@ -1034,7 +1019,6 @@ run_fetch_backend \
   "${FILE_NESTED2_FETCH_ALWAYS_PATTERNS[@]}"
 
 NESTED2_CHANGED_COUNT="$(summary_changed_count "$FILE_NESTED2_FETCH_SUMMARY_JSON")"
-fi
 MANIFEST_LAYOUT_MATCHES="$(manifest_layout_matches)"
 MANIFEST_REUSED=0
 if [[ -s "$MANIFEST_JSON" \
@@ -1110,6 +1094,70 @@ PY
     else
       exec /bin/zsh "$0" "$CONFIG_PATH"
     fi
+  fi
+fi
+
+if [[ -n "$unsafe_manifest_shrink" ]] && ! is_truthy "$FILE_ALLOW_LARGE_MANIFEST_SHRINK"; then
+  if [[ -s "$FILE_REFRESH_PREVIOUS_MANIFEST_SNAPSHOT" ]]; then
+    log_files_timing "large manifest shrink detected; preserving previous entries and merging current manifest reason=$unsafe_manifest_shrink"
+    python3 - "$FILE_REFRESH_PREVIOUS_MANIFEST_SNAPSHOT" "$MANIFEST_JSON" "$TMP_DIR/course_file_manifest.merged.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+previous_path = Path(sys.argv[1])
+current_path = Path(sys.argv[2])
+output_path = Path(sys.argv[3])
+
+
+def load_entries(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def manifest_key(item: dict) -> str:
+    url = str(item.get("url") or "").strip()
+    if url:
+        return "url:" + url
+    relative_path = str(item.get("relative_path") or "").strip()
+    if relative_path:
+        return "path:" + relative_path
+    absolute_path = str(item.get("absolute_path") or "").strip()
+    if absolute_path:
+        return "abs:" + absolute_path
+    return "fallback:" + json.dumps(item, sort_keys=True, ensure_ascii=False)
+
+
+merged: dict[str, dict] = {}
+for entry in load_entries(previous_path):
+    merged[manifest_key(entry)] = entry
+for entry in load_entries(current_path):
+    merged[manifest_key(entry)] = entry
+
+entries = sorted(
+    merged.values(),
+    key=lambda item: (
+        str(item.get("course") or ""),
+        str(item.get("bucket") or ""),
+        str(item.get("relative_path") or item.get("filename") or item.get("url") or ""),
+    ),
+)
+output_path.write_text(
+    json.dumps(entries, ensure_ascii=False, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
+    mv "$TMP_DIR/course_file_manifest.merged.json" "$MANIFEST_JSON"
+    CURRENT_MANIFEST_COUNT="$(count_manifest_entries "$MANIFEST_JSON")"
+    unsafe_manifest_shrink=""
+    log_files_timing "large manifest shrink merged previous_entries_preserved=1 manifest=$CURRENT_MANIFEST_COUNT"
   fi
 fi
 

@@ -940,7 +940,11 @@ private struct DashboardFileData: Sendable {
                 url: entry.url,
                 sourceURL: entry.sourceURL,
                 isRecent: recentKeys.contains(entry.url) || recentKeys.contains(entry.relativePath),
-                recencyText: entry.localDownloadedAt,
+                recencyText: fileRecencyText(
+                    klmsTimestampText: entry.klmsTimestampText,
+                    klmsTimestamp: entry.klmsTimestamp,
+                    localDownloadedAt: entry.localDownloadedAt
+                ),
                 klmsTimestampEpoch: entry.klmsTimestampEpoch,
                 pathExists: dashboardPathExists(path: entry.absolutePath, missingPaths: missingPaths),
                 interaction: appFileState[key]
@@ -962,7 +966,11 @@ private struct DashboardFileData: Sendable {
                 url: item.url,
                 sourceURL: manifest?.sourceURL ?? "",
                 isRecent: true,
-                recencyText: manifest?.localDownloadedAt ?? "",
+                recencyText: fileRecencyText(
+                    klmsTimestampText: manifest?.klmsTimestampText ?? "",
+                    klmsTimestamp: manifest?.klmsTimestamp ?? "",
+                    localDownloadedAt: manifest?.localDownloadedAt ?? ""
+                ),
                 klmsTimestampEpoch: manifest?.klmsTimestampEpoch,
                 pathExists: dashboardPathExists(path: manifest?.absolutePath ?? "", missingPaths: missingPaths),
                 interaction: appFileState[key]
@@ -3572,6 +3580,13 @@ private extension DashboardFileSortOption {
             "KLMS 등록 시각이 최신인 파일을 먼저 정렬"
         }
     }
+}
+
+private func fileRecencyText(klmsTimestampText: String, klmsTimestamp: String, localDownloadedAt: String) -> String {
+    klmsTimestampText.nilIfBlank
+        ?? klmsTimestamp.nilIfBlank
+        ?? localDownloadedAt.nilIfBlank
+        ?? ""
 }
 
 private func fileKey(url: String, path: String, fallback: String) -> String {
