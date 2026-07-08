@@ -140,4 +140,49 @@ final class DashboardNoticeFilterTests: XCTestCase {
         XCTAssertTrue(options.years.contains("2026"))
         XCTAssertTrue(options.semesters.contains("여름학기"))
     }
+
+    func testFileMetricUsesServerItemsWhenLocalSnapshotIsStillEmpty() {
+        let visibleServerFile = ServerRelaySyncItem(
+            id: "server-file-visible",
+            kind: "file",
+            course: "공공정책 특강",
+            academicTerm: "2026년 여름학기",
+            academicYear: 2026,
+            academicSemester: "여름학기",
+            title: "강의자료.pdf",
+            timestamp: "2026-07-01 09:00 KST"
+        )
+        let hiddenServerFile = ServerRelaySyncItem(
+            id: "server-file-hidden",
+            kind: "file",
+            course: "공공정책 특강",
+            academicTerm: "2026년 여름학기",
+            academicYear: 2026,
+            academicSemester: "여름학기",
+            title: "숨긴 자료.pdf",
+            timestamp: "2026-07-02 09:00 KST",
+            isHidden: true
+        )
+
+        let scopedFileCount = DashboardFileMetricCounter.visibleCourseFileCount(
+            snapshot: EngineSnapshot(),
+            selectedYear: "2026",
+            selectedSemester: "여름학기",
+            serverItems: [visibleServerFile, hiddenServerFile]
+        )
+
+        XCTAssertEqual(scopedFileCount, 1)
+    }
+
+    func testNewFilesDoNotAppearAsAttentionMetric() {
+        let summary = KLMSMacDashboardSummaryCache(
+            visibleCounts: EngineVisibleCounts(newFiles: 3),
+            serverFileCount: 12,
+            serverDashboardItemsLoaded: true
+        )
+
+        let presentation = DashboardSummaryPresentation(snapshot: EngineSnapshot(), summary: summary)
+
+        XCTAssertNil(presentation.attentionMetrics.first { $0.label == "새 파일" })
+    }
 }

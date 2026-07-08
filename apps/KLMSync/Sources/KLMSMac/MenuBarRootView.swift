@@ -18,7 +18,8 @@ struct MenuBarRootView: View {
             MacWorkspaceContainerAccessibilityMarker(section: selectedSection)
             DashboardFileDataPrewarmView(
                 snapshot: model.snapshot,
-                signature: model.dashboardFileRenderSignature
+                signature: model.dashboardFileRenderSignature,
+                serverItems: model.dashboardServerRelayItems(for: .files)
             )
 
             HStack(alignment: .top, spacing: 0) {
@@ -3611,7 +3612,6 @@ struct DashboardSummaryPresentation {
         ].filter { $0.value > 0 }
         attentionMetrics = [
             Metric("헬프데스크", helpDeskCount, detail: .helpDesk),
-            Metric("새 파일", counts.newFiles, detail: .newFiles),
             Metric("캘린더", summary.calendarAttentionCount, detail: .calendar),
             Metric("격리", counts.quarantine, detail: .quarantine),
             Metric("과제 후보", summary.assignmentCandidateCount, detail: .assignmentCandidates),
@@ -3655,7 +3655,6 @@ struct DashboardSummaryPresentation {
         ].filter { $0.value > 0 }
         attentionMetrics = [
             Metric("헬프데스크", counts.helpDesk, detail: .helpDesk),
-            Metric("새 파일", counts.newFiles, detail: .newFiles),
             Metric("캘린더", counts.calendarAttention, detail: .calendar),
             Metric("격리", counts.quarantine, detail: .quarantine),
             Metric("과제 후보", counts.assignmentCandidates, detail: .assignmentCandidates),
@@ -3765,7 +3764,8 @@ private struct DashboardScopedMetricCounts {
         files = DashboardFileMetricCounter.visibleCourseFileCount(
             snapshot: snapshot,
             selectedYear: selectedYear,
-            selectedSemester: selectedSemester
+            selectedSemester: selectedSemester,
+            serverItems: model.dashboardServerRelayItems(for: .files)
         )
         newFiles = DashboardTermFilter.terms(for: .newFiles, snapshot: snapshot).filter {
             DashboardTermFilter.matches($0, selectedYear: selectedYear, selectedSemester: selectedSemester)
@@ -3820,10 +3820,20 @@ enum DashboardFileMetricCounter {
         snapshot: EngineSnapshot,
         selectedYear: String,
         selectedSemester: String,
+        serverItems: [ServerRelaySyncItem] = [],
         fallback: Int? = nil
     ) -> Int {
         guard !snapshot.courseFileManifest.isEmpty else {
-            return fallback ?? 0
+            let serverCount = serverItems.filter { item in
+                item.kind == "file"
+                    && !item.isHidden
+                    && DashboardTermFilter.matches(
+                        item.dashboardFilterAcademicTerm,
+                        selectedYear: selectedYear,
+                        selectedSemester: selectedSemester
+                    )
+            }.count
+            return serverCount > 0 ? serverCount : (fallback ?? 0)
         }
         let appFileState = snapshot.appUserState?.files ?? [:]
         return snapshot.courseFileManifest.filter { entry in

@@ -2240,7 +2240,10 @@ final class KLMSMacModel: ObservableObject {
             }
         )
         dashboardRenderSignature = DashboardRenderSignature(snapshot: snapshot, summary: dashboardSummaryCache)
-        dashboardFileRenderSignature = DashboardFileRenderSignature(snapshot: snapshot)
+        dashboardFileRenderSignature = DashboardFileRenderSignature(
+            snapshot: snapshot,
+            serverItems: dashboardServerRelayItems(for: .files)
+        )
     }
 
     private static func serverRelayDashboardItem(_ item: ServerRelaySyncItem, matches kind: DashboardDetailKind) -> Bool {
@@ -2257,8 +2260,10 @@ final class KLMSMacModel: ObservableObject {
             return item.kind == "helpDesk"
         case .notices:
             return item.kind == "notice"
-        case .files, .newFiles:
+        case .files:
             return item.kind == "file"
+        case .newFiles:
+            return false
         case .hidden:
             return item.isHidden
         case .missingFiles, .quarantine, .pruned, .calendar:

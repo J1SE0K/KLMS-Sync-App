@@ -194,7 +194,7 @@ struct DashboardRenderSignature: Equatable {
 struct DashboardFileRenderSignature: Equatable, Sendable {
     private var value: Int
 
-    init(snapshot: EngineSnapshot) {
+    init(snapshot: EngineSnapshot, serverItems: [ServerRelaySyncItem] = []) {
         var hasher = Hasher()
         for entry in snapshot.courseFileManifest {
             hasher.combine(entry.id)
@@ -219,6 +219,16 @@ struct DashboardFileRenderSignature: Equatable, Sendable {
             hasher.combine(record.id)
             hasher.combine(record.url)
             hasher.combine(record.bytes)
+        }
+        for item in serverItems where item.kind == "file" {
+            hasher.combine(item.id)
+            hasher.combine(item.course)
+            hasher.combine(item.title)
+            hasher.combine(item.academicYear ?? -1)
+            hasher.combine(item.academicSemester)
+            hasher.combine(item.timestamp)
+            hasher.combine(item.status)
+            hasher.combine(item.isHidden)
         }
         Self.combineInteractionStates(snapshot.appUserState?.files ?? [:], into: &hasher)
         Self.combineInteractionStates(snapshot.appUserState?.quarantine ?? [:], into: &hasher)
@@ -285,7 +295,10 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         self.renderSignature = renderSignature
             ?? DashboardRenderSignature(snapshot: resolvedSnapshot, summary: model.dashboardSummaryCache)
         self.fileDataRenderSignature = kind.requiresFileData
-            ? (fileRenderSignature ?? DashboardFileRenderSignature(snapshot: resolvedSnapshot))
+            ? (fileRenderSignature ?? DashboardFileRenderSignature(
+                snapshot: resolvedSnapshot,
+                serverItems: model.dashboardServerRelayItems(for: .files)
+            ))
             : nil
         self.filterOptions = filterOptions
             ?? model.dashboardFilterOptions(for: kind)
@@ -486,6 +499,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             return
         }
         let snapshot = snapshot
+        let serverItems = model.dashboardServerRelayItems(for: .files)
         fileDataTask?.cancel()
         if let cachedData = DashboardFileDataPreloadStore.cachedData(for: signature) {
             fileData = cachedData
@@ -497,7 +511,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             await Task.yield()
             guard !Task.isCancelled else { return }
             let data = await Task.detached(priority: .userInitiated) {
-                DashboardFileData(snapshot: snapshot, signature: signature)
+                DashboardFileData(snapshot: snapshot, signature: signature, serverItems: serverItems)
             }.value
             guard !Task.isCancelled else { return }
             DashboardFileDataPreloadStore.store(data)
@@ -906,6 +920,7 @@ private enum DashboardFileDataPreloadStore {
 struct DashboardFileDataPrewarmView: View {
     var snapshot: EngineSnapshot
     var signature: DashboardFileRenderSignature
+    var serverItems: [ServerRelaySyncItem] = []
 
     private static let prewarmDelayNanoseconds: UInt64 = 700_000_000
 
@@ -935,8 +950,9 @@ struct DashboardFileDataPrewarmView: View {
         }
         let snapshot = snapshot
         let signature = signature
+        let serverItems = serverItems
         let data = await Task.detached(priority: .utility) {
-            DashboardFileData(snapshot: snapshot, signature: signature)
+            DashboardFileData(snapshot: snapshot, signature: signature, serverItems: serverItems)
         }.value
         guard !Task.isCancelled else {
             DashboardFileDataPreloadStore.cancelPrewarm(signature: signature)
@@ -955,13 +971,18 @@ private struct DashboardFileData: Sendable {
     var hiddenFiles: [DashboardFileItem]
     var hiddenQuarantineFiles: [DashboardFileItem]
 
-    init(snapshot: EngineSnapshot, signature: DashboardFileRenderSignature? = nil) {
-        let resolvedSignature = signature ?? DashboardFileRenderSignature(snapshot: snapshot)
+    init(
+        snapshot: EngineSnapshot,
+        signature: DashboardFileRenderSignature? = nil,
+        serverItems: [ServerRelaySyncItem] = []
+    ) {
+        let resolvedSignature = signature ?? DashboardFileRenderSignature(snapshot: snapshot, serverItems: serverItems)
         let missingPaths = dashboardMissingPathSet(from: snapshot)
         let appFileState = snapshot.appUserState?.files ?? [:]
         let appQuarantineState = snapshot.appUserState?.quarantine ?? [:]
         let recentKeys = Self.recentFileKeys(snapshot: snapshot)
         let manifestLookup = Self.manifestLookup(snapshot.courseFileManifest)
+        let localFileIDs = Set(snapshot.courseFileManifest.map(Self.serverRelayFileSyncItemID))
 
         self.signature = resolvedSignature
         manifestFiles = snapshot.courseFileManifest.map { entry in
@@ -984,6 +1005,27 @@ private struct DashboardFileData: Sendable {
                 ),
                 klmsTimestampEpoch: entry.klmsTimestampEpoch,
                 pathExists: dashboardPathExists(path: entry.absolutePath, missingPaths: missingPaths),
+                interaction: appFileState[key]
+            )
+        }
+        let serverOnlyFiles = serverItems.filter { item in
+            item.kind == "file" && !item.isHidden && !localFileIDs.contains(item.id)
+        }
+        manifestFiles += serverOnlyFiles.map { item in
+            let key = "server-file-\(item.id)"
+            return DashboardFileItem(
+                key: key,
+                title: item.title,
+                course: item.course,
+                academicTerm: item.dashboardFilterAcademicTerm,
+                path: "",
+                sortPath: item.title,
+                bucket: item.status,
+                url: "",
+                sourceURL: "",
+                isRecent: false,
+                recencyText: item.timestamp.nilIfBlank ?? item.updatedAt,
+                pathExists: false,
                 interaction: appFileState[key]
             )
         }
@@ -1111,6 +1153,13 @@ private struct DashboardFileData: Sendable {
             }
         }
         return (byURL, byRelativePath)
+    }
+
+    private static func serverRelayFileSyncItemID(_ entry: CourseFileManifestEntry) -> String {
+        ServerRelaySyncItem.stableID(
+            kind: "file",
+            parts: [entry.url, entry.sourceURL, entry.relativePath, entry.filename, entry.course]
+        )
     }
 
     private static func recentFileKeys(snapshot: EngineSnapshot) -> Set<String> {
