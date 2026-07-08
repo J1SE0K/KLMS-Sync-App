@@ -3593,7 +3593,12 @@ struct DashboardSummaryPresentation {
 
     init(snapshot: EngineSnapshot, summary: KLMSMacDashboardSummaryCache) {
         let counts = summary.visibleCounts
-        let fileCount = summary.serverDashboardItemsLoaded ? summary.serverFileCount : snapshot.courseFileManifest.count
+        let fileCount = DashboardFileMetricCounter.visibleCourseFileCount(
+            snapshot: snapshot,
+            selectedYear: DashboardTermFilter.allYears,
+            selectedSemester: DashboardTermFilter.allSemesters,
+            fallback: summary.serverDashboardItemsLoaded ? summary.serverFileCount : nil
+        )
         let assignmentCount = summary.serverDashboardItemsLoaded ? summary.serverAssignmentCount : counts.assignments + summary.mailAssignmentCount
         let noticeCount = summary.serverDashboardItemsLoaded ? summary.serverNoticeCount : counts.notices
         let examCount = summary.serverDashboardItemsLoaded ? summary.serverExamCount : counts.exams + summary.mailExamCount
@@ -3757,13 +3762,11 @@ private struct DashboardScopedMetricCounts {
                     selectedSemester: selectedSemester
                 )
         }.count
-        files = snapshot.courseFileManifest.filter {
-            DashboardTermFilter.matches(
-                $0.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog),
-                selectedYear: selectedYear,
-                selectedSemester: selectedSemester
-            )
-        }.count
+        files = DashboardFileMetricCounter.visibleCourseFileCount(
+            snapshot: snapshot,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        )
         newFiles = DashboardTermFilter.terms(for: .newFiles, snapshot: snapshot).filter {
             DashboardTermFilter.matches($0, selectedYear: selectedYear, selectedSemester: selectedSemester)
         }.count
@@ -3809,6 +3812,41 @@ private struct DashboardScopedMetricCounts {
         case .exam:
             snapshot.manualOverrides?.isExamHidden(item) == true
         }
+    }
+}
+
+enum DashboardFileMetricCounter {
+    static func visibleCourseFileCount(
+        snapshot: EngineSnapshot,
+        selectedYear: String,
+        selectedSemester: String,
+        fallback: Int? = nil
+    ) -> Int {
+        guard !snapshot.courseFileManifest.isEmpty else {
+            return fallback ?? 0
+        }
+        let appFileState = snapshot.appUserState?.files ?? [:]
+        return snapshot.courseFileManifest.filter { entry in
+            let key = fileKey(url: entry.url, path: entry.absolutePath, fallback: entry.relativePath)
+            guard appFileState[key]?.isHiddenLike != true else {
+                return false
+            }
+            return DashboardTermFilter.matches(
+                entry.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog),
+                selectedYear: selectedYear,
+                selectedSemester: selectedSemester
+            )
+        }.count
+    }
+
+    private static func fileKey(url: String, path: String, fallback: String) -> String {
+        if !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return url
+        }
+        if !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return path
+        }
+        return fallback
     }
 }
 
