@@ -117,4 +117,27 @@ final class DashboardNoticeFilterTests: XCTestCase {
         )
         XCTAssertEqual(scopedFileCount, 1)
     }
+
+    func testFileFiltersUseServerItemsWhenLocalSnapshotIsStillEmpty() {
+        let serverFile = ServerRelaySyncItem(
+            id: "server-file-1",
+            kind: "file",
+            course: "공공정책 특강",
+            academicTerm: "2026년 여름학기",
+            academicYear: 2026,
+            academicSemester: "여름학기",
+            title: "강의자료.pdf",
+            timestamp: "2026-07-01 09:00 KST"
+        )
+
+        let options = DashboardFilterOptions(
+            kind: .files,
+            snapshot: EngineSnapshot(),
+            serverItems: [serverFile]
+        )
+
+        XCTAssertTrue(options.courses.contains("공공정책 특강"))
+        XCTAssertTrue(options.years.contains("2026"))
+        XCTAssertTrue(options.semesters.contains("여름학기"))
+    }
 }

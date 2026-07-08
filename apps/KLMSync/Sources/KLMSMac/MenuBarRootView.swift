@@ -3505,6 +3505,7 @@ private struct DashboardMainScopeOptions: Equatable {
         terms += DashboardTermFilter.terms(for: .files, snapshot: snapshot)
         terms += DashboardTermFilter.terms(for: .newFiles, snapshot: snapshot)
         terms += DashboardTermFilter.terms(for: .calendar, snapshot: snapshot)
+        terms += model.dashboardServerRelayItems().map(\.dashboardFilterAcademicTerm)
         terms += snapshot.academicTermCatalog?.academicTerms ?? []
         let options = DashboardTermFilter.options(from: terms)
         years = options.years
@@ -3557,7 +3558,6 @@ private struct DashboardMainScopeBarView: View {
             }
         }
         .labelsHidden()
-        .disabled(values.count <= 1)
     }
 
     private var normalizedYearBinding: Binding<String> {

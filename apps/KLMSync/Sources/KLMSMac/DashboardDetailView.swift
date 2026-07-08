@@ -289,7 +289,11 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             : nil
         self.filterOptions = filterOptions
             ?? model.dashboardFilterOptions(for: kind)
-            ?? DashboardFilterOptions(kind: kind, snapshot: resolvedSnapshot)
+            ?? DashboardFilterOptions(
+                kind: kind,
+                snapshot: resolvedSnapshot,
+                serverItems: model.dashboardServerRelayItems(for: kind)
+            )
         self.viewRevision = viewRevision
         self.hiddenCount = resolvedSnapshot.hiddenSummary.total
         self.initialSelectedYear = initialSelectedYear
@@ -598,17 +602,18 @@ struct DashboardFilterOptions: Equatable, Sendable {
     var years: [String]
     var semesters: [String]
 
-    init(kind: DashboardDetailKind, snapshot: EngineSnapshot) {
+    init(kind: DashboardDetailKind, snapshot: EngineSnapshot, serverItems: [ServerRelaySyncItem] = []) {
         if kind == .newFiles {
-            let newFileOptions = DashboardNewFileFilterOptions(snapshot: snapshot)
+            let newFileOptions = DashboardNewFileFilterOptions(snapshot: snapshot, serverItems: serverItems)
             courses = newFileOptions.courses
             years = newFileOptions.years
             semesters = newFileOptions.semesters
             return
         }
         let source = DashboardFilterOptionSource(kind: kind, snapshot: snapshot)
-        courses = DashboardCourseFilter.optionLabels(from: source.courses)
-        let termOptions = DashboardTermFilter.options(from: source.terms)
+        let serverSource = DashboardFilterOptionSource(serverItems: serverItems)
+        courses = DashboardCourseFilter.optionLabels(from: source.courses + serverSource.courses)
+        let termOptions = DashboardTermFilter.options(from: source.terms + serverSource.terms)
         years = termOptions.years
         semesters = termOptions.semesters
     }
@@ -652,6 +657,19 @@ private struct DashboardFilterOptionSource: Sendable {
     }
 
     private init(courses: [String], terms: [AcademicTerm?]) {
+        self.courses = courses
+        self.terms = terms
+    }
+
+    init(serverItems: [ServerRelaySyncItem]) {
+        var courses: [String] = []
+        var terms: [AcademicTerm?] = []
+        courses.reserveCapacity(serverItems.count)
+        terms.reserveCapacity(serverItems.count)
+        for item in serverItems {
+            courses.append(item.course)
+            terms.append(item.dashboardFilterAcademicTerm)
+        }
         self.courses = courses
         self.terms = terms
     }
@@ -788,18 +806,35 @@ private struct DashboardFilterOptionSource: Sendable {
     }
 }
 
+extension ServerRelaySyncItem {
+    var dashboardFilterAcademicTerm: AcademicTerm? {
+        let semesterText = academicSemester.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? academicTerm
+            : academicSemester
+        if let academicYear,
+           let semester = AcademicSemester(displayName: semesterText) {
+            return AcademicTerm(year: academicYear, semester: semester)
+        }
+        return AcademicTerm.infer(
+            course: course,
+            title: title,
+            dateTexts: [academicTerm, academicSemester, timestamp, detail, updatedAt]
+        )
+    }
+}
+
 private struct DashboardNewFileFilterOptions: Sendable {
     var courses: [String]
     var years: [String]
     var semesters: [String]
 
-    init(snapshot: EngineSnapshot) {
+    init(snapshot: EngineSnapshot, serverItems: [ServerRelaySyncItem] = []) {
         let manifestLookup = Self.manifestLookup(snapshot.courseFileManifest)
         let downloadItems = snapshot.downloadResult?.results.filter(\.copiedToNewFilesInbox) ?? []
         var courses: [String] = []
         var terms: [AcademicTerm?] = []
-        courses.reserveCapacity(downloadItems.count)
-        terms.reserveCapacity(downloadItems.count)
+        courses.reserveCapacity(downloadItems.count + serverItems.count)
+        terms.reserveCapacity(downloadItems.count + serverItems.count)
 
         for item in downloadItems {
             let manifest = (!item.url.isEmpty ? manifestLookup.byURL[item.url] : nil)
@@ -807,6 +842,8 @@ private struct DashboardNewFileFilterOptions: Sendable {
             courses.append(manifest?.course ?? "")
             terms.append(manifest?.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog) ?? AcademicTerm.infer(title: item.relativePath, dateTexts: [item.relativePath]))
         }
+        courses += serverItems.map(\.course)
+        terms += serverItems.map(\.dashboardFilterAcademicTerm)
 
         self.courses = DashboardCourseFilter.optionLabels(from: courses)
         let termOptions = DashboardTermFilter.options(from: terms)

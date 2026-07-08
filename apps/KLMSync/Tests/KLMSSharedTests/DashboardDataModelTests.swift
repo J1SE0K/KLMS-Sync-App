@@ -2309,7 +2309,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("struct DashboardFilterOptions: Equatable, Sendable"))
         XCTAssertTrue(detail.contains("private var filterOptions: DashboardFilterOptions"))
         XCTAssertTrue(detail.contains("filterOptions: DashboardFilterOptions? = nil"))
-        XCTAssertTrue(detail.contains("self.filterOptions = filterOptions\n            ?? model.dashboardFilterOptions(for: kind)\n            ?? DashboardFilterOptions(kind: kind, snapshot: resolvedSnapshot)"))
+        XCTAssertTrue(detail.contains("self.filterOptions = filterOptions\n            ?? model.dashboardFilterOptions(for: kind)\n            ?? DashboardFilterOptions("))
+        XCTAssertTrue(detail.contains("serverItems: model.dashboardServerRelayItems(for: kind)"))
         let dashboardFilterOptions = try sourceBody(
             after: "struct DashboardFilterOptions",
             in: detail,
@@ -2326,13 +2327,14 @@ final class DashboardDataModelTests: XCTestCase {
             description: "dashboard filter option source"
         )
         XCTAssertTrue(dashboardFilterOptions.contains("if kind == .newFiles"))
-        XCTAssertTrue(dashboardFilterOptions.contains("let newFileOptions = DashboardNewFileFilterOptions(snapshot: snapshot)"))
+        XCTAssertTrue(dashboardFilterOptions.contains("let newFileOptions = DashboardNewFileFilterOptions(snapshot: snapshot, serverItems: serverItems)"))
         XCTAssertTrue(dashboardFilterOptions.contains("courses = newFileOptions.courses"))
         XCTAssertTrue(dashboardFilterOptions.contains("years = newFileOptions.years"))
         XCTAssertTrue(dashboardFilterOptions.contains("semesters = newFileOptions.semesters"))
         XCTAssertTrue(dashboardFilterOptions.contains("let source = DashboardFilterOptionSource(kind: kind, snapshot: snapshot)"))
-        XCTAssertTrue(dashboardFilterOptions.contains("courses = DashboardCourseFilter.optionLabels(from: source.courses)"))
-        XCTAssertTrue(dashboardFilterOptions.contains("let termOptions = DashboardTermFilter.options(from: source.terms)"))
+        XCTAssertTrue(dashboardFilterOptions.contains("let serverSource = DashboardFilterOptionSource(serverItems: serverItems)"))
+        XCTAssertTrue(dashboardFilterOptions.contains("courses = DashboardCourseFilter.optionLabels(from: source.courses + serverSource.courses)"))
+        XCTAssertTrue(dashboardFilterOptions.contains("let termOptions = DashboardTermFilter.options(from: source.terms + serverSource.terms)"))
         XCTAssertFalse(dashboardFilterOptions.contains("DashboardCourseFilter.options(for: kind, snapshot: snapshot)"))
         XCTAssertFalse(dashboardFilterOptions.contains("DashboardTermFilter.options(for: kind, snapshot: snapshot)"))
         XCTAssertTrue(detail.contains("years = termOptions.years"))
@@ -2354,7 +2356,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(macModel.contains("@Published private(set) var dashboardFilterOptionsByKind"))
         XCTAssertTrue(macModel.contains("func dashboardFilterOptions(for kind: DashboardDetailKind) -> DashboardFilterOptions?"))
         XCTAssertTrue(macModel.contains("dashboardFilterOptionsByKind = Dictionary("))
-        XCTAssertTrue(macModel.contains("(kind, DashboardFilterOptions(kind: kind, snapshot: snapshot))"))
+        XCTAssertTrue(macModel.contains("serverItems: dashboardServerRelayItems(for: kind)"))
         XCTAssertTrue(detail.contains("var courses: [String]"))
         XCTAssertTrue(detail.contains("var years: [String]"))
         XCTAssertTrue(detail.contains("var semesters: [String]"))

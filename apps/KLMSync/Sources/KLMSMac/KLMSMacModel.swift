@@ -2098,6 +2098,18 @@ final class KLMSMacModel: ObservableObject {
         dashboardFilterOptionsByKind[kind]
     }
 
+    func dashboardServerRelayItems(for kind: DashboardDetailKind? = nil) -> [ServerRelaySyncItem] {
+        cachedServerRelayDashboardItems.filter { item in
+            guard !item.isHidden else {
+                return kind == .hidden
+            }
+            guard let kind else {
+                return true
+            }
+            return Self.serverRelayDashboardItem(item, matches: kind)
+        }
+    }
+
     private func currentServerRelayBaseSyncItems() -> [ServerRelaySyncItem] {
         let generatedAt = serverRelayGeneratedAt(from: snapshot)
         return serverRelayBaseSyncItems(
@@ -2220,11 +2232,38 @@ final class KLMSMacModel: ObservableObject {
         dashboardSummaryPresentation = DashboardSummaryPresentation(snapshot: snapshot, summary: dashboardSummaryCache)
         dashboardFilterOptionsByKind = Dictionary(
             uniqueKeysWithValues: DashboardDetailKind.allCases.map { kind in
-                (kind, DashboardFilterOptions(kind: kind, snapshot: snapshot))
+                (kind, DashboardFilterOptions(
+                    kind: kind,
+                    snapshot: snapshot,
+                    serverItems: dashboardServerRelayItems(for: kind)
+                ))
             }
         )
         dashboardRenderSignature = DashboardRenderSignature(snapshot: snapshot, summary: dashboardSummaryCache)
         dashboardFileRenderSignature = DashboardFileRenderSignature(snapshot: snapshot)
+    }
+
+    private static func serverRelayDashboardItem(_ item: ServerRelaySyncItem, matches kind: DashboardDetailKind) -> Bool {
+        switch kind {
+        case .assignments:
+            return item.kind == "assignment" || item.kind == "completedAssignment"
+        case .assignmentCandidates:
+            return item.kind == "assignmentCandidate"
+        case .exams:
+            return item.kind == "exam"
+        case .examCandidates:
+            return item.kind == "examCandidate"
+        case .helpDesk:
+            return item.kind == "helpDesk"
+        case .notices:
+            return item.kind == "notice"
+        case .files, .newFiles:
+            return item.kind == "file"
+        case .hidden:
+            return item.isHidden
+        case .missingFiles, .quarantine, .pruned, .calendar:
+            return false
+        }
     }
 
     private static func dashboardStateItemListSignature(
