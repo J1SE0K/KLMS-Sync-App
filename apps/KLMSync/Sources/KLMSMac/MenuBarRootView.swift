@@ -3822,13 +3822,15 @@ private struct DashboardRuntimePanelView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
                 Spacer(minLength: 6)
-                Text(runtimeSummaryBadgeText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(runtimeSummaryBadgeColor)
-                    .lineLimit(1)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(runtimeSummaryBadgeColor.opacity(0.11), in: Capsule())
+                if let runtimeSummaryBadgeText {
+                    Text(runtimeSummaryBadgeText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(runtimeSummaryBadgeColor)
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(runtimeSummaryBadgeColor.opacity(0.11), in: Capsule())
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -3849,14 +3851,14 @@ private struct DashboardRuntimePanelView: View {
         }
     }
 
-    private var runtimeSummaryBadgeText: String {
+    private var runtimeSummaryBadgeText: String? {
         if model.runningCommand != nil {
             return model.currentPhaseText ?? "실행 중"
         }
         if let verify = model.snapshot.verifyResult {
             return verify.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ok" ? "정상" : "확인 필요"
         }
-        return "검사 전"
+        return nil
     }
 
     private var runtimeSummaryBadgeColor: Color {
