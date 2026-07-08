@@ -1568,7 +1568,7 @@ private struct DashboardFilterBarView: View {
     }
 
     private var yearPickerField: some View {
-        return DashboardRangeField(title: "연도", systemImage: "calendar", minWidth: 86, disabled: years.count <= 1) {
+        return DashboardRangeField(title: "연도", systemImage: "calendar", minWidth: 86) {
             Picker("연도", selection: normalizedYearBinding) {
                 ForEach(years, id: \.self) { year in
                     Text(year).tag(year)
@@ -1576,12 +1576,11 @@ private struct DashboardFilterBarView: View {
             }
             .labelsHidden()
             .frame(maxWidth: .infinity)
-            .disabled(years.count <= 1)
         }
     }
 
     private var semesterPickerField: some View {
-        return DashboardRangeField(title: "학기", systemImage: "calendar.badge.clock", minWidth: 98, disabled: semesters.count <= 1) {
+        return DashboardRangeField(title: "학기", systemImage: "calendar.badge.clock", minWidth: 98) {
             Picker("학기", selection: normalizedTermBinding) {
                 ForEach(semesters, id: \.self) { semester in
                     Text(semester).tag(semester)
@@ -1589,7 +1588,6 @@ private struct DashboardFilterBarView: View {
             }
             .labelsHidden()
             .frame(maxWidth: .infinity)
-            .disabled(semesters.count <= 1)
         }
     }
 
@@ -1730,7 +1728,6 @@ private struct DashboardRangeField<Content: View>: View {
     var title: String
     var systemImage: String
     var minWidth: CGFloat
-    var disabled = false
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -1744,12 +1741,11 @@ private struct DashboardRangeField<Content: View>: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(minWidth: minWidth, minHeight: 34, maxHeight: 40, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity(disabled ? 0.38 : 0.54), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground.opacity(0.54), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsMacBorder.opacity(disabled ? 0.36 : 0.68), lineWidth: 1)
+                .stroke(Color.klmsMacBorder.opacity(0.68), lineWidth: 1)
         }
-        .opacity(disabled ? 0.58 : 1)
     }
 }
 

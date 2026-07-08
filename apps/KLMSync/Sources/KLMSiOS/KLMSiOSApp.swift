@@ -4957,7 +4957,6 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
 #endif
         }
         .frame(maxWidth: .infinity, minHeight: minHeight)
-        .disabled(options.count <= 1)
         .accessibilityLabel("\(title): \(titleForOption(selection))")
         .transaction { transaction in
             transaction.animation = nil
