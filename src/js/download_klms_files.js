@@ -2,6 +2,7 @@
 
 ObjC.import("Foundation");
 const currentApp = Application.currentApplication();
+let safariLaunchedByScript = false;
 
 function run(argv) {
   const options = parseArgs(argv);
@@ -2648,6 +2649,9 @@ function openReusableDownloadPage(safari, existingWindowRef, targetUrl) {
   const activeWindow =
     reusableWindowByReference(safari, existingWindowRef) ||
     (reuseExistingWindowEnabled ? findKlmsWindow(safari, backgroundWindowEnabled) : null) ||
+    (reuseExistingWindowEnabled && safariLaunchedByScript
+      ? findReusableEmptyWindow(safari, backgroundWindowEnabled)
+      : null) ||
     createSafariWindow(safari, targetUrl, backgroundWindowEnabled);
   if (backgroundWindowEnabled) {
     prepareBackgroundWindow(activeWindow);
@@ -2718,6 +2722,28 @@ function findKlmsWindow(safari, backgroundWindowEnabled) {
     return klmsWindows.find((windowRef) => isBackgroundWindow(windowRef)) || null;
   }
   return klmsWindows[0] || null;
+}
+
+function findReusableEmptyWindow(safari, backgroundWindowEnabled) {
+  const emptyWindows = safeList(() => safari.windows()).filter((windowRef) =>
+    isEmptySafariStartPageUrl(currentTabUrl(windowRef))
+  );
+  if (backgroundWindowEnabled) {
+    return emptyWindows.find((windowRef) => isBackgroundWindow(windowRef)) || emptyWindows[0] || null;
+  }
+  return emptyWindows[0] || null;
+}
+
+function isEmptySafariStartPageUrl(url) {
+  const text = String(url || "").trim().toLowerCase();
+  return (
+    !text ||
+    text === "about:blank" ||
+    text === "favorites://" ||
+    text.startsWith("favorites://") ||
+    text === "topsites://" ||
+    text.startsWith("topsites://")
+  );
 }
 
 function createSafariWindow(safari, targetUrl, backgroundWindowEnabled) {
@@ -3627,6 +3653,7 @@ function ensureSafari(existingSafari) {
   const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
   if (!safeValue(() => safari.running())) {
     safari.launch();
+    safariLaunchedByScript = true;
     delay(0.5);
   }
   restoreFrontmostApplication(frontmostApp);

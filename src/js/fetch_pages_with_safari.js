@@ -61,7 +61,12 @@ function run(argv) {
   restoreFrontmostApplication(frontmostApp);
 
   const results = [];
-  const windowRef = resolveFetchWindow(safari, backgroundWindowEnabled, reuseExistingWindowEnabled);
+  const windowRef = resolveFetchWindow(
+    safari,
+    backgroundWindowEnabled,
+    reuseExistingWindowEnabled,
+    !safariWasRunning
+  );
   if (!windowRef) {
     throw new Error("Failed to resolve a Safari window for page fetch.");
   }
@@ -313,11 +318,22 @@ function readTab(tab) {
   };
 }
 
-function resolveFetchWindow(safari, backgroundWindowEnabled, reuseExistingWindowEnabled) {
+function resolveFetchWindow(
+  safari,
+  backgroundWindowEnabled,
+  reuseExistingWindowEnabled,
+  allowEmptyWindowReuse
+) {
   if (reuseExistingWindowEnabled) {
     const reusableWindow = findReusableKlmsWindow(safari, backgroundWindowEnabled);
     if (reusableWindow) {
       return reusableWindow;
+    }
+    if (allowEmptyWindowReuse) {
+      const emptyWindow = findReusableEmptyWindow(safari, backgroundWindowEnabled);
+      if (emptyWindow) {
+        return emptyWindow;
+      }
     }
   }
   return openFetchWindow(safari, backgroundWindowEnabled);
@@ -333,6 +349,30 @@ function findReusableKlmsWindow(safari, backgroundWindowEnabled) {
     return klmsWindows.find((windowRef) => isBackgroundWindow(windowRef)) || null;
   }
   return klmsWindows[0] || null;
+}
+
+function findReusableEmptyWindow(safari, backgroundWindowEnabled) {
+  const emptyWindows = safeList(() => safari.windows()).filter((windowRef) => {
+    const tab = safeValue(() => windowRef.currentTab());
+    const url = safeString(() => tab.url());
+    return isEmptySafariStartPageUrl(url);
+  });
+  if (backgroundWindowEnabled) {
+    return emptyWindows.find((windowRef) => isBackgroundWindow(windowRef)) || emptyWindows[0] || null;
+  }
+  return emptyWindows[0] || null;
+}
+
+function isEmptySafariStartPageUrl(url) {
+  const text = String(url || "").trim().toLowerCase();
+  return (
+    !text ||
+    text === "about:blank" ||
+    text === "favorites://" ||
+    text.startsWith("favorites://") ||
+    text === "topsites://" ||
+    text.startsWith("topsites://")
+  );
 }
 
 function openFetchWindow(safari, backgroundWindowEnabled) {
