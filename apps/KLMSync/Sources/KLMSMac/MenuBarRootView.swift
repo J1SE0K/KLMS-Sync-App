@@ -3856,7 +3856,7 @@ private struct DashboardRuntimePanelView: View {
         if let verify = model.snapshot.verifyResult {
             return verify.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ok" ? "정상" : "확인 필요"
         }
-        return "접힘"
+        return "검사 전"
     }
 
     private var runtimeSummaryBadgeColor: Color {

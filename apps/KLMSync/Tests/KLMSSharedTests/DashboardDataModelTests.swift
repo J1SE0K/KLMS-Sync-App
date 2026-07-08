@@ -4432,6 +4432,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(macRuntimePanel.contains("if isExpanded {"))
         XCTAssertTrue(macRuntimePanel.contains("runtimeSummaryBadgeText"))
         XCTAssertTrue(macRuntimePanel.contains("runtimeSummaryBadgeColor"))
+        XCTAssertTrue(macRuntimePanel.contains("return \"검사 전\""))
+        XCTAssertFalse(macRuntimePanel.contains("return \"접힘\""))
         XCTAssertFalse(macRuntimePanel.contains("isExpanded ? \"chevron.down\" : \"chevron.right\""))
         XCTAssertFalse(macRuntimePanel.contains("연동 상태 접기"))
         XCTAssertFalse(macRuntimePanel.contains("연동 상태 펼치기"))
