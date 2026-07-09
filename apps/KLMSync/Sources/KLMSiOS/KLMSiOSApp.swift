@@ -3668,16 +3668,18 @@ final class CompanionModel: ObservableObject {
 
     @discardableResult
     private func applySharedSettings(_ incomingSettings: [ServerRelaySetting], merge: Bool) -> Bool {
-        let previousByKey = Dictionary(uniqueKeysWithValues: sharedSettings.map { ($0.key, $0) })
+        let visibleIncomingSettings = incomingSettings.filter { !Self.hiddenSharedSettingKeys.contains($0.key) }
+        let visiblePreviousSettings = sharedSettings.filter { !Self.hiddenSharedSettingKeys.contains($0.key) }
+        let previousByKey = Dictionary(uniqueKeysWithValues: visiblePreviousSettings.map { ($0.key, $0) })
         let next: [ServerRelaySetting]
         if merge {
             var mergedByKey = previousByKey
-            for setting in incomingSettings {
+            for setting in visibleIncomingSettings {
                 mergedByKey[setting.key] = setting
             }
             next = mergedByKey.values.sorted { $0.key < $1.key }
         } else {
-            next = incomingSettings.sorted { $0.key < $1.key }
+            next = visibleIncomingSettings.sorted { $0.key < $1.key }
         }
         let nextSignature = Self.signature(for: next)
         guard sharedSettingsSignature != nextSignature else {
@@ -3701,6 +3703,10 @@ final class CompanionModel: ObservableObject {
             break
         }
     }
+
+    private static let hiddenSharedSettingKeys: Set<String> = [
+        "KLMS_LOGIN_ASSIST_MODE"
+    ]
 
     private static func signature(for items: [ServerRelaySyncItem]) -> Int {
         var hasher = Hasher()
@@ -17059,8 +17065,6 @@ private struct RemoteSettingRow: View {
         switch setting.key {
         case "KLMS_LOGIN_ASSIST_ENABLED":
             return "KLMS가 로그인을 요구하면 인증번호를 찾아 상단 알림으로 보여줍니다."
-        case "KLMS_LOGIN_ASSIST_MODE":
-            return "현재는 앱에 인증번호를 보여주고 휴대폰에서 직접 선택하는 방식만 사용합니다."
         case "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE":
             return "앱 창이 앞에 없어도 로그인 상태 확인과 인증번호 감지를 시도합니다."
         case "SYNC_MODE":

@@ -299,15 +299,6 @@ struct SettingsView: View {
                     defaultValue: true,
                     description: "동기화 전에 로그인 여부를 확인하고, 필요하면 인증번호를 앱에 표시합니다."
                 )
-                described(
-                    "보조 모드",
-                    summary: "수동 인증번호",
-                    "앱에 표시된 KAIST 인증번호를 휴대폰 인증 화면에서 직접 선택하는 방식입니다."
-                ) {
-                    Text("수동 인증번호만 사용")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacSecondaryText)
-                }
                 configToggle(
                     "앱이 앞에 없어도 로그인 보조",
                     .loginAssistAllowNoninteractive,

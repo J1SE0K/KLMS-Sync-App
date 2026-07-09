@@ -5072,9 +5072,6 @@ private struct LoginPanelView: View {
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
             }
-            Text("인증 방식: \(loginAssistModeText)")
-                .font(.caption)
-                .foregroundStyle(Color.klmsMacSecondaryText)
             if let digits = model.currentAuthDigits {
                 HStack(spacing: 8) {
                     Text("인증 번호")
@@ -5086,15 +5083,6 @@ private struct LoginPanelView: View {
                         .foregroundStyle(Color.klmsMacWarningBorder)
                 }
             }
-        }
-    }
-
-    private var loginAssistModeText: String {
-        switch model.configValue(.loginAssistMode) {
-        case "manual-digits", "":
-            "수동 인증번호"
-        case let value:
-            value.isEmpty ? "수동 인증번호" : "수동 인증번호"
         }
     }
 }
