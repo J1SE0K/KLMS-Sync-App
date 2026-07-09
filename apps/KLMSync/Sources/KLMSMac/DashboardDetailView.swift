@@ -1025,6 +1025,7 @@ private struct DashboardFileData: Sendable {
                 sourceURL: "",
                 isRecent: false,
                 recencyText: item.timestamp.nilIfBlank ?? item.updatedAt,
+                klmsTimestampEpoch: item.dashboardTimestampEpoch,
                 pathExists: false,
                 interaction: appFileState[key]
             )

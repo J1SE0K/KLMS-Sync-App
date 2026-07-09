@@ -14369,6 +14369,11 @@ private extension Array where Element == ServerRelaySyncItem {
         sorted { lhs, rhs in
             switch option {
             case .recent:
+                let leftKLMSTimestamp = lhs.dashboardTimestampEpoch ?? Int.min
+                let rightKLMSTimestamp = rhs.dashboardTimestampEpoch ?? Int.min
+                if leftKLMSTimestamp != rightKLMSTimestamp {
+                    return leftKLMSTimestamp > rightKLMSTimestamp
+                }
                 if let result = ServerRelaySyncItem.descendingCompare(lhs.timestamp, rhs.timestamp) {
                     return result
                 }

@@ -1609,6 +1609,34 @@ public extension Array where Element == ServerRelaySyncItem {
 }
 
 public extension ServerRelaySyncItem {
+    var dashboardTimestampEpoch: Int? {
+        Self.dashboardTimestampEpoch(from: timestamp)
+    }
+
+    static func dashboardTimestampEpoch(from value: String) -> Int? {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        if let epoch = dashboardDashTimestampEpoch(from: text) {
+            return epoch
+        }
+        if let epoch = dashboardKoreanTimestampEpoch(from: text) {
+            return epoch
+        }
+        if text.contains("T") {
+            let fractionalFormatter = ISO8601DateFormatter()
+            fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = fractionalFormatter.date(from: text) {
+                return Int(date.timeIntervalSince1970)
+            }
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: text) {
+                return Int(date.timeIntervalSince1970)
+            }
+        }
+        return nil
+    }
+
     var normalizedDashboardItem: ServerRelaySyncItem {
         let trimmedStatus = status.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedStatus = isMailDashboardItemLike && (
@@ -1850,6 +1878,79 @@ public extension ServerRelaySyncItem {
         default:
             "assignment"
         }
+    }
+}
+
+private extension ServerRelaySyncItem {
+    static func dashboardDashTimestampEpoch(from text: String) -> Int? {
+        let cleaned = text
+            .replacingOccurrences(of: "KST", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = cleaned.split(separator: " ", omittingEmptySubsequences: true)
+        guard let dateText = parts.first else { return nil }
+        let dateParts = dateText.split(separator: "-")
+        guard dateParts.count == 3,
+              let year = Int(dateParts[0]),
+              let month = Int(dateParts[1]),
+              let day = Int(dateParts[2]) else {
+            return nil
+        }
+        var hour = 0
+        var minute = 0
+        if parts.count > 1 {
+            let timeParts = parts[1].split(separator: ":")
+            guard let firstTimePart = timeParts.first,
+                  let parsedHour = Int(firstTimePart) else { return nil }
+            hour = parsedHour
+            if timeParts.count > 1 {
+                minute = Int(timeParts[1]) ?? 0
+            }
+        }
+        return dashboardEpoch(year: year, month: month, day: day, hour: hour, minute: minute)
+    }
+
+    static func dashboardKoreanTimestampEpoch(from text: String) -> Int? {
+        let pattern = #"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일(?:.*?(오전|오후)\s*(\d{1,2})(?::(\d{1,2}))?)?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range) else { return nil }
+        func group(_ index: Int) -> String? {
+            let matchRange = match.range(at: index)
+            guard matchRange.location != NSNotFound,
+                  let swiftRange = Range(matchRange, in: text) else {
+                return nil
+            }
+            return String(text[swiftRange])
+        }
+        guard let year = group(1).flatMap(Int.init),
+              let month = group(2).flatMap(Int.init),
+              let day = group(3).flatMap(Int.init) else {
+            return nil
+        }
+        let marker = group(4) ?? ""
+        var hour = group(5).flatMap(Int.init) ?? 0
+        let minute = group(6).flatMap(Int.init) ?? 0
+        if marker == "오후", hour < 12 {
+            hour += 12
+        } else if marker == "오전", hour == 12 {
+            hour = 0
+        }
+        return dashboardEpoch(year: year, month: month, day: day, hour: hour, minute: minute)
+    }
+
+    static func dashboardEpoch(year: Int, month: Int, day: Int, hour: Int, minute: Int) -> Int? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        components.minute = minute
+        guard let date = calendar.date(from: components) else { return nil }
+        return Int(date.timeIntervalSince1970)
     }
 }
 

@@ -41,6 +41,18 @@ private final class FakeLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychai
 }
 
 final class RemoteCommandModelTests: XCTestCase {
+    func testServerRelaySyncItemParsesKLMSTimestampEpochAcrossDisplayFormats() {
+        let dashed = ServerRelaySyncItem.dashboardTimestampEpoch(from: "2026-07-01 09:00 KST")
+        let iso = ServerRelaySyncItem.dashboardTimestampEpoch(from: "2026-07-01T09:00:00+09:00")
+        let korean = ServerRelaySyncItem.dashboardTimestampEpoch(from: "2026년 7월 1일 오전 9:00")
+        let later = ServerRelaySyncItem.dashboardTimestampEpoch(from: "2026년 7월 1일 오후 2:30")
+
+        XCTAssertNotNil(dashed)
+        XCTAssertEqual(dashed, iso)
+        XCTAssertEqual(dashed, korean)
+        XCTAssertGreaterThan(later ?? 0, dashed ?? Int.max)
+    }
+
     func testPendingCommandBecomesMacUnavailableForDisplayAfterTimeout() {
         let now = Date(timeIntervalSinceReferenceDate: 1_000)
         let recent = RemoteRunCommand(
