@@ -205,17 +205,17 @@ final class KLMSMacModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var payload: EnginePayload?
     private(set) var cachedIssues: [EngineIssue] = []
-    private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]
-    private(set) var dashboardSummaryCache = KLMSMacDashboardSummaryCache()
-    private(set) var dashboardSummaryPresentation = DashboardSummaryPresentation(
+    @Published private(set) var dashboardFilterOptionsByKind: [DashboardDetailKind: DashboardFilterOptions] = [:]
+    @Published private(set) var dashboardSummaryCache = KLMSMacDashboardSummaryCache()
+    @Published private(set) var dashboardSummaryPresentation = DashboardSummaryPresentation(
         snapshot: EngineSnapshot(),
         summary: KLMSMacDashboardSummaryCache()
     )
-    private(set) var dashboardRenderSignature = DashboardRenderSignature(
+    @Published private(set) var dashboardRenderSignature = DashboardRenderSignature(
         snapshot: EngineSnapshot(),
         summary: KLMSMacDashboardSummaryCache()
     )
-    private(set) var dashboardFileRenderSignature = DashboardFileRenderSignature(snapshot: EngineSnapshot())
+    @Published private(set) var dashboardFileRenderSignature = DashboardFileRenderSignature(snapshot: EngineSnapshot())
 
     private let runner = KLMSCommandRunner()
     private let installer = EngineInstaller()
@@ -225,6 +225,7 @@ final class KLMSMacModel: ObservableObject {
     private var serverRelayImmediateFollowUpTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
     private var serverRelayEventStreamKey: String?
+    private var serverRelayForceSyncDataFetchOnNextWorkerRefresh = false
     private var passiveSnapshotRefreshTask: Task<Void, Never>?
     private var notifiedAuthDigits = Set<String>()
     private var notifiedAuthCompletionForCurrentRun = false
@@ -1177,7 +1178,7 @@ final class KLMSMacModel: ObservableObject {
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
                     let message = try await task.receive()
                     if handleServerRelayEvent(message) {
-                        await processServerRelayCommands(silent: true)
+                        await processServerRelayCommands(silent: true, forceSyncDataFetch: true)
                     }
                 }
             } catch {
@@ -1197,7 +1198,7 @@ final class KLMSMacModel: ObservableObject {
         serverRelayImmediateFollowUpTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: Self.serverRelayImmediateFollowUpDelayNanoseconds)
             guard !Task.isCancelled else { return }
-            await self?.processServerRelayCommands(silent: true)
+            await self?.processServerRelayCommands(silent: true, forceSyncDataFetch: true)
         }
     }
 
@@ -1207,6 +1208,7 @@ final class KLMSMacModel: ObservableObject {
         }
         if Self.serverRelayEventShouldRefreshSyncData(reason) {
             serverRelayLastSyncDataFetchAt = nil
+            serverRelayForceSyncDataFetchOnNextWorkerRefresh = true
         }
         if reason == "sync-data:run-logs-clear" {
             clearSharedRunLogDisplayState()
@@ -1247,7 +1249,9 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private static func serverRelayEventShouldRefreshSyncData(_ reason: String) -> Bool {
-        reason == "shared-settings"
+        reason == "state"
+            || reason == "updated"
+            || reason == "shared-settings"
             || reason == "sync-data"
             || reason.hasPrefix("sync-data:")
             || (reason.hasPrefix("commands:") && reason != "commands:pending")
@@ -3625,7 +3629,7 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    func processServerRelayCommands(silent: Bool = false) async {
+    func processServerRelayCommands(silent: Bool = false, forceSyncDataFetch: Bool = false) async {
         guard serverRelayEnabled else {
             return
         }
@@ -3658,7 +3662,9 @@ final class KLMSMacModel: ObservableObject {
                 serverRelayRecentFileAccessRequests = inbox.recentFileAccessRequests
             }
             _ = applyServerRelaySharedSettings(inbox.sharedSettings, merge: false)
-            if shouldFetchServerRelaySyncData(force: false),
+            let shouldForceSyncDataFetch = forceSyncDataFetch || serverRelayForceSyncDataFetchOnNextWorkerRefresh
+            serverRelayForceSyncDataFetchOnNextWorkerRefresh = false
+            if shouldFetchServerRelaySyncData(force: shouldForceSyncDataFetch),
                let syncData = try? await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit) {
                 applyServerRelaySyncData(syncData)
             }
