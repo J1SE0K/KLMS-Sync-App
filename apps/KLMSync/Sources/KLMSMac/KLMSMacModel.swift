@@ -425,7 +425,7 @@ final class KLMSMacModel: ObservableObject {
         ) else {
             return
         }
-        applyServerRelaySyncData(syncData)
+        applyServerRelaySyncData(syncData, source: .startupCache)
         serverRelayStatusMessage = "저장된 서버 데이터를 먼저 보여주고, 최신 상태를 다시 확인합니다."
     }
 
@@ -643,6 +643,7 @@ final class KLMSMacModel: ObservableObject {
         await reloadEngineState()
         configurePassiveSnapshotRefresh()
         configureServerRelayRealtime()
+        await publishServerRelayStatusIfNeeded(force: true, publishSyncData: true)
         await refreshServerRelayDashboardNow(silent: true)
     }
 
@@ -1283,7 +1284,7 @@ final class KLMSMacModel: ObservableObject {
     ) async -> Bool {
         do {
             let syncData = try await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit)
-            applyServerRelaySyncData(syncData)
+            applyServerRelaySyncData(syncData, source: .serverFetch)
             return true
         } catch {
             serverRelayLastSyncDataFetchAt = nil
@@ -1384,7 +1385,15 @@ final class KLMSMacModel: ObservableObject {
         return Date().timeIntervalSince(serverRelayLastSyncDataFetchAt) >= Self.serverRelaySyncDataFetchMinimumInterval
     }
 
-    private func applyServerRelaySyncData(_ syncData: ServerRelaySyncData) {
+    private enum ServerRelaySyncDataSource {
+        case startupCache
+        case serverFetch
+    }
+
+    private func applyServerRelaySyncData(
+        _ syncData: ServerRelaySyncData,
+        source: ServerRelaySyncDataSource
+    ) {
         var didChangeVisibleDashboardState = false
         if serverRelaySharedRunLogs != syncData.runLogs {
             serverRelaySharedRunLogs = syncData.runLogs
@@ -1397,8 +1406,13 @@ final class KLMSMacModel: ObservableObject {
         if applyServerRelaySyncDataDashboardState(syncData) {
             didChangeVisibleDashboardState = true
         }
-        persistCachedServerRelaySyncData(syncData)
-        serverRelayLastSyncDataFetchAt = Date()
+        if source == .serverFetch {
+            persistCachedServerRelaySyncData(syncData)
+            serverRelayLastSyncDataFetchAt = Date()
+        } else {
+            serverRelayLastSyncDataFetchAt = nil
+            serverRelayForceSyncDataFetchOnNextWorkerRefresh = true
+        }
         if didChangeVisibleDashboardState {
             publishDashboardPresentationRefresh()
         }
