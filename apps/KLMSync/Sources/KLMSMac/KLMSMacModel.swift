@@ -2352,15 +2352,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private static func sortedMailDashboardItems(_ items: [ServerRelaySyncItem]) -> [ServerRelaySyncItem] {
-        items.sorted { lhs, rhs in
-            if lhs.timestamp != rhs.timestamp {
-                return lhs.timestamp > rhs.timestamp
-            }
-            if lhs.updatedAt != rhs.updatedAt {
-                return lhs.updatedAt > rhs.updatedAt
-            }
-            return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-        }
+        items.sorted(by: ServerRelaySyncItem.dashboardDefaultSort)
     }
 
     private static func dedupedStateItems(_ items: [StateItem]) -> [StateItem] {

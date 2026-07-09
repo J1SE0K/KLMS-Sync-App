@@ -53,6 +53,46 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertGreaterThan(later ?? 0, dashed ?? Int.max)
     }
 
+    func testServerRelaySyncItemDefaultSortUsesKindAwareDirection() {
+        let earlierAssignment = ServerRelaySyncItem(
+            id: "assignment-earlier",
+            kind: "assignment",
+            course: "알고리즘",
+            title: "빠른 마감",
+            timestamp: "2026-07-01T09:00:00+09:00"
+        )
+        let laterAssignment = ServerRelaySyncItem(
+            id: "assignment-later",
+            kind: "assignment",
+            course: "알고리즘",
+            title: "늦은 마감",
+            timestamp: "2026-07-10T09:00:00+09:00"
+        )
+        let olderFile = ServerRelaySyncItem(
+            id: "file-old",
+            kind: "file",
+            course: "데이타베이스",
+            title: "이전 파일",
+            timestamp: "2026-06-01 09:00 KST"
+        )
+        let newerFile = ServerRelaySyncItem(
+            id: "file-new",
+            kind: "file",
+            course: "데이타베이스",
+            title: "새 파일",
+            timestamp: "2026-06-10 09:00 KST"
+        )
+
+        XCTAssertEqual(
+            [laterAssignment, earlierAssignment].sorted(by: ServerRelaySyncItem.dashboardDefaultSort).map(\.id),
+            ["assignment-earlier", "assignment-later"]
+        )
+        XCTAssertEqual(
+            [olderFile, newerFile].sorted(by: ServerRelaySyncItem.dashboardDefaultSort).map(\.id),
+            ["file-new", "file-old"]
+        )
+    }
+
     func testPendingCommandBecomesMacUnavailableForDisplayAfterTimeout() {
         let now = Date(timeIntervalSinceReferenceDate: 1_000)
         let recent = RemoteRunCommand(

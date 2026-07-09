@@ -14369,22 +14369,7 @@ private extension Array where Element == ServerRelaySyncItem {
         sorted { lhs, rhs in
             switch option {
             case .recent:
-                let leftKLMSTimestamp = lhs.dashboardTimestampEpoch
-                let rightKLMSTimestamp = rhs.dashboardTimestampEpoch
-                if let leftKLMSTimestamp, let rightKLMSTimestamp, leftKLMSTimestamp != rightKLMSTimestamp {
-                    return leftKLMSTimestamp > rightKLMSTimestamp
-                }
-                if leftKLMSTimestamp != nil || rightKLMSTimestamp != nil {
-                    return leftKLMSTimestamp != nil
-                }
-                if lhs.kind != "file" || rhs.kind != "file" {
-                    if let result = ServerRelaySyncItem.descendingCompare(lhs.timestamp, rhs.timestamp) {
-                        return result
-                    }
-                    if let result = ServerRelaySyncItem.descendingCompare(lhs.updatedAt, rhs.updatedAt) {
-                        return result
-                    }
-                }
+                return ServerRelaySyncItem.dashboardDefaultSort(lhs, rhs)
             case .updated:
                 if let result = ServerRelaySyncItem.descendingCompare(lhs.updatedAt, rhs.updatedAt) {
                     return result
@@ -14485,35 +14470,11 @@ private extension ServerRelaySyncItem {
     }
 
     static func descendingCompare(_ lhs: String, _ rhs: String) -> Bool? {
-        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
-        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
-        if left.isEmpty && right.isEmpty {
-            return nil
-        }
-        if left.isEmpty != right.isEmpty {
-            return !left.isEmpty
-        }
-        let result = left.localizedStandardCompare(right)
-        guard result != .orderedSame else {
-            return nil
-        }
-        return result == .orderedDescending
+        ServerRelaySyncItem.dashboardDescendingCompare(lhs, rhs)
     }
 
     static func ascendingCompare(_ lhs: String, _ rhs: String) -> Bool? {
-        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
-        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
-        if left.isEmpty && right.isEmpty {
-            return nil
-        }
-        if left.isEmpty != right.isEmpty {
-            return !left.isEmpty
-        }
-        let result = left.localizedStandardCompare(right)
-        guard result != .orderedSame else {
-            return nil
-        }
-        return result == .orderedAscending
+        ServerRelaySyncItem.dashboardAscendingCompare(lhs, rhs)
     }
 }
 

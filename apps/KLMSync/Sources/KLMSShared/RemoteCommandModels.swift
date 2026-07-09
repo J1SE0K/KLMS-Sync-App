@@ -1613,6 +1613,76 @@ public extension ServerRelaySyncItem {
         Self.dashboardTimestampEpoch(from: timestamp)
     }
 
+    static func dashboardDefaultSort(_ lhs: ServerRelaySyncItem, _ rhs: ServerRelaySyncItem) -> Bool {
+        if let result = dashboardDefaultCompare(lhs, rhs) {
+            return result
+        }
+        return lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
+    }
+
+    static func dashboardDefaultCompare(_ lhs: ServerRelaySyncItem, _ rhs: ServerRelaySyncItem) -> Bool? {
+        let leftMode = lhs.dashboardSortMode
+        let rightMode = rhs.dashboardSortMode
+        let leftTimestamp = lhs.dashboardTimestampEpoch
+        let rightTimestamp = rhs.dashboardTimestampEpoch
+        let bothUpcoming = leftMode == .upcoming && rightMode == .upcoming
+        let bothRecent = leftMode == .recent && rightMode == .recent
+        if (bothUpcoming || bothRecent),
+           let leftTimestamp,
+           let rightTimestamp,
+           leftTimestamp != rightTimestamp {
+            return bothUpcoming ? leftTimestamp < rightTimestamp : leftTimestamp > rightTimestamp
+        }
+        if (bothUpcoming || bothRecent), leftTimestamp != nil || rightTimestamp != nil {
+            return leftTimestamp != nil
+        }
+        if leftMode != rightMode, lhs.dashboardKindPriority != rhs.dashboardKindPriority {
+            return lhs.dashboardKindPriority < rhs.dashboardKindPriority
+        }
+        if let result = dashboardDescendingCompare(lhs.updatedAt, rhs.updatedAt), lhs.kind != "file" || rhs.kind != "file" {
+            return result
+        }
+        if let result = dashboardAscendingCompare(lhs.course, rhs.course) {
+            return result
+        }
+        if let result = dashboardAscendingCompare(lhs.title, rhs.title) {
+            return result
+        }
+        return nil
+    }
+
+    static func dashboardAscendingCompare(_ lhs: String, _ rhs: String) -> Bool? {
+        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        if left.isEmpty && right.isEmpty {
+            return nil
+        }
+        if left.isEmpty != right.isEmpty {
+            return !left.isEmpty
+        }
+        let result = left.localizedStandardCompare(right)
+        guard result != .orderedSame else {
+            return nil
+        }
+        return result == .orderedAscending
+    }
+
+    static func dashboardDescendingCompare(_ lhs: String, _ rhs: String) -> Bool? {
+        let left = lhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        let right = rhs.trimmingCharacters(in: .whitespacesAndNewlines)
+        if left.isEmpty && right.isEmpty {
+            return nil
+        }
+        if left.isEmpty != right.isEmpty {
+            return !left.isEmpty
+        }
+        let result = left.localizedStandardCompare(right)
+        guard result != .orderedSame else {
+            return nil
+        }
+        return result == .orderedDescending
+    }
+
     static func dashboardTimestampEpoch(from value: String) -> Int? {
         let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
@@ -1881,7 +1951,47 @@ public extension ServerRelaySyncItem {
     }
 }
 
+private enum ServerRelayDashboardSortMode {
+    case upcoming
+    case recent
+    case updated
+}
+
 private extension ServerRelaySyncItem {
+    var dashboardSortMode: ServerRelayDashboardSortMode {
+        switch kind {
+        case "assignment", "assignmentCandidate", "completedAssignment", "exam", "examCandidate", "helpDesk":
+            .upcoming
+        case "notice", "file":
+            .recent
+        default:
+            .updated
+        }
+    }
+
+    var dashboardKindPriority: Int {
+        switch kind {
+        case "assignment":
+            10
+        case "assignmentCandidate":
+            11
+        case "exam":
+            20
+        case "examCandidate":
+            21
+        case "helpDesk":
+            30
+        case "notice":
+            40
+        case "file":
+            50
+        case "completedAssignment":
+            60
+        default:
+            90
+        }
+    }
+
     static func dashboardDashTimestampEpoch(from text: String) -> Int? {
         let cleaned = text
             .replacingOccurrences(of: "KST", with: "")

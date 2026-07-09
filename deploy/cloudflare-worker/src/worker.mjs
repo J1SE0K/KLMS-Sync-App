@@ -3629,13 +3629,23 @@ function sanitizeSettingValueKind(value) {
 }
 
 function compareSyncItems(lhs, rhs) {
+  const lhsMode = syncItemSortMode(lhs);
+  const rhsMode = syncItemSortMode(rhs);
   const lhsTimestamp = syncItemTimestampEpoch(lhs);
   const rhsTimestamp = syncItemTimestampEpoch(rhs);
-  if (Number.isFinite(lhsTimestamp) && Number.isFinite(rhsTimestamp) && lhsTimestamp !== rhsTimestamp) {
-    return rhsTimestamp - lhsTimestamp;
+  const bothUpcoming = lhsMode === "upcoming" && rhsMode === "upcoming";
+  const bothRecent = lhsMode === "recent" && rhsMode === "recent";
+  if ((bothUpcoming || bothRecent) && Number.isFinite(lhsTimestamp) && Number.isFinite(rhsTimestamp) && lhsTimestamp !== rhsTimestamp) {
+    return bothUpcoming ? lhsTimestamp - rhsTimestamp : rhsTimestamp - lhsTimestamp;
   }
-  if (Number.isFinite(lhsTimestamp) || Number.isFinite(rhsTimestamp)) {
+  if ((bothUpcoming || bothRecent) && (Number.isFinite(lhsTimestamp) || Number.isFinite(rhsTimestamp))) {
     return Number.isFinite(lhsTimestamp) ? -1 : 1;
+  }
+  if (lhsMode !== rhsMode) {
+    const priorityDelta = syncItemKindPriority(lhs) - syncItemKindPriority(rhs);
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
   }
   const bothFiles = String(lhs.kind || "") === "file" && String(rhs.kind || "") === "file";
   if (!bothFiles) {
@@ -3653,6 +3663,46 @@ function compareSyncItems(lhs, rhs) {
     return courseDelta;
   }
   return String(lhs.title || "").localeCompare(String(rhs.title || ""), "ko");
+}
+
+function syncItemSortMode(item) {
+  switch (String(item?.kind || "")) {
+    case "assignment":
+    case "assignmentCandidate":
+    case "completedAssignment":
+    case "exam":
+    case "examCandidate":
+    case "helpDesk":
+      return "upcoming";
+    case "notice":
+    case "file":
+      return "recent";
+    default:
+      return "updated";
+  }
+}
+
+function syncItemKindPriority(item) {
+  switch (String(item?.kind || "")) {
+    case "assignment":
+      return 10;
+    case "assignmentCandidate":
+      return 11;
+    case "exam":
+      return 20;
+    case "examCandidate":
+      return 21;
+    case "helpDesk":
+      return 30;
+    case "notice":
+      return 40;
+    case "file":
+      return 50;
+    case "completedAssignment":
+      return 60;
+    default:
+      return 90;
+  }
 }
 
 function syncItemTimestampEpoch(item) {
