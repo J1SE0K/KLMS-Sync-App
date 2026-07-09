@@ -5451,7 +5451,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionItemListFilter.contains("courses.insert(course)"))
         XCTAssertTrue(companionItemListFilter.contains("years.insert(year)"))
         XCTAssertTrue(companionItemListFilter.contains("semesters.insert(semester)"))
-        XCTAssertTrue(companionItemFilterOptions.contains("let visibleScheduleItems = items.filter { !$0.isPastActiveDashboardScheduleItem }"))
+        XCTAssertTrue(companionItemFilterOptions.contains("let visibleScheduleItems = items.filter(\\.isVisibleDashboardSyncItem)"))
         XCTAssertTrue(companionItemFilterOptions.contains("let listOptions = CompanionItemListFilter.options(for: visibleScheduleItems, termCatalog: termCatalog)"))
         XCTAssertTrue(companionItemFilterOptions.contains("courseOptions = listOptions.courses"))
         XCTAssertTrue(companionItemFilterOptions.contains("yearOptions = listOptions.years"))

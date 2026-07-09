@@ -553,7 +553,7 @@ final class CompanionModel: ObservableObject {
         var nextDefaultListData: [String: CompanionItemListData] = [:]
         let hiddenByActionItemIDs = providedHiddenByActionItemIDs ?? dashboardActionHiddenItemIDs()
         let sortedDashboardItems = (sortedDashboardItems ?? dashboardSyncItems.companionSorted(by: .recent))
-            .filter { !$0.isPastActiveDashboardScheduleItem }
+            .filter(\.isVisibleDashboardSyncItem)
         var categoryItemsByID = Dictionary(uniqueKeysWithValues: DashboardMetricCategory.allCases.map { ($0.rawValue, [ServerRelaySyncItem]()) })
         var nextVisibleTaskItems: [ServerRelaySyncItem] = []
         for item in sortedDashboardItems {
@@ -3405,7 +3405,7 @@ final class CompanionModel: ObservableObject {
             isApplyingServerSyncData = wasApplyingServerSyncData
         }
         let incomingSyncItems = syncItemsOverlayingRecentDisplayActions(syncData.items)
-            .filter { !$0.isPastActiveDashboardScheduleItem }
+            .filter(\.isVisibleDashboardSyncItem)
         let nextSyncItemsSignature = Self.signature(for: incomingSyncItems)
         if syncItemsSignature != nextSyncItemsSignature {
             syncItems = incomingSyncItems
@@ -5185,7 +5185,7 @@ private struct CompanionDashboardScopedStatus {
         let defaultStatus = CompanionItemStatusFilter.defaultFilter(for: category)
         return model.cachedVisibleDashboardItems(for: category.rawValue).filter { item in
             defaultStatus.includes(item)
-                && !item.isPastActiveDashboardScheduleItem
+                && item.isVisibleDashboardSyncItem
                 && CompanionItemListFilter.matches(item, selectedYear: selectedYear, selectedSemester: selectedSemester)
         }.count
     }
@@ -7428,7 +7428,7 @@ private struct CompanionItemFilterOptions: Equatable, Sendable {
     var availableStatusFilters: [CompanionItemStatusFilter]
 
     init(items: [ServerRelaySyncItem], category: DashboardMetricCategory?, termCatalog: AcademicTermCatalog? = nil) {
-        let visibleScheduleItems = items.filter { !$0.isPastActiveDashboardScheduleItem }
+        let visibleScheduleItems = items.filter(\.isVisibleDashboardSyncItem)
         let listOptions = CompanionItemListFilter.options(for: visibleScheduleItems, termCatalog: termCatalog)
         courseOptions = listOptions.courses
         yearOptions = listOptions.years
@@ -7508,7 +7508,7 @@ private struct CompanionItemListData: Sendable {
         let base = (category.map { metric in
             isCategoryPrefiltered ? items : items.filter { metric.includes($0) }
         } ?? items)
-            .filter { !$0.isPastActiveDashboardScheduleItem }
+            .filter(\.isVisibleDashboardSyncItem)
         let resolvedFilterOptions = filterOptions ?? CompanionItemFilterOptions(items: base, category: category)
         let courses = resolvedFilterOptions.courseOptions
         let years = resolvedFilterOptions.yearOptions

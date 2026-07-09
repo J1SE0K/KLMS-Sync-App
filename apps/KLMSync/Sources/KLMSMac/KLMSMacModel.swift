@@ -1422,7 +1422,7 @@ final class KLMSMacModel: ObservableObject {
     private func applyServerRelaySyncDataDashboardState(_ syncData: ServerRelaySyncData) -> Bool {
         let dashboardItems = syncData.items
             .map(\.normalizedDashboardItem)
-            .filter { !$0.isPastActiveDashboardScheduleItem }
+            .filter(\.isVisibleDashboardSyncItem)
             .dedupedForServerRelay()
         var didChange = false
         let didLoadServerDashboardItems = !hasLoadedServerRelayDashboardItems
@@ -1473,7 +1473,7 @@ final class KLMSMacModel: ObservableObject {
         var itemsByID: [String: ServerRelaySyncItem] = [:]
         for item in items {
             let normalized = item.normalizedDashboardItem
-            guard !normalized.isPastActiveDashboardScheduleItem else {
+            guard normalized.isVisibleDashboardSyncItem else {
                 continue
             }
             itemsByID[item.id] = normalized
@@ -2152,7 +2152,7 @@ final class KLMSMacModel: ObservableObject {
 
     func dashboardServerRelayItems(for kind: DashboardDetailKind? = nil) -> [ServerRelaySyncItem] {
         cachedServerRelayDashboardItems.filter { item in
-            guard !item.isPastActiveDashboardScheduleItem else {
+            guard item.isVisibleDashboardSyncItem else {
                 return false
             }
             guard !item.isHidden else {
@@ -2186,7 +2186,7 @@ final class KLMSMacModel: ObservableObject {
         }
         let nextItems = (currentServerRelayBaseSyncItems() + mailDashboardItems)
             .map(\.normalizedDashboardItem)
-            .filter { !$0.isPastActiveDashboardScheduleItem }
+            .filter(\.isVisibleDashboardSyncItem)
             .dedupedForServerRelay()
         if cachedServerRelayDashboardItems != nextItems {
             cachedServerRelayDashboardItems = nextItems
@@ -2258,7 +2258,7 @@ final class KLMSMacModel: ObservableObject {
         .dedupedForCalendarDisplay()
         .filter { $0.isUserVisibleCalendarChange && !isCalendarChangeResolved($0) }
         .count
-        let serverVisibleItems = cachedServerRelayDashboardItems.filter { !$0.isHidden && !$0.isPastActiveDashboardScheduleItem }
+        let serverVisibleItems = cachedServerRelayDashboardItems.filter { !$0.isHidden && $0.isVisibleDashboardSyncItem }
         let serverAssignmentCount = serverVisibleItems.filter {
             $0.kind == "assignment" || $0.kind == "assignmentCandidate"
         }.count

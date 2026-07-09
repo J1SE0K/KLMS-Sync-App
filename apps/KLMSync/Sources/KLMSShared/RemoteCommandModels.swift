@@ -1842,6 +1842,16 @@ public extension ServerRelaySyncItem {
         }
     }
 
+    var isVisibleDashboardSyncItem: Bool {
+        guard !isPastActiveDashboardScheduleItem else {
+            return false
+        }
+        if isMailDashboardItemLike {
+            return isCountableMailDashboardItem
+        }
+        return true
+    }
+
     var semanticDashboardMergeKey: String? {
         guard isDashboardMergeCandidateKind else {
             return nil

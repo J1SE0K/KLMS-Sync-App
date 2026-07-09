@@ -820,6 +820,8 @@ final class RemoteCommandModelTests: XCTestCase {
 
         XCTAssertFalse(incompleteExam.normalizedDashboardItem.isCountableMailDashboardItem)
         XCTAssertTrue(completeExam.normalizedDashboardItem.isCountableMailDashboardItem)
+        XCTAssertFalse(incompleteExam.normalizedDashboardItem.isVisibleDashboardSyncItem)
+        XCTAssertTrue(completeExam.normalizedDashboardItem.isVisibleDashboardSyncItem)
 
         var status = SanitizedRemoteStatus()
         status.applyMailDashboardItems([incompleteExam, completeExam])
