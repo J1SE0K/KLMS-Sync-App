@@ -26,7 +26,7 @@ COMPACT_IGNORED_COURSE_NAMES = {
 GENERIC_COURSE_NAMES = {"강의실 메인", "course home"}
 IGNORED_ACTIVITY_IDS: set[str] = set()
 COURSE_MATERIAL_BUCKETS = {"folders", "resources", "board-attachments"}
-MANIFEST_SOURCE_ENTRY_STYLE_VERSION = "2026-05-08-resource-section-source-title-v2"
+MANIFEST_SOURCE_ENTRY_STYLE_VERSION = "2026-07-09-folder-week-source-title-v3"
 INVALID_FS_CHARS = r'[:/\n\r\t]'
 COURSEBOARD_INLINE_MEDIA_SELECTOR = (
     ".courseboard_view .content img[src], "
@@ -396,11 +396,10 @@ def build_manifest_entries_for_page(
         activity_title = normalize_whitespace(target.get("activity_title", "")) or normalize_whitespace(link_text)
         course_dir = sanitize_path_component(course)
         bucket_dir = sanitize_path_component(bucket)
-        source_dir = (
-            sanitize_path_component(target_source_title or "untitled")
-            if weekly_folders_enabled
-            else ""
-        )
+        source_dir_title = source_directory_title(bucket, target_source_title, section_title)
+        if bucket == "folders" and source_dir_title and not section_title:
+            section_title = source_dir_title
+        source_dir = sanitize_path_component(source_dir_title or "untitled") if weekly_folders_enabled else ""
         relative_path = make_unique_relative_path(
             seen_paths,
             course_dir,
@@ -852,6 +851,40 @@ def determine_bucket(source_url: str) -> str:
     if module:
         return module
     return "misc"
+
+
+def source_directory_title(bucket: str, source_title: str, section_title: str) -> str:
+    raw_title = normalize_whitespace(section_title or source_title)
+    if bucket != "folders":
+        return raw_title
+    return folder_week_directory_title(raw_title)
+
+
+def folder_week_directory_title(title: str) -> str:
+    cleaned = normalize_whitespace(title)
+    cleaned = re.sub(r"\s*(?:폴더|folder)\s*$", "", cleaned, flags=re.IGNORECASE).strip()
+    if not cleaned:
+        return ""
+
+    english_week = re.search(r"\bweek\s*0*(\d{1,2})(?:\s*[-~]\s*0*(\d{1,2}))?", cleaned, re.IGNORECASE)
+    if english_week:
+        start = english_week.group(1)
+        end = english_week.group(2)
+        return f"Week {start}-{end}" if end else f"Week {start}"
+
+    korean_week_range = re.search(r"\b0*(\d{1,2})\s*[-~]\s*0*(\d{1,2})\s*주차\b", cleaned)
+    if korean_week_range:
+        return f"{korean_week_range.group(1)}-{korean_week_range.group(2)}주차"
+
+    korean_week = re.search(r"\b0*(\d{1,2})\s*주차\b", cleaned)
+    if korean_week:
+        return f"{korean_week.group(1)}주차"
+
+    compact_week_range = re.search(r"\b0*(\d{1,2})\s*[-~]\s*0*(\d{1,2})\b", cleaned)
+    if compact_week_range and re.search(r"reading|material|강의|자료|week|주차", cleaned, re.IGNORECASE):
+        return f"Week {compact_week_range.group(1)}-{compact_week_range.group(2)}"
+
+    return cleaned
 
 
 def make_unique_relative_path(

@@ -142,6 +142,69 @@ class CourseFileManifestTests(unittest.TestCase):
         )
         self.assertEqual(manifest[0]["klms_timestamp_source"], "courseboard-article")
 
+    def test_folder_module_uses_week_label_from_source_title(self) -> None:
+        course_page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=100001&section=0",
+            "title": "강좌: Example Course",
+            "html": """
+            <html><body>
+              <div role="main">
+                <a href="https://klms.kaist.ac.kr/mod/folder/view.php?id=400001">Week 1-2 Reading Materials 폴더</a>
+              </div>
+            </body></html>
+            """,
+        }
+        folder_page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/mod/folder/view.php?id=400001",
+            "title": "EX.100_2026_1: Week 1-2 Reading Materials",
+            "html": """
+            <html><body>
+              <nav>
+                <a href="https://klms.kaist.ac.kr/course/view.php?id=100001">Example Course</a>
+              </nav>
+              <div role="main">
+                <a href="https://klms.kaist.ac.kr/pluginfile.php/1/mod_folder/content/0/reading.pdf">reading.pdf</a>
+              </div>
+            </body></html>
+            """,
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            course_pages_json = tmp_path / "course_pages.json"
+            pages_json = tmp_path / "pages.json"
+            course_pages_json.write_text(json.dumps([course_page]), encoding="utf-8")
+            pages_json.write_text(json.dumps([folder_page]), encoding="utf-8")
+
+            manifest, _state = build_course_file_manifest.build_manifest(
+                course_pages_json=course_pages_json,
+                page_sets=[pages_json],
+                output_root=tmp_path / "course_files",
+            )
+
+        self.assertEqual(len(manifest), 1)
+        self.assertEqual(manifest[0]["bucket"], "folders")
+        self.assertEqual(manifest[0]["source_title"], "Week 1-2 Reading Materials 폴더")
+        self.assertEqual(manifest[0]["section_title"], "Week 1-2")
+        self.assertEqual(
+            manifest[0]["relative_path"],
+            "Example Course/folders/Week 1-2/reading.pdf",
+        )
+
+    def test_folder_week_directory_title_normalizes_common_labels(self) -> None:
+        self.assertEqual(
+            build_course_file_manifest.folder_week_directory_title("Week 03-04 Reading Materials 폴더"),
+            "Week 3-4",
+        )
+        self.assertEqual(
+            build_course_file_manifest.folder_week_directory_title("1-2주차 강의자료 폴더"),
+            "1-2주차",
+        )
+        self.assertEqual(
+            build_course_file_manifest.folder_week_directory_title("강의자료 폴더"),
+            "강의자료",
+        )
+
     def test_weekly_folders_can_be_disabled(self) -> None:
         course_page = {
             "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=100001&section=0",
