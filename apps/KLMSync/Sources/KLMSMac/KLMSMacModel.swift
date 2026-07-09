@@ -264,6 +264,10 @@ final class KLMSMacModel: ObservableObject {
     private var localRequestLogClearedAt: Date?
     private var localFileAccessLogClearedAt: Date?
     private var localSharedRunLogClearedAt: Date?
+    private var locallyHiddenCommandIDs = Set<UUID>()
+    private var locallyHiddenRequestLogIDs = Set<UUID>()
+    private var locallyHiddenFileAccessRequestIDs = Set<UUID>()
+    private var locallyHiddenSharedRunLogIDs = Set<String>()
     private static let sharedAppearanceModeKey = "KLMS_APPEARANCE_MODE"
     private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
@@ -1077,6 +1081,12 @@ final class KLMSMacModel: ObservableObject {
         recordLocalDisplayLogClear(scope: scope)
         switch scope {
         case .all:
+            if let command = lastRemoteCommand, !command.status.isInFlight {
+                locallyHiddenCommandIDs.insert(command.id)
+            }
+            locallyHiddenRequestLogIDs.formUnion(serverRelayRecentRequestLog.map(\.id))
+            locallyHiddenFileAccessRequestIDs.formUnion(serverRelayRecentFileAccessRequests.filter { !$0.status.isInFlight }.map(\.id))
+            locallyHiddenSharedRunLogIDs.formUnion(serverRelaySharedRunLogs.map(\.id))
             if lastRemoteCommand?.status.isInFlight != true {
                 lastRemoteCommand = nil
             }
@@ -1084,17 +1094,23 @@ final class KLMSMacModel: ObservableObject {
             serverRelayRecentFileAccessRequests = serverRelayRecentFileAccessRequests.filter { $0.status.isInFlight }
             clearSharedRunLogDisplayState()
         case .command:
+            if let command = lastRemoteCommand, !command.status.isInFlight {
+                locallyHiddenCommandIDs.insert(command.id)
+            }
             if lastRemoteCommand?.status.isInFlight != true {
                 lastRemoteCommand = nil
             }
         case .requestLog:
+            locallyHiddenRequestLogIDs.formUnion(serverRelayRecentRequestLog.map(\.id))
             serverRelayRecentRequestLog = []
         case .fileAccess:
+            locallyHiddenFileAccessRequestIDs.formUnion(serverRelayRecentFileAccessRequests.filter { !$0.status.isInFlight }.map(\.id))
             serverRelayRecentFileAccessRequests = serverRelayRecentFileAccessRequests.filter { $0.status.isInFlight }
         }
     }
 
     private func clearSharedRunLogDisplayState() {
+        locallyHiddenSharedRunLogIDs.formUnion(serverRelaySharedRunLogs.map(\.id))
         serverRelaySharedRunLogs = []
         sharedRunLogStageDurationsByID = [:]
     }
@@ -1116,26 +1132,29 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func visibleServerRelayRequestLog(_ entries: [ServerRelayRequestLogEntry]) -> [ServerRelayRequestLogEntry] {
+        let visibleByID = entries.filter { !locallyHiddenRequestLogIDs.contains($0.id) }
         guard let clearedAt = localRequestLogClearedAt else {
-            return entries
+            return visibleByID
         }
-        return entries.filter { $0.createdAt > clearedAt }
+        return visibleByID.filter { $0.createdAt > clearedAt }
     }
 
     private func visibleServerRelayFileAccessRequests(_ requests: [ServerRelayFileAccessRequest]) -> [ServerRelayFileAccessRequest] {
+        let visibleByID = requests.filter { $0.status.isInFlight || !locallyHiddenFileAccessRequestIDs.contains($0.id) }
         guard let clearedAt = localFileAccessLogClearedAt else {
-            return requests
+            return visibleByID
         }
-        return requests.filter { request in
+        return visibleByID.filter { request in
             request.status.isInFlight || request.updatedAt > clearedAt
         }
     }
 
     private func visibleServerRelayRunLogs(_ logs: [ServerRelayRunLog]) -> [ServerRelayRunLog] {
+        let visibleByID = logs.filter { !locallyHiddenSharedRunLogIDs.contains($0.id) }
         guard let clearedAt = localSharedRunLogClearedAt else {
-            return logs
+            return visibleByID
         }
-        return logs.filter { $0.updatedAt > clearedAt }
+        return visibleByID.filter { $0.updatedAt > clearedAt }
     }
 
     private func sanitizedRemoteStatus(snapshot: EngineSnapshot, phase: String) -> SanitizedRemoteStatus {

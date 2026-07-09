@@ -2916,6 +2916,7 @@ final class CompanionModel: ObservableObject {
     private func clearSharedRunLogDisplayState() {
         sharedRunLogs = []
         sharedRunLogsSignature = nil
+        rebuildRemoteLogDerivedState()
     }
 
     private func applyLogClear(scope: ServerRelayLogClearScope) {
