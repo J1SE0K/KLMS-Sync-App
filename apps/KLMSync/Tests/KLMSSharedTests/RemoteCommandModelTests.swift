@@ -802,6 +802,32 @@ final class RemoteCommandModelTests: XCTestCase {
         ])
     }
 
+    func testIncompleteMailDashboardScheduleItemsDoNotCountAsActiveItems() throws {
+        let incompleteExam = ServerRelaySyncItem(
+            id: "mail-empty-exam",
+            kind: "exam",
+            title: "기말고사",
+            status: "메일 반영"
+        )
+        let completeExam = ServerRelaySyncItem(
+            id: "mail-complete-exam",
+            kind: "exam",
+            course: "전기 전자공학특강",
+            title: "기말고사",
+            timestamp: "2099-06-17 09:00",
+            status: "메일 반영"
+        )
+
+        XCTAssertFalse(incompleteExam.normalizedDashboardItem.isCountableMailDashboardItem)
+        XCTAssertTrue(completeExam.normalizedDashboardItem.isCountableMailDashboardItem)
+
+        var status = SanitizedRemoteStatus()
+        status.applyMailDashboardItems([incompleteExam, completeExam])
+
+        XCTAssertEqual(status.exams, 1)
+        XCTAssertEqual(status.calendarCreated, 1)
+    }
+
     func testMailDashboardItemsMergeIntoExistingKlmsItemsByContent() throws {
         let klmsAssignment = ServerRelaySyncItem(
             id: "klms-assignment-1",

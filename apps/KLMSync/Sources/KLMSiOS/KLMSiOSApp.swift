@@ -514,7 +514,7 @@ final class CompanionModel: ObservableObject {
     }
 
     private var dashboardMailItems: [ServerRelaySyncItem] {
-        hasLoadedServerSyncData ? mailDashboardItems : []
+        hasLoadedServerSyncData ? mailDashboardItems.filter(\.isCountableMailDashboardItem) : []
     }
 
     private func rebuildDashboardDerivedState() {
@@ -694,6 +694,9 @@ final class CompanionModel: ObservableObject {
 
     func addMailDashboardItem(_ item: ServerRelaySyncItem) {
         let normalizedItem = item.normalizedDashboardItem
+        guard normalizedItem.isCountableMailDashboardItem else {
+            return
+        }
         mailDashboardItems = ([normalizedItem] + mailDashboardItems.filter { $0.id != normalizedItem.id })
             .dedupedForServerRelay()
             .prefix(80)
@@ -765,6 +768,7 @@ final class CompanionModel: ObservableObject {
         return decoded
             .filter { $0.id.hasPrefix("mail-") || $0.status.localizedCaseInsensitiveContains("메일") }
             .map(\.normalizedDashboardItem)
+            .filter(\.isCountableMailDashboardItem)
             .dedupedForServerRelay()
     }
 

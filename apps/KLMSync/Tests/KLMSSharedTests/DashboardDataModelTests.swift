@@ -3933,7 +3933,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("RemoteSettingGroupSection"))
         XCTAssertTrue(ios.contains("@Published private(set) var hasLoadedServerSyncData = false"))
         XCTAssertTrue(ios.contains("private var dashboardMailItems: [ServerRelaySyncItem]"))
-        XCTAssertTrue(ios.contains("hasLoadedServerSyncData ? mailDashboardItems : []"))
+        XCTAssertTrue(ios.contains("hasLoadedServerSyncData ? mailDashboardItems.filter(\\.isCountableMailDashboardItem) : []"))
         XCTAssertTrue(ios.contains("hasLoadedServerSyncData ? status.withAuthoritativeDashboardCounts("))
         XCTAssertTrue(ios.contains("(syncItems + dashboardMailItems).dedupedForServerRelay()"))
         XCTAssertFalse(ios.contains("(syncItems + mailDashboardItems).dedupedForServerRelay()"))

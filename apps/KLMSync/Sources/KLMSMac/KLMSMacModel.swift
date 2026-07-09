@@ -1452,7 +1452,7 @@ final class KLMSMacModel: ObservableObject {
         let nextItems = items
             .unmatchedMailDashboardItems(comparedTo: baseItems)
             .map(\.normalizedDashboardItem)
-            .filter { !$0.isPastActiveDashboardScheduleItem }
+            .filter(\.isCountableMailDashboardItem)
             .dedupedForServerRelay()
             .prefix(80)
             .map { $0 }
@@ -2062,6 +2062,9 @@ final class KLMSMacModel: ObservableObject {
             return
         }
         let normalizedItem = item.normalizedDashboardItem
+        guard normalizedItem.isCountableMailDashboardItem else {
+            return
+        }
         mailDashboardItems = ([normalizedItem] + mailDashboardItems.filter { $0.id != normalizedItem.id })
             .dedupedForServerRelay()
             .prefix(80)
@@ -2199,7 +2202,7 @@ final class KLMSMacModel: ObservableObject {
         let unmatchedItems = mailDashboardItems
             .unmatchedMailDashboardItems(comparedTo: currentServerRelayBaseSyncItems())
             .map(\.normalizedDashboardItem)
-            .filter { !$0.isPastActiveDashboardScheduleItem }
+            .filter(\.isCountableMailDashboardItem)
             .dedupedForServerRelay()
         cachedMailDashboardItemsByKind = Dictionary(grouping: unmatchedItems, by: \.kind)
             .mapValues(Self.sortedMailDashboardItems)
@@ -2402,7 +2405,11 @@ final class KLMSMacModel: ObservableObject {
               let decoded = try? JSONDecoder().decode([ServerRelaySyncItem].self, from: data) else {
             return []
         }
-        return decoded.filter(Self.isMailDashboardItem).map(\.normalizedDashboardItem).dedupedForServerRelay()
+        return decoded
+            .filter(Self.isMailDashboardItem)
+            .map(\.normalizedDashboardItem)
+            .filter(\.isCountableMailDashboardItem)
+            .dedupedForServerRelay()
     }
 
     private func persistMailDashboardItems() {

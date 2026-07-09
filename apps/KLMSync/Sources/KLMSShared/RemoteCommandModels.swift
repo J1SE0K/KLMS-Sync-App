@@ -1562,7 +1562,7 @@ public extension SanitizedRemoteStatus {
     mutating func applyMailDashboardItems(_ items: [ServerRelaySyncItem], baseItems: [ServerRelaySyncItem]) {
         let visibleItems = items
             .unmatchedMailDashboardItems(comparedTo: baseItems)
-            .filter { !$0.isHidden && !$0.isPastActiveDashboardScheduleItem }
+            .filter { !$0.isHidden && !$0.isPastActiveDashboardScheduleItem && $0.isCountableMailDashboardItem }
         assignments += visibleItems.filter { $0.kind == "assignment" || $0.kind == "assignmentCandidate" }.count
         exams += visibleItems.filter { $0.kind == "exam" || $0.kind == "examCandidate" }.count
         notices += visibleItems.filter { $0.kind == "notice" }.count
@@ -1824,6 +1824,22 @@ public extension ServerRelaySyncItem {
         id.hasPrefix("mail-")
             || status.localizedCaseInsensitiveContains("메일")
             || detail.localizedCaseInsensitiveContains("메일")
+    }
+
+    var isCountableMailDashboardItem: Bool {
+        guard !isHidden,
+              isMailDashboardItemLike,
+              !isPastActiveDashboardScheduleItem,
+              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return false
+        }
+        switch kind {
+        case "assignment", "assignmentCandidate", "exam", "examCandidate", "helpDesk":
+            return !course.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !timestamp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        default:
+            return true
+        }
     }
 
     var semanticDashboardMergeKey: String? {
