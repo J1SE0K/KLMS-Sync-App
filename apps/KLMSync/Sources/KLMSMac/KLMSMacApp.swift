@@ -382,10 +382,21 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         item.button?.imageScaling = .scaleProportionallyDown
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "KLMS Sync 열기", action: #selector(openDashboardFromMenu), keyEquivalent: "o"))
-        menu.addItem(NSMenuItem(title: "상태 갱신", action: #selector(refreshStatusFromMenu), keyEquivalent: "r"))
+        let openItem = NSMenuItem(title: "KLMS Sync 열기", action: #selector(openDashboardFromMenu), keyEquivalent: "o")
+        openItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(openItem)
+
+        let refreshItem = NSMenuItem(title: "새로고침", action: #selector(refreshStatusFromMenu), keyEquivalent: "r")
+        refreshItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(refreshItem)
+
+        let verifyItem = NSMenuItem(title: "상태 검사", action: #selector(runVerifyFromMenu), keyEquivalent: "v")
+        verifyItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(verifyItem)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "종료", action: #selector(quitFromMenu), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(title: "종료", action: #selector(quitFromMenu), keyEquivalent: "q")
+        quitItem.keyEquivalentModifierMask = [.command]
+        menu.addItem(quitItem)
         for item in menu.items {
             item.target = self
         }
@@ -476,6 +487,21 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         openItem.target = self
         appMenu.addItem(openItem)
 
+        let refreshItem = NSMenuItem(title: "새로고침", action: #selector(refreshStatusFromMenu), keyEquivalent: "r")
+        refreshItem.keyEquivalentModifierMask = [.command]
+        refreshItem.target = self
+        appMenu.addItem(refreshItem)
+
+        let verifyItem = NSMenuItem(title: "상태 검사", action: #selector(runVerifyFromMenu), keyEquivalent: "v")
+        verifyItem.keyEquivalentModifierMask = [.command, .shift]
+        verifyItem.target = self
+        appMenu.addItem(verifyItem)
+
+        let doctorItem = NSMenuItem(title: "권한/환경 진단", action: #selector(runDoctorFromMenu), keyEquivalent: "d")
+        doctorItem.keyEquivalentModifierMask = [.command, .shift]
+        doctorItem.target = self
+        appMenu.addItem(doctorItem)
+
         appMenu.addItem(.separator())
 
         let quitItem = NSMenuItem(title: "KLMS Sync 종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -510,7 +536,23 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     @objc private func refreshStatusFromMenu(_ sender: Any?) {
         guard let model else { return }
         Task { @MainActor in
-            await model.bootstrap()
+            await model.refreshVisibleStateFromShortcut()
+        }
+    }
+
+    @objc private func runVerifyFromMenu(_ sender: Any?) {
+        guard let model else { return }
+        Task { @MainActor in
+            KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+            await model.run(.verify)
+        }
+    }
+
+    @objc private func runDoctorFromMenu(_ sender: Any?) {
+        guard let model else { return }
+        Task { @MainActor in
+            KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
+            await model.run(.doctor)
         }
     }
 

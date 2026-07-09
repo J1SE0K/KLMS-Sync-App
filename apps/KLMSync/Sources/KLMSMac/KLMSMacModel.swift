@@ -655,6 +655,17 @@ final class KLMSMacModel: ObservableObject {
         await refreshServerRelayDashboardNow(silent: true)
     }
 
+    func refreshVisibleStateFromShortcut() async {
+        if payload == nil {
+            await bootstrap()
+            return
+        }
+        await reloadEngineState()
+        await refreshServerRelayDashboardNow(silent: true)
+        serverRelayStatusMessage = "화면을 새로 고쳤습니다."
+        errorMessage = nil
+    }
+
     var shouldRequestPermissionsAfterInstall: Bool {
         guard let version = payload?.version, !version.isEmpty else {
             return false
@@ -3167,7 +3178,13 @@ final class KLMSMacModel: ObservableObject {
         dryRun: Bool = false,
         environmentOverrides: [String: String] = [:]
     ) async {
-        guard runningCommand == nil else { return }
+        if let runningCommand {
+            let message = "\(runningCommand.displayName) 실행 중입니다. 끝난 뒤 다시 시도해 주세요."
+            serverRelayStatusMessage = message
+            remoteProcessingStatusMessage = message
+            errorMessage = nil
+            return
+        }
         runningCommand = command
         isCancellingCommand = false
         pendingRunCancellationRequested = false
@@ -3259,8 +3276,12 @@ final class KLMSMacModel: ObservableObject {
             if result.wasCancelled {
                 await clearAuthDigitsState(showAuthenticatedMessage: false)
                 errorMessage = nil
+                serverRelayStatusMessage = "\(command.displayName) 중단됨"
             } else if !result.succeeded {
                 errorMessage = "\(command.displayName) 실패: 종료 코드 \(result.exitCode)"
+                serverRelayStatusMessage = "\(command.displayName) 실패 · 로그에서 자세히 확인하세요."
+            } else if command.isDiagnostic {
+                serverRelayStatusMessage = "\(command.displayName) 완료"
             }
             if !dryRun, result.succeeded, command.refreshesSyncReportAfterRun {
                 _ = try? await runner.run(.report, paths: paths, environment: effectiveEnvironment)
