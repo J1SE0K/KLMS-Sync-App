@@ -32,6 +32,23 @@ public enum AcademicSemester: String, Sendable, Codable, Hashable, Comparable {
         }
     }
 
+    public var recentFirstSortOrder: Int {
+        switch self {
+        case .winter:
+            0
+        case .fall:
+            1
+        case .summer:
+            2
+        case .spring:
+            3
+        }
+    }
+
+    public static func recentFirst(_ lhs: AcademicSemester, _ rhs: AcademicSemester) -> Bool {
+        lhs.recentFirstSortOrder < rhs.recentFirstSortOrder
+    }
+
     public static func < (lhs: AcademicSemester, rhs: AcademicSemester) -> Bool {
         lhs.sortOrder < rhs.sortOrder
     }

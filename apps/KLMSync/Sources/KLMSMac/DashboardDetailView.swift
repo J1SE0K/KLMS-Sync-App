@@ -1421,7 +1421,7 @@ enum DashboardTermFilter {
 
     private static func semesterOptions(from terms: [AcademicTerm?]) -> [String] {
         let known = Set(terms.compactMap { $0?.semester })
-            .sorted(by: <)
+            .sorted(by: AcademicSemester.recentFirst)
             .map(\.displayName)
         let unknowns = terms.contains(where: { $0 == nil }) ? [unknown] : []
         return [allSemesters] + known + unknowns

@@ -7260,9 +7260,21 @@ private enum CompanionItemListFilter {
     }
 
     private static func semesterOptions(from semesters: Set<String>) -> [String] {
-        let ordered = ["봄학기", "여름학기", "가을학기", "겨울학기"].filter { semesters.contains($0) }
-        let rest = semesters.subtracting(ordered).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-        return [allSemesters] + ordered + rest
+        let ordered = semesters.sorted { lhs, rhs in
+            let leftSemester = AcademicSemester(displayName: lhs)
+            let rightSemester = AcademicSemester(displayName: rhs)
+            switch (leftSemester, rightSemester) {
+            case let (left?, right?) where left != right:
+                return AcademicSemester.recentFirst(left, right)
+            case (.some, nil):
+                return true
+            case (nil, .some):
+                return false
+            default:
+                return lhs.localizedStandardCompare(rhs) == .orderedAscending
+            }
+        }
+        return [allSemesters] + ordered
     }
 }
 

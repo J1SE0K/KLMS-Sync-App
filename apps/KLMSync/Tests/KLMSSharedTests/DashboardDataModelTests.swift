@@ -7505,6 +7505,14 @@ final class DashboardDataModelTests: XCTestCase {
         )
     }
 
+    func testAcademicSemesterDisplayOrderShowsRecentTermsFirst() throws {
+        let semesters = [AcademicSemester.spring, .summer, .fall, .winter]
+            .sorted(by: AcademicSemester.recentFirst)
+            .map(\.displayName)
+
+        XCTAssertEqual(semesters, ["겨울학기", "가을학기", "여름학기", "봄학기"])
+    }
+
     func testAcademicTermCatalogMatchesAbbreviatedCourseTitles() throws {
         let catalog = AcademicTermCatalog(
             version: 1,
