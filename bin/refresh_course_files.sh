@@ -27,6 +27,7 @@ FILE_MAX_DOWNLOAD_ATTEMPTS="${FILE_MAX_DOWNLOAD_ATTEMPTS:-3}"
 FILE_DOWNLOAD_RETRY_DELAY_SECONDS="${FILE_DOWNLOAD_RETRY_DELAY_SECONDS:-2}"
 FILE_FORCE_DOWNLOAD="${FILE_FORCE_DOWNLOAD:-0}"
 FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY="${FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY:-1}"
+FILE_CLEANUP_OLD_TERM_FILES="${FILE_CLEANUP_OLD_TERM_FILES:-1}"
 FILE_FULL_TTL_SECONDS="${FILE_FULL_TTL_SECONDS:-259200}"
 FILE_COURSE_PAGE_STALE_SECONDS="${FILE_COURSE_PAGE_STALE_SECONDS:-43200}"
 FILE_ALL_WEEK_COURSE_PAGE_STALE_SECONDS="${FILE_ALL_WEEK_COURSE_PAGE_STALE_SECONDS:-43200}"
@@ -97,6 +98,7 @@ PRUNE_RESULT_JSON="$CACHE_DIR/course_file_prune_result.json"
 ARCHIVE_PRUNE_RESULT_JSON="$CACHE_DIR/course_file_archive_prune_result.json"
 PRUNE_BACKUP_DIR="$CACHE_DIR/prune_backups"
 CLEANUP_RESULT_JSON="$CACHE_DIR/course_file_cleanup_result.json"
+OLD_TERM_CLEANUP_RESULT_JSON="$CACHE_DIR/course_file_old_term_cleanup_result.json"
 DRY_RUN_REPORT_JSON="$WORK_CACHE_DIR/dry_run_report.json"
 SYNC_PREVIEW_JSON="$CACHE_DIR/course_file_sync_preview.json"
 QUARANTINE_REPORT_JSON="$CACHE_DIR/course_file_quarantine_report.json"
@@ -136,6 +138,7 @@ if is_truthy "$FILE_DRY_RUN"; then
   PRUNE_RESULT_JSON="$WORK_CACHE_DIR/course_file_prune_result.json"
   ARCHIVE_PRUNE_RESULT_JSON="$WORK_CACHE_DIR/course_file_archive_prune_result.json"
   CLEANUP_RESULT_JSON="$WORK_CACHE_DIR/course_file_cleanup_result.json"
+  OLD_TERM_CLEANUP_RESULT_JSON="$WORK_CACHE_DIR/course_file_old_term_cleanup_result.json"
   SYNC_PREVIEW_JSON="$WORK_CACHE_DIR/course_file_sync_preview.json"
   QUARANTINE_REPORT_JSON="$WORK_CACHE_DIR/course_file_quarantine_report.json"
 fi
@@ -156,6 +159,7 @@ cleanup_legacy_scoped_file_result_artifacts() {
     "$scoped_cache_dir/course_file_sync_preview.json" \
     "$scoped_cache_dir/course_file_quarantine_report.json" \
     "$scoped_cache_dir/course_file_cleanup_result.json" \
+    "$scoped_cache_dir/course_file_old_term_cleanup_result.json" \
     "$scoped_cache_dir/course_file_prune_result.json" \
     "$scoped_cache_dir/course_file_archive_prune_result.json"
 }
@@ -1185,6 +1189,56 @@ if tracked == 0 and actual_files > 0:
         "Refusing to prune course files because the generated manifest is empty while existing files are present."
     )
 PY
+
+old_term_cleanup_started_epoch="$(date +%s)"
+if is_truthy "$FILE_CLEANUP_OLD_TERM_FILES"; then
+  log_files_timing "old term cleanup start"
+  old_term_cleanup_args=()
+  if is_truthy "$FILE_DRY_RUN"; then
+    old_term_cleanup_args=(--dry-run)
+  fi
+  python3 "$KLMS_PYTHON_DIR/cleanup_old_term_course_files.py" \
+    --manifest-json "$MANIFEST_JSON" \
+    --academic-terms-json "$ACADEMIC_TERM_CATALOG_JSON" \
+    --output-json "$OLD_TERM_CLEANUP_RESULT_JSON" \
+    "${old_term_cleanup_args[@]}"
+  old_term_removed_count="$(
+    python3 - "$OLD_TERM_CLEANUP_RESULT_JSON" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    payload = {}
+print(int(payload.get("removed_count", 0) or 0))
+PY
+  )"
+  if (( old_term_removed_count > 0 )); then
+    MANIFEST_REUSED=0
+    CURRENT_MANIFEST_COUNT="$(count_manifest_entries "$MANIFEST_JSON")"
+  fi
+  log_files_timing "old term cleanup finish removed=$old_term_removed_count duration_s=$(($(date +%s) - old_term_cleanup_started_epoch))"
+else
+  log_files_timing "old term cleanup skipped disabled=1"
+  python3 - "$OLD_TERM_CLEANUP_RESULT_JSON" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+payload = {
+    "status": "skipped",
+    "reason": "disabled",
+    "removed_count": 0,
+    "kept_count": 0,
+    "dry_run": False,
+    "items": [],
+}
+Path(sys.argv[1]).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+fi
 
 log_files_timing "file preview start"
 preview_started_epoch="$(date +%s)"

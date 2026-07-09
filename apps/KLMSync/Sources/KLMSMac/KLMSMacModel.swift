@@ -1535,6 +1535,7 @@ final class KLMSMacModel: ObservableObject {
     private func applyServerRelaySyncDataDashboardState(_ syncData: ServerRelaySyncData) -> Bool {
         let serverDashboardItems = syncData.items
             .map(\.normalizedDashboardItem)
+            .map { $0.resolvingFileAcademicTerm(catalog: snapshot.academicTermCatalog) }
             .filter(\.isVisibleDashboardSyncItem)
             .filter { shouldApplyServerRelayDashboardOverlay($0) }
             .dedupedForServerRelay()
@@ -1572,6 +1573,7 @@ final class KLMSMacModel: ObservableObject {
         let serverItems = items
             .unmatchedMailDashboardItems(comparedTo: baseItems)
             .map(\.normalizedDashboardItem)
+            .map { $0.resolvingFileAcademicTerm(catalog: snapshot.academicTermCatalog) }
             .filter(\.isCountableMailDashboardItem)
             .dedupedForServerRelay()
             .prefix(80)
@@ -1600,7 +1602,7 @@ final class KLMSMacModel: ObservableObject {
     ) -> Bool {
         var itemsByID: [String: ServerRelaySyncItem] = [:]
         for item in items {
-            let normalized = item.normalizedDashboardItem
+            let normalized = item.normalizedDashboardItem.resolvingFileAcademicTerm(catalog: snapshot.academicTermCatalog)
             guard normalized.isVisibleDashboardSyncItem else {
                 continue
             }
@@ -2397,6 +2399,7 @@ final class KLMSMacModel: ObservableObject {
         }
         let nextItems = (currentServerRelayBaseSyncItems() + mailDashboardItems)
             .map(\.normalizedDashboardItem)
+            .map { $0.resolvingFileAcademicTerm(catalog: snapshot.academicTermCatalog) }
             .filter(\.isVisibleDashboardSyncItem)
             .dedupedForServerRelay()
         if cachedServerRelayDashboardItems != nextItems {

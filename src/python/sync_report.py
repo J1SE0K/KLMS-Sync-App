@@ -83,15 +83,18 @@ def build_report(cache_dir: Path, state_json: Path) -> dict[str, Any]:
     state = load_state(state_json)
     content = state.get("content", {}) if isinstance(state, dict) else {}
     notice_digest = load_json(cache_dir / "notice_digest.json", {})
+    manifest = load_cache_json(cache_dir, "course_file_manifest.json", [])
     download = load_cache_json(cache_dir, "course_file_download_result.json", {})
     prune = load_cache_json(cache_dir, "course_file_prune_result.json", {})
     archive_prune = load_cache_json(cache_dir, "course_file_archive_prune_result.json", {})
+    old_term_cleanup = load_cache_json(cache_dir, "course_file_old_term_cleanup_result.json", {})
     core_timing = load_json(cache_dir / "core" / "stage_timings.json", {})
     notice_timing = load_json(cache_dir / "notice" / "stage_timings.json", {})
     files_timing = load_json(cache_dir / "files" / "stage_timings.json", {})
     calendar_result = load_json(cache_dir / "core" / "calendar_sync_result.json", {})
 
     results = download.get("results", [])
+    manifest_total = len(manifest) if isinstance(manifest, list) else 0
     new_files = int(download.get("newFilesCopiedCount", 0) or 0)
     if not new_files and isinstance(results, list):
         new_files = sum(1 for item in results if item.get("copied_to_new_files_inbox"))
@@ -117,11 +120,13 @@ def build_report(cache_dir: Path, state_json: Path) -> dict[str, Any]:
             "ignored": int(notice_digest.get("ignored_notice_count", 0) or 0),
         },
         "files": {
-            "total": int(download.get("fileCount", 0) or 0),
+            "total": manifest_total or int(download.get("fileCount", 0) or 0),
             "new_files": new_files,
             "quarantine": int(download.get("quarantineCount", 0) or 0),
             "pruned": int(prune.get("deleted_file_count", 0) or 0),
             "archive_pruned": int(archive_prune.get("deleted_file_count", 0) or 0),
+            "old_term_removed": int(old_term_cleanup.get("removed_count", 0) or 0),
+            "old_term_cleanup_status": str(old_term_cleanup.get("status", "missing") or "missing"),
         },
         "calendar": calendar_command_summary(calendar_result),
         "slowest": combined_slowest_stages(core_timing, notice_timing, files_timing),
@@ -156,7 +161,9 @@ def print_text(report: dict[str, Any]) -> None:
         f"new={report['files']['new_files']} "
         f"quarantine={report['files']['quarantine']} "
         f"pruned={report['files']['pruned']} "
-        f"archive_pruned={report['files']['archive_pruned']}"
+        f"archive_pruned={report['files']['archive_pruned']} "
+        f"old_term_removed={report['files']['old_term_removed']} "
+        f"old_term_cleanup={report['files']['old_term_cleanup_status']}"
     )
     print(
         "calendar: "

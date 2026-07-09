@@ -5481,8 +5481,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionItemListFilter.contains("static func options(for items: [ServerRelaySyncItem], termCatalog: AcademicTermCatalog? = nil)"))
         XCTAssertTrue(companionItemListFilter.contains("for item in items"))
         XCTAssertTrue(companionItemListFilter.contains("courses.insert(course)"))
-        XCTAssertTrue(companionItemListFilter.contains("years.insert(year)"))
-        XCTAssertTrue(companionItemListFilter.contains("semesters.insert(semester)"))
+        XCTAssertTrue(companionItemListFilter.contains("if let term = item.dashboardPayloadAcademicTerm"))
+        XCTAssertTrue(companionItemListFilter.contains("years.insert(term.year)"))
+        XCTAssertTrue(companionItemListFilter.contains("semesters.insert(term.semester.displayName)"))
         XCTAssertTrue(companionItemFilterOptions.contains("let visibleScheduleItems = items.filter(\\.isVisibleDashboardSyncItem)"))
         XCTAssertTrue(companionItemFilterOptions.contains("let listOptions = CompanionItemListFilter.options(for: visibleScheduleItems, termCatalog: termCatalog)"))
         XCTAssertTrue(companionItemFilterOptions.contains("courseOptions = listOptions.courses"))
@@ -7654,9 +7655,9 @@ final class DashboardDataModelTests: XCTestCase {
         let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
         let ios = try String(contentsOf: iosRoot, encoding: .utf8)
 
-        XCTAssertTrue(ios.contains("let semester = normalizedSemesterLabel(item.academicSemester)"))
+        XCTAssertTrue(ios.contains("let term = item.dashboardPayloadAcademicTerm"))
         XCTAssertTrue(ios.contains("let normalizedSelectedSemester = normalizedSemesterLabel(selectedSemester)"))
-        XCTAssertTrue(ios.contains("let normalizedItemSemester = normalizedSemesterLabel(item.academicSemester)"))
+        XCTAssertTrue(ios.contains("let normalizedItemSemester = normalizedSemesterLabel(term?.semester.displayName ?? \"\")"))
         XCTAssertTrue(ios.contains("let normalizedSemesters = Set(semesters.map(normalizedSemesterLabel).filter { !$0.isEmpty })"))
     }
 
@@ -7750,6 +7751,29 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertNil(hiddenFileState.academicTerm)
         XCTAssertEqual(hiddenFileState.resolvedAcademicTerm(catalog: catalog)?.displayName, "2026년 여름학기")
+
+        let staleServerFile = ServerRelaySyncItem(
+            id: "file-stale-term",
+            kind: "file",
+            course: "공공정책 특강",
+            academicTerm: "2025년 봄학기",
+            academicYear: 2025,
+            academicSemester: "봄학기",
+            title: "State of AI Report - 2025 ONLINE.pdf",
+            timestamp: "KLMS 페이지에 시각 정보 없음",
+            status: "folders",
+            detail: "KLMS 페이지에 시각 정보 없음"
+        )
+        let normalizedServerFile = staleServerFile.resolvingFileAcademicTerm(catalog: catalog)
+        XCTAssertEqual(normalizedServerFile.academicTerm, "2026년 여름학기")
+        XCTAssertEqual(normalizedServerFile.academicYear, 2026)
+        XCTAssertEqual(normalizedServerFile.academicSemester, "여름학기")
+        XCTAssertEqual(normalizedServerFile.dashboardPayloadAcademicTerm?.displayName, "2026년 여름학기")
+
+        let staleServerFileWithoutCatalog = staleServerFile.resolvingFileAcademicTerm(catalog: nil)
+        XCTAssertEqual(staleServerFileWithoutCatalog.academicTerm, "")
+        XCTAssertNil(staleServerFileWithoutCatalog.academicYear)
+        XCTAssertEqual(staleServerFileWithoutCatalog.academicSemester, "")
     }
 
     func testStateAndNoticeExposeAcademicTerm() throws {

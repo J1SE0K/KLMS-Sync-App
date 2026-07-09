@@ -93,8 +93,31 @@ class SyncReportTests(unittest.TestCase):
                 "quarantine": 2,
                 "pruned": 3,
                 "archive_pruned": 4,
+                "old_term_removed": 0,
+                "old_term_cleanup_status": "missing",
             },
         )
+
+    def test_report_prefers_manifest_count_over_stale_download_result_count(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cache_dir = root / "cache"
+            state_dir = root / "state"
+            cache_dir.mkdir()
+            state_dir.mkdir()
+            (state_dir / "state.json").write_text('{"content": {}}', encoding="utf-8")
+            (cache_dir / "course_file_manifest.json").write_text(
+                json.dumps([{"filename": "current.pdf"}, {"filename": "current-2.pdf"}]),
+                encoding="utf-8",
+            )
+            (cache_dir / "course_file_download_result.json").write_text(
+                json.dumps({"fileCount": 111, "quarantineCount": 0}),
+                encoding="utf-8",
+            )
+
+            report = sync_report.build_report(cache_dir, state_dir / "state.json")
+
+        self.assertEqual(report["files"]["total"], 2)
 
 
 if __name__ == "__main__":

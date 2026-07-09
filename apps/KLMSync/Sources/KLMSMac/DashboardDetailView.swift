@@ -830,18 +830,7 @@ private struct DashboardFilterOptionSource: Sendable {
 
 extension ServerRelaySyncItem {
     var dashboardFilterAcademicTerm: AcademicTerm? {
-        let semesterText = academicSemester.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? academicTerm
-            : academicSemester
-        if let academicYear,
-           let semester = AcademicSemester(displayName: semesterText) {
-            return AcademicTerm(year: academicYear, semester: semester)
-        }
-        return AcademicTerm.infer(
-            course: course,
-            title: title,
-            dateTexts: [academicTerm, academicSemester, timestamp, detail, updatedAt]
-        )
+        dashboardPayloadAcademicTerm
     }
 }
 

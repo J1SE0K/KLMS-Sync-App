@@ -1343,6 +1343,22 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("--reminders-lines", text)
         self.assertNotIn("summary of every event of calendar", text)
 
+    def test_file_refresh_cleans_old_term_manifest_entries_after_term_catalog(self) -> None:
+        text = (PROJECT_DIR / "bin" / "refresh_course_files.sh").read_text(encoding="utf-8")
+
+        self.assertIn("FILE_CLEANUP_OLD_TERM_FILES", text)
+        self.assertIn("course_file_old_term_cleanup_result.json", text)
+        self.assertIn("cleanup_old_term_course_files.py", text)
+        self.assertIn("--academic-terms-json \"$ACADEMIC_TERM_CATALOG_JSON\"", text)
+        self.assertLess(
+            text.index("build-term-catalog"),
+            text.index("cleanup_old_term_course_files.py"),
+        )
+        self.assertLess(
+            text.index("cleanup_old_term_course_files.py"),
+            text.index("build_course_file_sync_preview.py"),
+        )
+
     def test_calendar_sync_uses_repo_swift_module_cache_without_deprecated_fallback(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8")
         bridge = (PROJECT_DIR / "src" / "js" / "sync_calendar_bridge.js").read_text(encoding="utf-8")

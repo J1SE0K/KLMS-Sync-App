@@ -3408,6 +3408,8 @@ final class CompanionModel: ObservableObject {
             isApplyingServerSyncData = wasApplyingServerSyncData
         }
         let incomingSyncItems = syncItemsOverlayingRecentDisplayActions(syncData.items)
+            .map(\.normalizedDashboardItem)
+            .map { $0.resolvingFileAcademicTerm(catalog: syncData.termCatalog) }
             .filter(\.isVisibleDashboardSyncItem)
         let nextSyncItemsSignature = Self.signature(for: incomingSyncItems)
         if syncItemsSignature != nextSyncItemsSignature {
@@ -7201,12 +7203,9 @@ private enum CompanionItemListFilter {
             if !course.isEmpty {
                 courses.insert(course)
             }
-            if let year = item.academicYear {
-                years.insert(year)
-            }
-            let semester = normalizedSemesterLabel(item.academicSemester)
-            if !semester.isEmpty {
-                semesters.insert(semester)
+            if let term = item.dashboardPayloadAcademicTerm {
+                years.insert(term.year)
+                semesters.insert(term.semester.displayName)
             }
         }
         if let termCatalog {
@@ -7232,13 +7231,14 @@ private enum CompanionItemListFilter {
     }
 
     static func matches(_ item: ServerRelaySyncItem, selectedYear: String, selectedSemester: String) -> Bool {
+        let term = item.dashboardPayloadAcademicTerm
         if selectedYear != allYears {
-            guard item.academicYear.map(String.init) == selectedYear else {
+            guard term.map({ String($0.year) }) == selectedYear else {
                 return false
             }
         }
         let normalizedSelectedSemester = normalizedSemesterLabel(selectedSemester)
-        let normalizedItemSemester = normalizedSemesterLabel(item.academicSemester)
+        let normalizedItemSemester = normalizedSemesterLabel(term?.semester.displayName ?? "")
         if selectedSemester != allSemesters,
            normalizedItemSemester != normalizedSelectedSemester {
             return false
@@ -7524,10 +7524,11 @@ private struct CompanionItemListData: Sendable {
         var filtered: [ServerRelaySyncItem] = []
         filtered.reserveCapacity(base.count)
         for item in base {
+            let itemTerm = item.dashboardPayloadAcademicTerm
             guard visibilityFilter.includes(item),
                   effectiveStatus.includes(item),
                   normalizedCourse == CompanionItemListFilter.allCourses || item.course == normalizedCourse,
-                  normalizedYear == CompanionItemListFilter.allYears || (item.academicYear.map(String.init) ?? "") == normalizedYear,
+                  normalizedYear == CompanionItemListFilter.allYears || itemTerm.map({ String($0.year) }) == normalizedYear,
                   normalizedSemester == CompanionItemListFilter.allSemesters || CompanionItemListFilter.matches(item, selectedYear: CompanionItemListFilter.allYears, selectedSemester: normalizedSemester),
                   !newOnly || item.isCompanionChangedLike,
                   !recentOnly || item.isCompanionChangedLike else {

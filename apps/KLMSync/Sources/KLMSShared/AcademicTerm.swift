@@ -441,6 +441,48 @@ public extension FileInteractionState {
     }
 }
 
+public extension ServerRelaySyncItem {
+    var dashboardPayloadAcademicTerm: AcademicTerm? {
+        let semesterText = academicSemester.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? academicTerm
+            : academicSemester
+        if let academicYear,
+           let semester = AcademicSemester(displayName: semesterText) {
+            return AcademicTerm(year: academicYear, semester: semester)
+        }
+        return AcademicTerm.infer(
+            course: course,
+            dateTexts: [academicTerm, academicSemester, timestamp, detail, updatedAt]
+        )
+    }
+
+    func resolvingFileAcademicTerm(catalog: AcademicTermCatalog?) -> ServerRelaySyncItem {
+        guard kind == "file" else {
+            return self
+        }
+        let term = catalog?.academicTerm(for: course)
+            ?? AcademicTerm.infer(course: course)
+            ?? AcademicTerm.infer(dateTexts: [timestamp, detail])
+        return ServerRelaySyncItem(
+            id: id,
+            kind: kind,
+            course: course,
+            academicTerm: term?.displayName ?? "",
+            academicYear: term?.year,
+            academicSemester: term?.semester.displayName ?? "",
+            title: title,
+            timestamp: timestamp,
+            status: status,
+            detail: detail,
+            attachmentCount: attachmentCount,
+            updatedAt: updatedAt,
+            isRead: isRead,
+            isImportant: isImportant,
+            isHidden: isHidden
+        )
+    }
+}
+
 public extension CalendarChange {
     var academicTerm: AcademicTerm? {
         AcademicTerm.infer(
