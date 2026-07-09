@@ -7,7 +7,7 @@ final class DashboardDataModelTests: XCTestCase {
             url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=2",
             title: "A 늦은 과제",
             course: "알고리즘 개론",
-            syncDue: "2026-06-20T14:59:00Z"
+            syncDue: "2099-06-20T14:59:00Z"
         )
         let noDate = try decodeStateItem(
             url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=3",
@@ -18,7 +18,7 @@ final class DashboardDataModelTests: XCTestCase {
             url: "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
             title: "Z 빠른 과제",
             course: "데이타베이스 개론",
-            syncDue: "2026-06-10T14:59:00Z"
+            syncDue: "2099-06-10T14:59:00Z"
         )
         let content = LegacySyncState.Content(assignments: [late, noDate, early])
             .applyingManualOverrides(ManualOverridesSnapshot())
@@ -315,13 +315,13 @@ final class DashboardDataModelTests: XCTestCase {
             url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1193350&bwid=432642",
             title: "Project 3",
             course: "데이타베이스 개론",
-            syncDue: "2026-05-31T23:59:00+09:00"
+            syncDue: "2099-05-31T23:59:00+09:00"
         )
         let second = try decodeStateItem(
             url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1193350&bwid=432643",
             title: "Project 3",
             course: "데이타베이스 개론",
-            syncDue: "2026-05-31T23:59:00+09:00"
+            syncDue: "2099-05-31T23:59:00+09:00"
         )
         let state = LegacySyncState(content: .init(assignments: [first, second]))
         let updated = state.applyingManualOverrides(.init())
@@ -334,18 +334,43 @@ final class DashboardDataModelTests: XCTestCase {
             url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432001",
             title: "Written Assignment 2",
             course: "영미 단편소설",
-            syncDue: "2026-05-20T23:59:00+09:00"
+            syncDue: "2099-05-20T23:59:00+09:00"
         )
         let programming = try decodeStateItem(
             url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1189554&bwid=432002",
             title: "Programming Assignment 2",
             course: "영미 단편소설",
-            syncDue: "2026-05-20T23:59:00+09:00"
+            syncDue: "2099-05-20T23:59:00+09:00"
         )
         let state = LegacySyncState(content: .init(assignments: [written, programming]))
         let updated = state.applyingManualOverrides(.init())
 
         XCTAssertEqual(updated.content.assignments.count, 2)
+    }
+
+    func testPastAssignmentsMoveToCompletedRecords() throws {
+        let past = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/forum/view.php?id=1244322",
+            title: "Week 2-2 Reading Response",
+            course: "공공정책 특강",
+            category: "assignment",
+            syncDue: "2020-07-09T00:00:00+09:00"
+        )
+        let future = try decodeStateItem(
+            url: "https://klms.kaist.ac.kr/mod/forum/view.php?id=1245000",
+            title: "Week 3 Reading Response",
+            course: "공공정책 특강",
+            category: "assignment",
+            syncDue: "2099-07-16T00:00:00+09:00"
+        )
+        let state = LegacySyncState(content: .init(assignments: [past, future]))
+        let updated = state.applyingManualOverrides(.init())
+
+        XCTAssertEqual(updated.content.assignments.map(\.title), ["Week 3 Reading Response"])
+        XCTAssertEqual(updated.content.completedAssignments.map(\.title), ["Week 2-2 Reading Response"])
+        XCTAssertEqual(updated.content.completedAssignments.first?.recordStatus, "completed")
+        XCTAssertEqual(updated.content.completedAssignments.first?.completionReason, "past_due")
+        XCTAssertEqual(updated.content.assignmentRecords.map(\.title).sorted(), ["Week 2-2 Reading Response", "Week 3 Reading Response"])
     }
 
     func testExamOverridePromotesCandidateToVisibleExamImmediately() throws {
@@ -5426,7 +5451,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionItemListFilter.contains("courses.insert(course)"))
         XCTAssertTrue(companionItemListFilter.contains("years.insert(year)"))
         XCTAssertTrue(companionItemListFilter.contains("semesters.insert(semester)"))
-        XCTAssertTrue(companionItemFilterOptions.contains("let listOptions = CompanionItemListFilter.options(for: items, termCatalog: termCatalog)"))
+        XCTAssertTrue(companionItemFilterOptions.contains("let visibleScheduleItems = items.filter { !$0.isPastActiveDashboardScheduleItem }"))
+        XCTAssertTrue(companionItemFilterOptions.contains("let listOptions = CompanionItemListFilter.options(for: visibleScheduleItems, termCatalog: termCatalog)"))
         XCTAssertTrue(companionItemFilterOptions.contains("courseOptions = listOptions.courses"))
         XCTAssertTrue(companionItemFilterOptions.contains("yearOptions = listOptions.years"))
         XCTAssertTrue(companionItemFilterOptions.contains("semesterOptions = listOptions.semesters"))

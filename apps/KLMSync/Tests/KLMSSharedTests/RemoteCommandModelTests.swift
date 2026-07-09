@@ -53,6 +53,42 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertGreaterThan(later ?? 0, dashed ?? Int.max)
     }
 
+    func testServerRelaySyncItemDetectsPastActiveScheduleItems() {
+        let pastAssignment = ServerRelaySyncItem(
+            id: "past-assignment",
+            kind: "assignment",
+            course: "공공정책 특강",
+            title: "Week 2-2 Reading Response",
+            timestamp: "2020-07-09T00:00:00+09:00"
+        )
+        let futureAssignment = ServerRelaySyncItem(
+            id: "future-assignment",
+            kind: "assignment",
+            course: "공공정책 특강",
+            title: "Week 3 Reading Response",
+            timestamp: "2099-07-09T00:00:00+09:00"
+        )
+        let pastCompletedAssignment = ServerRelaySyncItem(
+            id: "past-completed",
+            kind: "completedAssignment",
+            course: "공공정책 특강",
+            title: "완료된 Reading Response",
+            timestamp: "2020-07-09T00:00:00+09:00"
+        )
+        let pastExamCandidate = ServerRelaySyncItem(
+            id: "past-exam-candidate",
+            kind: "examCandidate",
+            course: "데이타베이스 개론",
+            title: "지난 시험 후보",
+            timestamp: "2020년 7월 9일 오전 9:00"
+        )
+
+        XCTAssertTrue(pastAssignment.isPastActiveDashboardScheduleItem)
+        XCTAssertFalse(futureAssignment.isPastActiveDashboardScheduleItem)
+        XCTAssertFalse(pastCompletedAssignment.isPastActiveDashboardScheduleItem)
+        XCTAssertTrue(pastExamCandidate.isPastActiveDashboardScheduleItem)
+    }
+
     func testServerRelaySyncItemDefaultSortUsesKindAwareDirection() {
         let earlierAssignment = ServerRelaySyncItem(
             id: "assignment-earlier",
@@ -704,7 +740,7 @@ final class RemoteCommandModelTests: XCTestCase {
             kind: "assignment",
             course: "알고리즘 개론",
             title: "메일 과제",
-            timestamp: "2026-06-17 13:00",
+            timestamp: "2099-06-17 13:00",
             status: "메일 분석"
         )
         let exam = ServerRelaySyncItem(
@@ -712,7 +748,7 @@ final class RemoteCommandModelTests: XCTestCase {
             kind: "exam",
             course: "영미 단편소설",
             title: "메일 시험",
-            timestamp: "2026-06-18 09:00",
+            timestamp: "2099-06-18 09:00",
             status: "메일 분석"
         )
         let notice = ServerRelaySyncItem(
@@ -772,7 +808,7 @@ final class RemoteCommandModelTests: XCTestCase {
             kind: "assignment",
             course: "알고리즘 개론",
             title: "Written Assignment 4",
-            timestamp: "2026-06-09 23:59",
+            timestamp: "2099-06-09 23:59",
             status: "진행 중"
         )
         let sameMailAssignment = ServerRelaySyncItem(
@@ -780,7 +816,7 @@ final class RemoteCommandModelTests: XCTestCase {
             kind: "assignment",
             course: "알고리즘 개론",
             title: "Written Assignment 4",
-            timestamp: "2026-06-09 23:59",
+            timestamp: "2099-06-09 23:59",
             status: "메일 분석",
             detail: "메일에서 확인한 과제입니다."
         )
@@ -789,7 +825,7 @@ final class RemoteCommandModelTests: XCTestCase {
             kind: "exam",
             course: "영미 단편소설",
             title: "기말고사",
-            timestamp: "2026-06-17 09:00",
+            timestamp: "2099-06-17 09:00",
             status: "메일 분석"
         )
 

@@ -1422,6 +1422,7 @@ final class KLMSMacModel: ObservableObject {
     private func applyServerRelaySyncDataDashboardState(_ syncData: ServerRelaySyncData) -> Bool {
         let dashboardItems = syncData.items
             .map(\.normalizedDashboardItem)
+            .filter { !$0.isPastActiveDashboardScheduleItem }
             .dedupedForServerRelay()
         var didChange = false
         let didLoadServerDashboardItems = !hasLoadedServerRelayDashboardItems
@@ -1451,6 +1452,7 @@ final class KLMSMacModel: ObservableObject {
         let nextItems = items
             .unmatchedMailDashboardItems(comparedTo: baseItems)
             .map(\.normalizedDashboardItem)
+            .filter { !$0.isPastActiveDashboardScheduleItem }
             .dedupedForServerRelay()
             .prefix(80)
             .map { $0 }
@@ -1470,7 +1472,11 @@ final class KLMSMacModel: ObservableObject {
     ) -> Bool {
         var itemsByID: [String: ServerRelaySyncItem] = [:]
         for item in items {
-            itemsByID[item.id] = item.normalizedDashboardItem
+            let normalized = item.normalizedDashboardItem
+            guard !normalized.isPastActiveDashboardScheduleItem else {
+                continue
+            }
+            itemsByID[item.id] = normalized
         }
         guard !itemsByID.isEmpty else {
             return false
@@ -2143,6 +2149,9 @@ final class KLMSMacModel: ObservableObject {
 
     func dashboardServerRelayItems(for kind: DashboardDetailKind? = nil) -> [ServerRelaySyncItem] {
         cachedServerRelayDashboardItems.filter { item in
+            guard !item.isPastActiveDashboardScheduleItem else {
+                return false
+            }
             guard !item.isHidden else {
                 return kind == .hidden
             }
@@ -2174,6 +2183,7 @@ final class KLMSMacModel: ObservableObject {
         }
         let nextItems = (currentServerRelayBaseSyncItems() + mailDashboardItems)
             .map(\.normalizedDashboardItem)
+            .filter { !$0.isPastActiveDashboardScheduleItem }
             .dedupedForServerRelay()
         if cachedServerRelayDashboardItems != nextItems {
             cachedServerRelayDashboardItems = nextItems
@@ -2189,6 +2199,7 @@ final class KLMSMacModel: ObservableObject {
         let unmatchedItems = mailDashboardItems
             .unmatchedMailDashboardItems(comparedTo: currentServerRelayBaseSyncItems())
             .map(\.normalizedDashboardItem)
+            .filter { !$0.isPastActiveDashboardScheduleItem }
             .dedupedForServerRelay()
         cachedMailDashboardItemsByKind = Dictionary(grouping: unmatchedItems, by: \.kind)
             .mapValues(Self.sortedMailDashboardItems)
@@ -2244,9 +2255,9 @@ final class KLMSMacModel: ObservableObject {
         .dedupedForCalendarDisplay()
         .filter { $0.isUserVisibleCalendarChange && !isCalendarChangeResolved($0) }
         .count
-        let serverVisibleItems = cachedServerRelayDashboardItems.filter { !$0.isHidden }
+        let serverVisibleItems = cachedServerRelayDashboardItems.filter { !$0.isHidden && !$0.isPastActiveDashboardScheduleItem }
         let serverAssignmentCount = serverVisibleItems.filter {
-            $0.kind == "assignment" || $0.kind == "assignmentCandidate" || $0.kind == "completedAssignment"
+            $0.kind == "assignment" || $0.kind == "assignmentCandidate"
         }.count
         let serverExamCount = serverVisibleItems.filter {
             $0.kind == "exam" || $0.kind == "examCandidate"

@@ -867,7 +867,12 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn('"종류"', detail)
         self.assertIn('"파일명"', detail)
         self.assertIn('"경로"', detail)
-        self.assertIn('"최근"', detail)
+        self.assertIn('"최신"', detail)
+        self.assertLess(
+            detail.index("case recent"),
+            detail.index("case course"),
+            "파일 정렬 옵션은 최신이 가장 왼쪽에 오도록 recent가 첫 case여야 합니다.",
+        )
         self.assertIn("private struct FileSortPickerView", detail)
         self.assertGreaterEqual(detail.count("FileSortPickerView(selection: $sortOption)"), 2)
         self.assertGreaterEqual(detail.count(".sorted(by: sortOption)"), 2)

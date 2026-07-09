@@ -3384,11 +3384,11 @@ private struct DashboardFileItem: Identifiable, Sendable {
 }
 
 private enum DashboardFileSortOption: String, CaseIterable, Identifiable, Sendable {
+    case recent
     case course
     case kind
     case name
     case path
-    case recent
 
     var id: String { rawValue }
 

@@ -1562,7 +1562,7 @@ public extension SanitizedRemoteStatus {
     mutating func applyMailDashboardItems(_ items: [ServerRelaySyncItem], baseItems: [ServerRelaySyncItem]) {
         let visibleItems = items
             .unmatchedMailDashboardItems(comparedTo: baseItems)
-            .filter { !$0.isHidden }
+            .filter { !$0.isHidden && !$0.isPastActiveDashboardScheduleItem }
         assignments += visibleItems.filter { $0.kind == "assignment" || $0.kind == "assignmentCandidate" }.count
         exams += visibleItems.filter { $0.kind == "exam" || $0.kind == "examCandidate" }.count
         notices += visibleItems.filter { $0.kind == "notice" }.count
@@ -1611,6 +1611,23 @@ public extension Array where Element == ServerRelaySyncItem {
 public extension ServerRelaySyncItem {
     var dashboardTimestampEpoch: Int? {
         Self.dashboardTimestampEpoch(from: timestamp)
+    }
+
+    var isPastActiveDashboardScheduleItem: Bool {
+        guard Self.isActiveDashboardScheduleKind(kind),
+              let timestampEpoch = dashboardTimestampEpoch else {
+            return false
+        }
+        return timestampEpoch < Int(Date().timeIntervalSince1970)
+    }
+
+    static func isActiveDashboardScheduleKind(_ kind: String) -> Bool {
+        switch kind {
+        case "assignment", "assignmentCandidate", "exam", "examCandidate", "helpDesk":
+            true
+        default:
+            false
+        }
     }
 
     static func dashboardDefaultSort(_ lhs: ServerRelaySyncItem, _ rhs: ServerRelaySyncItem) -> Bool {

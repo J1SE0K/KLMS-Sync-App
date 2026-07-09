@@ -241,6 +241,10 @@ public extension LegacySyncState.Content {
                 appendRecord(completed)
             } else if status.isDashboardIgnoredAssignmentStatus {
                 appendRecord(item.dashboardMarkedRecordStatus(status))
+            } else if item.isDashboardPastScheduleItem {
+                let completed = item.dashboardMarkedPastScheduleRecord()
+                upsert(completed, into: &nextCompletedAssignments, indexes: &completedIndexes)
+                appendRecord(completed)
             } else if asCandidate {
                 upsert(item, into: &nextAssignmentCandidates, indexes: &candidateIndexes)
                 appendRecord(item.dashboardMarkedActiveIfNeeded())
