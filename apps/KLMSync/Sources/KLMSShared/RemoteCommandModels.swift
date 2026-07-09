@@ -1231,6 +1231,8 @@ public struct ServerRelayRequestLogEntry: Codable, Sendable, Equatable, Identifi
             return "생성됨"
         case "updated":
             return "갱신됨"
+        case "stable", "unchanged", "noop", "stable-noop":
+            return "변경 없음"
         case "deleted", "removed", "cleared":
             return "삭제됨"
         case "queued", "pending":

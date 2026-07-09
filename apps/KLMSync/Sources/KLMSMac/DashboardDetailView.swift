@@ -1573,47 +1573,75 @@ private struct DashboardFilterBarView: View {
     var supportsNewOnly: Bool
     var supportsRecentOnly: Bool
     var supportsHiddenToggle: Bool
+    @State private var isAdvancedFiltersExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            filterHeader
-            searchControl
-            rangeControl
-            displayControl
+        VStack(alignment: .leading, spacing: 6) {
+            compactFilterLine
+            if isAdvancedFiltersExpanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    rangeControl
+                    if hasDisplayControls {
+                        displayControl
+                    }
+                }
+            }
         }
     }
 
-    private var filterHeader: some View {
-        HStack(alignment: .center, spacing: 9) {
+    private var compactFilterLine: some View {
+        HStack(alignment: .center, spacing: 8) {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.klmsMacSelectedForeground)
-                .frame(width: 24, height: 24)
+                .frame(width: 26, height: 26)
                 .background(Color.klmsMacSelectedBackground.opacity(0.78), in: RoundedRectangle(cornerRadius: 7))
             VStack(alignment: .leading, spacing: 2) {
                 Text("필터와 검색")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
-                Text(hasActiveFilter ? activeFilterSummary : "검색, 연도, 학기, 과목, 표시 조건을 바로 조정합니다.")
+                Text(hasActiveFilter ? activeFilterSummary : "전체 항목")
                     .font(.caption2)
                     .foregroundStyle(Color.klmsMacSecondaryText)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
             }
-            Spacer(minLength: 8)
+            .frame(minWidth: 138, maxWidth: 230, alignment: .leading)
+
+            TextField("검색", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 180)
+                .layoutPriority(1)
+
+            if hasActiveFilter {
+                Button {
+                    resetFilters()
+                } label: {
+                    Label("초기화", systemImage: "arrow.counterclockwise")
+                }
+                .buttonStyle(KLMSMacCompactResetButtonStyle())
+                .help("검색과 필터를 모두 초기화합니다.")
+                .accessibilityLabel("필터 초기화")
+            }
+
+            Button {
+                dashboardPerformWithoutAnimation {
+                    isAdvancedFiltersExpanded.toggle()
+                }
+            } label: {
+                Label(filterToggleTitle, systemImage: isAdvancedFiltersExpanded ? "chevron.up" : "slider.horizontal.3")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(KLMSMacCompactResetButtonStyle())
+            .help(isAdvancedFiltersExpanded ? "연도, 학기, 과목, 표시 조건 접기" : "연도, 학기, 과목, 표시 조건 펼치기")
+            .accessibilityLabel("상세 필터 \(isAdvancedFiltersExpanded ? "접기" : "펼치기")")
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity(0.78), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color.klmsMacSelectedBorder.opacity(0.74))
-                .frame(width: 3)
-                .padding(.vertical, 9)
-        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+        .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
         .overlay {
             RoundedRectangle(cornerRadius: 9)
-                .stroke(Color.klmsMacSelectedBorder.opacity(0.42), lineWidth: 1)
+                .stroke(Color.klmsMacBorder.opacity(0.78), lineWidth: 1)
         }
     }
 
@@ -1687,19 +1715,15 @@ private struct DashboardFilterBarView: View {
                 if supportsHiddenToggle {
                     Toggle("숨김 포함", isOn: $showHidden)
                 }
-                Spacer()
-                if hasActiveFilter {
-                    Button {
-                        resetFilters()
-                    } label: {
-                        Label("초기화", systemImage: "arrow.counterclockwise")
-                    }
-                    .buttonStyle(KLMSMacCompactResetButtonStyle())
-                }
+                Spacer(minLength: 0)
             }
             .font(.caption)
             .toggleStyle(.checkbox)
         }
+    }
+
+    private var hasDisplayControls: Bool {
+        supportsNewOnly || supportsRecentOnly || supportsHiddenToggle
     }
 
     private var hasActiveFilter: Bool {
@@ -1710,6 +1734,22 @@ private struct DashboardFilterBarView: View {
             || showHidden
             || newOnly
             || recentOnly
+    }
+
+    private var activeFilterCount: Int {
+        var count = 0
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
+        if selectedCourse != DashboardCourseFilter.all { count += 1 }
+        if selectedYear != DashboardTermFilter.allYears { count += 1 }
+        if selectedSemester != DashboardTermFilter.allSemesters { count += 1 }
+        if showHidden { count += 1 }
+        if newOnly { count += 1 }
+        if recentOnly { count += 1 }
+        return count
+    }
+
+    private var filterToggleTitle: String {
+        activeFilterCount > 0 ? "필터 \(activeFilterCount)" : "필터"
     }
 
     private var activeFilterSummary: String {
@@ -2460,7 +2500,7 @@ private struct ExamOverrideEditor: View {
     }
 
     private var overrideStatusText: String {
-        override.isEmpty ? "저장된 override 없음" : "저장됨"
+        override.isEmpty ? "저장된 수정 없음" : "저장됨"
     }
 }
 
@@ -2842,7 +2882,7 @@ private struct NoticeRowView: View {
                                         .foregroundStyle(Color.klmsMacSecondaryText)
                                 }
                             }
-                            Text([term?.displayName ?? "", notice.course, notice.postedAt, notice.changeState].filter { !$0.isEmpty }.joined(separator: " · ").klmsDisplayText)
+                            Text([term?.displayName ?? "", notice.course, notice.postedAt, notice.changeState.klmsLocalizedStatus].filter { !$0.isEmpty }.joined(separator: " · ").klmsDisplayText)
                                 .font(.caption2)
                                 .foregroundStyle(Color.klmsMacSecondaryText)
                         }
@@ -4048,69 +4088,94 @@ private struct FileRowView: View {
                         isExpanded.toggle()
                     }
                 } label: {
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(item.title.isEmpty ? "(파일명 없음)" : item.title)
-                                    .font(.caption.weight(.semibold))
-                                    .lineLimit(2)
-                                Label(item.fileKindLabel, systemImage: item.fileKindIcon)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(item.title.isEmpty ? "(파일명 없음)" : item.title)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: 520, alignment: .leading)
+                                .layoutPriority(1)
+                            Label(item.fileKindLabel, systemImage: item.fileKindIcon)
+                                .font(.caption2)
+                                .foregroundStyle(item.fileKindColor)
+                                .fixedSize(horizontal: true, vertical: false)
+                            if item.isRecent {
+                                Label("최근", systemImage: "sparkle")
                                     .font(.caption2)
-                                    .foregroundStyle(item.fileKindColor)
-                                if item.isRecent {
-                                    Label("최근", systemImage: "sparkle")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.klmsMacCommandAccent)
-                                }
-                                if hidden {
-                                    Label("숨김", systemImage: "eye.slash")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.klmsMacSecondaryText)
-                                }
+                                    .foregroundStyle(Color.klmsMacCommandAccent)
+                                    .fixedSize(horizontal: true, vertical: false)
                             }
-                            let metadata = [item.academicTerm?.displayName ?? "", item.course].filter { !$0.isEmpty }.joined(separator: " · ")
-                            if !metadata.isEmpty {
-                                Text(metadata)
+                            if hidden {
+                                Label("숨김", systemImage: "eye.slash")
                                     .font(.caption2)
                                     .foregroundStyle(Color.klmsMacSecondaryText)
-                                    .lineLimit(2)
-                            }
-                            if isExpanded, !item.path.isEmpty {
-                                Text(item.path)
-                                    .font(.caption2)
-                                    .foregroundStyle(Color.klmsMacSecondaryText)
-                                    .lineLimit(2)
-                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: true, vertical: false)
                             }
                         }
-                        Spacer(minLength: 8)
-                        DashboardRowDisclosureButton(isExpanded: isExpanded)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        let metadata = [item.academicTerm?.displayName ?? "", item.course].filter { !$0.isEmpty }.joined(separator: " · ")
+                        if !metadata.isEmpty {
+                            Text(metadata)
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                                .lineLimit(2)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: 620, alignment: .leading)
+                        }
+                        if isExpanded, !item.path.isEmpty {
+                            Text(item.path)
+                                .font(.caption2)
+                                .foregroundStyle(Color.klmsMacSecondaryText)
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: 620, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
                 .accessibilityLabel("\(item.title.isEmpty ? "파일" : item.title) 작업 \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "파일 작업 접기" : "파일 작업 펼치기")
-                if pathExists {
-                    Button {
-                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
-                    } label: {
-                        Image(systemName: "folder")
+                .layoutPriority(1)
+
+                HStack(spacing: 6) {
+                    if pathExists {
+                        Button {
+                            NSWorkspace.shared.open(URL(fileURLWithPath: item.path))
+                        } label: {
+                            Image(systemName: "doc")
+                        }
+                        .buttonStyle(KLMSMacIconButtonStyle())
+                        .help("파일 열기 또는 미리보기")
+                        .accessibilityLabel("로컬 파일 열기 또는 미리보기")
+                        .accessibilityHint("기본 앱으로 파일을 엽니다.")
+
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
+                        } label: {
+                            Image(systemName: "folder")
+                        }
+                        .buttonStyle(KLMSMacIconButtonStyle())
+                        .help("Finder에서 파일 위치 보기")
+                        .accessibilityLabel("Finder에서 파일 위치 보기")
+                        .accessibilityHint("Finder에서 이 파일을 선택합니다.")
                     }
-                    .buttonStyle(KLMSMacIconButtonStyle())
-                    .help("Finder에서 보기")
-                    .accessibilityLabel("파일 Finder에서 보기")
-                }
-                if !item.url.isEmpty {
-                    Button {
-                        openExternalURL(item.url)
-                    } label: {
-                        Image(systemName: "safari")
+                    if !item.url.isEmpty {
+                        Button {
+                            openExternalURL(item.url)
+                        } label: {
+                            Image(systemName: "safari")
+                        }
+                        .buttonStyle(KLMSMacIconButtonStyle())
+                        .help("KLMS에서 원본 열기")
+                        .accessibilityLabel("KLMS에서 파일 열기")
+                        .accessibilityHint("브라우저에서 KLMS 원본 페이지를 엽니다.")
                     }
-                    .buttonStyle(KLMSMacIconButtonStyle())
-                    .help("KLMS 열기")
-                    .accessibilityLabel("KLMS에서 파일 열기")
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
             DeferredDashboardExpansion(isExpanded: isExpanded) {
                 actionBar(hidden: hidden, pathExists: pathExists)
@@ -4136,14 +4201,17 @@ private struct FileRowView: View {
                         Label("열기", systemImage: "doc")
                     }
                     .buttonStyle(KLMSMacActionButtonStyle())
+                    .help("기본 앱으로 파일을 엽니다.")
+                    .accessibilityLabel("로컬 파일 열기")
 
                     Button {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.path)])
                     } label: {
-                        Label("수정", systemImage: "pencil")
+                        Label("Finder에서 보기", systemImage: "folder")
                     }
                     .buttonStyle(KLMSMacActionButtonStyle())
-                    .help("Finder에서 파일 위치를 열어 직접 수정합니다.")
+                    .help("Finder에서 파일 위치를 열고 선택합니다.")
+                    .accessibilityLabel("Finder에서 파일 위치 보기")
                 }
                 if hidden {
                     Button {
@@ -4507,7 +4575,7 @@ private struct CalendarActionGuideView: View {
         if hasReportedCalendarChanges {
             return "방금 생성, 수정, 삭제된 일정입니다. 항목별 수정·삭제는 아래 목록에서 처리하고, 전체 재반영은 KLMS 기준 반영을 누르세요."
         }
-        return "캘린더 수가 맞지 않으면 KLMS 기준 반영으로 과제/시험과 Calendar를 다시 맞출 수 있습니다."
+        return "캘린더 수가 맞지 않으면 KLMS 기준 반영으로 과제/시험과 캘린더를 다시 맞출 수 있습니다."
     }
 
     private func openSystemCalendar() {
@@ -4749,14 +4817,14 @@ private struct CalendarChangeRowView: View {
                         Label("등록", systemImage: "calendar.badge.plus")
                     }
                     .buttonStyle(KLMSMacActionButtonStyle(tone: .success))
-                    .help("Apple Calendar에 이 일정 내용을 새 이벤트로 등록합니다.")
+                    .help("캘린더 앱에 이 일정 내용을 새 이벤트로 등록합니다.")
                     Button {
                         calendarSheetAction = .calendarEdit
                     } label: {
                         Label("수정", systemImage: "pencil")
                     }
                     .buttonStyle(KLMSMacActionButtonStyle())
-                    .help("Apple Calendar에 저장된 이 일정의 제목, 시간, 장소를 직접 수정합니다.")
+                    .help("캘린더 앱에 저장된 이 일정의 제목, 시간, 장소를 직접 수정합니다.")
                     if change.isDeletedAction {
                         Button {
                             editStatusText = "삭제된 변경 항목을 없애는 중입니다."
@@ -4788,7 +4856,7 @@ private struct CalendarChangeRowView: View {
                             Label("삭제", systemImage: "calendar.badge.minus")
                         }
                         .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
-                        .help("Apple Calendar에서 이 이벤트를 삭제합니다.")
+                        .help("캘린더 앱에서 이 이벤트를 삭제합니다.")
                     }
                     Button {
                         editStatusText = "캘린더에서 일정을 여는 중입니다."
@@ -4802,7 +4870,7 @@ private struct CalendarChangeRowView: View {
                         Label("캘린더에서 열기", systemImage: "calendar")
                     }
                     .buttonStyle(KLMSMacActionButtonStyle())
-                    .help("Calendar 앱에서 이 이벤트를 바로 선택합니다.")
+                    .help("캘린더 앱에서 이 이벤트를 바로 선택합니다.")
                     Spacer()
                 }
                 .font(.caption)
@@ -4961,7 +5029,7 @@ struct MacMailPasteAnalyzerPanel: View {
         }
         .sheet(isPresented: $isShowingCreateSheet) {
             MailCalendarCreateSheet(analysis: analysis) { draft in
-                createStatusText = "메일 일정을 Calendar에 등록하는 중입니다."
+                createStatusText = "메일 일정을 캘린더에 등록하는 중입니다."
                 Task {
                     await model.createManualCalendarEvent(
                         title: draft.title,
@@ -5582,7 +5650,7 @@ private struct MailCalendarCreateSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("메일 일정 등록")
                 .font(.headline)
-            Text("Apple Calendar에 새 일정을 추가합니다. 시간은 `2026-06-17 13:00` 형식으로 확인해 주세요.")
+            Text("캘린더 앱에 새 일정을 추가합니다. 시간은 `2026-06-17 13:00` 형식으로 확인해 주세요.")
                 .font(.caption)
                 .foregroundStyle(Color.klmsMacSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -5857,7 +5925,7 @@ private struct MacMailPasteAnalysis {
             lines.append("분류가 애매합니다. 제목, 과목명, 날짜가 들어간 메일 본문 전체를 붙여넣어 주세요.")
         }
         if canCreateCalendarEvent {
-            lines.append("필요하면 아래 버튼으로 Apple Calendar에 직접 등록할 수 있습니다.")
+            lines.append("필요하면 아래 버튼으로 캘린더 앱에 직접 등록할 수 있습니다.")
         }
         var seen = Set<String>()
         return lines.filter { seen.insert($0).inserted }
@@ -6530,8 +6598,8 @@ private struct CalendarEventEditSheet: View {
             Text(action == .calendarCreate ? "캘린더 일정 등록" : "캘린더 내용 수정")
                 .font(.headline)
             Text(action == .calendarCreate
-                ? "Apple Calendar에 새 이벤트를 등록합니다. 제목과 시작 시간은 반드시 확인해 주세요."
-                : "Apple Calendar에 저장된 이벤트를 직접 수정합니다. 비워 둔 시간/장소는 변경하지 않습니다.")
+                ? "캘린더 앱에 새 이벤트를 등록합니다. 제목과 시작 시간은 반드시 확인해 주세요."
+                : "캘린더 앱에 저장된 이벤트를 직접 수정합니다. 비워 둔 시간/장소는 변경하지 않습니다.")
                 .font(.caption)
                 .foregroundStyle(Color.klmsMacSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)

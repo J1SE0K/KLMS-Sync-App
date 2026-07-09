@@ -49,7 +49,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .login, .sync, .notice, .files:
             "설정 파일 저장"
         case .app:
-            "바로 반영"
+            "이 기기 적용"
         }
     }
 
@@ -79,7 +79,7 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
         case .files:
             "파일 확인"
         case .app:
-            "바로 반영되는 설정"
+            "화면 모드와 원격 실행"
         }
     }
 }
@@ -118,7 +118,7 @@ struct SettingsView: View {
                 Text("설정")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
-	                Text("자주 쓰는 설정은 바로 보이고, 설치/백업 같은 부가 항목만 접어 둡니다.")
+	                Text("대부분의 값은 설정 파일에 저장되고, 화면 모드와 원격 실행 옵션은 이 기기에 바로 적용됩니다.")
                     .font(.caption2)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -334,7 +334,7 @@ struct SettingsView: View {
                     "캘린더 내용이 같으면 건너뛰기",
                     .calendarSkipUnchangedDesired,
                     defaultValue: true,
-                    description: "시험과 헬프데스크 일정이 이미 같으면 Calendar 이벤트를 다시 쓰지 않습니다."
+                    description: "시험과 헬프데스크 일정이 이미 같으면 캘린더 이벤트를 다시 쓰지 않습니다."
                 )
             }
 
@@ -492,10 +492,10 @@ struct SettingsView: View {
     private var appSettings: some View {
         settingsForm {
             SettingsGroupBox(
-                title: "바로 반영되는 설정",
-                detail: "화면 모드는 이 기기에 바로 적용하고, 원격 실행 옵션은 서버에 바로 저장합니다.",
+                title: "화면 모드와 원격 실행",
+                detail: "이 Mac의 화면 모드와 원격 실행 옵션입니다.",
                 systemImage: "slider.horizontal.3",
-                badge: "바로 반영",
+                badge: "즉시 적용",
                 defaultExpanded: true
             ) {
                 described(
@@ -615,16 +615,6 @@ struct SettingsView: View {
                         systemImage: "externaldrive"
                     )
                 }
-            }
-
-	            SettingsGroupBox(
-	                title: "설정 저장 방식",
-	                detail: "config.env를 안전하게 수정하는 방식입니다.",
-	                systemImage: "doc.text",
-	                badge: "안내",
-	                defaultExpanded: true
-	            ) {
-                SettingsHelpText("Mac 설정 파일에 저장하는 값은 알 수 없는 config.env 항목과 주석을 그대로 보존합니다.")
             }
 
             relaySettingsCollapsed

@@ -452,14 +452,14 @@ public extension CalendarChange {
     var explanationText: String {
         switch normalizedAction {
         case "created", "mail":
-            return "KLMS에서 확인된 일정이 Apple Calendar에 없어서 새로 만든 항목입니다."
+            return "KLMS에서 확인된 일정이 캘린더 앱에 없어서 새로 만든 항목입니다."
         case "updated":
             if changes.isEmpty {
-                return "KLMS 일정과 Apple Calendar 일정이 달라서 수정한 항목입니다."
+                return "KLMS 일정과 캘린더 앱 일정이 달라서 수정한 항목입니다."
             }
-            return "KLMS 일정과 Apple Calendar 일정이 달라서 수정한 항목입니다. 바뀐 값: \(changes.joined(separator: ", "))."
+            return "KLMS 일정과 캘린더 앱 일정이 달라서 수정한 항목입니다. 바뀐 값: \(changes.joined(separator: ", "))."
         case "deleted":
-            return "KLMS 기준으로 더 이상 유지할 일정이 아니어서 Apple Calendar에서 삭제된 항목입니다."
+            return "KLMS 기준으로 더 이상 유지할 일정이 아니어서 캘린더 앱에서 삭제된 항목입니다."
         default:
             return "최근 동기화에서 캘린더 상태가 바뀐 항목입니다."
         }
@@ -468,9 +468,9 @@ public extension CalendarChange {
     var nextActionText: String {
         switch normalizedAction {
         case "created", "mail":
-            return "캘린더 앱에서 시간이 맞는지 확인하세요. 직접 고치려면 ‘내용 수정’을 누르고, Calendar 앱에서 보려면 ‘캘린더에서 열기’를 누르세요."
+            return "캘린더 앱에서 시간이 맞는지 확인하세요. 직접 고치려면 ‘내용 수정’을 누르고, 캘린더 앱에서 보려면 ‘캘린더에서 열기’를 누르세요."
         case "updated":
-            return "변경된 시간이 맞는지 확인하세요. 직접 고친 일정이 덮였거나 값이 이상하면 ‘내용 수정’으로 Calendar 이벤트를 바로 고치세요."
+            return "변경된 시간이 맞는지 확인하세요. 직접 고친 일정이 덮였거나 값이 이상하면 ‘내용 수정’으로 캘린더 이벤트를 바로 고치세요."
         case "deleted":
             return "이미 삭제된 일정입니다. 확인하면 이 항목을 목록에서 바로 없앱니다."
         default:
@@ -479,7 +479,7 @@ public extension CalendarChange {
     }
 
     var actionButtonHelpText: String {
-        "내용 수정은 Apple Calendar 이벤트 자체를 바꿉니다. 캘린더에서 열기는 Calendar 앱에서 직접 확인하는 기능입니다."
+        "내용 수정은 캘린더 앱 이벤트 자체를 바꿉니다. 캘린더에서 열기는 캘린더 앱에서 직접 확인하는 기능입니다."
     }
 
     var editDefaults: CalendarEventEdit {

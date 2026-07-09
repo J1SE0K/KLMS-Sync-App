@@ -460,7 +460,7 @@ final class StatusModelTests: XCTestCase {
         XCTAssertEqual(verify.checks[0].diagnosticTitle, "캘린더 시험 1개 누락")
         XCTAssertEqual(
             verify.checks[0].diagnosticExplanation,
-            "앱 상태 파일에는 시험 2개가 있는데 Apple Calendar에는 시험 1개만 있습니다. 캘린더 이벤트가 삭제됐거나 반영 단계가 일부 실패했을 수 있습니다."
+            "앱 상태 파일에는 시험 2개가 있는데 캘린더 앱에는 시험 1개만 있습니다. 캘린더 이벤트가 삭제됐거나 반영 단계가 일부 실패했을 수 있습니다."
         )
         XCTAssertEqual(verify.checks[1].diagnosticTitle, "마지막 캘린더 반영에서 시험 1개 누락")
         XCTAssertEqual(snapshot.attentionSummary, "상태 검사 실패 · 캘린더 시험 1개 누락")

@@ -89,11 +89,11 @@ private let workspaceTargets = [
     WorkspaceSmokeTarget(rawValue: "calendar", title: "캘린더", expectedTexts: ["캘린더 일정", "KLMS 기준 반영"]),
     WorkspaceSmokeTarget(rawValue: "activityLogs", title: "로그", expectedTexts: ["실행 로그 지우기", "서버 로그 지우기"]),
     WorkspaceSmokeTarget(rawValue: "diagnostics", title: "진단", expectedTexts: ["상태 검사", "권한/환경 진단"]),
-    WorkspaceSmokeTarget(rawValue: "settings", title: "설정", expectedTexts: ["바로 반영되는 설정"]),
+    WorkspaceSmokeTarget(rawValue: "settings", title: "설정", expectedTexts: ["이 기기에 바로 적용"]),
 ]
 
 private let settingsTargets = [
-    SettingsSmokeTarget(rawValue: "app", expectedText: "바로 반영되는 설정"),
+    SettingsSmokeTarget(rawValue: "app", expectedText: "이 기기에 바로 적용"),
     SettingsSmokeTarget(rawValue: "login", expectedText: "KAIST 아이디"),
     SettingsSmokeTarget(rawValue: "sync", expectedText: "Safari 자동화"),
     SettingsSmokeTarget(rawValue: "files", expectedText: "파일 확인"),

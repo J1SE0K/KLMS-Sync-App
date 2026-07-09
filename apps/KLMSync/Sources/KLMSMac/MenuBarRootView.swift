@@ -1448,7 +1448,7 @@ private enum KLMSMacSection: String, CaseIterable, Identifiable {
         case .diagnostics:
             "진단 화면 · 상태 검사 · 권한/환경 진단"
         case .settings:
-            "설정 화면 · 바로 반영되는 설정"
+            "설정 화면 · 이 기기에 바로 적용"
         }
     }
 }
@@ -2062,6 +2062,25 @@ private struct KLMSMacCompactDangerIconButtonStyle: ButtonStyle {
     }
 }
 
+private struct KLMSMacCompactMutedIconButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(isEnabled ? Color.klmsMacSecondaryText : Color.klmsMacSecondaryText.opacity(0.38))
+            .frame(width: 30, height: 30)
+            .background(Color.klmsMacSubtleCardBackground.opacity(isEnabled ? 0.58 : 0.20), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.klmsMacBorder.opacity(isEnabled ? 0.58 : 0.18), lineWidth: 1)
+            }
+            .opacity(isEnabled ? (configuration.isPressed ? 0.82 : 1.0) : 0.40)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.96 : 1.0)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
 private enum IntegrationHealth {
     case ok
     case warning
@@ -2217,9 +2236,9 @@ private struct LogSummaryPanelView: View {
                         await model.clearVisibleLogsAndServerRelayLogs()
                     }
                 } label: {
-                    Image(systemName: "trash")
+                    Label("전체 지우기", systemImage: "trash")
                 }
-                .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
+                .buttonStyle(KLMSMacRootActionButtonStyle(tone: .destructive))
                 .help("화면의 실행 로그, 서버 요청, 파일 요청, 항목 변경, 설정 변경, 공유 실행 로그를 지웁니다. 진행 중인 요청은 유지됩니다.")
                 .accessibilityLabel("전체 기록 지우기")
             }
@@ -3340,7 +3359,10 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                     )
                     .frame(maxWidth: .infinity, alignment: .topLeading)
 
-                    dashboardDetailContent(renderedDetail: currentRenderedDetail(in: scopedPresentation))
+                    dashboardDetailContent(
+                        renderedDetail: currentRenderedDetail(in: scopedPresentation),
+                        scopedPresentation: scopedPresentation
+                    )
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
@@ -3454,32 +3476,316 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
     }
 
     @ViewBuilder
-    private func dashboardDetailContent(renderedDetail: DashboardDetailKind?) -> some View {
+    private func dashboardDetailContent(
+        renderedDetail: DashboardDetailKind?,
+        scopedPresentation: DashboardSummaryPresentation
+    ) -> some View {
         if let renderedDetail {
             dashboardDetailColumn(kind: renderedDetail)
         } else {
-            DashboardDetailHint()
+            DashboardDetailHint(
+                items: DashboardQuickWorkItem.items(
+                    model: model,
+                    snapshot: snapshot,
+                    presentation: scopedPresentation,
+                    selectedYear: selectedYear,
+                    selectedSemester: selectedSemester
+                ),
+                onSelect: selectDashboardDetail
+            )
+        }
+    }
+}
+
+private struct DashboardQuickWorkItem: Identifiable {
+    var id: String
+    var title: String
+    var detail: String
+    var kind: DashboardDetailKind
+    var systemImage: String
+    var tint: Color
+
+    @MainActor
+    static func items(
+        model: KLMSMacModel,
+        snapshot: EngineSnapshot,
+        presentation: DashboardSummaryPresentation,
+        selectedYear: String,
+        selectedSemester: String
+    ) -> [DashboardQuickWorkItem] {
+        var items: [DashboardQuickWorkItem] = []
+        var usedKinds = Set<DashboardDetailKind>()
+
+        func append(_ item: DashboardQuickWorkItem) {
+            guard usedKinds.insert(item.kind).inserted else { return }
+            items.append(item)
+        }
+
+        if let assignment = model.dashboardStateItems(for: .assignments)
+            .filter({ matchesScope($0.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester) })
+            .sorted(by: StateItem.dashboardAssignmentSort)
+            .first {
+            append(Self.stateItem(
+                assignment,
+                kind: .assignments,
+                prefix: "과제",
+                systemImage: "checklist",
+                tint: Color.klmsMacWarningBorder
+            ))
+        }
+
+        if let exam = model.dashboardStateItems(for: .exams)
+            .filter({ matchesScope($0.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester) })
+            .sorted(by: StateItem.dashboardScheduleSort)
+            .first {
+            append(Self.stateItem(
+                exam,
+                kind: .exams,
+                prefix: "시험",
+                systemImage: "calendar.badge.clock",
+                tint: Color.klmsMacSuccessBorder
+            ))
+        }
+
+        if let notice = dashboardNoticeCandidate(snapshot: snapshot, selectedYear: selectedYear, selectedSemester: selectedSemester) {
+            append(Self(
+                id: "notice-\(notice.id)",
+                title: notice.title.klmsDisplayText.nilIfBlank ?? "공지",
+                detail: [notice.course, notice.postedAt, notice.changeState.klmsLocalizedStatus]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · "),
+                kind: .notices,
+                systemImage: "megaphone",
+                tint: Color.klmsMacCommandAccent
+            ))
+        }
+
+        if let file = dashboardFileCandidate(snapshot: snapshot, selectedYear: selectedYear, selectedSemester: selectedSemester) {
+            append(Self(
+                id: "file-\(file.id)",
+                title: dashboardFileTitle(filename: file.filename, relativePath: file.relativePath),
+                detail: [file.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog)?.displayName ?? "", file.course, "파일"]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · "),
+                kind: .files,
+                systemImage: "doc",
+                tint: Color.klmsMacSecondaryText
+            ))
+        }
+
+        if let calendarChange = dashboardCalendarCandidate(model: model, snapshot: snapshot, selectedYear: selectedYear, selectedSemester: selectedSemester) {
+            append(Self(
+                id: "calendar-\(calendarChange.id)",
+                title: calendarChange.title.nilIfBlank ?? "캘린더 변경",
+                detail: [calendarChange.actionDisplayName, calendarChange.course, calendarChange.calendar]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · "),
+                kind: .calendar,
+                systemImage: "calendar",
+                tint: Color.klmsMacSuccessBorder
+            ))
+        }
+
+        if items.count < 3 {
+            for metric in presentation.attentionMetrics + presentation.primaryMetrics + presentation.archiveMetrics {
+                guard let kind = metric.detail, metric.value > 0, !usedKinds.contains(kind) else {
+                    continue
+                }
+                append(Self(
+                    id: "metric-\(kind.rawValue)",
+                    title: "\(metric.label) \(metric.value)개",
+                    detail: "목록과 처리 버튼 열기",
+                    kind: kind,
+                    systemImage: fallbackSystemImage(for: kind),
+                    tint: fallbackTint(for: kind)
+                ))
+                if items.count >= 5 {
+                    break
+                }
+            }
+        }
+
+        return Array(items.prefix(5))
+    }
+
+    private static func dashboardFileTitle(filename: String, relativePath: String) -> String {
+        let trimmedFilename = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedFilename.isEmpty {
+            return trimmedFilename
+        }
+        let trimmedRelativePath = relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRelativePath.isEmpty else {
+            return "파일"
+        }
+        let basename = URL(fileURLWithPath: trimmedRelativePath).lastPathComponent
+        return basename.isEmpty ? trimmedRelativePath : basename
+    }
+
+    private static func stateItem(
+        _ item: StateItem,
+        kind: DashboardDetailKind,
+        prefix: String,
+        systemImage: String,
+        tint: Color
+    ) -> DashboardQuickWorkItem {
+        DashboardQuickWorkItem(
+            id: "\(kind.rawValue)-\(item.id)",
+            title: item.title.nilIfBlank ?? prefix,
+            detail: [item.academicTerm?.displayName ?? "", item.course, item.due]
+                .filter { !$0.isEmpty }
+                .joined(separator: " · "),
+            kind: kind,
+            systemImage: systemImage,
+            tint: tint
+        )
+    }
+
+    private static func dashboardNoticeCandidate(
+        snapshot: EngineSnapshot,
+        selectedYear: String,
+        selectedSemester: String
+    ) -> NoticeDigestEntry? {
+        let generatedAt = snapshot.noticeDigest?.generatedAt ?? ""
+        let catalog = snapshot.academicTermCatalog
+        return (snapshot.noticeDigest?.notices ?? [])
+            .filter { notice in
+                let hidden = snapshot.noticeUserState?.notices[notice.noticeIdentifier]?.hidden == true
+                let term = notice.academicTerm(generatedAt: generatedAt, catalog: catalog)
+                return !hidden && matchesScope(term, selectedYear: selectedYear, selectedSemester: selectedSemester)
+            }
+            .sorted { lhs, rhs in
+                let leftFresh = lhs.changeState == "new" || lhs.changeState == "updated"
+                let rightFresh = rhs.changeState == "new" || rhs.changeState == "updated"
+                if leftFresh != rightFresh {
+                    return leftFresh && !rightFresh
+                }
+                return lhs.postedAt.localizedStandardCompare(rhs.postedAt) == .orderedDescending
+            }
+            .first
+    }
+
+    private static func dashboardFileCandidate(
+        snapshot: EngineSnapshot,
+        selectedYear: String,
+        selectedSemester: String
+    ) -> CourseFileManifestEntry? {
+        snapshot.courseFileManifest
+            .filter {
+                matchesScope(
+                    $0.resolvedAcademicTerm(catalog: snapshot.academicTermCatalog),
+                    selectedYear: selectedYear,
+                    selectedSemester: selectedSemester
+                )
+            }
+            .sorted {
+                ($0.klmsTimestampEpoch ?? Int.min) > ($1.klmsTimestampEpoch ?? Int.min)
+            }
+            .first
+    }
+
+    @MainActor
+    private static func dashboardCalendarCandidate(
+        model: KLMSMacModel,
+        snapshot: EngineSnapshot,
+        selectedYear: String,
+        selectedSemester: String
+    ) -> CalendarChange? {
+        ((snapshot.calendarSyncResult?.changes ?? []) + model.mailCalendarChanges())
+            .dedupedForCalendarDisplay()
+            .filter {
+                $0.isUserVisibleCalendarChange
+                    && !model.isCalendarChangeResolved($0)
+                    && matchesScope($0.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester)
+            }
+            .first
+    }
+
+    private static func matchesScope(
+        _ term: AcademicTerm?,
+        selectedYear: String,
+        selectedSemester: String
+    ) -> Bool {
+        DashboardTermFilter.matches(term, selectedYear: selectedYear, selectedSemester: selectedSemester)
+    }
+
+    private static func fallbackSystemImage(for kind: DashboardDetailKind) -> String {
+        switch kind {
+        case .assignments, .assignmentCandidates:
+            "checklist"
+        case .exams, .examCandidates:
+            "calendar.badge.clock"
+        case .notices:
+            "megaphone"
+        case .files, .missingFiles, .newFiles, .pruned:
+            "doc"
+        case .calendar:
+            "calendar"
+        case .quarantine:
+            "exclamationmark.triangle"
+        case .helpDesk:
+            "questionmark.circle"
+        case .hidden:
+            "archivebox"
+        }
+    }
+
+    private static func fallbackTint(for kind: DashboardDetailKind) -> Color {
+        switch kind {
+        case .assignments, .assignmentCandidates:
+            Color.klmsMacWarningBorder
+        case .exams, .examCandidates, .calendar:
+            Color.klmsMacSuccessBorder
+        case .notices, .helpDesk:
+            Color.klmsMacCommandAccent
+        case .quarantine, .pruned, .missingFiles:
+            Color.klmsMacDangerBorder
+        case .files, .newFiles, .hidden:
+            Color.klmsMacSecondaryText
         }
     }
 }
 
 private struct DashboardDetailHint: View {
+    var items: [DashboardQuickWorkItem]
+    var onSelect: (DashboardDetailKind) -> Void
+
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: "rectangle.stack.badge.cursorarrow")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Color.klmsMacSecondaryText)
-                .frame(width: 26)
-            VStack(alignment: .leading, spacing: 3) {
-                Text("대시보드 항목을 선택해 주세요.")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
-                Text("카드를 누르면 바로 아래에서 목록과 처리 버튼을 확인할 수 있습니다.")
-                    .font(.caption2)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "rectangle.stack.badge.cursorarrow")
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 26)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("우선 처리할 항목")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.klmsMacPrimaryText)
+                    Text("카드를 누르면 바로 아래에서 목록과 처리 버튼을 확인할 수 있습니다.")
+                        .font(.caption2)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+
+            if items.isEmpty {
+                Text("현재 범위에서 바로 처리할 항목이 없습니다.")
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 8)], alignment: .leading, spacing: 8) {
+                    ForEach(items) { item in
+                        Button {
+                            onSelect(item.kind)
+                        } label: {
+                            DashboardQuickWorkItemRow(item: item)
+                        }
+                        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+                        .help("\(item.kind.title) 상세 열기")
+                        .accessibilityLabel("\(item.title) \(item.kind.title) 상세 열기")
+                    }
+                }
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -3488,6 +3794,44 @@ private struct DashboardDetailHint: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
+    }
+}
+
+private struct DashboardQuickWorkItemRow: View {
+    var item: DashboardQuickWorkItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: item.systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(item.tint)
+                .frame(width: 22, height: 22)
+                .background(item.tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                    .lineLimit(2)
+                if !item.detail.isEmpty {
+                    Text(item.detail)
+                        .font(.caption2)
+                        .foregroundStyle(Color.klmsMacSecondaryText)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 6)
+            Image(systemName: "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.72))
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
+        .background(Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(item.tint.opacity(0.16), lineWidth: 1)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -3922,11 +4266,11 @@ private struct DashboardRuntimePanelView: View {
 
     private var integrationSummaryText: String {
         guard let verify = model.snapshot.verifyResult else {
-            return "Notes · Calendar · Reminders 상태 검사 전"
+            return "메모 · 캘린더 · 미리 알림 상태 검사 전"
         }
         return verify.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "ok"
-            ? "Notes · Calendar · Reminders 모두 사용 가능"
-            : "Notes · Calendar · Reminders 확인 필요"
+            ? "메모 · 캘린더 · 미리 알림 모두 사용 가능"
+            : "메모 · 캘린더 · 미리 알림 확인 필요"
     }
 
     private var noticeMemoSummaryText: String {
@@ -4097,7 +4441,7 @@ private struct RemoteActivityPanelView: View {
                         } label: {
                             Image(systemName: "trash")
                         }
-                        .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
+                        .buttonStyle(KLMSMacCompactMutedIconButtonStyle())
                         .help("서버·파일 요청 기록 지우기")
                         .accessibilityLabel("서버·파일 요청 기록 지우기")
                     }
@@ -5109,7 +5453,7 @@ private struct VerifyPanelView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     if !checkSummary.hasIssues {
-                        Text("상태 검사에서 설명이 필요한 실패 항목이 없습니다.")
+                        Text("정상 항목은 필요할 때만 펼쳐서 확인합니다.")
                             .font(.caption)
                             .foregroundStyle(Color.klmsMacSecondaryText)
                     } else {
@@ -5129,7 +5473,7 @@ private struct VerifyPanelView: View {
                     }
 
                     DiagnosticChecksDisclosure(
-                        title: "전체 상태 검사 항목 \(verify.checks.count)개",
+                        title: checkSummary.hasIssues ? "전체 상태 검사 항목 \(verify.checks.count)개" : "정상 항목 \(checkSummary.okCount)개 보기",
                         isExpanded: $isAllChecksExpanded
                     ) {
                         ForEach(verify.checks) { check in
@@ -5143,7 +5487,7 @@ private struct VerifyPanelView: View {
 
     private func summaryText(for verify: VerifyResult, checkSummary: VerifyDiagnosticSummary) -> String {
         if !checkSummary.hasIssues {
-            return "상태: \(verify.status.klmsLocalizedStatus) · 정상 \(checkSummary.okCount)개"
+            return "문제 없음"
         }
         return "상태: \(verify.status.klmsLocalizedStatus) · 확인 필요 \(checkSummary.issueCount)개 · 정상 \(checkSummary.okCount)개"
     }
@@ -5301,7 +5645,7 @@ private struct DoctorPanelView: View {
                     .foregroundStyle(!checkSummary.hasIssues && doctor.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningBorder)
 
                 if !checkSummary.hasIssues {
-                    Text("권한과 실행 환경에서 설명이 필요한 실패 항목이 없습니다.")
+                    Text("정상 항목은 필요할 때만 펼쳐서 확인합니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 } else {
@@ -5321,7 +5665,7 @@ private struct DoctorPanelView: View {
                 }
 
                 DiagnosticChecksDisclosure(
-                    title: "전체 진단 항목 \(doctor.checks.count)개",
+                    title: checkSummary.hasIssues ? "전체 진단 항목 \(doctor.checks.count)개" : "정상 항목 \(checkSummary.okCount)개 보기",
                     isExpanded: $isAllChecksExpanded
                 ) {
                     ForEach(doctor.checks) { check in
@@ -5334,7 +5678,7 @@ private struct DoctorPanelView: View {
 
     private func summaryText(for doctor: DoctorResult, checkSummary: DoctorDiagnosticSummary) -> String {
         if !checkSummary.hasIssues {
-            return "상태: \(doctor.status.klmsLocalizedStatus) · 정상 \(checkSummary.okCount)개"
+            return "문제 없음"
         }
         return "상태: \(doctor.status.klmsLocalizedStatus) · 확인 필요 \(checkSummary.issueCount)개 · 정상 \(checkSummary.okCount)개"
     }
@@ -5580,7 +5924,7 @@ private struct AppDiagnosticsPanelView: View {
                             PermissionScopeText("자동화 · Safari: KLMS 로그인 확인, 페이지 수집, 파일 다운로드")
                             PermissionScopeText("자동화 · Notes: 공지 메모 열기, 선택, 본문 갱신")
                             PermissionScopeText("자동화 · System Events: Notes 메뉴 조작과 포커스 확인")
-                            PermissionScopeText("자동화 · Calendar/Reminders: 기존 스크립트와 상태 확인 경로")
+                            PermissionScopeText("자동화 · 캘린더/미리 알림: 기존 스크립트와 상태 확인 경로")
                             PermissionScopeText("캘린더/미리 알림 전체 접근: 일정과 미리 알림 동기화")
                             PermissionScopeText("알림: KAIST 인증번호와 실패 상태를 앱에서 바로 표시")
                         }
@@ -5749,7 +6093,7 @@ private struct RunLogArchivePanelView: View {
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
+                    .buttonStyle(KLMSMacCompactMutedIconButtonStyle())
                     .help("실행 로그 지우기")
                     .accessibilityLabel("실행 로그 지우기")
                 }
@@ -5861,7 +6205,7 @@ private struct RunLogArchivePanelView: View {
                         } label: {
                             Image(systemName: "trash")
                         }
-                        .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
+                        .buttonStyle(KLMSMacCompactMutedIconButtonStyle())
                         .help("서버 로그 지우기")
                         .accessibilityLabel("서버 로그 지우기")
                     }
@@ -6874,6 +7218,8 @@ private extension String {
             "생성됨"
         case "updated":
             "갱신됨"
+        case "stable", "unchanged", "noop", "stable-noop":
+            "변경 없음"
         case "deleted", "removed", "cleared":
             "삭제됨"
         case "pending", "queued":

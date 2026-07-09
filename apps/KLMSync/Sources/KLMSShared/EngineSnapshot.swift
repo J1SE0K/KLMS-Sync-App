@@ -1066,21 +1066,21 @@ public struct VerifyCheck: Codable, Sendable, Equatable, Identifiable {
             let calendar = numericValue(named: "calendar")
             let state = numericValue(named: "state")
             if let calendar, let state {
-                return "앱 상태 파일에는 시험 \(state)개가 있는데 Apple Calendar에는 시험 \(calendar)개만 있습니다. 캘린더 이벤트가 삭제됐거나 반영 단계가 일부 실패했을 수 있습니다."
+                return "앱 상태 파일에는 시험 \(state)개가 있는데 캘린더 앱에는 시험 \(calendar)개만 있습니다. 캘린더 이벤트가 삭제됐거나 반영 단계가 일부 실패했을 수 있습니다."
             }
-            return "앱이 알고 있는 시험 수와 Apple Calendar에 등록된 시험 수가 다릅니다."
+            return "앱이 알고 있는 시험 수와 캘린더 앱에 등록된 시험 수가 다릅니다."
         case "calendar_helpdesk_count_matches_state":
             let calendar = numericValue(named: "calendar")
             let state = numericValue(named: "state")
             if let calendar, let state {
-                return "앱 상태 파일에는 헬프데스크 \(state)개가 있는데 Apple Calendar에는 \(calendar)개만 있습니다."
+                return "앱 상태 파일에는 헬프데스크 \(state)개가 있는데 캘린더 앱에는 \(calendar)개만 있습니다."
             }
-            return "앱이 알고 있는 헬프데스크 수와 Apple Calendar 등록 수가 다릅니다."
+            return "앱이 알고 있는 헬프데스크 수와 캘린더 앱 등록 수가 다릅니다."
         case "calendar_result_exam_matches_state":
             let result = numericValue(named: "result")
             let state = numericValue(named: "state")
             if let result, let state {
-                return "마지막 캘린더 반영 결과가 시험 \(result)개로 기록됐지만, 앱 상태에는 시험 \(state)개가 있습니다. 방금 실행한 동기화가 모든 시험 일정을 Calendar에 쓰지 못했다는 신호입니다."
+                return "마지막 캘린더 반영 결과가 시험 \(result)개로 기록됐지만, 앱 상태에는 시험 \(state)개가 있습니다. 방금 실행한 동기화가 모든 시험 일정을 캘린더에 쓰지 못했다는 신호입니다."
             }
             return "마지막 캘린더 반영 결과와 앱 상태의 시험 수가 다릅니다."
         case "calendar_result_helpdesk_matches_state":
@@ -1119,7 +1119,7 @@ public struct VerifyCheck: Codable, Sendable, Equatable, Identifiable {
              "calendar_helpdesk_count_matches_state",
              "calendar_result_exam_matches_state",
              "calendar_result_helpdesk_matches_state":
-            return "과제/시험 동기화를 다시 실행한 뒤 상태 검사를 한 번 더 누르세요. 계속 남으면 Calendar 앱의 KLMS 캘린더에서 누락된 일정을 확인하세요."
+            return "과제/시험 동기화를 다시 실행한 뒤 상태 검사를 한 번 더 누르세요. 계속 남으면 캘린더 앱의 KLMS 캘린더에서 누락된 일정을 확인하세요."
         case "reminders_assignment_count_matches_state",
              "reminders_total_count_consistent":
             return "과제/시험 동기화를 다시 실행하세요. 직접 체크한 완료 상태는 보존되어야 하므로, 중복 항목이 보이면 미리 알림 목록에서 같은 제목을 확인하세요."

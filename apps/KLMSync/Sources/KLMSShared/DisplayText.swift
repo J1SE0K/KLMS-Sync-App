@@ -22,12 +22,18 @@ public extension String {
             "실행 중"
         case "accepted":
             "접수됨"
+        case "new":
+            "새 항목"
         case "created":
             "생성됨"
         case "updated":
             "갱신됨"
+        case "stable", "unchanged", "noop", "stable-noop":
+            "변경 없음"
         case "deleted", "removed", "cleared":
             "삭제됨"
+        case "skipped", "skip":
+            "건너뜀"
         case "queued":
             "대기 중"
         case "cancelled", "canceled":
@@ -36,6 +42,10 @@ public extension String {
             "중단됨"
         case "completed":
             "완료"
+        case "idle":
+            "대기 중"
+        case "busy":
+            "Mac 실행 중"
         case "macunavailable", "mac_unavailable":
             "Mac 응답 없음"
         case "":

@@ -4448,7 +4448,7 @@ final class KLMSMacModel: ObservableObject {
             throw serverRelayItemActionError("수정할 캘린더 내용이 없습니다.")
         }
         guard await requestCalendarPermission() else {
-            throw serverRelayItemActionError("Calendar 수정 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 Calendar 권한을 허용해 주세요.")
+            throw serverRelayItemActionError("캘린더 수정 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 캘린더 권한을 허용해 주세요.")
         }
 
         let store = EKEventStore()
@@ -4485,7 +4485,7 @@ final class KLMSMacModel: ObservableObject {
 
     private func performCalendarEventDeletion(change: CalendarChange) async throws {
         guard await requestCalendarPermission() else {
-            throw serverRelayItemActionError("Calendar 삭제 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 Calendar 권한을 허용해 주세요.")
+            throw serverRelayItemActionError("캘린더 삭제 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 캘린더 권한을 허용해 주세요.")
         }
         let store = EKEventStore()
         let event = try findCalendarEvent(change: change, store: store)
@@ -4494,7 +4494,7 @@ final class KLMSMacModel: ObservableObject {
 
     private func openCalendarEventInCalendar(change: CalendarChange) async throws {
         guard await requestCalendarPermission() else {
-            throw serverRelayItemActionError("Calendar 열기 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 Calendar 권한을 허용해 주세요.")
+            throw serverRelayItemActionError("캘린더 열기 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 캘린더 권한을 허용해 주세요.")
         }
         let store = EKEventStore()
         let event = try findCalendarEvent(change: change, store: store)
@@ -4532,14 +4532,14 @@ final class KLMSMacModel: ObservableObject {
               if targetEvent is missing value and (count of titleMatches) > 0 then set targetEvent to item 1 of titleMatches
             end if
           end tell
-          if targetEvent is missing value then error "Calendar 앱에서 해당 일정을 찾지 못했습니다."
+          if targetEvent is missing value then error "캘린더 앱에서 해당 일정을 찾지 못했습니다."
           show targetEvent
         end tell
         """
         var errorInfo: NSDictionary?
         guard NSAppleScript(source: script)?.executeAndReturnError(&errorInfo) != nil else {
             let message = (errorInfo?[NSAppleScript.errorMessage] as? String)
-                ?? "Calendar 앱에서 해당 일정을 선택하지 못했습니다."
+                ?? "캘린더 앱에서 해당 일정을 선택하지 못했습니다."
             throw serverRelayItemActionError(message)
         }
     }
@@ -4570,12 +4570,12 @@ final class KLMSMacModel: ObservableObject {
             throw serverRelayItemActionError("종료 시간이 시작 시간보다 빠릅니다.")
         }
         guard await requestCalendarPermission() else {
-            throw serverRelayItemActionError("Calendar 등록 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 Calendar 권한을 허용해 주세요.")
+            throw serverRelayItemActionError("캘린더 등록 권한이 필요합니다. 시스템 설정에서 KLMS Sync의 캘린더 권한을 허용해 주세요.")
         }
 
         let store = EKEventStore()
         guard let calendar = store.defaultCalendarForNewEvents ?? store.calendars(for: .event).first(where: { $0.allowsContentModifications }) else {
-            throw serverRelayItemActionError("일정을 추가할 수 있는 Calendar를 찾지 못했습니다.")
+            throw serverRelayItemActionError("일정을 추가할 수 있는 캘린더를 찾지 못했습니다.")
         }
         let event = EKEvent(eventStore: store)
         event.calendar = calendar
@@ -4629,7 +4629,7 @@ final class KLMSMacModel: ObservableObject {
             return event
         }
 
-        throw serverRelayItemActionError("Calendar에서 수정할 일정을 찾지 못했습니다. 먼저 과제/시험 동기화로 캘린더 상태를 다시 맞춰 주세요.")
+        throw serverRelayItemActionError("캘린더에서 수정할 일정을 찾지 못했습니다. 먼저 과제/시험 동기화로 캘린더 상태를 다시 맞춰 주세요.")
     }
 
     private func calendarDate(_ lhs: Date?, isCloseTo rhs: Date?) -> Bool {
@@ -4837,7 +4837,7 @@ final class KLMSMacModel: ObservableObject {
                 id: "calendar-eventkit",
                 title: "캘린더 전체 접근",
                 ok: calendarStatus,
-                detail: "시험/헬프데스크 일정을 Calendar에 생성, 수정, 삭제할 때 필요합니다."
+                detail: "시험/헬프데스크 일정을 캘린더에 생성, 수정, 삭제할 때 필요합니다."
             ),
             permissionRow(
                 id: "reminders-eventkit",
