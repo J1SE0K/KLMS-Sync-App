@@ -6943,7 +6943,7 @@ private enum CompanionItemSortOption: String, CaseIterable, Identifiable, Sendab
     var title: String {
         switch self {
         case .recent:
-            "최신"
+            "기본순"
         case .updated:
             "갱신"
         case .course:
@@ -7188,7 +7188,7 @@ private enum CompanionItemListFilter {
             if let year = item.academicYear {
                 years.insert(year)
             }
-            let semester = item.academicSemester.trimmingCharacters(in: .whitespacesAndNewlines)
+            let semester = normalizedSemesterLabel(item.academicSemester)
             if !semester.isEmpty {
                 semesters.insert(semester)
             }
@@ -7205,13 +7205,13 @@ private enum CompanionItemListFilter {
             }
             for term in termCatalog.terms {
                 years.insert(term.year)
-                let semester = term.semester.trimmingCharacters(in: .whitespacesAndNewlines)
+                let semester = normalizedSemesterLabel(term.semester)
                 if !semester.isEmpty {
                     semesters.insert(semester)
                 }
             }
             for semester in termCatalog.semesters {
-                let displayName = semester.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let displayName = normalizedSemesterLabel(semester.displayName)
                 if !displayName.isEmpty {
                     semesters.insert(displayName)
                 }
@@ -7230,8 +7230,10 @@ private enum CompanionItemListFilter {
                 return false
             }
         }
+        let normalizedSelectedSemester = normalizedSemesterLabel(selectedSemester)
+        let normalizedItemSemester = normalizedSemesterLabel(item.academicSemester)
         if selectedSemester != allSemesters,
-           item.academicSemester != selectedSemester {
+           normalizedItemSemester != normalizedSelectedSemester {
             return false
         }
         return true
@@ -7260,7 +7262,8 @@ private enum CompanionItemListFilter {
     }
 
     private static func semesterOptions(from semesters: Set<String>) -> [String] {
-        let ordered = semesters.sorted { lhs, rhs in
+        let normalizedSemesters = Set(semesters.map(normalizedSemesterLabel).filter { !$0.isEmpty })
+        let ordered = normalizedSemesters.sorted { lhs, rhs in
             let leftSemester = AcademicSemester(displayName: lhs)
             let rightSemester = AcademicSemester(displayName: rhs)
             switch (leftSemester, rightSemester) {
@@ -7275,6 +7278,12 @@ private enum CompanionItemListFilter {
             }
         }
         return [allSemesters] + ordered
+    }
+
+    private static func normalizedSemesterLabel(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        return AcademicSemester(displayName: trimmed)?.displayName ?? trimmed
     }
 }
 
@@ -7510,7 +7519,7 @@ private struct CompanionItemListData: Sendable {
                   effectiveStatus.includes(item),
                   normalizedCourse == CompanionItemListFilter.allCourses || item.course == normalizedCourse,
                   normalizedYear == CompanionItemListFilter.allYears || (item.academicYear.map(String.init) ?? "") == normalizedYear,
-                  normalizedSemester == CompanionItemListFilter.allSemesters || item.academicSemester == normalizedSemester,
+                  normalizedSemester == CompanionItemListFilter.allSemesters || CompanionItemListFilter.matches(item, selectedYear: CompanionItemListFilter.allYears, selectedSemester: normalizedSemester),
                   !newOnly || item.isCompanionChangedLike,
                   !recentOnly || item.isCompanionChangedLike else {
                 continue

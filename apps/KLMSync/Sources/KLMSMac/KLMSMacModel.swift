@@ -1779,7 +1779,7 @@ final class KLMSMacModel: ObservableObject {
                 academicYear: term?.year,
                 academicSemester: term?.semester.displayName ?? "",
                 title: $0.filename,
-                timestamp: $0.klmsTimestamp.nilIfBlank ?? $0.klmsTimestampText.nilIfBlank ?? "",
+                timestamp: serverRelayFileTimestamp($0),
                 status: $0.bucket,
                 detail: $0.klmsTimestampText,
                 updatedAt: updatedAt,
@@ -2957,6 +2957,13 @@ final class KLMSMacModel: ObservableObject {
             kind: "file",
             parts: [entry.url, entry.sourceURL, entry.relativePath, entry.filename, entry.course]
         )
+    }
+
+    private func serverRelayFileTimestamp(_ entry: CourseFileManifestEntry) -> String {
+        usableFileTimestampText(entry.klmsTimestamp)
+            ?? usableFileTimestampText(entry.klmsTimestampText)
+            ?? usableFileTimestampText(entry.localDownloadedAt)
+            ?? ""
     }
 
     private func serverRelayFileUserStateKey(_ entry: CourseFileManifestEntry) -> String {

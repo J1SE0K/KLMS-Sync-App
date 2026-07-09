@@ -2208,10 +2208,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("var newFiles: [DashboardFileItem]"))
         XCTAssertTrue(detail.contains("var missingFiles: [DashboardFileItem]"))
         XCTAssertTrue(detail.contains("var quarantineFiles: [DashboardFileItem]"))
-        XCTAssertTrue(detail.contains("private func fileRecencyText(klmsTimestampText: String, klmsTimestamp: String, localDownloadedAt: String) -> String"))
-        XCTAssertTrue(detail.contains("klmsTimestampText.nilIfBlank"))
-        XCTAssertTrue(detail.contains("klmsTimestamp.nilIfBlank"))
-        XCTAssertTrue(detail.contains("localDownloadedAt.nilIfBlank"))
+        XCTAssertTrue(detail.contains("func fileRecencyText(klmsTimestampText: String, klmsTimestamp: String, localDownloadedAt: String) -> String"))
+        XCTAssertTrue(detail.contains("usableFileTimestampText(klmsTimestampText)"))
+        XCTAssertTrue(detail.contains("usableFileTimestampText(klmsTimestamp)"))
+        XCTAssertTrue(detail.contains("usableFileTimestampText(localDownloadedAt)"))
         XCTAssertTrue(detail.contains("recencyText: fileRecencyText("))
         XCTAssertTrue(detail.contains("klmsTimestampEpoch: item.dashboardTimestampEpoch"))
         XCTAssertFalse(detail.contains("recencyText: entry.localDownloadedAt"))
@@ -7516,6 +7516,22 @@ final class DashboardDataModelTests: XCTestCase {
             .map(\.displayName)
 
         XCTAssertEqual(semesters, ["겨울학기", "가을학기", "여름학기", "봄학기"])
+        XCTAssertEqual(AcademicSemester(displayName: "summer")?.displayName, "여름학기")
+        XCTAssertEqual(AcademicSemester(displayName: "spring")?.displayName, "봄학기")
+    }
+
+    func testCompanionSemesterFiltersNormalizeCodesBeforeDisplayAndMatching() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
+        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+
+        XCTAssertTrue(ios.contains("let semester = normalizedSemesterLabel(item.academicSemester)"))
+        XCTAssertTrue(ios.contains("let normalizedSelectedSemester = normalizedSemesterLabel(selectedSemester)"))
+        XCTAssertTrue(ios.contains("let normalizedItemSemester = normalizedSemesterLabel(item.academicSemester)"))
+        XCTAssertTrue(ios.contains("let normalizedSemesters = Set(semesters.map(normalizedSemesterLabel).filter { !$0.isEmpty })"))
     }
 
     func testAcademicTermCatalogMatchesAbbreviatedCourseTitles() throws {

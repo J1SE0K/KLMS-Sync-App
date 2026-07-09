@@ -174,6 +174,18 @@ final class DashboardNoticeFilterTests: XCTestCase {
         XCTAssertEqual(scopedFileCount, 1)
     }
 
+    func testFileRecencyFallsBackToLocalDownloadWhenKLMSTimestampIsMissing() {
+        XCTAssertEqual(
+            fileRecencyText(
+                klmsTimestampText: "KLMS 페이지에 시각 정보 없음",
+                klmsTimestamp: "KLMS 페이지에 시각 정보 없음",
+                localDownloadedAt: "2026-07-08 16:22 KST"
+            ),
+            "2026-07-08 16:22 KST"
+        )
+        XCTAssertNil(usableFileTimestampText("KLMS 페이지에 시각 정보 없음"))
+    }
+
     func testNewFilesDoNotAppearAsAttentionMetric() {
         let summary = KLMSMacDashboardSummaryCache(
             visibleCounts: EngineVisibleCounts(newFiles: 3),

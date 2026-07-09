@@ -3403,7 +3403,7 @@ private enum DashboardFileSortOption: String, CaseIterable, Identifiable, Sendab
         case .path:
             "경로"
         case .recent:
-            "최근"
+            "KLMS 최신"
         }
     }
 }
@@ -3669,16 +3669,29 @@ private extension DashboardFileSortOption {
         case .path:
             "KLMS 상대 경로 순서로 정렬"
         case .recent:
-            "KLMS 등록 시각이 최신인 파일을 먼저 정렬"
+            "KLMS 등록 시각이 있는 파일은 KLMS 최신순, 시각이 없는 파일은 내려받은 시각 최신순으로 정렬"
         }
     }
 }
 
-private func fileRecencyText(klmsTimestampText: String, klmsTimestamp: String, localDownloadedAt: String) -> String {
-    klmsTimestampText.nilIfBlank
-        ?? klmsTimestamp.nilIfBlank
-        ?? localDownloadedAt.nilIfBlank
+func fileRecencyText(klmsTimestampText: String, klmsTimestamp: String, localDownloadedAt: String) -> String {
+    usableFileTimestampText(klmsTimestampText)
+        ?? usableFileTimestampText(klmsTimestamp)
+        ?? usableFileTimestampText(localDownloadedAt)
         ?? ""
+}
+
+func usableFileTimestampText(_ value: String) -> String? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    let lowered = trimmed.lowercased()
+    if trimmed.localizedCaseInsensitiveContains("시각 정보 없음")
+        || trimmed.localizedCaseInsensitiveContains("시간 정보 없음")
+        || lowered.contains("no timestamp")
+        || lowered.contains("unknown timestamp") {
+        return nil
+    }
+    return trimmed
 }
 
 private func fileKey(url: String, path: String, fallback: String) -> String {
