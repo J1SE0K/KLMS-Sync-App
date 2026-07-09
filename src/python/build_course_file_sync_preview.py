@@ -318,6 +318,8 @@ def normalized_url(value: Any) -> str:
 
 
 def filename_compatible(actual: str, expected: str) -> bool:
+    actual = comparable_filename(actual)
+    expected = comparable_filename(expected)
     if not actual:
         return False
     if not expected or actual == expected:
@@ -327,6 +329,10 @@ def filename_compatible(actual: str, expected: str) -> bool:
     if not actual_family or not expected_family:
         return True
     return actual_family == expected_family
+
+
+def comparable_filename(value: str) -> str:
+    return str(value or "").strip().rstrip(" .")
 
 
 def extension_family(extension: str) -> str:

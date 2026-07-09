@@ -20,6 +20,7 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
                 "sanitizeDownloadFilename",
                 "isTransientDownloadName",
                 "isServerTemporaryFilename",
+                "comparableDownloadFilename",
                 "withForcedDownload",
                 "canonicalExpectedFilenameForTemporaryDownload",
                 "canonicalFilenameForDownloadedName",
@@ -63,6 +64,8 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("downloadLogFilenameReuseAllowed", text)
         self.assertIn("filenameCompatibleWithExpected", text)
         self.assertIn("freshDownloadFilenameMatchesExpected", text)
+        self.assertIn("comparableDownloadFilename", text)
+        self.assertIn(".replace(/[\\s.]+$/g, \"\")", text)
         self.assertIn('return "presentation";', text)
         self.assertIn("return expectedFamily === actualFamily;", text)
         self.assertIn("fetchedPayloadCompatibleWithExpected", text)
@@ -108,6 +111,45 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("result.source_url", text)
         self.assertIn("isServerTemporaryFilename", text)
         self.assertIn("canonicalFilenameForDownloadedName", text)
+
+    def test_download_filename_matching_ignores_trailing_klms_period(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "download_klms_files.js").read_text(
+            encoding="utf-8"
+        )
+        helpers = "\n\n".join(
+            self.extract_function(text, name)
+            for name in (
+                "splitFileName",
+                "extensionFamily",
+                "isTransientDownloadName",
+                "comparableDownloadFilename",
+                "isCandidateFilename",
+                "fileExtension",
+                "filenameCompatibleWithExpected",
+                "freshDownloadFilenameMatchesExpected",
+            )
+        )
+        script = "\n".join(
+            [
+                "function baseName(path) { return String(path || '').split('/').pop(); }",
+                helpers,
+                "const actual = '3-1 opt)Russell, Stuart. 2019. Human Compatible (~Chp5).';",
+                "const expected = '3-1 opt)Russell, Stuart. 2019. Human Compatible (~Chp5)';",
+                "console.log(JSON.stringify({",
+                "  candidate: isCandidateFilename(actual, expected),",
+                "  compatible: filenameCompatibleWithExpected(actual, expected),",
+                "  fresh: freshDownloadFilenameMatchesExpected(actual, expected)",
+                "}));",
+            ]
+        )
+        result = subprocess.run(
+            ["node", "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload, {"candidate": True, "compatible": True, "fresh": True})
 
     def test_existing_file_refresh_uses_previous_record_or_local_mtime(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "download_klms_files.js").read_text(

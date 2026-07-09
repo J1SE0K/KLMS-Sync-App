@@ -1640,8 +1640,8 @@ function recordedFilenameForEntry(entry, recordedFilenameIndex) {
 }
 
 function filenameCompatibleWithExpected(filename, expectedFilename) {
-  const expected = String(expectedFilename || "").trim();
-  const actual = String(filename || "").trim();
+  const expected = comparableDownloadFilename(expectedFilename);
+  const actual = comparableDownloadFilename(filename);
   if (!actual) {
     return false;
   }
@@ -1830,9 +1830,10 @@ function finalFilenameFromTransientDownloadName(filename) {
 }
 
 function freshDownloadFilenameMatchesExpected(filename, expectedFilename) {
-  const actual = String(filename || "").trim();
-  const expected = String(expectedFilename || "").trim();
-  if (!actual || isTransientDownloadName(actual)) {
+  const rawActual = String(filename || "").trim();
+  const actual = comparableDownloadFilename(rawActual);
+  const expected = comparableDownloadFilename(expectedFilename);
+  if (!actual || isTransientDownloadName(rawActual)) {
     return false;
   }
   if (!expected) {
@@ -2676,9 +2677,12 @@ function isCandidateFilename(candidate, expectedFilename) {
   if (!candidate || !expectedFilename) {
     return false;
   }
-  if (isTransientDownloadName(candidate)) {
+  const rawCandidate = String(candidate || "").trim();
+  if (isTransientDownloadName(rawCandidate)) {
     return false;
   }
+  candidate = comparableDownloadFilename(rawCandidate);
+  expectedFilename = comparableDownloadFilename(expectedFilename);
 
   if (candidate === expectedFilename) {
     return true;
@@ -2695,6 +2699,14 @@ function isCandidateFilename(candidate, expectedFilename) {
     actual.stem.startsWith(`${expected.stem} `) ||
     actual.stem.startsWith(`${expected.stem} (`)
   );
+}
+
+function comparableDownloadFilename(filename) {
+  return String(filename || "")
+    .normalize("NFC")
+    .trim()
+    .replace(/\.download$/i, "")
+    .replace(/[\s.]+$/g, "");
 }
 
 function isStableFile(path) {

@@ -361,7 +361,7 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var statusIconCancellable: AnyCancellable?
     private var authDigitsOverlayWindow: NSPanel?
-    private var quitKeyMonitor: Any?
+    private var shortcutKeyMonitor: Any?
     private var terminationCleanupStarted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -370,7 +370,7 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         KLMSDashboardWindowCoordinator.shared.setModel(model)
         NSApp.setActivationPolicy(.regular)
         configureApplicationMenu()
-        configureQuitKeyMonitor()
+        configureShortcutKeyMonitor()
         configureStatusItem(for: model)
         KLMSLaunchState.clearSavedApplicationState()
         KLMSDashboardWindowCoordinator.shared.showDashboardWindow()
@@ -514,18 +514,38 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = mainMenu
     }
 
-    private func configureQuitKeyMonitor() {
-        guard quitKeyMonitor == nil else { return }
-        quitKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let isQKey = event.charactersIgnoringModifiers?.lowercased() == "q"
-                || event.keyCode == 12
-            guard modifierFlags.contains(.command),
-                  isQKey else {
-                return event
-            }
+    private func configureShortcutKeyMonitor() {
+        guard shortcutKeyMonitor == nil else { return }
+        shortcutKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.handleKeyboardShortcut(event)
+        }
+    }
+
+    private func handleKeyboardShortcut(_ event: NSEvent) -> NSEvent? {
+        let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard modifierFlags.contains(.command) else {
+            return event
+        }
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        let hasShift = modifierFlags.contains(.shift)
+        switch key {
+        case "o" where !hasShift:
+            openDashboardFromMenu(nil)
+            return nil
+        case "r" where !hasShift:
+            refreshStatusFromMenu(nil)
+            return nil
+        case "v" where hasShift:
+            runVerifyFromMenu(nil)
+            return nil
+        case "d" where hasShift:
+            runDoctorFromMenu(nil)
+            return nil
+        case "q" where !hasShift:
             NSApp.terminate(nil)
             return nil
+        default:
+            return event
         }
     }
 
