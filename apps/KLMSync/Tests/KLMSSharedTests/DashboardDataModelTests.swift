@@ -7726,6 +7726,30 @@ final class DashboardDataModelTests: XCTestCase {
             klmsTimestampText: "KLMS 페이지에 시각 정보 없음"
         )
         XCTAssertNil(fileWithoutKLMSDate.academicTerm)
+
+        let fileWithPublicationYearInTitle = CourseFileManifestEntry(
+            filename: "State of AI Report - 2025 ONLINE.pdf",
+            relativePath: "공공정책 특강/folders/1주차/State of AI Report - 2025 ONLINE.pdf",
+            course: "공공정책 특강",
+            klmsTimestamp: "KLMS 페이지에 시각 정보 없음",
+            klmsTimestampText: "KLMS 페이지에 시각 정보 없음"
+        )
+        XCTAssertNil(fileWithPublicationYearInTitle.academicTerm)
+        XCTAssertEqual(
+            fileWithPublicationYearInTitle.resolvedAcademicTerm(catalog: catalog)?.displayName,
+            "2026년 여름학기"
+        )
+
+        let hiddenFileState = FileInteractionState(
+            title: "Atoosa(2025) Two Types of AI Existential Risk.pdf",
+            course: "공공정책 특강",
+            path: "공공정책 특강/folders/Atoosa(2025) Two Types of AI Existential Risk.pdf",
+            hidden: true,
+            hiddenAt: "2026-07-09 19:00 KST",
+            updatedAt: "2026-07-09 19:00 KST"
+        )
+        XCTAssertNil(hiddenFileState.academicTerm)
+        XCTAssertEqual(hiddenFileState.resolvedAcademicTerm(catalog: catalog)?.displayName, "2026년 여름학기")
     }
 
     func testStateAndNoticeExposeAcademicTerm() throws {

@@ -422,11 +422,8 @@ public extension NoticeDigestEntry {
 
 public extension CourseFileManifestEntry {
     var academicTerm: AcademicTerm? {
-        AcademicTerm.infer(
-            course: course,
-            title: filename,
-            dateTexts: [relativePath, klmsTimestamp, klmsTimestampText]
-        )
+        AcademicTerm.infer(course: course)
+            ?? AcademicTerm.infer(dateTexts: [klmsTimestamp, klmsTimestampText])
     }
 
     func resolvedAcademicTerm(catalog: AcademicTermCatalog?) -> AcademicTerm? {
@@ -436,11 +433,7 @@ public extension CourseFileManifestEntry {
 
 public extension FileInteractionState {
     var academicTerm: AcademicTerm? {
-        AcademicTerm.infer(
-            course: course,
-            title: title,
-            dateTexts: [path, updatedAt, hiddenAt ?? "", ignoredAt ?? "", trashedAt ?? ""]
-        )
+        AcademicTerm.infer(course: course)
     }
 
     func resolvedAcademicTerm(catalog: AcademicTermCatalog?) -> AcademicTerm? {

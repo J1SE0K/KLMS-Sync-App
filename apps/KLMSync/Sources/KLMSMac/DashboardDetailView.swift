@@ -673,7 +673,9 @@ private struct DashboardFilterOptionSource: Sendable {
             self = Self(courses: [], terms: [])
         }
         courses += snapshot.academicTermCatalog?.courses.map(\.title) ?? []
-        terms += snapshot.academicTermCatalog?.academicTerms ?? []
+        if let selectedTerm = snapshot.academicTermCatalog?.selectedAcademicTerm {
+            terms.append(selectedTerm)
+        }
     }
 
     private init(courses: [String], terms: [AcademicTerm?]) {

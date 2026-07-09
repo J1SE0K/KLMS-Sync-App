@@ -7216,18 +7216,9 @@ private enum CompanionItemListFilter {
                     courses.insert(title)
                 }
             }
-            for year in termCatalog.years {
-                years.insert(year.year)
-            }
-            for term in termCatalog.terms {
-                years.insert(term.year)
-                let semester = normalizedSemesterLabel(term.semester)
-                if !semester.isEmpty {
-                    semesters.insert(semester)
-                }
-            }
-            for semester in termCatalog.semesters {
-                let displayName = normalizedSemesterLabel(semester.displayName)
+            if let selectedTerm = termCatalog.selectedAcademicTerm {
+                years.insert(selectedTerm.year)
+                let displayName = normalizedSemesterLabel(selectedTerm.semester.displayName)
                 if !displayName.isEmpty {
                     semesters.insert(displayName)
                 }
