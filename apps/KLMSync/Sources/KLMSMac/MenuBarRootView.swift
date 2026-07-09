@@ -2170,7 +2170,7 @@ private struct IntegrationStatusTile: View {
 }
 
 private struct ImportantLogPanelView: View {
-    let model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
     @Binding var selectedSection: KLMSMacSection
     @Binding var expandedLogSummaryKind: LogSummaryKind?
     @Binding var firstRunReadinessCompleted: Bool
@@ -2195,7 +2195,7 @@ private enum LogSummaryKind: String {
 }
 
 private struct LogSummaryPanelView: View {
-    let model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
     @Binding var expandedKind: LogSummaryKind?
     private static let terminalSummaryDisplayInterval: TimeInterval = 5 * 60
     private let tileColumns = [GridItem(.adaptive(minimum: 176), spacing: 8)]
@@ -4077,7 +4077,7 @@ private struct NoticeMemoRowView: View {
 }
 
 private struct RemoteActivityPanelView: View {
-    let model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
 
     var body: some View {
         let fileRequests = model.serverRelayRecentFileAccessRequests
@@ -5693,7 +5693,7 @@ private enum RunLogArchiveList {
 }
 
 private struct RunLogArchivePanelView: View {
-    let model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
     @State private var filter = RunLogArchiveFilter.all
     @State private var isHistoryExpanded = false
     @State private var showingSystemLogs = false
@@ -5953,7 +5953,7 @@ private struct RunLogStatChip: View {
 }
 
 private struct CurrentRunLogCardView: View {
-    let model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
 
     var body: some View {
         let output = currentOutput.trimmingCharacters(in: .whitespacesAndNewlines)

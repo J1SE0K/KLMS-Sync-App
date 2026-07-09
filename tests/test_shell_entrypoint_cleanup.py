@@ -1634,6 +1634,25 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         ]:
             self.assertIn(description, ios_app)
 
+    def test_mac_dashboard_deletion_prefers_recent_local_state_over_stale_server_overlay(self) -> None:
+        model = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"
+        ).read_text(encoding="utf-8")
+        mac_view = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "MenuBarRootView.swift"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("localDashboardMutationByItemID", model)
+        self.assertIn(".filter { shouldApplyServerRelayDashboardOverlay($0) }", model)
+        self.assertIn("markLocalDashboardMutation(itemIDs: serverRelayAssignmentSyncItemIDs(item))", model)
+        self.assertIn("markLocalDashboardMutation(itemIDs: serverRelayExamSyncItemIDs(item))", model)
+        self.assertIn("markLocalDashboardMutation(itemIDs: [serverRelayNoticeSyncItemID(notice)])", model)
+        self.assertIn("markLocalDashboardMutation(itemIDs: serverRelayFileSyncItemIDs(", model)
+        self.assertIn("localDashboardMutationByItemID[$0.id] != nil && !serverDashboardItemIDs.contains($0.id)", model)
+        self.assertIn("await self.publishServerRelayStatusIfNeeded(force: true, publishSyncData: true)", model)
+        self.assertIn("private struct RemoteActivityPanelView: View", mac_view)
+        self.assertIn("@ObservedObject var model: KLMSMacModel", mac_view)
+
     def test_server_relay_uses_role_scoped_tokens(self) -> None:
         node_relay = (PROJECT_DIR / "tools" / "klms_relay_server.mjs").read_text(encoding="utf-8")
         worker = (PROJECT_DIR / "deploy" / "cloudflare-worker" / "src" / "worker.mjs").read_text(

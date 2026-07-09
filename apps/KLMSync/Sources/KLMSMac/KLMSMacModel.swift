@@ -268,6 +268,8 @@ final class KLMSMacModel: ObservableObject {
     private var locallyHiddenRequestLogIDs = Set<UUID>()
     private var locallyHiddenFileAccessRequestIDs = Set<UUID>()
     private var locallyHiddenSharedRunLogIDs = Set<String>()
+    private var localDashboardMutationByItemID: [String: Date] = [:]
+    private var localDashboardMutationPublishTask: Task<Void, Never>?
     private static let sharedAppearanceModeKey = "KLMS_APPEARANCE_MODE"
     private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
@@ -1531,9 +1533,16 @@ final class KLMSMacModel: ObservableObject {
 
     @discardableResult
     private func applyServerRelaySyncDataDashboardState(_ syncData: ServerRelaySyncData) -> Bool {
-        let dashboardItems = syncData.items
+        let serverDashboardItems = syncData.items
             .map(\.normalizedDashboardItem)
             .filter(\.isVisibleDashboardSyncItem)
+            .filter { shouldApplyServerRelayDashboardOverlay($0) }
+            .dedupedForServerRelay()
+        let serverDashboardItemIDs = Set(serverDashboardItems.map(\.id))
+        let pendingLocalDashboardItems = mailDashboardItems.filter {
+            localDashboardMutationByItemID[$0.id] != nil && !serverDashboardItemIDs.contains($0.id)
+        }
+        let dashboardItems = (serverDashboardItems + pendingLocalDashboardItems)
             .dedupedForServerRelay()
         var didChange = false
         let didLoadServerDashboardItems = !hasLoadedServerRelayDashboardItems
@@ -1543,11 +1552,11 @@ final class KLMSMacModel: ObservableObject {
             rebuildDashboardSummaryCache()
             didChange = true
         }
-        if applyServerRelayMailDashboardItems(syncData.items) {
+        if applyServerRelayMailDashboardItems(dashboardItems) {
             didChange = true
         }
         var nextSnapshot = snapshot
-        if applyServerRelaySyncItems(syncData.items, to: &nextSnapshot) {
+        if applyServerRelaySyncItems(dashboardItems, to: &nextSnapshot) {
             didChange = true
         }
         if nextSnapshot != snapshot {
@@ -1560,10 +1569,18 @@ final class KLMSMacModel: ObservableObject {
     @discardableResult
     private func applyServerRelayMailDashboardItems(_ items: [ServerRelaySyncItem]) -> Bool {
         let baseItems = currentServerRelayBaseSyncItems()
-        let nextItems = items
+        let serverItems = items
             .unmatchedMailDashboardItems(comparedTo: baseItems)
             .map(\.normalizedDashboardItem)
             .filter(\.isCountableMailDashboardItem)
+            .dedupedForServerRelay()
+            .prefix(80)
+            .map { $0 }
+        let serverItemIDs = Set(serverItems.map(\.id))
+        let pendingLocalItems = mailDashboardItems.filter {
+            localDashboardMutationByItemID[$0.id] != nil && !serverItemIDs.contains($0.id)
+        }
+        let nextItems = (serverItems + pendingLocalItems)
             .dedupedForServerRelay()
             .prefix(80)
             .map { $0 }
@@ -1802,6 +1819,85 @@ final class KLMSMacModel: ObservableObject {
         if sharedRunLogStageDurationsByID != nextByID {
             sharedRunLogStageDurationsByID = nextByID
         }
+    }
+
+    private func markLocalDashboardMutation(itemIDs: [String], at date: Date = Date()) {
+        let ids = itemIDs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !ids.isEmpty else {
+            return
+        }
+        pruneLocalDashboardMutations(now: date)
+        for id in ids {
+            localDashboardMutationByItemID[id] = date
+        }
+        publishDashboardPresentationRefresh()
+        scheduleLocalDashboardMutationPublish()
+    }
+
+    private func scheduleLocalDashboardMutationPublish() {
+        guard serverRelayConfigured else {
+            return
+        }
+        localDashboardMutationPublishTask?.cancel()
+        localDashboardMutationPublishTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard let self, !Task.isCancelled else { return }
+            await self.publishServerRelayStatusIfNeeded(force: true, publishSyncData: true)
+        }
+    }
+
+    private func shouldApplyServerRelayDashboardOverlay(_ item: ServerRelaySyncItem, now: Date = Date()) -> Bool {
+        pruneLocalDashboardMutations(now: now)
+        guard let localMutationAt = localDashboardMutationByItemID[item.id] else {
+            return true
+        }
+        guard let serverUpdatedAt = Self.parseServerRelayDashboardDate(item.updatedAt) else {
+            return false
+        }
+        if serverUpdatedAt > localMutationAt {
+            localDashboardMutationByItemID.removeValue(forKey: item.id)
+            return true
+        }
+        return false
+    }
+
+    private func pruneLocalDashboardMutations(now: Date = Date()) {
+        let maxAge: TimeInterval = 10 * 60
+        localDashboardMutationByItemID = localDashboardMutationByItemID.filter { _, date in
+            now.timeIntervalSince(date) <= maxAge
+        }
+    }
+
+    private static func parseServerRelayDashboardDate(_ value: String) -> Date? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nil
+        }
+
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: trimmed) {
+            return date
+        }
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        if let date = iso.date(from: trimmed) {
+            return date
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        for format in ["yyyy-MM-dd HH:mm zzz", "yyyy-MM-dd HH:mm:ss zzz"] {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: trimmed) {
+                return date
+            }
+        }
+        return nil
     }
 
     private func serverRelayPublicStatusMessage(
@@ -2182,6 +2278,7 @@ final class KLMSMacModel: ObservableObject {
             .dedupedForServerRelay()
             .prefix(80)
             .map { $0 }
+        markLocalDashboardMutation(itemIDs: [normalizedItem.id])
         refreshDashboardPresentationCaches()
         persistMailDashboardItems()
         serverRelayStatusMessage = "\(normalizedItem.kind.klmsMailDashboardKindName) 대시보드에 반영됨"
@@ -2225,6 +2322,7 @@ final class KLMSMacModel: ObservableObject {
         mailDashboardItems = mailDashboardItems.filter { $0.id != id }
         let removed = mailDashboardItems.count != previousCount
         if removed {
+            markLocalDashboardMutation(itemIDs: [id])
             refreshDashboardPresentationCaches()
         }
         persistMailDashboardItems()
@@ -2690,6 +2788,7 @@ final class KLMSMacModel: ObservableObject {
         case .calendarVerify, .calendarApply, .calendarCreate, .calendarEdit, .calendarDelete, .calendarOpen:
             throw serverRelayItemActionError("캘린더 요청은 실행 큐에서 처리해야 합니다.")
         }
+        markLocalDashboardMutation(itemIDs: [action.itemID])
         reloadSnapshot()
         return "\(action.action.displayName) 반영 완료"
     }
@@ -3043,6 +3142,7 @@ final class KLMSMacModel: ObservableObject {
             url: entry.url.nilIfBlank ?? entry.sourceURL,
             bucket: .files
         )
+        markLocalDashboardMutation(itemIDs: [serverRelayFileSyncItemID(entry)])
     }
 
     private func trashServerRelayFile(_ entry: CourseFileManifestEntry) throws {
@@ -3057,6 +3157,7 @@ final class KLMSMacModel: ObservableObject {
             url: entry.url.nilIfBlank ?? entry.sourceURL,
             bucket: .files
         )
+        markLocalDashboardMutation(itemIDs: [serverRelayFileSyncItemID(entry)])
     }
 
     private func serverRelayStateSyncItemID(kind: String, item: StateItem) -> String {
@@ -3064,6 +3165,18 @@ final class KLMSMacModel: ObservableObject {
             kind: kind,
             parts: [item.url, item.course, item.title, item.syncDue, item.due]
         )
+    }
+
+    private func serverRelayAssignmentSyncItemIDs(_ item: StateItem) -> [String] {
+        ["assignment", "completedAssignment", "assignmentCandidate", "helpDesk"].map {
+            serverRelayStateSyncItemID(kind: $0, item: item)
+        }
+    }
+
+    private func serverRelayExamSyncItemIDs(_ item: StateItem) -> [String] {
+        ["exam", "examCandidate"].map {
+            serverRelayStateSyncItemID(kind: $0, item: item)
+        }
     }
 
     private func serverRelayNoticeSyncItemID(_ notice: NoticeDigestEntry) -> String {
@@ -3088,6 +3201,31 @@ final class KLMSMacModel: ObservableObject {
             kind: "file",
             parts: [entry.url, entry.sourceURL, entry.relativePath, entry.filename, entry.course]
         )
+    }
+
+    private func serverRelayFileSyncItemIDs(
+        key: String,
+        title: String,
+        course: String,
+        path: String,
+        url sourceURL: String
+    ) -> [String] {
+        let normalizedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedURL = sourceURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCourse = course.trimmingCharacters(in: .whitespacesAndNewlines)
+        return snapshot.courseFileManifest.compactMap { entry in
+            let entryKey = serverRelayFileUserStateKey(entry).trimmingCharacters(in: .whitespacesAndNewlines)
+            let entryPath = entry.absolutePath.trimmingCharacters(in: .whitespacesAndNewlines)
+            let entryURL = (entry.url.nilIfBlank ?? entry.sourceURL).trimmingCharacters(in: .whitespacesAndNewlines)
+            let entryTitle = (entry.filename.nilIfBlank ?? entry.relativePath).trimmingCharacters(in: .whitespacesAndNewlines)
+            let matches = (!normalizedKey.isEmpty && entryKey == normalizedKey)
+                || (!normalizedPath.isEmpty && entryPath == normalizedPath)
+                || (!normalizedURL.isEmpty && entryURL == normalizedURL)
+                || (!normalizedTitle.isEmpty && !normalizedCourse.isEmpty && entryTitle == normalizedTitle && entry.course == normalizedCourse)
+            return matches ? serverRelayFileSyncItemID(entry) : nil
+        }
     }
 
     private func serverRelayFileTimestamp(_ entry: CourseFileManifestEntry) -> String {
@@ -3454,6 +3592,7 @@ final class KLMSMacModel: ObservableObject {
                 for: item,
                 currentKey: snapshot.manualOverrides?.assignmentOverrideKey(for: item)
             )
+            markLocalDashboardMutation(itemIDs: serverRelayAssignmentSyncItemIDs(item))
             reloadManualOverrideState()
         } catch {
             errorMessage = error.localizedDescription
@@ -3474,6 +3613,7 @@ final class KLMSMacModel: ObservableObject {
                 for: item,
                 currentKey: currentKey
             )
+            markLocalDashboardMutation(itemIDs: serverRelayExamSyncItemIDs(item))
             reloadManualOverrideState()
         } catch {
             errorMessage = error.localizedDescription
@@ -3493,6 +3633,7 @@ final class KLMSMacModel: ObservableObject {
     func setNoticeRead(_ isRead: Bool, for notice: NoticeDigestEntry) {
         do {
             try NoticeUserStateStore(url: paths.noticeUserStateURL).setRead(isRead, notice: notice)
+            markLocalDashboardMutation(itemIDs: [serverRelayNoticeSyncItemID(notice)])
             reloadNoticeInteractionState()
         } catch {
             errorMessage = error.localizedDescription
@@ -3502,6 +3643,7 @@ final class KLMSMacModel: ObservableObject {
     func setNoticeHidden(_ isHidden: Bool, for notice: NoticeDigestEntry) {
         do {
             try NoticeUserStateStore(url: paths.noticeUserStateURL).setHidden(isHidden, notice: notice)
+            markLocalDashboardMutation(itemIDs: [serverRelayNoticeSyncItemID(notice)])
             reloadNoticeInteractionState()
         } catch {
             errorMessage = error.localizedDescription
@@ -3511,6 +3653,7 @@ final class KLMSMacModel: ObservableObject {
     func setNoticeImportant(_ isImportant: Bool, for notice: NoticeDigestEntry) {
         do {
             try NoticeUserStateStore(url: paths.noticeUserStateURL).setImportant(isImportant, notice: notice)
+            markLocalDashboardMutation(itemIDs: [serverRelayNoticeSyncItemID(notice)])
             reloadNoticeInteractionState()
         } catch {
             errorMessage = error.localizedDescription
@@ -3528,6 +3671,7 @@ final class KLMSMacModel: ObservableObject {
                 url: sourceURL,
                 bucket: .files
             )
+            markLocalDashboardMutation(itemIDs: serverRelayFileSyncItemIDs(key: key, title: title, course: course, path: path, url: sourceURL))
             reloadFileInteractionState()
         } catch {
             errorMessage = error.localizedDescription
@@ -3560,6 +3704,7 @@ final class KLMSMacModel: ObservableObject {
             var changedExams = 0
             var changedNotices = 0
             var changedFiles = 0
+            var changedItemIDs: [String] = []
 
             let content = snapshot.rawLegacyState?.content ?? snapshot.legacyState?.content
             let assignmentStore = ManualOverrideStore(url: paths.overridesURL)
@@ -3578,6 +3723,7 @@ final class KLMSMacModel: ObservableObject {
                     for: item,
                     currentKey: snapshot.manualOverrides?.assignmentOverrideKey(for: item)
                 )
+                changedItemIDs += serverRelayAssignmentSyncItemIDs(item)
                 changedAssignments += 1
             }
 
@@ -3598,12 +3744,14 @@ final class KLMSMacModel: ObservableObject {
                     for: item,
                     currentKey: snapshot.manualOverrides?.examOverrideKey(for: item)
                 )
+                changedItemIDs += serverRelayExamSyncItemIDs(item)
                 changedExams += 1
             }
 
             let noticeStore = NoticeUserStateStore(url: paths.noticeUserStateURL)
             for notice in snapshot.noticeDigest?.notices ?? [] where Self.course(notice.course, matches: course) {
                 try noticeStore.setHidden(isHidden, notice: notice)
+                changedItemIDs.append(serverRelayNoticeSyncItemID(notice))
                 changedNotices += 1
             }
 
@@ -3618,8 +3766,11 @@ final class KLMSMacModel: ObservableObject {
                     url: entry.url,
                     bucket: .files
                 )
+                changedItemIDs.append(serverRelayFileSyncItemID(entry))
                 changedFiles += 1
             }
+
+            markLocalDashboardMutation(itemIDs: changedItemIDs)
 
             if changedAssignments > 0 || changedExams > 0 {
                 reloadManualOverrideState()
@@ -3662,6 +3813,9 @@ final class KLMSMacModel: ObservableObject {
                 url: sourceURL,
                 bucket: bucket
             )
+            if bucket == .files {
+                markLocalDashboardMutation(itemIDs: serverRelayFileSyncItemIDs(key: key, title: title, course: course, path: path, url: sourceURL))
+            }
             reloadFileInteractionState()
         } catch {
             errorMessage = error.localizedDescription
