@@ -260,6 +260,10 @@ final class KLMSMacModel: ObservableObject {
     private var serverRelaySharedSettingsSignature: Int?
     private var lastPassiveAuxiliaryRefreshAt: Date?
     private var suppressCurrentRunHistoryAfterLogClear = false
+    private var localCommandLogClearedAt: Date?
+    private var localRequestLogClearedAt: Date?
+    private var localFileAccessLogClearedAt: Date?
+    private var localSharedRunLogClearedAt: Date?
     private static let sharedAppearanceModeKey = "KLMS_APPEARANCE_MODE"
     private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
     private static let automaticPermissionRequestVersionKey = "KLMSAutomaticPermissionRequestVersion"
@@ -826,13 +830,15 @@ final class KLMSMacModel: ObservableObject {
                 message: "Mac 앱 연결 확인 완료"
             )
             if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8) {
-                if serverRelayRecentFileAccessRequests != recentFileRequests {
-                    serverRelayRecentFileAccessRequests = recentFileRequests
+                let filtered = visibleServerRelayFileAccessRequests(recentFileRequests)
+                if serverRelayRecentFileAccessRequests != filtered {
+                    serverRelayRecentFileAccessRequests = filtered
                 }
             }
             if let requestLog = try? await store.fetchRecentRequestLog(limit: 20) {
-                if serverRelayRecentRequestLog != requestLog {
-                    serverRelayRecentRequestLog = requestLog
+                let filtered = visibleServerRelayRequestLog(requestLog)
+                if serverRelayRecentRequestLog != filtered {
+                    serverRelayRecentRequestLog = filtered
                 }
             }
             guard await fetchAndApplyServerRelaySyncData(store, silent: false) else {
@@ -857,13 +863,17 @@ final class KLMSMacModel: ObservableObject {
         do {
             let store = try makeServerRelayStore()
             _ = await fetchAndApplyServerRelaySyncData(store, silent: silent)
-            if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8),
-               serverRelayRecentFileAccessRequests != recentFileRequests {
-                serverRelayRecentFileAccessRequests = recentFileRequests
+            if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8) {
+                let filtered = visibleServerRelayFileAccessRequests(recentFileRequests)
+                if serverRelayRecentFileAccessRequests != filtered {
+                    serverRelayRecentFileAccessRequests = filtered
+                }
             }
-            if let requestLog = try? await store.fetchRecentRequestLog(limit: 20),
-               serverRelayRecentRequestLog != requestLog {
-                serverRelayRecentRequestLog = requestLog
+            if let requestLog = try? await store.fetchRecentRequestLog(limit: 20) {
+                let filtered = visibleServerRelayRequestLog(requestLog)
+                if serverRelayRecentRequestLog != filtered {
+                    serverRelayRecentRequestLog = filtered
+                }
             }
         } catch {
             guard !silent else { return }
@@ -881,24 +891,27 @@ final class KLMSMacModel: ObservableObject {
             let store = try makeServerRelayStore()
             _ = try await store.clearDisplayLogs(scope: scope)
             if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8) {
-                if serverRelayRecentFileAccessRequests != recentFileRequests {
-                    serverRelayRecentFileAccessRequests = recentFileRequests
+                let filtered = visibleServerRelayFileAccessRequests(recentFileRequests)
+                if serverRelayRecentFileAccessRequests != filtered {
+                    serverRelayRecentFileAccessRequests = filtered
                 }
             }
             if let requestLog = try? await store.fetchRecentRequestLog(limit: 20) {
-                if serverRelayRecentRequestLog != requestLog {
-                    serverRelayRecentRequestLog = requestLog
+                let filtered = visibleServerRelayRequestLog(requestLog)
+                if serverRelayRecentRequestLog != filtered {
+                    serverRelayRecentRequestLog = filtered
                 }
             }
             _ = await fetchAndApplyServerRelaySyncData(store, silent: true)
         } catch {
-            serverRelayStatusMessage = "로그 지우기 실패: \(error.localizedDescription)"
-            errorMessage = serverRelayStatusMessage
+            serverRelayStatusMessage = nil
+            errorMessage = nil
         }
     }
 
     func clearServerRelaySharedRunLogs() async {
         clearSharedRunLogDisplayState()
+        localSharedRunLogClearedAt = Date()
         remoteProcessingStatusMessage = nil
         serverRelayStatusMessage = nil
         errorMessage = nil
@@ -906,8 +919,8 @@ final class KLMSMacModel: ObservableObject {
             let store = try makeServerRelayStore()
             _ = try await store.clearSharedRunLogs()
         } catch {
-            serverRelayStatusMessage = "공유 실행 로그 지우기 실패: \(error.localizedDescription)"
-            errorMessage = serverRelayStatusMessage
+            serverRelayStatusMessage = nil
+            errorMessage = nil
         }
     }
 
@@ -919,27 +932,42 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func clearServerRelayActivityLogs() async {
-        guard serverRelayConfigured else {
-            serverRelayStatusMessage = "서버 연결 정보가 없어 기록을 지울 수 없습니다."
-            return
-        }
+        let shouldClearSharedRunLogs = !serverRelaySharedRunLogs.isEmpty
+        let shouldClearRequestLog = !serverRelayRecentRequestLog.isEmpty
+        let shouldClearFileAccess = serverRelayRecentFileAccessRequests.contains { !$0.status.isInFlight }
         var didRequestClear = false
         if remoteProcessingStatusMessage?.nilIfBlank != nil || serverRelayStatusMessage?.nilIfBlank != nil {
             remoteProcessingStatusMessage = nil
             serverRelayStatusMessage = nil
             didRequestClear = true
         }
-        if !serverRelaySharedRunLogs.isEmpty {
+        if shouldClearSharedRunLogs {
+            clearSharedRunLogDisplayState()
+            localSharedRunLogClearedAt = Date()
+            didRequestClear = true
+        }
+        if shouldClearRequestLog {
+            applyServerRelayLogClear(scope: .requestLog)
+            didRequestClear = true
+        }
+        if shouldClearFileAccess {
+            applyServerRelayLogClear(scope: .fileAccess)
+            didRequestClear = true
+        }
+        guard serverRelayConfigured else {
+            if !didRequestClear {
+                serverRelayStatusMessage = nil
+            }
+            return
+        }
+        if shouldClearSharedRunLogs {
             await clearServerRelaySharedRunLogs()
-            didRequestClear = true
         }
-        if !serverRelayRecentRequestLog.isEmpty {
+        if shouldClearRequestLog {
             await clearServerRelayLogs(scope: .requestLog)
-            didRequestClear = true
         }
-        if serverRelayRecentFileAccessRequests.contains(where: { !$0.status.isInFlight }) {
+        if shouldClearFileAccess {
             await clearServerRelayLogs(scope: .fileAccess)
-            didRequestClear = true
         }
         if !didRequestClear {
             serverRelayStatusMessage = serverRelayRecentFileAccessRequests.contains(where: { $0.status.isInFlight })
@@ -959,6 +987,7 @@ final class KLMSMacModel: ObservableObject {
             snapshot.relayLogTail = ""
         }
         clearLocalStoredLogs()
+        applyServerRelayLogClear(scope: .all)
         guard serverRelayConfigured else {
             serverRelayStatusMessage = nil
             remoteProcessingStatusMessage = nil
@@ -1045,6 +1074,7 @@ final class KLMSMacModel: ObservableObject {
     private func applyServerRelayLogClear(scope: ServerRelayLogClearScope) {
         remoteProcessingStatusMessage = nil
         serverRelayStatusMessage = nil
+        recordLocalDisplayLogClear(scope: scope)
         switch scope {
         case .all:
             if lastRemoteCommand?.status.isInFlight != true {
@@ -1067,6 +1097,45 @@ final class KLMSMacModel: ObservableObject {
     private func clearSharedRunLogDisplayState() {
         serverRelaySharedRunLogs = []
         sharedRunLogStageDurationsByID = [:]
+    }
+
+    private func recordLocalDisplayLogClear(scope: ServerRelayLogClearScope, at date: Date = Date()) {
+        switch scope {
+        case .all:
+            localCommandLogClearedAt = date
+            localRequestLogClearedAt = date
+            localFileAccessLogClearedAt = date
+            localSharedRunLogClearedAt = date
+        case .command:
+            localCommandLogClearedAt = date
+        case .requestLog:
+            localRequestLogClearedAt = date
+        case .fileAccess:
+            localFileAccessLogClearedAt = date
+        }
+    }
+
+    private func visibleServerRelayRequestLog(_ entries: [ServerRelayRequestLogEntry]) -> [ServerRelayRequestLogEntry] {
+        guard let clearedAt = localRequestLogClearedAt else {
+            return entries
+        }
+        return entries.filter { $0.createdAt > clearedAt }
+    }
+
+    private func visibleServerRelayFileAccessRequests(_ requests: [ServerRelayFileAccessRequest]) -> [ServerRelayFileAccessRequest] {
+        guard let clearedAt = localFileAccessLogClearedAt else {
+            return requests
+        }
+        return requests.filter { request in
+            request.status.isInFlight || request.updatedAt > clearedAt
+        }
+    }
+
+    private func visibleServerRelayRunLogs(_ logs: [ServerRelayRunLog]) -> [ServerRelayRunLog] {
+        guard let clearedAt = localSharedRunLogClearedAt else {
+            return logs
+        }
+        return logs.filter { $0.updatedAt > clearedAt }
     }
 
     private func sanitizedRemoteStatus(snapshot: EngineSnapshot, phase: String) -> SanitizedRemoteStatus {
@@ -1209,6 +1278,7 @@ final class KLMSMacModel: ObservableObject {
         }
         if reason == "sync-data:run-logs-clear" {
             clearSharedRunLogDisplayState()
+            localSharedRunLogClearedAt = Date()
             clearLocalStoredLogs()
         }
         if reason == "logs-display:all" {
@@ -1395,8 +1465,9 @@ final class KLMSMacModel: ObservableObject {
         source: ServerRelaySyncDataSource
     ) {
         var didChangeVisibleDashboardState = false
-        if serverRelaySharedRunLogs != syncData.runLogs {
-            serverRelaySharedRunLogs = syncData.runLogs
+        let visibleRunLogs = visibleServerRelayRunLogs(syncData.runLogs)
+        if serverRelaySharedRunLogs != visibleRunLogs {
+            serverRelaySharedRunLogs = visibleRunLogs
             rebuildSharedRunLogStageDurationCache()
             didChangeVisibleDashboardState = true
         }
@@ -3714,11 +3785,13 @@ final class KLMSMacModel: ObservableObject {
                 waitSeconds: 0
             )
             serverRelayLastInboxUpdatedAt = inbox.statusResponse.updatedAt
-            if serverRelayRecentRequestLog != inbox.recentRequestLog {
-                serverRelayRecentRequestLog = inbox.recentRequestLog
+            let visibleRequestLog = visibleServerRelayRequestLog(inbox.recentRequestLog)
+            if serverRelayRecentRequestLog != visibleRequestLog {
+                serverRelayRecentRequestLog = visibleRequestLog
             }
-            if serverRelayRecentFileAccessRequests != inbox.recentFileAccessRequests {
-                serverRelayRecentFileAccessRequests = inbox.recentFileAccessRequests
+            let visibleFileRequests = visibleServerRelayFileAccessRequests(inbox.recentFileAccessRequests)
+            if serverRelayRecentFileAccessRequests != visibleFileRequests {
+                serverRelayRecentFileAccessRequests = visibleFileRequests
             }
             _ = applyServerRelaySharedSettings(inbox.sharedSettings, merge: false)
             let shouldForceSyncDataFetch = forceSyncDataFetch || serverRelayForceSyncDataFetchOnNextWorkerRefresh

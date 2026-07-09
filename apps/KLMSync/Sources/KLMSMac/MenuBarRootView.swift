@@ -2222,7 +2222,6 @@ private struct LogSummaryPanelView: View {
                 .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                 .help("화면의 실행 로그, 서버 요청, 파일 요청, 항목 변경, 설정 변경, 공유 실행 로그를 지웁니다. 진행 중인 요청은 유지됩니다.")
                 .accessibilityLabel("전체 기록 지우기")
-                .disabled(!model.hasClearableVisibleLogs)
             }
 
             LazyVGrid(columns: tileColumns, alignment: .leading, spacing: 8) {
@@ -4099,7 +4098,6 @@ private struct RemoteActivityPanelView: View {
                         .buttonStyle(KLMSMacCompactDangerIconButtonStyle())
                         .help("서버·파일 요청 기록 지우기")
                         .accessibilityLabel("서버·파일 요청 기록 지우기")
-                        .disabled(!model.serverRelayConfigured || !model.hasClearableServerActivityLogs)
                     }
 
                     if let message = model.remoteProcessingStatusMessage?.nilIfBlank ?? model.serverRelayStatusMessage?.nilIfBlank {
