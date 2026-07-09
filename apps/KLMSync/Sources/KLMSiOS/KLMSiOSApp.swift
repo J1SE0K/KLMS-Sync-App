@@ -6943,7 +6943,7 @@ private enum CompanionItemSortOption: String, CaseIterable, Identifiable, Sendab
     var title: String {
         switch self {
         case .recent:
-            "기본순"
+            "최신"
         case .updated:
             "갱신"
         case .course:

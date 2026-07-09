@@ -3403,7 +3403,7 @@ private enum DashboardFileSortOption: String, CaseIterable, Identifiable, Sendab
         case .path:
             "경로"
         case .recent:
-            "KLMS 최신"
+            "최신"
         }
     }
 }
