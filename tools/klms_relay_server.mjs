@@ -3125,10 +3125,10 @@ function loadAllStoredSyncItems() {
   return db.prepare(`
     SELECT payload_json
     FROM sync_items
-    ORDER BY updated_at DESC, timestamp DESC, course ASC, title ASC
   `).all()
     .map((row) => normalizeSyncItem(parseJSON(row.payload_json, null)))
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort(compareSyncItems);
 }
 
 function saveStoredSyncDataPatch({ items, calendarChanges, itemChanged, calendarChanged, updatedAt }) {
@@ -3381,19 +3381,76 @@ function isUserVisibleCalendarChange(change) {
 }
 
 function compareSyncItems(lhs, rhs) {
-  const updatedDelta = Date.parse(rhs.updatedAt || "") - Date.parse(lhs.updatedAt || "");
-  if (Number.isFinite(updatedDelta) && updatedDelta !== 0) {
-    return updatedDelta;
+  const lhsTimestamp = syncItemTimestampEpoch(lhs);
+  const rhsTimestamp = syncItemTimestampEpoch(rhs);
+  if (Number.isFinite(lhsTimestamp) && Number.isFinite(rhsTimestamp) && lhsTimestamp !== rhsTimestamp) {
+    return rhsTimestamp - lhsTimestamp;
   }
-  const timestampDelta = String(rhs.timestamp || "").localeCompare(String(lhs.timestamp || ""));
-  if (timestampDelta !== 0) {
-    return timestampDelta;
+  if (Number.isFinite(lhsTimestamp) || Number.isFinite(rhsTimestamp)) {
+    return Number.isFinite(lhsTimestamp) ? -1 : 1;
+  }
+  const bothFiles = String(lhs.kind || "") === "file" && String(rhs.kind || "") === "file";
+  if (!bothFiles) {
+    const updatedDelta = Date.parse(rhs.updatedAt || "") - Date.parse(lhs.updatedAt || "");
+    if (Number.isFinite(updatedDelta) && updatedDelta !== 0) {
+      return updatedDelta;
+    }
+    const timestampDelta = String(rhs.timestamp || "").localeCompare(String(lhs.timestamp || ""));
+    if (timestampDelta !== 0) {
+      return timestampDelta;
+    }
   }
   const courseDelta = String(lhs.course || "").localeCompare(String(rhs.course || ""), "ko");
   if (courseDelta !== 0) {
     return courseDelta;
   }
   return String(lhs.title || "").localeCompare(String(rhs.title || ""), "ko");
+}
+
+function syncItemTimestampEpoch(item) {
+  return dashboardTimestampEpoch(item?.timestamp);
+}
+
+function dashboardTimestampEpoch(value) {
+  const text = String(value || "").trim();
+  if (!text) return Number.NaN;
+  const dashMatch = text
+    .replace(/\bKST\b/g, "")
+    .trim()
+    .match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2})(?::(\d{1,2}))?)?/);
+  if (dashMatch) {
+    return seoulEpoch(
+      Number(dashMatch[1]),
+      Number(dashMatch[2]),
+      Number(dashMatch[3]),
+      Number(dashMatch[4] || 0),
+      Number(dashMatch[5] || 0)
+    );
+  }
+  const koreanMatch = text.match(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일(?:.*?(오전|오후)\s*(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (koreanMatch) {
+    let hour = Number(koreanMatch[5] || 0);
+    const marker = koreanMatch[4] || "";
+    if (marker === "오후" && hour < 12) hour += 12;
+    if (marker === "오전" && hour === 12) hour = 0;
+    return seoulEpoch(
+      Number(koreanMatch[1]),
+      Number(koreanMatch[2]),
+      Number(koreanMatch[3]),
+      hour,
+      Number(koreanMatch[6] || 0)
+    );
+  }
+  if (text.includes("T")) {
+    const parsed = Date.parse(text);
+    if (Number.isFinite(parsed)) return Math.floor(parsed / 1000);
+  }
+  return Number.NaN;
+}
+
+function seoulEpoch(year, month, day, hour, minute) {
+  if (![year, month, day, hour, minute].every(Number.isFinite)) return Number.NaN;
+  return Math.floor(Date.UTC(year, month - 1, day, hour - 9, minute, 0) / 1000);
 }
 
 function syncDataResponse({ kind = "", limit = 250 } = {}) {
@@ -3403,15 +3460,11 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
         SELECT payload_json
         FROM sync_items
         WHERE kind = ?
-        ORDER BY updated_at DESC, timestamp DESC, course ASC, title ASC
-        LIMIT ?
-      `).all(trimmedKind, limit)
+      `).all(trimmedKind)
     : db.prepare(`
         SELECT payload_json
         FROM sync_items
-        ORDER BY updated_at DESC, timestamp DESC, course ASC, title ASC
-        LIMIT ?
-      `).all(limit);
+      `).all();
   const dryRunReports = parseJSON(getMeta("syncDataDryRunReports"), []);
   const calendarChanges = parseJSON(getMeta("syncDataCalendarChanges"), []);
   const termCatalog = parseJSON(getMeta("syncDataTermCatalog"), null);
@@ -3428,7 +3481,7 @@ function syncDataResponse({ kind = "", limit = 250 } = {}) {
     items: applyTermCatalogToSyncItems(
       rows.map((row) => parseJSON(row.payload_json, null)),
       normalizedTermCatalog
-    ),
+    ).sort(compareSyncItems).slice(0, limit),
     dryRunReports: normalizeDryRunReports(dryRunReports),
     calendarChanges: visibleCalendarChanges,
     termCatalog: normalizedTermCatalog,

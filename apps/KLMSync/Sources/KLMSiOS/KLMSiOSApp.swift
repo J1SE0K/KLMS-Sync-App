@@ -14369,16 +14369,21 @@ private extension Array where Element == ServerRelaySyncItem {
         sorted { lhs, rhs in
             switch option {
             case .recent:
-                let leftKLMSTimestamp = lhs.dashboardTimestampEpoch ?? Int.min
-                let rightKLMSTimestamp = rhs.dashboardTimestampEpoch ?? Int.min
-                if leftKLMSTimestamp != rightKLMSTimestamp {
+                let leftKLMSTimestamp = lhs.dashboardTimestampEpoch
+                let rightKLMSTimestamp = rhs.dashboardTimestampEpoch
+                if let leftKLMSTimestamp, let rightKLMSTimestamp, leftKLMSTimestamp != rightKLMSTimestamp {
                     return leftKLMSTimestamp > rightKLMSTimestamp
                 }
-                if let result = ServerRelaySyncItem.descendingCompare(lhs.timestamp, rhs.timestamp) {
-                    return result
+                if leftKLMSTimestamp != nil || rightKLMSTimestamp != nil {
+                    return leftKLMSTimestamp != nil
                 }
-                if let result = ServerRelaySyncItem.descendingCompare(lhs.updatedAt, rhs.updatedAt) {
-                    return result
+                if lhs.kind != "file" || rhs.kind != "file" {
+                    if let result = ServerRelaySyncItem.descendingCompare(lhs.timestamp, rhs.timestamp) {
+                        return result
+                    }
+                    if let result = ServerRelaySyncItem.descendingCompare(lhs.updatedAt, rhs.updatedAt) {
+                        return result
+                    }
                 }
             case .updated:
                 if let result = ServerRelaySyncItem.descendingCompare(lhs.updatedAt, rhs.updatedAt) {

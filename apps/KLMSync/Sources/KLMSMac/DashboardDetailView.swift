@@ -3272,6 +3272,7 @@ private struct DashboardFileItem: Identifiable, Sendable {
     private var pathSortKey: String = ""
     private var kindSortKey: String = ""
     private var recencySortKey: String = ""
+    fileprivate var klmsSortEpoch: Int = Int.min
     private var renderSignatureHash: Int = 0
     var fileKindLabel: String = ""
     var fileKindIcon: String = ""
@@ -3327,6 +3328,7 @@ private struct DashboardFileItem: Identifiable, Sendable {
         recencySortKey = trimmedRecency.isEmpty
             ? (isRecent ? "9999-12-31 23:59 KST" : "0000-00-00 00:00 KST")
             : trimmedRecency
+        klmsSortEpoch = klmsTimestampEpoch ?? ServerRelaySyncItem.dashboardTimestampEpoch(from: trimmedRecency) ?? Int.min
         var hasher = Hasher()
         hasher.combine(key)
         hasher.combine(title)
@@ -3339,6 +3341,7 @@ private struct DashboardFileItem: Identifiable, Sendable {
         hasher.combine(isRecent)
         hasher.combine(pathExists)
         hasher.combine(klmsTimestampEpoch ?? -1)
+        hasher.combine(klmsSortEpoch)
         hasher.combine(fileKindLabel)
         hasher.combine(interaction?.isHiddenLike == true)
         hasher.combine(interaction?.trashedAt ?? "")
@@ -3600,8 +3603,8 @@ private extension Array where Element == DashboardFileItem {
     func sorted(by option: DashboardFileSortOption) -> [DashboardFileItem] {
         sorted { lhs, rhs in
             if option == .recent {
-                let leftKLMSTimestamp = lhs.klmsTimestampEpoch ?? Int.min
-                let rightKLMSTimestamp = rhs.klmsTimestampEpoch ?? Int.min
+                let leftKLMSTimestamp = lhs.klmsSortEpoch
+                let rightKLMSTimestamp = rhs.klmsSortEpoch
                 if leftKLMSTimestamp != rightKLMSTimestamp {
                     return leftKLMSTimestamp > rightKLMSTimestamp
                 }
