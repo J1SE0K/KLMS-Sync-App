@@ -1138,7 +1138,7 @@ public enum ServerRelayClientError: LocalizedError, Sendable {
         case let .invalidResponseDetail(detail):
             return detail.isEmpty ? "서버 응답을 해석하지 못했습니다." : "서버 응답을 해석하지 못했습니다. \(detail)"
         case let .serverRejected(statusCode, message):
-            if statusCode == 401 {
+            if statusCode == 401 || statusCode == 403 {
                 return "서버 인증 실패: 서버 URL과 클라이언트/워커 토큰이 최신 값인지 확인해 주세요."
             }
             return message.isEmpty ? "서버 요청이 실패했습니다." : message

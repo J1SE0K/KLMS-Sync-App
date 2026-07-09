@@ -834,8 +834,8 @@ final class KLMSMacModel: ObservableObject {
                     serverRelayRecentRequestLog = requestLog
                 }
             }
-            if let syncData = try? await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit) {
-                applyServerRelaySyncData(syncData)
+            guard await fetchAndApplyServerRelaySyncData(store, silent: false) else {
+                return
             }
             serverRelayLastStatusPublishAt = Date()
             if enableOnSuccess && !serverRelayEnabled {
@@ -855,9 +855,7 @@ final class KLMSMacModel: ObservableObject {
         guard serverRelayEnabled, serverRelayConfigured else { return }
         do {
             let store = try makeServerRelayStore()
-            if let syncData = try? await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit) {
-                applyServerRelaySyncData(syncData)
-            }
+            _ = await fetchAndApplyServerRelaySyncData(store, silent: silent)
             if let recentFileRequests = try? await store.fetchRecentFileAccessRequests(limit: 8),
                serverRelayRecentFileAccessRequests != recentFileRequests {
                 serverRelayRecentFileAccessRequests = recentFileRequests
@@ -866,7 +864,6 @@ final class KLMSMacModel: ObservableObject {
                serverRelayRecentRequestLog != requestLog {
                 serverRelayRecentRequestLog = requestLog
             }
-            serverRelayLastSyncDataFetchAt = Date()
         } catch {
             guard !silent else { return }
             serverRelayStatusMessage = "서버 데이터 새로고침 실패: \(error.localizedDescription)"
@@ -892,9 +889,7 @@ final class KLMSMacModel: ObservableObject {
                     serverRelayRecentRequestLog = requestLog
                 }
             }
-            if let syncData = try? await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit) {
-                applyServerRelaySyncData(syncData)
-            }
+            _ = await fetchAndApplyServerRelaySyncData(store, silent: true)
         } catch {
             serverRelayStatusMessage = "로그 지우기 실패: \(error.localizedDescription)"
             errorMessage = serverRelayStatusMessage
@@ -1178,6 +1173,7 @@ final class KLMSMacModel: ObservableObject {
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
                     let message = try await task.receive()
                     if handleServerRelayEvent(message) {
+                        await refreshServerRelayDashboardNow(silent: true)
                         await processServerRelayCommands(silent: true, forceSyncDataFetch: true)
                     }
                 }
@@ -1278,6 +1274,35 @@ final class KLMSMacModel: ObservableObject {
 
     private func makeServerRelayStore() throws -> ServerRelayCommandStore {
         try ServerRelayCommandStore(urlText: serverRelayURL, token: serverRelayWorkerToken)
+    }
+
+    @discardableResult
+    private func fetchAndApplyServerRelaySyncData(
+        _ store: ServerRelayCommandStore,
+        silent: Bool
+    ) async -> Bool {
+        do {
+            let syncData = try await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit)
+            applyServerRelaySyncData(syncData)
+            return true
+        } catch {
+            serverRelayLastSyncDataFetchAt = nil
+            serverRelayForceSyncDataFetchOnNextWorkerRefresh = true
+            let message = "서버 대시보드 갱신 실패: \(error.localizedDescription)"
+            if !silent || Self.isServerRelayAuthorizationError(error) {
+                serverRelayStatusMessage = message
+                errorMessage = message
+                UserDefaults.standard.removeObject(forKey: Self.cachedServerRelaySyncDataKey)
+            }
+            return false
+        }
+    }
+
+    private static func isServerRelayAuthorizationError(_ error: Error) -> Bool {
+        guard case let ServerRelayClientError.serverRejected(statusCode, _) = error else {
+            return false
+        }
+        return statusCode == 401 || statusCode == 403
     }
 
     private func publishServerRelayStatusIfNeeded(force: Bool = false, publishSyncData: Bool = false) async {
@@ -3664,9 +3689,8 @@ final class KLMSMacModel: ObservableObject {
             _ = applyServerRelaySharedSettings(inbox.sharedSettings, merge: false)
             let shouldForceSyncDataFetch = forceSyncDataFetch || serverRelayForceSyncDataFetchOnNextWorkerRefresh
             serverRelayForceSyncDataFetchOnNextWorkerRefresh = false
-            if shouldFetchServerRelaySyncData(force: shouldForceSyncDataFetch),
-               let syncData = try? await store.fetchSyncData(limit: Self.serverRelayDashboardSyncDataFetchLimit) {
-                applyServerRelaySyncData(syncData)
+            if shouldFetchServerRelaySyncData(force: shouldForceSyncDataFetch) {
+                _ = await fetchAndApplyServerRelaySyncData(store, silent: silent)
             }
             let pendingFileRequests = inbox.pendingFileAccessRequests
             if let fileRequest = pendingFileRequests.first {
