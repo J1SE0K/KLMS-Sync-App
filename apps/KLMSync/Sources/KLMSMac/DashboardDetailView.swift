@@ -4362,7 +4362,7 @@ private struct DashboardFileKindStyle {
 private struct CalendarDetailView: View {
     var snapshot: EngineSnapshot
     var filters: DashboardDetailFilters
-    var model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
 
     var body: some View {
         let allCalendarChanges = calendarChanges
@@ -4611,7 +4611,7 @@ private struct CalendarSummaryListView: View {
 private struct CalendarChangeListView: View {
     var changes: [CalendarChange]
     var filters: DashboardDetailFilters
-    var model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
     var hasLegacyCountWithoutDetails: Bool
     @State private var visibleLimit = DashboardLargeList.initialVisibleLimit
 
@@ -4697,7 +4697,7 @@ private struct CalendarChangeListView: View {
 
 private struct CalendarChangeRowView: View {
     var change: CalendarChange
-    var model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
     @State private var editStatusText: String?
     @State private var calendarSheetAction: ServerRelayItemActionKind?
 

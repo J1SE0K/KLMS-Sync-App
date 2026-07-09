@@ -999,7 +999,7 @@ final class KLMSMacModel: ObservableObject {
             clearLiveCommandDisplayOutputPreservingAuth()
             lastCommandResult = nil
             commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
-            snapshot.relayLogTail = ""
+            clearRelayLogTailDisplay()
         }
         clearLocalStoredLogs()
         applyServerRelayLogClear(scope: .all)
@@ -1032,7 +1032,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func clearLocalRelayLogs() {
-        snapshot.relayLogTail = ""
+        clearRelayLogTailDisplay()
         for url in [paths.relayStdoutLogURL, paths.relayStderrLogURL] {
             do {
                 try FileManager.default.createDirectory(
@@ -1058,7 +1058,7 @@ final class KLMSMacModel: ObservableObject {
 
     private func clearLocalStoredLogs() {
         commandHistory = (try? CommandRunHistoryStore(url: paths.appHistoryURL).clear()) ?? CommandRunHistory()
-        snapshot.relayLogTail = ""
+        clearRelayLogTailDisplay()
         for url in [paths.relayStdoutLogURL, paths.relayStderrLogURL] {
             do {
                 try FileManager.default.createDirectory(
@@ -1076,6 +1076,16 @@ final class KLMSMacModel: ObservableObject {
                 errorMessage = "로컬 로그 파일 지우기 실패: \(error.localizedDescription)"
             }
         }
+    }
+
+    private func clearRelayLogTailDisplay() {
+        guard !snapshot.relayLogTail.isEmpty else {
+            refreshDashboardPresentationCaches()
+            return
+        }
+        var nextSnapshot = snapshot
+        nextSnapshot.relayLogTail = ""
+        replaceSnapshot(nextSnapshot)
     }
 
     private func appendCommandRunHistoryIfVisible(_ result: KLMSCommandResult) {
