@@ -258,6 +258,34 @@ final class CommandRunnerTests: XCTestCase {
         XCTAssertFalse(KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(output))
     }
 
+    func testLaterLoginRequiredOverridesAlreadyAuthenticatedOutput() {
+        let output = """
+        KLMS 로그인 보조 완료
+        status=ok stage=already_authenticated source=login-assist-safari
+        KLMS 이미 로그인되어 있습니다.
+        {"context": "klms-login-preflight", "status": "ok"}
+        KLMS 로그인이 풀린 것 같아. 다시 로그인해 줘.
+        """
+        let result = KLMSCommandResult(
+            invocation: KLMSEngineCommand.fullSync.invocation(),
+            startedAt: Date(),
+            finishedAt: Date(),
+            exitCode: 1,
+            standardOutput: output,
+            standardError: "",
+            authDigits: KLMSCommandRunner.extractAuthDigits(from: output)
+        )
+
+        XCTAssertTrue(KLMSCommandRunner.outputIndicatesAuthenticated(output))
+        XCTAssertTrue(KLMSCommandRunner.outputIndicatesLoginRequired(output))
+        XCTAssertTrue(KLMSCommandRunner.outputIndicatesLatestLoginRequired(output))
+        XCTAssertFalse(KLMSCommandRunner.outputIndicatesAuthenticatedAfterLatestAuthDigits(output))
+        XCTAssertFalse(result.loginAuthenticated)
+        XCTAssertFalse(result.authChallengeCompleted)
+        XCTAssertTrue(result.loginRequired)
+        XCTAssertTrue(result.requiresLoginApproval)
+    }
+
     func testOldAuthenticatedOutputDoesNotHideNewerAuthDigits() {
         let log = """
         status=ok stage=authenticated

@@ -3156,6 +3156,9 @@ final class KLMSMacModel: ObservableObject {
             flushLiveCommandOutput()
             lastCommandResult = result
             appendCommandRunHistoryIfVisible(result)
+            if result.loginRequired && result.authDigits == nil {
+                await clearAuthStatusForLoginRequired()
+            }
             if let resultDigits = result.authDigits,
                !result.authChallengeCompleted {
                 await recordAuthDigits(resultDigits)
@@ -4841,8 +4844,14 @@ final class KLMSMacModel: ObservableObject {
             await publishServerRelayStatusIfNeeded(force: true)
             return
         }
+        if KLMSCommandRunner.outputIndicatesLatestLoginRequired(authOutput) {
+            await clearAuthStatusForLoginRequired()
+            await publishServerRelayStatusIfNeeded(force: true)
+            return
+        }
         if !authDigitsSeenForCurrentRun,
-           KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(authOutput) {
+           KLMSCommandRunner.outputIndicatesAlreadyAuthenticated(authOutput),
+           !KLMSCommandRunner.outputIndicatesLatestLoginRequired(authOutput) {
             showAlreadyLoggedInStatusIfNeeded()
             await publishServerRelayStatusIfNeeded(force: true)
         }
@@ -5015,6 +5024,17 @@ final class KLMSMacModel: ObservableObject {
         notifiedAlreadyLoggedInForCurrentRun = true
         lastAuthCompletionAt = Date()
         showTransientAuthStatus("이미 로그인됨")
+    }
+
+    private func clearAuthStatusForLoginRequired() async {
+        await clearAuthDigitsState(showAuthenticatedMessage: false, respectMinimumVisibleDuration: false)
+        authStatusMessage = nil
+        lastAuthStatusMessageForRemote = nil
+        lastAuthCompletionAt = nil
+        authStatusClearTask?.cancel()
+        authStatusClearTask = nil
+        notifiedAuthCompletionForCurrentRun = false
+        notifiedAlreadyLoggedInForCurrentRun = false
     }
 
     private func startRunningCommandStatusPoll(startedAt: Date) {

@@ -43,6 +43,10 @@ public struct KLMSCommandResult: Sendable, Equatable {
         KLMSCommandRunner.outputIndicatesAuthenticatedAfterLatestAuthDigits(combinedOutput)
     }
 
+    public var loginRequired: Bool {
+        KLMSCommandRunner.outputIndicatesLatestLoginRequired(combinedOutput)
+    }
+
     public var authChallengeCompleted: Bool {
         KLMSCommandRunner.outputConfirmsAuthChallengeCompletion(combinedOutput)
     }
@@ -52,7 +56,7 @@ public struct KLMSCommandResult: Sendable, Equatable {
     }
 
     public var requiresLoginApproval: Bool {
-        authDigits != nil && !loginAuthenticated
+        loginRequired || (authDigits != nil && !loginAuthenticated)
     }
 }
 
@@ -231,12 +235,30 @@ public actor KLMSCommandRunner {
         latestAuthenticatedLocation(in: text) != nil
     }
 
+    public static func outputIndicatesLoginRequired(_ text: String) -> Bool {
+        latestLoginRequiredLocation(in: text) != nil
+    }
+
+    public static func outputIndicatesLatestLoginRequired(_ text: String) -> Bool {
+        guard let loginRequiredLocation = latestLoginRequiredLocation(in: text) else {
+            return false
+        }
+        guard let authenticatedLocation = latestAuthenticatedLocation(in: text) else {
+            return true
+        }
+        return loginRequiredLocation > authenticatedLocation
+    }
+
     public static func outputIndicatesAlreadyAuthenticated(_ text: String) -> Bool {
         latestAlreadyAuthenticatedLocation(in: text) != nil
     }
 
     public static func outputIndicatesAuthenticatedAfterLatestAuthDigits(_ text: String) -> Bool {
         guard let authenticatedLocation = latestAuthenticatedLocation(in: text) else {
+            return false
+        }
+        if let loginRequiredLocation = latestLoginRequiredLocation(in: text),
+           loginRequiredLocation > authenticatedLocation {
             return false
         }
         guard let authDigitsLocation = latestAuthDigitsMatch(in: text)?.location else {
@@ -267,6 +289,21 @@ public actor KLMSCommandRunner {
         let markers = [
             "status=ok stage=already_authenticated",
             "KLMS 이미 로그인되어 있습니다.",
+        ]
+        return latestMarkerLocation(in: text, markers: markers)
+    }
+
+    public static func latestLoginRequiredLocation(in text: String) -> Int? {
+        let markers = [
+            "KLMS 로그인이 풀린",
+            "KLMS 로그인 세션이 풀렸",
+            "다시 로그인해 줘",
+            "login-prompt notified",
+            "\"error\":\"login_required\"",
+            "\"error\": \"login_required\"",
+            "error=login_required",
+            "status=login_required",
+            "last_status=login_required",
         ]
         return latestMarkerLocation(in: text, markers: markers)
     }
