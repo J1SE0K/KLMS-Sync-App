@@ -731,7 +731,7 @@ final class CompanionModel: ObservableObject {
     }
 
     func removeMailDashboardItem(_ item: ServerRelaySyncItem) {
-        mailDashboardItems.removeAll { $0.id == item.id }
+        mailDashboardItems = mailDashboardItems.filter { $0.id != item.id }
         persistMailDashboardItems()
         connectionSucceeded = nil
         connectionMessage = ""
@@ -1484,8 +1484,7 @@ final class CompanionModel: ObservableObject {
             options: RemoteRunOptions(updateNoticeNotes: shouldUpdateNoticeNotes, dryRun: dryRun)
         )
         command.summary = status
-        recentCommands.insert(command, at: 0)
-        rebuildRemoteLogDerivedState()
+        recentCommands = ([command] + recentCommands.filter { $0.id != command.id })
         status = command.summary
         lastRefreshAt = Date()
         connectionMessage = "\(kind.displayName) 요청을 화면에 먼저 반영했습니다. 서버로 보내는 중입니다."
@@ -1499,8 +1498,7 @@ final class CompanionModel: ObservableObject {
             rebuildRemoteLogDerivedState()
         } catch {
             guard !isCancellationError(error) else { return }
-            recentCommands.removeAll { $0.id == command.id }
-            rebuildRemoteLogDerivedState()
+            recentCommands = recentCommands.filter { $0.id != command.id }
             errorMessage = userFacingMessage(for: error)
             connectionMessage = "요청 전송 실패"
             connectionSucceeded = false
@@ -1756,9 +1754,9 @@ final class CompanionModel: ObservableObject {
         }
 
         if actionKind == .mailDashboardRemove {
-            let before = mailDashboardItems
-            mailDashboardItems.removeAll { $0.id == itemID }
-            if before != mailDashboardItems {
+            let nextMailDashboardItems = mailDashboardItems.filter { $0.id != itemID }
+            if mailDashboardItems != nextMailDashboardItems {
+                mailDashboardItems = nextMailDashboardItems
                 didChange = true
                 persistMailDashboardItems()
             }
@@ -2487,7 +2485,9 @@ final class CompanionModel: ObservableObject {
             return action.itemID.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         }
         guard !resolvedIDs.isEmpty else { return }
-        resolvedCalendarChangeIDs.formUnion(resolvedIDs)
+        var nextResolvedIDs = resolvedCalendarChangeIDs
+        nextResolvedIDs.formUnion(resolvedIDs)
+        resolvedCalendarChangeIDs = nextResolvedIDs
         persistResolvedCalendarChangeIDs()
         rebuildVisibleCalendarChanges()
     }
@@ -2498,8 +2498,10 @@ final class CompanionModel: ObservableObject {
             .filter { !$0.isEmpty }
         guard !ids.isEmpty else { return }
         let previous = resolvedCalendarChangeIDs
-        resolvedCalendarChangeIDs.formUnion(ids)
-        guard resolvedCalendarChangeIDs != previous else { return }
+        var nextResolvedIDs = resolvedCalendarChangeIDs
+        nextResolvedIDs.formUnion(ids)
+        guard nextResolvedIDs != previous else { return }
+        resolvedCalendarChangeIDs = nextResolvedIDs
         persistResolvedCalendarChangeIDs()
         rebuildVisibleCalendarChanges()
     }

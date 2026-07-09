@@ -1987,7 +1987,9 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func markCalendarChangeResolved(_ change: CalendarChange) {
-        resolvedCalendarChangeIDs.formUnion(calendarChangeResolvedIDs(for: change))
+        var nextResolvedIDs = resolvedCalendarChangeIDs
+        nextResolvedIDs.formUnion(calendarChangeResolvedIDs(for: change))
+        resolvedCalendarChangeIDs = nextResolvedIDs
         persistResolvedCalendarChangeIDs()
         refreshDashboardPresentationCaches()
     }
@@ -2220,7 +2222,7 @@ final class KLMSMacModel: ObservableObject {
     @discardableResult
     private func removeMailDashboardItem(id: String, kind: String = "") -> Bool {
         let previousCount = mailDashboardItems.count
-        mailDashboardItems.removeAll { $0.id == id }
+        mailDashboardItems = mailDashboardItems.filter { $0.id != id }
         let removed = mailDashboardItems.count != previousCount
         if removed {
             refreshDashboardPresentationCaches()

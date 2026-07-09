@@ -6099,6 +6099,26 @@ final class DashboardDataModelTests: XCTestCase {
             description: "iOS companion date parsing cache"
         )
         let remoteCalendarPanel = try sourceStructBody(named: "RemoteCalendarActionPanel", in: ios)
+        let iosRemoveMailDashboardItem = try sourceBody(
+            after: "func removeMailDashboardItem(_ item: ServerRelaySyncItem)",
+            in: ios,
+            description: "iOS mail dashboard remove"
+        )
+        let iosApplyLocalItemAction = try sourceBody(
+            after: "private func applyServerVisibleItemActionLocally",
+            in: ios,
+            description: "iOS local item action"
+        )
+        let iosRecordResolvedCalendarChanges = try sourceBody(
+            after: "private func recordResolvedCalendarChanges",
+            in: ios,
+            description: "iOS resolved calendar action recorder"
+        )
+        let iosMarkCalendarChangeResolvedLocally = try sourceBody(
+            after: "private func markCalendarChangeResolvedLocally",
+            in: ios,
+            description: "iOS local calendar resolved marker"
+        )
 
         XCTAssertTrue(mailPastePanel.contains(".accessibilityLabel(\"메일·캘린더 분석 \\(analysis.isEmpty ? \"입력 대기\" : analysis.kind.title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(mailPastePanel.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
@@ -6249,6 +6269,16 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs"))
         XCTAssertTrue(ios.contains("markCalendarChangeResolvedLocally(change)"))
         XCTAssertTrue(ios.contains("private func markCalendarChangeResolvedLocally(_ change: CalendarChange)"))
+        XCTAssertTrue(iosRemoveMailDashboardItem.contains("mailDashboardItems = mailDashboardItems.filter"))
+        XCTAssertFalse(iosRemoveMailDashboardItem.contains("mailDashboardItems.removeAll"))
+        XCTAssertTrue(iosApplyLocalItemAction.contains("let nextMailDashboardItems = mailDashboardItems.filter"))
+        XCTAssertFalse(iosApplyLocalItemAction.contains("mailDashboardItems.removeAll"))
+        XCTAssertTrue(iosRecordResolvedCalendarChanges.contains("var nextResolvedIDs = resolvedCalendarChangeIDs"))
+        XCTAssertTrue(iosRecordResolvedCalendarChanges.contains("resolvedCalendarChangeIDs = nextResolvedIDs"))
+        XCTAssertFalse(iosRecordResolvedCalendarChanges.contains("resolvedCalendarChangeIDs.formUnion"))
+        XCTAssertTrue(iosMarkCalendarChangeResolvedLocally.contains("var nextResolvedIDs = resolvedCalendarChangeIDs"))
+        XCTAssertTrue(iosMarkCalendarChangeResolvedLocally.contains("resolvedCalendarChangeIDs = nextResolvedIDs"))
+        XCTAssertFalse(iosMarkCalendarChangeResolvedLocally.contains("resolvedCalendarChangeIDs.formUnion"))
         XCTAssertTrue(ios.contains("resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs"))
         XCTAssertTrue(ios.contains("replaceRecentItemAction(action) { candidateIDs.contains($0.itemID) }"))
         XCTAssertTrue(ios.contains("recordResolvedCalendarChanges(itemActions)"))
@@ -6312,10 +6342,18 @@ final class DashboardDataModelTests: XCTestCase {
         )
         let macMailHeader = try sourceStructBody(named: "MacMailPasteHeaderButtonContent", in: detail)
         let macMailAnalysisProcess = try sourceStructBody(named: "MacMailAnalysisProcessView", in: detail)
+        let markCalendarResolved = try sourceBody(
+            after: "private func markCalendarChangeResolved",
+            in: model,
+            description: "Mac calendar resolved marker"
+        )
 
         XCTAssertFalse(calendarDetail.contains("MacMailPasteAnalyzerPanel"))
         XCTAssertTrue(calendarDetail.contains("@ObservedObject var model: KLMSMacModel"))
         XCTAssertTrue(calendarRow.contains("@ObservedObject var model: KLMSMacModel"))
+        XCTAssertTrue(markCalendarResolved.contains("var nextResolvedIDs = resolvedCalendarChangeIDs"))
+        XCTAssertTrue(markCalendarResolved.contains("resolvedCalendarChangeIDs = nextResolvedIDs"))
+        XCTAssertFalse(markCalendarResolved.contains("resolvedCalendarChangeIDs.formUnion"))
         XCTAssertFalse(calendarGuide.contains("model.run(.verify)"))
         XCTAssertTrue(calendarGuide.contains("model.run(.coreSync)"))
         XCTAssertFalse(calendarGuide.contains("model.run(.doctor)"))
@@ -6573,6 +6611,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(rebuildCache.contains("items.compactMap(\\.mailStateItem)"))
         XCTAssertTrue(rebuildCache.contains("rebuildDashboardSummaryCache()"))
         XCTAssertTrue(addMailItem.contains("refreshDashboardPresentationCaches()"))
+        XCTAssertTrue(removeMailItem.contains("mailDashboardItems = mailDashboardItems.filter"))
+        XCTAssertFalse(removeMailItem.contains("mailDashboardItems.removeAll"))
         XCTAssertTrue(removeMailItem.contains("refreshDashboardPresentationCaches()"))
         XCTAssertTrue(applySnapshot.contains("replaceSnapshot(nextSnapshot)"))
         XCTAssertTrue(applySnapshot.contains("if runningCommand != nil"))
@@ -7027,8 +7067,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(createCalendarAction.contains("schedulePostActionRefresh(scope: .itemActions)"))
         XCTAssertFalse(createCalendarAction.contains("isSubmitting = true"))
         XCTAssertFalse(createCalendarAction.contains("await refreshRecent("))
-        XCTAssertTrue(createCommand.contains("recentCommands.insert(command, at: 0)"))
-        XCTAssertTrue(createCommand.contains("rebuildRemoteLogDerivedState()"))
+        XCTAssertTrue(createCommand.contains("recentCommands = ([command] + recentCommands.filter { $0.id != command.id })"))
+        XCTAssertTrue(createCommand.contains("recentCommands = recentCommands.filter { $0.id != command.id }"))
+        XCTAssertFalse(createCommand.contains("recentCommands.insert(command, at: 0)"))
+        XCTAssertFalse(createCommand.contains("recentCommands.removeAll"))
         XCTAssertTrue(createCommand.contains("serverRelayStore else {\n            connectionMessage = remoteAvailabilityMessage"))
         XCTAssertTrue(createCommand.contains("요청을 화면에 먼저 반영했습니다. 서버로 보내는 중입니다."))
         XCTAssertTrue(createCommand.contains("요청이 서버에 전달됐습니다. Mac이 확인하면 상태가 바로 바뀝니다."))
