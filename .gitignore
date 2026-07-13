@@ -2,6 +2,7 @@
 .env
 .env.*
 .gstack/
+.superpowers/
 design-qa.md
 
 # Local configuration and personal overrides
