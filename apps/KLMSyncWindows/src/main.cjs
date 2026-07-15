@@ -1,28 +1,77 @@
-const { app, BrowserWindow, clipboard, ipcMain, safeStorage, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, nativeTheme, safeStorage, shell } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const WebSocket = require("ws");
+const {
+  normalizeEndpoint,
+  normalizeExternalURL,
+  normalizeRelayURL,
+  validateRelayURL
+} = require("./relay-security.cjs");
+const {
+  createConfigBoundMutationRegistry,
+  isValidRelayHello,
+  isMutationMethod,
+  jitteredReconnectDelay,
+  mutationConfigRevisionMatches,
+  normalizedConfigRevision
+} = require("./relay-state.js");
 
 const REQUEST_TIMEOUT_MS = 30_000;
-const EVENT_POLL_WAIT_SECONDS = 25;
+const SOCKET_RECONNECT_MIN_MS = 250;
+const SOCKET_RECONNECT_MAX_MS = 2_000;
+const SOCKET_HEARTBEAT_MS = 20_000;
+const SOCKET_STALE_MS = 45_000;
+const APP_ENTRY_PATH = path.join(__dirname, "index.html");
+const APP_ENTRY_URL = pathToFileURL(APP_ENTRY_PATH).toString();
 
 let mainWindow;
+let relaySocket = null;
+let relaySocketGeneration = 0;
+let relaySocketReconnectTimer = null;
+let relaySocketHeartbeatTimer = null;
+let relaySocketHelloTimer = null;
+let relaySocketReconnectDelay = SOCKET_RECONNECT_MIN_MS;
+let relaySocketLastMessageAt = 0;
+let relaySocketLastRevision = 0;
+let relaySocketClientGeneration = 0;
+let relayConfigRevision = 0;
+let configMutationTail = Promise.resolve();
+const activeMutationRequests = createConfigBoundMutationRegistry();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 820,
-    minWidth: 980,
+    minWidth: 640,
     minHeight: 680,
     title: "KLMS Sync",
-    backgroundColor: "#f5f7fb",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#111310" : "#f7f7f4",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
       preload: path.join(__dirname, "preload.cjs")
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, "index.html"));
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.on("will-navigate", (event, targetURL) => {
+    if (targetURL !== APP_ENTRY_URL) event.preventDefault();
+  });
+  mainWindow.webContents.on("will-redirect", (event, targetURL) => {
+    if (targetURL !== APP_ENTRY_URL) event.preventDefault();
+  });
+  mainWindow.webContents.session.setPermissionCheckHandler(() => false);
+  mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  mainWindow.loadFile(APP_ENTRY_PATH);
+  mainWindow.on("closed", () => {
+    stopRelayEventSocket();
+    mainWindow = null;
+  });
 }
 
 app.whenReady().then(() => {
@@ -44,21 +93,30 @@ app.on("window-all-closed", () => {
 
 function registerIPC() {
   ipcMain.handle("config:load", async () => loadConfigForRenderer());
-  ipcMain.handle("config:save", async (_event, config) => {
+  ipcMain.handle("config:save", async (_event, config) => serializeConfigMutation(async () => {
     const saved = await saveConfigFromRenderer(config || {});
+    activateRelayConfigRevision(storedConfigRevision(saved));
     return configForRenderer(saved);
-  });
-  ipcMain.handle("config:clear", async () => {
+  }));
+  ipcMain.handle("config:clear", async () => serializeConfigMutation(async () => {
+    const nextRevision = relayConfigRevision + 1;
     await clearConfig();
-    return configForRenderer({});
-  });
+    activateRelayConfigRevision(nextRevision);
+    return configForRenderer({ configRevision: nextRevision });
+  }));
   ipcMain.handle("clipboard:readText", async () => clipboard.readText("clipboard"));
+  ipcMain.handle("clipboard:writeText", async (_event, value) => {
+    const text = typeof value === "string" ? value.slice(0, 200_000) : "";
+    clipboard.writeText(text, "clipboard");
+    return { written: true };
+  });
   ipcMain.handle("relay:request", async (_event, request) => relayRequest(request || {}));
-  ipcMain.handle("relay:waitForEvent", async (_event, request) => waitForRelayEvent(request || {}));
+  ipcMain.handle("relay:socketStart", async (_event, request) => startRelayEventSocket(request || {}));
+  ipcMain.handle("relay:socketStop", async () => stopRelayEventSocket());
   ipcMain.handle("shell:openExternal", async (_event, target) => {
-    if (typeof target === "string" && /^https?:\/\//i.test(target)) {
-      await shell.openExternal(target);
-    }
+    const safeTarget = normalizeExternalURL(target);
+    await shell.openExternal(safeTarget);
+    return { opened: true };
   });
 }
 
@@ -95,7 +153,9 @@ async function clearConfig() {
 }
 
 async function loadConfigForRenderer() {
-  return configForRenderer(await readConfigFile());
+  const config = await readConfigFile();
+  observeRelayConfigRevision(storedConfigRevision(config));
+  return configForRenderer(config);
 }
 
 function configForRenderer(config) {
@@ -103,8 +163,33 @@ function configForRenderer(config) {
   return {
     relayURL: typeof config.relayURL === "string" ? config.relayURL : "",
     hasToken: token.length > 0,
-    tokenPreview: token ? `${token.slice(0, 6)}...${token.slice(-4)}` : ""
+    configRevision: Math.max(relayConfigRevision, storedConfigRevision(config))
   };
+}
+
+function storedConfigRevision(config) {
+  return normalizedConfigRevision(config?.configRevision) ?? 0;
+}
+
+function observeRelayConfigRevision(revision) {
+  const nextRevision = normalizedConfigRevision(revision) ?? 0;
+  if (nextRevision > relayConfigRevision) {
+    relayConfigRevision = nextRevision;
+    activeMutationRequests.abortStale(relayConfigRevision);
+  }
+  return relayConfigRevision;
+}
+
+function activateRelayConfigRevision(revision) {
+  relayConfigRevision = Math.max(relayConfigRevision, normalizedConfigRevision(revision) ?? 0);
+  activeMutationRequests.abortStale(relayConfigRevision);
+  return relayConfigRevision;
+}
+
+function serializeConfigMutation(operation) {
+  const result = configMutationTail.then(operation, operation);
+  configMutationTail = result.catch(() => {});
+  return result;
 }
 
 async function saveConfigFromRenderer(input) {
@@ -112,14 +197,18 @@ async function saveConfigFromRenderer(input) {
   validateRelayURL(relayURL);
   const token = String(input.token || "").trim();
   const previous = await readConfigFile();
-  if (!token && previous.token && !previous.tokenEncrypted) {
-    throw new Error("저장된 클라이언트 토큰이 안전하게 암호화되어 있지 않습니다. 토큰을 다시 입력해 주세요.");
+  const canReuseToken = previous.relayURL === relayURL
+    && Boolean(previous.tokenEncrypted)
+    && Boolean(decodeToken(previous));
+  if (!token && !canReuseToken) {
+    throw new Error("새 서버에 연결할 클라이언트 토큰을 입력해 주세요.");
   }
   const saved = {
     ...previous,
     relayURL,
     token: token ? encodeToken(token) : previous.token || "",
-    tokenEncrypted: token ? true : Boolean(previous.tokenEncrypted)
+    tokenEncrypted: token ? true : Boolean(previous.tokenEncrypted),
+    configRevision: Math.max(relayConfigRevision, storedConfigRevision(previous)) + 1
   };
   await writeConfigFile(saved);
   return saved;
@@ -147,20 +236,229 @@ function decodeToken(config) {
   return "";
 }
 
-async function waitForRelayEvent(request) {
-  const searchParams = new URLSearchParams({
-    role: "client",
-    waitSeconds: String(EVENT_POLL_WAIT_SECONDS)
-  });
-  const since = String(request.since || "").trim();
-  if (since) {
-    searchParams.set("since", since);
+async function startRelayEventSocket(request = {}) {
+  stopRelayEventSocket({ notify: false });
+  const generation = relaySocketGeneration;
+  const clientGeneration = Number.isSafeInteger(Number(request.clientGeneration))
+    ? Math.max(0, Number(request.clientGeneration))
+    : 0;
+  relaySocketClientGeneration = clientGeneration;
+  relaySocketLastRevision = Number.isSafeInteger(Number(request.sinceRevision))
+    ? Math.max(0, Number(request.sinceRevision))
+    : 0;
+  relaySocketReconnectDelay = SOCKET_RECONNECT_MIN_MS;
+  await connectRelayEventSocket(generation, clientGeneration);
+  return { started: true, generation, clientGeneration };
+}
+
+function stopRelayEventSocket(options = {}) {
+  relaySocketGeneration += 1;
+  if (relaySocketReconnectTimer) {
+    clearTimeout(relaySocketReconnectTimer);
+    relaySocketReconnectTimer = null;
   }
-  return relayRequest({ path: `/v1/events/poll?${searchParams.toString()}` });
+  if (relaySocketHeartbeatTimer) {
+    clearInterval(relaySocketHeartbeatTimer);
+    relaySocketHeartbeatTimer = null;
+  }
+  stopRelaySocketHelloTimer();
+  const socket = relaySocket;
+  relaySocket = null;
+  if (socket) {
+    try {
+      socket.close(1000, "client stopped");
+    } catch {}
+  }
+  if (options.notify !== false) {
+    sendToRenderer("relay:socketState", {
+      state: "stopped",
+      connectionGeneration: relaySocketClientGeneration
+    });
+  }
+  return { stopped: true };
+}
+
+async function connectRelayEventSocket(generation, clientGeneration) {
+  if (generation !== relaySocketGeneration) return;
+  let config;
+  try {
+    config = await readConfigFile();
+    if (generation !== relaySocketGeneration || clientGeneration !== relaySocketClientGeneration) return;
+    const relayURL = normalizeRelayURL(config.relayURL || "");
+    validateRelayURL(relayURL);
+    const token = decodeToken(config);
+    if (!token) throw new Error("서버 릴레이 토큰이 없습니다.");
+    const socketURL = new URL(`${relayURL}/v1/events`);
+    socketURL.protocol = socketURL.protocol === "https:" ? "wss:" : "ws:";
+    socketURL.searchParams.set("role", "client");
+    socketURL.searchParams.set("sinceRevision", String(relaySocketLastRevision));
+    sendToRenderer("relay:socketState", { state: "connecting", connectionGeneration: clientGeneration });
+    const socket = new WebSocket(socketURL, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-KLMS-Client": "Windows"
+      },
+      handshakeTimeout: REQUEST_TIMEOUT_MS
+    });
+    relaySocket = socket;
+    let acceptedHello = false;
+    socket.on("open", () => {
+      if (generation !== relaySocketGeneration || relaySocket !== socket) {
+        socket.close(1000, "stale connection");
+        return;
+      }
+      relaySocketLastMessageAt = Date.now();
+      stopRelaySocketHelloTimer();
+      relaySocketHelloTimer = setTimeout(() => {
+        if (generation !== relaySocketGeneration || relaySocket !== socket || acceptedHello) return;
+        sendToRenderer("relay:socketState", {
+          state: "reconnecting",
+          message: "서버 hello 응답 시간이 초과되었습니다.",
+          connectionGeneration: clientGeneration
+        });
+        socket.close(1002, "server hello timeout");
+      }, REQUEST_TIMEOUT_MS);
+    });
+    socket.on("message", (raw) => {
+      if (generation !== relaySocketGeneration || relaySocket !== socket) return;
+      relaySocketLastMessageAt = Date.now();
+      let event;
+      try {
+        event = JSON.parse(String(raw));
+      } catch {
+        if (!acceptedHello) rejectRelaySocketHello(socket, clientGeneration);
+        return;
+      }
+      if (!acceptedHello) {
+        if (!isValidRelayHello(event)) {
+          rejectRelaySocketHello(socket, clientGeneration);
+          return;
+        }
+        acceptedHello = true;
+        stopRelaySocketHelloTimer();
+        relaySocketReconnectDelay = SOCKET_RECONNECT_MIN_MS;
+        sendToRenderer("relay:socketState", { state: "connected", connectionGeneration: clientGeneration });
+        startRelaySocketHeartbeat(socket, generation);
+      } else if (!event || typeof event !== "object" || Array.isArray(event)) {
+        return;
+      }
+      if (Number.isSafeInteger(Number(event?.revision))) {
+        const eventRevision = Math.max(0, Number(event.revision));
+        relaySocketLastRevision = event.type === "hello" || event.type === "pong"
+          ? eventRevision
+          : Math.max(relaySocketLastRevision, eventRevision);
+      }
+      sendToRenderer("relay:event", { ...event, connectionGeneration: clientGeneration });
+    });
+    socket.on("error", (error) => {
+      if (generation !== relaySocketGeneration || relaySocket !== socket) return;
+      sendToRenderer("relay:socketState", {
+        state: "reconnecting",
+        message: error?.message || "WebSocket 연결 오류",
+        connectionGeneration: clientGeneration
+      });
+    });
+    socket.on("close", () => {
+      if (generation !== relaySocketGeneration || relaySocket !== socket) return;
+      relaySocket = null;
+      stopRelaySocketHelloTimer();
+      stopRelaySocketHeartbeat();
+      scheduleRelaySocketReconnect(generation, clientGeneration);
+    });
+  } catch (error) {
+    if (generation !== relaySocketGeneration) return;
+    sendToRenderer("relay:socketState", {
+      state: "reconnecting",
+      message: error?.message || "WebSocket 연결 실패",
+      connectionGeneration: clientGeneration
+    });
+    scheduleRelaySocketReconnect(generation, clientGeneration);
+  }
+}
+
+function rejectRelaySocketHello(socket, clientGeneration) {
+  stopRelaySocketHelloTimer();
+  sendToRenderer("relay:socketState", {
+    state: "reconnecting",
+    message: "서버가 올바른 WebSocket hello를 보내지 않았습니다.",
+    connectionGeneration: clientGeneration
+  });
+  socket.close(1002, "invalid server hello");
+}
+
+function stopRelaySocketHelloTimer() {
+  if (relaySocketHelloTimer) {
+    clearTimeout(relaySocketHelloTimer);
+    relaySocketHelloTimer = null;
+  }
+}
+
+function startRelaySocketHeartbeat(socket, generation) {
+  stopRelaySocketHeartbeat();
+  relaySocketHeartbeatTimer = setInterval(() => {
+    if (generation !== relaySocketGeneration || relaySocket !== socket) return;
+    if (Date.now() - relaySocketLastMessageAt > SOCKET_STALE_MS) {
+      socket.terminate();
+      return;
+    }
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "ping", revision: relaySocketLastRevision }));
+    }
+  }, SOCKET_HEARTBEAT_MS);
+}
+
+function stopRelaySocketHeartbeat() {
+  if (relaySocketHeartbeatTimer) {
+    clearInterval(relaySocketHeartbeatTimer);
+    relaySocketHeartbeatTimer = null;
+  }
+}
+
+function scheduleRelaySocketReconnect(generation, clientGeneration) {
+  if (generation !== relaySocketGeneration
+    || clientGeneration !== relaySocketClientGeneration
+    || relaySocketReconnectTimer) return;
+  const delay = jitteredReconnectDelay(relaySocketReconnectDelay);
+  sendToRenderer("relay:socketState", {
+    state: "reconnecting",
+    retryInMs: delay,
+    connectionGeneration: clientGeneration
+  });
+  relaySocketReconnectTimer = setTimeout(() => {
+    relaySocketReconnectTimer = null;
+    connectRelayEventSocket(generation, clientGeneration);
+  }, delay);
+  relaySocketReconnectDelay = Math.min(SOCKET_RECONNECT_MAX_MS, relaySocketReconnectDelay * 2);
+}
+
+function sendToRenderer(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
 }
 
 async function relayRequest(request) {
+  const method = String(request.method || "GET").trim().toUpperCase() || "GET";
+  const expectedConfigRevision = normalizedConfigRevision(request.expectedConfigRevision);
+  if (!mutationConfigRevisionMatches(
+    method,
+    expectedConfigRevision,
+    relayConfigRevision,
+    relayConfigRevision
+  )) {
+    throw staleRelayConfigError();
+  }
+
   const config = await readConfigFile();
+  const configRevision = storedConfigRevision(config);
+  if (!mutationConfigRevisionMatches(
+    method,
+    expectedConfigRevision,
+    relayConfigRevision,
+    configRevision
+  )) {
+    throw staleRelayConfigError();
+  }
   const relayURL = normalizeRelayURL(config.relayURL || "");
   validateRelayURL(relayURL);
   const token = decodeToken(config);
@@ -170,8 +468,19 @@ async function relayRequest(request) {
 
   const endpoint = normalizeEndpoint(request.path || "/v1/status");
   const controller = new AbortController();
+  const releaseMutation = isMutationMethod(method)
+    ? activeMutationRequests.track(controller, expectedConfigRevision)
+    : () => {};
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
+    if (!mutationConfigRevisionMatches(
+      method,
+      expectedConfigRevision,
+      relayConfigRevision,
+      configRevision
+    )) {
+      throw staleRelayConfigError();
+    }
     const headers = {
       Accept: "application/json",
       "X-KLMS-Client": "Windows"
@@ -183,7 +492,7 @@ async function relayRequest(request) {
       headers["Content-Type"] = "application/json";
     }
     const response = await fetch(`${relayURL}${endpoint}`, {
-      method: request.method || "GET",
+      method,
       headers,
       body: request.body == null ? undefined : JSON.stringify(request.body),
       signal: controller.signal
@@ -206,58 +515,26 @@ async function relayRequest(request) {
       throw error;
     }
     return payload;
+  } catch (error) {
+    if (controller.signal.aborted
+      && isMutationMethod(method)
+      && !mutationConfigRevisionMatches(
+        method,
+        expectedConfigRevision,
+        relayConfigRevision,
+        configRevision
+      )) {
+      throw staleRelayConfigError();
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
+    releaseMutation();
   }
 }
 
-function normalizeEndpoint(endpoint) {
-  const value = String(endpoint || "").trim();
-  if (value === "/healthz") {
-    return value;
-  }
-  if (!value.startsWith("/v1/")) {
-    throw new Error("허용되지 않은 서버 경로입니다.");
-  }
-  return value;
-}
-
-function normalizeRelayURL(value) {
-  const trimmed = value.trim().replace(/\/+$/, "");
-  if (!trimmed) {
-    throw new Error("서버 URL을 입력해야 합니다.");
-  }
-  const url = new URL(trimmed);
-  if (url.protocol !== "https:") {
-    throw new Error("서버 URL은 공개 HTTPS URL이어야 합니다.");
-  }
-  return url.toString().replace(/\/+$/, "");
-}
-
-function validateRelayURL(value) {
-  const url = new URL(value);
-  if (url.protocol !== "https:") {
-    throw new Error("서버 URL은 공개 HTTPS URL이어야 합니다.");
-  }
-  if (isPrivateHost(url.hostname)) {
-    throw new Error("localhost, .local, 사설 IP는 서버 URL로 사용할 수 없습니다. 공개 HTTPS URL을 입력해 주세요.");
-  }
-}
-
-function isPrivateHost(hostname) {
-  const host = hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".local")) {
-    return true;
-  }
-  if (host === "127.0.0.1" || host.startsWith("127.")) {
-    return true;
-  }
-  if (host.startsWith("10.")) {
-    return true;
-  }
-  if (host.startsWith("192.168.")) {
-    return true;
-  }
-  const match = /^172\.(\d+)\./.exec(host);
-  return Boolean(match && Number(match[1]) >= 16 && Number(match[1]) <= 31);
+function staleRelayConfigError() {
+  const error = new Error("서버 연결 정보가 변경되어 이전 연결의 요청을 취소했습니다.");
+  error.code = "STALE_RELAY_CONFIG";
+  return error;
 }

@@ -1,11 +1,21 @@
 const commands = [
-  { kind: "fullSync", label: "전체 동기화", icon: "↻" },
-  { kind: "filesSync", label: "파일 동기화", icon: "□" },
-  { kind: "coreSync", label: "과제/시험", icon: "✓" },
-  { kind: "noticeSync", label: "공지 메모", icon: "⌑" },
-  { kind: "report", label: "요약 갱신", icon: "↺" },
-  { kind: "doctor", label: "진단", icon: "!" }
+  { kind: "fullSync", label: "전체 동기화", icon: "refresh-cw" },
+  { kind: "filesSync", label: "파일 동기화", icon: "folder-sync" },
+  { kind: "coreSync", label: "과제/시험", icon: "list-checks" },
+  { kind: "noticeSync", label: "공지 메모", icon: "notebook-tabs" },
+  { kind: "report", label: "요약 갱신", icon: "chart-no-axes-combined" },
+  { kind: "doctor", label: "진단", icon: "stethoscope" }
 ];
+
+const iconClassByName = Object.freeze({
+  "chart-no-axes-combined": "icon-chart-no-axes-combined",
+  "folder-sync": "icon-folder-sync",
+  "list-checks": "icon-list-checks",
+  "notebook-tabs": "icon-notebook-tabs",
+  "refresh-cw": "icon-refresh-cw",
+  square: "icon-square",
+  stethoscope: "icon-stethoscope"
+});
 
 const dashboardKinds = [
   { key: "all", label: "전체", get: (_status, items) => visibleItems(items).length },
@@ -54,36 +64,88 @@ const state = {
   sharedSettings: [],
   recentCommands: [],
   recentActions: [],
+  recentSettingActions: [],
   recentFileAccess: [],
+  recentRequestLog: [],
+  runLogs: [],
   selectedKind: "all",
   selectedItemId: "",
   itemRenderLimit: 120,
   sort: "recent",
   query: "",
-  relayEventSince: "",
+  relayRevision: 0,
+  socketConnected: false,
+  connectionPhase: "unconfigured",
+  connectionMessage: "",
+  connectionGeneration: 0,
+  configRevision: 0,
   busy: false
 };
 
 const refreshScopes = {
-  full: { commands: true, syncData: true, itemActions: true, fileAccess: true, sharedSettings: false },
-  state: { commands: true, syncData: false, itemActions: true, fileAccess: false, sharedSettings: false },
-  syncData: { commands: false, syncData: true, itemActions: false, fileAccess: false, sharedSettings: false },
-  fileAccess: { commands: false, syncData: false, itemActions: false, fileAccess: true, sharedSettings: false },
-  itemActions: { commands: false, syncData: false, itemActions: true, fileAccess: false, sharedSettings: false },
-  settings: { commands: false, syncData: false, itemActions: true, fileAccess: false, sharedSettings: true },
-  displayLogs: { commands: true, syncData: false, itemActions: true, fileAccess: true, sharedSettings: false }
+  full: { commands: true, syncData: true, itemActions: true, settingActions: true, fileAccess: true, requestLog: true, sharedSettings: true },
+  state: { commands: true, syncData: false, itemActions: false, settingActions: false, fileAccess: false, requestLog: true, sharedSettings: false },
+  syncData: { commands: false, syncData: true, itemActions: false, settingActions: false, fileAccess: false, requestLog: false, sharedSettings: false },
+  fileAccess: { commands: false, syncData: false, itemActions: false, settingActions: false, fileAccess: true, requestLog: true, sharedSettings: false },
+  itemActions: { commands: false, syncData: false, itemActions: true, settingActions: false, fileAccess: false, requestLog: true, sharedSettings: false },
+  settingActions: { commands: false, syncData: false, itemActions: false, settingActions: true, fileAccess: false, requestLog: true, sharedSettings: false },
+  requestLog: { commands: false, syncData: false, itemActions: false, settingActions: false, fileAccess: false, requestLog: true, sharedSettings: false },
+  settings: { commands: false, syncData: false, itemActions: false, settingActions: true, fileAccess: false, requestLog: true, sharedSettings: true },
+  displayLogs: { commands: true, syncData: true, itemActions: true, settingActions: true, fileAccess: true, requestLog: true, sharedSettings: false }
 };
 
 const $ = (id) => document.getElementById(id);
 const INITIAL_ITEM_RENDER_LIMIT = 120;
 const ITEM_RENDER_INCREMENT = 120;
-let refreshTimer = null;
-let realtimeLoopID = 0;
+const REALTIME_BATCH_DELAY_MS = 100;
+const REALTIME_RETRY_MIN_MS = 250;
+const REALTIME_RETRY_MAX_MS = 2_000;
 let searchRenderTimer = null;
+let realtimeFlushTimer = null;
+let realtimeRefreshRunning = false;
+let realtimeRefreshGeneration = 0;
+let realtimeRetryDelay = REALTIME_RETRY_MIN_MS;
+let pendingRealtimeScope = null;
+let pendingRealtimeRevision = 0;
+let pendingRealtimeAuthoritativeSnapshot = false;
+let pendingRealtimeRevisionEpoch = 0;
+let relayObservedRevision = 0;
+let relayRevisionEpoch = 0;
+let refreshApplyOperationSequence = 0;
+let latestRefreshApplyOperationID = 0;
+const relayEndpointApplyVersions = new Map();
+let settingMutationSequence = 0;
+const settingMutationVersions = new Map();
+const pendingSettingValues = new Map();
+const settingMutationQueue = window.KLMSRelayState.createKeyedSerialMutationQueue();
+const settingCommittedBaselines = new Map();
+const settingAuthoritativeObservationVersions = new Map();
+let settingAuthoritativeObservationSequence = 0;
+const pendingCommandOverlays = new Map();
+const pendingItemActionOverlays = new Map();
+const pendingFileAccessOverlays = new Map();
+let cancelSubmittingCommandID = "";
+let cancelRequestedCommandID = "";
+let sidebarReturnFocus = null;
+let viewportResizeTimer = null;
+const fullRenderScope = {
+  header: true,
+  primarySync: true,
+  commands: true,
+  dashboard: true,
+  verify: true,
+  items: true,
+  detail: true,
+  history: true
+};
+const frameRenderScheduler = window.KLMSRelayState.createFrameRenderScheduler(
+  (callback) => window.requestAnimationFrame(callback),
+  (scope) => renderScope(scope)
+);
 
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
-  renderCommands();
+  bindRealtimeEvents();
   renderAll();
   await loadConfig();
   if (state.configured) {
@@ -98,6 +160,7 @@ function bindEvents() {
   $("pasteClipboardButton").addEventListener("click", pasteConnectionFromClipboard);
   $("parseConnectionButton").addEventListener("click", parseConnectionText);
   $("refreshButton").addEventListener("click", () => refreshAll());
+  $("primarySyncButton").addEventListener("click", () => runOrCancelCommand("fullSync"));
   $("updateNoticeNotes")?.addEventListener("change", (event) => {
     updateSharedSetting("KLMS_UPDATE_NOTICE_NOTES", event.target.checked ? "1" : "0")
       .catch(showError);
@@ -116,20 +179,57 @@ function bindEvents() {
     state.itemRenderLimit = INITIAL_ITEM_RENDER_LIMIT;
     renderItems();
   });
+  $("sidebarToggleButton").addEventListener("click", (event) => {
+    const opening = !document.body.classList.contains("sidebar-open");
+    if (opening) sidebarReturnFocus = event.currentTarget;
+    setSidebarOpen(opening, opening ? "commands" : "");
+  });
+  $("sidebarBackdrop").addEventListener("click", () => setSidebarOpen(false));
+  document.querySelectorAll("[data-sidebar-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      sidebarReturnFocus = button;
+      setSidebarOpen(true, button.dataset.sidebarTarget);
+    });
+  });
+  window.addEventListener("resize", () => {
+    document.body.classList.add("viewport-resizing");
+    window.clearTimeout(viewportResizeTimer);
+    viewportResizeTimer = window.setTimeout(() => {
+      document.body.classList.remove("viewport-resizing");
+      viewportResizeTimer = null;
+    }, 200);
+    setSidebarOpen(document.body.classList.contains("sidebar-open"));
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.body.classList.contains("sidebar-open")) {
+      event.preventDefault();
+      setSidebarOpen(false);
+      return;
+    }
+    trapSidebarFocus(event);
+  });
+  setSidebarOpen(false);
+}
+
+function bindRealtimeEvents() {
+  window.klmsWindows.onRelayEvent((event) => handleRelayEvent(event));
+  window.klmsWindows.onRelaySocketState((socketState) => handleRelaySocketState(socketState));
 }
 
 async function loadConfig() {
   try {
     const config = await window.klmsWindows.loadConfig();
     $("relayURL").value = config.relayURL || "";
-    $("relayToken").placeholder = config.hasToken ? `저장됨 (${config.tokenPreview})` : "처음 연결하거나 바꿀 때만 입력";
+    $("relayToken").placeholder = config.hasToken ? "저장됨" : "처음 연결하거나 바꿀 때만 입력";
     state.configured = Boolean(config.relayURL && config.hasToken);
-    updateConnectionState(state.configured ? "저장됨" : "대기", state.configured ? "ok" : "muted");
+    state.configRevision = normalizedConfigRevision(config.configRevision) ?? 0;
+    setConnectionPhase(state.configured ? "connecting" : "unconfigured");
     if (state.configured) {
       startRealtimeRefresh();
     } else {
       stopRealtimeRefresh();
     }
+    renderAll();
   } catch (error) {
     showError(error);
   }
@@ -143,15 +243,20 @@ async function saveConnection(options = {}) {
       token: $("relayToken").value
     });
     $("relayToken").value = "";
-    $("relayToken").placeholder = config.hasToken ? `저장됨 (${config.tokenPreview})` : "처음 연결하거나 바꿀 때만 입력";
+    $("connectionPaste").value = "";
+    $("relayToken").placeholder = config.hasToken ? "저장됨" : "처음 연결하거나 바꿀 때만 입력";
     state.configured = Boolean(config.relayURL && config.hasToken);
-    updateConnectionState("저장됨", "ok");
+    state.configRevision = normalizedConfigRevision(config.configRevision) ?? state.configRevision;
+    state.connectionGeneration += 1;
+    resetRemoteRelayState();
+    setConnectionPhase("connecting");
+    renderAll();
     startRealtimeRefresh();
     if (!options.quiet) {
       toast("서버 연결 정보를 저장했습니다.");
     }
     if (options.refresh !== false) {
-      await refreshAll({ quiet: true, realtime: true });
+      await refreshAll({ quiet: true, reconcile: true });
     }
     return true;
   } catch (error) {
@@ -178,21 +283,11 @@ async function clearConnection() {
     $("relayToken").placeholder = "처음 연결하거나 바꿀 때만 입력";
     $("connectionPaste").value = "";
     state.configured = false;
-    state.status = { ...defaultStatus };
-    state.latestCommand = null;
-    state.running = false;
-    state.message = "";
-    state.items = [];
-    state.calendarChanges = [];
-    state.verifySummary = null;
-    state.recentCommands = [];
-    state.recentActions = [];
-    state.selectedKind = "all";
-    state.selectedItemId = "";
-    state.relayEventSince = "";
+    state.configRevision = normalizedConfigRevision(config.configRevision) ?? state.configRevision;
+    state.connectionGeneration += 1;
+    resetRemoteRelayState();
     stopRealtimeRefresh();
-    stopAutoRefresh();
-    updateConnectionState("대기", "muted");
+    setConnectionPhase("unconfigured");
     renderAll();
     toast("Windows 앱의 서버 연결 정보를 지웠습니다.");
   } catch (error) {
@@ -200,6 +295,124 @@ async function clearConnection() {
   } finally {
     setBusy(false);
   }
+}
+
+function resetRemoteRelayState() {
+  window.KLMSRelayState.resetRemoteState(state, defaultStatus);
+  state.connectionMessage = "";
+  state.itemRenderLimit = INITIAL_ITEM_RENDER_LIMIT;
+  realtimeRefreshGeneration += 1;
+  realtimeRefreshRunning = false;
+  realtimeRetryDelay = REALTIME_RETRY_MIN_MS;
+  pendingRealtimeScope = null;
+  pendingRealtimeRevision = 0;
+  pendingRealtimeAuthoritativeSnapshot = false;
+  pendingRealtimeRevisionEpoch = 0;
+  relayObservedRevision = 0;
+  relayRevisionEpoch += 1;
+  latestRefreshApplyOperationID = ++refreshApplyOperationSequence;
+  invalidateRelayEndpointApplies();
+  settingMutationVersions.clear();
+  pendingSettingValues.clear();
+  settingMutationQueue.clear();
+  settingCommittedBaselines.clear();
+  settingAuthoritativeObservationVersions.clear();
+  pendingCommandOverlays.clear();
+  pendingItemActionOverlays.clear();
+  pendingFileAccessOverlays.clear();
+  cancelSubmittingCommandID = "";
+  cancelRequestedCommandID = "";
+  if (realtimeFlushTimer) {
+    window.clearTimeout(realtimeFlushTimer);
+    realtimeFlushTimer = null;
+  }
+  applySharedSettings([]);
+  const noticeSettingControl = $("updateNoticeNotes");
+  if (noticeSettingControl) noticeSettingControl.disabled = false;
+}
+
+function beginRelayEndpointApply(endpoint) {
+  const version = (relayEndpointApplyVersions.get(endpoint) || 0) + 1;
+  relayEndpointApplyVersions.set(endpoint, version);
+  return version;
+}
+
+function relayEndpointApplyIsCurrent(endpoint, version) {
+  return relayEndpointApplyVersions.get(endpoint) === version;
+}
+
+function invalidateRelayEndpointApplies() {
+  for (const endpoint of [
+    "status",
+    "commands",
+    "syncData",
+    "itemActions",
+    "settingActions",
+    "fileAccess",
+    "requestLog",
+    "sharedSettings"
+  ]) {
+    beginRelayEndpointApply(endpoint);
+  }
+}
+
+function setSidebarOpen(isOpen, target = "") {
+  const wasOpen = document.body.classList.contains("sidebar-open");
+  const shouldOpen = Boolean(isOpen) && window.innerWidth < 1040;
+  const compactClosed = window.innerWidth < 720 && !shouldOpen;
+  document.body.classList.toggle("sidebar-open", shouldOpen);
+  $("sidebarToggleButton")?.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+  $("sidebarBackdrop")?.classList.toggle("hidden", !shouldOpen);
+  const sidebar = $("appSidebar");
+  const content = document.querySelector(".content");
+  if (sidebar) {
+    sidebar.inert = compactClosed;
+    sidebar.setAttribute("aria-hidden", compactClosed ? "true" : "false");
+  }
+  if (content) {
+    content.inert = shouldOpen;
+    content.setAttribute("aria-hidden", shouldOpen ? "true" : "false");
+  }
+  if (shouldOpen && target) {
+    window.requestAnimationFrame(() => {
+      const panel = document.querySelector(`.${target}-panel`);
+      panel?.scrollIntoView({ block: "start" });
+      panel?.querySelector("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")
+        ?.focus({ preventScroll: true });
+    });
+  } else if (wasOpen && !shouldOpen) {
+    const returnFocus = sidebarReturnFocus;
+    sidebarReturnFocus = null;
+    window.requestAnimationFrame(() => {
+      const focusTarget = returnFocus?.getClientRects().length ? returnFocus : $("primarySyncButton");
+      focusTarget?.focus({ preventScroll: true });
+    });
+  }
+}
+
+function trapSidebarFocus(event) {
+  if (event.key !== "Tab" || !document.body.classList.contains("sidebar-open")) return;
+  const sidebar = $("appSidebar");
+  const focusable = sidebarFocusableElements();
+  if (!sidebar || focusable.length === 0) return;
+  const activeElement = document.activeElement;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && (activeElement === first || !sidebar.contains(activeElement))) {
+    event.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!event.shiftKey && (activeElement === last || !sidebar.contains(activeElement))) {
+    event.preventDefault();
+    first.focus({ preventScroll: true });
+  }
+}
+
+function sidebarFocusableElements() {
+  const sidebar = $("appSidebar");
+  if (!sidebar) return [];
+  return Array.from(sidebar.querySelectorAll(
+    "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])"
+  )).filter((element) => element.getClientRects().length > 0 && !element.inert);
 }
 
 async function pasteConnectionFromClipboard() {
@@ -225,7 +438,7 @@ function parseConnectionText() {
 }
 
 function parseConnectionInfo(text) {
-  const url = text.match(/https:\/\/[^\s"'<>]+/i)?.[0] || "";
+  const url = text.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || "";
   const token = text.match(/(?:클라이언트\s*토큰|client\s*(?:relay\s*)?token|iphone\s*토큰|windows\s*토큰)\s*[:=]\s*([A-Za-z0-9._-]{12,})/i)?.[1]
     || text.match(/(?:토큰|token)\s*[:=]\s*([A-Za-z0-9._-]{12,})/i)?.[1]
     || text.match(/\b([a-f0-9]{48,128})\b/i)?.[1]
@@ -238,78 +451,281 @@ function parseConnectionInfo(text) {
 
 async function refreshAll(options = {}) {
   if (!state.configured && !options.check) {
-    stopAutoRefresh();
-    return;
+    return false;
   }
-  if (options.auto && state.busy) {
-    if (!options.realtime) {
-      scheduleAutoRefresh(2000);
+  const scope = options.scope || refreshScopes.full;
+  if ((options.auto || options.realtime) && (state.busy || realtimeRefreshRunning)) {
+    queueRealtimeRefresh(scope, options.targetRevision);
+    return false;
+  }
+  const connectionGeneration = state.connectionGeneration;
+  const refreshOperationID = ++refreshApplyOperationSequence;
+  latestRefreshApplyOperationID = refreshOperationID;
+  const realtimeOperation = options.realtime ? ++realtimeRefreshGeneration : 0;
+  if (options.realtime) realtimeRefreshRunning = true;
+  const refreshIsCurrent = () => (
+    refreshOperationID === latestRefreshApplyOperationID
+    && connectionGeneration === state.connectionGeneration
+    && state.configured
+    && (options.revisionEpoch == null || options.revisionEpoch === relayRevisionEpoch)
+  );
+  const preserveSupersededRealtimeWork = () => {
+    if ((options.auto || options.realtime) && state.configured && connectionGeneration === state.connectionGeneration) {
+      queueRealtimeRefresh(scope, options.targetRevision, options.authoritativeSnapshot === true);
     }
-    return;
-  }
+  };
+  const relayResult = (request) => request.then(
+    (payload) => ({ payload, error: null }),
+    (error) => ({ payload: null, error })
+  );
+  const frameRenderedRefresh = Boolean(options.auto || options.realtime);
+  let appliedRenderScope = {};
   try {
-    const scope = options.scope || refreshScopes.full;
     if (!options.auto) {
       setBusy(true);
-      updateConnectionState("확인 중", "muted");
+      setConnectionPhase("checking");
     }
     if (!options.auto && !options.realtime) {
       await window.klmsWindows.relayRequest({ path: "/healthz" });
+      if (!refreshIsCurrent()) {
+        preserveSupersededRealtimeWork();
+        return false;
+      }
     }
-    const [statusResponse, commandResponse, syncData, actionResponse, fileAccessResponse, sharedSettingsResponse] = await Promise.all([
-      window.klmsWindows.relayRequest({ path: "/v1/status" }),
-      scope.commands ? window.klmsWindows.relayRequest({ path: "/v1/commands/recent?limit=8" }) : null,
-      scope.syncData ? window.klmsWindows.relayRequest({ path: "/v1/sync-data?limit=2000" }) : null,
-      scope.itemActions ? window.klmsWindows.relayRequest({ path: "/v1/item-actions/recent?limit=10" }) : null,
-      scope.fileAccess ? window.klmsWindows.relayRequest({ path: "/v1/file-access/recent?limit=20" }) : null,
-      scope.sharedSettings ? window.klmsWindows.relayRequest({ path: "/v1/shared-settings" }) : null
+    const endpointApplyVersions = {
+      status: beginRelayEndpointApply("status"),
+      commands: scope.commands ? beginRelayEndpointApply("commands") : null,
+      syncData: scope.syncData ? beginRelayEndpointApply("syncData") : null,
+      itemActions: scope.itemActions ? beginRelayEndpointApply("itemActions") : null,
+      settingActions: scope.settingActions ? beginRelayEndpointApply("settingActions") : null,
+      fileAccess: scope.fileAccess ? beginRelayEndpointApply("fileAccess") : null,
+      requestLog: scope.requestLog ? beginRelayEndpointApply("requestLog") : null,
+      sharedSettings: scope.sharedSettings ? beginRelayEndpointApply("sharedSettings") : null
+    };
+    const requests = {
+      status: relayResult(window.klmsWindows.relayRequest({ path: "/v1/status" })),
+      commands: scope.commands
+        ? relayResult(window.klmsWindows.relayRequest({ path: "/v1/commands/recent?limit=8" }))
+        : Promise.resolve({ payload: null, error: null }),
+      syncData: scope.syncData
+        ? relayResult(window.klmsWindows.relayRequest({ path: "/v1/sync-data?limit=2000" }))
+        : Promise.resolve({ payload: null, error: null }),
+      itemActions: scope.itemActions
+        ? relayResult(window.klmsWindows.relayRequest({ path: "/v1/item-actions/recent?limit=10" }))
+        : Promise.resolve({ payload: null, error: null }),
+      settingActions: scope.settingActions
+        ? relayResult(window.klmsWindows.relayRequest({ path: "/v1/setting-actions/recent?limit=10" }))
+        : Promise.resolve({ payload: null, error: null }),
+      fileAccess: scope.fileAccess
+        ? relayResult(window.klmsWindows.relayRequest({ path: "/v1/file-access/recent?limit=20" }))
+        : Promise.resolve({ payload: null, error: null }),
+      requestLog: scope.requestLog
+        ? relayResult(window.klmsWindows.relayRequest({ path: "/v1/request-log/recent?limit=20" }))
+        : Promise.resolve({ payload: null, error: null }),
+      sharedSettings: scope.sharedSettings
+        ? relayResult(window.klmsWindows.relayRequest({ path: "/v1/shared-settings" }))
+        : Promise.resolve({ payload: null, error: null })
+    };
+
+    const applyResultWhenCurrent = async (endpoint, resultPromise, applyPayload) => {
+      const result = await resultPromise;
+      const endpointVersion = endpointApplyVersions[endpoint];
+      if (!refreshIsCurrent() || (endpointVersion != null && !relayEndpointApplyIsCurrent(endpoint, endpointVersion))) {
+        return { ...result, stale: true };
+      }
+      if (result.payload) {
+        applyPayload(result.payload);
+        appliedRenderScope = window.KLMSRelayState.mergeBooleanFlags(
+          appliedRenderScope,
+          renderScopeForEndpoint(endpoint)
+        );
+        if (frameRenderedRefresh) scheduleRender(appliedRenderScope);
+      }
+      return { ...result, stale: false };
+    };
+    let statusResponse = null;
+    let syncData = null;
+    const statusApplyTask = applyResultWhenCurrent("status", requests.status, (payload) => {
+        statusResponse = payload;
+        applyStatus(payload);
+      });
+    const commandApplyTask = applyResultWhenCurrent("commands", requests.commands, (payload) => {
+        applyCommandResponse(payload);
+      });
+    const syncDataApplyTask = applyResultWhenCurrent("syncData", requests.syncData, (payload) => {
+        syncData = payload;
+        applySyncDataResponse(payload, { applySharedSettings: !scope.sharedSettings });
+      });
+    const actionApplyTask = applyResultWhenCurrent("itemActions", requests.itemActions, (payload) => {
+        state.recentActions = itemActionsOverlayingPending(payload.actions || []);
+      });
+    const settingActionApplyTask = applyResultWhenCurrent("settingActions", requests.settingActions, (payload) => {
+        state.recentSettingActions = payload.actions || [];
+      });
+    const fileAccessApplyTask = applyResultWhenCurrent("fileAccess", requests.fileAccess, (payload) => {
+        state.recentFileAccess = fileAccessRequestsOverlayingPending(payload.requests || []);
+      });
+    const requestLogApplyTask = applyResultWhenCurrent("requestLog", requests.requestLog, (payload) => {
+        state.recentRequestLog = payload.entries || [];
+      });
+    const sharedSettingsApplyTask = applyResultWhenCurrent("sharedSettings", requests.sharedSettings, (payload) => {
+        applySharedSettings(
+          Array.isArray(payload) ? payload : payload.settings || [],
+          { authoritative: true }
+        );
+      });
+    const [
+      statusResult,
+      commandResult,
+      syncDataResult,
+      actionResult,
+      settingActionResult,
+      fileAccessResult,
+      requestLogResult,
+      sharedSettingsResult
+    ] = await Promise.all([
+      statusApplyTask,
+      commandApplyTask,
+      syncDataApplyTask,
+      actionApplyTask,
+      settingActionApplyTask,
+      fileAccessApplyTask,
+      requestLogApplyTask,
+      sharedSettingsApplyTask
     ]);
-    applyStatus(statusResponse);
-    if (commandResponse) {
-      state.recentCommands = commandResponse.commands || [];
+    if ([statusResult, commandResult, syncDataResult, actionResult, settingActionResult, fileAccessResult, requestLogResult, sharedSettingsResult]
+      .some((result) => result.stale)) {
+      preserveSupersededRealtimeWork();
+      return false;
     }
-    if (syncData) {
-      state.items = syncData.items || [];
-      state.calendarChanges = syncData.calendarChanges || [];
-      state.verifySummary = syncData.verifySummary || null;
-      applySharedSettings(syncData.sharedSettings || []);
+    const failedResult = [commandResult, syncDataResult, actionResult, settingActionResult, fileAccessResult, requestLogResult, sharedSettingsResult]
+      .find((result) => result.error);
+    if (statusResult.error) throw statusResult.error;
+    if (failedResult) throw failedResult.error;
+
+    const responseRevision = highestRelayRevision(statusResponse?.revision, syncData?.revision);
+    const targetRevision = normalizedRelayRevision(options.targetRevision);
+    const appliedRevision = responseRevision ?? targetRevision;
+    if (options.authoritativeSnapshot) {
+      state.relayRevision = appliedRevision ?? 0;
+    } else if (appliedRevision != null) {
+      state.relayRevision = Math.max(state.relayRevision, appliedRevision);
     }
-    if (actionResponse) {
-      state.recentActions = actionResponse.actions || [];
+    if (appliedRevision != null) {
+      relayObservedRevision = Math.max(relayObservedRevision, appliedRevision);
     }
-    if (fileAccessResponse) {
-      state.recentFileAccess = fileAccessResponse.requests || [];
-    }
-    if (sharedSettingsResponse) {
-      applySharedSettings(Array.isArray(sharedSettingsResponse) ? sharedSettingsResponse : sharedSettingsResponse.settings || []);
-    }
-    updateConnectionState("연결됨", "ok");
+    setConnectionPhase(state.socketConnected ? "connected" : "reconnecting");
     if (options.check) {
       toast("서버 릴레이와 연결됐습니다.");
     }
-    renderAll();
+    if (frameRenderedRefresh) {
+      scheduleRender(window.KLMSRelayState.mergeBooleanFlags(appliedRenderScope, { header: true }));
+    } else {
+      renderAll();
+    }
+    return true;
   } catch (error) {
-    updateConnectionState("실패", "fail");
-    if (!options.quiet) {
+    if (refreshIsCurrent()) {
+      state.connectionMessage = error && typeof error.message === "string" ? error.message.slice(0, 500) : "";
+      setConnectionPhase("error");
+    }
+    if (!options.quiet && refreshIsCurrent()) {
       showError(error);
     }
+    return false;
   } finally {
-    if (!options.auto) {
+    if (options.realtime && realtimeOperation === realtimeRefreshGeneration) {
+      realtimeRefreshRunning = false;
+    }
+    if (!options.auto && refreshOperationID === latestRefreshApplyOperationID) {
       setBusy(false);
     }
-    if (!options.realtime) {
-      scheduleAutoRefresh();
-    }
+    scheduleRealtimeFlush(0);
   }
 }
 
-function applySharedSettings(settings) {
-  state.sharedSettings = Array.isArray(settings) ? settings : [];
+function applySharedSettings(settings, options = {}) {
+  const nextSettings = Array.isArray(settings) ? settings.map((setting) => ({ ...setting })) : [];
+  if (options.authoritative && pendingSettingValues.size > 0) {
+    for (const key of pendingSettingValues.keys()) {
+      settingAuthoritativeObservationSequence += 1;
+      settingAuthoritativeObservationVersions.set(key, settingAuthoritativeObservationSequence);
+      const incomingSetting = nextSettings.find((setting) => setting.key === key) || null;
+      const baseline = settingCommittedBaselines.get(key)?.value ?? null;
+      if (!incomingSetting || settingIsNotOlderThan(incomingSetting, baseline)) {
+        recordSettingCommittedBaseline(key, incomingSetting);
+      }
+    }
+  }
+  for (const [key, pendingSetting] of pendingSettingValues) {
+    const index = nextSettings.findIndex((setting) => setting.key === key);
+    if (index >= 0) {
+      nextSettings[index] = { ...nextSettings[index], ...pendingSetting };
+    } else {
+      nextSettings.push({ ...pendingSetting });
+    }
+  }
+  state.sharedSettings = nextSettings;
   const noticeSetting = state.sharedSettings.find((setting) => setting.key === "KLMS_UPDATE_NOTICE_NOTES");
   const noticeCheckbox = $("updateNoticeNotes");
-  if (noticeCheckbox && noticeSetting) {
-    noticeCheckbox.checked = isTruthySettingValue(noticeSetting.value);
+  if (noticeCheckbox) {
+    noticeCheckbox.checked = noticeSetting ? isTruthySettingValue(noticeSetting.value) : true;
   }
+}
+
+function beginSettingMutationChain(key, connectionGeneration, configRevision, committedValue) {
+  const baseline = settingCommittedBaselines.get(key);
+  if (baseline?.connectionGeneration === connectionGeneration && baseline?.configRevision === configRevision) {
+    return;
+  }
+  settingCommittedBaselines.set(key, {
+    connectionGeneration,
+    configRevision,
+    value: committedValue ? { ...committedValue } : null
+  });
+}
+
+function recordSettingCommittedBaseline(key, value) {
+  const baseline = settingCommittedBaselines.get(key);
+  if (!baseline) return;
+  baseline.value = value ? { ...value } : null;
+}
+
+function endSettingMutationChain(key, connectionGeneration, configRevision) {
+  const baseline = settingCommittedBaselines.get(key);
+  if (baseline?.connectionGeneration === connectionGeneration && baseline?.configRevision === configRevision) {
+    settingCommittedBaselines.delete(key);
+    settingAuthoritativeObservationVersions.delete(key);
+  }
+}
+
+function restoreCommittedSharedSetting(key, committedSetting) {
+  applySharedSettings([
+    ...state.sharedSettings.filter((setting) => setting.key !== key),
+    ...(committedSetting ? [{ ...committedSetting }] : [])
+  ]);
+}
+
+function settingIsNotOlderThan(candidate, baseline) {
+  if (!candidate) return false;
+  if (!baseline) return true;
+  const candidateTimestamp = Date.parse(candidate.updatedAt || "");
+  const baselineTimestamp = Date.parse(baseline.updatedAt || "");
+  if (Number.isFinite(candidateTimestamp) && Number.isFinite(baselineTimestamp)) {
+    return candidateTimestamp >= baselineTimestamp;
+  }
+  return String(candidate.updatedAt || "") >= String(baseline.updatedAt || "");
+}
+
+function settingIsStrictlyNewerThan(candidate, baseline) {
+  if (!candidate) return false;
+  if (!baseline) return true;
+  const candidateTimestamp = Date.parse(candidate.updatedAt || "");
+  const baselineTimestamp = Date.parse(baseline.updatedAt || "");
+  if (Number.isFinite(candidateTimestamp) && Number.isFinite(baselineTimestamp)) {
+    return candidateTimestamp > baselineTimestamp;
+  }
+  return String(candidate.updatedAt || "") > String(baseline.updatedAt || "");
 }
 
 async function updateSharedSetting(key, value) {
@@ -319,23 +735,91 @@ async function updateSharedSetting(key, value) {
   }
   const title = key === "KLMS_UPDATE_NOTICE_NOTES" ? "공지 메모 업데이트" : key;
   const valueKind = key === "KLMS_UPDATE_NOTICE_NOTES" ? "bool" : "text";
-  const setting = await window.klmsWindows.relayRequest({
-    path: `/v1/shared-settings/${encodeURIComponent(key)}`,
-    method: "PUT",
-    body: {
-      key,
-      title,
-      value,
-      valueKind,
-      options: [],
-      editable: true
-    }
-  });
+  const connectionGeneration = state.connectionGeneration;
+  const configRevision = state.configRevision;
+  const mutationVersion = ++settingMutationSequence;
+  settingMutationVersions.set(key, mutationVersion);
+  const previousSetting = state.sharedSettings.find((setting) => setting.key === key);
+  beginSettingMutationChain(key, connectionGeneration, configRevision, previousSetting);
+  const authoritativeObservationVersion = settingAuthoritativeObservationVersions.get(key) || 0;
+  const optimisticSetting = {
+    key,
+    title,
+    value,
+    valueKind,
+    options: [],
+    editable: true,
+    updatedAt: new Date().toISOString()
+  };
+  pendingSettingValues.set(key, optimisticSetting);
+  const settingControl = key === "KLMS_UPDATE_NOTICE_NOTES" ? $("updateNoticeNotes") : null;
+  if (settingControl) settingControl.disabled = true;
   applySharedSettings([
-    ...state.sharedSettings.filter((item) => item.key !== setting.key),
-    setting
+    ...state.sharedSettings.filter((item) => item.key !== key),
+    optimisticSetting
   ]);
-  toast(`${title} 설정을 저장했습니다.`);
+  renderAll();
+  try {
+    await settingMutationQueue.enqueue(key, async () => {
+      if (!isCurrentConnection(connectionGeneration)
+        || state.configRevision !== configRevision
+        || settingMutationVersions.get(key) !== mutationVersion) {
+        return;
+      }
+      try {
+        const setting = await relayMutationRequest({
+          path: `/v1/shared-settings/${encodeURIComponent(key)}`,
+          method: "PUT",
+          body: optimisticSetting
+        }, configRevision);
+        if (!isCurrentConnection(connectionGeneration) || state.configRevision !== configRevision) {
+          return;
+        }
+        const committedSetting = settingCommittedBaselines.get(key)?.value ?? null;
+        const authoritativeObservationIsUnchanged =
+          (settingAuthoritativeObservationVersions.get(key) || 0) === authoritativeObservationVersion;
+        const savedWasAccepted = authoritativeObservationIsUnchanged
+          || settingIsStrictlyNewerThan(setting, committedSetting);
+        if (savedWasAccepted) {
+          recordSettingCommittedBaseline(key, setting);
+        }
+        if (settingMutationVersions.get(key) !== mutationVersion) {
+          return;
+        }
+        pendingSettingValues.delete(key);
+        if (savedWasAccepted) {
+          applySharedSettings([
+            ...state.sharedSettings.filter((item) => item.key !== key),
+            setting
+          ]);
+        } else {
+          restoreCommittedSharedSetting(key, committedSetting);
+        }
+        endSettingMutationChain(key, connectionGeneration, configRevision);
+        renderAll();
+        toast(`${title} 설정을 저장했습니다.`);
+      } catch (error) {
+        if (!isCurrentConnection(connectionGeneration)
+          || state.configRevision !== configRevision
+          || settingMutationVersions.get(key) !== mutationVersion) {
+          return;
+        }
+        const committedSetting = settingCommittedBaselines.get(key)?.value ?? null;
+        pendingSettingValues.delete(key);
+        restoreCommittedSharedSetting(key, committedSetting);
+        endSettingMutationChain(key, connectionGeneration, configRevision);
+        renderAll();
+        throw error;
+      }
+    });
+  } finally {
+    if (settingMutationVersions.get(key) === mutationVersion) {
+      settingMutationVersions.delete(key);
+      if (settingControl && isCurrentConnection(connectionGeneration)) {
+        settingControl.disabled = false;
+      }
+    }
+  }
 }
 
 function isTruthySettingValue(value) {
@@ -347,125 +831,654 @@ function startRealtimeRefresh() {
     stopRealtimeRefresh();
     return;
   }
-  stopAutoRefresh();
-  const loopID = ++realtimeLoopID;
-  runRealtimeRefreshLoop(loopID);
+  const connectionGeneration = state.connectionGeneration;
+  setConnectionPhase("connecting");
+  window.klmsWindows.startRelayEvents({
+    sinceRevision: state.relayRevision,
+    clientGeneration: connectionGeneration
+  }).catch((error) => {
+    if (isCurrentConnection(connectionGeneration)) showError(error);
+  });
 }
 
 function stopRealtimeRefresh() {
-  realtimeLoopID += 1;
-}
-
-async function runRealtimeRefreshLoop(loopID) {
-  while (loopID === realtimeLoopID && state.configured) {
-    try {
-      const event = await window.klmsWindows.waitForRelayEvent({ since: state.relayEventSince });
-      if (loopID !== realtimeLoopID || !state.configured) {
-        return;
-      }
-      if (event?.updatedAt) {
-        state.relayEventSince = event.updatedAt;
-      }
-      updateConnectionState("실시간 연결됨", "ok");
-      await refreshAll({
-        quiet: true,
-        auto: true,
-        realtime: true,
-        scope: refreshScopeForRelayEvent(event)
-      });
-    } catch (error) {
-      if (loopID !== realtimeLoopID || !state.configured) {
-        return;
-      }
-      updateConnectionState("실시간 재연결 중", "warn");
-      await delay(2000);
-    }
+  state.socketConnected = false;
+  if (state.configured) setConnectionPhase("offline");
+  window.klmsWindows.stopRelayEvents().catch(() => {});
+  if (realtimeFlushTimer) {
+    window.clearTimeout(realtimeFlushTimer);
+    realtimeFlushTimer = null;
   }
+  pendingRealtimeScope = null;
+  pendingRealtimeRevision = 0;
+  pendingRealtimeAuthoritativeSnapshot = false;
+  pendingRealtimeRevisionEpoch = relayRevisionEpoch;
 }
 
-function scheduleAutoRefresh(delay = nextRefreshDelay()) {
-  stopAutoRefresh();
-  if (!state.configured) {
+function handleRelaySocketState(socketState) {
+  if (!isCurrentConnectionPayload(socketState)) return;
+  const status = String(socketState?.state || "");
+  state.connectionMessage = typeof socketState?.message === "string"
+    ? socketState.message.slice(0, 500)
+    : "";
+  state.socketConnected = status === "connected";
+  if (status === "connected") {
+    setConnectionPhase("connected");
     return;
   }
-  refreshTimer = window.setTimeout(() => {
-    refreshAll({ quiet: true, auto: true });
+  setConnectionPhase(status === "stopped" ? "offline" : status === "connecting" ? "connecting" : "reconnecting");
+}
+
+function handleRelayEvent(event) {
+  if (!event || typeof event !== "object" || !isCurrentConnectionPayload(event)) return;
+  const previousObservedRevision = relayObservedRevision;
+  const decision = window.KLMSRelayState.eventApplyDecision(relayObservedRevision, event);
+  if (decision.action === "ignore") return;
+  const eventRevision = normalizedRelayRevision(decision.revision);
+  const startsAuthoritativeSnapshot = event.type === "hello"
+    || (event.type === "pong" && eventRevision != null && eventRevision < previousObservedRevision);
+  if (startsAuthoritativeSnapshot) {
+    relayRevisionEpoch += 1;
+    relayObservedRevision = eventRevision ?? 0;
+  } else if (eventRevision != null) {
+    relayObservedRevision = Math.max(relayObservedRevision, eventRevision);
+  }
+  const scope = decision.action === "reconcile"
+    ? refreshScopes.full
+    : window.KLMSRelayState.refreshScopeForEvent(event, refreshScopes);
+  if ((state.busy || realtimeRefreshRunning) && !startsAuthoritativeSnapshot) {
+    void refreshRealtimePreview(scope, relayRevisionEpoch);
+  }
+  queueRealtimeRefresh(scope, decision.revision, startsAuthoritativeSnapshot);
+}
+
+async function refreshRealtimePreview(scope, expectedRevisionEpoch) {
+  const connectionGeneration = state.connectionGeneration;
+  const previewEndpoint = async (endpoint, path, applyPayload) => {
+    const applyVersion = beginRelayEndpointApply(endpoint);
+    try {
+      const payload = await window.klmsWindows.relayRequest({ path });
+      if (!isCurrentConnection(connectionGeneration)
+        || expectedRevisionEpoch !== relayRevisionEpoch
+        || !relayEndpointApplyIsCurrent(endpoint, applyVersion)) {
+        return;
+      }
+      applyPayload(payload);
+      scheduleRender(renderScopeForEndpoint(endpoint));
+    } catch {
+      // The queued authoritative refresh retains retry and error handling.
+    }
+  };
+  const tasks = [
+    previewEndpoint("status", "/v1/status", (payload) => applyStatus(payload))
+  ];
+  if (scope.commands) {
+    tasks.push(previewEndpoint("commands", "/v1/commands/recent?limit=8", (payload) => applyCommandResponse(payload)));
+  }
+  if (scope.syncData) {
+    tasks.push(previewEndpoint("syncData", "/v1/sync-data?limit=2000", (payload) => {
+      applySyncDataResponse(payload, { applySharedSettings: !scope.sharedSettings });
+    }));
+  }
+  if (scope.itemActions) {
+    tasks.push(previewEndpoint("itemActions", "/v1/item-actions/recent?limit=10", (payload) => {
+      state.recentActions = itemActionsOverlayingPending(payload.actions || []);
+    }));
+  }
+  if (scope.settingActions) {
+    tasks.push(previewEndpoint("settingActions", "/v1/setting-actions/recent?limit=10", (payload) => {
+      state.recentSettingActions = payload.actions || [];
+    }));
+  }
+  if (scope.fileAccess) {
+    tasks.push(previewEndpoint("fileAccess", "/v1/file-access/recent?limit=20", (payload) => {
+      state.recentFileAccess = fileAccessRequestsOverlayingPending(payload.requests || []);
+    }));
+  }
+  if (scope.requestLog) {
+    tasks.push(previewEndpoint("requestLog", "/v1/request-log/recent?limit=20", (payload) => {
+      state.recentRequestLog = payload.entries || [];
+    }));
+  }
+  if (scope.sharedSettings) {
+    tasks.push(previewEndpoint("sharedSettings", "/v1/shared-settings", (payload) => {
+      applySharedSettings(Array.isArray(payload) ? payload : payload.settings || [], { authoritative: true });
+    }));
+  }
+  await Promise.allSettled(tasks);
+}
+
+function queueRealtimeRefresh(scope, revision, authoritativeSnapshot = false) {
+  const normalizedRevision = normalizedRelayRevision(revision);
+  if (authoritativeSnapshot) {
+    pendingRealtimeScope = null;
+    pendingRealtimeRevision = normalizedRevision ?? 0;
+    pendingRealtimeAuthoritativeSnapshot = true;
+  }
+  pendingRealtimeScope = window.KLMSRelayState.mergeRefreshScopes(pendingRealtimeScope, scope);
+  if (normalizedRevision != null && !authoritativeSnapshot) {
+    pendingRealtimeRevision = Math.max(pendingRealtimeRevision, normalizedRevision);
+  }
+  pendingRealtimeRevisionEpoch = relayRevisionEpoch;
+  scheduleRealtimeFlush();
+}
+
+function scheduleRealtimeFlush(delay = REALTIME_BATCH_DELAY_MS) {
+  if (!pendingRealtimeScope || realtimeFlushTimer || state.busy || realtimeRefreshRunning || !state.configured) return;
+  realtimeFlushTimer = window.setTimeout(() => {
+    realtimeFlushTimer = null;
+    flushRealtimeRefresh();
   }, delay);
 }
 
-function stopAutoRefresh() {
-  if (refreshTimer) {
-    window.clearTimeout(refreshTimer);
-    refreshTimer = null;
+async function flushRealtimeRefresh() {
+  if (!pendingRealtimeScope || state.busy || realtimeRefreshRunning || !state.configured) return;
+  const scope = pendingRealtimeScope;
+  const targetRevision = pendingRealtimeRevision;
+  const authoritativeSnapshot = pendingRealtimeAuthoritativeSnapshot;
+  const revisionEpoch = pendingRealtimeRevisionEpoch;
+  const connectionGeneration = state.connectionGeneration;
+  pendingRealtimeScope = null;
+  pendingRealtimeRevision = 0;
+  pendingRealtimeAuthoritativeSnapshot = false;
+  const refreshed = await refreshAll({
+    quiet: true,
+    auto: true,
+    realtime: true,
+    scope,
+    targetRevision,
+    authoritativeSnapshot,
+    revisionEpoch
+  });
+  if (!isCurrentConnection(connectionGeneration)) return;
+  if (revisionEpoch !== relayRevisionEpoch) return;
+  if (refreshed) {
+    realtimeRetryDelay = REALTIME_RETRY_MIN_MS;
+    return;
   }
+  pendingRealtimeScope = window.KLMSRelayState.mergeRefreshScopes(pendingRealtimeScope, scope);
+  if (authoritativeSnapshot) {
+    pendingRealtimeRevision = targetRevision;
+    pendingRealtimeAuthoritativeSnapshot = true;
+  } else if (normalizedRelayRevision(targetRevision) != null) {
+    pendingRealtimeRevision = Math.max(pendingRealtimeRevision, targetRevision);
+  }
+  pendingRealtimeRevisionEpoch = revisionEpoch;
+  const retryDelay = realtimeRetryDelay;
+  realtimeRetryDelay = Math.min(REALTIME_RETRY_MAX_MS, realtimeRetryDelay * 2);
+  scheduleRealtimeFlush(retryDelay);
 }
 
-function nextRefreshDelay() {
-  const phase = state.running ? "running" : state.status.phase || "idle";
-  return isInFlightStatus(phase)
-    || isInFlightStatus(state.latestCommand?.status)
-    || state.recentFileAccess.some((request) => isInFlightStatus(request.status))
-    || state.status.authDigits
-    ? 2000
-    : 10000;
+function isCurrentConnection(expectedGeneration) {
+  return window.KLMSRelayState.isCurrentConnection(
+    expectedGeneration,
+    state.connectionGeneration,
+    state.configured
+  );
+}
+
+function isCurrentConnectionPayload(payload) {
+  const generation = Number(payload?.connectionGeneration);
+  return Number.isSafeInteger(generation) && isCurrentConnection(generation);
+}
+
+function normalizedRelayRevision(value) {
+  if (value == null || value === "") return null;
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+}
+
+function normalizedConfigRevision(value) {
+  if (value == null || value === "") return null;
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+}
+
+function relayMutationRequest(request, expectedConfigRevision) {
+  return window.klmsWindows.relayRequest({
+    ...request,
+    expectedConfigRevision
+  });
+}
+
+function highestRelayRevision(...values) {
+  const revisions = values
+    .map((value) => normalizedRelayRevision(value))
+    .filter((value) => value != null);
+  return revisions.length > 0 ? Math.max(...revisions) : null;
 }
 
 function applyStatus(payload) {
-  state.status = { ...defaultStatus, ...(payload.status || {}) };
-  state.latestCommand = payload.latestCommand || null;
-  state.running = Boolean(payload.running);
-  state.message = payload.message || "";
-  if (payload.updatedAt && isNewerTimestamp(payload.updatedAt, state.relayEventSince)) {
-    state.relayEventSince = payload.updatedAt;
-  }
+  const normalizedPayload = window.KLMSRelayState.normalizeRelayStatusPayload(payload);
+  const previousMessage = state.message;
+  const incomingLatestCommand = normalizedPayload.latestCommand
+    ? preferredLatestCommand(state.latestCommand, commandOverlayingKnownState(normalizedPayload.latestCommand))
+    : null;
+  const overlaidCommands = commandsOverlayingPending(
+    incomingLatestCommand ? [incomingLatestCommand] : [],
+    { confirmsTerminalState: false }
+  );
+  const pendingCommand = overlaidCommands.find((command) => pendingCommandOverlays.has(command.id));
+  const effectiveLatestCommand = overlaidCommands[0] || null;
+  const terminalLatestCommand = effectiveLatestCommand && isTerminalStatus(effectiveLatestCommand.status)
+    ? effectiveLatestCommand
+    : null;
+  state.status = {
+    ...defaultStatus,
+    ...normalizedPayload.status,
+    ...(pendingCommand?.summary || {}),
+    ...(pendingCommand ? { phase: pendingCommand.status || "pending" } : {}),
+    ...(terminalLatestCommand ? { phase: terminalLatestCommand.status } : {})
+  };
+  state.latestCommand = effectiveLatestCommand;
+  state.running = terminalLatestCommand ? false : normalizedPayload.running;
+  const preservesOptimisticMessage = pendingCommand && !isServerConfirmedCommand(pendingCommand);
+  state.message = preservesOptimisticMessage
+    ? previousMessage
+    : terminalLatestCommand
+      ? terminalCommandMessage(terminalLatestCommand)
+      : normalizedPayload.message;
 }
 
-function refreshScopeForRelayEvent(event) {
-  const reason = String(event?.reason || "").trim();
-  if (reason === "state" || reason === "updated") {
-    return refreshScopes.state;
-  }
-  if (reason === "sync-data" || reason.startsWith("sync-data:")) {
-    return refreshScopes.syncData;
-  }
-  if (reason === "shared-settings") {
-    return refreshScopes.settings;
-  }
-  if (reason.startsWith("file-access:")) {
-    return refreshScopes.fileAccess;
-  }
-  if (reason.startsWith("logs-display:") || reason.startsWith("logs:")) {
-    if (reason.includes("fileAccess") || reason.includes("file-access")) {
-      return refreshScopes.fileAccess;
+function applyCommandResponse(commandResponse) {
+  const pendingCommandIDsBeforeRefresh = new Set(pendingCommandOverlays.keys());
+  const incomingCommands = Array.isArray(commandResponse?.commands)
+    ? commandResponse.commands
+      .map((command) => window.KLMSRelayState.normalizeRemoteCommand(command))
+      .filter(Boolean)
+      .map((command) => commandOverlayingKnownState(command))
+    : [];
+  const overlaidCommands = commandsOverlayingPending(incomingCommands);
+  const preferredLatest = preferredLatestCommand(state.latestCommand, overlaidCommands[0] || null);
+  let reconciledCommands = overlaidCommands;
+  if (preferredLatest) {
+    const preferredIndex = reconciledCommands.findIndex((command) => command.id === preferredLatest.id);
+    if (preferredIndex >= 0) {
+      reconciledCommands = reconciledCommands.map((command, index) => (
+        index === preferredIndex ? preferredLatest : command
+      ));
+    } else {
+      reconciledCommands = [preferredLatest, ...reconciledCommands];
     }
-    if (reason.includes("command")) {
-      return refreshScopes.state;
+    state.latestCommand = preferredLatest;
+  }
+  const confirmedTerminalCommand = preferredLatest && isTerminalStatus(preferredLatest.status)
+    ? preferredLatest
+    : reconciledCommands.find((command) => (
+      pendingCommandIDsBeforeRefresh.has(command.id) && isTerminalStatus(command.status)
+    ));
+  if (confirmedTerminalCommand) {
+    state.status = {
+      ...defaultStatus,
+      ...(confirmedTerminalCommand.summary || {}),
+      phase: confirmedTerminalCommand.status
+    };
+    state.latestCommand = confirmedTerminalCommand;
+    state.running = false;
+    state.message = terminalCommandMessage(confirmedTerminalCommand);
+  }
+  state.recentCommands = reconciledCommands;
+}
+
+function commandOverlayingKnownState(incomingCommand) {
+  if (!incomingCommand) return null;
+  const knownCommand = [state.latestCommand, ...state.recentCommands]
+    .find((command) => command?.id === incomingCommand.id);
+  return preferredCommandState(knownCommand, incomingCommand);
+}
+
+function applySyncDataResponse(syncData, options = {}) {
+  state.items = itemsOverlayingPendingActions(syncData.items || []);
+  state.calendarChanges = syncData.calendarChanges || [];
+  state.verifySummary = syncData.verifySummary || null;
+  state.runLogs = Array.isArray(syncData.runLogs) ? syncData.runLogs : [];
+  if (options.applySharedSettings !== false) {
+    applySharedSettings(syncData.sharedSettings || [], { authoritative: true });
+  }
+}
+
+function commandsOverlayingPending(incomingCommands, options = {}) {
+  const confirmsTerminalState = options.confirmsTerminalState !== false;
+  const commands = Array.isArray(incomingCommands) ? incomingCommands.map((command) => ({ ...command })) : [];
+  for (const [id, pendingCommand] of pendingCommandOverlays) {
+    const index = commands.findIndex((command) => command.id === id);
+    if (index >= 0) {
+      const mergedCommand = preferredCommandState(pendingCommand, commands[index]);
+      commands[index] = mergedCommand;
+      if (isTerminalStatus(mergedCommand.status) && confirmsTerminalState) {
+        pendingCommandOverlays.delete(id);
+      } else {
+        pendingCommandOverlays.set(id, mergedCommand);
+      }
+      continue;
     }
-    return refreshScopes.displayLogs;
+    commands.unshift({ ...pendingCommand });
   }
-  return refreshScopes.full;
+  return commands;
 }
 
-function delay(milliseconds) {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+function preferredCommandState(current, incoming) {
+  if (!current) return { ...incoming };
+  if (!incoming) return { ...current };
+  const currentTerminal = isTerminalStatus(current.status);
+  const incomingTerminal = isTerminalStatus(incoming.status);
+  if (currentTerminal !== incomingTerminal) {
+    return { ...(currentTerminal ? current : incoming) };
+  }
+  const currentRank = commandStateRank(current.status);
+  const incomingRank = commandStateRank(incoming.status);
+  const currentUpdatedAt = Date.parse(current.updatedAt || current.createdAt || "");
+  const incomingUpdatedAt = Date.parse(incoming.updatedAt || incoming.createdAt || "");
+  if (Number.isFinite(currentUpdatedAt) && Number.isFinite(incomingUpdatedAt) && currentUpdatedAt !== incomingUpdatedAt) {
+    return { ...(incomingUpdatedAt > currentUpdatedAt ? incoming : current) };
+  }
+  return { ...(incomingRank >= currentRank ? incoming : current) };
 }
 
-function isNewerTimestamp(candidate, current) {
-  const candidateEpoch = Date.parse(candidate || "");
-  const currentEpoch = Date.parse(current || "");
-  if (!Number.isFinite(candidateEpoch)) {
-    return false;
+function preferredLatestCommand(current, incoming) {
+  if (!current) return incoming ? { ...incoming } : null;
+  if (!incoming) return { ...current };
+  if (current.id === incoming.id) return preferredCommandState(current, incoming);
+  const currentCreatedAt = Date.parse(current.createdAt || current.updatedAt || "");
+  const incomingCreatedAt = Date.parse(incoming.createdAt || incoming.updatedAt || "");
+  if (Number.isFinite(currentCreatedAt) && Number.isFinite(incomingCreatedAt) && currentCreatedAt !== incomingCreatedAt) {
+    return { ...(incomingCreatedAt > currentCreatedAt ? incoming : current) };
   }
-  if (!Number.isFinite(currentEpoch)) {
-    return true;
+  const currentUpdatedAt = Date.parse(current.updatedAt || "");
+  const incomingUpdatedAt = Date.parse(incoming.updatedAt || "");
+  if (Number.isFinite(currentUpdatedAt) && Number.isFinite(incomingUpdatedAt) && currentUpdatedAt !== incomingUpdatedAt) {
+    return { ...(incomingUpdatedAt > currentUpdatedAt ? incoming : current) };
   }
-  return candidateEpoch > currentEpoch;
+  return { ...incoming };
+}
+
+function commandStateRank(status) {
+  return {
+    pending: 1,
+    running: 2,
+    completed: 3,
+    cancelled: 3,
+    failed: 3,
+    macUnavailable: 3
+  }[status] || 0;
+}
+
+function terminalCommandMessage(command) {
+  const detail = String(command?.summary?.phaseDetail || "").trim();
+  if (detail) return detail;
+  return `${commandLabel(command?.kind)} ${commandStatusLabel(command?.status)}`;
+}
+
+function itemsOverlayingPendingActions(incomingItems) {
+  const items = Array.isArray(incomingItems) ? incomingItems.map((item) => ({ ...item })) : [];
+  for (const overlay of pendingItemActionOverlays.values()) {
+    if (overlay.appliesToItem === false) continue;
+    const item = items.find((candidate) => candidate.id === overlay.itemID);
+    if (item) applyItemActionMutation(overlay.action, item);
+  }
+  return items;
+}
+
+function itemActionsOverlayingPending(incomingActions) {
+  const actions = Array.isArray(incomingActions) ? incomingActions.map((action) => ({ ...action })) : [];
+  for (const [itemID, overlay] of pendingItemActionOverlays) {
+    const index = actions.findIndex((action) => action.id === overlay.request.id);
+    if (index >= 0) {
+      const authoritativeAction = actions[index];
+      if (isTerminalStatus(authoritativeAction.status)) {
+        pendingItemActionOverlays.delete(itemID);
+        if (isFailedMutationStatus(authoritativeAction.status) && overlay.previousItem) {
+          restoreItemSnapshot(overlay.previousItem);
+        }
+      } else {
+        pendingItemActionOverlays.set(itemID, { ...overlay, request: authoritativeAction });
+      }
+      continue;
+    }
+    actions.unshift({ ...overlay.request });
+  }
+  return actions;
+}
+
+function fileAccessRequestsOverlayingPending(incomingRequests) {
+  const requests = Array.isArray(incomingRequests) ? incomingRequests.map((request) => ({ ...request })) : [];
+  for (const [id, pendingRequest] of pendingFileAccessOverlays) {
+    const index = requests.findIndex((request) => request.id === id);
+    if (index >= 0) {
+      const authoritativeRequest = requests[index];
+      if (isTerminalStatus(authoritativeRequest.status)) {
+        pendingFileAccessOverlays.delete(id);
+      } else {
+        pendingFileAccessOverlays.set(id, authoritativeRequest);
+      }
+      continue;
+    }
+    requests.unshift({ ...pendingRequest });
+  }
+  return requests;
+}
+
+function isFailedMutationStatus(status) {
+  return ["failed", "macunavailable", "rejected", "error", "cancelled", "canceled"].includes(String(status || "").trim().toLowerCase());
+}
+
+function restoreItemSnapshot(previousItem) {
+  const index = state.items.findIndex((item) => item.id === previousItem.id);
+  if (index >= 0) state.items[index] = { ...previousItem };
+}
+
+function activeInFlightCommand() {
+  const candidates = [state.latestCommand, ...state.recentCommands].filter(Boolean);
+  return candidates.find((command, index) => (
+    isInFlightStatus(command.status)
+    && candidates.findIndex((candidate) => candidate.id === command.id) === index
+  )) || null;
+}
+
+function isServerConfirmedCommand(command) {
+  return Boolean(command && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(command.id || "")));
+}
+
+function commandActionState(kind) {
+  const activeCommand = activeInFlightCommand();
+  if (cancelRequestedCommandID && (!activeCommand || activeCommand.id !== cancelRequestedCommandID)) {
+    cancelRequestedCommandID = "";
+  }
+
+  if (!state.configured) {
+    return { mode: "create", disabled: true, label: commandLabel(kind), command: null };
+  }
+  if (!activeCommand) {
+    return {
+      mode: "create",
+      disabled: Boolean(state.running),
+      label: state.running ? `${commandLabel(kind)} · 다른 동기화 실행 중` : commandLabel(kind),
+      command: null
+    };
+  }
+  if (activeCommand.kind !== kind) {
+    return {
+      mode: "blocked",
+      disabled: true,
+      label: commandLabel(kind),
+      command: activeCommand
+    };
+  }
+  if (!isServerConfirmedCommand(activeCommand)) {
+    return {
+      mode: "submitting",
+      disabled: true,
+      label: `${commandLabel(kind)} 요청 전송 중`,
+      command: activeCommand
+    };
+  }
+  if (cancelSubmittingCommandID === activeCommand.id) {
+    return {
+      mode: "cancelling",
+      disabled: true,
+      label: `${commandLabel(kind)} 중단 요청 중`,
+      command: activeCommand
+    };
+  }
+  if (cancelRequestedCommandID === activeCommand.id) {
+    return {
+      mode: "cancelRequested",
+      disabled: true,
+      label: `${commandLabel(kind)} 중단 요청됨`,
+      command: activeCommand
+    };
+  }
+  return {
+    mode: "cancel",
+    disabled: false,
+    label: `${commandLabel(kind)} 중단`,
+    command: activeCommand
+  };
+}
+
+function configureCommandButton(button, command, options = {}) {
+  const action = commandActionState(command.kind);
+  const icon = action.mode === "cancel" || action.mode === "cancelling" || action.mode === "cancelRequested" ? "square" : command.icon;
+  const requestSuffix = options.requestSuffix && action.mode === "create" ? " 요청" : "";
+  const label = `${action.label}${requestSuffix}`;
+  delete button.dataset.busyDisabled;
+  button.replaceChildren(commandIconElement(icon), textElement("span", label, "button-label"));
+  button.disabled = action.disabled;
+  button.dataset.commandKind = command.kind;
+  button.dataset.commandAction = action.mode;
+  button.setAttribute("aria-label", action.label);
+  button.classList.toggle("cancel", action.mode === "cancel");
+  return action;
+}
+
+function commandIconElement(iconName) {
+  const icon = document.createElement("span");
+  icon.className = `icon ${iconClassByName[iconName] || iconClassByName["refresh-cw"]}`;
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
+async function runOrCancelCommand(kind) {
+  const action = commandActionState(kind);
+  if (action.disabled) return;
+  if (action.mode === "cancel" && action.command) {
+    await cancelCommand(action.command);
+    return;
+  }
+  if (action.mode === "create") {
+    await createCommand(kind);
+  }
+}
+
+async function cancelCommand(command) {
+  if (!state.configured) {
+    toast("서버 연결 후 실행을 중단할 수 있습니다.");
+    return;
+  }
+  if (!isServerConfirmedCommand(command)) {
+    toast("서버가 실행 요청을 확정한 뒤 중단할 수 있습니다.");
+    return;
+  }
+  const connectionGeneration = state.connectionGeneration;
+  const configRevision = state.configRevision;
+  const previousMessage = state.message;
+  try {
+    cancelSubmittingCommandID = command.id;
+    setBusy(true);
+    state.message = `${commandLabel(command.kind)} 중단 요청 전송 중`;
+    renderAll();
+    const cancelRequest = await relayMutationRequest({
+      path: "/v1/cancel",
+      method: "POST",
+      body: {
+        commandID: command.id,
+        message: "Windows에서 사용자가 실행 중단을 요청했습니다."
+      }
+    }, configRevision);
+    if (!isCurrentConnection(connectionGeneration)) return;
+    cancelSubmittingCommandID = "";
+    if (cancelRequest?.requested === false) {
+      const cancellationDetail = typeof cancelRequest.message === "string"
+        ? cancelRequest.message.slice(0, 500)
+        : "실행 요청을 취소했습니다.";
+      const cancelledCommand = {
+        ...command,
+        status: "cancelled",
+        updatedAt: new Date().toISOString(),
+        summary: {
+          ...(command.summary || state.status),
+          phase: "cancelled",
+          phaseDetail: cancellationDetail
+        }
+      };
+      pendingCommandOverlays.delete(command.id);
+      state.latestCommand = cancelledCommand;
+      state.recentCommands = [
+        cancelledCommand,
+        ...state.recentCommands.filter((candidate) => candidate.id !== command.id)
+      ].slice(0, 8);
+      state.status = { ...state.status, ...(cancelledCommand.summary || {}), phase: "cancelled" };
+      state.running = false;
+      state.message = `${commandLabel(command.kind)} 요청을 취소했습니다.`;
+      cancelRequestedCommandID = "";
+    } else {
+      cancelRequestedCommandID = command.id;
+      state.message = `${commandLabel(command.kind)} 중단 요청 대기 중`;
+    }
+    renderAll();
+    toast(`${commandLabel(command.kind)} 중단을 요청했습니다.`);
+  } catch (error) {
+    if (!isCurrentConnection(connectionGeneration)) return;
+    cancelSubmittingCommandID = "";
+    cancelRequestedCommandID = "";
+    state.message = previousMessage;
+    renderAll();
+    showError(error);
+  } finally {
+    if (isCurrentConnection(connectionGeneration)) {
+      cancelSubmittingCommandID = "";
+      setBusy(false);
+    }
+  }
 }
 
 async function createCommand(kind) {
+  if (!state.configured) {
+    toast("서버 연결 후 실행을 요청할 수 있습니다.");
+    return;
+  }
+  if (activeInFlightCommand() || state.running) {
+    toast("진행 중인 동기화를 먼저 완료하거나 중단해 주세요.");
+    return;
+  }
+  const connectionGeneration = state.connectionGeneration;
+  const configRevision = state.configRevision;
+  const previous = {
+    status: { ...state.status },
+    latestCommand: state.latestCommand,
+    running: state.running,
+    message: state.message,
+    recentCommands: state.recentCommands.slice()
+  };
+  const optimisticID = `optimistic-command-${Date.now()}`;
+  const optimisticCommand = {
+    id: optimisticID,
+    kind,
+    status: "pending",
+    summary: { ...state.status, phase: "pending" },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
   try {
     setBusy(true);
-    await window.klmsWindows.relayRequest({
+    state.latestCommand = optimisticCommand;
+    state.status = { ...state.status, phase: "pending" };
+    state.running = false;
+    state.message = `${commandLabel(kind)} 요청 전송 중`;
+    pendingCommandOverlays.set(optimisticID, optimisticCommand);
+    state.recentCommands = [optimisticCommand, ...state.recentCommands].slice(0, 8);
+    renderAll();
+    const commandResponse = await relayMutationRequest({
       path: "/v1/commands",
       method: "POST",
       body: {
@@ -474,10 +1487,27 @@ async function createCommand(kind) {
           updateNoticeNotes: $("updateNoticeNotes")?.checked !== false
         }
       }
-    });
+    }, configRevision);
+    if (!isCurrentConnection(connectionGeneration)) return;
+    const command = window.KLMSRelayState.normalizeRemoteCommand(commandResponse);
+    if (!command) throw new Error("서버가 올바르지 않은 실행 요청 상태를 반환했습니다.");
+    pendingCommandOverlays.delete(optimisticID);
+    pendingCommandOverlays.set(command.id, command);
+    state.latestCommand = command;
+    state.status = { ...state.status, ...(command.summary || {}), phase: command.status || "pending" };
+    state.message = `${commandLabel(kind)} 요청 대기 중`;
+    state.recentCommands = [command, ...state.recentCommands.filter((item) => item.id !== optimisticID && item.id !== command.id)].slice(0, 8);
+    renderAll();
     toast(`${commandLabel(kind)} 요청을 보냈습니다.`);
-    await refreshAll({ quiet: true, scope: refreshScopes.state });
   } catch (error) {
+    if (!isCurrentConnection(connectionGeneration)) return;
+    pendingCommandOverlays.delete(optimisticID);
+    state.status = previous.status;
+    state.latestCommand = previous.latestCommand;
+    state.running = previous.running;
+    state.message = previous.message;
+    state.recentCommands = previous.recentCommands;
+    renderAll();
     showError(error);
   } finally {
     setBusy(false);
@@ -485,13 +1515,46 @@ async function createCommand(kind) {
 }
 
 async function createItemAction(action, item) {
+  if (!state.configured) {
+    toast("서버 연결 후 항목을 처리할 수 있습니다.");
+    return;
+  }
+  const connectionGeneration = state.connectionGeneration;
+  const configRevision = state.configRevision;
+  let previousItem = null;
+  let itemIndex = -1;
+  let previousActions = null;
   try {
     const message = itemActionMessage(action, item);
     if (message === null) {
       return;
     }
     setBusy(true);
-    await window.klmsWindows.relayRequest({
+    itemIndex = state.items.findIndex((candidate) => candidate.id === item.id);
+    previousItem = itemIndex >= 0 ? { ...state.items[itemIndex] } : null;
+    previousActions = state.recentActions.slice();
+    const optimisticID = `optimistic-action-${Date.now()}`;
+    const optimisticAction = {
+      id: optimisticID,
+      action,
+      itemID: item.id,
+      itemKind: item.kind,
+      itemTitle: item.title,
+      message,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    pendingItemActionOverlays.set(item.id, {
+      itemID: item.id,
+      action,
+      request: optimisticAction,
+      previousItem
+    });
+    applyOptimisticItemAction(action, item);
+    state.recentActions = [optimisticAction, ...state.recentActions].slice(0, 10);
+    renderAll();
+    const savedAction = await relayMutationRequest({
       path: "/v1/item-actions",
       method: "POST",
       body: {
@@ -501,11 +1564,30 @@ async function createItemAction(action, item) {
         itemTitle: item.title,
         message
       }
+    }, configRevision);
+    if (!isCurrentConnection(connectionGeneration)) return;
+    const savedActionFailed = isFailedMutationStatus(savedAction.status);
+    pendingItemActionOverlays.set(item.id, {
+      itemID: item.id,
+      action,
+      request: savedAction,
+      previousItem,
+      appliesToItem: !savedActionFailed
     });
-    applyOptimisticItemAction(action, item);
+    if (savedActionFailed) {
+      if (previousItem) restoreItemSnapshot(previousItem);
+    } else {
+      applyOptimisticItemAction(action, item);
+    }
+    state.recentActions = [savedAction, ...state.recentActions.filter((candidate) => candidate.id !== optimisticID && candidate.id !== savedAction.id)].slice(0, 10);
+    renderAll();
     toast(`${actionLabel(action)} 요청을 보냈습니다.`);
-    await refreshAll({ quiet: true, scope: refreshScopes.itemActions });
   } catch (error) {
+    if (!isCurrentConnection(connectionGeneration)) return;
+    pendingItemActionOverlays.delete(item.id);
+    if (previousItem) restoreItemSnapshot(previousItem);
+    if (previousActions) state.recentActions = previousActions;
+    renderAll();
     showError(error);
   } finally {
     setBusy(false);
@@ -557,13 +1639,33 @@ function itemActionMessage(action, item) {
 }
 
 async function createFileAccess(item) {
+  if (!state.configured) {
+    toast("서버 연결 후 파일 링크를 요청할 수 있습니다.");
+    return;
+  }
   if (item.kind !== "file") {
     showError(new Error("파일 항목만 열기 링크를 요청할 수 있습니다."));
     return;
   }
+  const previousRequests = state.recentFileAccess.slice();
+  const optimisticID = `optimistic-file-${Date.now()}`;
+  const connectionGeneration = state.connectionGeneration;
+  const configRevision = state.configRevision;
   try {
     setBusy(true);
-    await window.klmsWindows.relayRequest({
+    const optimisticRequest = {
+      id: optimisticID,
+      itemID: item.id,
+      itemKind: item.kind,
+      itemTitle: item.title,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    pendingFileAccessOverlays.set(optimisticID, optimisticRequest);
+    state.recentFileAccess = [optimisticRequest, ...state.recentFileAccess].slice(0, 20);
+    renderAll();
+    const request = await relayMutationRequest({
       path: "/v1/file-access",
       method: "POST",
       body: {
@@ -571,10 +1673,18 @@ async function createFileAccess(item) {
         itemKind: item.kind,
         itemTitle: item.title
       }
-    });
+    }, configRevision);
+    if (!isCurrentConnection(connectionGeneration)) return;
+    pendingFileAccessOverlays.delete(optimisticID);
+    pendingFileAccessOverlays.set(request.id, request);
+    state.recentFileAccess = [request, ...state.recentFileAccess.filter((candidate) => candidate.id !== optimisticID && candidate.id !== request.id)].slice(0, 20);
+    renderAll();
     toast("Mac에 파일 열기 링크를 요청했습니다.");
-    await refreshAll({ quiet: true, scope: refreshScopes.fileAccess });
   } catch (error) {
+    if (!isCurrentConnection(connectionGeneration)) return;
+    pendingFileAccessOverlays.delete(optimisticID);
+    state.recentFileAccess = previousRequests;
+    renderAll();
     showError(error);
   } finally {
     setBusy(false);
@@ -586,6 +1696,10 @@ function applyOptimisticItemAction(action, item) {
   if (!target) {
     return;
   }
+  applyItemActionMutation(action, target);
+}
+
+function applyItemActionMutation(action, target) {
   switch (action) {
     case "noticeRead":
       target.isRead = true;
@@ -634,31 +1748,96 @@ function applyOptimisticItemAction(action, item) {
 }
 
 function renderAll() {
-  renderHeader();
-  renderDashboard();
-  renderVerifySummary();
-  renderItems();
-  renderDetail();
-  renderHistory();
+  renderScope(fullRenderScope);
+}
+
+function scheduleRender(scope) {
+  frameRenderScheduler.schedule(scope);
+}
+
+function renderScope(scope = fullRenderScope) {
+  preserveKeyboardFocus(() => {
+    if (scope.header) renderHeader();
+    if (scope.primarySync) renderPrimarySyncAction();
+    if (scope.commands) renderCommands();
+    if (scope.dashboard) renderDashboard();
+    if (scope.verify) renderVerifySummary();
+    if (scope.items) renderItems();
+    if (scope.detail) renderDetail();
+    if (scope.history) renderHistory();
+    updateBusyControls();
+  });
+}
+
+function renderScopeForEndpoint(endpoint) {
+  return {
+    status: { header: true, primarySync: true, commands: true, dashboard: true },
+    commands: { header: true, primarySync: true, commands: true, dashboard: true, history: true },
+    syncData: { dashboard: true, verify: true, items: true, detail: true, history: true },
+    itemActions: { items: true, detail: true, history: true },
+    settingActions: { history: true },
+    fileAccess: { detail: true, history: true },
+    requestLog: { history: true },
+    sharedSettings: {}
+  }[endpoint] || fullRenderScope;
+}
+
+function preserveKeyboardFocus(operation) {
+  const active = document.activeElement;
+  const snapshot = active && active !== document.body
+    ? {
+        element: active,
+        id: active.id || "",
+        key: active.dataset?.focusKey || "",
+        selectionStart: typeof active.selectionStart === "number" ? active.selectionStart : null,
+        selectionEnd: typeof active.selectionEnd === "number" ? active.selectionEnd : null
+      }
+    : null;
+  operation();
+  if (!snapshot || (snapshot.element.isConnected && document.activeElement === snapshot.element)) return;
+  const target = snapshot.id
+    ? document.getElementById(snapshot.id)
+    : snapshot.key
+      ? document.querySelector(`[data-focus-key="${CSS.escape(snapshot.key)}"]`)
+      : null;
+  if (!target || target.disabled || target.inert || target.getClientRects().length === 0) return;
+  target.focus({ preventScroll: true });
+  if (snapshot.selectionStart != null && typeof target.setSelectionRange === "function") {
+    target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd ?? snapshot.selectionStart);
+  }
+}
+
+function renderPrimarySyncAction() {
+  const button = $("primarySyncButton");
+  if (!button) return;
+  const command = commands.find((candidate) => candidate.kind === "fullSync");
+  configureCommandButton(button, command);
+  button.classList.add("primary-sync-action");
 }
 
 function renderCommands() {
-  $("commandButtons").replaceChildren(...commands.map((command) => {
+  $("commandButtons").replaceChildren(...commands.filter((command) => command.kind !== "fullSync").map((command) => {
     const button = document.createElement("button");
-    button.className = command.kind === "fullSync" ? "command-primary" : "secondary";
-    button.textContent = `${command.icon} ${command.label}`;
-    button.addEventListener("click", () => createCommand(command.kind));
+    button.className = "secondary";
+    button.dataset.focusKey = `command:${command.kind}`;
+    configureCommandButton(button, command);
+    button.addEventListener("click", () => runOrCancelCommand(command.kind));
     return button;
   }));
 }
 
 function renderHeader() {
   const phase = state.running ? "running" : state.status.phase || "idle";
+  const connectionOnlyPhase = !state.latestCommand && !state.running && [
+    "unconfigured", "connecting", "reconnecting", "offline", "error", "checking"
+  ].includes(state.connectionPhase);
   const inFlight = isInFlightStatus(phase) || isInFlightStatus(state.latestCommand?.status);
   const terminal = isTerminalStatus(phase) || isTerminalStatus(state.latestCommand?.status);
-  $("phaseLabel").textContent = phaseLabel(phase);
+  $("phaseLabel").textContent = phaseLabel(connectionOnlyPhase ? state.connectionPhase : phase);
   $("statusTitle").textContent = statusTitle();
-  $("statusSubtitle").textContent = state.message || runningPhaseDetail() || latestCommandText() || "대기 중인 서버 요청이 없습니다.";
+  const subtitle = statusSubtitle();
+  $("statusSubtitle").textContent = subtitle;
+  $("statusSubtitle").title = subtitle;
 
   const banner = $("attentionBanner");
   banner.className = "attention hidden";
@@ -683,7 +1862,13 @@ function renderDashboard() {
     .map((card) => {
       const button = document.createElement("button");
       button.className = `metric-card ${state.selectedKind === card.key ? "active" : ""}`;
-      button.innerHTML = `<span>${card.label}</span><strong>${card.get(state.status, state.items)}</strong><span>${cardDetail(card.key)}</span>`;
+      button.dataset.focusKey = `dashboard:${card.key}`;
+      button.setAttribute("aria-pressed", state.selectedKind === card.key ? "true" : "false");
+      button.append(
+        textElement("span", card.label),
+        textElement("strong", card.get(state.status, state.items)),
+        textElement("span", cardDetail(card.key))
+      );
       button.addEventListener("click", () => {
         state.selectedKind = card.key;
         state.itemRenderLimit = INITIAL_ITEM_RENDER_LIMIT;
@@ -708,40 +1893,51 @@ function renderVerifySummary() {
   const issueChecks = checks.filter((check) => isIssueStatus(check.status));
   const okCount = checks.filter((check) => String(check.status || "").trim().toLowerCase() === "ok").length;
   panel.classList.remove("hidden");
-  panel.innerHTML = `
-    <div class="panel-heading">
-      <div>
-        <h2>상태 검사 해설</h2>
-        <p class="hint">${escapeHTML(issueChecks.length ? `확인 필요 ${issueChecks.length}개 · 정상 ${okCount}개` : `상태 ${localizedStatus(summary.status)} · 정상 ${okCount}개`)}</p>
-      </div>
-      <span class="status-pill ${issueChecks.length ? "warn" : "ok"}">${escapeHTML(issueChecks.length ? "확인 필요" : "정상")}</span>
-    </div>
-    ${issueChecks.length ? issueChecks.map((check) => verifyCheckHTML(check)).join("") : `<p class="hint">메모, 파일, 캘린더, 미리 알림 검사에서 설명이 필요한 실패 항목이 없습니다.</p>`}
-    <details class="verify-details">
-      <summary>전체 상태 검사 항목 ${checks.length}개</summary>
-      <div class="verify-check-list">
-        ${checks.map((check) => verifyCheckHTML(check, true)).join("")}
-      </div>
-    </details>
-  `;
+  const headingText = document.createElement("div");
+  headingText.append(
+    textElement("h2", "상태 검사 해설"),
+    textElement(
+      "p",
+      issueChecks.length
+        ? `확인 필요 ${issueChecks.length}개 · 정상 ${okCount}개`
+        : `상태 ${localizedStatus(summary.status)} · 정상 ${okCount}개`,
+      "hint"
+    )
+  );
+  const heading = document.createElement("div");
+  heading.className = "panel-heading";
+  heading.append(
+    headingText,
+    statusPill(issueChecks.length ? "확인 필요" : "정상", issueChecks.length ? "warn" : "ok")
+  );
+  const visibleChecks = issueChecks.length
+    ? issueChecks.map((check) => verifyCheckElement(check))
+    : [textElement("p", "메모, 파일, 캘린더, 미리 알림 검사에서 설명이 필요한 실패 항목이 없습니다.", "hint")];
+  const details = document.createElement("details");
+  details.className = "verify-details";
+  details.append(textElement("summary", `전체 상태 검사 항목 ${checks.length}개`));
+  const checkList = document.createElement("div");
+  checkList.className = "verify-check-list";
+  checkList.append(...checks.map((check) => verifyCheckElement(check, true)));
+  details.append(checkList);
+  panel.replaceChildren(heading, ...visibleChecks, details);
 }
 
-function verifyCheckHTML(check, compact = false) {
+function verifyCheckElement(check, compact = false) {
   const info = verifyCheckDiagnostic(check);
   const status = String(check.status || "").trim().toLowerCase();
   const tone = ["fail", "failed", "error"].includes(status) ? "fail" : (["warn", "warning"].includes(status) ? "warn" : "ok");
-  return `
-    <article class="verify-check ${tone} ${compact ? "compact" : ""}">
-      <div class="verify-check-title">
-        <strong>${escapeHTML(info.title)} · ${escapeHTML(localizedStatus(check.status))}</strong>
-        ${check.detail ? `<code>${escapeHTML(check.detail)}</code>` : ""}
-      </div>
-      ${compact ? "" : `
-        <p>${escapeHTML(info.explanation)}</p>
-        <p class="hint">${escapeHTML(info.nextAction)}</p>
-      `}
-    </article>
-  `;
+  const article = document.createElement("article");
+  article.className = `verify-check ${tone}${compact ? " compact" : ""}`;
+  const title = document.createElement("div");
+  title.className = "verify-check-title";
+  title.append(textElement("strong", `${info.title} · ${localizedStatus(check.status)}`));
+  if (check.detail) title.append(textElement("code", check.detail));
+  article.append(title);
+  if (!compact) {
+    article.append(textElement("p", info.explanation), textElement("p", info.nextAction, "hint"));
+  }
+  return article;
 }
 
 function renderItems() {
@@ -750,31 +1946,41 @@ function renderItems() {
   $("listTitle").textContent = kindTitle(state.selectedKind);
   $("listCount").textContent = `${items.length}개`;
   if (!items.length) {
-    $("itemList").innerHTML = `<div class="empty-list">표시할 항목이 없습니다.</div>`;
+    $("itemList").replaceChildren(textElement("div", "표시할 항목이 없습니다.", "empty-list"));
     return;
   }
   const rows = visibleItems.map((item) => {
     const button = document.createElement("button");
     button.className = `item-row ${state.selectedItemId === item.id ? "active" : ""}`;
-    button.innerHTML = `
-      <div class="badges">${badgesHTML(item)}</div>
-      <div class="title">${escapeHTML(item.title || "제목 없음")}</div>
-      <div class="meta">${escapeHTML(itemMeta(item))}</div>
-    `;
+    button.dataset.focusKey = `item:${item.id}`;
+    button.setAttribute("aria-current", state.selectedItemId === item.id ? "true" : "false");
+    button.title = item.title || "제목 없음";
+    const badges = document.createElement("div");
+    badges.className = "badges";
+    badges.append(...badgeElements(item));
+    button.append(
+      badges,
+      textElement("div", item.title || "제목 없음", "title"),
+      textElement("div", itemMeta(item), "meta")
+    );
     button.addEventListener("click", () => {
       state.selectedItemId = item.id;
-      renderItems();
-      renderDetail();
+      preserveKeyboardFocus(() => {
+        renderItems();
+        renderDetail();
+      });
+      revealSelectedDetailWhenStacked();
     });
     return button;
   });
   if (items.length > visibleItems.length) {
     const moreButton = document.createElement("button");
     moreButton.className = "item-row show-more-row";
-    moreButton.innerHTML = `
-      <div class="title">더 보기</div>
-      <div class="meta">${items.length - visibleItems.length}개 남음</div>
-    `;
+    moreButton.dataset.focusKey = "items:more";
+    moreButton.append(
+      textElement("div", "더 보기", "title"),
+      textElement("div", `${items.length - visibleItems.length}개 남음`, "meta")
+    );
     moreButton.addEventListener("click", () => {
       state.itemRenderLimit += ITEM_RENDER_INCREMENT;
       renderItems();
@@ -786,50 +1992,110 @@ function renderItems() {
 
 function renderDetail() {
   const item = currentItems().find((candidate) => candidate.id === state.selectedItemId);
+  const detail = $("itemDetail");
   if (!item) {
-    $("itemDetail").className = "empty-detail";
-    $("itemDetail").innerHTML = "<h2>항목을 선택하세요</h2><p>대시보드 카드나 왼쪽 목록을 누르면 상세와 처리 버튼이 표시됩니다.</p>";
+    detail.className = "empty-detail";
+    detail.replaceChildren(
+      textElement("h2", "항목을 선택하세요"),
+      textElement("p", "대시보드 카드나 왼쪽 목록을 누르면 상세와 처리 버튼이 표시됩니다.")
+    );
     return;
   }
   const fileAccess = item.kind === "file" ? latestFileAccess(item) : null;
-  $("itemDetail").className = "detail-card";
-  $("itemDetail").innerHTML = `
-    <div class="detail-header">
-      <div class="detail-badges">${badgesHTML(item)}</div>
-      <h2>${escapeHTML(item.title || "제목 없음")}</h2>
-      <div class="detail-meta">${escapeHTML(itemMeta(item))}</div>
-    </div>
-    <div class="field-grid">
-      ${fieldHTML("종류", kindTitle(item.kind))}
-      ${fieldHTML("상태", item.status)}
-      ${fieldHTML("시간", item.timestamp)}
-      ${fieldHTML("과목", item.course)}
-      ${fieldHTML("첨부", item.attachmentCount > 0 ? `${item.attachmentCount}개` : "")}
-      ${fieldHTML("서버 갱신", item.updatedAt)}
-      ${fieldHTML("세부 내용", item.detail, true)}
-      ${fieldHTML("식별자", item.id, true)}
-    </div>
-    <div class="action-section">
-      <h3>항목 처리</h3>
-      <div class="action-grid" id="detailActions"></div>
-    </div>
-    ${item.kind === "file" ? `
-      <div class="action-section">
-        <h3>파일 열기</h3>
-        ${fileAccess ? `<p class="hint"><strong>${escapeHTML(commandStatusLabel(fileAccess.status))}</strong> · ${escapeHTML(fileAccessDescription(fileAccess))}</p>` : `<p class="hint">Mac이 보관 중인 course_files 원본을 임시 서버 링크로 준비할 수 있습니다.</p>`}
-        <div class="action-grid">
-          ${fileAccess && isDownloadAvailable(fileAccess) ? `<button id="openFileAccessButton">다운로드 열기</button>` : ""}
-          <button class="secondary" id="requestFileAccessButton" ${fileAccess && isInFlightStatus(fileAccess.status) ? "disabled" : ""}>Mac에 파일 링크 요청</button>
-        </div>
-      </div>
-    ` : ""}
-    <div class="action-section">
-      <h3>관련 동기화</h3>
-      <button id="detailSyncButton">${commandLabel(relevantCommand(item.kind))} 요청</button>
-      ${item.kind === "file" ? `<p class="hint">Windows는 KLMS에 직접 로그인하지 않습니다. 파일 열기 요청을 보내면 Mac이 로컬 파일 원본을 임시 업로드하고, 만료된 링크와 서버 기록은 자동 정리됩니다.</p>` : ""}
-    </div>
-  `;
-  $("detailSyncButton").addEventListener("click", () => createCommand(relevantCommand(item.kind)));
+  detail.className = "detail-card";
+  const header = document.createElement("div");
+  header.className = "detail-header";
+  const badges = document.createElement("div");
+  badges.className = "detail-badges";
+  badges.append(...badgeElements(item));
+  const itemTitle = item.title || "제목 없음";
+  const itemMetaText = itemMeta(item);
+  const title = textElement("h2", itemTitle);
+  title.title = itemTitle;
+  title.setAttribute("aria-label", itemTitle);
+  const meta = textElement("div", itemMetaText, "detail-meta");
+  meta.title = itemMetaText;
+  header.append(badges, title, meta);
+  if (itemTitle.length > 160 || itemMetaText.length > 240) {
+    header.append(detailOverflowDisclosure(itemTitle, itemMetaText));
+  }
+
+  const fields = document.createElement("div");
+  fields.className = "field-grid";
+  fields.append(...[
+    fieldElement("종류", kindTitle(item.kind)),
+    fieldElement("상태", item.status),
+    fieldElement("시간", item.timestamp),
+    fieldElement("과목", item.course),
+    fieldElement("첨부", item.attachmentCount > 0 ? `${item.attachmentCount}개` : ""),
+    fieldElement("서버 갱신", item.updatedAt),
+    fieldElement("세부 내용", item.detail, true),
+    fieldElement("식별자", item.id, true)
+  ].filter(Boolean));
+
+  const itemActionSection = document.createElement("div");
+  itemActionSection.className = "action-section";
+  const detailActions = document.createElement("div");
+  detailActions.id = "detailActions";
+  detailActions.className = "action-grid";
+  itemActionSection.append(textElement("h3", "항목 처리"), detailActions);
+
+  const sections = [header, fields, itemActionSection];
+  if (item.kind === "file") {
+    const fileSection = document.createElement("div");
+    fileSection.className = "action-section";
+    fileSection.append(textElement("h3", "파일 열기"));
+    if (fileAccess) {
+      const description = document.createElement("p");
+      description.className = "hint";
+      description.append(
+        textElement("strong", commandStatusLabel(fileAccess.status)),
+        document.createTextNode(` · ${fileAccessDescription(fileAccess)}`)
+      );
+      fileSection.append(description);
+    } else {
+      fileSection.append(textElement("p", "Mac이 보관 중인 course_files 원본을 임시 서버 링크로 준비할 수 있습니다.", "hint"));
+    }
+    const fileActions = document.createElement("div");
+    fileActions.className = "action-grid";
+    if (fileAccess && isDownloadAvailable(fileAccess)) {
+      const openButton = textElement("button", "다운로드 열기");
+      openButton.id = "openFileAccessButton";
+      openButton.dataset.focusKey = `file-open:${item.id}`;
+      fileActions.append(openButton);
+    }
+    const requestButton = textElement("button", "Mac에 파일 링크 요청", "secondary");
+    requestButton.id = "requestFileAccessButton";
+    requestButton.dataset.focusKey = `file-request:${item.id}`;
+    requestButton.disabled = Boolean(fileAccess && isInFlightStatus(fileAccess.status));
+    fileActions.append(requestButton);
+    fileSection.append(fileActions);
+    sections.push(fileSection);
+  }
+
+  const syncSection = document.createElement("div");
+  syncSection.className = "action-section";
+  const detailSyncButton = document.createElement("button");
+  detailSyncButton.id = "detailSyncButton";
+  detailSyncButton.dataset.focusKey = `detail-sync:${item.id}`;
+  syncSection.append(textElement("h3", "관련 동기화"), detailSyncButton);
+  if (item.kind === "file") {
+    syncSection.append(textElement(
+      "p",
+      "Windows는 KLMS에 직접 로그인하지 않습니다. 파일 열기 요청을 보내면 Mac이 로컬 파일 원본을 임시 업로드하고, 만료된 링크와 서버 기록은 자동 정리됩니다.",
+      "hint"
+    ));
+  }
+  sections.push(syncSection);
+  detail.replaceChildren(...sections);
+  const detailCommandKind = relevantCommand(item.kind);
+  const detailCommand = commands.find((candidate) => candidate.kind === detailCommandKind) || {
+    kind: detailCommandKind,
+    label: commandLabel(detailCommandKind),
+    icon: "refresh-cw"
+  };
+  configureCommandButton($("detailSyncButton"), detailCommand, { requestSuffix: true });
+  $("detailSyncButton").addEventListener("click", () => runOrCancelCommand(detailCommandKind));
   if (item.kind === "file") {
     const requestButton = $("requestFileAccessButton");
     if (requestButton) {
@@ -837,7 +2103,9 @@ function renderDetail() {
     }
     const openButton = $("openFileAccessButton");
     if (openButton && fileAccess?.downloadURL) {
-      openButton.addEventListener("click", () => window.klmsWindows.openExternal(fileAccess.downloadURL));
+      openButton.addEventListener("click", () => {
+        window.klmsWindows.openExternal(fileAccess.downloadURL).catch(showError);
+      });
     }
   }
   renderDetailActions(item);
@@ -850,54 +2118,179 @@ function renderDetailActions(item) {
   }
   const actions = detailActions(item);
   if (!actions.length) {
-    container.innerHTML = `<div class="hint">처리할 수 있는 액션이 없습니다.</div>`;
+    container.replaceChildren(textElement("div", "처리할 수 있는 액션이 없습니다.", "hint"));
     return;
   }
   container.replaceChildren(...actions.map((action) => {
     const button = document.createElement("button");
     button.className = action.toggle ? `toggle-action ${action.on ? "on" : ""}` : "secondary";
-    button.innerHTML = action.toggle
-      ? `<span><strong>${escapeHTML(action.title)}</strong><span class="sub">${escapeHTML(action.subtitle)}</span></span><span class="switch-pill">${action.on ? "ON" : "OFF"}</span>`
-      : escapeHTML(action.title);
+    button.dataset.focusKey = `item-action:${item.id}:${action.action}`;
+    if (action.toggle) {
+      const copy = document.createElement("span");
+      copy.append(textElement("strong", action.title), textElement("span", action.subtitle, "sub"));
+      button.append(copy, textElement("span", action.on ? "ON" : "OFF", "switch-pill"));
+      button.setAttribute("aria-pressed", action.on ? "true" : "false");
+    } else {
+      button.textContent = action.title;
+    }
     button.addEventListener("click", () => createItemAction(action.action, item));
     return button;
   }));
 }
 
+function detailOverflowDisclosure(title, meta) {
+  const disclosure = document.createElement("details");
+  disclosure.className = "detail-overflow-disclosure";
+  disclosure.dataset.testid = "detail-overflow-disclosure";
+  disclosure.append(textElement("summary", "전체 제목·정보 보기"));
+
+  const copy = document.createElement("div");
+  copy.className = "detail-overflow-copy";
+  for (const [label, value] of [["제목", title], ["정보", meta]]) {
+    const section = document.createElement("div");
+    section.className = "detail-overflow-section";
+    section.append(textElement("strong", label), textElement("div", value));
+    copy.append(section);
+  }
+  disclosure.append(copy);
+  return disclosure;
+}
+
 function renderHistory() {
   const rows = [];
+  if (state.runLogs.length) {
+    rows.push(historySectionTitle("동기화 단계"));
+  }
+  rows.push(...state.runLogs.map((log) => {
+    const status = runLogStatus(log);
+    const details = log.outputTail ? document.createElement("details") : null;
+    if (details) {
+      details.className = "history-details";
+      details.append(textElement("summary", "로그 일부 보기"), textElement("pre", log.outputTail));
+    }
+    return historyRow(
+      log.commandTitle || commandLabel(log.command) || "동기화",
+      [log.finishedAt || log.updatedAt, log.duration, log.dryRun ? "미리보기" : ""].filter(Boolean).join(" · "),
+      activityStatusLabel(status),
+      activityStatusClass(status),
+      details
+    );
+  }));
   if (state.recentCommands.length) {
     rows.push(historySectionTitle("실행 요청"));
   }
   rows.push(...state.recentCommands.map((command) => {
-    const row = document.createElement("div");
-    row.className = "history-row";
-    row.innerHTML = `<div><strong>${escapeHTML(commandLabel(command.kind))}</strong><div class="meta">${escapeHTML(command.updatedAt || command.createdAt || "")}</div></div><span class="status-pill ${commandStatusClass(command.status)}">${escapeHTML(commandStatusLabel(command.status))}</span>`;
-    return row;
+    return historyRow(
+      commandLabel(command.kind),
+      command.updatedAt || command.createdAt || "",
+      commandStatusLabel(command.status),
+      commandStatusClass(command.status)
+    );
   }));
   if (state.recentActions.length) {
     rows.push(historySectionTitle("항목 처리"));
   }
   rows.push(...state.recentActions.map((action) => {
-    const row = document.createElement("div");
-    row.className = "history-row";
-    row.innerHTML = `<div><strong>${escapeHTML(actionLabel(action.action))}</strong><div class="meta">${escapeHTML([action.itemTitle, action.updatedAt || action.createdAt, action.message].filter(Boolean).join(" · "))}</div></div><span class="status-pill ${commandStatusClass(action.status)}">${escapeHTML(commandStatusLabel(action.status))}</span>`;
-    return row;
+    return historyRow(
+      actionLabel(action.action),
+      [action.itemTitle, action.updatedAt || action.createdAt, action.message].filter(Boolean).join(" · "),
+      commandStatusLabel(action.status),
+      commandStatusClass(action.status)
+    );
+  }));
+  if (state.recentSettingActions.length) {
+    rows.push(historySectionTitle("설정 변경"));
+  }
+  rows.push(...state.recentSettingActions.map((action) => {
+    return historyRow(
+      action.title || action.key || "설정 변경",
+      [action.updatedAt || action.createdAt, action.message].filter(Boolean).join(" · "),
+      activityStatusLabel(action.status),
+      activityStatusClass(action.status)
+    );
+  }));
+  if (state.recentRequestLog.length) {
+    rows.push(historySectionTitle("서버 요청"));
+  }
+  rows.push(...state.recentRequestLog.map((entry) => {
+    return historyRow(
+      entry.action || entry.path || "서버 요청",
+      [entry.source, [entry.method, entry.path].filter(Boolean).join(" "), entry.createdAt, entry.message].filter(Boolean).join(" · "),
+      activityStatusLabel(entry.status),
+      activityStatusClass(entry.status)
+    );
   }));
   if (state.recentFileAccess.length) {
     rows.push(historySectionTitle("파일 열기"));
   }
   rows.push(...state.recentFileAccess.map((request) => {
-    const row = document.createElement("div");
-    row.className = "history-row";
-    row.innerHTML = `<div><strong>${escapeHTML(request.itemTitle || "파일")}</strong><div class="meta">${escapeHTML([request.updatedAt || request.createdAt, fileAccessDescription(request)].filter(Boolean).join(" · "))}</div></div><span class="status-pill ${commandStatusClass(request.status)}">${escapeHTML(commandStatusLabel(request.status))}</span>`;
-    return row;
+    return historyRow(
+      request.itemTitle || "파일",
+      [request.updatedAt || request.createdAt, fileAccessDescription(request)].filter(Boolean).join(" · "),
+      commandStatusLabel(request.status),
+      commandStatusClass(request.status)
+    );
   }));
   if (!rows.length) {
-    $("historyList").innerHTML = `<div class="empty-list">최근 요청이 없습니다.</div>`;
+    $("historyList").replaceChildren(textElement("div", "최근 요청과 로그가 없습니다.", "empty-list"));
   } else {
     $("historyList").replaceChildren(...rows);
   }
+}
+
+function historyRow(title, meta, statusText, tone, extra = null) {
+  const row = document.createElement("div");
+  row.className = "history-row";
+  const copy = document.createElement("div");
+  copy.title = [title, meta].filter(Boolean).join("\n");
+  copy.append(textElement("strong", title), textElement("div", meta, "meta"));
+  if (extra) copy.append(extra);
+  row.append(copy, statusPill(statusText, tone));
+  return row;
+}
+
+function runLogStatus(log) {
+  if (log.wasCancelled) return "cancelled";
+  const exitCode = Number(log.exitCode);
+  if (log.needsAttention || (Number.isFinite(exitCode) && exitCode !== 0)) return "failed";
+  return log.status || "completed";
+}
+
+function activityStatusLabel(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  return {
+    accepted: "기록됨",
+    ok: "완료",
+    success: "완료",
+    created: "생성됨",
+    updated: "갱신됨",
+    stable: "변경 없음",
+    unchanged: "변경 없음",
+    noop: "변경 없음",
+    "stable-noop": "변경 없음",
+    deleted: "삭제됨",
+    removed: "삭제됨",
+    cleared: "삭제됨",
+    queued: "대기 중",
+    pending: "대기 중",
+    running: "처리 중",
+    completed: "완료",
+    cancelled: "취소됨",
+    canceled: "취소됨",
+    macunavailable: "Mac 응답 없음",
+    mac_unavailable: "Mac 응답 없음",
+    failed: "실패",
+    rejected: "실패",
+    error: "실패"
+  }[normalized] || status || "기록됨";
+}
+
+function activityStatusClass(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (["accepted", "ok", "success", "created", "updated", "stable", "unchanged", "noop", "stable-noop", "completed", "cancelled", "canceled", "deleted", "removed", "cleared"].includes(normalized)) return "ok";
+  if (["queued", "pending", "running"].includes(normalized)) return "warn";
+  if (["failed", "rejected", "error", "macunavailable", "mac_unavailable"].includes(normalized)) return "fail";
+  return "muted";
 }
 
 function historySectionTitle(title) {
@@ -1154,7 +2547,7 @@ function relevantCommand(kind) {
   return "fullSync";
 }
 
-function badgesHTML(item) {
+function badgeElements(item) {
   const badges = [kindTitle(item.kind)];
   if (item.kind === "notice") {
     badges.push(item.isRead ? "읽음" : "안 읽음");
@@ -1170,16 +2563,47 @@ function badgesHTML(item) {
   }
   return badges.map((badge) => {
     const klass = badge === "중요" ? "important" : badge === "읽음" ? "read" : badge === "숨김" ? "hidden-badge" : "";
-    return `<span class="badge ${klass}">${escapeHTML(badge)}</span>`;
-  }).join("");
+    return textElement("span", badge, `badge${klass ? ` ${klass}` : ""}`);
+  });
 }
 
-function fieldHTML(label, value, wide = false) {
+function fieldElement(label, value, wide = false) {
   const display = String(value || "").trim();
-  if (!display) {
-    return "";
-  }
-  return `<div class="field" ${wide ? "style=\"grid-column: 1 / -1\"" : ""}><label>${escapeHTML(label)}</label><div>${escapeHTML(display)}</div></div>`;
+  if (!display) return null;
+  const field = document.createElement("div");
+  field.className = `field${wide ? " wide" : ""}`;
+  const fieldValue = textElement("div", display, "field-value");
+  fieldValue.title = display;
+  fieldValue.setAttribute("aria-label", `${label}: ${display}`);
+  field.append(textElement("span", label, "field-label"), fieldValue);
+  return field;
+}
+
+function textElement(tagName, value, className = "") {
+  const element = document.createElement(tagName);
+  if (className) element.className = className;
+  element.textContent = value == null ? "" : String(value);
+  return element;
+}
+
+function revealSelectedDetailWhenStacked() {
+  window.requestAnimationFrame(() => {
+    const listPane = document.querySelector(".list-pane");
+    const detailPane = document.querySelector(".detail-pane");
+    if (!listPane || !detailPane) return;
+    const listRect = listPane.getBoundingClientRect();
+    const detailRect = detailPane.getBoundingClientRect();
+    if (detailRect.top < listRect.bottom - 1) return;
+    detailPane.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start",
+      inline: "nearest"
+    });
+  });
+}
+
+function statusPill(value, tone = "muted") {
+  return textElement("span", value, `status-pill ${tone}`);
 }
 
 function itemMeta(item) {
@@ -1209,6 +2633,9 @@ function cardDetail(key) {
 }
 
 function statusTitle() {
+  if (!state.configured || state.connectionPhase === "unconfigured") {
+    return "서버 연결이 필요합니다";
+  }
   const phase = state.running ? "running" : state.status.phase || "idle";
   if (state.latestCommand && isTerminalStatus(state.latestCommand.status)) {
     return `${commandLabel(state.latestCommand.kind)} · ${commandStatusLabel(state.latestCommand.status)}`;
@@ -1223,7 +2650,34 @@ function statusTitle() {
   if (state.latestCommand) {
     return `${commandLabel(state.latestCommand.kind)} · ${commandStatusLabel(state.latestCommand.status)}`;
   }
-  return "서버 릴레이 연결됨";
+  return {
+    checking: "서버 연결 확인 중",
+    connecting: "서버 릴레이 연결 중",
+    reconnecting: "서버 릴레이 재연결 중",
+    offline: "서버 릴레이 오프라인",
+    error: "서버 릴레이 연결 실패",
+    connected: "서버 릴레이 연결됨"
+  }[state.connectionPhase] || "서버 상태를 불러오는 중";
+}
+
+function statusSubtitle() {
+  if (!state.configured || state.connectionPhase === "unconfigured") {
+    return "왼쪽 서버 연결에서 relay URL과 클라이언트 토큰을 저장해 주세요.";
+  }
+  if (state.message || runningPhaseDetail() || latestCommandText()) {
+    return state.message || runningPhaseDetail() || latestCommandText();
+  }
+  if (state.connectionPhase !== "connected" && state.connectionMessage) {
+    return state.connectionMessage;
+  }
+  return {
+    checking: "저장된 연결 정보와 서버 응답을 확인하고 있습니다.",
+    connecting: "WebSocket 보안 연결을 만드는 중입니다.",
+    reconnecting: "연결이 끊겨 자동으로 다시 연결하고 있습니다.",
+    offline: "실시간 연결이 중지되었습니다. 연결 정보를 확인해 주세요.",
+    error: "서버 URL, HTTPS 설정과 클라이언트 토큰을 확인해 주세요.",
+    connected: "대기 중인 서버 요청이 없습니다."
+  }[state.connectionPhase] || "서버 상태를 불러오고 있습니다.";
 }
 
 function runningPhaseDetail() {
@@ -1296,10 +2750,17 @@ function actionLabel(action) {
 
 function phaseLabel(phase) {
   return {
+    unconfigured: "연결 필요",
+    checking: "연결 확인",
+    connecting: "연결 중",
+    reconnecting: "재연결 중",
+    offline: "오프라인",
+    error: "연결 실패",
     idle: "대기",
     pending: "요청 대기",
     running: "실행 중",
     completed: "완료",
+    cancelled: "취소됨",
     failed: "실패",
     macUnavailable: "Mac 응답 없음"
   }[phase] || phase;
@@ -1310,13 +2771,14 @@ function commandStatusLabel(status) {
     pending: "대기 중",
     running: "실행 중",
     completed: "완료",
+    cancelled: "취소됨",
     failed: "실패",
     macUnavailable: "Mac 응답 없음"
   }[status] || status || "상태 없음";
 }
 
 function commandStatusClass(status) {
-  if (status === "completed") {
+  if (status === "completed" || status === "cancelled") {
     return "ok";
   }
   if (status === "failed" || status === "macUnavailable") {
@@ -1472,10 +2934,36 @@ function updateConnectionState(text, klass) {
   pill.className = `status-pill ${klass || "muted"}`;
 }
 
+function setConnectionPhase(phase) {
+  const normalized = ["unconfigured", "checking", "connecting", "connected", "reconnecting", "offline", "error"].includes(phase)
+    ? phase
+    : "error";
+  state.connectionPhase = normalized;
+  if (["unconfigured", "checking", "connected"].includes(normalized)) {
+    state.connectionMessage = "";
+  }
+  const presentation = {
+    unconfigured: ["연결 필요", "muted"],
+    checking: ["연결 확인 중", "muted"],
+    connecting: ["실시간 연결 중", "muted"],
+    connected: ["실시간 연결됨", "ok"],
+    reconnecting: ["실시간 재연결 중", "warn"],
+    offline: ["오프라인", "fail"],
+    error: ["연결 실패", "fail"]
+  }[normalized];
+  updateConnectionState(...presentation);
+  scheduleRender({ header: true });
+}
+
 function setBusy(isBusy) {
   state.busy = isBusy;
-  document.querySelectorAll("button").forEach((button) => {
-    button.disabled = isBusy;
+  updateBusyControls();
+  if (!isBusy) scheduleRealtimeFlush(0);
+}
+
+function updateBusyControls() {
+  document.querySelectorAll("button:not(#sidebarToggleButton):not(#sidebarBackdrop):not([data-sidebar-target])").forEach((button) => {
+    window.KLMSRelayState.setControlBusy(button, state.busy);
   });
 }
 
@@ -1485,17 +2973,19 @@ async function copyState() {
     latestCommand: state.latestCommand,
     itemCount: state.items.length
   }, null, 2);
-  await navigator.clipboard.writeText(text);
+  await window.klmsWindows.writeClipboardText(text);
   toast("현재 상태를 복사했습니다.");
 }
 
 function showError(error) {
   const message = error && error.message ? error.message : String(error);
-  toast(message);
+  toast(message, { assertive: true });
 }
 
-function toast(message) {
+function toast(message, options = {}) {
   const element = $("toast");
+  element.setAttribute("role", options.assertive ? "alert" : "status");
+  element.setAttribute("aria-live", options.assertive ? "assertive" : "polite");
   element.textContent = message;
   element.classList.remove("hidden");
   clearTimeout(toast.timer);
@@ -1564,14 +3054,5 @@ function isInFlightStatus(status) {
 }
 
 function isTerminalStatus(status) {
-  return status === "completed" || status === "failed" || status === "macUnavailable";
-}
-
-function escapeHTML(value) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+  return status === "completed" || status === "cancelled" || status === "failed" || status === "macUnavailable";
 }

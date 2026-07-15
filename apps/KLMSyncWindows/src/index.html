@@ -3,12 +3,13 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'">
     <title>KLMS Sync</title>
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
+      <aside id="appSidebar" class="sidebar">
         <div class="brand">
           <div class="brand-mark">K</div>
           <div>
@@ -17,30 +18,40 @@
           </div>
         </div>
 
+        <nav class="sidebar-rail" aria-label="축소된 사이드바">
+          <button class="secondary" data-sidebar-target="connection" title="서버 연결" aria-label="서버 연결">
+            <span class="icon icon-plug" aria-hidden="true"></span>
+          </button>
+          <button class="secondary" data-sidebar-target="commands" title="원격 실행" aria-label="원격 실행">
+            <span class="icon icon-refresh-cw" aria-hidden="true"></span>
+          </button>
+        </nav>
+
         <section class="panel connection-panel">
           <div class="panel-heading">
             <h2>서버 연결</h2>
-            <span id="connectionState" class="status-pill muted">대기</span>
+            <span id="connectionState" class="status-pill muted" role="status" aria-live="polite" aria-atomic="true">대기</span>
           </div>
-          <label>
+          <label for="relayURL">
             서버 URL
             <input id="relayURL" type="url" placeholder="https://sync.example.com">
           </label>
-          <label>
+          <label for="relayToken">
             클라이언트 토큰
             <input id="relayToken" type="password" placeholder="처음 연결하거나 바꿀 때만 입력">
           </label>
+          <label for="connectionPaste">연결 정보 붙여넣기</label>
           <textarea id="connectionPaste" rows="4" placeholder="Mac 앱에서 복사한 서버 연결 정보를 붙여넣기"></textarea>
           <div class="button-row three">
-            <button id="pasteClipboardButton" class="secondary">클립보드</button>
-            <button id="parseConnectionButton" class="secondary">붙여넣기 읽기</button>
-            <button id="saveConnectionButton">저장</button>
+            <button id="pasteClipboardButton" class="secondary">붙여넣기</button>
+            <button id="parseConnectionButton" class="secondary">내용 읽기</button>
+            <button id="saveConnectionButton">연결 저장</button>
           </div>
           <div class="button-row">
-            <button id="checkConnectionButton" class="wide secondary">저장 후 연결 확인</button>
+            <button id="checkConnectionButton" class="wide secondary">저장·연결 확인</button>
             <button id="clearConnectionButton" class="wide ghost">연결 지우기</button>
           </div>
-          <p id="connectionHint" class="hint">Cloudflare Workers 릴레이 URL과 클라이언트 토큰을 넣습니다. Windows 앱은 KLMS를 직접 읽지 않고 서버 DB의 요약 상태와 항목만 봅니다.</p>
+          <p id="connectionHint" class="hint">Cloudflare Workers 또는 로컬 자체호스팅 릴레이 URL과 클라이언트 토큰을 넣습니다. Windows 앱은 KLMS를 직접 읽지 않고 서버 DB의 요약 상태와 항목만 봅니다.</p>
         </section>
 
         <section class="panel commands-panel">
@@ -54,16 +65,25 @@
               <small>끄면 전체/공지 동기화는 목록만 갱신하고 Mac의 Notes 메모는 건드리지 않습니다.</small>
             </span>
           </label>
-          <div id="commandButtons" class="command-grid"></div>
+          <button id="primarySyncButton" class="primary-sync-action" data-testid="dashboard-primary-full-sync">전체 동기화</button>
+          <div id="commandButtons" class="command-grid" aria-label="원격 실행 명령"></div>
         </section>
       </aside>
 
       <main class="content">
+        <section id="attentionBanner" class="attention hidden" role="alert" aria-live="assertive" aria-atomic="true"></section>
+
         <header class="topbar">
           <div>
-            <p id="phaseLabel" class="eyebrow">상태 없음</p>
-            <h2 id="statusTitle">서버 연결을 확인해 주세요</h2>
-            <p id="statusSubtitle">Mac 앱이 릴레이를 통해 상태와 항목 목록을 올리면 여기에서 확인합니다.</p>
+            <button id="sidebarToggleButton" class="secondary sidebar-toggle" aria-controls="appSidebar" aria-expanded="false" aria-label="설정·실행" title="설정·실행">
+              <span class="icon icon-menu" aria-hidden="true"></span>
+              <span>설정·실행</span>
+            </button>
+            <div id="syncStatusRegion" role="status" aria-live="polite" aria-atomic="true">
+              <p id="phaseLabel" class="eyebrow">상태 없음</p>
+              <h2 id="statusTitle">서버 연결을 확인해 주세요</h2>
+              <p id="statusSubtitle">Mac 앱이 릴레이를 통해 상태와 항목 목록을 올리면 여기에서 확인합니다.</p>
+            </div>
           </div>
           <div class="topbar-actions">
             <button id="refreshButton">새로고침</button>
@@ -71,9 +91,7 @@
           </div>
         </header>
 
-        <section id="attentionBanner" class="attention hidden"></section>
-
-        <section id="dashboardCards" class="dashboard-grid"></section>
+        <section id="dashboardCards" class="dashboard-grid" aria-label="동기화 항목 요약"></section>
 
         <section id="verifySummaryPanel" class="panel verify-panel hidden"></section>
 
@@ -92,8 +110,9 @@
                 <option value="kind">종류 순</option>
               </select>
             </div>
+            <label class="sr-only" for="searchInput">항목 검색</label>
             <input id="searchInput" class="search" type="search" placeholder="과목, 제목, 내용 검색">
-            <div id="itemList" class="item-list"></div>
+            <div id="itemList" class="item-list" aria-label="동기화 항목 목록"></div>
           </div>
 
           <div class="detail-pane panel">
@@ -106,14 +125,17 @@
 
         <section class="panel history-panel">
           <div class="panel-heading">
-            <h2>최근 요청</h2>
+            <h2>최근 요청과 로그</h2>
           </div>
-          <div id="historyList" class="history-list"></div>
+          <div id="historyList" class="history-list" aria-label="최근 요청과 로그"></div>
         </section>
       </main>
     </div>
 
-    <div id="toast" class="toast hidden"></div>
+    <button id="sidebarBackdrop" class="sidebar-backdrop hidden" aria-label="사이드바 닫기"></button>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+    <script src="./relay-state.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>

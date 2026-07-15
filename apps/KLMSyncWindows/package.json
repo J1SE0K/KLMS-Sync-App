@@ -6,8 +6,11 @@
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/renderer.js",
-    "dist:win": "electron-builder --win nsis"
+    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/relay-security.cjs && node --check src/relay-state.js && node --check src/renderer.js && node --check playwright.config.js && node --check test/relay-security.test.cjs && node --check test/relay-state.test.cjs && node --check test/ui-quality.test.cjs && node --check test/e2e/electron-entry.cjs && node --check test/e2e/fake-relay.cjs && node --check test/e2e/windows-realtime.spec.js",
+    "test": "node --test test/*.test.cjs",
+    "test:e2e": "playwright test --config playwright.config.js",
+    "dist:win": "electron-builder --win nsis --x64",
+    "dist:win:arm64": "electron-builder --win nsis --arm64"
   },
   "build": {
     "appId": "com.local.klmssync.windows",
@@ -31,8 +34,12 @@
       "allowToChangeInstallationDirectory": true
     }
   },
+  "dependencies": {
+    "ws": "^8.21.0"
+  },
   "devDependencies": {
-    "electron": "^31.7.7",
-    "electron-builder": "^24.13.3"
+    "@playwright/test": "^1.61.1",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3"
   }
 }
