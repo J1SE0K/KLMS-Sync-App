@@ -29,6 +29,14 @@ bucket_name = "klms-sync-file-relay"
 name = "RELAY_REALTIME"
 class_name = "RelayRealtimeRoom"
 
+[[durable_objects.bindings]]
+name = "RELAY_MUTATIONS"
+class_name = "RelayMutationCoordinator"
+
 [[migrations]]
 tag = "v1_realtime_room"
 new_sqlite_classes = [ "RelayRealtimeRoom" ]
+
+[[migrations]]
+tag = "v2_mutation_coordinator"
+new_sqlite_classes = [ "RelayMutationCoordinator" ]

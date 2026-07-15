@@ -1,6 +1,7 @@
 #!/bin/zsh
 
 set -euo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -16,17 +17,27 @@ CLOUDFLARE_ENV_FILE="${KLMS_CLOUDFLARE_ENV_FILE:-$SCRIPT_DIR/.cloudflare.env}"
 ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
 WORKERS_DEV_SUBDOMAIN="${KLMS_CLOUDFLARE_WORKERS_DEV_SUBDOMAIN:-}"
 
-if [[ -f "$CLOUDFLARE_ENV_FILE" ]]; then
-  set -a
-  source "$CLOUDFLARE_ENV_FILE"
-  set +a
-fi
-
 need_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     print -u2 -- "Missing required command: $1"
     exit 69
   fi
+}
+
+load_cloudflare_env() {
+  if [[ ! -f "$CLOUDFLARE_ENV_FILE" ]]; then
+    return
+  fi
+  if [[ ! -O "$CLOUDFLARE_ENV_FILE" ]]; then
+    print -u2 -- "Credential env must be owned by the current user: $CLOUDFLARE_ENV_FILE"
+    exit 77
+  fi
+  chmod 600 "$CLOUDFLARE_ENV_FILE"
+  set -a
+  source "$CLOUDFLARE_ENV_FILE"
+  set +a
+  ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-$ACCOUNT_ID}"
+  WORKERS_DEV_SUBDOMAIN="${KLMS_CLOUDFLARE_WORKERS_DEV_SUBDOMAIN:-$WORKERS_DEV_SUBDOMAIN}"
 }
 
 current_database_id() {
@@ -323,6 +334,20 @@ try {
 } catch {
   process.exit(0);
 }
+
+ensure_r2_lifecycle() {
+  local rule_name="klms-file-relay-fallback"
+  local lifecycle_output
+  lifecycle_output="$(wrangler r2 bucket lifecycle list "$R2_BUCKET_NAME" 2>&1 || true)"
+  if print -r -- "$lifecycle_output" | grep -Fq "$rule_name"; then
+    print -- "R2 orphan fallback lifecycle 확인됨: $rule_name"
+    return
+  fi
+  print -- "R2 orphan fallback lifecycle 추가 중..."
+  wrangler r2 bucket lifecycle add \
+    "$R2_BUCKET_NAME" "$rule_name" "file-access/" \
+    --expire-days 1 --abort-multipart-days 1 --force
+}
 const buckets = Array.isArray(parsed) ? parsed : parsed?.buckets || parsed?.result || [];
 const found = buckets.find((item) => item && item.name === process.env.R2_BUCKET_NAME);
 if (found) process.stdout.write(found.name);
@@ -369,6 +394,7 @@ read_or_create_token() {
     print -r -- "$token" > "$file"
     print -u2 -- "기존 ${label} 토큰 사용: $file"
   fi
+  chmod 600 "$file"
   print -r -- "$token"
 }
 
@@ -404,8 +430,8 @@ deploy_worker() {
   print -r -- "$worker_url" > "$SCRIPT_DIR/.worker-url"
 
   if command -v curl >/dev/null 2>&1 && [[ "$worker_url" == https://* ]]; then
-    print -- "healthz 확인 중..."
-    curl --tlsv1.2 -fsS "$worker_url/healthz"
+    print -- "readyz 확인 중..."
+    curl --tlsv1.2 -fsS "$worker_url/readyz"
     print
   fi
 
@@ -419,11 +445,13 @@ deploy_worker() {
 }
 
 ensure_dependencies
+load_cloudflare_env
 ensure_local_wrangler_config
 ensure_login
 ensure_account_id
 ensure_workers_dev_subdomain
 ensure_database
 ensure_r2_bucket
+ensure_r2_lifecycle
 ensure_tokens
 deploy_worker

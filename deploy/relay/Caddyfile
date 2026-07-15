@@ -11,6 +11,10 @@
     reverse_proxy relay:18484
   }
 
+  handle /readyz {
+    reverse_proxy relay:18484
+  }
+
   handle_path /relay/* {
     reverse_proxy relay:18484
   }

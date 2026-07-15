@@ -1,6 +1,7 @@
 #!/bin/sh
 
 set -eu
+umask 077
 
 usage() {
   printf '%s\n' "Usage: $0 <relay-domain>"
@@ -15,6 +16,16 @@ fi
 DOMAIN="${1:-}"
 if [ -z "$DOMAIN" ]; then
   usage >&2
+  exit 64
+fi
+case "$DOMAIN" in
+  *[!A-Za-z0-9.-]*|.*|*..*|*.)
+    printf '%s\n' "relay-domain must be a plain DNS hostname without scheme, port, path, or shell characters." >&2
+    exit 64
+    ;;
+esac
+if [ "${#DOMAIN}" -gt 253 ]; then
+  printf '%s\n' "relay-domain is too long." >&2
   exit 64
 fi
 
@@ -55,6 +66,7 @@ WORKER_TOKEN="$(new_token)"
 
 cat > "$ENV_PATH" <<EOF
 KLMS_RELAY_DOMAIN=$DOMAIN
+KLMS_RELAY_PUBLIC_URL=https://$DOMAIN
 KLMS_RELAY_CLIENT_TOKEN=$CLIENT_TOKEN
 KLMS_RELAY_WORKER_TOKEN=$WORKER_TOKEN
 EOF

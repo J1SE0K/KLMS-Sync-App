@@ -11,9 +11,35 @@ async function runSmoke() {
     RELAY_WORKER_TOKEN: workerToken,
     RELAY_DB: new FakeD1(),
     RELAY_FILES: new FakeR2(),
+    RELAY_TEST_LOCAL_COORDINATOR: "1",
   };
 
   await expectJSON("/healthz", { ok: true, storage: "cloudflare-d1", configured: true }, { auth: false });
+
+  {
+    const missingRealtime = await expectJSON("/readyz", undefined, { auth: false, status: 503 });
+    assert.equal(missingRealtime.ok, false);
+    assert.equal(missingRealtime.checks.realtime, false);
+    env.RELAY_REALTIME = {
+      idFromName: () => "default",
+      get: () => ({ fetch: async () => new Response("ok") }),
+    };
+    const ready = await expectJSON("/readyz", undefined, { auth: false });
+    assert.equal(ready.ok, true);
+    env.RELAY_DB.schemaComplete = false;
+    const missingSchema = await expectJSON("/readyz", undefined, { auth: false, status: 503 });
+    assert.equal(missingSchema.checks.schema, false);
+    env.RELAY_DB.schemaComplete = true;
+    delete env.RELAY_REALTIME;
+  }
+
+  {
+    delete env.RELAY_TEST_LOCAL_COORDINATOR;
+    const health = await expectJSON("/healthz", undefined, { auth: false });
+    assert.equal(health.configured, false);
+    assert.equal((await request("/v1/status")).status, 503, "production must fail closed without the mutation coordinator binding");
+    env.RELAY_TEST_LOCAL_COORDINATOR = "1";
+  }
 
   {
     const response = await request("/v1/status", { auth: false });
@@ -21,9 +47,42 @@ async function runSmoke() {
   }
 
   {
+    const invalidRole = await request("/v1/events?role=invalid", {
+      headers: { Upgrade: "websocket" },
+    });
+    assert.equal(invalidRole.status, 400);
+    const missingRole = await request("/v1/events", {
+      headers: { Upgrade: "websocket" },
+    });
+    assert.equal(missingRole.status, 400);
+    const unauthorizedRole = await request("/v1/events?role=client", {
+      auth: false,
+      headers: { Upgrade: "websocket" },
+    });
+    assert.equal(unauthorizedRole.status, 401);
+  }
+
+  {
     const payload = await expectJSON("/v1/status");
     assert.equal(payload.ok, true);
     assert.equal(payload.status.phase, "idle");
+    assert.equal(payload.revision, 0);
+    const invalidCommand = await request("/v1/commands", {
+      method: "POST",
+      body: { id: "not-a-uuid", kind: "unknownCommand", status: "running" },
+    });
+    assert.equal(invalidCommand.status, 400);
+    const invalidOption = await request("/v1/commands", {
+      method: "POST",
+      body: { kind: "fullSync", options: { updateNoticeNotes: "false" } },
+    });
+    assert.equal(invalidOption.status, 400);
+    const unknownOption = await request("/v1/commands", {
+      method: "POST",
+      body: { kind: "fullSync", options: { unexpected: true } },
+    });
+    assert.equal(unknownOption.status, 400);
+    assert.equal((await expectJSON("/v1/status")).revision, 0);
   }
 
   {
@@ -78,10 +137,12 @@ async function runSmoke() {
     const originalRealtime = env.RELAY_REALTIME;
     let waitUntilCalled = 0;
     let resolveBroadcast;
+    let broadcastEnvelope;
     env.RELAY_REALTIME = {
       idFromName: () => "default",
       get: () => ({
-        fetch: () => new Promise((resolve) => {
+        fetch: (_input, init) => new Promise((resolve) => {
+          broadcastEnvelope = JSON.parse(init.body);
           resolveBroadcast = () => resolve(new Response("ok"));
         }),
       }),
@@ -109,18 +170,27 @@ async function runSmoke() {
     assert.ok(response, "status update should not wait for realtime broadcast");
     assert.equal(response.status, 200);
     assert.equal(waitUntilCalled, 1);
+    assert.equal(broadcastEnvelope.version, 1);
+    assert.equal(broadcastEnvelope.type, "changed");
+    assert.ok(broadcastEnvelope.revision > 0);
+    assert.equal(broadcastEnvelope.reason, "state");
+    assert.deepEqual(broadcastEnvelope.scopes, ["status"]);
+    assert.equal(broadcastEnvelope.requiresSnapshot, false);
     resolveBroadcast();
     await responsePromise;
     env.RELAY_REALTIME = originalRealtime;
   }
 
+  const clientOwnedID = "00000000-0000-4000-8000-000000000099";
   let createdCommand = await expectJSON("/v1/commands", {
+    id: clientOwnedID,
     kind: "fullSync",
     options: { updateNoticeNotes: false, dryRun: true },
     status: "pending",
     summary: { assignments: 3, phase: "pending" },
   }, { method: "POST", status: 201 });
   assert.equal(createdCommand.kind, "fullSync");
+  assert.notEqual(createdCommand.id, clientOwnedID);
   assert.equal(createdCommand.status, "pending");
   assert.equal(createdCommand.options.updateNoticeNotes, false);
   assert.equal(createdCommand.options.dryRun, true);
@@ -169,7 +239,32 @@ async function runSmoke() {
     summary: { assignments: 3, phase: "completed" },
   }, { method: "PUT", role: "worker" });
 
-  await expectJSON("/v1/sync-data", {
+  {
+    const responses = await Promise.all([
+      request("/v1/commands", { method: "POST", body: { kind: "verify" } }),
+      request("/v1/commands", { method: "POST", body: { kind: "doctor" } }),
+    ]);
+    assert.deepEqual(responses.map((response) => response.status).sort(), [201, 409]);
+    const winnerResponse = responses.find((response) => response.status === 201);
+    const winner = await winnerResponse.json();
+    await expectJSON(`/v1/commands/${winner.id}`, {
+      ...winner,
+      status: "completed",
+    }, { method: "PUT", role: "worker" });
+  }
+
+  const originalSyncRealtime = env.RELAY_REALTIME;
+  let syncBroadcastEnvelope;
+  env.RELAY_REALTIME = {
+    idFromName: () => "default",
+    get: () => ({
+      fetch: (_input, init) => {
+        syncBroadcastEnvelope = JSON.parse(init.body);
+        return Promise.resolve(new Response("ok"));
+      },
+    }),
+  };
+  const syncResponse = await expectJSON("/v1/sync-data", {
     generatedAt: "2026-05-31T00:00:00Z",
     items: [
       {
@@ -260,9 +355,9 @@ async function runSmoke() {
     runLogs: [
       {
         id: "11111111-1111-4111-8111-111111111111",
-        command: "full",
-        commandTitle: "전체 동기화",
-        status: "성공",
+        command: "fullSync",
+        commandTitle: "attacker supplied title",
+        status: "attacker supplied status",
         startedAt: "2026-05-31T00:00:00Z",
         finishedAt: "2026-05-31T00:00:05Z",
         updatedAt: "2026-05-31T00:00:05Z",
@@ -275,12 +370,16 @@ async function runSmoke() {
       },
     ],
   }, { method: "POST", role: "worker" });
+  env.RELAY_REALTIME = originalSyncRealtime;
+  assert.equal(syncBroadcastEnvelope.reason, "sync-data");
+  assert.equal(syncBroadcastEnvelope.requiresSnapshot, true);
+  assert.equal(syncResponse.revision, syncBroadcastEnvelope.revision, "snapshot revision must match its committed event");
 
   {
-    const event = await expectJSON("/v1/events/poll?role=client&waitSeconds=0");
-    assert.equal(event.type, "changed");
-    assert.equal(event.reason, "sync-data");
-    assert.ok(Date.parse(event.updatedAt) > 0);
+    const removedPoll = await request("/v1/events/poll?role=client&waitSeconds=0");
+    assert.equal(removedPoll.status, 410);
+    const status = await expectJSON("/v1/status");
+    assert.ok(status.revision > 0);
   }
 
   {
@@ -299,6 +398,9 @@ async function runSmoke() {
     assert.equal(payload.calendarChanges[0].url, "");
     assert.equal(payload.calendarChanges[0].location, "");
     assert.equal(payload.runLogs.length, 1);
+    assert.equal(payload.runLogs[0].commandTitle, "전체 동기화");
+    assert.equal(payload.runLogs[0].status, "성공");
+    assert.equal(payload.runLogs[0].needsAttention, false);
     assert.match(payload.runLogs[0].outputTail, /KAIST 인증 번호: --/);
     assert.match(payload.runLogs[0].outputTail, /\[KLMS URL\]/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /57/);
@@ -331,16 +433,15 @@ async function runSmoke() {
     assert.equal(updated.value, "0");
     const afterUpdate = await expectJSON("/v1/sync-data?limit=10");
     assert.equal(afterUpdate.sharedSettings.find((setting) => setting.key === "KLMS_UPDATE_NOTICE_NOTES")?.value, "0");
-    const event = await expectJSON("/v1/events/poll?role=client&waitSeconds=0");
-    assert.equal(event.reason, "shared-settings");
+    const status = await expectJSON("/v1/status");
+    assert.ok(status.revision > 0);
   }
 
   {
     const clearRunLogs = await expectJSON("/v1/sync-data/run-logs", undefined, { method: "DELETE" });
     assert.equal(clearRunLogs.runLogs, 1);
-    const event = await expectJSON("/v1/events/poll?role=client&waitSeconds=0");
-    assert.equal(event.type, "changed");
-    assert.equal(event.reason, "sync-data:run-logs-clear");
+    const status = await expectJSON("/v1/status");
+    assert.ok(status.revision > 0);
     const afterClear = await expectJSON("/v1/sync-data?limit=10");
     assert.equal(afterClear.runLogs.length, 0);
     await expectJSON("/v1/sync-data", {
@@ -396,7 +497,7 @@ async function runSmoke() {
     }, { method: "POST", role: "worker" });
     const afterNewPost = await expectJSON("/v1/sync-data?limit=10");
     assert.equal(afterNewPost.runLogs.length, 1);
-    assert.equal(afterNewPost.runLogs[0].commandTitle, "파일");
+    assert.equal(afterNewPost.runLogs[0].commandTitle, "파일 동기화");
   }
 
   const calendarChangeID = [
@@ -477,6 +578,29 @@ async function runSmoke() {
     const status = await expectJSON("/v1/status");
     assert.equal(status.status.noticeNew, 0);
     assert.equal(status.status.notices, 1);
+  }
+
+  {
+    const idempotentID = "44444444-4444-4444-8444-444444444444";
+    const body = {
+      id: idempotentID,
+      action: "noticeImportant",
+      itemID: "notice-1",
+      itemKind: "notice",
+      itemTitle: "공지",
+    };
+    const created = await expectJSON("/v1/item-actions", body, { method: "POST", status: 201 });
+    assert.equal(created.id, idempotentID);
+    const revisionAfterCreate = (await expectJSON("/v1/status")).revision;
+    const replayed = await expectJSON("/v1/item-actions", body, { method: "POST" });
+    assert.equal(replayed.id, created.id);
+    assert.equal((await expectJSON("/v1/status")).revision, revisionAfterCreate);
+    const conflict = await request("/v1/item-actions", {
+      method: "POST",
+      body: { ...body, action: "noticeUnread" },
+    });
+    assert.equal(conflict.status, 409);
+    assert.equal((await expectJSON("/v1/status")).revision, revisionAfterCreate);
   }
 
   const futureAction = await expectJSON("/v1/item-actions", {
@@ -765,6 +889,7 @@ async function runSmoke() {
     updatedAt: staleRunningAt,
     message: "processing",
   }, { method: "PUT", role: "worker" });
+  env.RELAY_DB.itemActions.get(staleItemAction.id).updated_at = staleRunningAt;
   {
     const pending = await expectJSON("/v1/item-actions/pending", undefined, { role: "worker" });
     assert.equal(pending.actions.some((item) => item.id === staleItemAction.id), false);
@@ -805,6 +930,119 @@ async function runSmoke() {
     itemTitle: "기말 정리.txt",
   }, { method: "POST", status: 201 });
   assert.equal(fileRequest.status, "pending");
+  {
+    const emptyRequest = await expectJSON("/v1/file-access", {
+      itemID: "file-empty-upload",
+      itemKind: "file",
+      itemTitle: "empty.txt",
+    }, { method: "POST", status: 201 });
+    const revisionBefore = (await expectJSON("/v1/status")).revision;
+    const rejected = await request(`/v1/file-access/${emptyRequest.id}/upload`, {
+      method: "PUT",
+      role: "worker",
+      rawBody: "",
+      headers: { "Content-Type": "text/plain", "Content-Length": "0" },
+    });
+    assert.equal(rejected.status, 411);
+    assert.equal(env.RELAY_DB.fileAccessRequests.get(emptyRequest.id).updated_at, emptyRequest.updatedAt);
+    assert.equal((await expectJSON("/v1/status")).revision, revisionBefore);
+    await expectJSON(`/v1/file-access/${emptyRequest.id}`, {
+      id: emptyRequest.id,
+      itemID: emptyRequest.itemID,
+      itemKind: emptyRequest.itemKind,
+      status: "failed",
+      message: "empty upload rejected",
+    }, { method: "PUT", role: "worker" });
+  }
+  {
+    const revisionBefore = (await expectJSON("/v1/status")).revision;
+    const objectKeyAttack = await request(`/v1/file-access/${fileRequest.id}`, {
+      method: "PUT",
+      role: "worker",
+      body: { status: "completed", objectKey: "../relay-secret" },
+    });
+    assert.equal(objectKeyAttack.status, 400);
+    assert.equal((await expectJSON("/v1/status")).revision, revisionBefore);
+  }
+  {
+    const concurrentUploadRequest = await expectJSON("/v1/file-access", {
+      itemID: "file-concurrent-upload",
+      itemKind: "file",
+      itemTitle: "claim.txt",
+    }, { method: "POST", status: 201 });
+    const putsBefore = env.RELAY_FILES.putCount;
+    const objectsBefore = env.RELAY_FILES.objects.size;
+    const uploadBodies = Array.from({ length: 20 }, (_, index) => `body-${index}`);
+    const responses = await Promise.all(uploadBodies.map((body) => (
+      request(`/v1/file-access/${concurrentUploadRequest.id}/upload`, {
+        method: "PUT",
+        role: "worker",
+        rawBody: body,
+        headers: { "Content-Type": "text/plain", "Content-Length": String(body.length) },
+      })
+    )));
+    assert.equal(responses.filter((response) => response.status === 200).length, 1);
+    assert.equal(responses.filter((response) => response.status === 409).length, 19);
+    assert.equal(env.RELAY_FILES.putCount - putsBefore, 1);
+    assert.equal(env.RELAY_FILES.objects.size - objectsBefore, 1);
+  }
+
+  {
+    const leasedUploadRequest = await expectJSON("/v1/file-access", {
+      itemID: "file-upload-lease",
+      itemKind: "file",
+      itemTitle: "lease.txt",
+    }, { method: "POST", status: 201 });
+    let leasedRow = env.RELAY_DB.fileAccessRequests.get(leasedUploadRequest.id);
+    const visibleUpdatedAt = leasedRow.updated_at;
+    const revisionBefore = (await expectJSON("/v1/status")).revision;
+    const putsBefore = env.RELAY_FILES.putCount;
+    leasedRow.upload_claim = "fresh-worker-claim";
+    leasedRow.upload_claimed_at = new Date().toISOString();
+    const freshLeaseResponse = await request(`/v1/file-access/${leasedUploadRequest.id}/upload`, {
+      method: "PUT",
+      role: "worker",
+      rawBody: "fresh-lease-body",
+      headers: { "Content-Type": "text/plain", "Content-Length": "16" },
+    });
+    assert.equal(freshLeaseResponse.status, 409, "a live upload lease must not be stolen");
+    assert.equal(env.RELAY_FILES.putCount, putsBefore);
+    assert.equal(leasedRow.updated_at, visibleUpdatedAt);
+    assert.equal((await expectJSON("/v1/status")).revision, revisionBefore);
+
+    leasedRow = env.RELAY_DB.fileAccessRequests.get(leasedUploadRequest.id);
+    leasedRow.upload_claimed_at = new Date(Date.now() - 16 * 60 * 1000).toISOString();
+    const previousMaxUploadBytes = env.FILE_RELAY_MAX_UPLOAD_BYTES;
+    env.FILE_RELAY_MAX_UPLOAD_BYTES = "8";
+    const staleLeaseResponse = await request(`/v1/file-access/${leasedUploadRequest.id}/upload`, {
+      method: "PUT",
+      role: "worker",
+      rawBody: "stale-lease-body",
+      headers: { "Content-Type": "text/plain", "Content-Length": "8" },
+    });
+    if (previousMaxUploadBytes == null) delete env.FILE_RELAY_MAX_UPLOAD_BYTES;
+    else env.FILE_RELAY_MAX_UPLOAD_BYTES = previousMaxUploadBytes;
+    leasedRow = env.RELAY_DB.fileAccessRequests.get(leasedUploadRequest.id);
+    assert.equal(staleLeaseResponse.status, 400, "an expired lease is reclaimed before exact Content-Length validation");
+    assert.equal(leasedRow.upload_claim, null);
+    assert.equal(leasedRow.upload_claimed_at, null);
+    assert.equal(leasedRow.updated_at, visibleUpdatedAt, "internal reclaim/release must not change visible timestamps");
+    assert.equal((await expectJSON("/v1/status")).revision, revisionBefore, "internal reclaim/release must not allocate revisions");
+
+    leasedRow.upload_claim = "legacy-claim-without-timestamp";
+    leasedRow.upload_claimed_at = null;
+    const recovered = await request(`/v1/file-access/${leasedUploadRequest.id}/upload`, {
+      method: "PUT",
+      role: "worker",
+      rawBody: "recovered-body",
+      headers: { "Content-Type": "text/plain", "Content-Length": "14" },
+    });
+    assert.equal(recovered.status, 200, "a legacy claim without a lease timestamp must remain recoverable");
+    assert.equal(leasedRow.upload_claim, null);
+    assert.equal(leasedRow.upload_claimed_at, null);
+    env.RELAY_FILES.objects.delete(leasedRow.object_key);
+    env.RELAY_DB.fileAccessRequests.delete(leasedUploadRequest.id);
+  }
 
   {
     const stalePending = await expectJSON("/v1/file-access", {
@@ -880,7 +1118,9 @@ async function runSmoke() {
     assert.equal(activeClear.status, 200);
     const activeClearBody = await activeClear.json();
     assert.ok(activeClearBody.commands > 0);
-    assert.equal(activeClearBody.fileAccessRequests, 0);
+    assert.ok(activeClearBody.itemActions > 0);
+    assert.equal(activeClearBody.fileAccessRequests, 2, "all-scope clear removes terminal files while preserving active work");
+    assert.equal(env.RELAY_DB.itemActions.has(action.id), false, "all-scope clear removes terminal item actions");
     const pendingAfterActiveClear = await expectJSON("/v1/file-access/pending", undefined, { role: "worker" });
     assert.equal(pendingAfterActiveClear.requests.length, 1);
     const inboxAfterActiveClear = await expectJSON("/v1/worker/inbox", undefined, { role: "worker" });
@@ -899,12 +1139,17 @@ async function runSmoke() {
     message: "cancelled",
   }, { method: "PUT", role: "worker" });
 
-  await expectJSON(`/v1/item-actions/${action.id}`, {
+  const clearedActionUpdate = await request(`/v1/item-actions/${action.id}`, {
+    method: "PUT",
+    role: "worker",
+    body: {
     ...action,
     status: "completed",
     updatedAt: new Date().toISOString(),
     message: "done",
-  }, { method: "PUT", role: "worker" });
+    },
+  });
+  assert.equal(clearedActionUpdate.status, 404);
 
   const uploadResponse = await request(`/v1/file-access/${fileRequest.id}/upload`, {
     method: "PUT",
@@ -976,6 +1221,199 @@ async function runSmoke() {
     assert.equal(blockedResponse.status, 429);
   }
   {
+    env.FILE_RELAY_DOWNLOADS_PER_LINK = "7";
+    const raced = await createUploadedFile({
+      itemID: "file-race",
+      itemTitle: "race.txt",
+      body: "race",
+      contentType: "text/plain",
+    });
+    const racedURL = new URL(raced.downloadURL);
+    racedURL.searchParams.set("download", "1");
+    const readsBeforeRace = env.RELAY_FILES.getCount;
+    const responses = await Promise.all(Array.from(
+      { length: 50 },
+      () => worker.fetch(new Request(racedURL.toString()), env)
+    ));
+    assert.equal(responses.filter((response) => response.status === 200).length, 7);
+    assert.equal(responses.filter((response) => response.status === 429).length, 43);
+    assert.equal(
+      env.RELAY_FILES.getCount - readsBeforeRace,
+      7,
+      "only atomically reserved requests may reach R2"
+    );
+    delete env.FILE_RELAY_DOWNLOADS_PER_LINK;
+  }
+  {
+    const protectedDownload = await createUploadedFile({
+      itemID: "file-active-download-cleanup",
+      itemTitle: "active-download.txt",
+      body: "active-download",
+      contentType: "text/plain",
+    });
+    const protectedURL = new URL(protectedDownload.downloadURL);
+    protectedURL.searchParams.set("download", "1");
+    env.RELAY_FILES.getDelayMs = 200;
+    const activeDownload = worker.fetch(new Request(protectedURL.toString()), env);
+    const reservationDeadline = Date.now() + 1_000;
+    while (env.RELAY_DB.fileDownloadReservations.size === 0 && Date.now() < reservationDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.ok(env.RELAY_DB.fileDownloadReservations.size > 0, "download must hold a cleanup reservation while R2 is reading");
+    const clearDuringDownload = await request("/v1/logs?scope=fileAccess", {
+      method: "DELETE",
+      role: "worker",
+    });
+    assert.equal(clearDuringDownload.status, 409, "active downloads must block file cleanup");
+    assert.equal((await activeDownload).status, 200);
+    env.RELAY_FILES.getDelayMs = 0;
+    assert.equal(env.RELAY_DB.fileDownloadReservations.size, 0, "successful delivery must finalize the cleanup guard");
+  }
+  {
+    const missing = await createUploadedFile({
+      itemID: "file-missing-read",
+      itemTitle: "missing-read.txt",
+      body: "missing",
+      contentType: "text/plain",
+    });
+    const row = env.RELAY_DB.fileAccessRequests.get(missing.id);
+    const quota = env.RELAY_DB.fileAccessQuota.get(new Date().toISOString().slice(0, 10));
+    const quotaBefore = quota.download_count;
+    const storedObject = env.RELAY_FILES.objects.get(row.object_key);
+    env.RELAY_FILES.objects.delete(row.object_key);
+    const missingURL = new URL(missing.downloadURL);
+    missingURL.searchParams.set("download", "1");
+    assert.equal((await worker.fetch(new Request(missingURL.toString()), env)).status, 404);
+    assert.equal(row.download_count, 0, "missing R2 objects must release the per-link reservation");
+    assert.equal(quota.download_count, quotaBefore, "missing R2 objects must release daily quota");
+    assert.equal(env.RELAY_DB.fileDownloadReservations.size, 0);
+    env.RELAY_FILES.objects.set(row.object_key, storedObject);
+    assert.equal((await worker.fetch(new Request(missingURL.toString()), env)).status, 200);
+  }
+  {
+    const failed = await createUploadedFile({
+      itemID: "file-failed-read",
+      itemTitle: "failed-read.txt",
+      body: "failed",
+      contentType: "text/plain",
+    });
+    const row = env.RELAY_DB.fileAccessRequests.get(failed.id);
+    const quota = env.RELAY_DB.fileAccessQuota.get(new Date().toISOString().slice(0, 10));
+    const quotaBefore = quota.download_count;
+    env.RELAY_FILES.failGets.add(row.object_key);
+    const failedURL = new URL(failed.downloadURL);
+    failedURL.searchParams.set("download", "1");
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      assert.equal((await worker.fetch(new Request(failedURL.toString()), env)).status, 500);
+    } finally {
+      console.error = originalConsoleError;
+    }
+    assert.equal(row.download_count, 0, "R2 exceptions must release the per-link reservation");
+    assert.equal(quota.download_count, quotaBefore, "R2 exceptions must release daily quota");
+    assert.equal(env.RELAY_DB.fileDownloadReservations.size, 0);
+    env.RELAY_FILES.failGets.delete(row.object_key);
+    assert.equal((await worker.fetch(new Request(failedURL.toString()), env)).status, 200);
+  }
+  {
+    const stale = await createUploadedFile({
+      itemID: "file-stale-download",
+      itemTitle: "stale-download.txt",
+      body: "stale",
+      contentType: "text/plain",
+    });
+    const row = env.RELAY_DB.fileAccessRequests.get(stale.id);
+    const quotaDate = new Date().toISOString().slice(0, 10);
+    const quota = env.RELAY_DB.fileAccessQuota.get(quotaDate);
+    const quotaBefore = quota.download_count;
+    const oldTimestamp = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const token = crypto.randomUUID();
+    row.download_count += 1;
+    quota.download_count += 1;
+    env.RELAY_DB.fileDownloadReservations.set(token, {
+      token,
+      request_id: stale.id,
+      quota_date: quotaDate,
+      log_id: crypto.randomUUID(),
+      log_created_at: oldTimestamp,
+      created_at: oldTimestamp,
+    });
+    await runScheduledCleanup();
+    await runScheduledCleanup();
+    assert.equal(row.download_count, 0, "stale recovery must release the link exactly once");
+    assert.equal(quota.download_count, quotaBefore, "stale recovery must release daily quota exactly once");
+    assert.equal(env.RELAY_DB.fileDownloadReservations.size, 0);
+  }
+  {
+    const interrupted = await expectJSON("/v1/file-access", {
+      itemID: "file-interrupted-upload-cleanup",
+      itemKind: "file",
+      itemTitle: "interrupted.bin",
+    }, { method: "POST", status: 201 });
+    const row = env.RELAY_DB.fileAccessRequests.get(interrupted.id);
+    const quotaDate = new Date().toISOString().slice(0, 10);
+    const quota = env.RELAY_DB.fileAccessQuota.get(quotaDate);
+    const baselineCount = quota.upload_count;
+    const baselineBytes = quota.upload_bytes;
+    const objectKey = `file-access/${interrupted.id}/55555555-5555-4555-8555-555555555555-interrupted.bin`;
+    Object.assign(row, {
+      upload_claim: "66666666-6666-4666-8666-666666666666",
+      upload_claimed_at: new Date(Date.now() - 16 * 60 * 1000).toISOString(),
+      pending_object_key: objectKey,
+      reserved_upload_bytes: 11,
+      reserved_upload_quota_date: quotaDate,
+    });
+    quota.upload_count += 1;
+    quota.upload_bytes += 11;
+    env.RELAY_FILES.objects.set(objectKey, { body: "interrupted", httpMetadata: {} });
+    env.RELAY_FILES.failDeletes.add(objectKey);
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      await runScheduledCleanup();
+    } finally {
+      console.error = originalConsoleError;
+    }
+    assert.equal(row.pending_object_key, objectKey, "failed R2 deletion must retain the tombstone");
+    assert.equal(quota.upload_count, baselineCount + 1, "failed cleanup must retain reserved quota");
+    row.upload_claimed_at = new Date(Date.now() - 16 * 60 * 1000).toISOString();
+    env.RELAY_FILES.failDeletes.delete(objectKey);
+    await runScheduledCleanup();
+    assert.equal(env.RELAY_FILES.objects.has(objectKey), false);
+    assert.equal(row.pending_object_key, null);
+    assert.equal(row.reserved_upload_bytes, 0);
+    assert.equal(quota.upload_count, baselineCount);
+    assert.equal(quota.upload_bytes, baselineBytes);
+    env.RELAY_DB.fileAccessRequests.delete(interrupted.id);
+  }
+  {
+    const cleanup = await createUploadedFile({
+      itemID: "file-cleanup-retry",
+      itemTitle: "cleanup.txt",
+      body: "cleanup",
+      contentType: "text/plain",
+    });
+    const row = env.RELAY_DB.fileAccessRequests.get(cleanup.id);
+    row.expires_at = new Date(Date.now() - 1_000).toISOString();
+    env.RELAY_FILES.failDeletes.add(row.object_key);
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      await runScheduledCleanup();
+    } finally {
+      console.error = originalConsoleError;
+    }
+    assert.ok(env.RELAY_DB.fileAccessRequests.has(cleanup.id), "failed object delete must preserve row");
+    env.RELAY_FILES.failDeletes.delete(row.object_key);
+    await runScheduledCleanup();
+    assert.equal(
+      env.RELAY_DB.fileAccessRequests.has(cleanup.id),
+      false,
+      JSON.stringify(env.RELAY_DB.fileAccessRequests.get(cleanup.id) || null)
+    );
+  }
+  {
     const pdf = await createUploadedFile({
       itemID: "file-pdf",
       itemTitle: "강의자료.pdf",
@@ -986,7 +1424,16 @@ async function runSmoke() {
     previewPageURL.searchParams.set("preview", "1");
     const previewPageResponse = await worker.fetch(new Request(previewPageURL.toString()), env);
     assert.equal(previewPageResponse.status, 200);
+    const previewPageCSP = previewPageResponse.headers.get("Content-Security-Policy") || "";
+    assert.doesNotMatch(previewPageCSP, /script-src[^;]*'unsafe-inline'/);
+    assert.match(previewPageCSP, /frame-ancestors 'none'/);
+    assert.equal(previewPageResponse.headers.get("X-Content-Type-Options"), "nosniff");
+    assert.equal(previewPageResponse.headers.get("X-Frame-Options"), "DENY");
+    assert.equal(previewPageResponse.headers.get("Cross-Origin-Resource-Policy"), "same-origin");
     const previewPageHTML = await previewPageResponse.text();
+    const scriptNonce = /<script nonce="([^"]+)"/.exec(previewPageHTML)?.[1] || "";
+    assert.ok(scriptNonce);
+    assert.ok(previewPageCSP.includes(`script-src 'nonce-${scriptNonce}'`));
     assert.match(previewPageHTML, /위 도구막대로 PDF 쪽 이동과 확대\/축소/);
     assert.match(previewPageHTML, /data-action="zoom-in"/);
     assert.match(previewPageHTML, /data-action="next"/);
@@ -1059,15 +1506,31 @@ async function runSmoke() {
     const fileRequestsAfterRequestLogClear = await expectJSON("/v1/file-access/recent");
     assert.ok(fileRequestsAfterRequestLogClear.requests.length > 0);
 
-    const fileAccessClear = await expectJSON("/v1/logs?scope=fileAccess", undefined, { method: "DELETE", role: "worker" });
+    const failedDeleteRow = Array.from(env.RELAY_DB.fileAccessRequests.values())
+      .find((row) => row.object_key && row.status === "completed");
+    assert.ok(failedDeleteRow);
+    env.RELAY_FILES.failDeletes.add(failedDeleteRow.object_key);
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    let fileAccessClear;
+    try {
+      fileAccessClear = await expectJSON("/v1/logs?scope=fileAccess", undefined, { method: "DELETE", role: "worker" });
+    } finally {
+      console.error = originalConsoleError;
+    }
     assert.ok(fileAccessClear.fileAccessRequests > 0);
     assert.equal(fileAccessClear.requestLogEntries, 0);
     const fileRequestsAfterFileAccessClear = await expectJSON("/v1/file-access/recent");
-    assert.equal(fileRequestsAfterFileAccessClear.requests.length, 0);
+    assert.equal(fileRequestsAfterFileAccessClear.requests.length, 1);
+    assert.equal(fileRequestsAfterFileAccessClear.requests[0].id, failedDeleteRow.id);
+    env.RELAY_FILES.failDeletes.delete(failedDeleteRow.object_key);
+    const fileAccessRetry = await expectJSON("/v1/logs?scope=fileAccess", undefined, { method: "DELETE", role: "worker" });
+    assert.equal(fileAccessRetry.fileAccessRequests, 1);
+    assert.equal((await expectJSON("/v1/file-access/recent")).requests.length, 0);
 
     const clear = await expectJSON("/v1/logs", undefined, { method: "DELETE", role: "worker" });
     assert.equal(clear.commands, 0);
-    assert.ok(clear.itemActions > 0);
+    assert.equal(clear.itemActions, 0);
     assert.equal(clear.fileAccessRequests, 0);
     assert.equal(clear.requestLogEntries, 0);
 
@@ -1095,7 +1558,7 @@ async function runSmoke() {
       summary: { assignments: 1, phase: "completed" },
     }, { method: "PUT", role: "worker" });
     const displayItemAction = await expectJSON("/v1/item-actions", {
-      action: "hide",
+      action: "examIgnore",
       itemID: "exam-1",
       itemKind: "exam",
       itemTitle: "기말고사",
@@ -1142,6 +1605,57 @@ async function runSmoke() {
     assert.equal(afterDisplayClearSettingActions.actions.length, 0);
   }
 
+  {
+    const slowClearFile = await createUploadedFile({
+      itemID: "file-slow-log-clear",
+      itemTitle: "slow-clear.txt",
+      body: "slow-clear",
+      contentType: "text/plain",
+    });
+    const beforeTypoClear = env.RELAY_DB.fileAccessRequests.size;
+    const typoClear = await request("/v1/logs?scope=fileAcess", {
+      method: "DELETE",
+      role: "worker",
+    });
+    assert.equal(typoClear.status, 400);
+    assert.equal(env.RELAY_DB.fileAccessRequests.size, beforeTypoClear, "invalid clear scope must preserve logs");
+    env.RELAY_FILES.deleteDelayMs = 300;
+    const clearPromise = request("/v1/logs?scope=all", {
+      method: "DELETE",
+      role: "worker",
+    });
+    const claimDeadline = Date.now() + 1_000;
+    while (!env.RELAY_DB.fileAccessRequests.get(slowClearFile.id)?.upload_claim && Date.now() < claimDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.ok(env.RELAY_DB.fileAccessRequests.get(slowClearFile.id)?.upload_claim);
+    const patchDuringClear = await request(`/v1/file-access/${slowClearFile.id}`, {
+      method: "PUT",
+      role: "worker",
+      body: {
+        id: slowClearFile.id,
+        itemID: slowClearFile.itemID,
+        itemKind: slowClearFile.itemKind,
+        status: "running",
+        message: "must not reactivate while the object is being deleted",
+      },
+    });
+    assert.equal(patchDuringClear.status, 409);
+    const downloadDuringClearURL = new URL(slowClearFile.downloadURL);
+    downloadDuringClearURL.searchParams.set("download", "1");
+    const downloadDuringClear = await worker.fetch(new Request(downloadDuringClearURL), env);
+    assert.equal(downloadDuringClear.status, 409);
+    const statusStartedAt = Date.now();
+    const statusDuringClear = await request("/v1/status");
+    const statusElapsedMs = Date.now() - statusStartedAt;
+    assert.equal(statusDuringClear.status, 200);
+    assert.ok(statusElapsedMs < 200, `status was blocked by slow object deletion for ${statusElapsedMs}ms`);
+    const clearResponse = await clearPromise;
+    env.RELAY_FILES.deleteDelayMs = 0;
+    assert.equal(clearResponse.status, 200);
+    assert.equal(env.RELAY_DB.fileAccessRequests.has(slowClearFile.id), false);
+  }
+
   console.log("cloudflare worker smoke ok");
 }
 
@@ -1171,6 +1685,17 @@ async function expectJSON(path, body, options = {}) {
   return response.json();
 }
 
+async function runScheduledCleanup() {
+  let scheduled = null;
+  await worker.scheduled({}, env, {
+    waitUntil(promise) {
+      scheduled = promise;
+    },
+  });
+  assert.ok(scheduled);
+  await scheduled;
+}
+
 function request(path, { method = "GET", body, rawBody, headers: extraHeaders = {}, auth = true, role = "client", ctx } = {}) {
   const headers = new Headers({ Accept: "application/json" });
   for (const [key, value] of Object.entries(extraHeaders)) {
@@ -1195,6 +1720,11 @@ class FakeD1 {
     this.commands = new Map();
     this.itemActions = new Map();
     this.fileAccessRequests = new Map();
+    this.fileAccessQuota = new Map();
+    this.fileDownloadReservations = new Map();
+    this.lastChanges = 0;
+    this.batchTail = Promise.resolve();
+    this.schemaComplete = true;
   }
 
   async exec() {
@@ -1206,11 +1736,32 @@ class FakeD1 {
   }
 
   async batch(statements) {
-    const results = [];
-    for (const statement of statements) {
-      results.push(await statement.run());
+    let release;
+    const previous = this.batchTail;
+    this.batchTail = new Promise((resolve) => { release = resolve; });
+    await previous;
+    const snapshot = {
+      meta: structuredClone(this.meta),
+      commands: structuredClone(this.commands),
+      itemActions: structuredClone(this.itemActions),
+      fileAccessRequests: structuredClone(this.fileAccessRequests),
+      fileAccessQuota: structuredClone(this.fileAccessQuota),
+      fileDownloadReservations: structuredClone(this.fileDownloadReservations),
+    };
+    try {
+      const results = [];
+      for (const statement of statements) {
+        const result = await statement.run();
+        this.lastChanges = Number(result?.meta?.changes || 0);
+        results.push(result);
+      }
+      return results;
+    } catch (error) {
+      Object.assign(this, snapshot);
+      throw error;
+    } finally {
+      release();
     }
-    return results;
   }
 }
 
@@ -1230,20 +1781,78 @@ class FakeStatement {
       const value = this.db.meta.get(this.args[0]);
       return value == null ? null : { value };
     }
+    if (this.sql.includes("FROM item_actions") && this.sql.includes("WHERE idempotency_key = ?")) {
+      return Array.from(this.db.itemActions.values()).find((row) => row.idempotency_key === this.args[0]) || null;
+    }
+    if (this.sql.startsWith("SELECT token") && this.sql.includes("FROM file_download_reservations")) {
+      if (this.sql.includes("WHERE token = ?")) {
+        const row = this.db.fileDownloadReservations.get(this.args[0]);
+        return row && (!this.args[1] || row.request_id === this.args[1]) ? row : null;
+      }
+      return this.db.fileDownloadReservations.values().next().value || null;
+    }
     if (this.sql.includes("FROM file_access_requests")) {
       return this.db.fileAccessRequests.get(this.args[0]) || null;
+    }
+    if (this.sql.includes("FROM file_access_quota")) {
+      return this.db.fileAccessQuota.get(this.args[0]) || null;
     }
     throw new Error(`Unsupported first SQL: ${this.sql}`);
   }
 
   async all() {
-    if (this.sql.includes("FROM commands")) {
+    if (this.sql.includes("FROM sqlite_master")) {
+      if (this.sql.includes("type = 'index'")) {
+        return { results: ["commands_one_active_idx", "item_actions_idempotency_key_idx"].map((name) => ({ name })) };
+      }
+      const tables = [
+        "meta", "commands", "item_actions", "file_access_requests", "file_access_quota",
+        "file_download_reservations",
+      ];
+      return { results: (this.db.schemaComplete ? tables : tables.filter((name) => name !== "file_access_quota")).map((name) => ({ name })) };
+    }
+    if (this.sql.startsWith("PRAGMA table_info(file_access_requests)")) {
+      return { results: ["upload_claim", "upload_claimed_at", "pending_object_key", "reserved_upload_bytes", "reserved_upload_quota_date"].map((name) => ({ name })) };
+    }
+    if (this.sql.startsWith("PRAGMA table_info(item_actions)")) {
+      return { results: [{ name: "idempotency_key" }] };
+    }
+    if (this.sql.startsWith("SELECT") && this.sql.includes("FROM commands")) {
       return { results: sortedRows(this.db.commands, this.args[0] || 200) };
     }
-    if (this.sql.includes("FROM item_actions")) {
+    if (this.sql.startsWith("SELECT") && this.sql.includes("FROM item_actions")) {
       return { results: sortedRows(this.db.itemActions, this.args[0] || 400) };
     }
+    if (this.sql.startsWith("SELECT token") && this.sql.includes("FROM file_download_reservations")) {
+      const [staleBefore, limit] = this.args;
+      return {
+        results: Array.from(this.db.fileDownloadReservations.values())
+          .filter((row) => !staleBefore || row.created_at <= staleBefore)
+          .sort((lhs, rhs) => lhs.created_at.localeCompare(rhs.created_at))
+          .slice(0, limit || 100),
+      };
+    }
     if (this.sql.includes("FROM file_access_requests")) {
+      if (this.sql.includes("WHERE id IN")) {
+        const ids = new Set(this.args);
+        return {
+          results: Array.from(this.db.fileAccessRequests.values()).filter((row) => ids.has(row.id)),
+        };
+      }
+      if (this.sql.includes("ORDER BY upload_claimed_at ASC")) {
+        const [staleBefore, limit] = this.args;
+        return {
+          results: Array.from(this.db.fileAccessRequests.values())
+            .filter((row) => (
+              !row.object_key
+              && row.pending_object_key
+              && Number(row.reserved_upload_bytes || 0) > 0
+              && row.reserved_upload_quota_date
+              && (!row.upload_claimed_at || row.upload_claimed_at <= staleBefore)
+            ))
+            .slice(0, limit),
+        };
+      }
       if (this.sql.includes("WHERE status IN")) {
         const limit = this.args.at(-1) || 100;
         const statuses = new Set(this.args.slice(0, -1));
@@ -1267,9 +1876,31 @@ class FakeStatement {
   }
 
   async run() {
+    if (this.sql.startsWith("SELECT key, value FROM meta")) {
+      return {
+        success: true,
+        meta: { changes: 0 },
+        results: Array.from(this.db.meta, ([key, value]) => ({ key, value })),
+      };
+    }
+    if (this.sql.startsWith("SELECT") && this.sql.includes("FROM commands")) {
+      return { success: true, meta: { changes: 0 }, results: sortedRows(this.db.commands, this.args[0] || 200) };
+    }
+    if (this.sql.startsWith("SELECT") && this.sql.includes("FROM item_actions")) {
+      return { success: true, meta: { changes: 0 }, results: sortedRows(this.db.itemActions, this.args[0] || 400) };
+    }
+    if (this.sql.startsWith("INSERT INTO meta") && this.sql.includes("relay-integrity-guard")) {
+      if (this.db.lastChanges !== 1) throw new Error("NOT NULL constraint failed: meta.value");
+      return { success: true, meta: { changes: 0 } };
+    }
+    if (this.sql.startsWith("INSERT INTO meta") && this.sql.includes("relayRevision")) {
+      const next = Number(this.db.meta.get("relayRevision") || 0) + 1;
+      this.db.meta.set("relayRevision", String(next));
+      return { success: true, meta: { changes: 1 }, results: [{ value: String(next) }] };
+    }
     if (this.sql.startsWith("INSERT INTO meta")) {
       this.db.meta.set(this.args[0], String(this.args[1]));
-      return { success: true };
+      return { success: true, meta: { changes: 1 } };
     }
     if (this.sql.startsWith("INSERT INTO commands")) {
       const [
@@ -1283,6 +1914,10 @@ class FakeStatement {
         summaryJSON,
         optionsJSON,
       ] = this.args;
+      if (["pending", "running"].includes(status)) {
+        const active = Array.from(this.db.commands.values()).find((row) => row.id !== id && ["pending", "running"].includes(row.status));
+        if (active) throw new Error("UNIQUE constraint failed: commands_one_active_idx");
+      }
       this.db.commands.set(id, {
         id,
         kind,
@@ -1294,7 +1929,7 @@ class FakeStatement {
         summary_json: summaryJSON,
         options_json: optionsJSON,
       });
-      return { success: true };
+      return { success: true, meta: { changes: 1 } };
     }
     if (this.sql.startsWith("DELETE FROM commands")) {
       if (this.sql.includes("status NOT IN")) {
@@ -1309,6 +1944,7 @@ class FakeStatement {
     if (this.sql.startsWith("INSERT INTO item_actions")) {
       const [
         id,
+        idempotencyKey,
         action,
         itemID,
         itemKind,
@@ -1318,8 +1954,13 @@ class FakeStatement {
         updatedAt,
         message,
       ] = this.args;
+      const duplicate = Array.from(this.db.itemActions.values()).find(
+        (row) => row.id !== id && idempotencyKey && row.idempotency_key === idempotencyKey
+      );
+      if (duplicate) throw new Error("UNIQUE constraint failed: item_actions.idempotency_key");
       this.db.itemActions.set(id, {
         id,
+        idempotency_key: idempotencyKey,
         action,
         item_id: itemID,
         item_kind: itemKind,
@@ -1373,10 +2014,338 @@ class FakeStatement {
         content_type: contentType,
         size_bytes: sizeBytes,
         download_count: downloadCount,
+        upload_claim: null,
+        upload_claimed_at: null,
+        pending_object_key: null,
+        reserved_upload_bytes: 0,
+        reserved_upload_quota_date: null,
       });
       return { success: true };
     }
+    if (this.sql.startsWith("INSERT INTO file_download_reservations")) {
+      const [token, requestID, quotaDate, logID, logCreatedAt, createdAt] = this.args;
+      if (this.db.fileDownloadReservations.has(token)) {
+        throw new Error("UNIQUE constraint failed: file_download_reservations.token");
+      }
+      if (!this.db.fileAccessRequests.has(requestID)) {
+        throw new Error("FOREIGN KEY constraint failed");
+      }
+      this.db.fileDownloadReservations.set(token, {
+        token,
+        request_id: requestID,
+        quota_date: quotaDate,
+        log_id: logID,
+        log_created_at: logCreatedAt,
+        created_at: createdAt,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("DELETE FROM file_download_reservations")) {
+      const row = this.db.fileDownloadReservations.get(this.args[0]);
+      if (!row || (this.args[1] && row.request_id !== this.args[1])) {
+        return { success: true, meta: { changes: 0 } };
+      }
+      this.db.fileDownloadReservations.delete(this.args[0]);
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (
+      this.sql.startsWith("UPDATE file_access_requests")
+      && this.sql.includes("SET upload_claim = ?")
+      && this.sql.includes("upload_claimed_at = ?, pending_object_key = ?")
+    ) {
+      const [claim, claimedAt, pendingObjectKey, reservedBytes, quotaDate, id, staleBefore] = this.args;
+      const row = this.db.fileAccessRequests.get(id);
+      const leaseIsAvailable = !row?.upload_claim
+        || !row?.upload_claimed_at
+        || row.upload_claimed_at <= staleBefore;
+      if (
+        !row
+        || row.object_key
+        || row.pending_object_key
+        || Number(row.reserved_upload_bytes || 0) !== 0
+        || row.reserved_upload_quota_date
+        || !leaseIsAvailable
+        || !["pending", "running"].includes(row.status)
+      ) return { success: true, meta: { changes: 0 } };
+      Object.assign(row, {
+        upload_claim: claim,
+        upload_claimed_at: claimedAt,
+        pending_object_key: pendingObjectKey,
+        reserved_upload_bytes: Number(reservedBytes),
+        reserved_upload_quota_date: quotaDate,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (
+      this.sql.startsWith("UPDATE file_access_requests")
+      && this.sql.includes("SET upload_claim = ?")
+      && this.sql.includes("AND upload_claim IS ?")
+      && this.sql.includes("pending_object_key = ?")
+    ) {
+      const [claim, claimedAt, id, previousClaim, pendingObjectKey, reservedBytes, quotaDate, staleBefore] = this.args;
+      const row = this.db.fileAccessRequests.get(id);
+      if (
+        !row
+        || row.object_key
+        || row.upload_claim !== previousClaim
+        || row.pending_object_key !== pendingObjectKey
+        || Number(row.reserved_upload_bytes || 0) !== Number(reservedBytes)
+        || row.reserved_upload_quota_date !== quotaDate
+        || (row.upload_claimed_at && row.upload_claimed_at > staleBefore)
+      ) return { success: true, meta: { changes: 0 } };
+      row.upload_claim = claim;
+      row.upload_claimed_at = claimedAt;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (
+      this.sql.startsWith("UPDATE file_access_requests")
+      && this.sql.includes("SET upload_claim = ?")
+      && this.sql.includes("expires_at IS NOT NULL")
+    ) {
+      const [claim, claimedAt, id, status, objectKey, updatedAt, expiresBefore, staleBefore] = this.args;
+      const row = this.db.fileAccessRequests.get(id);
+      const leaseIsAvailable = !row?.upload_claim
+        || !row?.upload_claimed_at
+        || row.upload_claimed_at <= staleBefore;
+      if (
+        !row
+        || row.status !== status
+        || row.object_key !== objectKey
+        || row.updated_at !== updatedAt
+        || !row.expires_at
+        || row.expires_at > expiresBefore
+        || (this.sql.includes("file_download_reservations") && hasDownloadReservation(this.db, id))
+        || !leaseIsAvailable
+      ) return { success: true, meta: { changes: 0 } };
+      row.upload_claim = claim;
+      row.upload_claimed_at = claimedAt;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (
+      this.sql.startsWith("UPDATE file_access_requests")
+      && this.sql.includes("SET upload_claim = ?")
+      && this.sql.includes("status NOT IN")
+    ) {
+      const [claim, claimedAt, id, objectKey, updatedAt, staleBefore] = this.args;
+      const row = this.db.fileAccessRequests.get(id);
+      const leaseIsAvailable = !row?.upload_claim
+        || !row?.upload_claimed_at
+        || row.upload_claimed_at <= staleBefore;
+      if (
+        !row
+        || ["pending", "running"].includes(row.status)
+        || row.object_key !== objectKey
+        || row.updated_at !== updatedAt
+        || (this.sql.includes("file_download_reservations") && hasDownloadReservation(this.db, id))
+        || !leaseIsAvailable
+      ) return { success: true, meta: { changes: 0 } };
+      row.upload_claim = claim;
+      row.upload_claimed_at = claimedAt;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("UPDATE file_access_requests") && this.sql.includes("SET upload_claim = ?")) {
+      const [claim, claimedAt, id, staleBefore] = this.args;
+      const row = this.db.fileAccessRequests.get(id);
+      const leaseIsAvailable = !row?.upload_claim
+        || !row?.upload_claimed_at
+        || row.upload_claimed_at <= staleBefore;
+      if (!row || row.object_key || !leaseIsAvailable || !["pending", "running"].includes(row.status)) {
+        return { success: true, meta: { changes: 0 } };
+      }
+      row.upload_claim = claim;
+      row.upload_claimed_at = claimedAt;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (
+      this.sql.startsWith("UPDATE file_access_requests")
+      && this.sql.includes("SET upload_claim = NULL")
+      && this.sql.includes("pending_object_key = NULL")
+    ) {
+      const [id, claim, pendingObjectKey, reservedBytes, quotaDate] = this.args;
+      const row = this.db.fileAccessRequests.get(id);
+      if (
+        !row
+        || row.upload_claim !== claim
+        || row.object_key
+        || row.pending_object_key !== pendingObjectKey
+        || Number(row.reserved_upload_bytes || 0) !== Number(reservedBytes)
+        || row.reserved_upload_quota_date !== quotaDate
+      ) return { success: true, meta: { changes: 0 } };
+      Object.assign(row, {
+        upload_claim: null,
+        upload_claimed_at: null,
+        pending_object_key: null,
+        reserved_upload_bytes: 0,
+        reserved_upload_quota_date: null,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("UPDATE file_access_requests") && this.sql.includes("SET upload_claim = NULL")) {
+      const [id, claim] = this.args;
+      const row = this.db.fileAccessRequests.get(id);
+      if (
+        !row
+        || row.upload_claim !== claim
+        || (this.sql.includes("object_key IS NULL") && row.object_key)
+      ) return { success: true, meta: { changes: 0 } };
+      row.upload_claim = null;
+      row.upload_claimed_at = null;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("UPDATE file_access_requests") && this.sql.includes("download_ticket = ?")) {
+      const [
+        status, updatedAt, message, objectKey, ticket, expiresAt, contentType, sizeBytes,
+        id, claim, pendingObjectKey, reservedBytes, quotaDate,
+      ] = this.args;
+      const row = this.db.fileAccessRequests.get(id);
+      if (
+        !row
+        || row.object_key
+        || row.upload_claim !== claim
+        || row.pending_object_key !== pendingObjectKey
+        || Number(row.reserved_upload_bytes || 0) !== Number(reservedBytes)
+        || row.reserved_upload_quota_date !== quotaDate
+        || !["pending", "running"].includes(row.status)
+      ) return { success: true, meta: { changes: 0 } };
+      Object.assign(row, {
+        status,
+        updated_at: updatedAt,
+        message,
+        object_key: objectKey,
+        download_ticket: ticket,
+        expires_at: expiresAt,
+        content_type: contentType,
+        size_bytes: sizeBytes,
+        download_count: 0,
+        upload_claim: null,
+        upload_claimed_at: null,
+        pending_object_key: null,
+        reserved_upload_bytes: 0,
+        reserved_upload_quota_date: null,
+      });
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("UPDATE file_access_requests") && this.sql.includes("download_count = download_count + 1")) {
+      const [updatedAt, id] = this.args;
+      const row = this.db.fileAccessRequests.get(id);
+      if (!row || row.status !== "completed" || (this.sql.includes("upload_claim IS NULL") && row.upload_claim)) {
+        return { success: true, meta: { changes: 0 } };
+      }
+      const quotaDate = String(updatedAt).slice(0, 10);
+      const quota = this.db.fileAccessQuota.get(quotaDate);
+      if (!quota || Number(row.download_count || 0) >= Number(quota.link_download_limit || 0)) {
+        throw new Error("file download link quota reached");
+      }
+      if (!quota || quota.download_count >= quota.daily_download_limit) {
+        throw new Error("daily file download quota reached");
+      }
+      row.download_count = Number(row.download_count || 0) + 1;
+      row.updated_at = updatedAt;
+      quota.download_count += 1;
+      quota.updated_at = updatedAt;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("UPDATE file_access_requests") && this.sql.includes("download_count = MAX")) {
+      const row = this.db.fileAccessRequests.get(this.args[0]);
+      if (!row) return { success: true, meta: { changes: 0 } };
+      row.download_count = Math.max(0, Number(row.download_count || 0) - 1);
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("INSERT INTO file_access_quota")) {
+      const quotaDate = this.args[0];
+      if (!this.db.fileAccessQuota.has(quotaDate)) {
+        if (this.args.length >= 6) {
+          this.db.fileAccessQuota.set(quotaDate, {
+            quota_date: quotaDate,
+            upload_count: Number(this.args[1] || 0),
+            upload_bytes: Number(this.args[2] || 0),
+            download_count: Number(this.args[3] || 0),
+            updated_at: this.args[4],
+            daily_download_limit: Number(this.args[5] || 100),
+            link_download_limit: 3,
+          });
+        } else {
+          this.db.fileAccessQuota.set(quotaDate, {
+            quota_date: quotaDate,
+            upload_count: 0,
+            upload_bytes: 0,
+            download_count: 0,
+            updated_at: this.args[1],
+            daily_download_limit: Number(this.args[2] || 100),
+            link_download_limit: Number(this.args[3] || 3),
+          });
+        }
+      } else if (this.args.length >= 6) {
+        const row = this.db.fileAccessQuota.get(quotaDate);
+        row.upload_count = Number(this.args[1] || 0);
+        row.upload_bytes = Number(this.args[2] || 0);
+        row.download_count = Number(this.args[3] || 0);
+        row.updated_at = this.args[4];
+        row.daily_download_limit = Number(this.args[5] || 100);
+      } else if (this.args.length >= 4) {
+        const row = this.db.fileAccessQuota.get(quotaDate);
+        row.daily_download_limit = Number(this.args[2] || 100);
+        row.link_download_limit = Number(this.args[3] || 3);
+      }
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("UPDATE file_access_quota") && this.sql.includes("upload_count = upload_count +")) {
+      const [uploadCount, uploadBytes, downloadCount, updatedAt, quotaDate, uploadCheck, uploadLimit, bytesCheck, bytesLimit, downloadCheck, downloadLimit] = this.args;
+      const row = this.db.fileAccessQuota.get(quotaDate);
+      if (!row
+          || row.upload_count + Number(uploadCheck) > Number(uploadLimit)
+          || row.upload_bytes + Number(bytesCheck) > Number(bytesLimit)
+          || row.download_count + Number(downloadCheck) > Number(downloadLimit)) {
+        return { success: true, meta: { changes: 0 } };
+      }
+      row.upload_count += Number(uploadCount);
+      row.upload_bytes += Number(uploadBytes);
+      row.download_count += Number(downloadCount);
+      row.updated_at = updatedAt;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("UPDATE file_access_quota") && this.sql.includes("download_count = download_count + 1")) {
+      const [updatedAt, quotaDate, limit] = this.args;
+      const row = this.db.fileAccessQuota.get(quotaDate);
+      if (!row || row.download_count >= Number(limit)) return { success: true, meta: { changes: 0 } };
+      row.download_count += 1;
+      row.updated_at = updatedAt;
+      return { success: true, meta: { changes: 1 } };
+    }
+    if (this.sql.startsWith("UPDATE file_access_quota") && this.sql.includes("upload_count = MAX")) {
+      const [uploadCount, uploadBytes, downloadCount, updatedAt, quotaDate] = this.args;
+      const row = this.db.fileAccessQuota.get(quotaDate);
+      if (!row) return { success: true, meta: { changes: 0 } };
+      row.upload_count = Math.max(0, row.upload_count - Number(uploadCount));
+      row.upload_bytes = Math.max(0, row.upload_bytes - Number(uploadBytes));
+      row.download_count = Math.max(0, row.download_count - Number(downloadCount));
+      row.updated_at = updatedAt;
+      return { success: true, meta: { changes: 1 } };
+    }
     if (this.sql.startsWith("DELETE FROM file_access_requests")) {
+      if (this.sql.includes("upload_claim = ?")) {
+        const expiredDeletion = this.sql.includes("expires_at IS NOT NULL");
+        const [id, claim, statusOrObjectKey, objectKeyOrUpdatedAt, updatedAtOrExpiresBefore, expiresBefore] = this.args;
+        const status = expiredDeletion ? statusOrObjectKey : null;
+        const objectKey = expiredDeletion ? objectKeyOrUpdatedAt : statusOrObjectKey;
+        const updatedAt = expiredDeletion ? updatedAtOrExpiresBefore : objectKeyOrUpdatedAt;
+        const row = this.db.fileAccessRequests.get(id);
+        if (
+          !row
+          || row.upload_claim !== claim
+          || (expiredDeletion ? row.status !== status : ["pending", "running"].includes(row.status))
+          || row.object_key !== objectKey
+          || row.updated_at !== updatedAt
+          || (expiredDeletion && (!row.expires_at || row.expires_at > expiresBefore))
+          || (this.sql.includes("file_download_reservations") && hasDownloadReservation(this.db, id))
+        ) return { success: true, meta: { changes: 0 } };
+        this.db.fileAccessRequests.delete(id);
+        return { success: true, meta: { changes: 1 } };
+      }
+      if (this.sql === "DELETE FROM file_access_requests WHERE id = ?") {
+        const changed = this.db.fileAccessRequests.delete(this.args[0]) ? 1 : 0;
+        return { success: true, meta: { changes: changed } };
+      }
       if (this.sql.includes("expires_at IS NOT NULL")) {
         const cutoff = this.args[0];
         for (const [id, row] of this.db.fileAccessRequests.entries()) {
@@ -1385,7 +2354,11 @@ class FakeStatement {
           }
         }
       } else if (this.sql.includes("status NOT IN")) {
-        deleteTerminalRows(this.db.fileAccessRequests);
+        for (const [id, row] of this.db.fileAccessRequests.entries()) {
+          if (!["pending", "running"].includes(row.status) && !hasDownloadReservation(this.db, id)) {
+            this.db.fileAccessRequests.delete(id);
+          }
+        }
       } else if (this.args.length === 0) {
         this.db.fileAccessRequests.clear();
       } else {
@@ -1400,9 +2373,16 @@ class FakeStatement {
 class FakeR2 {
   constructor() {
     this.objects = new Map();
+    this.failDeletes = new Set();
+    this.failGets = new Set();
+    this.putCount = 0;
+    this.getCount = 0;
+    this.getDelayMs = 0;
+    this.deleteDelayMs = 0;
   }
 
   async put(key, body, options = {}) {
+    this.putCount += 1;
     const text = typeof body === "string"
       ? body
       : body instanceof ReadableStream
@@ -1417,6 +2397,11 @@ class FakeR2 {
   }
 
   async get(key) {
+    this.getCount += 1;
+    if (this.getDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.getDelayMs));
+    }
+    if (this.failGets.has(key)) throw new Error("injected get failure");
     const object = this.objects.get(key);
     if (!object) {
       return null;
@@ -1428,6 +2413,10 @@ class FakeR2 {
   }
 
   async delete(key) {
+    if (this.deleteDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.deleteDelayMs));
+    }
+    if (this.failDeletes.has(key)) throw new Error("injected delete failure");
     this.objects.delete(key);
   }
 }
@@ -1453,6 +2442,10 @@ function deleteTerminalRows(map) {
       map.delete(id);
     }
   }
+}
+
+function hasDownloadReservation(db, requestID) {
+  return Array.from(db.fileDownloadReservations.values()).some((reservation) => reservation.request_id === requestID);
 }
 
 await runSmoke();

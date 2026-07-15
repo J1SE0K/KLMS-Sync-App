@@ -98,12 +98,19 @@ iPhone에서 외부 접속하려면 서버 주소는 HTTPS여야 한다. 권장 
 
 Mac 포트를 인터넷에 직접 열지 않는다.
 
+공개 배포에서는 앱에 반환할 파일 링크의 기준 주소를 명시한다. relay가 loopback 밖에 bind될
+때 `KLMS_RELAY_PUBLIC_URL`이 없으면 시작을 거부하며, 공개 주소는 HTTPS만 허용한다.
+
+```sh
+KLMS_RELAY_PUBLIC_URL=https://sync.example.com
+```
+
 바로 배포하려면 [deploy/relay](../deploy/relay)를 쓴다. Docker Compose가 `klms_relay_server.mjs`, SQLite volume, Caddy HTTPS reverse proxy를 같이 띄운다.
 
 ```sh
 cd deploy/relay
 cp relay.env.example .env
-# .env에 KLMS_RELAY_DOMAIN, KLMS_RELAY_CLIENT_TOKEN, KLMS_RELAY_WORKER_TOKEN 입력
+# .env에 KLMS_RELAY_DOMAIN, KLMS_RELAY_PUBLIC_URL, client/worker token 입력
 docker compose up -d --build
 ```
 
@@ -123,8 +130,10 @@ VPS 없이 Cloudflare Tunnel을 쓸 수도 있다.
 ```sh
 cd deploy/relay
 cp relay.cloudflare.env.example .env.cloudflare
-# .env.cloudflare에 KLMS_RELAY_CLIENT_TOKEN, KLMS_RELAY_WORKER_TOKEN, CLOUDFLARE_TUNNEL_TOKEN 입력
-docker compose -f docker-compose.cloudflared.yml up -d --build
+cp tunnel.env.example .env.tunnel
+# relay token은 .env.cloudflare, Tunnel token은 .env.tunnel에 분리
+chmod 600 .env.cloudflare .env.tunnel
+docker compose --env-file .env.tunnel -f docker-compose.cloudflared.yml up -d --build
 ```
 
 Cloudflare Public hostname의 서비스 대상은 `http://relay:18484`로 둔다.
@@ -153,7 +162,7 @@ Windows 앱:
 3. `붙여넣기 읽기`, `저장`, `연결 확인`을 누른다.
 4. 대시보드에서 항목을 열고 읽음/중요/숨김 같은 항목 처리를 요청한다.
 
-Mac 앱은 KLMS 수집이나 macOS 앱 반영이 필요할 때 켜져 있어야 한다. 서버 요청은 WebSocket 실시간 이벤트로 받고 놓친 이벤트는 짧은 fallback 확인으로 보강한다. Mac은 한 번에 하나씩 실행한다. Windows와 iPhone/iPad는 Mac과 같은 네트워크에 있을 필요가 없다. 대신 모든 앱이 같은 HTTPS 서버 릴레이 주소를 쓰고, Windows/iPhone/iPad는 클라이언트 토큰, Mac은 worker 토큰을 사용해야 한다.
+Mac 앱은 KLMS 수집이나 macOS 앱 반영이 필요할 때 켜져 있어야 한다. 서버 변경은 WebSocket으로 즉시 알리고, 연결이 끊겼다가 복구되면 단조 증가 revision을 비교해 빠진 구간만 HTTP snapshot으로 재조정한다. 주기적인 상태 polling이나 long polling은 사용하지 않는다. Mac은 한 번에 하나씩 실행한다. Windows와 iPhone/iPad는 Mac과 같은 네트워크에 있을 필요가 없다. 대신 모든 앱이 같은 HTTPS 서버 릴레이 주소를 쓰고, Windows/iPhone/iPad는 클라이언트 토큰, Mac은 worker 토큰을 사용해야 한다.
 
 Mac 앱은 상태를 올릴 때 과제, 시험, 공지, 파일 목록도 같이 `/v1/sync-data`에 올린다. 서버는 클라이언트가 이미 누른 읽음/중요/숨김/완료/메일 분석 항목을 새 목록 위에 다시 적용하므로, Mac이 오래된 KLMS 결과를 다시 올려도 앱 화면이 되돌아가지 않는다. iPhone/iPad/Windows/Mac 화면은 이 `/v1/sync-data`를 기준으로 표시한다.
 
@@ -161,7 +170,9 @@ Mac 앱은 상태를 올릴 때 과제, 시험, 공지, 파일 목록도 같이 
 
 모든 `/v1/*` 요청은 `Authorization: Bearer <token>` 헤더가 필요하다. 클라이언트 토큰은 요청 생성/조회만 가능하고, worker 토큰은 Mac 앱 전용으로 상태 게시와 대기 요청 처리를 수행한다.
 
-- `GET /healthz`: 서버 상태 확인. 인증 없음.
+- `GET /healthz`: process liveness 확인. 인증 없음.
+- `GET /readyz`: DB schema와 WebSocket 준비 확인. 준비되지 않으면 503. 인증 없음.
+- `GET /v1/events?role=client|worker&sinceRevision=N`: 인증된 WebSocket. 연결 직후 `hello`, 변경 시 `changed`, heartbeat에 `pong`을 보내며 각 frame은 현재 `revision`과 변경 `scopes`를 포함한다.
 - `GET /v1/status`: 클라이언트/worker. 현재 sanitized 상태와 최근 요청.
 - `POST /v1/status`: worker 전용. Mac 앱이 sanitized 상태를 게시.
 - `POST /v1/commands`: 클라이언트/worker. iPhone/Windows/Web이 실행 요청 생성.
@@ -181,3 +192,9 @@ Mac 앱은 상태를 올릴 때 과제, 시험, 공지, 파일 목록도 같이 
 - `PUT /v1/setting-actions/:id`: worker 전용. Mac 앱이 설정 변경 처리 상태 갱신.
 
 `kind` 값은 현재 `assignment`, `completedAssignment`, `assignmentCandidate`, `exam`, `examCandidate`, `helpDesk`, `notice`, `file`을 쓴다.
+
+항목 처리 재시도는 동일한 body UUID 또는 `Idempotency-Key` 헤더를 재사용한다. 같은 의도는
+기존 결과를 반환하고, 같은 key를 다른 작업에 재사용하면 409로 거부한다. 파일 업로드는 정확한
+`Content-Length`가 필수이며 서버는 body를 받기 전에 quota와 object tombstone을 예약한다.
+
+운영 백업·복원·보존 기간과 migration runbook은 [deploy/relay/README.md](../deploy/relay/README.md)를 따른다.

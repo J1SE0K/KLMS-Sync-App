@@ -26,7 +26,7 @@ The recovery path preserves the original failing exit status where possible. A r
 - Self-hosted tests count actual local object reads immediately before `fs.readFile`. With N concurrent requests and allowance Q, the count delta must be no greater than Q, and response counts must match Q successes plus N-Q limit responses.
 - Cloudflare tests add a `FakeR2.getCount` metric and enforce the same invariant.
 - Both backends inject missing-object/storage failures and verify link count, daily quota, and reservation state are restored; repeated finalize/release calls must be harmless.
-- A mocked `docker compose` harness injects failures during database replacement, relay startup, and readiness. Each case must prove the safety backup restore and relay start were attempted exactly once.
+- A mocked `docker compose` harness injects stop, safety-backup, database-replacement, relay-startup, readiness, and termination-signal failures. Each case must prove the correct restart/rollback path was attempted exactly once.
 - Existing relay smoke/integration tests, JavaScript checks, shell syntax checks, and whitespace validation must remain green.
 
 ## Non-goals

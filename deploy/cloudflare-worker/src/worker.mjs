@@ -15,6 +15,8 @@ const DEFAULT_DAILY_FILE_DOWNLOADS = 100;
 const DEFAULT_FILE_DOWNLOADS_PER_LINK = 3;
 const DEFAULT_FILE_PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_TEXT_FILE_PREVIEW_MAX_BYTES = 512 * 1024;
+const FILE_UPLOAD_CLAIM_LEASE_MS = 15 * 60 * 1000;
+const FILE_DOWNLOAD_RESERVATION_LEASE_MS = 10 * 60 * 1000;
 const STALE_PENDING_COMMAND_MS = 60 * 60 * 1000;
 const STALE_RUNNING_COMMAND_MS = 2 * 60 * 1000;
 const STALE_PENDING_ITEM_ACTION_MS = 60 * 60 * 1000;
@@ -26,8 +28,49 @@ const STALE_RUNNING_FILE_ACCESS_MS = 6 * 60 * 60 * 1000;
 const CANCEL_REQUEST_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_FILE_ACCESS_TTL_MS = 5 * 60 * 1000;
 const AUTH_DIGITS_PUBLIC_TTL_MS = 120 * 1000;
-const WORKER_INBOX_LONG_POLL_MAX_MS = 25 * 1000;
-const WORKER_INBOX_LONG_POLL_INTERVAL_MS = 350;
+const REALTIME_EVENT_VERSION = 1;
+const INTERNAL_COORDINATOR_HEADER = "x-klms-relay-coordinator";
+const INTERNAL_COORDINATOR_ACTION_PATH = "/__klms_relay_action";
+const MAX_PUBLIC_TEXT_CHARS = 2_000;
+const MAX_IDENTIFIER_CHARS = 512;
+const COMMAND_KINDS = new Set([
+  "fullSync", "coreSync", "noticeSync", "filesSync", "verify", "doctor", "report", "v2BuildState",
+]);
+const COMMAND_STATUSES = new Set(["pending", "running", "completed", "failed", "cancelled", "macUnavailable"]);
+const COMMAND_OPTION_KEYS = new Set(["updateNoticeNotes", "update_notice_notes", "dryRun", "dry_run"]);
+const RUN_LOG_COMMAND_TITLES = new Map([
+  ["fullSync", "전체 동기화"],
+  ["coreSync", "과제/시험"],
+  ["noticeSync", "공지 메모"],
+  ["filesSync", "파일 동기화"],
+  ["full", "전체 동기화"],
+  ["core", "과제/시험"],
+  ["notice", "공지 메모"],
+  ["files", "파일 동기화"],
+  ["verify", "상태 검사"],
+  ["doctor", "권한/환경 진단"],
+  ["report", "요약 갱신"],
+  ["v2BuildState", "상태 파일 재생성"],
+]);
+const ACTION_STATUSES = new Set(["pending", "running", "completed", "failed", "macUnavailable"]);
+const STATUS_PHASES = new Set(["idle", ...COMMAND_STATUSES]);
+const ITEM_ACTION_KINDS = new Set([
+  "assignmentComplete", "assignmentRestore", "assignmentHide", "assignmentUnhide",
+  "examPromote", "examIgnore", "examRestore",
+  "noticeRead", "noticeUnread", "noticeImportant", "noticeUnimportant", "noticeHide", "noticeUnhide",
+  "fileHide", "fileUnhide", "fileTrash",
+  "calendarVerify", "calendarApply", "calendarCreate", "calendarEdit", "calendarDelete", "calendarOpen",
+  "mailDashboardAdd", "mailDashboardRemove",
+]);
+const ITEM_KINDS = new Set([
+  "assignment", "assignmentCandidate", "completedAssignment", "exam", "examCandidate", "helpDesk",
+  "notice", "file", "calendar", "mailDashboard",
+]);
+const FILE_ACCESS_STATUSES = ACTION_STATUSES;
+const REALTIME_SCOPES = new Set([
+  "status", "syncData", "commands", "itemActions", "settingActions", "sharedSettings",
+  "runLogs", "fileAccess", "requestLog", "cancel",
+]);
 const SHARED_SETTING_DEFINITIONS = [
   {
     key: "KLMS_APPEARANCE_MODE",
@@ -44,6 +87,30 @@ const SHARED_SETTING_DEFINITIONS = [
     options: [],
   },
 ];
+const SYNC_SETTING_KEYS = new Set([
+  "KLMS_LOGIN_ASSIST_ENABLED",
+  "KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE",
+  "KLMS_SAFARI_BACKGROUND_WINDOW_ENABLED",
+  "KLMS_SAFARI_BACKGROUND_WINDOW_MODE",
+  "KLMS_SAFARI_REUSE_EXISTING_WINDOW_ENABLED",
+  "CALENDAR_SKIP_UNCHANGED_DESIRED",
+  "SYNC_MODE",
+  "FILE_REFRESH_MODE",
+  "FILE_SKIP_DOWNLOAD_WHEN_PREVIEW_EMPTY",
+  "FILE_KEEP_FRESH_DOWNLOADS",
+  "FILE_WEEKLY_FOLDERS_ENABLED",
+  "FILE_PRESERVE_DOWNLOAD_ARCHIVE",
+  "NOTICE_COLLAPSE_SECTIONS",
+  "NOTICE_COLLAPSE_COURSES",
+  "NOTICE_COLLAPSE_NOTICE_ITEMS",
+  "NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS",
+  "NOTICE_HIDE_HIDDEN_ITEMS",
+  "NOTICE_NATIVE_STABLE_NOOP_SKIP",
+  "NOTICE_NATIVE_ALWAYS_CAPTURE_STATE",
+  "NOTICE_NATIVE_VERIFY_STABLE_SKIP_FORMAT",
+  "NOTICE_NATIVE_PLAIN_TEXT_PASTE",
+  ...SHARED_SETTING_DEFINITIONS.map((definition) => definition.key),
+]);
 
 const defaultStatus = {
   assignments: 0,
@@ -82,7 +149,8 @@ export class RelayRealtimeRoom {
       if (request.headers.get("Upgrade") !== "websocket") {
         return sendJSON(426, { error: "websocket required" });
       }
-      const role = sanitizeRealtimeRole(url.searchParams.get("role"));
+      const role = parseRealtimeRole(url.searchParams.get("role"));
+      if (!role) return sendJSON(400, { error: "role must be client or worker" });
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       server.serializeAttachment({
@@ -90,21 +158,26 @@ export class RelayRealtimeRoom {
         connectedAt: new Date().toISOString(),
       });
       this.state.acceptWebSocket(server);
-      server.send(JSON.stringify({
+      let revision = 0;
+      try {
+        revision = await currentRelayRevision(database(this.env));
+      } catch {}
+      server.send(JSON.stringify(relayEventEnvelope({
         type: "hello",
-        role,
+        revision,
+        reason: "connected",
+        scopes: [],
+        delta: {},
+        requiresSnapshot: false,
         sentAt: new Date().toISOString(),
-      }));
+        role,
+      })));
       return new Response(null, { status: 101, webSocket: client });
     }
 
     if (request.method === "POST" && url.pathname === "/broadcast") {
       const body = await readJSON(request);
-      this.broadcast({
-        type: "changed",
-        reason: sanitizePublicText(body.reason) || "updated",
-        updatedAt: sanitizePublicText(body.updatedAt) || new Date().toISOString(),
-      });
+      this.broadcast(normalizeRelayEventEnvelope(body));
       return sendJSON(200, { ok: true, connections: this.state.getWebSockets().length });
     }
 
@@ -112,8 +185,27 @@ export class RelayRealtimeRoom {
   }
 
   async webSocketMessage(webSocket, message) {
-    if (String(message || "") === "ping") {
-      webSocket.send(JSON.stringify({ type: "pong", sentAt: new Date().toISOString() }));
+    const text = String(message || "");
+    let isPing = text === "ping";
+    if (!isPing) {
+      try {
+        isPing = JSON.parse(text)?.type === "ping";
+      } catch {}
+    }
+    if (isPing) {
+      let revision = 0;
+      try {
+        revision = await currentRelayRevision(database(this.env));
+      } catch {}
+      webSocket.send(JSON.stringify(relayEventEnvelope({
+        type: "pong",
+        revision,
+        reason: "heartbeat",
+        scopes: [],
+        delta: {},
+        requiresSnapshot: false,
+        sentAt: new Date().toISOString(),
+      })));
     }
   }
 
@@ -134,19 +226,278 @@ export class RelayRealtimeRoom {
   }
 }
 
+export class RelayMutationCoordinator {
+  constructor(_state, env) {
+    this.env = env;
+    this.mutationTail = Promise.resolve();
+  }
+
+  fetch(request) {
+    if (request.headers.get(INTERNAL_COORDINATOR_HEADER) !== "1") {
+      return sendJSON(403, { error: "coordinator requests are internal only" });
+    }
+    return this.enqueue(async () => {
+      if (new URL(request.url).pathname === INTERNAL_COORDINATOR_ACTION_PATH) {
+        try {
+          const input = await readJSON(request);
+          const result = await executeCoordinatorAction(this.env, input.action, input.payload || {});
+          return sendJSON(result.status, result.body);
+        } catch (error) {
+          if (error instanceof RelayValidationError) return sendJSON(400, { error: error.message });
+          console.error(error);
+          return sendJSON(500, { error: "coordinator action failed" });
+        }
+      }
+      return routeResponse(request, this.env, null);
+    });
+  }
+
+  enqueue(task) {
+    const result = this.mutationTail.then(task, task);
+    this.mutationTail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+}
+
+let testLocalMutationTail = Promise.resolve();
+
 export default {
   async fetch(request, env, ctx) {
-    try {
-      return await route(request, env, ctx);
-    } catch (error) {
-      console.error(error);
-      return sendJSON(500, { error: "server error" });
+    const uploadMatch = fileUploadFastPathMatch(request, env);
+    if (uploadMatch) return fileUploadFastPathResponse(request, env, ctx, uploadMatch[1]);
+    const downloadMatch = fileDownloadFastPathMatch(request, env);
+    if (downloadMatch) return fileDownloadFastPathResponse(request, env, ctx, downloadMatch[1]);
+    const fileLogClearScope = fileLogClearFastPathScope(request, env);
+    if (fileLogClearScope) return fileLogClearFastPathResponse(request, env, fileLogClearScope);
+    if (shouldCoordinateRelayRequest(request, env)) {
+      return coordinatedRelayRequest(request, env, ctx);
     }
+    return routeResponse(request, env, ctx);
   },
   async scheduled(_event, env, ctx) {
-    ctx.waitUntil(cleanupExpiredFileAccess(database(env), env));
+    ctx.waitUntil(coordinatedMaintenance(env));
   },
 };
+
+async function routeResponse(request, env, ctx) {
+  try {
+    return await route(request, env, ctx);
+  } catch (error) {
+    if (error instanceof RelayValidationError) {
+      return sendJSON(400, { error: error.message });
+    }
+    if (error instanceof RelayUnavailableError) {
+      return sendJSON(503, { error: error.message });
+    }
+    console.error(error);
+    return sendJSON(500, { error: "server error" });
+  }
+}
+
+function fileUploadFastPathMatch(request, env) {
+  if (request.method !== "PUT") return null;
+  return normalizedPath(new URL(request.url).pathname, env)
+    .match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/upload$/);
+}
+
+function fileDownloadFastPathMatch(request, env) {
+  if (request.method !== "GET") return null;
+  return normalizedPath(new URL(request.url).pathname, env)
+    .match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/download$/);
+}
+
+function fileLogClearFastPathScope(request, env) {
+  if (request.method !== "DELETE") return null;
+  const url = new URL(request.url);
+  if (normalizedPath(url.pathname, env) !== "/v1/logs") return null;
+  const scope = normalizeLogClearScope(url.searchParams.get("scope"));
+  return scope === "fileAccess" || scope === "all" ? scope : null;
+}
+
+async function fileUploadFastPathResponse(request, env, ctx, id) {
+  try {
+    if (!(await authorized(request, env, "worker"))) return sendJSON(401, { error: "unauthorized" });
+    await ensureSchema(database(env));
+    return await uploadFileAccess(env, request, id, ctx);
+  } catch (error) {
+    if (error instanceof RelayValidationError) return sendJSON(400, { error: error.message });
+    if (error instanceof RelayUnavailableError) return sendJSON(503, { error: error.message });
+    console.error(error);
+    return sendJSON(500, { error: "server error" });
+  }
+}
+
+async function fileDownloadFastPathResponse(request, env, ctx, id) {
+  try {
+    await ensureSchema(database(env));
+    return await downloadFileAccess(database(env), env, request, id, ctx);
+  } catch (error) {
+    if (error instanceof RelayValidationError) return sendJSON(400, { error: error.message });
+    if (error instanceof RelayUnavailableError) {
+      return fileAccessDownloadPage({
+        request,
+        status: 503,
+        title: "릴레이가 아직 준비되지 않았습니다",
+        message: "서버 마이그레이션과 실시간 연결 설정을 확인해 주세요.",
+      });
+    }
+    console.error(error);
+    return fileAccessDownloadPage({
+      request,
+      status: 500,
+      title: "파일을 불러오지 못했습니다",
+      message: "잠시 후 앱에서 파일 링크를 다시 요청해 주세요.",
+    });
+  }
+}
+
+async function fileLogClearFastPathResponse(request, env, scope) {
+  try {
+    if (!(await authorized(request, env, "worker"))) return sendJSON(401, { error: "unauthorized" });
+    const prepared = await coordinatedAction(env, "fileLogClearPrepare", { scope });
+    if (prepared.status !== 200) return sendJSON(prepared.status, prepared.body);
+    const candidates = Array.isArray(prepared.body.candidates) ? prepared.body.candidates : [];
+    const deletionResults = await Promise.all(candidates.map(async (candidate) => {
+      if (!candidate.objectKey) return { ...candidate, deleted: true };
+      if (!env?.RELAY_FILES || !isValidFileObjectKey(candidate.objectKey, candidate.id)) {
+        return { ...candidate, deleted: false };
+      }
+      try {
+        await env.RELAY_FILES.delete(candidate.objectKey);
+        return { ...candidate, deleted: true };
+      } catch (error) {
+        console.error("failed to delete file access object while clearing logs", candidate.objectKey, error);
+        return { ...candidate, deleted: false };
+      }
+    }));
+    const committed = await coordinatedAction(env, "fileLogClearCommit", {
+      scope,
+      candidates: deletionResults,
+    });
+    return sendJSON(committed.status, committed.body);
+  } catch (error) {
+    console.error(error);
+    return sendJSON(500, { error: "server error" });
+  }
+}
+
+function shouldCoordinateRelayRequest(request, env) {
+  if (request.method === "OPTIONS") return false;
+  const pathname = normalizedPath(new URL(request.url).pathname, env);
+  if (!pathname.startsWith("/v1/")) return false;
+  return !(request.method === "GET" && (pathname === "/v1/events" || pathname === "/v1/events/poll"));
+}
+
+function mutationCoordinator(env) {
+  if (!env?.RELAY_MUTATIONS) return null;
+  return env.RELAY_MUTATIONS.get(env.RELAY_MUTATIONS.idFromName("global"));
+}
+
+function testLocalCoordinatorEnabled(env) {
+  return env?.RELAY_TEST_LOCAL_COORDINATOR === true
+    || String(env?.RELAY_TEST_LOCAL_COORDINATOR || "").trim() === "1";
+}
+
+function enqueueTestLocalMutation(task) {
+  const result = testLocalMutationTail.then(task, task);
+  testLocalMutationTail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+function coordinatorRequest(request) {
+  const headers = new Headers(request.headers);
+  headers.set(INTERNAL_COORDINATOR_HEADER, "1");
+  return new Request(request, { headers });
+}
+
+async function coordinatedRelayRequest(request, env, ctx) {
+  const coordinator = mutationCoordinator(env);
+  if (coordinator) return coordinator.fetch(coordinatorRequest(request));
+  if (testLocalCoordinatorEnabled(env)) {
+    return enqueueTestLocalMutation(() => routeResponse(request, env, ctx));
+  }
+  return sendJSON(503, { error: "relay mutation coordinator is not configured" });
+}
+
+async function coordinatedMaintenance(env) {
+  if (!mutationCoordinator(env) && !testLocalCoordinatorEnabled(env)) {
+    throw new Error("RELAY_MUTATIONS Durable Object binding is required for scheduled cleanup.");
+  }
+  const recoveredDownloads = await coordinatedAction(env, "downloadRecoverStale", {});
+  if (recoveredDownloads.status !== 200) {
+    throw new Error(recoveredDownloads.body?.error || "stale download recovery failed");
+  }
+  const interrupted = await coordinatedAction(env, "interruptedUploadPrepare", {});
+  if (interrupted.status !== 200) throw new Error(interrupted.body?.error || "interrupted upload prepare failed");
+  const interruptedCandidates = Array.isArray(interrupted.body.candidates) ? interrupted.body.candidates : [];
+  const interruptedDeletionResults = await Promise.all(interruptedCandidates.map(async (candidate) => {
+    if (!env?.RELAY_FILES || !isValidFileObjectKey(candidate.objectKey, candidate.id)) {
+      return { ...candidate, deleted: false };
+    }
+    try {
+      await env.RELAY_FILES.delete(candidate.objectKey);
+      return { ...candidate, deleted: true };
+    } catch (error) {
+      console.error("failed to delete interrupted upload object", candidate.objectKey, error);
+      return { ...candidate, deleted: false };
+    }
+  }));
+  const interruptedCommit = await coordinatedAction(env, "interruptedUploadCommit", {
+    candidates: interruptedDeletionResults,
+  });
+  if (interruptedCommit.status !== 200) {
+    throw new Error(interruptedCommit.body?.error || "interrupted upload commit failed");
+  }
+
+  const prepared = await coordinatedAction(env, "expiredFilePrepare", {});
+  if (prepared.status !== 200) throw new Error(prepared.body?.error || "expired file prepare failed");
+  const candidates = Array.isArray(prepared.body.candidates) ? prepared.body.candidates : [];
+  const deletionResults = await Promise.all(candidates.map(async (candidate) => {
+    if (!candidate.objectKey) return { ...candidate, deleted: true };
+    if (!env?.RELAY_FILES || !isValidFileObjectKey(candidate.objectKey, candidate.id)) {
+      return { ...candidate, deleted: false };
+    }
+    try {
+      await env.RELAY_FILES.delete(candidate.objectKey);
+      return { ...candidate, deleted: true };
+    } catch (error) {
+      console.error("failed to delete expired file object", candidate.objectKey, error);
+      return { ...candidate, deleted: false };
+    }
+  }));
+  const committed = await coordinatedAction(env, "expiredFileCommit", { candidates: deletionResults });
+  if (committed.status !== 200) throw new Error(committed.body?.error || "expired file commit failed");
+  return committed.body;
+}
+
+async function coordinatedAction(env, action, payload) {
+  const coordinator = mutationCoordinator(env);
+  if (coordinator) {
+    const response = await coordinator.fetch(new Request(
+      `https://klms-sync-relay.internal${INTERNAL_COORDINATOR_ACTION_PATH}`,
+      {
+        method: "POST",
+        headers: {
+          [INTERNAL_COORDINATOR_HEADER]: "1",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action, payload }),
+      }
+    ));
+    const text = await response.text();
+    let body = {};
+    try {
+      body = text ? JSON.parse(text) : {};
+    } catch {
+      body = { error: text || "invalid coordinator response" };
+    }
+    return { status: response.status, body };
+  }
+  if (testLocalCoordinatorEnabled(env)) {
+    return enqueueTestLocalMutation(() => executeCoordinatorAction(env, action, payload));
+  }
+  return { status: 503, body: { error: "relay mutation coordinator is not configured" } };
+}
 
 async function route(request, env, ctx = null) {
   const url = new URL(request.url);
@@ -158,8 +509,13 @@ async function route(request, env, ctx = null) {
       storage: "cloudflare-d1",
       fileStorage: env?.RELAY_FILES ? "cloudflare-r2" : "not-configured",
       fileRelayLimits: publicFileAccessLimits(env),
-      configured: relayTokens(env).configured,
+      configured: relayTokens(env).configured && Boolean(mutationCoordinator(env) || testLocalCoordinatorEnabled(env)),
     });
+  }
+
+  if (request.method === "GET" && pathname === "/readyz") {
+    const readiness = await relayReadiness(env);
+    return sendJSON(readiness.ok ? 200 : 503, readiness);
   }
 
   if (request.method === "OPTIONS") {
@@ -171,7 +527,8 @@ async function route(request, env, ctx = null) {
   }
 
   if (request.method === "GET" && pathname === "/v1/events") {
-    const role = sanitizeRealtimeRole(url.searchParams.get("role"));
+    const role = parseRealtimeRole(url.searchParams.get("role"));
+    if (!role) return sendJSON(400, { error: "role must be client or worker" });
     if (!(await authorized(request, env, role === "worker" ? "worker" : "client"))) {
       return sendJSON(401, { error: "unauthorized" });
     }
@@ -183,20 +540,13 @@ async function route(request, env, ctx = null) {
   }
 
   if (request.method === "GET" && pathname === "/v1/events/poll") {
-    const role = sanitizeRealtimeRole(url.searchParams.get("role"));
-    if (!(await authorized(request, env, role === "worker" ? "worker" : "client"))) {
-      return sendJSON(401, { error: "unauthorized" });
-    }
-    const db = database(env);
-    await ensureSchema(db);
-    return sendJSON(200, await waitForRelayEventChange(db, url.searchParams));
+    return sendJSON(410, { error: "event polling removed; use /v1/events websocket" });
   }
 
   const downloadMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/download$/);
   if (request.method === "GET" && downloadMatch) {
     const db = database(env);
     await ensureSchema(db);
-    await cleanupExpiredFileAccess(db, env);
     return downloadFileAccess(db, env, request, downloadMatch[1], ctx);
   }
 
@@ -210,10 +560,9 @@ async function route(request, env, ctx = null) {
 
   const db = database(env);
   await ensureSchema(db);
-  await cleanupExpiredFileAccess(db, env);
-  await expireStaleFileAccessRequests(db);
+  await expireStaleFileAccessRequests(db, env, ctx);
   let state = await loadState(db);
-  if (await expireStaleRecords(db, state)) {
+  if (await expireStaleRecords(db, state, env, ctx)) {
     state = await loadState(db);
   }
 
@@ -221,7 +570,6 @@ async function route(request, env, ctx = null) {
     if (!(await authorized(request, env, "worker"))) {
       return sendJSON(401, { error: "unauthorized" });
     }
-    state = await waitForWorkerInboxChange(db, state, url.searchParams);
     return sendJSON(200, await workerInboxResponse(db, request, env, state));
   }
 
@@ -237,17 +585,20 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
+    validateStatusUpdateBody(body);
     const now = new Date().toISOString();
     state.status = normalizeStatus(body.status || body);
     state.running = Boolean(body.running);
     state.message = String(body.message || "");
+    const mutationStatements = [];
     if (body.latestCommand) {
-      const command = normalizeCommand(body.latestCommand, body.latestCommand.status || "running");
-      await upsertCommand(db, command);
+      const existing = state.commands.find((item) => item.id === normalizeUUIDText(body.latestCommand.id));
+      const command = workerCommandFromBody(body.latestCommand, existing);
+      mutationStatements.push(upsertCommandStatement(db, command), trimCommandsStatement(db));
       state.latestCommand = command;
     }
     state.updatedAt = now;
-    await saveMetaState(db, state, env, "state", ctx);
+    await saveMetaState(db, state, env, "state", ctx, mutationStatements);
     return sendJSON(200, relayResponse(state, { audience: "worker" }));
   }
 
@@ -295,11 +646,7 @@ async function route(request, env, ctx = null) {
       settings: normalizeSettings(body.settings),
       runLogs: normalizeRunLogs(body.runLogs),
       verifySummary: normalizeVerifySummary(body.verifySummary),
-    });
-    await touchRelayEvent(db, env, {
-      reason: "sync-data",
-      updatedAt: new Date().toISOString(),
-    }, ctx);
+    }, env, ctx);
     return sendJSON(200, await syncDataResponse(db, { limit: MAX_SYNC_ITEMS }));
   }
 
@@ -315,6 +662,8 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
+    validateOptionalISODate(body.requestedAt, "requestedAt");
+    validateTextLength(body.message, "message", MAX_PUBLIC_TEXT_CHARS);
     const cancelRequest = normalizeCancelRequest({
       requested: true,
       requestedAt: body.requestedAt || new Date().toISOString(),
@@ -324,19 +673,21 @@ async function route(request, env, ctx = null) {
     if (!cancelRequest.commandID) {
       return sendJSON(400, { error: "missing command id" });
     }
-    const pendingCancel = await cancelPendingCommandIfNeeded(db, state, cancelRequest, request, env);
+    const pendingCancel = await cancelPendingCommandIfNeeded(db, state, cancelRequest, request, env, ctx);
     if (pendingCancel) {
       return sendJSON(200, pendingCancel);
     }
-    await setCancelRequest(db, cancelRequest);
-    await appendRequestLog(db, request, {
+    const requestLogStatement = await appendRequestLogStatement(db, request, {
       action: "동기화 중단 요청",
       status: "accepted",
       message: cancelRequest.message,
     });
     state.message = "실행 중단 요청 대기 중";
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "cancel:requested", ctx);
+    await saveMetaState(db, state, env, "cancel:requested", ctx, [
+      setCancelRequestStatement(db, cancelRequest),
+      requestLogStatement,
+    ]);
     return sendJSON(202, cancelRequest);
   }
 
@@ -351,7 +702,11 @@ async function route(request, env, ctx = null) {
     if (!(await authorized(request, env, "worker"))) {
       return sendJSON(401, { error: "unauthorized" });
     }
-    await clearCancelRequest(db);
+    await touchRelayEvent(db, env, {
+      reason: "cancel:cleared",
+      updatedAt: new Date().toISOString(),
+      mutationStatements: [clearCancelRequestStatement(db)],
+    }, ctx);
     return sendJSON(200, normalizeCancelRequest({ requested: false }));
   }
 
@@ -360,17 +715,13 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
-    const command = normalizeCommand(body, "pending");
-    if (!command.kind) {
-      return sendJSON(400, { error: "missing command kind" });
-    }
+    const command = clientCommandFromBody(body);
     if (state.commands.some((item) => commandBlocksNewRequest(item, state.running))) {
       return sendJSON(409, { error: "already running or pending" });
     }
     command.summary = normalizeStatus(command.summary || state.status, "pending");
     command.loginRequired = Boolean(command.loginRequired);
-    await upsertCommand(db, command);
-    await appendRequestLog(db, request, {
+    const requestLogStatement = await appendRequestLogStatement(db, request, {
       action: `${displayCommandName(command.kind)} 요청`,
       status: "queued",
       message: "원격 실행 요청을 서버에 기록했습니다.",
@@ -380,7 +731,16 @@ async function route(request, env, ctx = null) {
     state.running = false;
     state.message = `${displayCommandName(command.kind)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "commands:pending", ctx);
+    try {
+      await saveMetaState(db, state, env, "commands:pending", ctx, [
+        upsertCommandStatement(db, command),
+        trimCommandsStatement(db),
+        requestLogStatement,
+      ]);
+    } catch (error) {
+      if (isActiveCommandConstraintError(error)) return sendJSON(409, { error: "already running or pending" });
+      throw error;
+    }
     return sendJSON(201, command);
   }
 
@@ -411,14 +771,19 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
-    const command = normalizeCommand({ ...body, id: commandMatch[1] }, body.status || "pending");
-    await upsertCommand(db, command);
+    const commandID = normalizeUUIDText(commandMatch[1]);
+    const current = state.commands.find((item) => item.id === commandID);
+    if (!current) return sendJSON(404, { error: "command not found" });
+    const command = applyWorkerCommandPatch(current, body);
     state.latestCommand = command;
     state.status = normalizeStatus(command.summary || state.status, command.status);
     state.running = command.status === "running";
     state.message = `${displayCommandName(command.kind)} · ${displayStatus(command.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, `commands:${command.status || "updated"}`, ctx);
+    await saveMetaState(db, state, env, `commands:${command.status || "updated"}`, ctx, [
+      upsertCommandStatement(db, command),
+      trimCommandsStatement(db),
+    ]);
     return sendJSON(200, command);
   }
 
@@ -427,9 +792,16 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
-    const action = normalizeItemAction(body, "pending");
-    if (!action.action || !action.itemID || !action.itemKind) {
-      return sendJSON(400, { error: "missing item action target" });
+    const action = clientItemActionFromBody(body, itemActionIdempotencyKey(request, body));
+    if (!ITEM_ACTION_KINDS.has(action.action) || !action.itemID || !ITEM_KINDS.has(action.itemKind)) {
+      return sendJSON(400, { error: "unsupported item action target" });
+    }
+    const replayedAction = await getItemActionByIdempotencyKey(db, actionIdempotencyKey(action));
+    if (replayedAction) {
+      if (!sameItemActionIntent(replayedAction, action)) {
+        return sendJSON(409, { error: "idempotency key was already used for a different item action" });
+      }
+      return sendJSON(200, replayedAction);
     }
     const syncPatch = await applyItemActionToStoredSyncData(db, state, action);
     const serverApplied = isServerDisplayOnlyItemAction(action.action) || isClientCompletedCalendarAction(action);
@@ -444,8 +816,7 @@ async function route(request, env, ctx = null) {
       action.message = "서버 화면에는 바로 반영했습니다. Mac 앱이 켜지면 실제 앱에도 적용합니다.";
       action.updatedAt = new Date().toISOString();
     }
-    await upsertItemAction(db, action);
-    await appendRequestLog(db, request, {
+    const requestLogStatement = await appendRequestLogStatement(db, request, {
       action: displayItemActionName(action.action),
       status: serverSnapshotUpdated ? "updated" : "queued",
       message: action.message || action.itemTitle || action.itemID,
@@ -456,7 +827,19 @@ async function route(request, env, ctx = null) {
         ? `${displayItemActionName(action.action)} 서버 화면 반영 완료 · Mac 적용 대기`
       : `${displayItemActionName(action.action)} 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, serverSnapshotUpdated ? "item-actions:server-state" : "item-actions:pending", ctx);
+    await saveMetaState(
+      db,
+      state,
+      env,
+      serverSnapshotUpdated ? "item-actions:server-state" : "item-actions:pending",
+      ctx,
+      [
+        ...(syncPatch.mutationStatements || []),
+        upsertItemActionStatement(db, action),
+        trimItemActionsStatement(db),
+        requestLogStatement,
+      ]
+    );
     return sendJSON(201, action);
   }
 
@@ -487,11 +870,16 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
-    const action = normalizeItemAction({ ...body, id: itemActionMatch[1] }, body.status || "pending");
-    await upsertItemAction(db, action);
+    const actionID = normalizeUUIDText(itemActionMatch[1]);
+    const current = state.itemActions.find((item) => item.id === actionID);
+    if (!current) return sendJSON(404, { error: "item action not found" });
+    const action = applyWorkerItemActionPatch(current, body);
     state.message = `${displayItemActionName(action.action)} · ${displayStatus(action.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, `item-actions:${action.status || "updated"}`, ctx);
+    await saveMetaState(db, state, env, `item-actions:${action.status || "updated"}`, ctx, [
+      upsertItemActionStatement(db, action),
+      trimItemActionsStatement(db),
+    ]);
     return sendJSON(200, action);
   }
 
@@ -500,7 +888,7 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
-    const action = normalizeSettingAction(body, "pending");
+    const action = clientSettingActionFromBody(body);
     if (!action.key) {
       return sendJSON(400, { error: "missing setting key" });
     }
@@ -517,8 +905,8 @@ async function route(request, env, ctx = null) {
         : "서버 화면은 이미 같은 값입니다. Mac 앱이 켜지면 실제 동기화 설정을 다시 확인합니다.";
       action.updatedAt = new Date().toISOString();
     }
-    await upsertSettingAction(db, action);
-    await appendRequestLog(db, request, {
+    const settingActionStatement = await upsertSettingActionStatement(db, action);
+    const requestLogStatement = await appendRequestLogStatement(db, request, {
       action: `${action.title || action.key} 설정 변경`,
       status: serverSnapshotUpdated ? "updated" : "queued",
       message: serverSnapshotUpdated
@@ -531,7 +919,11 @@ async function route(request, env, ctx = null) {
       ? `${action.title || action.key} 서버 화면 반영 완료 · Mac 적용 대기`
       : `${action.title || action.key} 설정 변경 요청 대기 중`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "setting-actions:pending", ctx);
+    await saveMetaState(db, state, env, "setting-actions:pending", ctx, [
+      ...(syncPatch.mutationStatements || []),
+      settingActionStatement,
+      requestLogStatement,
+    ]);
     return sendJSON(201, action);
   }
 
@@ -562,11 +954,15 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
-    const action = normalizeSettingAction({ ...body, id: settingActionMatch[1] }, body.status || "pending");
-    await upsertSettingAction(db, action);
+    const actionID = normalizeUUIDText(settingActionMatch[1]);
+    const current = state.settingActions.find((item) => item.id === actionID);
+    if (!current) return sendJSON(404, { error: "setting action not found" });
+    const action = applyWorkerSettingActionPatch(current, body);
     state.message = `${action.title || action.key} · ${displayStatus(action.status)}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, `setting-actions:${action.status || "updated"}`, ctx);
+    await saveMetaState(db, state, env, `setting-actions:${action.status || "updated"}`, ctx, [
+      await upsertSettingActionStatement(db, action),
+    ]);
     return sendJSON(200, action);
   }
 
@@ -575,7 +971,7 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const body = await readJSON(request);
-    const fileRequest = normalizeFileAccessRequest(body, "pending");
+    const fileRequest = clientFileAccessFromBody(body);
     if (!fileRequest.itemID || fileRequest.itemKind !== "file") {
       return sendJSON(400, { error: "missing file target" });
     }
@@ -587,15 +983,18 @@ async function route(request, env, ctx = null) {
     if (pendingRequests.length >= fileAccessLimits(env).maxPendingRequests) {
       return sendJSON(429, { error: "file access queue limit reached" });
     }
-    await upsertFileAccessRequest(db, fileRequest);
-    await appendRequestLog(db, request, {
+    const requestLogStatement = await appendRequestLogStatement(db, request, {
       action: "파일 열기 요청",
       status: "queued",
       message: fileRequest.itemTitle || fileRequest.itemID,
     });
     state.message = `파일 열기 요청 대기 중: ${fileRequest.itemTitle || fileRequest.itemID}`;
     state.updatedAt = new Date().toISOString();
-    await saveMetaState(db, state, env, "file-access:pending", ctx);
+    await saveMetaState(db, state, env, "file-access:pending", ctx, [
+      upsertFileAccessRequestStatement(db, fileRequest),
+      trimFileAccessRequestsStatement(db),
+      requestLogStatement,
+    ]);
     return sendJSON(201, fileAccessResponseItem(fileRequest, request, env));
   }
 
@@ -641,6 +1040,7 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const scope = normalizeLogClearScope(url.searchParams.get("scope"));
+    if (!scope) return sendJSON(400, { error: "invalid log clear scope" });
     return sendJSON(200, await clearDisplayLogs(db, env, state, scope, ctx));
   }
 
@@ -649,6 +1049,7 @@ async function route(request, env, ctx = null) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const scope = normalizeLogClearScope(url.searchParams.get("scope"));
+    if (!scope) return sendJSON(400, { error: "invalid log clear scope" });
     if (scope === "fileAccess" && await hasActiveFileAccessWork(db)) {
       return sendJSON(409, { error: "active file access request is still running" });
     }
@@ -665,18 +1066,22 @@ async function route(request, env, ctx = null) {
     if (!current) {
       return sendJSON(404, { error: "file request not found" });
     }
-    const fileRequest = normalizeFileAccessRequest({
-      ...current,
-      ...body,
-      id: fileAccessMatch[1],
-      itemID: body.itemID || body.itemId || current.itemID,
-      itemKind: body.itemKind || current.itemKind,
-      itemTitle: body.itemTitle || current.itemTitle,
-    }, body.status || current.status || "pending");
-    await upsertFileAccessRequest(db, fileRequest);
+    const internalLease = await db.prepare(`
+      SELECT upload_claim, object_key
+      FROM file_access_requests
+      WHERE id = ?
+    `).bind(current.id).first();
+    if (internalLease?.object_key && internalLease?.upload_claim) {
+      return sendJSON(409, { error: "file request is being deleted" });
+    }
+    const fileRequest = applyWorkerFileAccessPatch(current, body);
     await touchRelayEvent(db, env, {
       reason: `file-access:${fileRequest.status}`,
       updatedAt: fileRequest.updatedAt,
+      mutationStatements: [
+        upsertFileAccessRequestStatement(db, fileRequest),
+        trimFileAccessRequestsStatement(db),
+      ],
     }, ctx);
     return sendJSON(200, fileAccessResponseItem(fileRequest, request, env));
   }
@@ -686,7 +1091,7 @@ async function route(request, env, ctx = null) {
     if (!(await authorized(request, env, "worker"))) {
       return sendJSON(401, { error: "unauthorized" });
     }
-    return uploadFileAccess(db, env, request, fileUploadMatch[1], ctx);
+    return uploadFileAccess(env, request, fileUploadMatch[1], ctx);
   }
 
   return sendJSON(404, { error: "not found" });
@@ -769,119 +1174,6 @@ async function workerInboxResponse(db, request, env, state) {
   };
 }
 
-async function waitForWorkerInboxChange(db, state, searchParams) {
-  const since = String(searchParams.get("since") || "").trim();
-  const sinceEpoch = Date.parse(since);
-  const waitSeconds = boundedInt(searchParams.get("waitSeconds"), 0, 0, 25);
-  const waitMs = boundedInt(
-    searchParams.get("waitMs"),
-    waitSeconds * 1000,
-    0,
-    WORKER_INBOX_LONG_POLL_MAX_MS
-  );
-  if (waitMs <= 0 || !Number.isFinite(sinceEpoch)) {
-    return state;
-  }
-  if (Date.parse(state.updatedAt || "") > sinceEpoch || await hasWorkerInboxWork(db, state)) {
-    return state;
-  }
-
-  const deadline = Date.now() + waitMs;
-  let current = state;
-  while (Date.now() < deadline) {
-    await sleep(Math.min(WORKER_INBOX_LONG_POLL_INTERVAL_MS, Math.max(25, deadline - Date.now())));
-    current = await loadState(db);
-    if (Date.parse(current.updatedAt || "") > sinceEpoch || await hasWorkerInboxWork(db, current)) {
-      return current;
-    }
-  }
-  return current;
-}
-
-async function waitForRelayEventChange(db, searchParams) {
-  const since = String(searchParams.get("since") || "").trim();
-  const sinceEpoch = Date.parse(since);
-  const waitSeconds = boundedInt(searchParams.get("waitSeconds"), 0, 0, 25);
-  const waitMs = boundedInt(
-    searchParams.get("waitMs"),
-    waitSeconds * 1000,
-    0,
-    WORKER_INBOX_LONG_POLL_MAX_MS
-  );
-  let current = await relayEventSnapshot(db);
-  if (waitMs <= 0 || !Number.isFinite(sinceEpoch) || Date.parse(current.updatedAt || "") > sinceEpoch) {
-    return current;
-  }
-
-  const deadline = Date.now() + waitMs;
-  while (Date.now() < deadline) {
-    await sleep(Math.min(WORKER_INBOX_LONG_POLL_INTERVAL_MS, Math.max(25, deadline - Date.now())));
-    current = await relayEventSnapshot(db);
-    if (Date.parse(current.updatedAt || "") > sinceEpoch) {
-      return current;
-    }
-  }
-  return current;
-}
-
-async function relayEventSnapshot(db) {
-  const [eventUpdatedAt, eventReason, stateUpdatedAt, syncDataUpdatedAt] = await Promise.all([
-    getMeta(db, "relayEventUpdatedAt"),
-    getMeta(db, "relayEventReason"),
-    getMeta(db, "updatedAt"),
-    getMeta(db, "syncDataUpdatedAt"),
-  ]);
-  return {
-    type: "changed",
-    reason: sanitizePublicText(eventReason) || "state",
-    updatedAt: newestTimestamp([
-      eventUpdatedAt,
-      stateUpdatedAt,
-      syncDataUpdatedAt,
-    ]) || new Date().toISOString(),
-  };
-}
-
-function newestTimestamp(values) {
-  let newest = "";
-  let newestEpoch = Number.NEGATIVE_INFINITY;
-  for (const value of values) {
-    const text = String(value || "").trim();
-    const epoch = Date.parse(text);
-    if (Number.isFinite(epoch) && epoch > newestEpoch) {
-      newest = text;
-      newestEpoch = epoch;
-    }
-  }
-  return newest;
-}
-
-async function hasWorkerInboxWork(db, state) {
-  if (state.commands.some((command) => command.status === "pending")) {
-    return true;
-  }
-  if (state.itemActions.some((action) => action.status === "pending")) {
-    return true;
-  }
-  if ((state.settingActions || []).some((action) => action.status === "pending")) {
-    return true;
-  }
-  const cancelRequest = await loadCancelRequest(db);
-  if (cancelRequest.requested) {
-    return true;
-  }
-  const pendingFileAccess = await loadFileAccessRequests(db, {
-    statuses: ["pending"],
-    order: "created",
-    limit: 1,
-  });
-  return pendingFileAccess.length > 0;
-}
-
-function sleep(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
 function database(env) {
   if (!env?.RELAY_DB) {
     throw new Error("RELAY_DB D1 binding is required.");
@@ -931,8 +1223,9 @@ async function constantTimeEqual(expected, actual) {
   return diff === 0;
 }
 
-function sanitizeRealtimeRole(value) {
-  return String(value || "").trim().toLowerCase() === "worker" ? "worker" : "client";
+function parseRealtimeRole(value) {
+  const role = String(value || "").trim().toLowerCase();
+  return role === "client" || role === "worker" ? role : null;
 }
 
 function realtimeRoom(env) {
@@ -961,22 +1254,106 @@ async function notifyRelayChange(env, payload = {}) {
 async function touchRelayEvent(db, env, payload = {}, ctx = null) {
   const updatedAt = sanitizePublicText(payload.updatedAt) || new Date().toISOString();
   const reason = sanitizePublicText(payload.reason) || "updated";
-  if (db) {
-    await db.batch([
-      setMetaStatement(db, "relayEventUpdatedAt", updatedAt),
-      setMetaStatement(db, "relayEventReason", reason),
-    ]);
-  }
-  const notifyPromise = notifyRelayChange(env, {
-    ...payload,
-    reason,
-    updatedAt,
-  });
+  const event = db
+    ? await commitRelayEvent(db, reason, updatedAt, payload.mutationStatements || [])
+    : relayEventEnvelope({
+      type: "changed",
+      revision: 0,
+      reason,
+      scopes: relayScopesForReason(reason),
+      delta: {},
+      requiresSnapshot: relayEventRequiresSnapshot(reason),
+      sentAt: updatedAt,
+    });
+  const notifyPromise = notifyRelayChange(env, event);
   if (ctx?.waitUntil) {
     ctx.waitUntil(notifyPromise);
   } else {
     await notifyPromise;
   }
+  return event;
+}
+
+async function commitRelayEvent(db, reason, updatedAt, mutationStatements = []) {
+  const revisionStatement = db.prepare(`
+    INSERT INTO meta(key, value)
+    VALUES('relayRevision', '1')
+    ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1
+    RETURNING value
+  `);
+  const results = await db.batch([
+    ...mutationStatements,
+    setMetaStatement(db, "relayEventUpdatedAt", updatedAt),
+    setMetaStatement(db, "relayEventReason", reason),
+    revisionStatement,
+  ]);
+  const revisionResult = results[results.length - 1];
+  const revisionValue = revisionResult?.results?.[0]?.value
+    ?? revisionResult?.result?.[0]?.value
+    ?? await getMeta(db, "relayRevision");
+  const revision = Math.max(0, Number.parseInt(String(revisionValue || "0"), 10) || 0);
+  return relayEventEnvelope({
+    type: "changed",
+    revision,
+    reason,
+    scopes: relayScopesForReason(reason),
+    delta: {},
+    requiresSnapshot: relayEventRequiresSnapshot(reason),
+    sentAt: updatedAt,
+  });
+}
+
+async function currentRelayRevision(db) {
+  const revision = Number.parseInt(String(await getMeta(db, "relayRevision") || "0"), 10);
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
+}
+
+function relayEventEnvelope({ type, revision, reason, scopes = [], delta = {}, requiresSnapshot = false, sentAt, role }) {
+  const event = {
+    version: REALTIME_EVENT_VERSION,
+    type,
+    revision,
+    eventID: crypto.randomUUID(),
+    reason,
+    scopes: scopes.filter((scope) => REALTIME_SCOPES.has(scope)),
+    delta: delta && typeof delta === "object" && !Array.isArray(delta) ? delta : {},
+    requiresSnapshot: Boolean(requiresSnapshot),
+    sentAt: sentAt || new Date().toISOString(),
+    updatedAt: sentAt || new Date().toISOString(),
+  };
+  if (role) event.role = role;
+  return event;
+}
+
+function normalizeRelayEventEnvelope(raw) {
+  const reason = sanitizePublicText(raw?.reason) || "updated";
+  const revision = Math.max(0, Number.parseInt(String(raw?.revision || "0"), 10) || 0);
+  return relayEventEnvelope({
+    type: raw?.type === "hello" || raw?.type === "pong" ? raw.type : "changed",
+    revision,
+    reason,
+    scopes: Array.isArray(raw?.scopes) ? raw.scopes : relayScopesForReason(reason),
+    delta: raw?.delta,
+    requiresSnapshot: raw?.requiresSnapshot ?? relayEventRequiresSnapshot(reason),
+    sentAt: sanitizePublicText(raw?.sentAt || raw?.updatedAt) || new Date().toISOString(),
+  });
+}
+
+function relayScopesForReason(reason) {
+  if (reason === "sync-data") return ["status", "syncData", "runLogs"];
+  if (reason.startsWith("sync-data:")) return ["syncData", "runLogs"];
+  if (reason.startsWith("commands:")) return ["status", "commands", "requestLog"];
+  if (reason.startsWith("item-actions:")) return ["status", "syncData", "itemActions", "requestLog"];
+  if (reason.startsWith("setting-actions:")) return ["status", "syncData", "settingActions", "requestLog"];
+  if (reason === "shared-settings") return ["sharedSettings", "syncData", "requestLog"];
+  if (reason.startsWith("file-access:")) return ["fileAccess", "requestLog"];
+  if (reason.startsWith("logs")) return ["commands", "itemActions", "settingActions", "fileAccess", "requestLog", "runLogs"];
+  if (reason.startsWith("cancel:")) return ["status", "commands", "cancel", "requestLog"];
+  return ["status"];
+}
+
+function relayEventRequiresSnapshot(reason) {
+  return reason === "sync-data";
 }
 
 function normalizedPath(pathname, env) {
@@ -1000,22 +1377,108 @@ function normalizedPath(pathname, env) {
 }
 
 async function ensureSchema(db) {
-  void db;
+  if (schemaReady) return;
+  const schema = await inspectRelaySchema(db);
+  if (!schema.ok) throw new RelayUnavailableError("relay database migrations are incomplete");
   schemaReady = true;
 }
 
+async function inspectRelaySchema(db) {
+  try {
+    const [tablesResult, indexesResult, fileColumnsResult, actionColumnsResult] = await Promise.all([
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all(),
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all(),
+      db.prepare("PRAGMA table_info(file_access_requests)").all(),
+      db.prepare("PRAGMA table_info(item_actions)").all(),
+    ]);
+    const tables = new Set((tablesResult.results || []).map((row) => row.name));
+    const indexes = new Set((indexesResult.results || []).map((row) => row.name));
+    const fileColumns = new Set((fileColumnsResult.results || []).map((row) => row.name));
+    const actionColumns = new Set((actionColumnsResult.results || []).map((row) => row.name));
+    return {
+      ok: [
+        "meta", "commands", "item_actions", "file_access_requests", "file_access_quota",
+        "file_download_reservations",
+      ]
+        .every((name) => tables.has(name))
+        && ["upload_claim", "upload_claimed_at", "pending_object_key", "reserved_upload_bytes", "reserved_upload_quota_date"]
+          .every((name) => fileColumns.has(name))
+        && actionColumns.has("idempotency_key")
+        && ["commands_one_active_idx", "item_actions_idempotency_key_idx"].every((name) => indexes.has(name)),
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
+async function relayReadiness(env) {
+  let realtime = false;
+  let coordinator = false;
+  try {
+    realtime = Boolean(realtimeRoom(env));
+  } catch {}
+  try {
+    coordinator = Boolean(mutationCoordinator(env) || testLocalCoordinatorEnabled(env));
+  } catch {}
+  const checks = {
+    tokens: relayTokens(env).configured,
+    database: Boolean(env?.RELAY_DB),
+    schema: false,
+    fileStorage: Boolean(env?.RELAY_FILES),
+    realtime,
+    coordinator,
+  };
+  if (checks.database) checks.schema = (await inspectRelaySchema(env.RELAY_DB)).ok;
+  return {
+    ok: Object.values(checks).every(Boolean),
+    service: "klms-relay",
+    storage: "cloudflare-d1",
+    checks,
+  };
+}
+
 async function loadState(db) {
-  const [status, latestCommand, running, message, updatedAt, commands, itemActions, settingActions] = await Promise.all([
-    getJSONMeta(db, "status", defaultStatus),
-    getJSONMeta(db, "latestCommand", null),
-    getMeta(db, "running"),
-    getMeta(db, "message"),
-    getMeta(db, "updatedAt"),
-    loadCommands(db),
-    loadItemActions(db),
-    loadSettingActions(db),
+  const [metaResult, commandResult, itemActionResult] = await db.batch([
+    db.prepare(`
+      SELECT key, value
+      FROM meta
+      WHERE key IN (
+        'status', 'latestCommand', 'running', 'message', 'updatedAt',
+        'settingActions', 'relayRevision'
+      )
+    `),
+    db.prepare(`
+      SELECT id, kind, status, created_at, updated_at, last_exit_code, login_required, summary_json, options_json
+      FROM commands
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).bind(MAX_COMMANDS * 2),
+    db.prepare(`
+      SELECT id, idempotency_key, action, item_id, item_kind, item_title, status, created_at, updated_at, message
+      FROM item_actions
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).bind(MAX_ITEM_ACTIONS * 2),
   ]);
+  const meta = new Map((metaResult.results || []).map((row) => [row.key, row.value]));
+  const status = parseJSON(meta.get("status"), defaultStatus);
+  const latestCommand = parseJSON(meta.get("latestCommand"), null);
+  const running = meta.get("running");
+  const message = meta.get("message");
+  const updatedAt = meta.get("updatedAt");
+  const commands = deduplicateByID((commandResult.results || []).map(rowToCommand).filter(Boolean), MAX_COMMANDS);
+  const itemActions = deduplicateByID((itemActionResult.results || []).map(rowToItemAction).filter(Boolean), MAX_ITEM_ACTIONS);
+  const rawSettingActions = parseJSON(meta.get("settingActions"), []);
+  const settingActions = deduplicateByID(
+    (Array.isArray(rawSettingActions) ? rawSettingActions : [])
+      .filter(isValidStoredSettingAction)
+      .map((item) => normalizeSettingAction(item, item?.status || "pending")),
+    MAX_SETTING_ACTIONS
+  );
+  const revisionValue = Number.parseInt(String(meta.get("relayRevision") || "0"), 10);
+  const revision = Number.isSafeInteger(revisionValue) && revisionValue >= 0 ? revisionValue : 0;
   const storedLatest = latestCommand
+    && isValidStoredCommand(latestCommand)
     ? normalizeCommand(latestCommand, latestCommand.status || "pending")
     : null;
   const newestStoredCommand = commands[0] || null;
@@ -1035,33 +1498,24 @@ async function loadState(db) {
     running: running === "true",
     message: message || "서버 준비됨",
     updatedAt: updatedAt || new Date().toISOString(),
+    revision,
   };
-}
-
-async function loadCommands(db) {
-  const result = await db.prepare(`
-    SELECT id, kind, status, created_at, updated_at, last_exit_code, login_required, summary_json, options_json
-    FROM commands
-    ORDER BY updated_at DESC
-    LIMIT ?
-  `).bind(MAX_COMMANDS * 2).all();
-  return deduplicateByID((result.results || []).map(rowToCommand), MAX_COMMANDS);
 }
 
 async function loadItemActions(db) {
   const result = await db.prepare(`
-    SELECT id, action, item_id, item_kind, item_title, status, created_at, updated_at, message
+    SELECT id, idempotency_key, action, item_id, item_kind, item_title, status, created_at, updated_at, message
     FROM item_actions
     ORDER BY updated_at DESC
     LIMIT ?
   `).bind(MAX_ITEM_ACTIONS * 2).all();
-  return deduplicateByID((result.results || []).map(rowToItemAction), MAX_ITEM_ACTIONS);
+  return deduplicateByID((result.results || []).map(rowToItemAction).filter(Boolean), MAX_ITEM_ACTIONS);
 }
 
 async function loadSettingActions(db) {
   const raw = parseJSON(await getMeta(db, "settingActions"), []);
   return deduplicateByID(
-    (Array.isArray(raw) ? raw : []).map((item) => normalizeSettingAction(item, item?.status || "pending")),
+    (Array.isArray(raw) ? raw : []).filter(isValidStoredSettingAction).map((item) => normalizeSettingAction(item, item?.status || "pending")),
     MAX_SETTING_ACTIONS
   );
 }
@@ -1072,6 +1526,7 @@ function deduplicateByID(items, limit) {
     .slice()
     .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
     .filter((item) => {
+      if (!item) return false;
       const id = String(item.id || "").toLowerCase();
       if (!id || seen.has(id)) {
         return false;
@@ -1083,27 +1538,25 @@ function deduplicateByID(items, limit) {
     .slice(0, limit);
 }
 
-async function saveMetaState(db, state, env = null, reason = "state", ctx = null) {
-  await db.batch([
+async function saveMetaState(db, state, env = null, reason = "state", ctx = null, mutationStatements = []) {
+  const updatedAt = String(state.updatedAt || new Date().toISOString());
+  const event = await commitRelayEvent(db, reason, updatedAt, [
+    ...mutationStatements,
     setMetaStatement(db, "status", JSON.stringify(normalizeStatus(state.status || defaultStatus))),
     setMetaStatement(db, "latestCommand", JSON.stringify(state.latestCommand || null)),
     setMetaStatement(db, "running", state.running ? "true" : "false"),
     setMetaStatement(db, "message", String(state.message || "")),
-    setMetaStatement(db, "updatedAt", String(state.updatedAt || new Date().toISOString())),
+    setMetaStatement(db, "updatedAt", updatedAt),
   ]);
-  await touchRelayEvent(db, env, {
-    reason,
-    updatedAt: state.updatedAt || new Date().toISOString(),
-  }, ctx);
+  state.revision = event.revision;
+  const notifyPromise = notifyRelayChange(env, event);
+  if (ctx?.waitUntil) ctx.waitUntil(notifyPromise);
+  else await notifyPromise;
 }
 
 async function getMeta(db, key) {
   const row = await db.prepare("SELECT value FROM meta WHERE key = ?").bind(key).first();
   return row?.value;
-}
-
-async function getJSONMeta(db, key, fallback) {
-  return parseJSON(await getMeta(db, key), fallback);
 }
 
 function setMetaStatement(db, key, value) {
@@ -1114,8 +1567,8 @@ function setMetaStatement(db, key, value) {
   `).bind(key, String(value));
 }
 
-async function upsertCommand(db, command) {
-  await db.prepare(`
+function upsertCommandStatement(db, command) {
+  return db.prepare(`
     INSERT INTO commands (
       id, kind, status, created_at, updated_at, last_exit_code, login_required, summary_json, options_json
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1138,24 +1591,23 @@ async function upsertCommand(db, command) {
     command.loginRequired ? 1 : 0,
     JSON.stringify(normalizeStatus(command.summary || defaultStatus, command.status)),
     JSON.stringify(normalizeCommandOptions(command.options))
-  ).run();
-  await trimCommands(db);
+  );
 }
 
-async function trimCommands(db) {
-  await db.prepare(`
+function trimCommandsStatement(db) {
+  return db.prepare(`
     DELETE FROM commands
     WHERE id NOT IN (
       SELECT id FROM commands ORDER BY updated_at DESC LIMIT ?
     )
-  `).bind(MAX_COMMANDS).run();
+  `).bind(MAX_COMMANDS);
 }
 
-async function upsertItemAction(db, action) {
-  await db.prepare(`
+function upsertItemActionStatement(db, action) {
+  return db.prepare(`
     INSERT INTO item_actions (
-      id, action, item_id, item_kind, item_title, status, created_at, updated_at, message
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, idempotency_key, action, item_id, item_kind, item_title, status, created_at, updated_at, message
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       action = excluded.action,
       item_id = excluded.item_id,
@@ -1167,6 +1619,7 @@ async function upsertItemAction(db, action) {
       message = excluded.message
   `).bind(
     action.id,
+    actionIdempotencyKey(action) || null,
     action.action,
     action.itemID,
     action.itemKind,
@@ -1175,14 +1628,17 @@ async function upsertItemAction(db, action) {
     action.createdAt,
     action.updatedAt,
     action.message
-  ).run();
-  await trimItemActions(db);
+  );
 }
 
 async function upsertSettingAction(db, action) {
+  await (await upsertSettingActionStatement(db, action)).run();
+}
+
+async function upsertSettingActionStatement(db, action) {
   const current = await loadSettingActions(db);
   const next = deduplicateByID([action, ...current], MAX_SETTING_ACTIONS);
-  await setMetaStatement(db, "settingActions", JSON.stringify(next)).run();
+  return setMetaStatement(db, "settingActions", JSON.stringify(next));
 }
 
 async function requestLogResponse(db, limit = 20) {
@@ -1196,11 +1652,15 @@ async function requestLogResponse(db, limit = 20) {
 }
 
 async function appendRequestLog(db, request, raw) {
+  await (await appendRequestLogStatement(db, request, raw)).run();
+}
+
+async function appendRequestLogStatement(db, request, raw) {
   const entry = normalizeRequestLogEntry(request, raw);
   const entries = [entry, ...(await loadRequestLog(db)).filter((item) => item.id !== entry.id)]
     .sort((lhs, rhs) => Date.parse(rhs.createdAt) - Date.parse(lhs.createdAt))
     .slice(0, MAX_REQUEST_LOG_ENTRIES);
-  await setMetaStatement(db, "requestLog", JSON.stringify(entries)).run();
+  return setMetaStatement(db, "requestLog", JSON.stringify(entries));
 }
 
 async function loadRequestLog(db) {
@@ -1299,11 +1759,13 @@ async function hasActiveFileAccessWork(db) {
     order: "created",
     limit: 1,
   });
-  return activeFileAccess.length > 0;
+  if (activeFileAccess.length > 0) return true;
+  return Boolean(await db.prepare("SELECT token FROM file_download_reservations LIMIT 1").first());
 }
 
 function normalizeLogClearScope(value) {
   const text = String(value || "").trim().toLowerCase();
+  if (!text || text === "all") return "all";
   if (["requestlog", "request-log", "request", "server", "serverrequest", "server-request"].includes(text)) {
     return "requestLog";
   }
@@ -1313,7 +1775,7 @@ function normalizeLogClearScope(value) {
   if (["fileaccess", "file-access", "file", "files"].includes(text)) {
     return "fileAccess";
   }
-  return "all";
+  return null;
 }
 
 async function clearDisplayLogs(db, env, state, scope = "all", ctx = null) {
@@ -1358,38 +1820,30 @@ async function clearDisplayLogs(db, env, state, scope = "all", ctx = null) {
       setMetaStatement(db, "displaySettingActionLogClearedAt", clearedAt)
     );
   }
-  if (statements.length > 0) {
-    await db.batch(statements);
-  }
   await touchRelayEvent(db, env, {
     reason: `logs-display:${scope}`,
     updatedAt: clearedAt,
+    mutationStatements: statements,
   }, ctx);
   return result;
 }
 
-async function clearRelayLogs(db, env, state, scope = "all", ctx = null) {
+async function clearRelayLogs(db, env, state, scope = "all", ctx = null, options = {}) {
   const clearedAt = new Date().toISOString();
   const shouldClearAll = scope === "all";
   const shouldClearCommands = shouldClearAll || scope === "command";
   const shouldClearRequestLog = shouldClearAll || scope === "requestLog";
   const shouldClearFileAccess = shouldClearAll || scope === "fileAccess";
-  const [fileAccessRows, requestLog] = await Promise.all([
-    shouldClearFileAccess ? loadFileAccessRequests(db, { limit: MAX_FILE_ACCESS_REQUESTS }) : Promise.resolve([]),
-    shouldClearRequestLog ? loadRequestLog(db) : Promise.resolve([]),
-  ]);
-  const fileAccessRowsToClear = shouldClearAll
-    ? fileAccessRows.filter((request) => request.status !== "pending" && request.status !== "running")
-    : fileAccessRows;
-  for (const fileRequest of fileAccessRowsToClear) {
-    if (!env?.RELAY_FILES || !fileRequest.objectKey) {
-      continue;
-    }
-    try {
-      await env.RELAY_FILES.delete(fileRequest.objectKey);
-    } catch (error) {
-      console.error("failed to delete file access object while clearing logs", fileRequest.objectKey, error);
-    }
+  const preparedFileDeletions = Array.isArray(options.fileDeletionCandidates)
+    ? options.fileDeletionCandidates
+    : null;
+  if (shouldClearFileAccess && !preparedFileDeletions) {
+    throw new Error("file access logs require two-phase deletion preparation");
+  }
+  const requestLog = shouldClearRequestLog ? await loadRequestLog(db) : [];
+  const removableFileAccessIDs = [];
+  if (preparedFileDeletions) {
+    removableFileAccessIDs.push(...preparedFileDeletions.filter((item) => item.deleted).map((item) => item.id));
   }
 
   const result = {
@@ -1403,7 +1857,7 @@ async function clearRelayLogs(db, env, state, scope = "all", ctx = null) {
     settingActions: shouldClearAll
       ? state.settingActions.filter((action) => action.status !== "pending" && action.status !== "running").length
       : 0,
-    fileAccessRequests: fileAccessRowsToClear.length,
+    fileAccessRequests: removableFileAccessIDs.length,
     requestLogEntries: requestLog.length,
   };
 
@@ -1422,17 +1876,31 @@ async function clearRelayLogs(db, env, state, scope = "all", ctx = null) {
     );
   }
   if (shouldClearFileAccess) {
-    statements.push(shouldClearAll
-      ? db.prepare("DELETE FROM file_access_requests WHERE status NOT IN ('pending', 'running')")
-      : db.prepare("DELETE FROM file_access_requests"));
+    statements.push(...preparedFileDeletions.map((candidate) => (
+      candidate.deleted
+        ? db.prepare(`
+          DELETE FROM file_access_requests
+          WHERE id = ?
+            AND upload_claim = ?
+            AND status NOT IN ('pending', 'running')
+            AND object_key IS ?
+            AND updated_at = ?
+            AND pending_object_key IS NULL
+            AND reserved_upload_bytes = 0
+            AND NOT EXISTS (
+              SELECT 1 FROM file_download_reservations WHERE request_id = file_access_requests.id
+            )
+        `).bind(candidate.id, candidate.deleteClaim, candidate.objectKey, candidate.updatedAt)
+        : db.prepare(`
+          UPDATE file_access_requests
+          SET upload_claim = NULL, upload_claimed_at = NULL
+          WHERE id = ? AND upload_claim = ?
+        `).bind(candidate.id, candidate.deleteClaim)
+    )));
   }
   if (shouldClearRequestLog) {
     statements.push(setMetaStatement(db, "requestLog", "[]"));
   }
-  if (statements.length > 0) {
-    await db.batch(statements);
-  }
-
   if (shouldClearCommands) {
     state.commands = state.commands.filter((command) => command.status === "pending" || command.status === "running");
     state.latestCommand = state.commands[0] || null;
@@ -1443,15 +1911,16 @@ async function clearRelayLogs(db, env, state, scope = "all", ctx = null) {
     state.settingActions = state.settingActions.filter((action) => action.status === "pending" || action.status === "running");
     state.message = "로그를 지웠습니다.";
     state.updatedAt = clearedAt;
-    await saveMetaState(db, state, env, "state", ctx);
+    await saveMetaState(db, state, env, `logs:${scope}`, ctx, statements);
   } else if (shouldClearCommands) {
     state.message = "최근 실행 요청 기록을 지웠습니다.";
     state.updatedAt = clearedAt;
-    await saveMetaState(db, state, env, "state", ctx);
+    await saveMetaState(db, state, env, `logs:${scope}`, ctx, statements);
   } else {
     await touchRelayEvent(db, env, {
       reason: `logs:${scope}`,
       updatedAt: clearedAt,
+      mutationStatements: statements,
     }, ctx);
   }
   return result;
@@ -1506,7 +1975,7 @@ function sanitizeRequestSource(value) {
   if (text.includes("web") || text.includes("browser") || text.includes("웹")) {
     return "웹";
   }
-  return sanitizePublicText(value) || "알 수 없음";
+  return "알 수 없음";
 }
 
 function sanitizeRequestPath(value) {
@@ -1516,27 +1985,24 @@ function sanitizeRequestPath(value) {
 
 async function loadCancelRequest(db) {
   const cancelRequest = normalizeCancelRequest(parseJSON(await getMeta(db, "cancelRequest"), {}));
-  if (!cancelRequest.requested) {
-    await clearCancelRequest(db);
-  }
   return cancelRequest;
 }
 
-async function setCancelRequest(db, cancelRequest) {
-  await setMetaStatement(db, "cancelRequest", JSON.stringify(normalizeCancelRequest(cancelRequest))).run();
+function setCancelRequestStatement(db, cancelRequest) {
+  return setMetaStatement(db, "cancelRequest", JSON.stringify(normalizeCancelRequest(cancelRequest)));
 }
 
-async function clearCancelRequest(db) {
-  await setMetaStatement(db, "cancelRequest", JSON.stringify(normalizeCancelRequest({ requested: false }))).run();
+function clearCancelRequestStatement(db) {
+  return setMetaStatement(db, "cancelRequest", JSON.stringify(normalizeCancelRequest({ requested: false })));
 }
 
-async function trimItemActions(db) {
-  await db.prepare(`
+function trimItemActionsStatement(db) {
+  return db.prepare(`
     DELETE FROM item_actions
     WHERE id NOT IN (
       SELECT id FROM item_actions ORDER BY updated_at DESC LIMIT ?
     )
-  `).bind(MAX_ITEM_ACTIONS).run();
+  `).bind(MAX_ITEM_ACTIONS);
 }
 
 async function loadFileAccessRequests(db, { statuses = [], order = "updated", limit = MAX_FILE_ACCESS_REQUESTS } = {}) {
@@ -1561,7 +2027,7 @@ async function loadFileAccessRequests(db, { statuses = [], order = "updated", li
       LIMIT ?
     `).bind(limit).all();
   }
-  return deduplicateByID((result.results || []).map(rowToFileAccessRequest), limit);
+  return deduplicateByID((result.results || []).map(rowToFileAccessRequest).filter(Boolean), limit);
 }
 
 async function getFileAccessRequest(db, id) {
@@ -1575,7 +2041,14 @@ async function getFileAccessRequest(db, id) {
 }
 
 async function upsertFileAccessRequest(db, fileRequest) {
-  await db.prepare(`
+  await db.batch([
+    upsertFileAccessRequestStatement(db, fileRequest),
+    trimFileAccessRequestsStatement(db),
+  ]);
+}
+
+function upsertFileAccessRequestStatement(db, fileRequest) {
+  return db.prepare(`
     INSERT INTO file_access_requests (
       id, item_id, item_kind, item_title, status, created_at, updated_at, message,
       object_key, download_ticket, expires_at, content_type, size_bytes, download_count
@@ -1609,27 +2082,133 @@ async function upsertFileAccessRequest(db, fileRequest) {
     fileRequest.contentType || null,
     Number.isFinite(Number(fileRequest.sizeBytes)) ? Number(fileRequest.sizeBytes) : null,
     Number.isFinite(Number(fileRequest.downloadCount)) ? Number(fileRequest.downloadCount) : 0
-  ).run();
-  await trimFileAccessRequests(db);
+  );
+}
+
+function prepareFileAccessUploadStatement(db, id, claim, claimedAt, objectKey, reservedBytes, quotaDate) {
+  const staleBefore = new Date(Date.now() - FILE_UPLOAD_CLAIM_LEASE_MS).toISOString();
+  return db.prepare(`
+    UPDATE file_access_requests
+    SET upload_claim = ?, upload_claimed_at = ?, pending_object_key = ?,
+        reserved_upload_bytes = ?, reserved_upload_quota_date = ?
+    WHERE id = ?
+      AND object_key IS NULL
+      AND pending_object_key IS NULL
+      AND reserved_upload_bytes = 0
+      AND reserved_upload_quota_date IS NULL
+      AND status IN ('pending', 'running')
+      AND (
+        upload_claim IS NULL
+        OR upload_claimed_at IS NULL
+        OR upload_claimed_at <= ?
+      )
+  `).bind(
+    claim,
+    claimedAt,
+    objectKey,
+    reservedBytes,
+    quotaDate,
+    normalizeUUIDText(id),
+    staleBefore
+  );
+}
+
+function releasePreparedFileAccessUploadStatement(db, id, claim, objectKey, reservedBytes, quotaDate) {
+  return db.prepare(`
+    UPDATE file_access_requests
+    SET upload_claim = NULL, upload_claimed_at = NULL, pending_object_key = NULL,
+        reserved_upload_bytes = 0, reserved_upload_quota_date = NULL
+    WHERE id = ?
+      AND upload_claim = ?
+      AND object_key IS NULL
+      AND pending_object_key = ?
+      AND reserved_upload_bytes = ?
+      AND reserved_upload_quota_date = ?
+  `).bind(normalizeUUIDText(id), claim, objectKey, reservedBytes, quotaDate);
+}
+
+function finalizeFileAccessUploadStatement(db, id, claim, updated, quotaDate) {
+  return db.prepare(`
+    UPDATE file_access_requests
+    SET status = ?, updated_at = ?, message = ?, object_key = ?, download_ticket = ?,
+        expires_at = ?, content_type = ?, size_bytes = ?, download_count = 0,
+        upload_claim = NULL, upload_claimed_at = NULL, pending_object_key = NULL,
+        reserved_upload_bytes = 0, reserved_upload_quota_date = NULL
+    WHERE id = ? AND upload_claim = ? AND object_key IS NULL
+      AND pending_object_key = ?
+      AND reserved_upload_bytes = ?
+      AND reserved_upload_quota_date = ?
+      AND status IN ('pending', 'running')
+  `).bind(
+    updated.status,
+    updated.updatedAt,
+    updated.message,
+    updated.objectKey,
+    updated.downloadTicket,
+    updated.expiresAt,
+    updated.contentType,
+    updated.sizeBytes,
+    normalizeUUIDText(id),
+    claim,
+    updated.objectKey,
+    updated.sizeBytes,
+    quotaDate
+  );
+}
+
+function requirePreviousStatementChangeStatement(db) {
+  return db.prepare(`
+    INSERT INTO meta(key, value)
+    SELECT 'relay-integrity-guard', NULL
+    WHERE changes() != 1
+  `);
 }
 
 async function trimFileAccessRequests(db) {
-  await db.prepare(`
+  await trimFileAccessRequestsStatement(db).run();
+}
+
+function trimFileAccessRequestsStatement(db) {
+  return db.prepare(`
     DELETE FROM file_access_requests
     WHERE object_key IS NULL
+      AND pending_object_key IS NULL
+      AND upload_claim IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM file_download_reservations WHERE request_id = file_access_requests.id
+      )
       AND id NOT IN (
       SELECT id FROM file_access_requests ORDER BY updated_at DESC LIMIT ?
     )
-  `).bind(MAX_FILE_ACCESS_REQUESTS).run();
+  `).bind(MAX_FILE_ACCESS_REQUESTS);
 }
 
-async function expireStaleFileAccessRequests(db) {
+async function loadInternalFileAccessRowsByID(db, ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = await db.prepare(`
+    SELECT id, status, object_key, updated_at, expires_at, upload_claim,
+           upload_claimed_at, pending_object_key, reserved_upload_bytes,
+           reserved_upload_quota_date
+    FROM file_access_requests
+    WHERE id IN (${placeholders})
+  `).bind(...ids).all();
+  return result.results || [];
+}
+
+async function loadInternalFileAccessRow(db, id) {
+  const rows = await loadInternalFileAccessRowsByID(db, [normalizeUUIDText(id)]);
+  return rows[0] || null;
+}
+
+async function expireStaleFileAccessRequests(db, env = null, ctx = null) {
   const now = Date.now();
   const rows = await loadFileAccessRequests(db, {
     statuses: ["pending", "running"],
     order: "created",
     limit: MAX_FILE_ACCESS_REQUESTS,
   });
+  const updates = [];
   for (const fileRequest of rows) {
     const status = String(fileRequest.status || "").toLowerCase();
     if (status === "pending" && ageMs(fileRequest.createdAt, now) <= STALE_PENDING_FILE_ACCESS_MS) {
@@ -1638,68 +2217,545 @@ async function expireStaleFileAccessRequests(db) {
     if (status === "running" && ageMs(fileRequest.updatedAt || fileRequest.createdAt, now) <= STALE_RUNNING_FILE_ACCESS_MS) {
       continue;
     }
-    await upsertFileAccessRequest(db, {
+    updates.push({
       ...fileRequest,
       status: "macUnavailable",
       updatedAt: new Date().toISOString(),
       message: "Mac 앱이 제한 시간 안에 파일을 준비하지 않았습니다.",
     });
   }
+  if (updates.length > 0) {
+    const updatedAt = updates.reduce(
+      (latest, item) => Date.parse(item.updatedAt) > Date.parse(latest) ? item.updatedAt : latest,
+      updates[0].updatedAt
+    );
+    await touchRelayEvent(db, env, {
+      reason: "file-access:macUnavailable",
+      updatedAt,
+      mutationStatements: [
+        ...updates.map((item) => upsertFileAccessRequestStatement(db, item)),
+        trimFileAccessRequestsStatement(db),
+      ],
+    }, ctx);
+  }
 }
 
-async function cleanupExpiredFileAccess(db, env) {
-  const nowISO = new Date().toISOString();
-  const result = await db.prepare(`
-    SELECT id, object_key
-    FROM file_access_requests
-    WHERE expires_at IS NOT NULL
-      AND expires_at <= ?
-  `).bind(nowISO).all();
-  const rows = result.results || [];
-  for (const row of rows) {
-    if (env?.RELAY_FILES && row.object_key) {
-      try {
-        await env.RELAY_FILES.delete(row.object_key);
-      } catch (error) {
-        console.error("failed to delete expired file object", row.object_key, error);
+async function executeCoordinatorAction(env, action, payload = {}) {
+  const db = database(env);
+  await ensureSchema(db);
+  switch (action) {
+    case "uploadPrepare": {
+      const id = requireUUID(payload.id, "file request id");
+      const objectKey = String(payload.objectKey || "");
+      if (!isValidFileObjectKey(objectKey, id)) throw new RelayValidationError("invalid upload object key");
+      const reservedBytes = Number(payload.reservedBytes);
+      const limits = fileAccessLimits(env);
+      if (!Number.isSafeInteger(reservedBytes) || reservedBytes <= 0 || reservedBytes > limits.maxUploadBytes) {
+        throw new RelayValidationError("invalid upload reservation size");
       }
+      const current = await getFileAccessRequest(db, id);
+      if (!current) return { status: 404, body: { error: "file request not found" } };
+      if (current.objectKey || current.status === "completed") {
+        return { status: 409, body: { error: "file request already has an uploaded object" } };
+      }
+      const claim = crypto.randomUUID();
+      const claimedAt = new Date().toISOString();
+      const quotaDate = quotaDateForToday();
+      try {
+        await db.batch([
+          ensureFileAccessQuotaRowStatement(db, quotaDate, limits),
+          reserveFileAccessQuotaStatement(db, { uploadCount: 1, uploadBytes: reservedBytes }, limits, quotaDate),
+          requirePreviousStatementChangeStatement(db),
+          prepareFileAccessUploadStatement(db, id, claim, claimedAt, objectKey, reservedBytes, quotaDate),
+          requirePreviousStatementChangeStatement(db),
+        ]);
+      } catch (error) {
+        const quota = await loadFileAccessQuotaForDate(db, quotaDate);
+        if (
+          quota.uploadCount + 1 > limits.dailyUploads
+          || quota.uploadBytes + reservedBytes > limits.dailyUploadBytes
+        ) {
+          return { status: 429, body: { error: "daily file upload quota reached" } };
+        }
+        if (String(error?.message || error).includes("relay-integrity-guard") || String(error?.message || error).includes("NOT NULL")) {
+          return { status: 409, body: { error: "file upload already claimed or completed" } };
+        }
+        throw error;
+      }
+      return { status: 200, body: { current, claim, quotaDate } };
     }
-  }
-  if (rows.length > 0) {
-    await db.prepare(`
-      DELETE FROM file_access_requests
-      WHERE expires_at IS NOT NULL
-        AND expires_at <= ?
-    `).bind(nowISO).run();
+    case "uploadRelease": {
+      const id = requireUUID(payload.id, "file request id");
+      const claim = requireUUID(payload.claim, "upload claim");
+      const objectKey = String(payload.objectKey || "");
+      if (!isValidFileObjectKey(objectKey, id)) throw new RelayValidationError("invalid upload object key");
+      const reservedBytes = Number(payload.reservedBytes);
+      if (!Number.isSafeInteger(reservedBytes) || reservedBytes <= 0) {
+        throw new RelayValidationError("invalid upload reservation size");
+      }
+      const quotaDate = validateQuotaDate(payload.quotaDate);
+      if (!payload.objectDeleted) {
+        return { status: 202, body: { ok: false, retainedForCleanup: true } };
+      }
+      const row = await loadInternalFileAccessRow(db, id);
+      if (!row || (!row.upload_claim && !row.pending_object_key && Number(row.reserved_upload_bytes || 0) === 0)) {
+        return { status: 200, body: { ok: true, alreadyReleased: true } };
+      }
+      if (
+        row.upload_claim !== claim
+        || row.pending_object_key !== objectKey
+        || Number(row.reserved_upload_bytes || 0) !== reservedBytes
+        || row.reserved_upload_quota_date !== quotaDate
+        || row.object_key
+      ) {
+        return { status: 409, body: { error: "file upload reservation was replaced" } };
+      }
+      await db.batch([
+        releaseFileAccessQuotaStatement(db, { uploadCount: 1, uploadBytes: reservedBytes }, quotaDate),
+        requirePreviousStatementChangeStatement(db),
+        releasePreparedFileAccessUploadStatement(db, id, claim, objectKey, reservedBytes, quotaDate),
+        requirePreviousStatementChangeStatement(db),
+      ]);
+      return { status: 200, body: { ok: true } };
+    }
+    case "uploadFinalize": {
+      const id = requireUUID(payload.id, "file request id");
+      const claim = requireUUID(payload.claim, "upload claim");
+      const objectKey = String(payload.objectKey || "");
+      if (!isValidFileObjectKey(objectKey, id)) throw new RelayValidationError("invalid upload object key");
+      const updatedAt = validateOptionalISODate(payload.updatedAt, "updatedAt");
+      const expiresAt = validateOptionalISODate(payload.expiresAt, "expiresAt");
+      if (!updatedAt || !expiresAt) throw new RelayValidationError("upload timestamps are required");
+      const sizeBytes = Number(payload.sizeBytes);
+      const limits = fileAccessLimits(env);
+      if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > limits.maxUploadBytes) {
+        throw new RelayValidationError("invalid uploaded file size");
+      }
+      const claimRow = await db.prepare(`
+        SELECT upload_claim, object_key, status, pending_object_key,
+               reserved_upload_bytes, reserved_upload_quota_date
+        FROM file_access_requests
+        WHERE id = ?
+      `).bind(id).first();
+      if (
+        !claimRow
+        || claimRow.object_key
+        || claimRow.upload_claim !== claim
+        || claimRow.pending_object_key !== objectKey
+        || Number(claimRow.reserved_upload_bytes || 0) !== sizeBytes
+        || !["pending", "running"].includes(claimRow.status)
+      ) {
+        return { status: 409, body: { error: "file upload claim expired or was replaced" } };
+      }
+      const quotaDate = validateQuotaDate(claimRow.reserved_upload_quota_date);
+      const updated = {
+        status: "completed",
+        updatedAt,
+        message: "파일 링크 준비 완료",
+        objectKey,
+        downloadTicket: validateTextLength(payload.downloadTicket, "download ticket", 512, { required: true }),
+        expiresAt,
+        contentType: validateTextLength(payload.contentType, "content type", 256, { required: true }),
+        sizeBytes,
+      };
+      const requestLogStatement = await appendRequestLogStatement(db, null, {
+        action: "파일 업로드 완료",
+        status: "completed",
+        message: sanitizeFilename(payload.filename),
+        source: "Mac",
+        method: "PUT",
+        path: "/v1/file-access/:id/upload",
+      });
+      const event = await touchRelayEvent(db, env, {
+        reason: "file-access:completed",
+        updatedAt,
+        mutationStatements: [
+          finalizeFileAccessUploadStatement(db, id, claim, updated, quotaDate),
+          requirePreviousStatementChangeStatement(db),
+          requestLogStatement,
+        ],
+      });
+      return { status: 200, body: { ok: true, revision: event.revision } };
+    }
+    case "interruptedUploadPrepare": {
+      const staleBefore = new Date(Date.now() - FILE_UPLOAD_CLAIM_LEASE_MS).toISOString();
+      const result = await db.prepare(`
+        SELECT id, upload_claim, pending_object_key, reserved_upload_bytes,
+               reserved_upload_quota_date, upload_claimed_at
+        FROM file_access_requests
+        WHERE object_key IS NULL
+          AND pending_object_key IS NOT NULL
+          AND reserved_upload_bytes > 0
+          AND reserved_upload_quota_date IS NOT NULL
+          AND (upload_claimed_at IS NULL OR upload_claimed_at <= ?)
+        ORDER BY upload_claimed_at ASC
+        LIMIT ?
+      `).bind(staleBefore, MAX_FILE_ACCESS_REQUESTS).all();
+      const rows = result.results || [];
+      if (rows.length === 0) return { status: 200, body: { candidates: [] } };
+      const claimedAt = new Date().toISOString();
+      const candidates = [];
+      for (const row of rows) {
+        if (!isValidFileObjectKey(row.pending_object_key, row.id)) continue;
+        const cleanupClaim = crypto.randomUUID();
+        const claimResult = await db.prepare(`
+          UPDATE file_access_requests
+          SET upload_claim = ?, upload_claimed_at = ?
+          WHERE id = ?
+            AND object_key IS NULL
+            AND upload_claim IS ?
+            AND pending_object_key = ?
+            AND reserved_upload_bytes = ?
+            AND reserved_upload_quota_date = ?
+            AND (upload_claimed_at IS NULL OR upload_claimed_at <= ?)
+        `).bind(
+          cleanupClaim,
+          claimedAt,
+          row.id,
+          row.upload_claim || null,
+          row.pending_object_key,
+          Number(row.reserved_upload_bytes),
+          row.reserved_upload_quota_date,
+          staleBefore
+        ).run();
+        if (affectedRows(claimResult) === 1) {
+          candidates.push({
+            id: row.id,
+            objectKey: row.pending_object_key,
+            reservedBytes: Number(row.reserved_upload_bytes),
+            quotaDate: row.reserved_upload_quota_date,
+            cleanupClaim,
+          });
+        }
+      }
+      return { status: 200, body: { candidates } };
+    }
+    case "interruptedUploadCommit": {
+      const candidates = Array.isArray(payload.candidates)
+        ? payload.candidates.slice(0, MAX_FILE_ACCESS_REQUESTS).map((candidate) => ({
+          id: requireUUID(candidate.id, "interrupted upload id"),
+          objectKey: String(candidate.objectKey || ""),
+          reservedBytes: Number(candidate.reservedBytes),
+          quotaDate: validateQuotaDate(candidate.quotaDate),
+          cleanupClaim: requireUUID(candidate.cleanupClaim, "interrupted upload cleanup claim"),
+          deleted: Boolean(candidate.deleted),
+        }))
+        : [];
+      let released = 0;
+      for (const candidate of candidates) {
+        if (!candidate.deleted || !isValidFileObjectKey(candidate.objectKey, candidate.id)) continue;
+        if (!Number.isSafeInteger(candidate.reservedBytes) || candidate.reservedBytes <= 0) continue;
+        const current = await loadInternalFileAccessRow(db, candidate.id);
+        if (
+          !current
+          || current.object_key
+          || current.upload_claim !== candidate.cleanupClaim
+          || current.pending_object_key !== candidate.objectKey
+          || Number(current.reserved_upload_bytes || 0) !== candidate.reservedBytes
+          || current.reserved_upload_quota_date !== candidate.quotaDate
+        ) continue;
+        await db.batch([
+          releaseFileAccessQuotaStatement(
+            db,
+            { uploadCount: 1, uploadBytes: candidate.reservedBytes },
+            candidate.quotaDate
+          ),
+          requirePreviousStatementChangeStatement(db),
+          releasePreparedFileAccessUploadStatement(
+            db,
+            candidate.id,
+            candidate.cleanupClaim,
+            candidate.objectKey,
+            candidate.reservedBytes,
+            candidate.quotaDate
+          ),
+          requirePreviousStatementChangeStatement(db),
+        ]);
+        released += 1;
+      }
+      return { status: 200, body: { ok: true, released } };
+    }
+    case "downloadReserve": {
+      const id = requireUUID(payload.id, "file request id");
+      await recoverStaleFileDownloadReservations(db, env);
+      const reason = payload.reason === "file-access:preview-reserved"
+        ? "file-access:preview-reserved"
+        : "file-access:download-reserved";
+      const reservation = await reserveFileDownload(db, env, id, fileAccessLimits(env), {
+        request: null,
+        reason,
+        requestLog: payload.requestLog || null,
+      });
+      return { status: 200, body: reservation };
+    }
+    case "downloadFinalize": {
+      const id = requireUUID(payload.id, "file request id");
+      const token = requireUUID(payload.token, "download reservation token");
+      const reason = payload.reason === "file-access:previewed"
+        ? "file-access:previewed"
+        : "file-access:downloaded";
+      const result = await finalizeFileDownloadReservation(db, env, id, token, {
+        reason,
+        requestLog: payload.requestLog || null,
+      });
+      return { status: 200, body: result };
+    }
+    case "downloadRelease": {
+      const id = requireUUID(payload.id, "file request id");
+      const token = requireUUID(payload.token, "download reservation token");
+      const result = await releaseFileDownloadReservation(db, env, id, token, {
+        reason: "file-access:download-failed",
+        requestLog: payload.requestLog || null,
+      });
+      return { status: 200, body: result };
+    }
+    case "downloadRecoverStale": {
+      const released = await recoverStaleFileDownloadReservations(db, env);
+      return { status: 200, body: { ok: true, released } };
+    }
+    case "expiredFilePrepare": {
+      const expiresBefore = new Date().toISOString();
+      const result = await db.prepare(`
+        SELECT id, status, object_key, updated_at
+        FROM file_access_requests
+        WHERE expires_at IS NOT NULL
+          AND expires_at <= ?
+          AND pending_object_key IS NULL
+          AND reserved_upload_bytes = 0
+          AND NOT EXISTS (
+            SELECT 1 FROM file_download_reservations WHERE request_id = file_access_requests.id
+          )
+        ORDER BY updated_at DESC
+        LIMIT ?
+      `).bind(expiresBefore, MAX_FILE_ACCESS_REQUESTS).all();
+      const rows = result.results || [];
+      if (rows.length === 0) return { status: 200, body: { candidates: [] } };
+      const deleteClaim = crypto.randomUUID();
+      const claimedAt = new Date().toISOString();
+      const staleBefore = new Date(Date.now() - FILE_UPLOAD_CLAIM_LEASE_MS).toISOString();
+      const claims = await db.batch(rows.map((row) => db.prepare(`
+        UPDATE file_access_requests
+        SET upload_claim = ?, upload_claimed_at = ?
+        WHERE id = ?
+          AND status = ?
+          AND object_key IS ?
+          AND updated_at = ?
+          AND expires_at IS NOT NULL
+          AND expires_at <= ?
+          AND pending_object_key IS NULL
+          AND reserved_upload_bytes = 0
+          AND NOT EXISTS (
+            SELECT 1 FROM file_download_reservations WHERE request_id = file_access_requests.id
+          )
+          AND (
+            upload_claim IS NULL
+            OR upload_claimed_at IS NULL
+            OR upload_claimed_at <= ?
+          )
+      `).bind(
+        deleteClaim,
+        claimedAt,
+        row.id,
+        row.status,
+        row.object_key || null,
+        row.updated_at,
+        expiresBefore,
+        staleBefore
+      )));
+      return {
+        status: 200,
+        body: {
+          candidates: rows
+            .filter((_row, index) => affectedRows(claims[index]) === 1)
+            .map((row) => ({
+              id: row.id,
+              status: row.status,
+              objectKey: row.object_key || null,
+              updatedAt: row.updated_at,
+              expiresBefore,
+              deleteClaim,
+            })),
+        },
+      };
+    }
+    case "expiredFileCommit": {
+      const candidates = Array.isArray(payload.candidates)
+        ? payload.candidates.slice(0, MAX_FILE_ACCESS_REQUESTS).map((candidate) => ({
+          id: requireUUID(candidate.id, "expired file id"),
+          status: requireEnum(candidate.status, "expired file status", FILE_ACCESS_STATUSES),
+          objectKey: candidate.objectKey ? String(candidate.objectKey) : null,
+          updatedAt: validateOptionalISODate(candidate.updatedAt, "expired file updatedAt"),
+          expiresBefore: validateOptionalISODate(candidate.expiresBefore, "expired file cutoff"),
+          deleteClaim: requireUUID(candidate.deleteClaim, "expired file deletion claim"),
+          deleted: Boolean(candidate.deleted),
+        }))
+        : [];
+      if (candidates.length === 0) return { status: 200, body: { ok: true, removed: 0 } };
+      const currentRows = await loadInternalFileAccessRowsByID(db, candidates.map((candidate) => candidate.id));
+      const currentByID = new Map(currentRows.map((row) => [row.id, row]));
+      const revalidated = candidates.map((candidate) => {
+        const current = currentByID.get(candidate.id);
+        const unchanged = Boolean(
+          current
+          && current.upload_claim === candidate.deleteClaim
+          && current.status === candidate.status
+          && (current.object_key || null) === candidate.objectKey
+          && current.updated_at === candidate.updatedAt
+          && current.expires_at
+          && candidate.expiresBefore
+          && current.expires_at <= candidate.expiresBefore
+          && !current.pending_object_key
+          && Number(current.reserved_upload_bytes || 0) === 0
+        );
+        return { ...candidate, deleted: candidate.deleted && unchanged };
+      });
+      const mutationStatements = revalidated.map((candidate) => (
+        candidate.deleted
+          ? db.prepare(`
+            DELETE FROM file_access_requests
+            WHERE id = ?
+              AND upload_claim = ?
+              AND status = ?
+              AND object_key IS ?
+              AND updated_at = ?
+              AND expires_at IS NOT NULL
+              AND expires_at <= ?
+              AND pending_object_key IS NULL
+              AND reserved_upload_bytes = 0
+              AND NOT EXISTS (
+                SELECT 1 FROM file_download_reservations WHERE request_id = file_access_requests.id
+              )
+          `).bind(
+            candidate.id,
+            candidate.deleteClaim,
+            candidate.status,
+            candidate.objectKey,
+            candidate.updatedAt,
+            candidate.expiresBefore
+          )
+          : db.prepare(`
+            UPDATE file_access_requests
+            SET upload_claim = NULL, upload_claimed_at = NULL
+            WHERE id = ? AND upload_claim = ?
+          `).bind(candidate.id, candidate.deleteClaim)
+      ));
+      const removed = revalidated.filter((candidate) => candidate.deleted).length;
+      if (removed > 0) {
+        await touchRelayEvent(db, env, {
+          reason: "file-access:expired",
+          updatedAt: new Date().toISOString(),
+          mutationStatements,
+        });
+      } else if (mutationStatements.length > 0) {
+        await db.batch(mutationStatements);
+      }
+      return { status: 200, body: { ok: true, removed } };
+    }
+    case "fileLogClearPrepare": {
+      const scope = payload.scope === "fileAccess" ? "fileAccess" : "all";
+      if (scope === "fileAccess" && await hasActiveFileAccessWork(db)) {
+        return { status: 409, body: { error: "active file access request is still running" } };
+      }
+      const rows = await loadFileAccessRequests(db, { limit: MAX_FILE_ACCESS_REQUESTS });
+      const candidates = rows.filter((row) => row.status !== "pending" && row.status !== "running");
+      if (candidates.length === 0) return { status: 200, body: { candidates: [] } };
+      const deleteClaim = crypto.randomUUID();
+      const claimedAt = new Date().toISOString();
+      const staleBefore = new Date(Date.now() - FILE_UPLOAD_CLAIM_LEASE_MS).toISOString();
+      const results = await db.batch(candidates.map((candidate) => db.prepare(`
+        UPDATE file_access_requests
+        SET upload_claim = ?, upload_claimed_at = ?
+        WHERE id = ?
+          AND status NOT IN ('pending', 'running')
+          AND object_key IS ?
+          AND updated_at = ?
+          AND pending_object_key IS NULL
+          AND reserved_upload_bytes = 0
+          AND NOT EXISTS (
+            SELECT 1 FROM file_download_reservations WHERE request_id = file_access_requests.id
+          )
+          AND (
+            upload_claim IS NULL
+            OR upload_claimed_at IS NULL
+            OR upload_claimed_at <= ?
+          )
+      `).bind(
+        deleteClaim,
+        claimedAt,
+        candidate.id,
+        candidate.objectKey || null,
+        candidate.updatedAt,
+        staleBefore
+      )));
+      return {
+        status: 200,
+        body: {
+          candidates: candidates
+            .filter((_candidate, index) => affectedRows(results[index]) === 1)
+            .map((candidate) => ({
+              id: candidate.id,
+              objectKey: candidate.objectKey || null,
+              updatedAt: candidate.updatedAt,
+              deleteClaim,
+            })),
+        },
+      };
+    }
+    case "fileLogClearCommit": {
+      const scope = payload.scope === "fileAccess" ? "fileAccess" : "all";
+      const candidates = Array.isArray(payload.candidates)
+        ? payload.candidates.slice(0, MAX_FILE_ACCESS_REQUESTS).map((candidate) => ({
+          id: requireUUID(candidate.id, "file deletion id"),
+          objectKey: candidate.objectKey ? String(candidate.objectKey) : null,
+          updatedAt: validateOptionalISODate(candidate.updatedAt, "file deletion updatedAt"),
+          deleteClaim: requireUUID(candidate.deleteClaim, "file deletion claim"),
+          deleted: Boolean(candidate.deleted),
+        }))
+        : [];
+      const currentRows = await loadInternalFileAccessRowsByID(db, candidates.map((candidate) => candidate.id));
+      const currentByID = new Map(currentRows.map((row) => [row.id, row]));
+      const revalidatedCandidates = candidates.map((candidate) => {
+        const current = currentByID.get(candidate.id);
+        const unchanged = Boolean(
+          current
+          && current.upload_claim === candidate.deleteClaim
+          && !["pending", "running"].includes(current.status)
+          && (current.object_key || null) === candidate.objectKey
+          && current.updated_at === candidate.updatedAt
+          && !current.pending_object_key
+          && Number(current.reserved_upload_bytes || 0) === 0
+        );
+        return { ...candidate, deleted: candidate.deleted && unchanged };
+      });
+      const state = await loadState(db);
+      const result = await clearRelayLogs(db, env, state, scope, null, {
+        fileDeletionCandidates: revalidatedCandidates,
+      });
+      return { status: 200, body: result };
+    }
+    default:
+      return { status: 400, body: { error: "unsupported coordinator action" } };
   }
 }
 
-async function uploadFileAccess(db, env, request, id, ctx = null) {
+async function uploadFileAccess(env, request, id, _ctx = null) {
   if (!env?.RELAY_FILES) {
     return sendJSON(503, { error: "file relay storage is not configured" });
   }
-  const current = await getFileAccessRequest(db, id);
-  if (!current) {
-    return sendJSON(404, { error: "file request not found" });
-  }
   const limits = fileAccessLimits(env);
-  const contentLength = Number.parseInt(request.headers.get("content-length") || "0", 10);
-  if (!Number.isFinite(contentLength) || contentLength <= 0) {
+  const contentLengthHeader = String(request.headers.get("content-length") || "").trim();
+  if (!/^[1-9]\d*$/.test(contentLengthHeader)) {
     return sendJSON(411, { error: "content length is required for file uploads" });
+  }
+  const contentLength = Number(contentLengthHeader);
+  if (!Number.isSafeInteger(contentLength)) {
+    return sendJSON(413, { error: `file too large; limit is ${limits.maxUploadBytes} bytes` });
   }
   if (contentLength > limits.maxUploadBytes) {
     return sendJSON(413, { error: `file too large; limit is ${limits.maxUploadBytes} bytes` });
   }
-  const quota = await loadFileAccessQuota(db);
-  if (quota.uploadCount >= limits.dailyUploads) {
-    return sendJSON(429, { error: "daily file upload count limit reached" });
-  }
-  if (quota.uploadBytes + contentLength > limits.dailyUploadBytes) {
-    return sendJSON(429, { error: "daily file upload byte limit reached" });
-  }
   const filename = sanitizeFilename(
     decodeHeaderFilename(request.headers.get("x-klms-filename"))
-      || current.itemTitle
       || "klms-file"
   );
   const contentType = (
@@ -1707,48 +2763,89 @@ async function uploadFileAccess(db, env, request, id, ctx = null) {
       || request.headers.get("x-klms-content-type")
       || "application/octet-stream"
   ).split(";")[0].trim() || "application/octet-stream";
-  const objectKey = `file-access/${current.id}/${crypto.randomUUID()}-${filename}`;
-  const ticket = randomToken();
-  const expiresAt = new Date(Date.now() + limits.ttlMs).toISOString();
-  const body = request.body ?? await request.arrayBuffer();
-
-  await env.RELAY_FILES.put(objectKey, body, {
-    httpMetadata: { contentType },
-    customMetadata: {
-      requestID: current.id,
-      itemID: current.itemID,
-      itemTitle: current.itemTitle,
-    },
-  });
-
-  const updated = {
-    ...current,
-    status: "completed",
-    updatedAt: new Date().toISOString(),
-    message: "파일 링크 준비 완료",
+  const requestID = requireUUID(id, "file request id");
+  const objectKey = `file-access/${requestID}/${crypto.randomUUID()}-${filename}`;
+  const claimResult = await coordinatedAction(env, "uploadPrepare", {
+    id: requestID,
     objectKey,
-    downloadTicket: ticket,
-    expiresAt,
-    contentType,
-    sizeBytes: contentLength,
-    downloadCount: 0,
-  };
-  await upsertFileAccessRequest(db, updated);
-  await touchRelayEvent(db, env, {
-    reason: "file-access:completed",
-    updatedAt: updated.updatedAt,
-  }, ctx);
-  await appendRequestLog(db, request, {
-    action: "파일 업로드 완료",
-    status: "completed",
-    message: filename,
-    source: "Mac",
+    reservedBytes: contentLength,
   });
-  await saveFileAccessQuota(db, {
-    ...quota,
-    uploadCount: quota.uploadCount + 1,
-    uploadBytes: quota.uploadBytes + contentLength,
-  });
+  if (claimResult.status !== 200) return sendJSON(claimResult.status, claimResult.body);
+  const { current, claim, quotaDate } = claimResult.body;
+  const ticket = randomToken();
+  let putAttempted = false;
+  let finalized = false;
+  let updated = null;
+  let sizeBytes = contentLength;
+  try {
+    const body = await request.arrayBuffer();
+    sizeBytes = body.byteLength;
+    if (sizeBytes !== contentLength) {
+      return sendJSON(400, { error: "file body length does not match Content-Length" });
+    }
+    putAttempted = true;
+    await env.RELAY_FILES.put(objectKey, body, {
+      httpMetadata: { contentType },
+      customMetadata: {
+        requestID: current.id,
+        itemID: current.itemID,
+        itemTitle: current.itemTitle,
+      },
+    });
+    const expiresAt = new Date(Date.now() + limits.ttlMs).toISOString();
+    updated = {
+      ...current,
+      status: "completed",
+      updatedAt: new Date().toISOString(),
+      message: "파일 링크 준비 완료",
+      objectKey,
+      downloadTicket: ticket,
+      expiresAt,
+      contentType,
+      sizeBytes,
+      downloadCount: 0,
+    };
+    const finalizeResult = await coordinatedAction(env, "uploadFinalize", {
+      id: current.id,
+      claim,
+      objectKey,
+      downloadTicket: ticket,
+      expiresAt,
+      contentType,
+      sizeBytes,
+      updatedAt: updated.updatedAt,
+      filename,
+    });
+    if (finalizeResult.status !== 200) return sendJSON(finalizeResult.status, finalizeResult.body);
+    finalized = true;
+  } finally {
+    let objectDeleted = !putAttempted;
+    if (!finalized && putAttempted) {
+      try {
+        await env.RELAY_FILES.delete(objectKey);
+        objectDeleted = true;
+      } catch (error) {
+        console.error("failed to clean up uncommitted upload object", objectKey, error);
+      }
+    }
+    if (!finalized) {
+      try {
+        const releaseResult = await coordinatedAction(env, "uploadRelease", {
+          id: current.id,
+          claim,
+          objectKey,
+          reservedBytes: contentLength,
+          quotaDate,
+          objectDeleted,
+        });
+        if (![200, 202].includes(releaseResult.status)) {
+          console.error("failed to release upload claim", releaseResult.body?.error);
+        }
+      } catch (error) {
+        console.error("failed to release upload claim", error);
+      }
+    }
+  }
   return sendJSON(200, fileAccessResponseItem(updated, request, env));
 }
 
@@ -1775,7 +2872,6 @@ async function downloadFileAccess(db, env, request, id, ctx = null) {
     });
   }
   if (fileRequest.expiresAt && Date.parse(fileRequest.expiresAt) <= Date.now()) {
-    await cleanupExpiredFileAccess(db, env);
     return fileAccessDownloadPage({
       request,
       fileRequest,
@@ -1834,8 +2930,44 @@ async function downloadFileAccess(db, env, request, id, ctx = null) {
         message: "미리보기 화면입니다. 확대/축소와 페이지 이동을 사용할 수 있습니다.",
       });
     }
-    const object = await env.RELAY_FILES.get(fileRequest.objectKey);
+    const pendingLog = fileDownloadRequestLog(fileRequest, {
+      preview: true,
+      status: "running",
+    });
+    const reservation = await coordinatedFileDownloadReservation(env, fileRequest.id, {
+      reason: "file-access:preview-reserved",
+      requestLog: pendingLog,
+    });
+    if (!reservation.ok) {
+      return fileAccessDownloadPage({
+        request,
+        fileRequest,
+        status: reservation.httpStatus || 429,
+        title: reservation.httpStatus === 409 ? "파일을 정리 중입니다" : "다운로드 한도에 도달했습니다",
+        message: reservation.error,
+      });
+    }
+    let object;
+    try {
+      object = await env.RELAY_FILES.get(fileRequest.objectKey);
+    } catch (error) {
+      await coordinatedFileDownloadRelease(env, fileRequest.id, reservation.token, {
+        requestLog: {
+          ...pendingLog,
+          status: "failed",
+          message: "임시 저장소 파일 읽기에 실패했습니다.",
+        },
+      });
+      throw error;
+    }
     if (!object) {
+      await coordinatedFileDownloadRelease(env, fileRequest.id, reservation.token, {
+        requestLog: {
+          ...pendingLog,
+          status: "failed",
+          message: "임시 저장소에서 파일을 찾지 못했습니다.",
+        },
+      });
       return fileAccessDownloadPage({
         request,
         fileRequest,
@@ -1844,27 +2976,30 @@ async function downloadFileAccess(db, env, request, id, ctx = null) {
         message: "임시 저장소의 파일이 이미 정리되었습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
       });
     }
-    await upsertFileAccessRequest(db, {
-      ...fileRequest,
-      downloadCount: Number(fileRequest.downloadCount || 0) + 1,
-      updatedAt: new Date().toISOString(),
-    });
-    await appendRequestLog(db, request, {
-      action: "파일 미리보기",
-      status: "completed",
-      message: fileRequest.itemTitle || "파일",
-      source: "웹",
-      method: "GET",
-      path: "/v1/file-access/:id/download?preview",
-    });
-    await saveFileAccessQuota(db, {
-      ...quota,
-      downloadCount: quota.downloadCount + 1,
-    });
-    await touchRelayEvent(db, env, {
-      reason: "file-access:previewed",
-      updatedAt: new Date().toISOString(),
-    }, ctx);
+    let finalization;
+    try {
+      finalization = await coordinatedFileDownloadFinalization(env, fileRequest.id, reservation.token, {
+        reason: "file-access:previewed",
+        requestLog: {
+          ...pendingLog,
+          status: "completed",
+        },
+      });
+    } catch (error) {
+      await coordinatedFileDownloadRelease(env, fileRequest.id, reservation.token, {
+        requestLog: {
+          ...pendingLog,
+          status: "failed",
+          message: "파일 미리보기 완료 기록에 실패했습니다.",
+        },
+      }).catch((releaseError) => {
+        console.error("failed to release preview reservation after finalization error", releaseError);
+      });
+      throw error;
+    }
+    if (!finalization.settled) {
+      throw new RelayUnavailableError("file download reservation expired before preview delivery");
+    }
     return fileAccessObjectResponse(fileRequest, object, { disposition: "inline", preview });
   }
   if (!url.searchParams.has("download")) {
@@ -1888,8 +3023,44 @@ async function downloadFileAccess(db, env, request, id, ctx = null) {
       message: "서버의 임시 파일 저장소 설정을 확인해 주세요.",
     });
   }
-  const object = await env.RELAY_FILES.get(fileRequest.objectKey);
+  const pendingLog = fileDownloadRequestLog(fileRequest, {
+    preview: false,
+    status: "running",
+  });
+  const reservation = await coordinatedFileDownloadReservation(env, fileRequest.id, {
+    reason: "file-access:download-reserved",
+    requestLog: pendingLog,
+  });
+  if (!reservation.ok) {
+    return fileAccessDownloadPage({
+      request,
+      fileRequest,
+      status: reservation.httpStatus || 429,
+      title: reservation.httpStatus === 409 ? "파일을 정리 중입니다" : "다운로드 한도에 도달했습니다",
+      message: reservation.error,
+    });
+  }
+  let object;
+  try {
+    object = await env.RELAY_FILES.get(fileRequest.objectKey);
+  } catch (error) {
+    await coordinatedFileDownloadRelease(env, fileRequest.id, reservation.token, {
+      requestLog: {
+        ...pendingLog,
+        status: "failed",
+        message: "임시 저장소 파일 읽기에 실패했습니다.",
+      },
+    });
+    throw error;
+  }
   if (!object) {
+    await coordinatedFileDownloadRelease(env, fileRequest.id, reservation.token, {
+      requestLog: {
+        ...pendingLog,
+        status: "failed",
+        message: "임시 저장소에서 파일을 찾지 못했습니다.",
+      },
+    });
     return fileAccessDownloadPage({
       request,
       fileRequest,
@@ -1898,31 +3069,71 @@ async function downloadFileAccess(db, env, request, id, ctx = null) {
       message: "임시 저장소의 파일이 이미 정리되었습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
     });
   }
-  await upsertFileAccessRequest(db, {
-    ...fileRequest,
-    downloadCount: Number(fileRequest.downloadCount || 0) + 1,
-    updatedAt: new Date().toISOString(),
-  });
-  await appendRequestLog(db, request, {
-    action: "파일 다운로드",
-    status: "completed",
-    message: fileRequest.itemTitle || "파일",
-    source: "웹",
-    method: "GET",
-    path: "/v1/file-access/:id/download",
-  });
-  await saveFileAccessQuota(db, {
-    ...quota,
-    downloadCount: quota.downloadCount + 1,
-  });
-  await touchRelayEvent(db, env, {
-    reason: "file-access:downloaded",
-    updatedAt: new Date().toISOString(),
-  }, ctx);
+  let finalization;
+  try {
+    finalization = await coordinatedFileDownloadFinalization(env, fileRequest.id, reservation.token, {
+      reason: "file-access:downloaded",
+      requestLog: {
+        ...pendingLog,
+        status: "completed",
+      },
+    });
+  } catch (error) {
+    await coordinatedFileDownloadRelease(env, fileRequest.id, reservation.token, {
+      requestLog: {
+        ...pendingLog,
+        status: "failed",
+        message: "파일 다운로드 완료 기록에 실패했습니다.",
+      },
+    }).catch((releaseError) => {
+      console.error("failed to release download reservation after finalization error", releaseError);
+    });
+    throw error;
+  }
+  if (!finalization.settled) {
+    throw new RelayUnavailableError("file download reservation expired before delivery");
+  }
   return fileAccessObjectResponse(fileRequest, object, { disposition: "attachment" });
 }
 
-async function expireStaleRecords(db, state) {
+async function coordinatedFileDownloadReservation(env, id, { reason, requestLog }) {
+  const result = await coordinatedAction(env, "downloadReserve", { id, reason, requestLog });
+  if (result.status !== 200) {
+    throw new Error(result.body?.error || "download reservation coordinator failed");
+  }
+  return result.body;
+}
+
+async function coordinatedFileDownloadFinalization(env, id, token, { reason, requestLog }) {
+  const result = await coordinatedAction(env, "downloadFinalize", { id, token, reason, requestLog });
+  if (result.status !== 200) {
+    throw new Error(result.body?.error || "download finalization coordinator failed");
+  }
+  return result.body;
+}
+
+async function coordinatedFileDownloadRelease(env, id, token, { requestLog }) {
+  const result = await coordinatedAction(env, "downloadRelease", { id, token, requestLog });
+  if (result.status !== 200) {
+    throw new Error(result.body?.error || "download release coordinator failed");
+  }
+  return result.body;
+}
+
+function fileDownloadRequestLog(fileRequest, { preview = false, status = "running" } = {}) {
+  return {
+    id: crypto.randomUUID(),
+    action: preview ? "파일 미리보기" : "파일 다운로드",
+    status,
+    message: fileRequest.itemTitle || "파일",
+    source: "웹",
+    method: "GET",
+    path: preview ? "/v1/file-access/:id/download?preview" : "/v1/file-access/:id/download",
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function expireStaleRecords(db, state, env = null, ctx = null) {
   const now = Date.now();
   const commandUpdates = [];
   for (const command of state.commands) {
@@ -1967,15 +3178,32 @@ async function expireStaleRecords(db, state) {
   if (commandUpdates.length === 0 && actionUpdates.length === 0 && settingActionUpdates.length === 0) {
     return false;
   }
-  for (const command of commandUpdates) {
-    await upsertCommand(db, command);
+  const nextState = {
+    ...state,
+    commands: state.commands.map((command) => (
+      commandUpdates.find((update) => update.id === command.id) || command
+    )),
+    itemActions: state.itemActions.map((action) => (
+      actionUpdates.find((update) => update.id === action.id) || action
+    )),
+    settingActions: (state.settingActions || []).map((action) => (
+      settingActionUpdates.find((update) => update.id === action.id) || action
+    )),
+    updatedAt: new Date().toISOString(),
+  };
+  nextState.latestCommand = nextState.commands
+    .slice()
+    .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))[0] || null;
+  const statements = [
+    ...commandUpdates.map((command) => upsertCommandStatement(db, command)),
+    ...(commandUpdates.length > 0 ? [trimCommandsStatement(db)] : []),
+    ...actionUpdates.map((action) => upsertItemActionStatement(db, action)),
+    ...(actionUpdates.length > 0 ? [trimItemActionsStatement(db)] : []),
+  ];
+  if (settingActionUpdates.length > 0) {
+    statements.push(setMetaStatement(db, "settingActions", JSON.stringify(nextState.settingActions)));
   }
-  for (const action of actionUpdates) {
-    await upsertItemAction(db, action);
-  }
-  for (const action of settingActionUpdates) {
-    await upsertSettingAction(db, action);
-  }
+  await saveMetaState(db, nextState, env, "state", ctx, statements);
   return true;
 }
 
@@ -2004,17 +3232,15 @@ function markCommandCancelled(command, message) {
   };
 }
 
-async function cancelPendingCommandIfNeeded(db, state, cancelRequest, request, env) {
+async function cancelPendingCommandIfNeeded(db, state, cancelRequest, request, env, ctx = null) {
   const command = state.commands.find((item) => item.id === cancelRequest.commandID);
   if (!command || command.status !== "pending") {
     return null;
   }
   const message = "Mac이 처리하기 전에 원격 실행 요청을 취소했습니다.";
   const cancelled = markCommandCancelled(command, message);
-  await upsertCommand(db, cancelled);
   state.commands = state.commands.map((item) => item.id === cancelled.id ? cancelled : item);
-  await clearCancelRequest(db);
-  await appendRequestLog(db, request, {
+  const requestLogStatement = await appendRequestLogStatement(db, request, {
     action: "원격 실행 요청 취소",
     status: "cancelled",
     message,
@@ -2024,7 +3250,12 @@ async function cancelPendingCommandIfNeeded(db, state, cancelRequest, request, e
   state.running = false;
   state.message = `${displayCommandName(cancelled.kind)} · ${displayStatus(cancelled.status)}`;
   state.updatedAt = cancelled.updatedAt;
-  await saveMetaState(db, state, env, "commands:cancelled");
+  await saveMetaState(db, state, env, "commands:cancelled", ctx, [
+    upsertCommandStatement(db, cancelled),
+    trimCommandsStatement(db),
+    clearCancelRequestStatement(db),
+    requestLogStatement,
+  ]);
   return normalizeCancelRequest({
     requested: false,
     requestedAt: cancelRequest.requestedAt,
@@ -2093,6 +3324,7 @@ function fileAccessDownloadPage({
   previewMaxBytes = DEFAULT_FILE_PREVIEW_MAX_BYTES,
   textPreviewMaxBytes = DEFAULT_TEXT_FILE_PREVIEW_MAX_BYTES,
 }) {
+  const scriptNonce = contentSecurityNonce();
   const downloadURL = canDownload ? downloadActionURL(request) : "";
   const preview = canDownload ? filePreviewDetails(fileRequest, previewMaxBytes, textPreviewMaxBytes) : { available: false, kind: "", label: "", message: "" };
   const previewURL = preview.available ? previewActionURL(request) : "";
@@ -2147,7 +3379,7 @@ function fileAccessDownloadPage({
       <div class="note">이 링크는 임시 링크입니다. 만료되면 서버의 파일과 기록이 자동 정리됩니다.</div>
     </section>
   </main>
-  <script>
+  <script nonce="${scriptNonce}">
     for (const el of document.querySelectorAll("[data-expires]")) {
       const d = new Date(el.dataset.expires);
       if (!Number.isNaN(d.getTime())) el.textContent = "만료 " + d.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
@@ -2160,8 +3392,12 @@ function fileAccessDownloadPage({
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; frame-src 'self'; connect-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+      "Content-Security-Policy": `default-src 'none'; img-src 'self'; media-src 'self'; frame-src 'self'; connect-src 'self'; script-src 'nonce-${scriptNonce}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
       "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-origin",
     },
   });
 }
@@ -2194,6 +3430,9 @@ function fileAccessObjectResponse(fileRequest, object, { disposition = "attachme
   headers.set("Cache-Control", "no-store");
   headers.set("Content-Type", effectiveFileContentType(fileRequest, object, { disposition, preview }));
   headers.set("Content-Disposition", contentDisposition(fileRequest.itemTitle || "KLMS file", disposition));
+  headers.set("Referrer-Policy", "no-referrer");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Cross-Origin-Resource-Policy", "same-origin");
   if (Number.isFinite(Number(fileRequest.sizeBytes))) {
     headers.set("Content-Length", String(Number(fileRequest.sizeBytes)));
   }
@@ -2216,6 +3455,7 @@ function fileAccessPreviewPage({
   title = "KLMS 파일 미리보기",
   message = "",
 }) {
+  const scriptNonce = contentSecurityNonce();
   const rawURL = rawPreviewActionURL(request);
   const backURL = previewBackURL(request);
   const downloadURL = downloadActionURL(request);
@@ -2241,7 +3481,7 @@ function fileAccessPreviewPage({
     ? "위 도구막대로 PDF 쪽 이동과 확대/축소를 조절할 수 있습니다."
     : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다.";
   const pdfScriptMarkup = isPDFPreview
-    ? `<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>`
+    ? `<script nonce="${scriptNonce}" src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>`
     : "";
   const html = `<!doctype html>
 <html lang="ko">
@@ -2306,7 +3546,7 @@ ${zoomControlsMarkup}
     </section>
   </main>
   ${pdfScriptMarkup}
-  <script>
+  <script nonce="${scriptNonce}">
     const root = document.querySelector("main");
     const kind = root.dataset.kind;
     const rawURL = root.dataset.rawUrl;
@@ -2463,8 +3703,12 @@ ${zoomControlsMarkup}
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; connect-src 'self'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+      "Content-Security-Policy": `default-src 'none'; img-src 'self'; media-src 'self'; connect-src 'self'; script-src 'nonce-${scriptNonce}'; worker-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
       "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-origin",
     },
   });
 }
@@ -2507,6 +3751,7 @@ function relayResponse(state, options = {}) {
     latestCommand: redactAuthDigitsFromCommand(state.latestCommand || null, exposeAuthDigits),
     running: Boolean(state.running),
     updatedAt: state.updatedAt || null,
+    revision: Number(state.revision || 0),
     requestNonce: null,
     responseIssuedAtEpochSeconds: null,
     signature: null,
@@ -2556,6 +3801,318 @@ function normalizeCommand(raw, fallbackStatus) {
   };
 }
 
+class RelayValidationError extends Error {}
+class RelayUnavailableError extends Error {}
+
+function requireObject(value, field = "request body") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new RelayValidationError(`${field} must be an object`);
+  }
+  return value;
+}
+
+function validateTextLength(value, field, maximum, { required = false } = {}) {
+  if (value == null) {
+    if (required) throw new RelayValidationError(`${field} is required`);
+    return "";
+  }
+  if (typeof value !== "string") throw new RelayValidationError(`${field} must be a string`);
+  const text = value.trim();
+  if (required && !text) throw new RelayValidationError(`${field} is required`);
+  if (text.length > maximum) throw new RelayValidationError(`${field} is too long`);
+  return text;
+}
+
+function validateOptionalISODate(value, field) {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string" || value.length > 64 || !Number.isFinite(Date.parse(value))) {
+    throw new RelayValidationError(`${field} must be an ISO date`);
+  }
+  return value;
+}
+
+function validateQuotaDate(value) {
+  const text = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text) || !Number.isFinite(Date.parse(`${text}T00:00:00.000Z`))) {
+    throw new RelayValidationError("invalid upload quota date");
+  }
+  return text;
+}
+
+function requireUUID(value, field) {
+  const uuid = normalizeUUIDText(value);
+  if (!uuid) throw new RelayValidationError(`${field} must be a UUID`);
+  return uuid;
+}
+
+function requireEnum(value, field, allowed) {
+  const text = validateTextLength(value, field, 64, { required: true });
+  if (!allowed.has(text)) throw new RelayValidationError(`unsupported ${field}`);
+  return text;
+}
+
+function validateStatusUpdateBody(body) {
+  requireObject(body);
+  validateTextLength(body.message, "message", MAX_PUBLIC_TEXT_CHARS);
+  if (body.latestCommand != null) {
+    requireObject(body.latestCommand, "latestCommand");
+    requireUUID(body.latestCommand.id, "latestCommand.id");
+    requireEnum(body.latestCommand.kind, "latestCommand.kind", COMMAND_KINDS);
+    requireEnum(body.latestCommand.status, "latestCommand.status", COMMAND_STATUSES);
+    validateOptionalISODate(body.latestCommand.createdAt, "latestCommand.createdAt");
+    validateOptionalISODate(body.latestCommand.updatedAt, "latestCommand.updatedAt");
+  }
+}
+
+function clientCommandFromBody(raw) {
+  const body = requireObject(raw);
+  const now = new Date().toISOString();
+  const kind = requireEnum(body.kind, "command kind", COMMAND_KINDS);
+  const options = validateCommandOptions(body.options);
+  return normalizeCommand({ id: crypto.randomUUID(), kind, status: "pending", createdAt: now, updatedAt: now, options }, "pending");
+}
+
+function workerCommandFromBody(raw, current = null) {
+  const body = requireObject(raw, "latestCommand");
+  if (current) return applyWorkerCommandPatch(current, body);
+  const now = new Date().toISOString();
+  return normalizeCommand({
+    id: requireUUID(body.id, "command id"),
+    kind: requireEnum(body.kind, "command kind", COMMAND_KINDS),
+    status: requireEnum(body.status, "command status", COMMAND_STATUSES),
+    createdAt: validateOptionalISODate(body.createdAt, "createdAt") || now,
+    updatedAt: now,
+    lastExitCode: Number.isInteger(body.lastExitCode) ? body.lastExitCode : null,
+    loginRequired: Boolean(body.loginRequired),
+    summary: body.summary,
+    options: validateCommandOptions(body.options),
+  }, body.status);
+}
+
+function applyWorkerCommandPatch(current, raw) {
+  const body = requireObject(raw);
+  assertMatchingImmutable(body.id, current.id, "id", { uuid: true });
+  assertMatchingImmutable(body.kind, current.kind, "kind");
+  assertMatchingImmutable(body.createdAt, current.createdAt, "createdAt", { date: true });
+  const options = validateCommandOptions(body.options);
+  if (body.options != null && JSON.stringify(normalizeCommandOptions(options)) !== JSON.stringify(normalizeCommandOptions(current.options))) {
+    throw new RelayValidationError("options is server-owned");
+  }
+  const status = requireEnum(body.status ?? current.status, "command status", COMMAND_STATUSES);
+  validateCommandTransition(current.status, status);
+  if (body.lastExitCode != null && !Number.isInteger(body.lastExitCode)) {
+    throw new RelayValidationError("lastExitCode must be an integer or null");
+  }
+  return normalizeCommand({
+    ...current,
+    status,
+    updatedAt: new Date().toISOString(),
+    lastExitCode: body.lastExitCode ?? current.lastExitCode,
+    loginRequired: body.loginRequired ?? current.loginRequired,
+    summary: body.summary ?? current.summary,
+  }, status);
+}
+
+function validateCommandOptions(raw) {
+  if (raw == null) return {};
+  const options = requireObject(raw, "options");
+  for (const key of Object.keys(options)) {
+    if (!COMMAND_OPTION_KEYS.has(key)) throw new RelayValidationError(`unsupported command option: ${key}`);
+    if (typeof options[key] !== "boolean") throw new RelayValidationError(`${key} must be a boolean`);
+  }
+  for (const [camel, snake] of [["updateNoticeNotes", "update_notice_notes"], ["dryRun", "dry_run"]]) {
+    if (camel in options && snake in options && options[camel] !== options[snake]) {
+      throw new RelayValidationError(`${camel} and ${snake} must match`);
+    }
+  }
+  return options;
+}
+
+function validateCommandTransition(from, to) {
+  if (from === to) return;
+  if (!COMMAND_STATUSES.has(from)) throw new RelayValidationError("stored command status is invalid");
+  if (!["pending", "running"].includes(from) && ["pending", "running"].includes(to)) {
+    throw new RelayValidationError("terminal command cannot become active");
+  }
+}
+
+function assertMatchingImmutable(value, current, field, options = {}) {
+  if (value == null || value === "") return;
+  let incoming = value;
+  let stored = current;
+  if (options.uuid) {
+    incoming = requireUUID(value, field);
+    stored = requireUUID(current, field);
+  } else if (options.date) {
+    incoming = validateOptionalISODate(value, field);
+    stored = validateOptionalISODate(current, field);
+  }
+  if (String(incoming) !== String(stored)) throw new RelayValidationError(`${field} is server-owned`);
+}
+
+function clientItemActionFromBody(raw, idempotencyKey = "") {
+  const body = requireObject(raw);
+  const now = new Date().toISOString();
+  const action = requireEnum(body.action, "item action", ITEM_ACTION_KINDS);
+  const serverDerivedStatus = body.status === "completed"
+    && ["calendarCreate", "calendarEdit", "calendarDelete"].includes(action)
+    ? "completed"
+    : "pending";
+  return normalizeItemAction({
+    id: normalizeUUIDText(body.id) || crypto.randomUUID(),
+    _idempotencyKey: idempotencyKey,
+    action,
+    itemID: validateTextLength(body.itemID ?? body.itemId, "itemID", MAX_IDENTIFIER_CHARS, { required: true }),
+    itemKind: requireEnum(body.itemKind, "itemKind", ITEM_KINDS),
+    itemTitle: validateTextLength(body.itemTitle, "itemTitle", MAX_PUBLIC_TEXT_CHARS),
+    status: serverDerivedStatus, createdAt: now, updatedAt: now, message: "",
+  }, serverDerivedStatus);
+}
+
+function itemActionIdempotencyKey(request, body) {
+  const headerValue = String(request?.headers?.get("Idempotency-Key") || "").trim();
+  if (headerValue) {
+    if (!/^[A-Za-z0-9._:-]{8,128}$/.test(headerValue)) {
+      throw new RelayValidationError("Idempotency-Key must be 8-128 safe ASCII characters");
+    }
+    return `header:${headerValue}`;
+  }
+  const clientID = normalizeUUIDText(body?.id);
+  return clientID ? `item-action:${clientID}` : "";
+}
+
+function sameItemActionIntent(lhs, rhs) {
+  return lhs.action === rhs.action
+    && lhs.itemID === rhs.itemID
+    && lhs.itemKind === rhs.itemKind;
+}
+
+function applyWorkerItemActionPatch(current, raw) {
+  const body = requireObject(raw);
+  assertMatchingImmutable(body.id, current.id, "id", { uuid: true });
+  assertMatchingImmutable(body.action, current.action, "action");
+  assertMatchingImmutable(body.itemID ?? body.itemId, current.itemID, "itemID");
+  assertMatchingImmutable(body.itemKind, current.itemKind, "itemKind");
+  const status = requireEnum(body.status ?? current.status, "item action status", ACTION_STATUSES);
+  return normalizeItemAction({
+    ...current,
+    _idempotencyKey: actionIdempotencyKey(current),
+    status,
+    updatedAt: new Date().toISOString(),
+    message: validateTextLength(body.message ?? current.message, "message", MAX_PUBLIC_TEXT_CHARS),
+  }, status);
+}
+
+function clientSettingActionFromBody(raw) {
+  const body = requireObject(raw);
+  const now = new Date().toISOString();
+  const key = validateTextLength(body.key, "setting key", 128, { required: true });
+  if (!SYNC_SETTING_KEYS.has(sanitizeSettingKey(key))) throw new RelayValidationError("unsupported setting key");
+  return normalizeSettingAction({
+    id: crypto.randomUUID(), key,
+    value: validateTextLength(body.value, "setting value", MAX_PUBLIC_TEXT_CHARS),
+    title: validateTextLength(body.title, "setting title", 256),
+    status: "pending", createdAt: now, updatedAt: now, message: "",
+  }, "pending");
+}
+
+function applyWorkerSettingActionPatch(current, raw) {
+  const body = requireObject(raw);
+  assertMatchingImmutable(body.id, current.id, "id", { uuid: true });
+  assertMatchingImmutable(body.key, current.key, "key");
+  assertMatchingImmutable(body.value, current.value, "value");
+  const status = requireEnum(body.status ?? current.status, "setting action status", ACTION_STATUSES);
+  return normalizeSettingAction({ ...current, status, updatedAt: new Date().toISOString(), message: validateTextLength(body.message ?? current.message, "message", MAX_PUBLIC_TEXT_CHARS) }, status);
+}
+
+function clientFileAccessFromBody(raw) {
+  const body = requireObject(raw);
+  const now = new Date().toISOString();
+  return normalizeFileAccessRequest({
+    id: crypto.randomUUID(),
+    itemID: validateTextLength(body.itemID ?? body.itemId, "itemID", MAX_IDENTIFIER_CHARS, { required: true }),
+    itemKind: requireEnum(body.itemKind ?? "file", "itemKind", new Set(["file"])),
+    itemTitle: validateTextLength(body.itemTitle, "itemTitle", MAX_PUBLIC_TEXT_CHARS),
+    status: "pending", createdAt: now, updatedAt: now, message: "",
+  }, "pending");
+}
+
+function applyWorkerFileAccessPatch(current, raw) {
+  const body = requireObject(raw);
+  for (const field of ["objectKey", "object_key", "downloadTicket", "download_ticket", "expiresAt", "expires_at", "sizeBytes", "size_bytes", "downloadCount", "download_count", "contentType", "content_type"]) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) throw new RelayValidationError(`${field} is server-owned`);
+  }
+  assertMatchingImmutable(body.id, current.id, "id", { uuid: true });
+  assertMatchingImmutable(body.itemID ?? body.itemId, current.itemID, "itemID");
+  assertMatchingImmutable(body.itemKind, current.itemKind, "itemKind");
+  const status = requireEnum(body.status ?? current.status, "file access status", FILE_ACCESS_STATUSES);
+  if (status === "completed" && !current.objectKey) throw new RelayValidationError("completed file access requires the upload endpoint");
+  return normalizeFileAccessRequest({ ...current, status, updatedAt: new Date().toISOString(), message: validateTextLength(body.message ?? current.message, "message", MAX_PUBLIC_TEXT_CHARS) }, status);
+}
+
+function isActiveCommandConstraintError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("unique") && (message.includes("commands_one_active") || message.includes("commands"));
+}
+
+function isValidStoredCommand(raw) {
+  return Boolean(
+    normalizeUUIDText(raw?.id)
+    && COMMAND_KINDS.has(String(raw?.kind || ""))
+    && COMMAND_STATUSES.has(String(raw?.status || ""))
+    && Number.isFinite(Date.parse(raw?.createdAt || raw?.created_at || ""))
+    && Number.isFinite(Date.parse(raw?.updatedAt || raw?.updated_at || ""))
+  );
+}
+
+function isValidStoredItemAction(raw) {
+  return Boolean(
+    normalizeUUIDText(raw?.id)
+    && ITEM_ACTION_KINDS.has(String(raw?.action || ""))
+    && ACTION_STATUSES.has(String(raw?.status || ""))
+    && ITEM_KINDS.has(String(raw?.itemKind || raw?.item_kind || ""))
+    && String(raw?.itemID || raw?.item_id || "").trim()
+    && Number.isFinite(Date.parse(raw?.createdAt || raw?.created_at || ""))
+    && Number.isFinite(Date.parse(raw?.updatedAt || raw?.updated_at || ""))
+  );
+}
+
+function isValidStoredSettingAction(raw) {
+  return Boolean(
+    normalizeUUIDText(raw?.id)
+    && sanitizeSettingKey(raw?.key)
+    && ACTION_STATUSES.has(String(raw?.status || ""))
+    && Number.isFinite(Date.parse(raw?.createdAt || raw?.created_at || ""))
+    && Number.isFinite(Date.parse(raw?.updatedAt || raw?.updated_at || ""))
+  );
+}
+
+function isValidStoredFileAccess(raw) {
+  const objectKey = raw?.objectKey || raw?.object_key;
+  return Boolean(
+    normalizeUUIDText(raw?.id)
+    && String(raw?.itemID || raw?.item_id || "").trim()
+    && String(raw?.itemKind || raw?.item_kind || "") === "file"
+    && FILE_ACCESS_STATUSES.has(String(raw?.status || ""))
+    && Number.isFinite(Date.parse(raw?.createdAt || raw?.created_at || ""))
+    && Number.isFinite(Date.parse(raw?.updatedAt || raw?.updated_at || ""))
+    && (!objectKey || isValidFileObjectKey(objectKey, raw?.id))
+  );
+}
+
+function isValidFileObjectKey(objectKey, expectedRequestID = "") {
+  const key = String(objectKey || "");
+  if (!key || key.length > 512 || key.includes("\\") || key.includes("\0")) return false;
+  const segments = key.split("/");
+  if (segments.length !== 3 || segments.some((segment) => !segment || segment === "." || segment === "..")) return false;
+  const [prefix, requestID, objectName] = segments;
+  if (prefix !== "file-access" || !normalizeUUIDText(requestID)) return false;
+  if (expectedRequestID && requestID !== normalizeUUIDText(expectedRequestID)) return false;
+  const objectMatch = objectName.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-(.+)$/i);
+  const filename = objectMatch?.[2] || "";
+  return Boolean(objectMatch && normalizeUUIDText(objectMatch[1]) && filename && filename.length <= 160 && !/[\u0000-\u001F/]/.test(filename));
+}
+
 function normalizeCommandOptions(raw) {
   const parsed = typeof raw === "string" ? parseJSON(raw, {}) : raw || {};
   return {
@@ -2567,7 +4124,7 @@ function normalizeCommandOptions(raw) {
 function normalizeItemAction(raw, fallbackStatus) {
   const now = new Date().toISOString();
   const id = String(raw.id || crypto.randomUUID()).toLowerCase();
-  return {
+  const normalized = {
     id,
     action: String(raw.action || ""),
     itemID: String(raw.itemID || raw.itemId || ""),
@@ -2578,6 +4135,20 @@ function normalizeItemAction(raw, fallbackStatus) {
     updatedAt: raw.updatedAt || now,
     message: String(raw.message || ""),
   };
+  const key = String(raw._idempotencyKey || raw.idempotency_key || "").trim();
+  if (key) {
+    Object.defineProperty(normalized, "_idempotencyKey", {
+      value: key,
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
+  }
+  return normalized;
+}
+
+function actionIdempotencyKey(action) {
+  return String(action?._idempotencyKey || "").trim();
 }
 
 function normalizeFileAccessRequest(raw, fallbackStatus) {
@@ -2642,8 +4213,9 @@ function normalizeUUIDText(value) {
 }
 
 function normalizeStatus(raw, fallbackPhase) {
-  const status = { ...defaultStatus, ...(raw || {}) };
-  for (const key of [
+  const input = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const status = {};
+  const countKeys = [
     "assignments",
     "exams",
     "helpDesk",
@@ -2659,14 +4231,18 @@ function normalizeStatus(raw, fallbackPhase) {
     "calendarCreated",
     "calendarUpdated",
     "calendarDeleted",
-  ]) {
-    status[key] = Number.isFinite(Number(status[key])) ? Number(status[key]) : 0;
+  ];
+  for (const key of countKeys) {
+    const value = Number(input[key]);
+    status[key] = Number.isFinite(value) ? Math.max(0, Math.min(1_000_000, Math.trunc(value))) : 0;
   }
-  status.phase = String(fallbackPhase || status.phase || "");
-  status.phaseDetail = sanitizePublicText(status.phaseDetail) || null;
-  status.loginRequired = Boolean(status.loginRequired);
-  status.authDigits = status.authDigits == null ? null : String(status.authDigits);
-  status.authStatusMessage = status.authStatusMessage == null ? null : String(status.authStatusMessage);
+  const requestedPhase = String(fallbackPhase || input.phase || "idle");
+  status.phase = STATUS_PHASES.has(requestedPhase) ? requestedPhase : "idle";
+  status.phaseDetail = sanitizePublicText(input.phaseDetail) || null;
+  status.loginRequired = Boolean(input.loginRequired);
+  const authDigits = String(input.authDigits ?? "").trim();
+  status.authDigits = status.loginRequired && /^\d{1,3}$/.test(authDigits) ? authDigits : null;
+  status.authStatusMessage = sanitizePublicText(input.authStatusMessage) || null;
   return status;
 }
 
@@ -2675,10 +4251,10 @@ function normalizeSyncItem(raw) {
     return null;
   }
   const kind = String(raw.kind || "").trim();
-  if (!kind) {
+  if (!ITEM_KINDS.has(kind)) {
     return null;
   }
-  const id = String(raw.id || "").trim() || crypto.randomUUID();
+  const id = String(raw.id || "").trim().slice(0, MAX_IDENTIFIER_CHARS) || crypto.randomUUID();
   const now = new Date().toISOString();
   const rawAcademicYear = raw.academicYear;
   const numericAcademicYear = Number(rawAcademicYear);
@@ -2700,8 +4276,8 @@ function normalizeSyncItem(raw) {
     timestamp: sanitizePublicText(raw.timestamp),
     status: sanitizePublicText(raw.status),
     detail: sanitizePublicText(raw.detail),
-    attachmentCount: Number.isFinite(Number(raw.attachmentCount)) ? Number(raw.attachmentCount) : 0,
-    updatedAt: String(raw.updatedAt || now),
+    attachmentCount: boundedInt(raw.attachmentCount, 0, 0, 1_000_000),
+    updatedAt: normalizedLogTimestamp(raw.updatedAt, now),
     isRead: normalizeBoolean(raw.isRead),
     isImportant: normalizeBoolean(raw.isImportant),
     isHidden: normalizeBoolean(raw.isHidden),
@@ -2931,7 +4507,7 @@ function sanitizePublicText(value) {
   if (looksPrivateText(text)) {
     return "";
   }
-  return text.replace(/\/Users\/[^\s"'<>]+/g, "[local-path]");
+  return text.replace(/\/Users\/[^\s"'<>]+/g, "[local-path]").slice(0, MAX_PUBLIC_TEXT_CHARS);
 }
 
 function sanitizeLogText(value) {
@@ -2997,7 +4573,7 @@ function normalizeBoolean(value) {
   return false;
 }
 
-async function replaceSyncItems(db, state, items, generatedAt, extras = {}) {
+async function replaceSyncItems(db, state, items, generatedAt, extras = {}, env = null, ctx = null) {
   const now = new Date().toISOString();
   const runLogsClearedAt = await getMeta(db, "syncDataRunLogsClearedAt");
   const runLogs = normalizeRunLogs(extras.runLogs, runLogsClearedAt);
@@ -3015,7 +4591,10 @@ async function replaceSyncItems(db, state, items, generatedAt, extras = {}) {
     now
   );
   const nextStatus = statusWithStoredSyncData(state.status, itemOverlay.items, itemOverlay.calendarChanges);
-  await db.batch([
+  const event = await touchRelayEvent(db, env, {
+    reason: "sync-data",
+    updatedAt: now,
+    mutationStatements: [
     setMetaStatement(db, "syncDataItems", JSON.stringify(itemOverlay.items.slice(0, MAX_SYNC_ITEMS))),
     setMetaStatement(db, "syncDataDryRunReports", JSON.stringify(extras.dryRunReports || [])),
     setMetaStatement(db, "syncDataCalendarChanges", JSON.stringify(itemOverlay.calendarChanges)),
@@ -3027,11 +4606,13 @@ async function replaceSyncItems(db, state, items, generatedAt, extras = {}) {
     setMetaStatement(db, "syncDataUpdatedAt", now),
     setMetaStatement(db, "status", JSON.stringify(nextStatus)),
     setMetaStatement(db, "updatedAt", now),
-  ]);
+    ],
+  }, ctx);
   return {
     ...state,
     status: nextStatus,
     updatedAt: now,
+    revision: event.revision,
   };
 }
 
@@ -3070,11 +4651,14 @@ async function applySettingActionToStoredSyncData(db, action) {
   if (JSON.stringify(settings) === JSON.stringify(next)) {
     return { changed: false, applied: Boolean(action.key) };
   }
-  await db.batch([
-    setMetaStatement(db, "syncDataSettings", JSON.stringify(next)),
-    setMetaStatement(db, "syncDataUpdatedAt", action.updatedAt || new Date().toISOString()),
-  ]);
-  return { changed: true, applied: true };
+  return {
+    changed: true,
+    applied: true,
+    mutationStatements: [
+      setMetaStatement(db, "syncDataSettings", JSON.stringify(next)),
+      setMetaStatement(db, "syncDataUpdatedAt", action.updatedAt || new Date().toISOString()),
+    ],
+  };
 }
 
 function applySettingActionsToSettings(inputSettings, actions, now) {
@@ -3150,9 +4734,8 @@ async function applyItemActionToStoredSyncData(db, state, action) {
   if (calendarPatch.changed) {
     statements.push(setMetaStatement(db, "syncDataCalendarChanges", JSON.stringify(calendarChanges)));
   }
-  await db.batch(statements);
   state.status = statusWithStoredSyncData(state.status, items, calendarChanges);
-  return { changed: true };
+  return { changed: true, mutationStatements: statements };
 }
 
 function mutateSyncItemsForItemAction(inputItems, action, now) {
@@ -3382,6 +4965,7 @@ async function syncDataResponse(db, { kind = "", limit = 250 } = {}) {
     .sort(compareSyncItems)
     .slice(0, limit);
   return {
+    revision: await currentRelayRevision(db),
     generatedAt: await getMeta(db, "syncDataGeneratedAt") || "",
     updatedAt: await getMeta(db, "syncDataUpdatedAt") || "",
     items: filtered,
@@ -3416,11 +5000,7 @@ async function updateSharedSetting(db, env, key, body, request, ctx = null) {
     ...current.filter((item) => item.key !== setting.key),
     setting,
   ]);
-  await db.batch([
-    setMetaStatement(db, "sharedSettings", JSON.stringify(next)),
-    setMetaStatement(db, "updatedAt", setting.updatedAt),
-  ]);
-  await appendRequestLog(db, request, {
+  const requestLogStatement = await appendRequestLogStatement(db, request, {
     action: `${setting.title} 변경`,
     status: "updated",
     message: "서버 공유 설정을 바로 저장했습니다.",
@@ -3428,6 +5008,11 @@ async function updateSharedSetting(db, env, key, body, request, ctx = null) {
   await touchRelayEvent(db, env, {
     reason: "shared-settings",
     updatedAt: setting.updatedAt,
+    mutationStatements: [
+      setMetaStatement(db, "sharedSettings", JSON.stringify(next)),
+      setMetaStatement(db, "updatedAt", setting.updatedAt),
+      requestLogStatement,
+    ],
   }, ctx);
   return setting;
 }
@@ -3480,14 +5065,14 @@ function normalizeSharedSettingValue(definition, value) {
 async function clearSharedRunLogs(db, env, ctx = null) {
   const clearedAt = new Date().toISOString();
   const previous = normalizeRunLogs(parseJSON(await getMeta(db, "syncDataRunLogs"), []));
-  await db.batch([
-    setMetaStatement(db, "syncDataRunLogs", "[]"),
-    setMetaStatement(db, "syncDataRunLogsClearedAt", clearedAt),
-    setMetaStatement(db, "syncDataUpdatedAt", clearedAt),
-  ]);
   await touchRelayEvent(db, env, {
     reason: "sync-data:run-logs-clear",
     updatedAt: clearedAt,
+    mutationStatements: [
+      setMetaStatement(db, "syncDataRunLogs", "[]"),
+      setMetaStatement(db, "syncDataRunLogsClearedAt", clearedAt),
+      setMetaStatement(db, "syncDataUpdatedAt", clearedAt),
+    ],
   }, ctx);
   return {
     clearedAt,
@@ -3550,7 +5135,7 @@ function normalizeSettings(raw) {
     options: Array.isArray(setting?.options) ? setting.options.map(sanitizePublicText).filter(Boolean).slice(0, 20) : [],
     editable: normalizeBoolean(setting?.editable ?? true),
     updatedAt: String(setting?.updatedAt || setting?.updated_at || new Date().toISOString()),
-  })).filter((setting) => setting.key);
+  })).filter((setting) => SYNC_SETTING_KEYS.has(setting.key));
 }
 
 function normalizeVerifySummary(raw) {
@@ -3589,33 +5174,42 @@ function normalizeRunLogs(raw, clearedAt = "") {
   return raw
     .slice(0, MAX_SHARED_RUN_LOGS * 2)
     .map((log) => {
+      const command = String(log?.command || "").trim();
+      if (!RUN_LOG_COMMAND_TITLES.has(command)) return null;
       const now = new Date().toISOString();
-      const startedAt = sanitizePublicText(log?.startedAt || log?.started_at) || now;
-      const finishedAt = sanitizePublicText(log?.finishedAt || log?.finished_at) || startedAt;
-      const updatedAt = sanitizePublicText(log?.updatedAt || log?.updated_at) || finishedAt;
+      const startedAt = normalizedLogTimestamp(log?.startedAt || log?.started_at, now);
+      const finishedAt = normalizedLogTimestamp(log?.finishedAt || log?.finished_at, startedAt);
+      const updatedAt = normalizedLogTimestamp(log?.updatedAt || log?.updated_at, finishedAt);
       const finishedTime = Date.parse(finishedAt) || Date.parse(updatedAt) || 0;
       if (clearedTime > 0 && finishedTime <= clearedTime) {
         return null;
       }
+      const exitCode = boundedInt(log?.exitCode ?? log?.exit_code, 1, -999, 999);
+      const wasCancelled = normalizeBoolean(log?.wasCancelled ?? log?.was_cancelled);
       return {
         id: normalizeUUIDText(log?.id) || crypto.randomUUID(),
-        command: sanitizePublicText(log?.command),
-        commandTitle: sanitizePublicText(log?.commandTitle || log?.command_title) || "동기화",
-        status: sanitizePublicText(log?.status) || "기록됨",
+        command,
+        commandTitle: RUN_LOG_COMMAND_TITLES.get(command),
+        status: wasCancelled ? "중단됨" : exitCode === 0 ? "성공" : `실패 ${exitCode}`,
         startedAt,
         finishedAt,
         updatedAt,
         duration: sanitizePublicText(log?.duration),
-        exitCode: boundedInt(log?.exitCode ?? log?.exit_code, 0, -999, 999),
+        exitCode,
         dryRun: normalizeBoolean(log?.dryRun ?? log?.dry_run),
-        wasCancelled: normalizeBoolean(log?.wasCancelled ?? log?.was_cancelled),
-        needsAttention: normalizeBoolean(log?.needsAttention ?? log?.needs_attention),
+        wasCancelled,
+        needsAttention: !wasCancelled && exitCode !== 0,
         outputTail: sanitizeLogText(log?.outputTail || log?.output_tail),
       };
     })
     .filter(Boolean)
     .sort((lhs, rhs) => Date.parse(rhs.finishedAt) - Date.parse(lhs.finishedAt))
     .slice(0, MAX_SHARED_RUN_LOGS);
+}
+
+function normalizedLogTimestamp(value, fallback) {
+  const text = String(value || "").trim();
+  return text.length <= 64 && Number.isFinite(Date.parse(text)) ? text : fallback;
 }
 
 function sanitizeSettingKey(value) {
@@ -3759,6 +5353,9 @@ function commandBlocksNewRequest(command, running) {
 }
 
 function rowToCommand(row) {
+  if (!isValidStoredCommand({ id: row.id, kind: row.kind, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at })) {
+    return null;
+  }
   return normalizeCommand({
     id: row.id,
     kind: row.kind,
@@ -3773,8 +5370,12 @@ function rowToCommand(row) {
 }
 
 function rowToItemAction(row) {
+  if (!isValidStoredItemAction({ id: row.id, action: row.action, itemID: row.item_id, itemKind: row.item_kind, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at })) {
+    return null;
+  }
   return normalizeItemAction({
     id: row.id,
+    _idempotencyKey: row.idempotency_key,
     action: row.action,
     itemID: row.item_id,
     itemKind: row.item_kind,
@@ -3786,7 +5387,20 @@ function rowToItemAction(row) {
   }, row.status || "pending");
 }
 
+async function getItemActionByIdempotencyKey(db, key) {
+  if (!key) return null;
+  const row = await db.prepare(`
+    SELECT id, idempotency_key, action, item_id, item_kind, item_title, status, created_at, updated_at, message
+    FROM item_actions
+    WHERE idempotency_key = ?
+  `).bind(key).first();
+  return row ? rowToItemAction(row) : null;
+}
+
 function rowToFileAccessRequest(row) {
+  if (!isValidStoredFileAccess({ id: row.id, itemID: row.item_id, itemKind: row.item_kind, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at, objectKey: row.object_key })) {
+    return null;
+  }
   return normalizeFileAccessRequest({
     id: row.id,
     itemID: row.item_id,
@@ -3825,7 +5439,7 @@ function ageMs(timestamp, now) {
 }
 
 function boundedInt(value, fallback, min, max) {
-  const parsed = Number.parseInt(String(value || ""), 10);
+  const parsed = Number.parseInt(String(value ?? ""), 10);
   if (!Number.isInteger(parsed)) {
     return fallback;
   }
@@ -3865,24 +5479,253 @@ function quotaKeyForToday(now = new Date()) {
   return `fileAccessQuota:${now.toISOString().slice(0, 10)}`;
 }
 
+function quotaDateForToday(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
 async function loadFileAccessQuota(db) {
-  const key = quotaKeyForToday();
-  const raw = parseJSON(await getMeta(db, key), {});
+  return loadFileAccessQuotaForDate(db, quotaDateForToday());
+}
+
+async function loadFileAccessQuotaForDate(db, quotaDate) {
+  const row = await db.prepare(`
+    SELECT upload_count, upload_bytes, download_count, daily_download_limit
+    FROM file_access_quota
+    WHERE quota_date = ?
+  `).bind(quotaDate).first();
   return {
-    key,
-    uploadCount: Number.isFinite(Number(raw.uploadCount)) ? Number(raw.uploadCount) : 0,
-    uploadBytes: Number.isFinite(Number(raw.uploadBytes)) ? Number(raw.uploadBytes) : 0,
-    downloadCount: Number.isFinite(Number(raw.downloadCount)) ? Number(raw.downloadCount) : 0,
+    key: quotaKeyForToday(),
+    quotaDate,
+    uploadCount: Number(row?.upload_count || 0),
+    uploadBytes: Number(row?.upload_bytes || 0),
+    downloadCount: Number(row?.download_count || 0),
+    dailyDownloadLimit: Number(row?.daily_download_limit || DEFAULT_DAILY_FILE_DOWNLOADS),
   };
 }
 
-async function saveFileAccessQuota(db, quota) {
-  await setMetaStatement(db, quota.key || quotaKeyForToday(), JSON.stringify({
-    uploadCount: Number(quota.uploadCount || 0),
-    uploadBytes: Number(quota.uploadBytes || 0),
-    downloadCount: Number(quota.downloadCount || 0),
-    updatedAt: new Date().toISOString(),
-  })).run();
+function ensureFileAccessQuotaRowStatement(db, quotaDate = quotaDateForToday(), limits = {}) {
+  const dailyDownloadLimit = Number(limits.dailyDownloads || DEFAULT_DAILY_FILE_DOWNLOADS);
+  const linkDownloadLimit = Number(limits.downloadsPerLink || DEFAULT_FILE_DOWNLOADS_PER_LINK);
+  return db.prepare(`
+    INSERT INTO file_access_quota(
+      quota_date, upload_count, upload_bytes, download_count, updated_at,
+      daily_download_limit, link_download_limit
+    )
+    VALUES (?, 0, 0, 0, ?, ?, ?)
+    ON CONFLICT(quota_date) DO UPDATE SET
+      daily_download_limit = excluded.daily_download_limit,
+      link_download_limit = excluded.link_download_limit
+  `).bind(quotaDate, new Date().toISOString(), dailyDownloadLimit, linkDownloadLimit);
+}
+
+function affectedRows(result) {
+  return Number(result?.meta?.changes ?? result?.changes ?? result?.rowsWritten ?? 0);
+}
+
+function reserveFileAccessQuotaStatement(db, delta, limits, quotaDate = quotaDateForToday()) {
+  return db.prepare(`
+    UPDATE file_access_quota
+    SET upload_count = upload_count + ?,
+        upload_bytes = upload_bytes + ?,
+        download_count = download_count + ?,
+        updated_at = ?
+    WHERE quota_date = ?
+      AND upload_count + ? <= ?
+      AND upload_bytes + ? <= ?
+      AND download_count + ? <= ?
+  `).bind(
+    Number(delta.uploadCount || 0),
+    Number(delta.uploadBytes || 0),
+    Number(delta.downloadCount || 0),
+    new Date().toISOString(),
+    quotaDate,
+    Number(delta.uploadCount || 0), limits.dailyUploads,
+    Number(delta.uploadBytes || 0), limits.dailyUploadBytes,
+    Number(delta.downloadCount || 0), limits.dailyDownloads
+  );
+}
+
+function releaseFileAccessQuotaStatement(db, delta, quotaDate = quotaDateForToday()) {
+  return db.prepare(`
+    UPDATE file_access_quota
+    SET upload_count = MAX(0, upload_count - ?),
+        upload_bytes = MAX(0, upload_bytes - ?),
+        download_count = MAX(0, download_count - ?),
+        updated_at = ?
+    WHERE quota_date = ?
+  `).bind(
+    Number(delta.uploadCount || 0),
+    Number(delta.uploadBytes || 0),
+    Number(delta.downloadCount || 0),
+    new Date().toISOString(),
+    quotaDate
+  );
+}
+
+async function reserveFileDownload(db, env, id, limits, {
+  request = null,
+  reason = "file-access:download-reserved",
+  requestLog = null,
+  ctx = null,
+} = {}) {
+  const quotaDate = quotaDateForToday();
+  const updatedAt = new Date().toISOString();
+  const token = crypto.randomUUID();
+  const normalizedLog = requestLog ? normalizeRequestLogEntry(request, requestLog) : null;
+  const current = await db.prepare(`
+    SELECT status, upload_claim
+    FROM file_access_requests
+    WHERE id = ?
+  `).bind(id).first();
+  if (!current || current.status !== "completed" || current.upload_claim) {
+    return {
+      ok: false,
+      httpStatus: 409,
+      error: "파일 링크를 정리 중이거나 더 이상 사용할 수 없습니다.",
+    };
+  }
+  try {
+    const requestLogStatement = normalizedLog
+      ? await appendRequestLogStatement(db, null, normalizedLog)
+      : null;
+    const logID = normalizedLog?.id || crypto.randomUUID();
+    const logCreatedAt = normalizedLog?.createdAt || updatedAt;
+    await db.batch([
+      ensureFileAccessQuotaRowStatement(db, quotaDate, limits),
+      db.prepare(`
+        UPDATE file_access_requests
+        SET download_count = download_count + 1, updated_at = ?
+        WHERE id = ? AND status = 'completed' AND upload_claim IS NULL
+      `).bind(updatedAt, id),
+      requirePreviousStatementChangeStatement(db),
+      db.prepare(`
+        INSERT INTO file_download_reservations(
+          token, request_id, quota_date, log_id, log_created_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(token, id, quotaDate, logID, logCreatedAt, updatedAt),
+      ...(requestLogStatement ? [requestLogStatement] : []),
+    ]);
+    return { ok: true, token, quotaDate, updatedAt };
+  } catch (error) {
+    if (String(error?.message || error).includes("file download link quota reached")) {
+      return { ok: false, error: "이 링크의 다운로드 가능 횟수를 초과했습니다." };
+    }
+    if (String(error?.message || error).includes("daily file download quota reached")) {
+      return { ok: false, error: "오늘의 파일 다운로드 한도에 도달했습니다." };
+    }
+    throw error;
+  }
+}
+
+async function finalizeFileDownloadReservation(db, env, id, token, {
+  reason = "file-access:downloaded",
+  requestLog = null,
+  ctx = null,
+} = {}) {
+  const reservation = await db.prepare(`
+    SELECT token, request_id, log_id, log_created_at
+    FROM file_download_reservations
+    WHERE token = ? AND request_id = ?
+  `).bind(token, id).first();
+  if (!reservation) return { ok: true, settled: false, alreadySettled: true };
+  const requestLogStatement = requestLog
+    ? await appendRequestLogStatement(db, null, {
+      ...requestLog,
+      id: reservation.log_id,
+      createdAt: reservation.log_created_at,
+    })
+    : null;
+  const updatedAt = new Date().toISOString();
+  const event = await touchRelayEvent(db, env, {
+    reason,
+    updatedAt,
+    mutationStatements: [
+      db.prepare(`
+        DELETE FROM file_download_reservations
+        WHERE token = ? AND request_id = ?
+      `).bind(token, id),
+      requirePreviousStatementChangeStatement(db),
+      ...(requestLogStatement ? [requestLogStatement] : []),
+    ],
+  }, ctx);
+  return { ok: true, settled: true, revision: event.revision };
+}
+
+async function releaseFileDownloadReservation(db, env, id, token, {
+  reason = "file-access:download-failed",
+  requestLog = null,
+  ctx = null,
+} = {}) {
+  const reservation = await db.prepare(`
+    SELECT token, request_id, quota_date, log_id, log_created_at
+    FROM file_download_reservations
+    WHERE token = ? AND request_id = ?
+  `).bind(token, id).first();
+  if (!reservation) return { ok: true, released: false, alreadySettled: true };
+  const requestLogStatement = requestLog
+    ? await appendRequestLogStatement(db, null, {
+      ...requestLog,
+      id: reservation.log_id,
+      createdAt: reservation.log_created_at,
+    })
+    : null;
+  const updatedAt = new Date().toISOString();
+  const event = await touchRelayEvent(db, env, {
+    reason,
+    updatedAt,
+    mutationStatements: [
+      db.prepare(`
+        DELETE FROM file_download_reservations
+        WHERE token = ? AND request_id = ?
+      `).bind(token, id),
+      requirePreviousStatementChangeStatement(db),
+      db.prepare(`
+        UPDATE file_access_requests
+        SET download_count = MAX(0, download_count - 1)
+        WHERE id = ? AND download_count > 0
+      `).bind(id),
+      requirePreviousStatementChangeStatement(db),
+      releaseFileAccessQuotaStatement(db, { downloadCount: 1 }, reservation.quota_date),
+      requirePreviousStatementChangeStatement(db),
+      ...(requestLogStatement ? [requestLogStatement] : []),
+    ],
+  }, ctx);
+  return { ok: true, released: true, revision: event.revision };
+}
+
+async function recoverStaleFileDownloadReservations(db, env, ctx = null) {
+  const staleBefore = new Date(Date.now() - FILE_DOWNLOAD_RESERVATION_LEASE_MS).toISOString();
+  const result = await db.prepare(`
+    SELECT token, request_id, log_id
+    FROM file_download_reservations
+    WHERE created_at <= ?
+    ORDER BY created_at ASC
+    LIMIT ?
+  `).bind(staleBefore, MAX_FILE_ACCESS_REQUESTS).all();
+  const reservations = result.results || [];
+  if (reservations.length === 0) return 0;
+  const logs = new Map((await loadRequestLog(db)).map((entry) => [entry.id, entry]));
+  let released = 0;
+  for (const reservation of reservations) {
+    const currentLog = logs.get(reservation.log_id);
+    const release = await releaseFileDownloadReservation(
+      db,
+      env,
+      reservation.request_id,
+      reservation.token,
+      {
+        reason: "file-access:download-reservation-expired",
+        requestLog: currentLog ? {
+          ...currentLog,
+          status: "failed",
+          message: "파일 읽기가 완료되지 않아 다운로드 예약을 복구했습니다.",
+        } : null,
+        ctx,
+      }
+    );
+    if (release.released) released += 1;
+  }
+  return released;
 }
 
 function downloadURLFor(fileRequest, request, env) {
@@ -4049,6 +5892,10 @@ function escapeHTML(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function contentSecurityNonce() {
+  return crypto.randomUUID().replaceAll("-", "");
 }
 
 function encodeRFC5987ValueChars(value) {
