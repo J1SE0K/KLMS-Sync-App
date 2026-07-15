@@ -1,0 +1,47 @@
+name: Private UI readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_ios_devices:
+        description: Run signed build and launch checks on connected iPhone and iPad devices
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: "30 19 * * *"
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-ui-readiness
+  cancel-in-progress: false
+
+jobs:
+  private-mac-readiness:
+    name: Private Mac and device readiness
+    runs-on: [self-hosted, macOS, klms-ui-readiness]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run sanitized UI readiness gate
+        env:
+          KLMS_READINESS_SWIFT_TESTS: "1"
+          KLMS_READINESS_MAC: "1"
+          KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS: "0"
+          KLMS_READINESS_IOS_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ios_devices && '1' || '0' }}
+          KLMS_READINESS_IOS_LAUNCH: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ios_devices && '1' || '0' }}
+        run: |
+          set -o pipefail
+          tools/verify_klms_app_readiness.sh | tee ui-readiness.log
+      - name: Upload sanitized readiness log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sanitized-ui-readiness-${{ github.run_id }}
+          path: ui-readiness.log
+          if-no-files-found: warn
+          retention-days: 7

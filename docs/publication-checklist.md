@@ -49,7 +49,7 @@ Run the app readiness gate before shipping Mac/iPhone/iPad UI or relay changes:
 tools/verify_klms_app_readiness.sh
 ```
 
-This helper runs Swift tests, the signed Mac app build, Mac accessibility smoke, Mac basic-actions smoke, the Mac tab-response probe, signed iOS build, and iPhone/iPad launch verification. The basic-actions smoke covers the dashboard action, log clear controls, Command-Q, and app reopen path. Treat a skipped or pending iPhone/iPad launch gate as incomplete device readiness, not as a clean release.
+This helper runs Swift tests, the signed Mac app build, Mac accessibility smoke, Mac basic-actions smoke, the Mac tab-response probe, signed iOS build, and iPhone/iPad launch verification. The basic-actions smoke verifies the dashboard action and log-clear controls without activating data-destructive actions, then checks Command-Q and the app reopen path. Set `KLMS_MAC_SMOKE_ALLOW_DESTRUCTIVE_ACTIONS=1` only in an isolated fixture profile when the clear actions themselves must be pressed. Treat a skipped or pending iPhone/iPad launch gate as incomplete device readiness, not as a clean release.
 
 ## GitHub
 

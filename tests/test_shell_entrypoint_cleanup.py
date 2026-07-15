@@ -10,6 +10,64 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 
 
 class ShellEntrypointCleanupTests(unittest.TestCase):
+    def test_fresh_ownerless_shared_lock_gets_initialization_grace(self) -> None:
+        common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            lock_dir = Path(tmp) / "core-notice.lock"
+            lock_dir.mkdir()
+            script = f"""
+            source {common}
+            export KLMS_SHARED_SYNC_LOCK_DIR={lock_dir}
+            export KLMS_SHARED_SYNC_LOCK_INITIALIZATION_GRACE_SECONDS=10
+            klms_cleanup_stale_shared_sync_lock
+            [[ -d "$KLMS_SHARED_SYNC_LOCK_DIR" ]] && print -- kept || print -- removed
+            """
+
+            fresh = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(fresh.stdout.strip(), "kept")
+
+            # The process that won mkdir can now publish its PID without a
+            # competitor having removed the directory during initialization.
+            (lock_dir / "pid").write_text(str(os.getpid()), encoding="utf-8")
+            self.assertTrue(lock_dir.is_dir())
+            (lock_dir / "pid").unlink()
+            old_epoch = 1_700_000_000
+            os.utime(lock_dir, (old_epoch, old_epoch))
+
+            stale = subprocess.run(
+                ["/bin/zsh", "-c", script],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(stale.stdout.strip(), "removed")
+            self.assertFalse(lock_dir.exists())
+
+    def test_core_and_notice_share_lock_without_sharing_work_cache(self) -> None:
+        common = PROJECT_DIR / "src" / "sh" / "klms_common.sh"
+        script = f"""
+        source {common}
+        for namespace in core notice files all; do
+          print -- "$namespace:$(klms_default_sync_lock_name "$namespace")"
+        done
+        """
+        result = subprocess.run(
+            ["/bin/zsh", "-c", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(
+            result.stdout.strip().splitlines(),
+            ["core:core-notice", "notice:core-notice", "files:files", "all:all"],
+        )
+
     def test_single_scope_wrappers_use_common_entrypoint(self) -> None:
         for script_name, scope in [
             ("sync_klms_core.sh", "core"),
@@ -43,6 +101,7 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         script = (PROJECT_DIR / "tools" / "install_klms_ios_device.sh").read_text(encoding="utf-8")
         launch_script = (PROJECT_DIR / "tools" / "verify_klms_ios_device_launch.sh").read_text(encoding="utf-8")
         readiness_script = (PROJECT_DIR / "tools" / "verify_klms_app_readiness.sh").read_text(encoding="utf-8")
+        readiness_workflow = (PROJECT_DIR / ".github" / "workflows" / "ui-readiness.yml").read_text(encoding="utf-8")
         readme = (PROJECT_DIR / "apps" / "KLMSync" / "README.md").read_text(encoding="utf-8")
 
         self.assertIn('local device_label="${2:-device}"', script)
@@ -117,9 +176,13 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('record_step "mac-build"', readiness_script)
         self.assertIn('record_step "mac-relaunch"', readiness_script)
         self.assertIn("relaunch_mac_app()", readiness_script)
-        self.assertIn("mac-build|mac-relaunch|mac-accessibility-smoke|mac-basic-actions|mac-tab-response", readiness_script)
+        self.assertIn("mac-build|mac-relaunch|mac-accessibility-smoke|mac-resize-hit-area|mac-basic-actions|mac-tab-response", readiness_script)
         self.assertIn('record_step "mac-accessibility-smoke"', readiness_script)
+        self.assertIn('record_step "mac-resize-hit-area"', readiness_script)
         self.assertIn('record_step "mac-basic-actions"', readiness_script)
+        self.assertIn('ALLOW_DESTRUCTIVE_ACTIONS="${KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS:-0}"', readiness_script)
+        self.assertIn('KLMS_MAC_SMOKE_ALLOW_DESTRUCTIVE_ACTIONS="$ALLOW_DESTRUCTIVE_ACTIONS"', readiness_script)
+        self.assertIn('KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS: "0"', readiness_workflow)
         self.assertIn('record_step "mac-tab-response"', readiness_script)
         self.assertIn('record_step "ios-signed-build"', readiness_script)
         self.assertIn('record_step "ios-device-launch"', readiness_script)
@@ -366,10 +429,14 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("KLMS_LOGIN_ASSIST_READY=1", common)
         self.assertIn('KLMS_USE_EXISTING_DASHBOARD="${KLMS_LOGIN_PREFETCH_READY:-0}"', common)
         self.assertIn('KLMS_PARENT_LOGIN_PREFLIGHT_READY="${KLMS_LOGIN_PREFETCH_READY:-0}"', common)
-        self.assertIn("startRunningCommandStatusPoll", app_model)
+        self.assertNotIn("startRunningCommandStatusPoll", app_model)
+        self.assertNotIn("runningSnapshotRefreshIntervalNanoseconds", app_model)
         self.assertIn("loginStatusWasConfirmed", app_model)
-        self.assertIn("configurePassiveSnapshotRefresh", app_model)
-        self.assertIn("passiveSnapshotRefreshIntervalNanoseconds", app_model)
+        self.assertIn("configureFileSystemEventRefresh", app_model)
+        self.assertIn("KLMSFileSystemEventWatcher", app_model)
+        self.assertIn("fileSystemEventDebounceNanoseconds", app_model)
+        self.assertNotIn("configurePassiveSnapshotRefresh", app_model)
+        self.assertNotIn("passiveSnapshotRefreshIntervalNanoseconds", app_model)
         self.assertIn("showLoginTransition: true", app_model)
         self.assertIn("EngineSnapshotStore(paths: paths).load()", app_model)
         self.assertIn("cancelCommandBeforeTermination", app_model)
@@ -590,7 +657,8 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn('".DS_Store"', text)
         self.assertIn('"__pycache__"', text)
         self.assertIn('"*.pyc"', text)
-        self.assertIn("tmp_dir.rglob(pattern)", text)
+        self.assertIn('fnmatch.fnmatch(path.name, pattern)', text)
+        self.assertIn('descendants(scan_root)', text)
 
     def test_cleanup_script_recursively_removes_file_tmp_lists(self) -> None:
         script = PROJECT_DIR / "src" / "sh" / "cleanup_runtime_tmp.sh"
@@ -614,17 +682,131 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
             self.assertIn("cleanup_runtime_tmp", result.stdout)
             self.assertFalse(stale_url_list.exists())
 
+    def test_managed_root_cleanup_preserves_unknown_namespaces(self) -> None:
+        script = PROJECT_DIR / "src" / "sh" / "cleanup_runtime_tmp.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            managed = tmp_path / "core"
+            unknown = tmp_path / "violence_prevention_20260605"
+            managed.mkdir()
+            unknown.mkdir()
+            managed_file = managed / "generated.txt"
+            personal_file = unknown / "result.txt"
+            managed_file.write_text("generated\n", encoding="utf-8")
+            personal_file.write_text("personal\n", encoding="utf-8")
+
+            env = os.environ.copy()
+            env["KLMS_RUNTIME_TMP_CLEANUP_TARGET"] = str(tmp_path)
+            result = subprocess.run(
+                [
+                    "/bin/zsh",
+                    str(script),
+                    "--managed-root",
+                    "--max-age-hours",
+                    "0",
+                ],
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertFalse(managed_file.exists())
+            self.assertTrue(managed.is_dir())
+            self.assertEqual(personal_file.read_text(encoding="utf-8"), "personal\n")
+            self.assertIn(f"preserved_unknown {unknown.resolve()}", result.stdout)
+
+    def test_managed_root_dry_run_reports_without_deleting(self) -> None:
+        script = PROJECT_DIR / "src" / "sh" / "cleanup_runtime_tmp.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            managed_file = tmp_path / "notice" / "generated.json"
+            unknown_file = tmp_path / "personal-note.txt"
+            managed_file.parent.mkdir()
+            managed_file.write_text("{}\n", encoding="utf-8")
+            unknown_file.write_text("keep\n", encoding="utf-8")
+
+            env = os.environ.copy()
+            env["KLMS_RUNTIME_TMP_CLEANUP_TARGET"] = str(tmp_path)
+            result = subprocess.run(
+                [
+                    "/bin/zsh",
+                    str(script),
+                    "--managed-root",
+                    "--max-age-hours",
+                    "0",
+                    "--dry-run",
+                ],
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertTrue(managed_file.exists())
+            self.assertTrue(unknown_file.exists())
+            self.assertIn(f"would_remove {managed_file.resolve()}", result.stdout)
+            self.assertIn(f"preserved_unknown {unknown_file.resolve()}", result.stdout)
+            self.assertIn("dry_run=1", result.stdout)
+
+    def test_managed_root_cleanup_refuses_protected_target(self) -> None:
+        script = PROJECT_DIR / "src" / "sh" / "cleanup_runtime_tmp.sh"
+        env = os.environ.copy()
+        env["KLMS_RUNTIME_TMP_CLEANUP_TARGET"] = "/"
+        result = subprocess.run(
+            ["/bin/zsh", str(script), "--managed-root", "--max-age-hours", "0"],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("refusing protected cleanup target", result.stderr)
+
+    def test_managed_root_cleanup_refuses_broken_symlink_target(self) -> None:
+        script = PROJECT_DIR / "src" / "sh" / "cleanup_runtime_tmp.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            outside = tmp_path / "outside"
+            symlink_target = tmp_path / "runtime-tmp-link"
+            symlink_target.symlink_to(outside, target_is_directory=True)
+
+            env = os.environ.copy()
+            env["KLMS_RUNTIME_TMP_CLEANUP_TARGET"] = str(symlink_target)
+            result = subprocess.run(
+                ["/bin/zsh", str(script), "--managed-root", "--max-age-hours", "0"],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("invalid cleanup target", result.stderr)
+            self.assertFalse(outside.exists())
+
+    def test_full_run_root_cleanup_uses_managed_scope(self) -> None:
+        common = (PROJECT_DIR / "src" / "sh" / "klms_common.sh").read_text(
+            encoding="utf-8"
+        )
+        root_cleanup = common[common.index("klms_cleanup_tmp_root_if_enabled()") :]
+
+        self.assertIn("--managed-root", root_cleanup)
+
     def test_local_artifact_cleanup_preserves_private_runtime_data(self) -> None:
         script = PROJECT_DIR / "tools" / "clean_local_artifacts.sh"
         text = script.read_text(encoding="utf-8")
 
         self.assertIn("runtime/tmp", text)
+        self.assertIn("--managed-root", text)
+        self.assertIn("unknown runtime/tmp namespaces", text)
         self.assertIn("apps/KLMSync/.build", text)
+        self.assertIn("apps/KLMSyncWindows/dist", text)
         self.assertIn("notice_native_note_timing.log", text)
         self.assertIn("runtime/state", text)
         self.assertIn("course_files", text)
         self.assertIn("manual overrides", text)
         self.assertIn("Refusing to remove protected path", text)
+        self.assertNotIn('remove_path "$REPO_ROOT/runtime/tmp"', text)
         self.assertNotIn("git clean", text)
 
     def test_file_refresh_prunes_archive_and_cleans_tmp_on_success(self) -> None:
@@ -672,6 +854,14 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertNotIn("FILE_SEED_UNCHANGED_COURSE_STALE_SECONDS > FILE_SEED_EFFECTIVE_STALE_SECONDS", text)
         self.assertIn("build_files_stage_timings.py", text)
         self.assertIn("klms_cleanup_runtime_tmp_if_enabled", text)
+        self.assertIn("download_results_are_safe_to_prune", text)
+        self.assertIn("download failed; prune skipped", text)
+        self.assertLess(
+            text.index(
+                'download_results_are_safe_to_prune "$DOWNLOAD_RESULT_JSON" "$MANIFEST_JSON"'
+            ),
+            text.index('log_files_timing "prune start"'),
+        )
         self.assertIn('if is_truthy "${KLMS_APP_RUN:-0}"; then', text)
         app_run_block = text[
             text.index('if is_truthy "${KLMS_APP_RUN:-0}"; then')
@@ -813,7 +1003,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
         self.assertIn("private func described", settings)
         for description in [
             "비밀번호는 저장하지 않습니다.",
-            "시험과 헬프데스크 일정이 이미 같으면 Calendar 이벤트를 다시 쓰지 않습니다.",
+            "시험과 헬프데스크 일정이 이미 같으면 캘린더 이벤트를 다시 쓰지 않습니다.",
             "읽음/중요 표시는 항상 동기화합니다.",
             "변경량 계산에서 새 파일이나 수정된 파일이 없으면 실제 다운로드 단계를 건너뜁니다.",
             "집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요.",
@@ -1063,7 +1253,7 @@ print(json.dumps({"status": "login_required", "message": "login required"}))
     def test_core_state_build_uses_v2_engine(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(encoding="utf-8")
 
-        build_stage_index = text.index('beginStage(steps, stageTelemetry, "build-note")')
+        build_stage_index = text.index("const buildNoteBaseCommand = [")
         build_stage = text[build_stage_index:text.index('debugStderr("after build-note")')]
         self.assertIn("klms_sync_v2.cli", build_stage)
         self.assertNotIn("src/python/klms_sync.py", build_stage)
@@ -1252,6 +1442,11 @@ assert.ok(
     "알고리즘 개론::Written Assignment 4::2099-06-09T23:59:00+09:00"
   )
 );
+assert.ok(
+  !assignmentOverrideKeysForEntry(crossSourceEntries[1]).includes(
+    "알고리즘 개론::Written Assignment 4"
+  )
+);
 
 const distinctCourseboardEntries = [
   {
@@ -1436,7 +1631,10 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("configureServerRelayEventStream()", ios_app)
         self.assertIn('webSocketTask(with: store.eventStreamRequest(role: "client"))', ios_app)
         self.assertIn("task.receive()", ios_app)
-        self.assertIn("async let responseTask = Self.fetchStatusResponseResult(store: serverRelayStore)", ios_app)
+        self.assertIn("RelayEndpointCompletionConsumer.consume(operations)", ios_app)
+        self.assertIn("if scope.fetchesSyncData { endpoints.append(.syncData) }", ios_app)
+        self.assertIn("let shouldLoadSyncData = endpoint == .syncData", ios_app)
+        self.assertNotIn(".withoutSyncData", ios_app)
         self.assertIn("await model.bootstrapServerRelayFromLaunch()", ios_app)
         self.assertIn("syncDataNeedsRefresh = true", ios_app)
         self.assertNotIn("pendingCancelCommandID == nil ? 350_000_000 : 250_000_000", ios_app)
@@ -1451,8 +1649,10 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("willPresent notification", ios_app)
         self.assertIn("trackedReportNotificationCommandIDs", ios_app)
         self.assertIn("KLMSTrackedReportNotificationCommandIDs", ios_app)
-        self.assertIn("trackReportNotificationIfNeeded(for: command)", ios_app)
-        self.assertIn("handleReportNotificationUpdates(commands)", ios_app)
+        self.assertIn("let savedCommand = try await serverRelayStore.createReturningCommand(command)", ios_app)
+        self.assertIn("trackReportNotificationIfNeeded(for: savedCommand)", ios_app)
+        self.assertNotIn("trackReportNotificationIfNeeded(for: command)", ios_app)
+        self.assertIn("handleReportNotificationUpdates(overlaidCommands)", ios_app)
         self.assertIn("command.kind == .report", ios_app)
         self.assertIn("displayStatus.isTerminal", ios_app)
         self.assertIn('title = "요약 갱신 완료"', ios_app)
@@ -1488,6 +1688,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         combined = "\n".join([ios_project, windows_package, remote_models, ios_defaults, generator])
 
         self.assertIn("KLMSiOS.defaults.xcconfig", ios_project)
+        self.assertIn("LiveStatePolicies.swift in Sources", ios_project)
+        self.assertIn('"LiveStatePolicies.swift"', generator)
         self.assertIn('DEVELOPMENT_TEAM = "$(KLMS_IOS_DEVELOPMENT_TEAM)";', ios_project)
         self.assertIn('PRODUCT_BUNDLE_IDENTIFIER = "$(KLMS_IOS_BUNDLE_IDENTIFIER)";', ios_project)
         self.assertIn("KLMS_IOS_DEVELOPMENT_TEAM =", ios_defaults)
@@ -1553,7 +1755,10 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
 
         self.assertIn("case cancel", shared)
         self.assertIn("cancelRunningCommand() async throws", shared)
-        self.assertIn("func cancelRunningCommand() async", model)
+        self.assertIn("func cancelRunningCommand(", model)
+        self.assertIn("expectedIdentity: KLMSMacRunningCommandIdentity? = nil", model)
+        self.assertIn("expectedIdentity != runningCommandIdentity", model)
+        self.assertIn("cancelRunningCommand(expectedIdentity: expectedIdentity)", mac_view)
         self.assertIn("requestCancel", shared)
         self.assertIn("fetchCancelRequest", model)
         self.assertIn("await model.cancelRunningCommand()", ios_app)
@@ -1565,7 +1770,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn('return "요청 중"', ios_app)
         self.assertIn('return "중단"', ios_app)
         self.assertIn("Label(cancelButtonTitle", ios_app)
-        self.assertIn("await model.cancelRunningCommand()", mac_view)
+        self.assertIn("let expectedIdentity = model.runningCommandIdentity", mac_view)
+        self.assertIn("await model.cancelRunningCommand(expectedIdentity: expectedIdentity)", mac_view)
         self.assertIn('model.isCancellingCommand ? "hourglass" : "stop.fill"', mac_view)
         self.assertIn("KLMSMacCompactDangerIconButtonStyle", mac_view)
         self.assertIn("CompanionCompactTabBar", ios_app)
@@ -1602,12 +1808,43 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("diagnosticButton(.verify)", ios_app)
         self.assertIn("diagnosticButton(.v2BuildState)", ios_app)
         self.assertIn("private struct RemoteDashboardSyncCardContent", ios_app)
+        self.assertIn("private struct RemoteDashboardPrimarySyncAction", ios_app)
         self.assertIn("private let secondaryCommands: [RemoteCommandKind] = [.filesSync, .coreSync, .noticeSync]", ios_app)
-        self.assertIn("private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 7), count: 3)", ios_app)
-        self.assertIn("dashboardPrimaryButton", ios_app)
+        compact_sections = ios_app.split(
+            "static var compactTabs: [CompanionAppSection]", 1
+        )[1].split("static var workstationSections", 1)[0]
+        self.assertIn(
+            "[.status, .files, .notices, .tasks, .calendar, .history, .settings]",
+            compact_sections,
+        )
+        compact_tab_bar = ios_app.split(
+            "private struct CompanionCompactTabBar", 1
+        )[1].split("private struct CompanionStableSectionPane", 1)[0]
+        self.assertIn("if dynamicTypeSize.isAccessibilitySize", compact_tab_bar)
+        self.assertIn("Array(tabs.prefix(3))", compact_tab_bar)
+        self.assertIn("Array(tabs.dropFirst(3).prefix(2))", compact_tab_bar)
+        self.assertIn("Array(tabs.dropFirst(5))", compact_tab_bar)
+        self.assertIn(
+            "return [Array(tabs.prefix(4)), Array(tabs.dropFirst(4))]",
+            compact_tab_bar,
+        )
+        self.assertIn(
+            "usesAccessibilityLayout: dynamicTypeSize.isAccessibilitySize",
+            ios_app,
+        )
+        self.assertIn("RemoteDashboardPrimarySyncAction(model: model, compact: compact)", ios_app)
+        companion_header = ios_app.split(
+            "private struct CompanionScreenHeader", 1
+        )[1].split("private struct CompanionHeaderStatusPill", 1)[0]
+        self.assertNotIn("RemoteDashboardPrimarySyncAction", companion_header)
+        self.assertIn('.accessibilityIdentifier("dashboard-primary-full-sync")', ios_app)
         self.assertIn("dashboardSecondaryButton(command)", ios_app)
         self.assertIn('.accessibilityLabel(isRunning ? "전체 동기화 중단" : "전체 동기화 실행")', ios_app)
         self.assertIn('if isRunning { return "전체 동기화 중단" }', ios_app)
+        sync_card_content = ios_app.split(
+            "private struct RemoteDashboardSyncCardContent", 1
+        )[1].split("private struct RemoteDashboardMetricOverview", 1)[0]
+        self.assertNotIn(".fullSync", sync_card_content)
         self.assertIn("RemotePrivacyNote", ios_app)
         self.assertIn("@State private var selectedDashboardPreview", ios_app)
         self.assertIn("DashboardCategoryInlineDetailPanel(", ios_app)

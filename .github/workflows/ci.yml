@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests:
+    name: Core safety tests
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Check shell syntax
+        run: |
+          find bin src/sh tools deploy -type f -name '*.sh' \
+            -not -path '*/node_modules/*' -print0 \
+            | xargs -0 -n 1 zsh -n
+      - name: Run Python regression suite
+        run: python3 -B -m unittest discover -s tests
+
+  swift-tests:
+    name: Apple client tests
+    runs-on: macos-26
+    timeout-minutes: 55
+    defaults:
+      run:
+        working-directory: apps/KLMSync
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run Swift package tests
+        run: swift test --scratch-path "$RUNNER_TEMP/klmsync-swiftpm-build" --jobs 1
+      - name: Build the iPhone and iPad simulator app
+        env:
+          SYMROOT: ${{ runner.temp }}/klms-ios-build
+          OBJROOT: ${{ runner.temp }}/klms-ios-obj
+          DERIVED_DATA_PATH: ${{ runner.temp }}/klms-ios-derived
+          MODULE_CACHE_DIR: ${{ runner.temp }}/klms-ios-module-cache
+        run: ../../tools/build_klms_ios_sim.sh
+      - name: Test live iPhone and iPad layout transitions
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/klms-ios-ui-matrix-derived
+          MODULE_CACHE_DIR: ${{ runner.temp }}/klms-ios-ui-matrix-module-cache
+        run: ../../tools/test_klms_ios_ui_matrix.sh
+
+  relay-and-windows-tests:
+    name: Relay and Windows client tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            deploy/cloudflare-worker/package-lock.json
+            apps/KLMSyncWindows/package-lock.json
+      - name: Check self-hosted relay syntax
+        run: node --check tools/klms_relay_server.mjs
+      - name: Test self-hosted relay integrity and WebSocket flow
+        run: node --test deploy/relay/test_relay.mjs
+      - name: Test Cloudflare relay
+        working-directory: deploy/cloudflare-worker
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npm run check
+          npm test
+          npm run test:integration
+      - name: Test Windows client coordinator and responsive policy
+        working-directory: apps/KLMSyncWindows
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+          npm run check
+          npm test
+
+  windows-ui:
+    name: Windows Electron responsive WebSocket E2E
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/KLMSyncWindows
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/KLMSyncWindows/package-lock.json
+      - name: Install Windows client dependencies
+        run: npm ci
+      - name: Audit Windows dependencies
+        run: npm audit --audit-level=high
+      - name: Run Electron WebSocket and responsive E2E
+        run: npm run test:e2e
+      - name: Build the Windows x64 installer
+        run: npm run dist:win
+      - name: Upload the Windows x64 installer
+        uses: actions/upload-artifact@v6
+        with:
+          name: klms-sync-windows-x64-${{ github.run_id }}
+          path: apps/KLMSyncWindows/dist/*-x64.exe
+          if-no-files-found: error
+          retention-days: 7

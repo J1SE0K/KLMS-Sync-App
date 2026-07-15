@@ -13,12 +13,14 @@ Usage: tools/clean_local_artifacts.sh [--dry-run] [--keep-swift-build]
 
 Removes only regenerable local artifacts:
   - SwiftPM build output under apps/KLMSync/.build
+  - Windows packaging output under apps/KLMSyncWindows/dist
   - Python __pycache__ directories
-  - runtime/tmp
+  - generated content inside managed runtime/tmp namespaces
   - transient runtime log/html warning files
 
 It intentionally preserves config.env, manual overrides, runtime/state,
-runtime/cache JSON state, course_files, and downloaded KLMS files.
+runtime/cache JSON state, unknown runtime/tmp namespaces, course_files,
+and downloaded KLMS files.
 EOF
 }
 
@@ -67,8 +69,14 @@ remove_path() {
 if (( INCLUDE_SWIFT_BUILD )); then
   remove_path "$REPO_ROOT/apps/KLMSync/.build"
 fi
+remove_path "$REPO_ROOT/apps/KLMSyncWindows/dist"
 
-remove_path "$REPO_ROOT/runtime/tmp"
+cleanup_args=(--managed-root --max-age-hours 0)
+if (( DRY_RUN )); then
+  cleanup_args+=(--dry-run)
+fi
+KLMS_RUNTIME_TMP_CLEANUP_TARGET="$REPO_ROOT/runtime/tmp" \
+  /bin/zsh "$REPO_ROOT/src/sh/cleanup_runtime_tmp.sh" "${cleanup_args[@]}"
 remove_path "$REPO_ROOT/runtime/cache/notice_native_note_timing.log"
 remove_path "$REPO_ROOT/runtime/cache/notice_note_render_warning.txt"
 remove_path "$REPO_ROOT/runtime/cache/generated_section.html"

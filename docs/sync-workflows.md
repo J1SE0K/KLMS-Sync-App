@@ -2,12 +2,12 @@
 
 ## 준비
 
-1. `examples/config.env.example`를 `config.env`로 복사한다.
+1. `examples/config.env.example`를 소유자 전용 권한(`0600`)의 `config.env`로 복사한다.
 2. Safari에서 `https://klms.kaist.ac.kr/my/`에 로그인한다.
 3. 첫 실행 때 macOS 자동화 권한을 허용한다.
 
 ```sh
-cp examples/config.env.example config.env
+install -m 600 examples/config.env.example config.env
 ./sync_klms_core.sh
 ```
 
@@ -23,7 +23,7 @@ cp examples/config.env.example config.env
 
 자동 sync entrypoint는 성공 후 `runtime/tmp`를 정리한다. 실패한 실행의 tmp는 디버깅을 위해 보존한다. `KLMS_RUNTIME_TMP_CLEANUP_ENABLED=0`으로 끄거나 `KLMS_RUNTIME_TMP_MAX_AGE_HOURS`로 보존 시간을 바꿀 수 있다.
 
-각 entrypoint는 작업별 lock을 쓴다. 기본 경로는 `~/Library/Application Support/KLMSNotesSync/runtime/automation/{core,notice,files,all}.lock`이고, 쓰기 불가 환경에서는 repo 내부 fallback lock으로 내려간다.
+과제/시험과 공지 entrypoint는 같은 공지 상태를 snapshot·commit하므로 `core-notice.lock`을 공유한다. 파일 작업은 `files.lock`, 전체 실행의 부모 조정은 `all.lock`을 쓰며, 전체 실행 안의 core/notice 자식도 `core-notice.lock`을 순서대로 획득한다. 기본 위치에 쓸 수 없으면 repo 내부 fallback lock으로 내려간다.
 
 ## 모드와 캐시
 

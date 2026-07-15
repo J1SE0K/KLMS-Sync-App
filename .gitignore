@@ -38,6 +38,7 @@ __pycache__/
 # Node/package outputs
 node_modules/
 apps/KLMSyncWindows/dist/
+apps/KLMSyncWindows/output/
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
@@ -59,3 +60,9 @@ apps/KLMSync/Xcode/**/build/
 *.swp
 *.swo
 treemap.html
+ui-readiness.log
+
+# Local Codex plans and generated review evidence
+.omo/
+design-audit-*/
+review-evidence-*/
