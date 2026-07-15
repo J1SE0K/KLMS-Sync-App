@@ -943,7 +943,6 @@ function assignmentOverrideKeysForEntry(entry) {
         url,
         url && title ? `${url}::${title}` : "",
         course && title && due ? `${course}::${title}::${due}` : "",
-        course && title ? `${course}::${title}` : "",
       ].filter(Boolean)
     )
   );

@@ -130,6 +130,31 @@ def validate_pages_for_state_build(pages: list[Page]) -> str:
     return ""
 
 
+def validate_dashboard_for_state_build(path: str | Path | None) -> str:
+    if not path:
+        return "KLMS 대시보드 파일이 없어서 기존 동기화 상태를 유지했어."
+    target = Path(path)
+    if not target.is_file():
+        return "KLMS 대시보드 파일을 찾지 못해서 기존 동기화 상태를 유지했어."
+    try:
+        legacy_module = legacy().legacy
+        raw_page = legacy_module.load_single_page(target)
+        page = Page.from_fetch_record(raw_page)
+        if not page.html.strip():
+            return "KLMS 대시보드 HTML이 비어 있어서 기존 동기화 상태를 유지했어."
+        if looks_like_login_page(page):
+            return "KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘."
+        dashboard = legacy_module.parse_dashboard_page(raw_page)
+    except (AttributeError, OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+        return f"KLMS 대시보드를 읽지 못해 기존 동기화 상태를 유지했어: {error}"
+    if dashboard.status != "ok":
+        return str(
+            dashboard.error_message
+            or "KLMS 대시보드를 해석하지 못해 기존 동기화 상태를 유지했어."
+        )
+    return ""
+
+
 def notice_from_article_page(page: Page) -> Notice | None:
     if "/mod/courseboard/article.php" not in page.url:
         return None
@@ -388,15 +413,15 @@ def load_source_items(
     overrides: dict[str, Any] | None,
 ) -> tuple[list[Assignment], list[Event], dict[str, dict[str, str]]]:
     if not dashboard_json:
-        return [], [], {}
+        raise ValueError("dashboard JSON is required for an authoritative state build")
     dashboard_path = Path(dashboard_json)
     if not dashboard_path.exists():
-        return [], [], {}
+        raise ValueError(f"dashboard JSON does not exist: {dashboard_path}")
 
     legacy_module = legacy().legacy
     dashboard = legacy_module.parse_dashboard_page(legacy_module.load_single_page(dashboard_path))
     if dashboard.status != "ok":
-        return [], [], {}
+        raise ValueError(dashboard.error_message or "dashboard parse failed")
 
     course_pages = legacy().load_pages(course_pages_json) + legacy().load_pages(
         all_week_course_pages_json
@@ -485,6 +510,8 @@ def command_build_note(args: argparse.Namespace) -> int:
     all_state_pages = detail_pages + supplemental_pages + supplemental_detail_pages
 
     validation_error = validate_pages_for_state_build(all_state_pages)
+    if not validation_error:
+        validation_error = validate_dashboard_for_state_build(args.dashboard_json)
     if validation_error:
         payload = {
             "status": "error",
@@ -528,12 +555,17 @@ def command_build_note(args: argparse.Namespace) -> int:
         payload = state.to_legacy_state()
         payload["html"] = render_success_html(payload)
 
+    status = status_from_state(payload, previous_state)
+    if args.validate_only:
+        print(json.dumps(status, ensure_ascii=False, sort_keys=True))
+        return 1 if validation_error else 0
+
     if args.output_html:
         Path(args.output_html).write_text(str(payload.get("html") or ""), encoding="utf-8")
     write_json(args.output_state, payload)
-    write_json(args.output_status, status_from_state(payload, previous_state))
-    print(json.dumps(status_from_state(payload, previous_state), ensure_ascii=False, sort_keys=True))
-    return 0
+    write_json(args.output_status, status)
+    print(json.dumps(status, ensure_ascii=False, sort_keys=True))
+    return 1 if validation_error else 0
 
 
 def command_list_course_urls(args: argparse.Namespace) -> int:
@@ -759,6 +791,7 @@ def build_parser() -> argparse.ArgumentParser:
     build_note.add_argument("--output-status", required=True)
     build_note.add_argument("--generated-at")
     build_note.add_argument("--include-past", action="store_true")
+    build_note.add_argument("--validate-only", action="store_true")
     build_note.set_defaults(func=command_build_note)
     return parser
 

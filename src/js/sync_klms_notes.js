@@ -60,6 +60,8 @@ function parseCliArgs(argv, scriptDir) {
 function run(argv) {
   const steps = [];
   const stageTelemetry = createStageTelemetry("");
+  let completedRemindersOverridePendingJson = "";
+  let completedRemindersOverridePendingOwned = false;
   ACTIVE_STAGE_TELEMETRY = stageTelemetry;
   try {
     beginStage(steps, stageTelemetry, "start");
@@ -352,7 +354,9 @@ function run(argv) {
     const supplementalDetailFetchSummaryJson = `${workCacheDir}/supplemental_detail_fetch_summary.json`;
     const supplementalDetailUrlsTxt = `${workCacheDir}/supplemental_detail_urls.txt`;
     const boardArticleStateJson = `${workCacheDir}/board_article_state.json`;
-    const boardArticleStatePendingJson = `${workCacheDir}/board_article_state.next.json`;
+    const boardArticleStatePendingJson = dryRun
+      ? `${workTmpDir}/board_article_state.dry-run.next.json`
+      : `${workCacheDir}/board_article_state.next.json`;
     const noticeBoardStateJson = `${cacheDir}/notice_board_state.json`;
     const noticeBoardStatePendingJson = `${cacheDir}/notice_board_state.next.json`;
     const noticeSummaryStateJson = `${cacheDir}/notice_summary_state.json`;
@@ -380,9 +384,16 @@ function run(argv) {
       `${cacheDir}/core/supplemental_primary_pages.json`;
     const overridesJson =
       config.OVERRIDES_JSON_PATH || `${scriptDir}/manual_assignment_overrides.json`;
-    const outputHtml = `${cacheDir}/generated_section.html`;
-    const outputState = `${stateDir}/next_state.json`;
-    const outputStatus = `${cacheDir}/status.json`;
+    completedRemindersOverridePendingJson = `${overridesJson}.klms-sync.next`;
+    const outputHtml = dryRun
+      ? `${workTmpDir}/generated_section.dry-run.html`
+      : `${cacheDir}/generated_section.html`;
+    const outputState = dryRun
+      ? `${workTmpDir}/next_state.dry-run.json`
+      : `${stateDir}/next_state.json`;
+    const outputStatus = dryRun
+      ? `${workTmpDir}/status.dry-run.json`
+      : `${cacheDir}/status.json`;
     const stateJson = `${stateDir}/state.json`;
     let noticeSummaryAlreadySynced = false;
     let noticeSummaryPrebuildSnapshot = null;
@@ -463,15 +474,40 @@ function run(argv) {
         completeStageTelemetry(stageTelemetry, { status: "skipped" });
         return "status=skipped scope=notice reason=disabled";
       }
-      const noticeSummary = runStandaloneNoticeSummary(
-        scriptDir,
-        waitSeconds,
-        baseFetchOptions,
-        noticePaths,
-        steps,
-        usePrefetchedDashboard,
-        stageTelemetry
-      );
+      // A notice-only run commits several related cache documents before the
+      // native Notes render finishes. Keep them transactional so a partial
+      // fetch, parser failure, or render failure cannot make the next run
+      // treat an incomplete notice set as authoritative.
+      const noticeScopeSnapshot = snapshotFiles([
+        noticeBoardStateJson,
+        noticeBoardStatePendingJson,
+        noticeSummaryStateJson,
+        noticeUserStateJson,
+        noticeNoteRenderStateJson,
+        noticeArchiveNoteRenderStateJson,
+        noticeDigestJson,
+        noticeDigestErrorTxt,
+        noticeNoteRenderWarningTxt,
+        noticeRenderErrorSummaryJson,
+      ]);
+      let noticeSummary;
+      let noticeScopeSucceeded = false;
+      try {
+        noticeSummary = runStandaloneNoticeSummary(
+          scriptDir,
+          waitSeconds,
+          baseFetchOptions,
+          noticePaths,
+          steps,
+          usePrefetchedDashboard,
+          stageTelemetry
+        );
+        noticeScopeSucceeded = true;
+      } finally {
+        if (dryRun || !noticeScopeSucceeded) {
+          restoreFileSnapshot(noticeScopeSnapshot);
+        }
+      }
       if (dryRun) {
         writeDryRunReport(dryRunReportJson, {
           scope,
@@ -501,23 +537,6 @@ function run(argv) {
       return `status=ok scope=notice dry_run=${dryRun ? "1" : "0"} notice_count=${noticeSummary.noticeCount} new=${noticeSummary.newCount} updated=${noticeSummary.updatedCount}`;
     }
 
-    if (remindersEnabled && !dryRun) {
-      beginStage(steps, stageTelemetry, "completed-reminders-import");
-      debugStderr("before completed-reminders-import");
-      const remindersListName = config.REMINDERS_LIST_NAME || "KLMS 과제";
-      const remindersIssueListName =
-        config.REMINDERS_ISSUE_LIST_NAME || "KLMS 확인 필요";
-      importCompletedRemindersToOverrides(stateJson, overridesJson, [
-        remindersListName,
-        remindersIssueListName,
-      ]);
-      debugStderr("after completed-reminders-import");
-    }
-    if (remindersEnabled && dryRun) {
-      beginStage(steps, stageTelemetry, "completed-reminders-import-dry-run");
-      debugStderr("dry-run skip completed-reminders-import");
-    }
-
     beginStage(steps, stageTelemetry, "dashboard-fetch");
     debugStderr("before dashboard-fetch");
     const dashboardPages =
@@ -536,10 +555,7 @@ function run(argv) {
       dashboardPages,
       1
     );
-    assertNoLoginPages(
-      "대시보드 정리를 시작하는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
-      dashboardPages
-    );
+    assertAuthoritativePageCoverage("sync-dashboard", dashboardPages, [dashboardUrl]);
     debugStderr("after dashboard-fetch");
 
     beginStage(steps, stageTelemetry, "term-catalog");
@@ -583,6 +599,7 @@ function run(argv) {
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
+    assertNonEmptyCourseUrlSet(courseUrls);
 
     beginStage(steps, stageTelemetry, "course-fetch");
     debugStderr("before course-fetch");
@@ -594,8 +611,10 @@ function run(argv) {
             staleSeconds: coursePageStaleSeconds,
             outputPath: coursePagesJson,
             summaryPath: courseFetchSummaryJson,
+            requireAll: true,
           })
         : [];
+    assertAuthoritativePageCoverage("sync-course-pages", coursePages, courseUrls);
     debugStderr("after course-fetch");
 
     const allWeekCourseUrls = uniqueStrings(courseUrls.map(toAllWeekCourseUrl).filter(Boolean));
@@ -611,8 +630,14 @@ function run(argv) {
             staleSeconds: allWeekCoursePageStaleSeconds,
             outputPath: allWeekCoursePagesJson,
             summaryPath: allWeekCourseFetchSummaryJson,
+            requireAll: true,
           })
         : [];
+    assertAuthoritativePageCoverage(
+      "sync-all-week-course-pages",
+      allWeekCoursePages,
+      allWeekCourseUrls
+    );
     debugStderr("after all-week-course-fetch");
 
     beginStage(steps, stageTelemetry, "supplemental-primary-list");
@@ -678,8 +703,14 @@ function run(argv) {
             quickLimit: supplementalQuickLimit,
             staleSeconds: supplementalStaleSeconds,
             alwaysFetchPatterns: supplementalAlwaysFetchPatterns,
+            requireAll: true,
           })
         : [];
+    assertAuthoritativePageCoverage(
+      "sync-supplemental-primary-pages",
+      supplementalPrimaryPages,
+      supplementalPrimaryUrls
+    );
     debugStderr("after supplemental-primary-fetch");
 
     beginStage(steps, stageTelemetry, "supplemental-secondary-list");
@@ -745,8 +776,14 @@ function run(argv) {
             quickLimit: secondarySupplementalQuickLimit,
             probeOrder: "oldest",
             staleSeconds: secondarySupplementalStaleSeconds,
+            requireAll: true,
           })
         : [];
+    assertAuthoritativePageCoverage(
+      "sync-supplemental-secondary-pages",
+      supplementalSecondaryPages,
+      supplementalSecondaryUrls
+    );
     debugStderr("after supplemental-secondary-fetch");
 
     const supplementalUrls = uniqueStrings([
@@ -797,8 +834,10 @@ function run(argv) {
             fullTtlSeconds: syncFullTtlSeconds,
             quickLimit: detailQuickLimit,
             staleSeconds: detailStaleSeconds,
+            requireAll: true,
           })
         : [];
+    assertAuthoritativePageCoverage("sync-detail-pages", detailPages, detailUrls);
     debugStderr("after details-fetch");
 
     beginStage(steps, stageTelemetry, "supplemental-detail-list");
@@ -879,8 +918,14 @@ function run(argv) {
             probeOrder: "oldest",
             staleSeconds: supplementalDetailStaleSeconds,
             alwaysFetchPatterns: supplementalDetailAlwaysFetchPatterns,
+            requireAll: true,
           })
         : [];
+    assertAuthoritativePageCoverage(
+      "sync-supplemental-detail-pages",
+      supplementalDetailPages,
+      prioritizedSupplementalDetailUrls
+    );
     if (skipSupplementalDetailFetch) {
       writeText(
         supplementalDetailFetchSummaryJson,
@@ -913,6 +958,9 @@ function run(argv) {
         noticeNoteRenderStateJson,
         noticeArchiveNoteRenderStateJson,
         noticeDigestJson,
+        noticeDigestErrorTxt,
+        noticeNoteRenderWarningTxt,
+        noticeRenderErrorSummaryJson,
       ]);
       try {
         // Build state from the current notice digest so notice-only assignment
@@ -936,43 +984,115 @@ function run(argv) {
           noticeRenderErrorSummaryJson,
           JSON.stringify(classifyNoticeRenderError(String(noticeError)), null, 2)
         );
+        if (dryRun) {
+          // A preview may report the transient error, but it must leave every
+          // persistent notice diagnostic byte-for-byte unchanged.
+          restoreFileSnapshot(noticeSnapshot);
+        }
         debugStderr(`notice-summary-prebuild warning ignored: ${String(noticeError)}`);
       }
       debugStderr("after notice-summary-prebuild");
     }
 
-    beginStage(steps, stageTelemetry, "build-note");
-    debugStderr("before build-note");
+    const buildNoteBaseCommand = [
+      "/usr/bin/env",
+      `PYTHONPATH=${pythonPath}`,
+      "python3",
+      "-m",
+      "klms_sync_v2.cli",
+      "build-note",
+      "--dashboard-json",
+      dashboardJson,
+      "--course-pages-json",
+      coursePagesJson,
+      "--all-week-course-pages-json",
+      allWeekCoursePagesJson,
+      "--course-file-manifest-json",
+      courseFileManifestJson,
+      "--details-json",
+      detailsJson,
+      "--supplemental-pages-json",
+      supplementalPagesJson,
+      "--supplemental-detail-pages-json",
+      supplementalDetailPagesJson,
+      ...(fileExists(noticeDigestJson)
+        ? ["--notice-digest-json", noticeDigestJson]
+        : []),
+      "--state-json",
+      stateJson,
+    ];
+    let buildOverridesJson = overridesJson;
     try {
+      if (remindersEnabled && !dryRun) {
+        // Exercise the complete authoritative parser/build path before reading
+        // Reminders. Validation-only is guaranteed not to write its outputs.
+        beginStage(steps, stageTelemetry, "authoritative-build-preflight");
+        debugStderr("before authoritative-build-preflight");
+        runCommand(
+          [
+            ...buildNoteBaseCommand,
+            "--overrides-json",
+            overridesJson,
+            "--output-html",
+            `${workTmpDir}/preflight.generated_section.html`,
+            "--output-state",
+            `${workTmpDir}/preflight.next_state.json`,
+            "--output-status",
+            `${workTmpDir}/preflight.status.json`,
+            "--validate-only",
+          ],
+          scriptDir
+        );
+        debugStderr("after authoritative-build-preflight");
+
+        beginStage(steps, stageTelemetry, "completed-reminders-import");
+        debugStderr("before completed-reminders-import");
+        const remindersListName = config.REMINDERS_LIST_NAME || "KLMS 과제";
+        const remindersIssueListName =
+          config.REMINDERS_ISSUE_LIST_NAME || "KLMS 확인 필요";
+        // Keep imported completions transactional: the final build consumes a
+        // sibling pending document, while the source of truth stays untouched.
+        removeFileIfExists(completedRemindersOverridePendingJson);
+        const overridesExistedBeforeImport = fileExists(overridesJson);
+        const overridesTextBeforeImport = overridesExistedBeforeImport
+          ? readText(overridesJson)
+          : "";
+        completedRemindersOverridePendingOwned = true;
+        if (overridesExistedBeforeImport) {
+          writeText(completedRemindersOverridePendingJson, overridesTextBeforeImport);
+        }
+        importCompletedRemindersToOverrides(
+          stateJson,
+          completedRemindersOverridePendingJson,
+          [remindersListName, remindersIssueListName]
+        );
+        const pendingOverridesChanged =
+          fileExists(completedRemindersOverridePendingJson) &&
+          (!overridesExistedBeforeImport ||
+            readText(completedRemindersOverridePendingJson) !== overridesTextBeforeImport);
+        if (pendingOverridesChanged) {
+          buildOverridesJson = completedRemindersOverridePendingJson;
+        } else {
+          removeFileIfExists(completedRemindersOverridePendingJson);
+          completedRemindersOverridePendingOwned = false;
+          completedRemindersOverridePendingJson = "";
+        }
+        debugStderr("after completed-reminders-import");
+      }
+      if (remindersEnabled && dryRun) {
+        beginStage(steps, stageTelemetry, "completed-reminders-import-dry-run");
+        removeFileIfExists(completedRemindersOverridePendingJson);
+        completedRemindersOverridePendingJson = "";
+        debugStderr("dry-run skip completed-reminders-import");
+      }
+
+      beginStage(steps, stageTelemetry, "build-note");
+      debugStderr("before build-note");
       runCommand(
         [
-          "/usr/bin/env",
-          `PYTHONPATH=${pythonPath}`,
-          "python3",
-          "-m",
-          "klms_sync_v2.cli",
-          "build-note",
-          "--dashboard-json",
-          dashboardJson,
-          "--course-pages-json",
-          coursePagesJson,
-          "--all-week-course-pages-json",
-          allWeekCoursePagesJson,
-          "--course-file-manifest-json",
-          courseFileManifestJson,
-          "--details-json",
-          detailsJson,
-          "--supplemental-pages-json",
-          supplementalPagesJson,
-          "--supplemental-detail-pages-json",
-          supplementalDetailPagesJson,
-          ...(fileExists(noticeDigestJson)
-            ? ["--notice-digest-json", noticeDigestJson]
-            : []),
+          ...buildNoteBaseCommand,
           "--overrides-json",
-          overridesJson,
-          "--state-json",
-          stateJson,
+          buildOverridesJson,
           "--output-html",
           outputHtml,
           "--output-state",
@@ -982,14 +1102,14 @@ function run(argv) {
         ],
         scriptDir
       );
+      debugStderr("after build-note");
     } finally {
       if (noticeSummaryPrebuildSnapshot) {
         restoreFileSnapshot(noticeSummaryPrebuildSnapshot);
         noticeSummaryPrebuildSnapshot = null;
       }
     }
-    debugStderr("after build-note");
-    if (fileExists(boardArticleStatePendingJson)) {
+    if (!dryRun && fileExists(boardArticleStatePendingJson)) {
       moveFile(boardArticleStatePendingJson, boardArticleStateJson);
     }
 
@@ -997,8 +1117,32 @@ function run(argv) {
     debugStderr("before status");
     const status = JSON.parse(readText(outputStatus));
     debugStderr(`after status status=${status.status}`);
+    if (status.status !== "ok" && completedRemindersOverridePendingJson) {
+      removeFileIfExists(completedRemindersOverridePendingJson);
+      completedRemindersOverridePendingOwned = false;
+      completedRemindersOverridePendingJson = "";
+    }
+    if (
+      status.status === "ok" &&
+      !dryRun &&
+      completedRemindersOverridePendingOwned
+    ) {
+      // The final state already includes the imported completions. Only now is
+      // the pending source-of-truth document atomically made authoritative.
+      beginStage(steps, stageTelemetry, "completed-reminders-override-commit");
+      replaceSiblingFileAtomically(
+        completedRemindersOverridePendingJson,
+        overridesJson
+      );
+      completedRemindersOverridePendingOwned = false;
+      completedRemindersOverridePendingJson = "";
+    }
 
-    if (status.status === "ok" && (examCalendarEnabled || helpDeskCalendarEnabled)) {
+    if (
+      status.status === "ok" &&
+      !dryRun &&
+      (examCalendarEnabled || helpDeskCalendarEnabled)
+    ) {
       if (skipUnchangedSideEffects && status.changed === false) {
         beginStage(steps, stageTelemetry, "calendar-sync-skipped");
         debugStderr("skip calendar-sync changed=false");
@@ -1028,6 +1172,14 @@ function run(argv) {
           debugStderr("after calendar-sync");
         }
       }
+    }
+    if (
+      status.status === "ok" &&
+      dryRun &&
+      (examCalendarEnabled || helpDeskCalendarEnabled)
+    ) {
+      beginStage(steps, stageTelemetry, "calendar-sync-dry-run");
+      debugStderr("dry-run skip calendar-sync");
     }
 
     if (status.status === "ok" && remindersEnabled && !dryRun) {
@@ -1095,6 +1247,7 @@ function run(argv) {
         skipped_side_effects: [
           ...(examCalendarEnabled || helpDeskCalendarEnabled ? ["calendar-sync"] : []),
           ...(remindersEnabled ? ["reminders-sync"] : []),
+          ...(noticeSummaryEnabled && scope === "all" ? ["notice-summary-state"] : []),
           "state-commit",
         ],
         state_counts: {
@@ -1104,7 +1257,13 @@ function run(argv) {
         },
       });
     }
-    if (status.status === "ok" && noticeSummaryEnabled && scope === "all" && !noticeSummaryAlreadySynced) {
+    if (
+      status.status === "ok" &&
+      !dryRun &&
+      noticeSummaryEnabled &&
+      scope === "all" &&
+      !noticeSummaryAlreadySynced
+    ) {
       beginStage(steps, stageTelemetry, "notice-summary");
       const noticeSnapshot = snapshotFiles([
         noticeBoardStateJson,
@@ -1142,6 +1301,17 @@ function run(argv) {
     });
     return `status=${status.status} scope=${scope} dry_run=${dryRun ? "1" : "0"} changed=${status.changed} assignments=${status.assignment_count} exams=${status.exam_count || 0} exam_candidates=${status.exam_candidate_count || 0} help_desk=${status.help_desk_count || 0} assignment_candidates=${status.assignment_candidate_count || 0}`;
   } catch (error) {
+    if (completedRemindersOverridePendingJson) {
+      try {
+        removeFileIfExists(completedRemindersOverridePendingJson);
+      } catch (cleanupError) {
+        debugStderr(
+          `completed-reminders pending override cleanup failed: ${String(cleanupError)}`
+        );
+      }
+      completedRemindersOverridePendingOwned = false;
+      completedRemindersOverridePendingJson = "";
+    }
     completeStageTelemetry(stageTelemetry, {
       status: "error",
       failedStage: steps.length > 0 ? steps[steps.length - 1] : "",
@@ -1470,6 +1640,58 @@ function assertRequiredPageCount(message, pages, expectedCount) {
   }
 }
 
+function assertNonEmptyCourseUrlSet(courseUrls) {
+  const urls = uniqueStrings(
+    (courseUrls || []).map((url) => String(url || "").trim()).filter(Boolean)
+  );
+  if (urls.length === 0) {
+    throw new Error(
+      "인증된 KLMS 대시보드에서 강의 링크를 하나도 찾지 못했어. 대시보드 마크업이나 학기 선택이 바뀐 상태일 수 있어 기존 일정과 할 일을 보존하고 동기화를 중단해."
+    );
+  }
+  return urls;
+}
+
+function assertAuthoritativePageCoverage(context, pages, requestedUrls) {
+  const expected = uniqueStrings(
+    (requestedUrls || []).map((url) => String(url || "").trim()).filter(Boolean)
+  );
+  if (expected.length === 0) {
+    return;
+  }
+  if (!Array.isArray(pages)) {
+    throw new Error(`${context}: fetched page payload is not an array`);
+  }
+
+  const pagesByRequestedUrl = new Map();
+  for (const page of pages) {
+    const requestedUrl = String((page && page.requestedUrl) || "").trim();
+    if (requestedUrl && !pagesByRequestedUrl.has(requestedUrl)) {
+      pagesByRequestedUrl.set(requestedUrl, page);
+    }
+  }
+
+  const missingUrls = expected.filter((url) => !pagesByRequestedUrl.has(url));
+  if (missingUrls.length > 0) {
+    throw new Error(
+      `${context}: incomplete page coverage (${expected.length - missingUrls.length}/${expected.length}); missing=${missingUrls.join(", ")}`
+    );
+  }
+
+  const authoritativePages = expected.map((url) => pagesByRequestedUrl.get(url));
+  if (
+    authoritativePages.some(
+      (page) => !String((page && (page.html || page.text)) || "").trim()
+    )
+  ) {
+    throw new Error(`${context}: required page fetch returned empty content`);
+  }
+  assertNoLoginPages(
+    `${context}: KLMS login page was returned for an authoritative input`,
+    authoritativePages
+  );
+}
+
 function mergePagesByRequestedUrl(pages) {
   const merged = [];
   const seen = new Set();
@@ -1503,6 +1725,7 @@ function fetchPages(urls, waitSeconds, scriptDir, options) {
   }
 
   const context = String((options && options.context) || "fetch");
+  const requireAll = !options || options.requireAll !== false;
   const tmpDir = String((options && options.tmpDir) || `${scriptDir}/runtime/tmp`);
   ensureDir(tmpDir);
   const slug = context.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "fetch";
@@ -1540,7 +1763,7 @@ function fetchPages(urls, waitSeconds, scriptDir, options) {
   if (options && options.summaryPath) {
     command.push(`--summary-out=${options.summaryPath}`);
   }
-  if (options && options.requireAll) {
+  if (requireAll) {
     command.push("--require-all");
   }
   if (options && options.reuseFallbackAlwaysFetch) {
@@ -1569,16 +1792,8 @@ function fetchPages(urls, waitSeconds, scriptDir, options) {
   }
   recordFetchSummaryTelemetry(options && options.summaryPath, context);
   const pages = JSON.parse(readText(outputPath));
-  if (
-    options &&
-    options.requireAll &&
-    (!Array.isArray(pages) || pages.length < urls.length)
-  ) {
-    throw new Error(
-      `${context}: required page fetch returned ${
-        Array.isArray(pages) ? pages.length : "invalid"
-      } / ${urls.length}`
-    );
+  if (requireAll) {
+    assertAuthoritativePageCoverage(context, pages, urls);
   }
   return pages;
 }
@@ -1929,8 +2144,16 @@ function stableHash(text) {
 }
 
 function moveFile(src, dst) {
-  runCommand(["/bin/rm", "-f", dst], currentDirectory());
-  runCommand(["/bin/mv", src, dst], currentDirectory());
+  // `mv -f` replaces a sibling destination atomically. Removing the current
+  // state first creates a data-loss window if the subsequent move fails.
+  runCommand(["/bin/mv", "-f", src, dst], currentDirectory());
+}
+
+function replaceSiblingFileAtomically(src, dst) {
+  if (!src || !dst || parentDirectory(src) !== parentDirectory(dst)) {
+    throw new Error(`Atomic replacement requires sibling paths: ${src} -> ${dst}`);
+  }
+  runCommand(["/bin/mv", "-f", src, dst], currentDirectory());
 }
 
 function currentDirectory() {

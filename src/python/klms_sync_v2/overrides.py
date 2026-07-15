@@ -46,7 +46,6 @@ def assignment_override_candidate_keys(item: Assignment) -> list[str]:
         url,
         f"{url}::{title}" if url and title else "",
         f"{course}::{title}::{due}" if course and title and due else "",
-        f"{course}::{title}" if course and title else "",
     ]
 
 

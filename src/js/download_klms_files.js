@@ -1677,35 +1677,6 @@ function extensionFamily(extension) {
   return ext;
 }
 
-function syncManifestStateEntries(manifestState, manifest) {
-  if (!manifestState || typeof manifestState !== "object") {
-    return;
-  }
-  if (!manifestState.sources || typeof manifestState.sources !== "object") {
-    return;
-  }
-
-  const entriesBySource = {};
-  manifest.forEach((entry) => {
-    const sourceUrl = String(entry.source_url || "").trim();
-    if (!sourceUrl) {
-      return;
-    }
-    if (!entriesBySource[sourceUrl]) {
-      entriesBySource[sourceUrl] = [];
-    }
-    entriesBySource[sourceUrl].push(JSON.parse(JSON.stringify(entry)));
-  });
-
-  Object.keys(manifestState.sources).forEach((sourceUrl) => {
-    const sourceState = manifestState.sources[sourceUrl];
-    if (!sourceState || typeof sourceState !== "object") {
-      return;
-    }
-    sourceState.entries = entriesBySource[sourceUrl] || [];
-  });
-}
-
 function waitForDownloadedFile(
   downloadsDir,
   beforeEntries,
@@ -2285,14 +2256,6 @@ function extractFilenameFromUrl(url) {
     return sanitizeDownloadFilename(decodeURIComponent(rawName));
   } catch (_error) {
     return sanitizeDownloadFilename(rawName);
-  }
-}
-
-function decodeURIComponentSafe(value) {
-  try {
-    return decodeURIComponent(String(value || ""));
-  } catch (_error) {
-    return String(value || "");
   }
 }
 
@@ -3136,28 +3099,58 @@ function entrySignature(path) {
 }
 
 function moveFile(src, dest) {
-  removeFileIfExists(dest);
-  const error = Ref();
-  const ok = $.NSFileManager.defaultManager.moveItemAtPathToPathError(
-    $(src).stringByStandardizingPath,
-    $(dest).stringByStandardizingPath,
-    error
-  );
-  if (!ok) {
-    throw new Error(`Failed to move ${src} -> ${dest}: ${unwrapError(error)}`);
+  if (samePath(src, dest)) {
+    return;
   }
+  copyFile(src, dest);
+  removeFileIfExists(src);
 }
 
 function copyFile(src, dest) {
-  removeFileIfExists(dest);
-  const error = Ref();
-  const ok = $.NSFileManager.defaultManager.copyItemAtPathToPathError(
-    $(src).stringByStandardizingPath,
-    $(dest).stringByStandardizingPath,
-    error
+  const sourcePath = standardizeOptionalPath(src);
+  const destinationPath = standardizeOptionalPath(dest);
+  if (!sourcePath || !destinationPath) {
+    throw new Error(`Failed to copy ${src} -> ${dest}: source and destination are required`);
+  }
+  if (samePath(sourcePath, destinationPath)) {
+    return;
+  }
+  if (!isRegularFile(sourcePath)) {
+    throw new Error(`Failed to copy ${src} -> ${dest}: source is not a regular file`);
+  }
+  if (isDirectory(destinationPath)) {
+    throw new Error(`Failed to copy ${src} -> ${dest}: destination is a directory`);
+  }
+
+  ensureDir(directoryName(destinationPath));
+  const temporaryPath = joinPath(
+    directoryName(destinationPath),
+    `.${baseName(destinationPath)}.klms-tmp-${Date.now()}-${Math.random()
+      .toString(16)
+      .slice(2)}`
   );
-  if (!ok) {
-    throw new Error(`Failed to copy ${src} -> ${dest}: ${unwrapError(error)}`);
+  const sourceSize = fileSize(sourcePath);
+  const error = Ref();
+
+  try {
+    const copied = $.NSFileManager.defaultManager.copyItemAtPathToPathError(
+      $(sourcePath).stringByStandardizingPath,
+      $(temporaryPath).stringByStandardizingPath,
+      error
+    );
+    if (!copied) {
+      throw new Error(`Failed to stage ${src} -> ${temporaryPath}: ${unwrapError(error)}`);
+    }
+    if (!isRegularFile(temporaryPath) || fileSize(temporaryPath) !== sourceSize) {
+      throw new Error(`Failed to verify staged copy ${temporaryPath}`);
+    }
+
+    // The temporary file is a sibling of the destination, so rename(2) via mv
+    // stays on the same filesystem and replaces the visible file atomically.
+    runProcess(["/bin/mv", "-f", temporaryPath, destinationPath]);
+  } catch (error) {
+    removeFileIfExists(temporaryPath);
+    throw error;
   }
 }
 
@@ -3384,10 +3377,6 @@ function baseName(path) {
 
 function joinPath(base, child) {
   return ObjC.unwrap($(base).stringByAppendingPathComponent($(child)));
-}
-
-function jsonString(value) {
-  return JSON.stringify(String(value));
 }
 
 function homeDirectory() {

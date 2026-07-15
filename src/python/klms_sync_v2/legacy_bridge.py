@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -150,11 +149,3 @@ def build_linked_html_index(
     )
     legacy.write_json(Path(output_index_json), next_index)
     legacy.write_text(Path(output_urls_txt), "\n".join(urls) + ("\n" if urls else ""))
-
-
-def check_login_status(pages_json: str) -> dict[str, Any]:
-    return legacy.analyze_login_status(load_pages(pages_json))
-
-
-def json_compact(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))

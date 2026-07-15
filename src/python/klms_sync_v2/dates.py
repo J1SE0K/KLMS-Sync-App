@@ -140,10 +140,6 @@ def normalize_ampm(hour: int, ampm: str | None) -> int:
     return hour
 
 
-def to_iso(year: int, month: int, day: int, hour: int, minute: int) -> str:
-    return datetime(year, month, day, hour, minute, tzinfo=KST).isoformat()
-
-
 def korean_weekday(value: datetime) -> str:
     return ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"][
         value.weekday()

@@ -197,6 +197,60 @@ log_files_timing() {
   print -r -- "$line" >&2
 }
 
+download_results_are_safe_to_prune() {
+  local result_json="$1"
+  local manifest_json="$2"
+  python3 - "$result_json" "$manifest_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+manifest_path = Path(sys.argv[2])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+except (OSError, ValueError) as error:
+    print(f"Refusing to prune because download completeness cannot be verified: {error}", file=sys.stderr)
+    raise SystemExit(1)
+
+results = payload.get("results")
+if not isinstance(results, list) or not isinstance(manifest, list):
+    print("Refusing to prune because the manifest or download result is invalid.", file=sys.stderr)
+    raise SystemExit(1)
+if len(results) != len(manifest):
+    print(
+        "Refusing to prune because file refresh did not produce one result per manifest entry: "
+        f"results={len(results)} manifest={len(manifest)}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+invalid = [item for item in results if not isinstance(item, dict)]
+failed = [
+    item
+    for item in results
+    if isinstance(item, dict)
+    and (item.get("failed") or item.get("quarantined") or item.get("download_failure"))
+]
+missing_files = [
+    item
+    for item in results
+    if isinstance(item, dict)
+    and not Path(str(item.get("destination_path") or "")).expanduser().is_file()
+]
+quarantine_count = int(payload.get("quarantineCount", 0) or 0)
+if invalid or failed or missing_files or quarantine_count:
+    print(
+        "Refusing to prune because file refresh was incomplete: "
+        f"invalid={len(invalid)} failed_or_quarantined={len(failed)} "
+        f"missing_files={len(missing_files)} quarantine_count={quarantine_count}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+PY
+}
+
 resolve_quick_limit() {
   local explicit_value="$1"
   local legacy_default="$2"
@@ -1332,6 +1386,15 @@ else
     "$FILE_DIRECT_FETCH_MAX_BYTES" \
     "$FILE_DIRECT_FETCH_BATCH_TIMEOUT_SECONDS"
   log_files_timing "download finish duration_s=$(($(date +%s) - download_started_epoch))"
+fi
+
+if ! is_truthy "$FILE_DRY_RUN" \
+  && ! download_results_are_safe_to_prune "$DOWNLOAD_RESULT_JSON" "$MANIFEST_JSON"; then
+  log_files_timing "download failed; prune skipped"
+  python3 "$KLMS_PYTHON_DIR/build_files_stage_timings.py" \
+    --log "$FILES_TIMING_LOG" \
+    --output-json "$FILES_TIMING_JSON"
+  exit 1
 fi
 
 if [[ "$MANIFEST_REUSED" == "1" && -s "$MANIFEST_MD" ]]; then

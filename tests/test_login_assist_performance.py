@@ -259,7 +259,7 @@ print -- '{"status":"twofactor_digits","digits":"57","submittedLogin":false}'
                         'KLMS_SSO_LOGIN_ID="test-user"',
                         'KLMS_SCRIPT_NOTIFICATIONS_ENABLED="0"',
                         'KLMS_LOGIN_ASSIST_REFRESH_PREEXISTING_TWOFACTOR_ENABLED="1"',
-                        'KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS="1"',
+                        'KLMS_LOGIN_ASSIST_APPROVAL_TIMEOUT_SECONDS="5"',
                         'KLMS_LOGIN_ASSIST_POLL_SECONDS="0.01"',
                         'KLMS_LOGIN_ASSIST_AUTHENTICATED_RECHECK_SECONDS="0"',
                         'KLMS_LOGIN_ASSIST_STEP_TIMEOUT_SECONDS="1"',

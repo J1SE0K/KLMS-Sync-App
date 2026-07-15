@@ -71,6 +71,11 @@ function runStandaloneNoticeSummary(
   );
   writeText(paths.courseUrlsTxt, courseUrlsOutput);
   const courseUrls = parseNonEmptyLines(courseUrlsOutput);
+  if (courseUrls.length === 0) {
+    throw new Error(
+      "notice-dashboard: no course URLs were parsed; refusing to commit an empty notice snapshot"
+    );
+  }
 
   beginStage(steps, stageTelemetry, "notice-course-fetch");
   const coursePages =
@@ -83,6 +88,7 @@ function runStandaloneNoticeSummary(
           summaryPath: paths.courseFetchSummaryJson,
           fallbackPagePaths: paths.courseFallbackPagePaths || [],
           reuseFallbackAlwaysFetch: true,
+          requireAll: true,
         })
       : [];
   assertNoLoginPages(
@@ -104,6 +110,7 @@ function runStandaloneNoticeSummary(
           summaryPath: paths.allWeekCourseFetchSummaryJson,
           fallbackPagePaths: paths.allWeekCourseFallbackPagePaths || [],
           reuseFallbackAlwaysFetch: true,
+          requireAll: true,
         })
       : [];
   assertNoLoginPages(
@@ -169,6 +176,7 @@ function runStandaloneNoticeSummary(
       alwaysFetchPatterns: paths.supplementalAlwaysFetchPatterns,
       fallbackPagePaths: paths.supplementalPrimaryFallbackPagePaths || [],
       reuseFallbackAlwaysFetch: true,
+      requireAll: true,
     });
     assertNoLoginPages(
       "공지 정리를 위해 공지 게시판을 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
@@ -206,6 +214,7 @@ function runStandaloneNoticeSummary(
       quickLimit: paths.supplementalQuickLimit,
       staleSeconds: paths.supplementalStaleSeconds,
       alwaysFetchPatterns: paths.noticeBoardPaginationAlwaysFetchPatterns,
+      requireAll: true,
     });
     assertNoLoginPages(
       "공지 정리를 위해 공지 게시판 추가 페이지를 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
@@ -303,6 +312,7 @@ function syncNoticeSummary(scriptDir, waitSeconds, baseFetchOptions, paths, stag
             mode: "full",
             outputPath: paths.noticeArticlePagesJson,
             summaryPath: paths.noticeArticleFetchSummaryJson,
+            requireAll: true,
           })
         )
       : [];
@@ -1008,37 +1018,6 @@ function verifyNoticeNativeNoteReadableFormat(targetKey, renderStateJsonPath, co
   ].filter(Boolean).join("\n");
 }
 
-function maybeSkipStableNoticeNativeUpdate(
-  noticeDigestJsonPath,
-  noticeUserStateJsonPath,
-  noticeRenderStateJsonPath,
-  archiveNoticeRenderStateJsonPath,
-  nativeEnvironment
-) {
-  const comparison = noticeNativeRenderComparison(
-    noticeDigestJsonPath,
-    noticeUserStateJsonPath,
-    noticeRenderStateJsonPath,
-    archiveNoticeRenderStateJsonPath,
-    nativeEnvironment
-  );
-  if (!comparison.canCompare) {
-    return { skipped: false, reason: comparison.reason };
-  }
-  if (!comparison.primary.matches) {
-    return { skipped: false, reason: "primary-render-state-differs" };
-  }
-  if (!comparison.archive.matches) {
-    return { skipped: false, reason: "archive-render-state-differs" };
-  }
-  return {
-    skipped: true,
-    output:
-      `Skipped native notice notes: stable_noop=1 notice_count=${comparison.expected.total} ` +
-      `primary=${comparison.expected.primary.length} archived=${comparison.expected.archive.length}`,
-  };
-}
-
 function noticeNativeRenderComparison(
   noticeDigestJsonPath,
   noticeUserStateJsonPath,
@@ -1182,10 +1161,6 @@ function noticeInteractionStateIsRead(state, fingerprint) {
     return true;
   }
   return Boolean(fingerprint) && String(state && state.read_fingerprint || "") === fingerprint;
-}
-
-function renderStateMatchesExpected(renderState, expected) {
-  return compareRenderStateToExpected(renderState, expected, "primary", []).matches;
 }
 
 function compareRenderStateToExpected(renderState, expected, targetKey, nativeEnvironment) {

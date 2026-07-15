@@ -630,17 +630,6 @@ function prepareBackgroundWindow(windowRef) {
   }
 }
 
-function closeWindow(windowRef) {
-  if (!windowRef) {
-    return;
-  }
-  try {
-    windowRef.close();
-  } catch (_error) {
-    // A temporary auth-check window may already be gone if Safari redirects slowly.
-  }
-}
-
 function closeTab(tab) {
   if (!tab) {
     return;

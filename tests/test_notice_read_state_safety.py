@@ -916,15 +916,52 @@ console.log(JSON.stringify({ off: runCase("0"), on: runCase("1") }));
         self.assertIn("const noticeSnapshot = snapshotFiles", final_summary)
         self.assertIn("restoreFileSnapshot(noticeSnapshot)", final_summary)
 
+    def test_notice_only_sync_restores_all_persistent_notice_state_on_failure(self) -> None:
+        js = read_notice_js()
+        notice_scope = js[
+            js.index('if (scope === "notice") {') :
+            js.index('beginStage(steps, stageTelemetry, "dashboard-fetch")')
+        ]
+
+        self.assertIn("const noticeScopeSnapshot = snapshotFiles", notice_scope)
+        self.assertIn("let noticeScopeSucceeded = false", notice_scope)
+        self.assertIn("noticeScopeSucceeded = true", notice_scope)
+        self.assertIn("if (dryRun || !noticeScopeSucceeded)", notice_scope)
+        self.assertIn("restoreFileSnapshot(noticeScopeSnapshot)", notice_scope)
+
+    def test_notice_only_authoritative_fetches_require_complete_url_coverage(self) -> None:
+        bridge = (
+            PROJECT_DIR / "src" / "js" / "sync_notice_bridge.js"
+        ).read_text(encoding="utf-8")
+
+        for context in (
+            'context: "notice-course-pages"',
+            'context: "notice-all-week-course-pages"',
+            'context: "notice-supplemental-primary-pages"',
+            'context: "notice-board-extra-pages"',
+            'context: "sync-notice-article-pages"',
+        ):
+            start = bridge.index(context)
+            fetch_options = bridge[start : bridge.index("})", start) + 2]
+            self.assertIn(
+                "requireAll: true",
+                fetch_options,
+                f"{context} must fail closed instead of committing a partial notice set",
+            )
+        self.assertIn(
+            "no course URLs were parsed; refusing to commit an empty notice snapshot",
+            bridge,
+        )
+
     def test_core_notice_prebuild_skips_native_render_and_restores_cache_after_build_note(self) -> None:
         js = read_notice_js()
         prebuild = js[
             js.index('beginStage(steps, stageTelemetry, "notice-summary-prebuild")') :
             js.index('debugStderr("after notice-summary-prebuild")')
         ]
-        build_note = js[
-            js.index('beginStage(steps, stageTelemetry, "build-note")') :
-            js.index('debugStderr("after build-note")')
+        build_pipeline = js[
+            js.index("const buildNoteBaseCommand = [") :
+            js.index("if (!dryRun && fileExists(boardArticleStatePendingJson))")
         ]
         sync_notice_summary = js[
             js.index("function syncNoticeSummary") :
@@ -933,8 +970,9 @@ console.log(JSON.stringify({ off: runCase("0"), on: runCase("1") }));
 
         self.assertIn("skipNativeRender: true", prebuild)
         self.assertIn("noticeSummaryPrebuildSnapshot = noticeSnapshot", prebuild)
-        self.assertIn("finally", build_note)
-        self.assertIn("restoreFileSnapshot(noticeSummaryPrebuildSnapshot)", build_note)
+        self.assertIn('beginStage(steps, stageTelemetry, "build-note")', build_pipeline)
+        self.assertIn("finally", build_pipeline)
+        self.assertIn("restoreFileSnapshot(noticeSummaryPrebuildSnapshot)", build_pipeline)
         self.assertIn("paths.skipNativeRender", sync_notice_summary)
         self.assertIn('reason: "prebuild"', sync_notice_summary)
 

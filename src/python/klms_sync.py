@@ -3481,11 +3481,6 @@ def dedupe_sync_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return deduped
 
 
-def is_hidden_by_override(assignment: dict[str, Any], overrides: dict[str, str]) -> bool:
-    status = assignment_override_status(assignment, overrides)
-    return status in {"ignored", "completed"}
-
-
 def assignment_override_candidate_keys(assignment: dict[str, Any]) -> list[str]:
     url = normalize_whitespace(str(assignment.get("url", "")))
     title = normalize_whitespace(str(assignment.get("title", "")))
@@ -3518,10 +3513,6 @@ def assignment_completion_reason(assignment: dict[str, Any]) -> str:
     if isinstance(sort_due, datetime) and sort_due <= datetime.now(SEOUL):
         return "past_due"
     return ""
-
-
-def is_completed_assignment(assignment: dict[str, Any]) -> bool:
-    return bool(assignment_completion_reason(assignment))
 
 
 def assignment_record(
@@ -4165,11 +4156,6 @@ def select_exam_date_match(
         return trailing_dates[-1]
 
     return trailing_dates[0]
-
-
-def looks_like_reschedule_notice(text: str) -> bool:
-    lowered = text.lower()
-    return any(keyword in lowered for keyword in ("reschedul", "postpon", "original date", "new date", "연기", "변경 일정", "기존 일정"))
 
 
 def looks_like_help_desk_context(*values: str) -> bool:

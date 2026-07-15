@@ -23,6 +23,19 @@ klms_default_runtime_namespace() {
   esac
 }
 
+klms_default_sync_lock_name() {
+  local runtime_namespace="${1:-shared}"
+
+  case "$runtime_namespace" in
+    core|notice)
+      print -r -- "core-notice"
+      ;;
+    *)
+      print -r -- "$runtime_namespace"
+      ;;
+  esac
+}
+
 klms_default_app_data_dir() {
   print -r -- "$HOME/Library/Application Support/KLMSNotesSync"
 }
@@ -202,9 +215,10 @@ klms_init_context() {
   KLMS_LOGIN_ASSIST_ENABLED="${KLMS_LOGIN_ASSIST_ENABLED:-0}"
   KLMS_LOGIN_ASSIST_EARLY_ENABLED="${KLMS_LOGIN_ASSIST_EARLY_ENABLED:-1}"
   KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE="${KLMS_LOGIN_ASSIST_ALLOW_NONINTERACTIVE:-0}"
-  lock_name="${KLMS_SYNC_LOCK_NAME:-$runtime_namespace}"
+  lock_name="${KLMS_SYNC_LOCK_NAME:-$(klms_default_sync_lock_name "$runtime_namespace")}"
   KLMS_SHARED_SYNC_LOCK_DIR="${KLMS_SHARED_SYNC_LOCK_DIR:-$KLMS_SHARED_SYNC_LOCK_ROOT/${lock_name}.lock}"
   KLMS_SHARED_SYNC_LOCK_WAIT_SECONDS="${KLMS_SHARED_SYNC_LOCK_WAIT_SECONDS:-900}"
+  KLMS_SHARED_SYNC_LOCK_INITIALIZATION_GRACE_SECONDS="${KLMS_SHARED_SYNC_LOCK_INITIALIZATION_GRACE_SECONDS:-10}"
   KLMS_LOGIN_PREFETCH_READY=0
   KLMS_LOGIN_ASSIST_READY=0
   KLMS_LAST_LOGIN_ERROR_MESSAGE=""
@@ -282,12 +296,37 @@ klms_shared_sync_lock_owner_running() {
   kill -0 "$owner_pid" 2>/dev/null
 }
 
+klms_shared_sync_lock_is_initializing() {
+  [[ -d "$KLMS_SHARED_SYNC_LOCK_DIR" ]] || return 1
+
+  local grace_seconds="${KLMS_SHARED_SYNC_LOCK_INITIALIZATION_GRACE_SECONDS:-10}"
+  local modified_epoch=""
+  local now_epoch
+  local age_seconds
+  [[ "$grace_seconds" == <-> ]] || grace_seconds=10
+  (( grace_seconds > 0 )) || return 1
+
+  modified_epoch="$(stat -f '%m' "$KLMS_SHARED_SYNC_LOCK_DIR" 2>/dev/null || true)"
+  if [[ "$modified_epoch" != <-> ]]; then
+    modified_epoch="$(stat -c '%Y' "$KLMS_SHARED_SYNC_LOCK_DIR" 2>/dev/null || true)"
+  fi
+  [[ "$modified_epoch" == <-> ]] || return 1
+
+  now_epoch="$(date +%s)"
+  age_seconds="$(( now_epoch - modified_epoch ))"
+  (( age_seconds < 0 )) && age_seconds=0
+  (( age_seconds < grace_seconds ))
+}
+
 klms_cleanup_stale_shared_sync_lock() {
   [[ -d "$KLMS_SHARED_SYNC_LOCK_DIR" ]] || return 0
 
   local owner_pid
   owner_pid="$(klms_shared_sync_lock_owner_pid)"
   if klms_shared_sync_lock_owner_running "$owner_pid"; then
+    return 0
+  fi
+  if klms_shared_sync_lock_is_initializing; then
     return 0
   fi
 
@@ -744,5 +783,5 @@ klms_cleanup_tmp_root_if_enabled() {
 
   local max_age_hours="${KLMS_RUNTIME_TMP_MAX_AGE_HOURS:-0}"
   KLMS_RUNTIME_TMP_CLEANUP_TARGET="$TMP_ROOT_DIR" \
-    /bin/zsh "$KLMS_SH_DIR/cleanup_runtime_tmp.sh" --max-age-hours "$max_age_hours" >/dev/null 2>&1 || true
+    /bin/zsh "$KLMS_SH_DIR/cleanup_runtime_tmp.sh" --managed-root --max-age-hours "$max_age_hours" || true
 }

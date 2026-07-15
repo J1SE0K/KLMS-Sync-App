@@ -1,5 +1,6 @@
 import json
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -111,6 +112,94 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         self.assertIn("result.source_url", text)
         self.assertIn("isServerTemporaryFilename", text)
         self.assertIn("canonicalFilenameForDownloadedName", text)
+
+    def test_atomic_copy_preserves_destination_on_staging_failure(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "download_klms_files.js").read_text(
+            encoding="utf-8"
+        )
+        helpers = "\n\n".join(
+            self.extract_function(text, name)
+            for name in (
+                "copyFile",
+                "samePath",
+                "standardizeOptionalPath",
+                "standardizePath",
+                "isRegularFile",
+                "fileExists",
+                "isDirectory",
+                "ensureDir",
+                "directoryName",
+                "joinPath",
+                "baseName",
+                "fileSize",
+                "removeFileIfExists",
+                "runProcess",
+                "nsDataToString",
+                "unwrapError",
+            )
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            helper_script = Path(tmp) / "atomic-copy-test.js"
+            fixture_root = Path(tmp) / "fixture"
+            helper_script.write_text(
+                f"""
+ObjC.import("Foundation");
+{helpers}
+function readText(path) {{
+  const error = Ref();
+  const value = $.NSString.stringWithContentsOfFileEncodingError(
+    $(path), $.NSUTF8StringEncoding, error
+  );
+  if (!value) throw new Error(`read failed: ${{path}}`);
+  return ObjC.unwrap(value);
+}}
+function writeText(path, value) {{
+  const error = Ref();
+  if (!$(value).writeToFileAtomicallyEncodingError($(path), true, $.NSUTF8StringEncoding, error)) {{
+    throw new Error(`write failed: ${{path}}`);
+  }}
+}}
+function run(argv) {{
+  const root = String(argv[0]);
+  ensureDir(root);
+  const destination = joinPath(root, "destination.txt");
+  const source = joinPath(root, "source.txt");
+  writeText(destination, "old-value");
+  let rejected = false;
+  try {{ copyFile(joinPath(root, "missing.txt"), destination); }} catch (_error) {{ rejected = true; }}
+  const preserved = readText(destination);
+  writeText(source, "new-value");
+  copyFile(source, destination);
+  const replaced = readText(destination);
+  const names = ObjC.deepUnwrap(
+    $.NSFileManager.defaultManager.contentsOfDirectoryAtPathError($(root), null)
+  );
+  return JSON.stringify({{
+    rejected,
+    preserved,
+    replaced,
+    temporaryFiles: names.filter((name) => String(name).includes(".klms-tmp-")),
+  }});
+}}
+""",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["/usr/bin/osascript", "-l", "JavaScript", str(helper_script), str(fixture_root)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(
+            json.loads(result.stdout),
+            {
+                "rejected": True,
+                "preserved": "old-value",
+                "replaced": "new-value",
+                "temporaryFiles": [],
+            },
+        )
 
     def test_download_filename_matching_ignores_trailing_klms_period(self) -> None:
         text = (PROJECT_DIR / "src" / "js" / "download_klms_files.js").read_text(

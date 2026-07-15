@@ -17,6 +17,33 @@ from klms_sync_v2.pipeline import build_sync_state  # noqa: E402
 
 
 class V2CoreTests(unittest.TestCase):
+    def write_authoritative_dashboard(self, directory: Path) -> Path:
+        dashboard = directory / "dashboard.json"
+        dashboard.write_text(
+            json.dumps(
+                [
+                    {
+                        "requestedUrl": "https://klms.kaist.ac.kr/my/",
+                        "url": "https://klms.kaist.ac.kr/my/",
+                        "title": "Dashboard",
+                        "html": """
+                        <div class="list-box assign">
+                          <a href="https://klms.kaist.ac.kr/mod/assign/view.php?id=999999">open</a>
+                          <ul>
+                            <li>2099.01.01~2099.01.02</li>
+                            <li>Ignored fixture</li>
+                            <li>데이터과학을 위한 선형대수학</li>
+                          </ul>
+                        </div>
+                        """,
+                    }
+                ],
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return dashboard
+
     def test_academic_term_catalog_reads_dashboard_selectors(self) -> None:
         page = {
             "html": """
@@ -274,6 +301,27 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(len(state.completed_assignments), 1)
         self.assertEqual(state.completed_assignments[0].record_status, "completed")
         self.assertEqual(state.completed_assignments[0].completion_reason, "manual_completed")
+
+    def test_legacy_course_title_only_assignment_override_is_inert(self) -> None:
+        assignment = Assignment(
+            url="https://klms.kaist.ac.kr/mod/assign/view.php?id=1234595",
+            course="알고리즘 개론",
+            title="Written Assignment 4",
+            due="2026년 6월 16일 오후 11:59",
+            sync_due="2026-06-16T23:59:00+09:00",
+            source="source",
+        )
+
+        state = build_sync_state(
+            generated_at="2026-06-02 12:20 KST",
+            detail_pages=[],
+            notices=[],
+            source_assignments=[assignment],
+            overrides={"assignments": {"알고리즘 개론::Written Assignment 4": "completed"}},
+        )
+
+        self.assertEqual(len(state.assignments), 1)
+        self.assertEqual(len(state.completed_assignments), 0)
 
     def test_logical_duplicate_exam_events_with_different_notice_urls_merge(self) -> None:
         first = Event(
@@ -1110,6 +1158,7 @@ class V2CoreTests(unittest.TestCase):
             output_state = tmp_dir / "next_state.json"
             output_status = tmp_dir / "status.json"
             output_html = tmp_dir / "section.html"
+            dashboard = self.write_authoritative_dashboard(tmp_dir)
             details.write_text("[]", encoding="utf-8")
             state.write_text("{}", encoding="utf-8")
             supplemental.write_text(
@@ -1140,6 +1189,8 @@ class V2CoreTests(unittest.TestCase):
                     "-m",
                     "klms_sync_v2.cli",
                     "build-note",
+                    "--dashboard-json",
+                    str(dashboard),
                     "--details-json",
                     str(details),
                     "--supplemental-detail-pages-json",
@@ -1177,6 +1228,7 @@ class V2CoreTests(unittest.TestCase):
             output_state = tmp_dir / "next_state.json"
             output_status = tmp_dir / "status.json"
             output_html = tmp_dir / "section.html"
+            dashboard = self.write_authoritative_dashboard(tmp_dir)
             details.write_text(
                 json.dumps(
                     [
@@ -1198,6 +1250,8 @@ class V2CoreTests(unittest.TestCase):
                     "-m",
                     "klms_sync_v2.cli",
                     "build-note",
+                    "--dashboard-json",
+                    str(dashboard),
                     "--details-json",
                     str(details),
                     "--state-json",
@@ -1315,7 +1369,7 @@ class V2CoreTests(unittest.TestCase):
             )
             state.write_text("{}", encoding="utf-8")
 
-            subprocess.run(
+            result = subprocess.run(
                 [
                     sys.executable,
                     "-m",
@@ -1334,13 +1388,68 @@ class V2CoreTests(unittest.TestCase):
                 env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
                 text=True,
                 capture_output=True,
-                check=True,
+                check=False,
             )
 
             rendered = json.loads(output_state.read_text(encoding="utf-8"))
             status = json.loads(output_status.read_text(encoding="utf-8"))
+            self.assertNotEqual(result.returncode, 0)
             self.assertEqual(rendered["status"], "error")
             self.assertEqual(status["status"], "error")
+
+    def test_cli_build_note_rejects_unparseable_dashboard_and_preserves_previous_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            dashboard = tmp_dir / "dashboard.json"
+            details = tmp_dir / "details.json"
+            state = tmp_dir / "state.json"
+            output_state = tmp_dir / "next_state.json"
+            output_status = tmp_dir / "status.json"
+            dashboard.write_text(
+                json.dumps(
+                    [
+                        {
+                            "requestedUrl": "https://klms.kaist.ac.kr/my/",
+                            "url": "https://klms.kaist.ac.kr/my/",
+                            "title": "Dashboard",
+                            "html": "<html><body>authenticated but structurally unknown</body></html>",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            details.write_text("[]", encoding="utf-8")
+            previous_bytes = b'{\n  "status": "ok",\n  "sentinel": "preserve-me"\n}\n'
+            state.write_bytes(previous_bytes)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "build-note",
+                    "--dashboard-json",
+                    str(dashboard),
+                    "--details-json",
+                    str(details),
+                    "--state-json",
+                    str(state),
+                    "--output-state",
+                    str(output_state),
+                    "--output-status",
+                    str(output_status),
+                ],
+                cwd=PROJECT_DIR,
+                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(state.read_bytes(), previous_bytes)
+            self.assertEqual(json.loads(output_state.read_text(encoding="utf-8"))["status"], "error")
+            self.assertEqual(json.loads(output_status.read_text(encoding="utf-8"))["status"], "error")
 
     def test_cli_check_login_status_accepts_klms_non_login_page_like_legacy_app(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
